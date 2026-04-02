@@ -61,11 +61,11 @@ cd docker
 docker compose up --build -d
 cd ..
 
-uv sync
+uv tool install --editable .
 observal init
 ```
 
-This starts the API (http://localhost:8000), web UI (http://localhost:3000), PostgreSQL, and ClickHouse. The CLI is installed via `uv sync` and `observal init` creates your admin account.
+This starts the API (http://localhost:8000), web UI (http://localhost:3000), PostgreSQL, and ClickHouse. The CLI is installed via `uv tool install` and `observal init` creates your admin account.
 
 For detailed setup instructions, local development, eval engine configuration, and troubleshooting, see [SETUP.md](SETUP.md).
 
