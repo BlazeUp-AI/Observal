@@ -83,7 +83,7 @@ This starts:
 ### 4. Install the CLI
 
 ```bash
-uv pip install -e .
+uv sync
 ```
 
 ### 5. Initialize (first-run setup)
@@ -426,7 +426,9 @@ Observal/
 │   │   ├── clickhouse.py     # ClickHouse client and queries
 │   │   └── eval_engine.py    # LLM-as-judge evaluation
 │   ├── main.py               # App entrypoint
-│   └── config.py             # Settings
+│   ├── config.py             # Settings
+│   ├── pyproject.toml        # Server package config (uv)
+│   └── uv.lock               # Server lockfile
 ├── observal-web/             # Next.js web UI
 │   └── src/
 │       ├── app/              # App Router pages
@@ -438,7 +440,7 @@ Observal/
 │   └── config.py             # CLI config management
 ├── docker/
 │   ├── docker-compose.yml    # Full service stack
-│   ├── Dockerfile.api        # API container (uses uv for installs)
+│   ├── Dockerfile.api        # API container (uses uv)
 │   └── Dockerfile.web        # Web UI container
 ├── tests/
 │   ├── test_phase_1_2.sh     # Auth and MCP integration tests
@@ -447,7 +449,8 @@ Observal/
 │   └── test_phase_7_8.sh     # Eval and admin integration tests
 ├── docs/                     # Guides, test plans, and checkpoints
 ├── .env.example              # Environment variable template
-└── pyproject.toml            # CLI package config
+├── pyproject.toml            # CLI package config (uv)
+└── uv.lock                   # CLI lockfile
 ```
 
 ## Running Tests

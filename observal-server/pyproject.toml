@@ -1,0 +1,19 @@
+[project]
+name = "observal-server"
+version = "0.1.0"
+description = "Observal API server"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy[asyncio]",
+    "asyncpg",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "email-validator",
+    "alembic",
+    "httpx",
+    "gitpython",
+    "boto3",
+]

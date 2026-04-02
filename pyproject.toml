@@ -11,6 +11,3 @@ dependencies = [
 
 [project.scripts]
 observal = "observal_cli.main:app"
-
-[tool.setuptools]
-packages = ["observal_cli"]
