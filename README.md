@@ -51,48 +51,23 @@ Observal solves all of these as a single, self-hosted platform.
 
 ## Getting Started
 
-### 1. Clone the repository
-
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git
 cd Observal
-```
-
-### 2. Configure environment variables
-
-```bash
 cp .env.example .env
-```
+# edit .env with your values
 
-Edit `.env` with your values. See the [Environment Variables](#environment-variables) section below for the full reference.
-
-### 3. Start the services
-
-```bash
 cd docker
 docker compose up --build -d
-```
+cd ..
 
-This starts:
-
-- `observal-api` on http://localhost:8000
-- `observal-web` on http://localhost:3000
-- PostgreSQL on port 5432
-- ClickHouse on port 8123
-
-### 4. Install the CLI
-
-```bash
 uv sync
-```
-
-### 5. Initialize (first-run setup)
-
-```bash
 observal init
 ```
 
-This creates the admin account and saves your API key to `~/.observal/config.json`.
+This starts the API (http://localhost:8000), web UI (http://localhost:3000), PostgreSQL, and ClickHouse. The CLI is installed via `uv sync` and `observal init` creates your admin account.
+
+For detailed setup instructions, local development, eval engine configuration, and troubleshooting, see [SETUP.md](SETUP.md).
 
 ## Environment Variables
 
