@@ -20,7 +20,7 @@ cd Observal
 cp .env.example .env
 ```
 
-Edit `.env` with your values (see [Environment Variables](#environment-variables) below), then:
+Edit `.env` with your values (see [Environment Variables](#environment-variables) below). The `.env` file must stay in the project root. All Docker services reference it from there via `env_file: ../.env`.
 
 ```bash
 cd docker
