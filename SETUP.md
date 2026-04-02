@@ -40,7 +40,7 @@ Install the CLI and run first-time setup:
 
 ```bash
 cd ..
-uv sync
+uv tool install --editable .
 observal init
 ```
 
@@ -130,10 +130,10 @@ The web UI will be at http://localhost:3000. All `/api/*` requests are proxied t
 From the project root:
 
 ```bash
-uv sync
+uv tool install --editable .
 ```
 
-This installs the `observal` command. Configure it to point at your local server:
+This installs the `observal` command globally. Configure it to point at your local server:
 
 ```bash
 observal init
