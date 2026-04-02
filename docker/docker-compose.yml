@@ -37,14 +37,14 @@ services:
     image: postgres:16
     ports:
       - "5432:5432"
+    env_file:
+      - ../.env
     environment:
       POSTGRES_DB: observal
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -55,10 +55,10 @@ services:
     image: clickhouse/clickhouse-server:latest
     ports:
       - "8123:8123"
+    env_file:
+      - ../.env
     environment:
       CLICKHOUSE_DB: observal
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
     volumes:
       - chdata:/var/lib/clickhouse
     networks:
