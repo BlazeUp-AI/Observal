@@ -29,6 +29,8 @@ def review_list(output: str = typer.Option("table", "--output", "-o")):
     """List pending submissions."""
     with spinner("Fetching reviews..."):
         data = client.get("/api/v1/review")
+    if data:
+        config.save_last_results(data)
     if output == "json":
         output_json(data)
         return
@@ -152,7 +154,7 @@ def register_dashboard(app: typer.Typer):
 
     @app.command(name="metrics")
     def metrics(
-        item_id: str = typer.Argument(..., help="MCP or Agent ID, or @alias"),
+        item_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
         item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
         output: str = typer.Option("table", "--output", "-o"),
         watch: bool = typer.Option(False, "--watch", "-w", help="Refresh every 5s"),
@@ -241,7 +243,7 @@ def register_feedback(app: typer.Typer):
 
     @app.command()
     def rate(
-        listing_id: str = typer.Argument(..., help="MCP or Agent ID, or @alias"),
+        listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
         stars: int = typer.Option(..., "--stars", "-s", min=1, max=5, help="Rating 1-5"),
         listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
         comment: str | None = typer.Option(None, "--comment", "-c"),
@@ -262,7 +264,7 @@ def register_feedback(app: typer.Typer):
 
     @app.command()
     def feedback(
-        listing_id: str = typer.Argument(..., help="MCP or Agent ID, or @alias"),
+        listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
         listing_type: str = typer.Option("mcp", "--type", "-t"),
         output: str = typer.Option("table", "--output", "-o"),
     ):
@@ -297,7 +299,7 @@ eval_app = typer.Typer(help="Evaluation engine commands")
 
 @eval_app.command(name="run")
 def eval_run(
-    agent_id: str = typer.Argument(..., help="Agent ID or @alias"),
+    agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     trace_id: str | None = typer.Option(None, "--trace"),
 ):
     """Run evaluation on an agent's traces."""

@@ -111,6 +111,9 @@ def register_mcp(app: typer.Typer):
         sk = key_map.get(sort, "name")
         data = sorted(data, key=lambda x: x.get(sk, ""))[:limit]
 
+        # Cache IDs for numeric shorthand (observal show 1, observal install 2 --ide kiro)
+        config.save_last_results(data)
+
         if output == "json":
             output_json(data)
             return
@@ -142,7 +145,7 @@ def register_mcp(app: typer.Typer):
 
     @app.command()
     def show(
-        mcp_id: str = typer.Argument(..., help="MCP server ID or @alias"),
+        mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
         output: str = typer.Option("table", "--output", "-o", help="Output: table, json"),
     ):
         """Show full details of an MCP server."""
@@ -181,7 +184,7 @@ def register_mcp(app: typer.Typer):
 
     @app.command()
     def install(
-        mcp_id: str = typer.Argument(..., help="MCP server ID or @alias"),
+        mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
         ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
         raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
     ):
@@ -197,13 +200,27 @@ def register_mcp(app: typer.Typer):
             print(_json.dumps(snippet, indent=2))
             return
 
+        _IDE_CONFIG_PATHS = {
+            "kiro": ".kiro/settings/mcp.json",
+            "cursor": ".cursor/mcp.json",
+            "vscode": ".vscode/mcp.json",
+            "windsurf": ".windsurf/mcp.json",
+            "claude-code": "(run the command below)",
+            "claude_code": "(run the command below)",
+            "gemini-cli": ".gemini/settings.json",
+            "gemini_cli": ".gemini/settings.json",
+        }
+
         rprint(f"\n[bold]Config for {ide}:[/bold]\n")
         console.print_json(_json.dumps(snippet, indent=2))
-        rprint("\n[dim]Tip: Use --raw to pipe directly into a config file.[/dim]")
+        config_path = _IDE_CONFIG_PATHS.get(ide, "")
+        if config_path and not config_path.startswith("("):
+            rprint(f"\n[dim]Add to:[/dim] [bold]{config_path}[/bold]")
+            rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --ide {ide} --raw > {config_path}")
 
     @app.command(name="delete")
     def delete_mcp(
-        mcp_id: str = typer.Argument(..., help="MCP server ID or @alias"),
+        mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
     ):
         """Delete an MCP server."""

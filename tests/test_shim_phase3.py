@@ -309,14 +309,14 @@ class TestAgentConfigGenerator:
         from services.agent_config_generator import generate_agent_config
 
         cfg = generate_agent_config(self._make_agent(), "cursor")
-        mcp_cfg = cfg["mcp_config"]["mcpServers"]["ext-mcp"]
+        mcp_cfg = cfg["mcp_config"]["content"]["mcpServers"]["ext-mcp"]
         assert mcp_cfg["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
 
     def test_external_mcp_wrapped_with_shim(self):
         from services.agent_config_generator import generate_agent_config
 
         cfg = generate_agent_config(self._make_agent(), "cursor")
-        mcp_cfg = cfg["mcp_config"]["mcpServers"]["ext-mcp"]
+        mcp_cfg = cfg["mcp_config"]["content"]["mcpServers"]["ext-mcp"]
         assert mcp_cfg["command"] == "observal-shim"
         assert "--mcp-id" in mcp_cfg["args"]
 
@@ -324,7 +324,8 @@ class TestAgentConfigGenerator:
         from services.agent_config_generator import generate_agent_config
 
         cfg = generate_agent_config(self._make_agent(), "kiro")
-        assert "rules_file" in cfg
-        assert "mcp_json" in cfg
-        mcp_cfg = cfg["mcp_json"]["mcpServers"]["ext-mcp"]
-        assert mcp_cfg["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
+        assert "agent_file" in cfg
+        agent = cfg["agent_file"]["content"]
+        assert agent["name"] == "test-agent"
+        assert agent["mcpServers"]["ext-mcp"]["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
+        assert "@ext-mcp" in agent["tools"]

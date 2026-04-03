@@ -8,6 +8,7 @@ from api.graphql import get_context_dep, schema
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.auth import router as auth_router
+from api.routes.dashboard import router as dashboard_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.mcp import router as mcp_router
@@ -41,6 +42,7 @@ app.include_router(mcp_router)
 app.include_router(review_router)
 app.include_router(agent_router)
 app.include_router(telemetry_router)
+app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(eval_router)
 app.include_router(admin_router)
