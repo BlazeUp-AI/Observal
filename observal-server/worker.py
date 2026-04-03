@@ -28,20 +28,24 @@ async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None):
     """Background job: run eval on an agent's traces."""
     logger.info(f"Running eval for agent={agent_id} trace={trace_id}")
     try:
-        from services.eval_service import evaluate_trace, fetch_traces
+        from services.eval_engine import run_eval_on_trace
+        from services.clickhouse import query_traces
 
-        traces = await fetch_traces(agent_id, limit=1 if trace_id else 20, trace_id=trace_id)
-        for trace in traces:
-            result = await evaluate_trace(
-                type("Agent", (), {"id": agent_id, "name": "", "prompt": ""})(),
-                trace,
-            )
-            # Publish result for GraphQL subscriptions
+        if trace_id:
+            scores = await run_eval_on_trace(agent_id, trace_id)
             await publish(f"eval:{agent_id}", {
-                "agent_id": agent_id,
-                "trace_id": trace.get("trace_id", ""),
-                "result": result,
+                "agent_id": agent_id, "trace_id": trace_id,
+                "scores_written": len(scores),
             })
+        else:
+            traces = await query_traces("default", agent_id=agent_id, limit=20)
+            for t in traces:
+                tid = t.get("trace_id", "")
+                scores = await run_eval_on_trace(agent_id, tid)
+                await publish(f"eval:{agent_id}", {
+                    "agent_id": agent_id, "trace_id": tid,
+                    "scores_written": len(scores),
+                })
     except Exception as e:
         logger.exception(f"Eval job failed: {e}")
 
