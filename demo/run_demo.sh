@@ -54,7 +54,7 @@ else
     die "API server not reachable at ${OBSERVAL_SERVER}. Is the Docker stack running?"
 fi
 
-if curl -sf "http://localhost:8123/?query=SELECT%201" > /dev/null 2>&1; then
+if curl -sf "http://localhost:8123/?user=default&password=clickhouse&query=SELECT%201&user=default&password=clickhouse" > /dev/null 2>&1; then
     ok "ClickHouse reachable"
 else
     die "ClickHouse not reachable on :8123"
@@ -143,18 +143,18 @@ header "Captured Telemetry"
 info "Querying ClickHouse for recent spans..."
 sleep 2
 
-SPAN_COUNT="$(curl -sf 'http://localhost:8123/?query=SELECT+count()+FROM+spans+WHERE+trace_id+LIKE+%27%25%27+FORMAT+TabSeparated' 2>/dev/null || echo '?')"
+CH="http://localhost:8123/?user=default&password=clickhouse&database=observal"
+
+SPAN_COUNT="$(curl -sf "${CH}&query=SELECT+count()+FROM+spans+FINAL+WHERE+is_deleted%3D0+FORMAT+TabSeparated" 2>/dev/null || echo '?')"
 echo -e "  Total spans in ClickHouse: ${BOLD}${SPAN_COUNT}${NC}"
 
 info "Recent spans by type:"
-curl -sf 'http://localhost:8123/' \
-  --data-urlencode "query=SELECT type, count() as cnt FROM spans FINAL WHERE is_deleted=0 GROUP BY type ORDER BY cnt DESC FORMAT PrettyCompact" \
+curl -sf "${CH}" --data "SELECT type, count() as cnt FROM spans FINAL WHERE is_deleted=0 GROUP BY type ORDER BY cnt DESC FORMAT PrettyCompact" \
   2>/dev/null || warn "Could not query ClickHouse"
 
 echo ""
 info "Recent spans by MCP:"
-curl -sf 'http://localhost:8123/' \
-  --data-urlencode "query=SELECT t.mcp_id, count() as spans FROM traces t FINAL JOIN spans s FINAL ON t.trace_id = s.trace_id WHERE t.is_deleted=0 AND s.is_deleted=0 GROUP BY t.mcp_id ORDER BY spans DESC FORMAT PrettyCompact" \
+curl -sf "${CH}" --data "SELECT t.mcp_id, count() as spans FROM traces t FINAL JOIN spans s FINAL ON t.trace_id = s.trace_id WHERE t.is_deleted=0 AND s.is_deleted=0 GROUP BY t.mcp_id ORDER BY spans DESC FORMAT PrettyCompact" \
   2>/dev/null || warn "Could not query ClickHouse"
 
 # --- Query GraphQL ---
@@ -162,10 +162,9 @@ curl -sf 'http://localhost:8123/' \
 header "GraphQL Trace Query"
 
 info "Querying traces via GraphQL..."
-GQL_QUERY='{"query":"{ traces(limit: 5) { traceId name mcp_id spans { spanId type name latencyMs status } } }"}'
-GQL_RESULT="$(curl -sf -X POST "${OBSERVAL_SERVER}/graphql" \
+GQL_QUERY='{"query":"{ traces(limit: 5) { items { traceId name mcpId metrics { totalSpans errorCount toolCallCount } } } }"}'
+GQL_RESULT="$(curl -sf -X POST "${OBSERVAL_SERVER}/api/v1/graphql" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: ${OBSERVAL_KEY}" \
   -d "$GQL_QUERY" 2>/dev/null || echo '{"error":"GraphQL query failed"}')"
 
 echo "$GQL_RESULT" | jq '.' 2>/dev/null || echo "$GQL_RESULT"
