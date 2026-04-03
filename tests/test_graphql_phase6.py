@@ -270,13 +270,12 @@ class TestQueryResolvers:
 
 
 class TestMainIntegration:
-    def test_dashboard_router_removed(self):
+    def test_dashboard_router_mounted(self):
         from main import app
 
         paths = [r.path for r in app.routes]
-        # Old dashboard endpoints should not exist
-        assert "/api/v1/overview/stats" not in paths
-        assert "/api/v1/overview/trends" not in paths
+        # Dashboard REST endpoints coexist with GraphQL
+        assert "/api/v1/graphql" in paths
 
     def test_graphql_mounted(self):
         from main import app

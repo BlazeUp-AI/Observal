@@ -129,6 +129,9 @@ def agent_list(
 
     data = data[:limit]
 
+    # Cache IDs for numeric shorthand
+    config.save_last_results(data)
+
     if output == "json":
         output_json(data)
         return
@@ -161,7 +164,7 @@ def agent_list(
 
 @agent_app.command(name="show")
 def agent_show(
-    agent_id: str = typer.Argument(..., help="Agent ID or @alias"),
+    agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
     """Show full agent details."""
@@ -211,7 +214,7 @@ def agent_show(
 
 @agent_app.command(name="install")
 def agent_install(
-    agent_id: str = typer.Argument(..., help="Agent ID or @alias"),
+    agent_id: str = typer.Argument(..., help="Agent ID, name, row number, or @alias"),
     ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
 ):
@@ -226,12 +229,42 @@ def agent_install(
         return
 
     rprint(f"\n[bold]Config for {ide}:[/bold]\n")
+
+    # Kiro agent file — single JSON to drop in
+    agent_file = snippet.get("agent_file")
+    if agent_file:
+        rprint(f"[bold]Save to:[/bold] {agent_file['path']}")
+        rprint()
+        console.print_json(_json.dumps(agent_file["content"], indent=2))
+        rprint(f"\n[dim]Or pipe:[/dim] observal agent install {agent_id} --ide {ide} --raw | jq .agent_file.content > {agent_file['path']}")
+        return
+
+    # Rules file
+    rules = snippet.get("rules_file")
+    if rules:
+        rprint(f"[bold]Rules file:[/bold] {rules.get('path', '')}")
+        content = rules.get("content", "")
+        rprint(f"[dim]{content[:200]}{'...' if len(content) > 200 else ''}[/dim]\n")
+
+    # MCP config
+    mcp_cfg = snippet.get("mcp_config")
+    if mcp_cfg:
+        path = mcp_cfg.get("path") if isinstance(mcp_cfg, dict) and "path" in mcp_cfg else None
+        content = mcp_cfg.get("content", mcp_cfg) if isinstance(mcp_cfg, dict) and "content" in mcp_cfg else mcp_cfg
+        if path:
+            rprint(f"[bold]MCP config:[/bold] {path}")
+        else:
+            rprint("[bold]MCP config:[/bold]")
+        console.print_json(_json.dumps(content, indent=2))
+        return
+
+    # Fallback
     console.print_json(_json.dumps(snippet, indent=2))
 
 
 @agent_app.command(name="delete")
 def agent_delete(
-    agent_id: str = typer.Argument(..., help="Agent ID or @alias"),
+    agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
     """Delete an agent."""
