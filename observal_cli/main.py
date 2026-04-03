@@ -588,3 +588,167 @@ def admin_users():
 
 if __name__ == "__main__":
     app()
+
+
+# ── Phase 10: CLI Updates ────────────────────────────────
+
+
+@app.command()
+def upgrade():
+    """Upgrade observal CLI, shim, and proxy to the latest version."""
+    import subprocess
+    rprint("[dim]Upgrading observal...[/dim]")
+    try:
+        result = subprocess.run(
+            ["uv", "tool", "upgrade", "observal-cli"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0:
+            rprint(f"[green]Upgraded successfully![/green]")
+            if result.stdout.strip():
+                rprint(result.stdout.strip())
+        else:
+            # Try pip fallback
+            result = subprocess.run(
+                ["pip", "install", "--upgrade", "observal-cli"],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                rprint(f"[green]Upgraded successfully![/green]")
+            else:
+                rprint(f"[red]Upgrade failed: {result.stderr.strip()}[/red]")
+                raise typer.Exit(1)
+    except FileNotFoundError:
+        rprint("[red]Neither uv nor pip found. Install manually.[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def downgrade():
+    """Downgrade observal CLI to a previous version."""
+    rprint("[yellow]WIP — observal downgrade is not yet implemented.[/yellow]")
+    rprint("[dim]Track progress: https://github.com/BlazeUp-AI/Observal/issues/19[/dim]")
+
+
+@app.command()
+def traces(
+    trace_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by trace type"),
+    mcp_id: Optional[str] = typer.Option(None, "--mcp", help="Filter by MCP ID"),
+    agent_id: Optional[str] = typer.Option(None, "--agent", help="Filter by agent ID"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+):
+    """List recent traces from ClickHouse (via GraphQL)."""
+    import json as _json
+    variables = {"limit": limit}
+    if trace_type:
+        variables["traceType"] = trace_type
+    if mcp_id:
+        variables["mcpId"] = mcp_id
+    if agent_id:
+        variables["agentId"] = agent_id
+
+    query = """query($traceType: String, $mcpId: String, $agentId: String, $limit: Int) {
+        traces(traceType: $traceType, mcpId: $mcpId, agentId: $agentId, limit: $limit) {
+            items {
+                traceId traceType name mcpId agentId ide startTime
+                metrics { totalSpans errorCount toolCallCount }
+            }
+        }
+    }"""
+    cfg = config.get_or_exit()
+    try:
+        r = httpx.post(
+            f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
+            json={"query": query, "variables": variables},
+            timeout=30,
+        )
+        r.raise_for_status()
+        items = r.json().get("data", {}).get("traces", {}).get("items", [])
+    except Exception as e:
+        rprint(f"[red]Failed to query traces: {e}[/red]")
+        raise typer.Exit(1)
+
+    table = Table(title="Recent Traces")
+    table.add_column("Trace ID", style="dim")
+    table.add_column("Type")
+    table.add_column("Name")
+    table.add_column("MCP/Agent")
+    table.add_column("IDE")
+    table.add_column("Spans")
+    table.add_column("Errors")
+    table.add_column("Tools")
+    for t in items:
+        m = t.get("metrics", {})
+        ref = t.get("mcpId") or t.get("agentId") or "—"
+        table.add_row(
+            t["traceId"][:12] + "…",
+            t.get("traceType", ""),
+            t.get("name", "") or "—",
+            ref[:16],
+            t.get("ide", "") or "—",
+            str(m.get("totalSpans", 0)),
+            str(m.get("errorCount", 0)),
+            str(m.get("toolCallCount", 0)),
+        )
+    console.print(table)
+
+
+@app.command()
+def spans(
+    trace_id: str = typer.Argument(..., help="Trace ID"),
+):
+    """List spans for a trace (via GraphQL)."""
+    query = """query($traceId: String!) {
+        trace(traceId: $traceId) {
+            traceId name
+            spans {
+                spanId type name method latencyMs status
+                toolSchemaValid toolsAvailable
+            }
+        }
+    }"""
+    cfg = config.get_or_exit()
+    try:
+        r = httpx.post(
+            f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
+            json={"query": query, "variables": {"traceId": trace_id}},
+            timeout=30,
+        )
+        r.raise_for_status()
+        trace_data = r.json().get("data", {}).get("trace")
+    except Exception as e:
+        rprint(f"[red]Failed to query spans: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not trace_data:
+        rprint(f"[yellow]Trace {trace_id} not found.[/yellow]")
+        raise typer.Exit(1)
+
+    rprint(f"[bold]Trace: {trace_data['traceId']}[/bold] — {trace_data.get('name', '')}")
+
+    table = Table(title="Spans")
+    table.add_column("Span ID", style="dim")
+    table.add_column("Type")
+    table.add_column("Name")
+    table.add_column("Method")
+    table.add_column("Latency")
+    table.add_column("Status")
+    table.add_column("Schema")
+    for s in trace_data.get("spans", []):
+        schema = "✓" if s.get("toolSchemaValid") is True else ("✗" if s.get("toolSchemaValid") is False else "—")
+        latency = f"{s['latencyMs']}ms" if s.get("latencyMs") else "—"
+        status_style = "red" if s.get("status") == "error" else ""
+        table.add_row(
+            s["spanId"][:12] + "…",
+            s.get("type", ""),
+            s.get("name", ""),
+            s.get("method", "") or "—",
+            latency,
+            f"[{status_style}]{s.get('status', '')}[/{status_style}]" if status_style else s.get("status", ""),
+            schema,
+        )
+    console.print(table)
+
+
+if __name__ == "__main__":
+    app()
