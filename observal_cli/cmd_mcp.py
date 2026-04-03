@@ -1,7 +1,6 @@
 """MCP server CLI commands."""
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 import typer
 from rich import print as rprint
@@ -9,8 +8,13 @@ from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.render import (
-    console, ide_tags, kv_panel, output_json, relative_time, spinner,
-    star_rating, status_badge,
+    console,
+    ide_tags,
+    kv_panel,
+    output_json,
+    relative_time,
+    spinner,
+    status_badge,
 )
 
 
@@ -40,9 +44,15 @@ def register_mcp(app: typer.Typer):
             rprint()
 
         _name = name or (prefill.get("name", "") if yes else typer.prompt("Name", default=prefill.get("name", "")))
-        _version = prefill.get("version", "0.1.0") if yes else typer.prompt("Version", default=prefill.get("version", "0.1.0"))
+        _version = (
+            prefill.get("version", "0.1.0") if yes else typer.prompt("Version", default=prefill.get("version", "0.1.0"))
+        )
         _category = category or ("general" if yes else typer.prompt("Category"))
-        _desc = prefill.get("description", "") if yes else typer.prompt("Description (min 100 chars)", default=prefill.get("description", ""))
+        _desc = (
+            prefill.get("description", "")
+            if yes
+            else typer.prompt("Description (min 100 chars)", default=prefill.get("description", ""))
+        )
         _owner = typer.prompt("Owner / Team") if not yes else "default"
 
         ide_choices = ["vscode", "cursor", "windsurf", "kiro", "claude_code", "gemini_cli"]
@@ -57,24 +67,27 @@ def register_mcp(app: typer.Typer):
         _changelog = "Initial release" if yes else typer.prompt("Changelog", default="Initial release")
 
         with spinner("Submitting..."):
-            result = client.post("/api/v1/mcps/submit", {
-                "git_url": git_url,
-                "name": _name,
-                "version": _version,
-                "category": _category,
-                "description": _desc,
-                "owner": _owner,
-                "supported_ides": supported_ides,
-                "setup_instructions": _setup,
-                "changelog": _changelog,
-            })
+            result = client.post(
+                "/api/v1/mcps/submit",
+                {
+                    "git_url": git_url,
+                    "name": _name,
+                    "version": _version,
+                    "category": _category,
+                    "description": _desc,
+                    "owner": _owner,
+                    "supported_ides": supported_ides,
+                    "setup_instructions": _setup,
+                    "changelog": _changelog,
+                },
+            )
         rprint(f"\n[green]✓ Submitted![/green] ID: [bold]{result['id']}[/bold]")
         rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
 
     @app.command(name="list")
     def list_mcps(
-        category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category"),
-        search: Optional[str] = typer.Option(None, "--search", "-s", help="Search by name/description"),
+        category: str | None = typer.Option(None, "--category", "-c", help="Filter by category"),
+        search: str | None = typer.Option(None, "--search", "-s", help="Search by name/description"),
         limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
         sort: str = typer.Option("name", "--sort", help="Sort by: name, category, version"),
         output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
@@ -141,22 +154,24 @@ def register_mcp(app: typer.Typer):
             output_json(item)
             return
 
-        console.print(kv_panel(
-            f"{item['name']} v{item.get('version', '?')}",
-            [
-                ("Status", status_badge(item.get("status", ""))),
-                ("Category", item.get("category", "N/A")),
-                ("Owner", item.get("owner", "N/A")),
-                ("Description", item.get("description", "")),
-                ("IDEs", ide_tags(item.get("supported_ides", []))),
-                ("Git", f"[link={item.get('git_url', '')}]{item.get('git_url', 'N/A')}[/link]"),
-                ("Setup", item.get("setup_instructions") or "[dim]none[/dim]"),
-                ("Changelog", item.get("changelog") or "[dim]none[/dim]"),
-                ("Created", relative_time(item.get("created_at"))),
-                ("ID", f"[dim]{item['id']}[/dim]"),
-            ],
-            border_style="cyan",
-        ))
+        console.print(
+            kv_panel(
+                f"{item['name']} v{item.get('version', '?')}",
+                [
+                    ("Status", status_badge(item.get("status", ""))),
+                    ("Category", item.get("category", "N/A")),
+                    ("Owner", item.get("owner", "N/A")),
+                    ("Description", item.get("description", "")),
+                    ("IDEs", ide_tags(item.get("supported_ides", []))),
+                    ("Git", f"[link={item.get('git_url', '')}]{item.get('git_url', 'N/A')}[/link]"),
+                    ("Setup", item.get("setup_instructions") or "[dim]none[/dim]"),
+                    ("Changelog", item.get("changelog") or "[dim]none[/dim]"),
+                    ("Created", relative_time(item.get("created_at"))),
+                    ("ID", f"[dim]{item['id']}[/dim]"),
+                ],
+                border_style="cyan",
+            )
+        )
 
         if item.get("validation_results"):
             rprint("\n[bold]Validation:[/bold]")
@@ -172,6 +187,7 @@ def register_mcp(app: typer.Typer):
     ):
         """Get install config snippet for an MCP server."""
         import json as _json
+
         resolved = config.resolve_alias(mcp_id)
         with spinner(f"Generating {ide} config..."):
             result = client.post(f"/api/v1/mcps/{resolved}/install", {"ide": ide})
@@ -183,7 +199,7 @@ def register_mcp(app: typer.Typer):
 
         rprint(f"\n[bold]Config for {ide}:[/bold]\n")
         console.print_json(_json.dumps(snippet, indent=2))
-        rprint(f"\n[dim]Tip: Use --raw to pipe directly into a config file.[/dim]")
+        rprint("\n[dim]Tip: Use --raw to pipe directly into a config file.[/dim]")
 
     @app.command(name="delete")
     def delete_mcp(

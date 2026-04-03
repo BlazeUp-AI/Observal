@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from api.deps import get_current_user, get_db
 from models.agent import Agent, AgentGoalTemplate
-from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
+from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
 from services.eval_service import evaluate_trace, fetch_traces, parse_scorecard
@@ -28,7 +28,8 @@ async def run_evaluation(
 ):
     # Load agent with goal template
     result = await db.execute(
-        select(Agent).where(Agent.id == agent_id)
+        select(Agent)
+        .where(Agent.id == agent_id)
         .options(selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections))
     )
     agent = result.scalar_one_or_none()
@@ -46,7 +47,7 @@ async def run_evaluation(
     if not traces:
         eval_run.status = EvalRunStatus.completed
         eval_run.traces_evaluated = 0
-        eval_run.completed_at = datetime.now(timezone.utc)
+        eval_run.completed_at = datetime.now(UTC)
         await db.commit()
         run = await db.execute(select(EvalRun).where(EvalRun.id == eval_run.id).options(*_eval_run_load))
         return EvalRunDetailResponse.model_validate(run.scalar_one())
@@ -60,11 +61,11 @@ async def run_evaluation(
             eval_run.traces_evaluated += 1
 
         eval_run.status = EvalRunStatus.completed
-        eval_run.completed_at = datetime.now(timezone.utc)
+        eval_run.completed_at = datetime.now(UTC)
     except Exception as e:
         eval_run.status = EvalRunStatus.failed
         eval_run.error_message = str(e)[:2000]
-        eval_run.completed_at = datetime.now(timezone.utc)
+        eval_run.completed_at = datetime.now(UTC)
 
     await db.commit()
     run = await db.execute(select(EvalRun).where(EvalRun.id == eval_run.id).options(*_eval_run_load))
@@ -77,9 +78,7 @@ async def list_eval_runs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(EvalRun).where(EvalRun.agent_id == agent_id).order_by(EvalRun.started_at.desc())
-    )
+    result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent_id).order_by(EvalRun.started_at.desc()))
     return [EvalRunResponse.model_validate(r) for r in result.scalars().all()]
 
 
@@ -103,9 +102,7 @@ async def get_scorecard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Scorecard).where(Scorecard.id == scorecard_id).options(*_scorecard_load)
-    )
+    result = await db.execute(select(Scorecard).where(Scorecard.id == scorecard_id).options(*_scorecard_load))
     sc = result.scalar_one_or_none()
     if not sc:
         raise HTTPException(status_code=404, detail="Scorecard not found")

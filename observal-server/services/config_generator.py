@@ -2,13 +2,13 @@ import re
 
 from models.mcp import McpListing
 
-_SAFE_NAME = re.compile(r'^[a-zA-Z0-9_-]+$')
+_SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def _sanitize_name(name: str) -> str:
     if _SAFE_NAME.match(name):
         return name
-    return re.sub(r'[^a-zA-Z0-9_-]', '-', name)
+    return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
 
 
 def generate_config(listing: McpListing, ide: str, proxy_port: int | None = None) -> dict:
@@ -30,7 +30,7 @@ def generate_config(listing: McpListing, ide: str, proxy_port: int | None = None
 
     if ide == "claude-code":
         return {
-            "command": ["claude", "mcp", "add", name, "--", "observal-shim"] + shim_args,
+            "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
         }
     if ide == "gemini-cli":

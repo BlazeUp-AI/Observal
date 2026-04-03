@@ -1,6 +1,37 @@
 __pycache__/
 *.pyc
+*.pyo
 .env
 *.egg-info/
 dist/
 build/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# Node
+observal-web/node_modules/
+observal-web/dist/
+
+# Docker
+docker/data/
+
+# Local config
+.kiro/

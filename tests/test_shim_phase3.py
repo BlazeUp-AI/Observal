@@ -1,7 +1,6 @@
 """Unit tests for observal-shim — Phase 3."""
 
 import json
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +12,6 @@ from observal_cli.shim import (
     extract_span_name,
     extract_span_type,
 )
-
 
 # --- Message classification ---
 
@@ -93,17 +91,13 @@ class TestSchemaCompliance:
 
     def test_valid_call(self):
         schemas = {"read_file": {"properties": {"path": {}}, "required": ["path"]}}
-        valid, avail = check_schema_compliance(
-            {"name": "read_file", "arguments": {"path": "/tmp"}}, schemas
-        )
+        valid, avail = check_schema_compliance({"name": "read_file", "arguments": {"path": "/tmp"}}, schemas)
         assert valid == 1
         assert avail == 1
 
     def test_missing_required(self):
         schemas = {"read_file": {"properties": {"path": {}}, "required": ["path"]}}
-        valid, avail = check_schema_compliance(
-            {"name": "read_file", "arguments": {}}, schemas
-        )
+        valid, avail = check_schema_compliance({"name": "read_file", "arguments": {}}, schemas)
         assert valid == 0
 
     def test_extra_property(self):
@@ -115,9 +109,7 @@ class TestSchemaCompliance:
 
     def test_empty_schema(self):
         schemas = {"simple_tool": {}}
-        valid, avail = check_schema_compliance(
-            {"name": "simple_tool", "arguments": {"anything": "goes"}}, schemas
-        )
+        valid, avail = check_schema_compliance({"name": "simple_tool", "arguments": {"anything": "goes"}}, schemas)
         assert valid == 1
 
     def test_no_params(self):
@@ -175,15 +167,17 @@ class TestShimState:
     def test_tools_list_caches_schemas(self):
         state = self._make_state()
         state.on_request({"method": "tools/list", "id": 1})
-        state.on_response({
-            "id": 1,
-            "result": {
-                "tools": [
-                    {"name": "read_file", "inputSchema": {"properties": {"path": {}}, "required": ["path"]}},
-                    {"name": "write_file", "inputSchema": {"properties": {"path": {}, "content": {}}}},
-                ]
+        state.on_response(
+            {
+                "id": 1,
+                "result": {
+                    "tools": [
+                        {"name": "read_file", "inputSchema": {"properties": {"path": {}}, "required": ["path"]}},
+                        {"name": "write_file", "inputSchema": {"properties": {"path": {}, "content": {}}}},
+                    ]
+                },
             }
-        })
+        )
         assert "read_file" in state.tool_schemas
         assert "write_file" in state.tool_schemas
 
@@ -191,14 +185,18 @@ class TestShimState:
         state = self._make_state()
         # First cache schemas
         state.on_request({"method": "tools/list", "id": 1})
-        state.on_response({
-            "id": 1,
-            "result": {"tools": [
-                {"name": "read_file", "inputSchema": {"properties": {"path": {}}, "required": ["path"]}}
-            ]}
-        })
+        state.on_response(
+            {
+                "id": 1,
+                "result": {
+                    "tools": [{"name": "read_file", "inputSchema": {"properties": {"path": {}}, "required": ["path"]}}]
+                },
+            }
+        )
         # Now make a valid tool call
-        state.on_request({"method": "tools/call", "id": 2, "params": {"name": "read_file", "arguments": {"path": "/tmp"}}})
+        state.on_request(
+            {"method": "tools/call", "id": 2, "params": {"name": "read_file", "arguments": {"path": "/tmp"}}}
+        )
         span = state.on_response({"id": 2, "result": {"content": "ok"}})
         assert span["tool_schema_valid"] == 1
         assert span["tools_available"] == 1
@@ -206,13 +204,17 @@ class TestShimState:
     def test_tool_call_hallucinated_params(self):
         state = self._make_state()
         state.on_request({"method": "tools/list", "id": 1})
-        state.on_response({
-            "id": 1,
-            "result": {"tools": [
-                {"name": "read_file", "inputSchema": {"properties": {"path": {}}, "required": ["path"]}}
-            ]}
-        })
-        state.on_request({"method": "tools/call", "id": 2, "params": {"name": "read_file", "arguments": {"wrong_param": "x"}}})
+        state.on_response(
+            {
+                "id": 1,
+                "result": {
+                    "tools": [{"name": "read_file", "inputSchema": {"properties": {"path": {}}, "required": ["path"]}}]
+                },
+            }
+        )
+        state.on_request(
+            {"method": "tools/call", "id": 2, "params": {"name": "read_file", "arguments": {"wrong_param": "x"}}}
+        )
         span = state.on_response({"id": 2, "result": {}})
         assert span["tool_schema_valid"] == 0
 
@@ -261,6 +263,7 @@ class TestConfigGenerator:
 
     def test_cursor_wraps_with_shim(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "cursor")
         server = cfg["mcpServers"]["my-mcp"]
         assert server["command"] == "observal-shim"
@@ -270,6 +273,7 @@ class TestConfigGenerator:
 
     def test_no_api_key_in_config(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "cursor")
         server = cfg["mcpServers"]["my-mcp"]
         env = server.get("env", {})
@@ -278,12 +282,14 @@ class TestConfigGenerator:
 
     def test_claude_code_format(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "claude-code")
         assert cfg["type"] == "shell_command"
         assert "observal-shim" in cfg["command"]
 
     def test_gemini_cli_format(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "gemini-cli")
         server = cfg["mcpServers"]["my-mcp"]
         assert server["command"] == "observal-shim"
@@ -296,19 +302,19 @@ class TestAgentConfigGenerator:
         agent.id = agent_id
         agent.prompt = "You are a test agent."
         agent.mcp_links = []
-        agent.external_mcps = [
-            {"name": "ext-mcp", "command": "npx", "args": ["ext-mcp-server"], "id": "ext-1"}
-        ]
+        agent.external_mcps = [{"name": "ext-mcp", "command": "npx", "args": ["ext-mcp-server"], "id": "ext-1"}]
         return agent
 
     def test_injects_agent_id(self):
         from services.agent_config_generator import generate_agent_config
+
         cfg = generate_agent_config(self._make_agent(), "cursor")
         mcp_cfg = cfg["mcp_config"]["mcpServers"]["ext-mcp"]
         assert mcp_cfg["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
 
     def test_external_mcp_wrapped_with_shim(self):
         from services.agent_config_generator import generate_agent_config
+
         cfg = generate_agent_config(self._make_agent(), "cursor")
         mcp_cfg = cfg["mcp_config"]["mcpServers"]["ext-mcp"]
         assert mcp_cfg["command"] == "observal-shim"
@@ -316,6 +322,7 @@ class TestAgentConfigGenerator:
 
     def test_kiro_format(self):
         from services.agent_config_generator import generate_agent_config
+
         cfg = generate_agent_config(self._make_agent(), "kiro")
         assert "rules_file" in cfg
         assert "mcp_json" in cfg

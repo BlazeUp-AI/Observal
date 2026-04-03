@@ -10,7 +10,14 @@ from api.deps import get_current_user, get_db
 from config import settings
 from models.enterprise_config import EnterpriseConfig
 from models.user import User, UserRole
-from schemas.admin import EnterpriseConfigResponse, EnterpriseConfigUpdate, UserAdminResponse, UserCreateRequest, UserCreateResponse, UserRoleUpdate
+from schemas.admin import (
+    EnterpriseConfigResponse,
+    EnterpriseConfigUpdate,
+    UserAdminResponse,
+    UserCreateRequest,
+    UserCreateResponse,
+    UserRoleUpdate,
+)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -123,7 +130,11 @@ async def create_user(
     await db.refresh(user)
 
     return UserCreateResponse(
-        id=user.id, email=user.email, name=user.name, role=user.role.value, api_key=api_key,
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        role=user.role.value,
+        api_key=api_key,
     )
 
 

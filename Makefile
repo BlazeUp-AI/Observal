@@ -1,0 +1,58 @@
+.PHONY: lint format check test hooks clean
+
+# ── Linting ──────────────────────────────────────────────
+
+lint:  ## Run all linters
+	uv run ruff check .
+	cd observal-web && npx eslint src/
+
+format:  ## Auto-format all code
+	uv run ruff format .
+	uv run ruff check --fix .
+
+check:  ## Full pre-commit check on all files
+	pre-commit run --all-files
+
+# ── Testing ──────────────────────────────────────────────
+
+test:  ## Run Python tests
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/ -q
+
+test-v:  ## Run Python tests (verbose)
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/ -v
+
+# ── Setup ────────────────────────────────────────────────
+
+hooks:  ## Install pre-commit hooks
+	pip install pre-commit
+	pre-commit install
+	pre-commit install --hook-type commit-msg
+	@echo "✓ Hooks installed"
+
+# ── Docker ───────────────────────────────────────────────
+
+up:  ## Start Docker stack
+	cd docker && docker compose up -d
+
+down:  ## Stop Docker stack
+	cd docker && docker compose down
+
+rebuild:  ## Rebuild and restart Docker stack
+	cd docker && docker compose up --build -d
+
+logs:  ## Tail Docker logs
+	cd docker && docker compose logs -f --tail=50
+
+# ── Cleanup ──────────────────────────────────────────────
+
+clean:  ## Remove build artifacts and caches
+	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true
+	rm -rf dist/ build/ htmlcov/ .coverage
+
+help:  ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+.DEFAULT_GOAL := help

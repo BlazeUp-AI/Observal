@@ -3,18 +3,10 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import strawberry
 
 from api.graphql import (
-    McpMetrics,
-    OverviewStats,
     Query,
-    Score,
-    Span,
-    Trace,
     TraceConnection,
-    TraceMetrics,
-    TrendPoint,
     _load_scores_by_span_ids,
     _load_scores_by_trace_ids,
     _load_spans_by_trace_ids,
@@ -25,7 +17,6 @@ from api.graphql import (
     get_context,
     schema,
 )
-
 
 # --- Helpers ---
 
@@ -54,33 +45,65 @@ class TestRowToTrace:
         assert t.trace_type == "mcp"
 
     def test_full(self):
-        t = _row_to_trace({
-            "trace_id": "t1", "parent_trace_id": "p1", "trace_type": "agent",
-            "mcp_id": "m1", "agent_id": "a1", "user_id": "u1",
-            "session_id": "s1", "ide": "cursor", "name": "test",
-            "start_time": "2026-01-01", "end_time": "2026-01-02",
-            "tags": ["a", "b"], "metadata": {"k": "v"},
-        })
+        t = _row_to_trace(
+            {
+                "trace_id": "t1",
+                "parent_trace_id": "p1",
+                "trace_type": "agent",
+                "mcp_id": "m1",
+                "agent_id": "a1",
+                "user_id": "u1",
+                "session_id": "s1",
+                "ide": "cursor",
+                "name": "test",
+                "start_time": "2026-01-01",
+                "end_time": "2026-01-02",
+                "tags": ["a", "b"],
+                "metadata": {"k": "v"},
+            }
+        )
         assert t.parent_trace_id == "p1"
         assert t.tags == ["a", "b"]
 
 
 class TestRowToSpan:
     def test_minimal(self):
-        s = _row_to_span({"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01"})
+        s = _row_to_span(
+            {"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01"}
+        )
         assert s.type == "tool_call"
         assert s.status == "success"
 
     def test_tool_schema_valid(self):
-        s = _row_to_span({"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01", "tool_schema_valid": "1"})
+        s = _row_to_span(
+            {
+                "span_id": "s1",
+                "trace_id": "t1",
+                "type": "tool_call",
+                "name": "x",
+                "start_time": "2026-01-01",
+                "tool_schema_valid": "1",
+            }
+        )
         assert s.tool_schema_valid is True
 
     def test_tool_schema_invalid(self):
-        s = _row_to_span({"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01", "tool_schema_valid": "0"})
+        s = _row_to_span(
+            {
+                "span_id": "s1",
+                "trace_id": "t1",
+                "type": "tool_call",
+                "name": "x",
+                "start_time": "2026-01-01",
+                "tool_schema_valid": "0",
+            }
+        )
         assert s.tool_schema_valid is False
 
     def test_nullable_fields(self):
-        s = _row_to_span({"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01"})
+        s = _row_to_span(
+            {"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01"}
+        )
         assert s.latency_ms is None
         assert s.cost is None
         assert s.tool_schema_valid is None
@@ -88,7 +111,9 @@ class TestRowToSpan:
 
 class TestRowToScore:
     def test_basic(self):
-        sc = _row_to_score({"score_id": "sc1", "name": "acc", "source": "eval", "value": "0.95", "timestamp": "2026-01-01"})
+        sc = _row_to_score(
+            {"score_id": "sc1", "name": "acc", "source": "eval", "value": "0.95", "timestamp": "2026-01-01"}
+        )
         assert sc.value == 0.95
         assert sc.source == "eval"
 
@@ -171,7 +196,11 @@ class TestQueryResolvers:
 
     @pytest.mark.asyncio
     async def test_trace_by_id(self):
-        with patch("api.graphql.query_trace_by_id", new_callable=AsyncMock, return_value={"trace_id": "t1", "user_id": "u1", "start_time": "2026-01-01"}):
+        with patch(
+            "api.graphql.query_trace_by_id",
+            new_callable=AsyncMock,
+            return_value={"trace_id": "t1", "user_id": "u1", "start_time": "2026-01-01"},
+        ):
             q = Query()
             result = await q.trace(info=None, trace_id="t1")
             assert result.trace_id == "t1"
@@ -185,14 +214,36 @@ class TestQueryResolvers:
 
     @pytest.mark.asyncio
     async def test_span_by_id(self):
-        with patch("api.graphql.query_span_by_id", new_callable=AsyncMock, return_value={"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01"}):
+        with patch(
+            "api.graphql.query_span_by_id",
+            new_callable=AsyncMock,
+            return_value={
+                "span_id": "s1",
+                "trace_id": "t1",
+                "type": "tool_call",
+                "name": "x",
+                "start_time": "2026-01-01",
+            },
+        ):
             q = Query()
             result = await q.span(info=None, span_id="s1")
             assert result.span_id == "s1"
 
     @pytest.mark.asyncio
     async def test_mcp_metrics(self):
-        mock_rows = [{"cnt": "100", "errs": "5", "timeouts": "2", "avg_lat": "50.5", "p50": "40", "p90": "80", "p99": "150", "schema_ok": "90", "schema_total": "95"}]
+        mock_rows = [
+            {
+                "cnt": "100",
+                "errs": "5",
+                "timeouts": "2",
+                "avg_lat": "50.5",
+                "p50": "40",
+                "p90": "80",
+                "p99": "150",
+                "schema_ok": "90",
+                "schema_total": "95",
+            }
+        ]
         with patch("api.graphql._ch_json", new_callable=AsyncMock, return_value=mock_rows):
             q = Query()
             result = await q.mcp_metrics(mcp_id="m1", start="2026-01-01", end="2026-02-01")
@@ -201,10 +252,14 @@ class TestQueryResolvers:
 
     @pytest.mark.asyncio
     async def test_overview(self):
-        with patch("api.graphql._ch_json", new_callable=AsyncMock, side_effect=[
-            [{"traces": "500"}],
-            [{"spans": "2000", "tools": "1500", "errs": "50"}],
-        ]):
+        with patch(
+            "api.graphql._ch_json",
+            new_callable=AsyncMock,
+            side_effect=[
+                [{"traces": "500"}],
+                [{"spans": "2000", "tools": "1500", "errs": "50"}],
+            ],
+        ):
             q = Query()
             result = await q.overview(start="2026-01-01", end="2026-02-01")
             assert result.total_traces == 500
@@ -217,6 +272,7 @@ class TestQueryResolvers:
 class TestMainIntegration:
     def test_dashboard_router_removed(self):
         from main import app
+
         paths = [r.path for r in app.routes]
         # Old dashboard endpoints should not exist
         assert "/api/v1/overview/stats" not in paths
@@ -224,5 +280,6 @@ class TestMainIntegration:
 
     def test_graphql_mounted(self):
         from main import app
+
         paths = [r.path for r in app.routes]
         assert "/api/v1/graphql" in paths

@@ -39,13 +39,19 @@ async def _load_agent(db: AsyncSession, *where_clauses) -> Agent | None:
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
     mcp_links = [
-        McpLinkResponse(mcp_listing_id=link.mcp_listing_id, mcp_name=link.mcp_listing.name if link.mcp_listing else "(deleted)", order=link.order)
+        McpLinkResponse(
+            mcp_listing_id=link.mcp_listing_id,
+            mcp_name=link.mcp_listing.name if link.mcp_listing else "(deleted)",
+            order=link.order,
+        )
         for link in agent.mcp_links
     ]
     goal_template = None
     if agent.goal_template:
         sections = [
-            GoalSectionResponse(name=s.name, description=s.description, grounding_required=s.grounding_required, order=s.order)
+            GoalSectionResponse(
+                name=s.name, description=s.description, grounding_required=s.grounding_required, order=s.order
+            )
             for s in agent.goal_template.sections
         ]
         goal_template = GoalTemplateResponse(description=agent.goal_template.description, sections=sections)
@@ -100,13 +106,15 @@ async def create_agent(
     await db.flush()
 
     for i, sec in enumerate(req.goal_template.sections):
-        db.add(AgentGoalSection(
-            goal_template_id=goal.id,
-            name=sec.name,
-            description=sec.description,
-            grounding_required=sec.grounding_required,
-            order=i,
-        ))
+        db.add(
+            AgentGoalSection(
+                goal_template_id=goal.id,
+                name=sec.name,
+                description=sec.description,
+                grounding_required=sec.grounding_required,
+                order=i,
+            )
+        )
 
     await db.commit()
     agent = await _load_agent(db, Agent.id == agent.id)
@@ -146,7 +154,16 @@ async def update_agent(
     if agent.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the agent owner")
 
-    for field in ("name", "version", "description", "owner", "prompt", "model_name", "model_config_json", "supported_ides"):
+    for field in (
+        "name",
+        "version",
+        "description",
+        "owner",
+        "prompt",
+        "model_name",
+        "model_config_json",
+        "supported_ides",
+    ):
         val = getattr(req, field)
         if val is not None:
             setattr(agent, field, val)
@@ -164,9 +181,15 @@ async def update_agent(
 
     if req.goal_template is not None:
         if agent.goal_template:
-            old_sections = (await db.execute(
-                select(AgentGoalSection).where(AgentGoalSection.goal_template_id == agent.goal_template.id)
-            )).scalars().all()
+            old_sections = (
+                (
+                    await db.execute(
+                        select(AgentGoalSection).where(AgentGoalSection.goal_template_id == agent.goal_template.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             for sec in old_sections:
                 await db.delete(sec)
             await db.delete(agent.goal_template)
@@ -175,13 +198,15 @@ async def update_agent(
         db.add(goal)
         await db.flush()
         for i, sec in enumerate(req.goal_template.sections):
-            db.add(AgentGoalSection(
-                goal_template_id=goal.id,
-                name=sec.name,
-                description=sec.description,
-                grounding_required=sec.grounding_required,
-                order=i,
-            ))
+            db.add(
+                AgentGoalSection(
+                    goal_template_id=goal.id,
+                    name=sec.name,
+                    description=sec.description,
+                    grounding_required=sec.grounding_required,
+                    order=i,
+                )
+            )
 
     await db.commit()
     agent = await _load_agent(db, Agent.id == agent_id)
@@ -223,7 +248,11 @@ async def delete_agent(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     # Delete related records with correct type filters
-    for r in (await db.execute(select(Feedback).where(Feedback.listing_id == agent_id, Feedback.listing_type == "agent"))).scalars().all():
+    for r in (
+        (await db.execute(select(Feedback).where(Feedback.listing_id == agent_id, Feedback.listing_type == "agent")))
+        .scalars()
+        .all()
+    ):
         await db.delete(r)
     for r in (await db.execute(select(Scorecard).where(Scorecard.agent_id == agent_id))).scalars().all():
         await db.delete(r)

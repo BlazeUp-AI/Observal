@@ -3,13 +3,13 @@ import re
 from models.agent import Agent
 from services.config_generator import generate_config
 
-_SAFE_NAME = re.compile(r'^[a-zA-Z0-9_-]+$')
+_SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 def _sanitize_name(name: str) -> str:
     if _SAFE_NAME.match(name):
         return name
-    return re.sub(r'[^a-zA-Z0-9_-]', '-', name)
+    return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
 
 
 def _inject_agent_id(mcp_config: dict, agent_id: str):
@@ -37,7 +37,7 @@ def generate_agent_config(agent: Agent, ide: str) -> dict:
             mcp_configs.update(cfg["mcpServers"])
 
     # External MCPs — wrap with shim
-    for ext in (agent.external_mcps or []):
+    for ext in agent.external_mcps or []:
         name = _sanitize_name(ext.get("name", ""))
         if not name:
             continue
@@ -48,11 +48,11 @@ def generate_agent_config(agent: Agent, ide: str) -> dict:
         env = ext.get("env", {})
         ext_mcp_id = ext.get("id", name)
 
-        shim_args = ["--mcp-id", ext_mcp_id, "--", cmd] + args
+        shim_args = ["--mcp-id", ext_mcp_id, "--", cmd, *args]
 
         if ide == "claude-code":
             mcp_configs[name] = {
-                "command": ["claude", "mcp", "add", name, "--", "observal-shim"] + shim_args,
+                "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
                 "type": "shell_command",
             }
         elif ide == "gemini-cli":
@@ -65,7 +65,8 @@ def generate_agent_config(agent: Agent, ide: str) -> dict:
 
     if ide == "claude-code":
         setup_commands = [
-            c.get("command", []) for c in mcp_configs.values()
+            c.get("command", [])
+            for c in mcp_configs.values()
             if isinstance(c, dict) and c.get("type") == "shell_command"
         ]
         return {

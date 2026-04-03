@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Any
 
 CONFIG_DIR = Path.home() / ".observal"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -32,12 +31,14 @@ def get_or_exit() -> dict:
     if not cfg.get("server_url") or not cfg.get("api_key"):
         import typer
         from rich import print as rprint
+
         rprint("[red]Not configured.[/red] Run [bold]observal init[/bold] or [bold]observal login[/bold] first.")
         raise typer.Exit(1)
     return cfg
 
 
 # ── Aliases ──────────────────────────────────────────────
+
 
 def load_aliases() -> dict[str, str]:
     if ALIASES_FILE.exists():
@@ -59,6 +60,7 @@ def resolve_alias(name: str) -> str:
             return resolved
         import typer
         from rich import print as rprint
+
         rprint(f"[red]Unknown alias: {name}[/red]")
         rprint(f"[dim]Set it with: observal config alias {name[1:]} <id>[/dim]")
         raise typer.Exit(1)

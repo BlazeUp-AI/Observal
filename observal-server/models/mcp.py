@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -31,15 +31,19 @@ class McpListing(Base):
     status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.pending)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
-    custom_fields: Mapped[list["McpCustomField"]] = relationship(back_populates="listing", lazy="selectin", cascade="all, delete-orphan")
-    validation_results: Mapped[list["McpValidationResult"]] = relationship(back_populates="listing", lazy="selectin", cascade="all, delete-orphan")
+    custom_fields: Mapped[list["McpCustomField"]] = relationship(
+        back_populates="listing", lazy="selectin", cascade="all, delete-orphan"
+    )
+    validation_results: Mapped[list["McpValidationResult"]] = relationship(
+        back_populates="listing", lazy="selectin", cascade="all, delete-orphan"
+    )
 
 
 class McpCustomField(Base):
@@ -60,7 +64,7 @@ class McpDownload(Base):
     listing_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mcp_listings.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     ide: Mapped[str] = mapped_column(String(50), nullable=False)
-    downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    downloaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class McpValidationResult(Base):
@@ -71,6 +75,6 @@ class McpValidationResult(Base):
     stage: Mapped[str] = mapped_column(String(100), nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
-    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     listing: Mapped["McpListing"] = relationship(back_populates="validation_results")

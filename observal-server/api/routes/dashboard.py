@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import UTC
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -33,9 +34,7 @@ async def mcp_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    dl_count = await db.scalar(
-        select(func.count(McpDownload.id)).where(McpDownload.listing_id == listing_id)
-    ) or 0
+    dl_count = await db.scalar(select(func.count(McpDownload.id)).where(McpDownload.listing_id == listing_id)) or 0
 
     rows = await _ch_json(
         "SELECT "
@@ -71,9 +70,7 @@ async def agent_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    dl_count = await db.scalar(
-        select(func.count(AgentDownload.id)).where(AgentDownload.agent_id == agent_id)
-    ) or 0
+    dl_count = await db.scalar(select(func.count(AgentDownload.id)).where(AgentDownload.agent_id == agent_id)) or 0
 
     rows = await _ch_json(
         "SELECT "
@@ -103,12 +100,10 @@ async def overview_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    total_mcps = await db.scalar(
-        select(func.count(McpListing.id)).where(McpListing.status == ListingStatus.approved)
-    ) or 0
-    total_agents = await db.scalar(
-        select(func.count(Agent.id)).where(Agent.status == AgentStatus.active)
-    ) or 0
+    total_mcps = (
+        await db.scalar(select(func.count(McpListing.id)).where(McpListing.status == ListingStatus.approved)) or 0
+    )
+    total_agents = await db.scalar(select(func.count(Agent.id)).where(Agent.status == AgentStatus.active)) or 0
     total_users = await db.scalar(select(func.count(User.id))) or 0
 
     tool_rows = await _ch_json("SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > today()")
@@ -149,30 +144,30 @@ async def top_agents(db: AsyncSession = Depends(get_db), current_user: User = De
 
 @router.get("/overview/trends", response_model=list[TrendPoint])
 async def trends(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from datetime import timedelta, timezone, datetime as dt
+    from datetime import datetime as dt
+    from datetime import timedelta
 
-    now = dt.now(timezone.utc)
+    now = dt.now(UTC)
     start = now - timedelta(days=30)
 
     day_col_mcp = func.date_trunc("day", McpListing.created_at).label("day")
     mcp_rows = await db.execute(
         select(day_col_mcp, func.count(McpListing.id).label("cnt"))
         .where(McpListing.created_at >= start)
-        .group_by(day_col_mcp).order_by(day_col_mcp)
+        .group_by(day_col_mcp)
+        .order_by(day_col_mcp)
     )
 
     day_col_user = func.date_trunc("day", User.created_at).label("day")
     user_rows = await db.execute(
         select(day_col_user, func.count(User.id).label("cnt"))
         .where(User.created_at >= start)
-        .group_by(day_col_user).order_by(day_col_user)
+        .group_by(day_col_user)
+        .order_by(day_col_user)
     )
 
     submissions = {str(r.day.date()): r.cnt for r in mcp_rows.all()}
     users = {str(r.day.date()): r.cnt for r in user_rows.all()}
     all_dates = sorted(set(list(submissions.keys()) + list(users.keys())))
 
-    return [
-        TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0))
-        for d in all_dates
-    ]
+    return [TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0)) for d in all_dates]

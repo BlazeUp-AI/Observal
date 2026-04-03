@@ -1,4 +1,5 @@
 """Auth & config CLI commands."""
+
 from __future__ import annotations
 
 import json as _json
@@ -7,7 +8,7 @@ import httpx
 import typer
 from rich import print as rprint
 
-from observal_cli import config, client
+from observal_cli import client, config
 from observal_cli.render import console, kv_panel, spinner, status_badge
 
 config_app = typer.Typer(help="CLI configuration")
@@ -33,9 +34,9 @@ def register_auth(app: typer.Typer):
                 data = r.json()
             config.save({"server_url": server_url, "api_key": data["api_key"]})
             rprint(f"\n[green]✓ Initialized![/green] Config saved to [dim]{config.CONFIG_FILE}[/dim]")
-            rprint(f"\n[bold]Your API key:[/bold]")
+            rprint("\n[bold]Your API key:[/bold]")
             rprint(f"  {data['api_key']}")
-            rprint(f"\n[dim]Keep this safe — you'll need it to log in on other machines.[/dim]")
+            rprint("\n[dim]Keep this safe — you'll need it to log in on other machines.[/dim]")
         except httpx.ConnectError:
             rprint(f"[red]✗ Connection failed.[/red] Is the server running at {server_url}?")
             raise typer.Exit(1)
@@ -78,13 +79,19 @@ def register_auth(app: typer.Typer):
             user = client.get("/api/v1/auth/whoami")
         if output == "json":
             from observal_cli.render import output_json
+
             output_json(user)
             return
-        console.print(kv_panel(user["name"], [
-            ("Email", user["email"]),
-            ("Role", status_badge(user.get("role", "user"))),
-            ("ID", f"[dim]{user['id']}[/dim]"),
-        ]))
+        console.print(
+            kv_panel(
+                user["name"],
+                [
+                    ("Email", user["email"]),
+                    ("Role", status_badge(user.get("role", "user"))),
+                    ("ID", f"[dim]{user['id']}[/dim]"),
+                ],
+            )
+        )
 
     @app.command()
     def status():
@@ -100,12 +107,13 @@ def register_auth(app: typer.Typer):
             color = "green" if latency < 200 else "yellow" if latency < 1000 else "red"
             rprint(f"  Health:  [{color}]✓ ok[/{color}] ({latency:.0f}ms)")
         else:
-            rprint(f"  Health:  [red]✗ unreachable[/red]")
+            rprint("  Health:  [red]✗ unreachable[/red]")
 
     @app.command()
     def version():
         """Show CLI version."""
         from importlib.metadata import version as pkg_version
+
         try:
             v = pkg_version("observal-cli")
         except Exception:

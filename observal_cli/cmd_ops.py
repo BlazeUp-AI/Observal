@@ -1,19 +1,22 @@
 """Review, telemetry, dashboard, feedback, eval, admin, and trace CLI commands."""
+
 from __future__ import annotations
 
-import json as _json
 import time
-from typing import Optional
 
 import typer
 from rich import print as rprint
-from rich.bar import Bar
 from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.render import (
-    console, kv_panel, output_json, relative_time, spinner,
-    star_rating, status_badge,
+    console,
+    kv_panel,
+    output_json,
+    relative_time,
+    spinner,
+    star_rating,
+    status_badge,
 )
 
 # ── Review ───────────────────────────────────────────────
@@ -39,7 +42,13 @@ def review_list(output: str = typer.Option("table", "--output", "-o")):
     table.add_column("Status")
     table.add_column("ID", style="dim", max_width=12)
     for i, item in enumerate(data, 1):
-        table.add_row(str(i), item.get("name", ""), item.get("submitted_by", ""), status_badge(item.get("status", "")), str(item["id"])[:8] + "…")
+        table.add_row(
+            str(i),
+            item.get("name", ""),
+            item.get("submitted_by", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
     console.print(table)
 
 
@@ -51,13 +60,18 @@ def review_show(review_id: str = typer.Argument(...), output: str = typer.Option
     if output == "json":
         output_json(item)
         return
-    console.print(kv_panel(item.get("name", "Review"), [
-        ("Status", status_badge(item.get("status", ""))),
-        ("Submitted By", item.get("submitted_by", "N/A")),
-        ("Git URL", item.get("git_url", "N/A")),
-        ("Description", item.get("description", "")),
-        ("ID", f"[dim]{item['id']}[/dim]"),
-    ]))
+    console.print(
+        kv_panel(
+            item.get("name", "Review"),
+            [
+                ("Status", status_badge(item.get("status", ""))),
+                ("Submitted By", item.get("submitted_by", "N/A")),
+                ("Git URL", item.get("git_url", "N/A")),
+                ("Description", item.get("description", "")),
+                ("ID", f"[dim]{item['id']}[/dim]"),
+            ],
+        )
+    )
 
 
 @review_app.command(name="approve")
@@ -98,19 +112,25 @@ def telemetry_status():
 def telemetry_test():
     """Send a test telemetry event."""
     with spinner("Sending test event..."):
-        result = client.post("/api/v1/telemetry/events", {
-            "tool_calls": [{
-                "mcp_server_id": "test-mcp",
-                "tool_name": "test_tool",
-                "status": "success",
-                "latency_ms": 42,
-                "ide": "test",
-            }],
-        })
+        result = client.post(
+            "/api/v1/telemetry/events",
+            {
+                "tool_calls": [
+                    {
+                        "mcp_server_id": "test-mcp",
+                        "tool_name": "test_tool",
+                        "status": "success",
+                        "latency_ms": 42,
+                        "ide": "test",
+                    }
+                ],
+            },
+        )
     rprint(f"[green]✓ Test event sent![/green] Ingested: {result.get('ingested', 0)}")
 
 
 # ── Dashboard ────────────────────────────────────────────
+
 
 def register_dashboard(app: typer.Typer):
 
@@ -148,10 +168,12 @@ def register_dashboard(app: typer.Typer):
                     return
                 total = data.get("total_interactions", 0)
                 rate = data.get("acceptance_rate") or 0
-                rprint(f"\n  [bold]Agent Metrics[/bold]")
+                rprint("\n  [bold]Agent Metrics[/bold]")
                 rprint(f"  Interactions:   {total}")
                 rprint(f"  Downloads:      {data.get('total_downloads', 0)}")
-                rprint(f"  Acceptance:     [{'green' if rate > 0.7 else 'yellow' if rate > 0.4 else 'red'}]{rate:.1%}[/]")
+                rprint(
+                    f"  Acceptance:     [{'green' if rate > 0.7 else 'yellow' if rate > 0.4 else 'red'}]{rate:.1%}[/]"
+                )
                 rprint(f"  Avg tool calls: {data.get('avg_tool_calls', 0)}")
                 rprint(f"  Avg latency:    {(data.get('avg_latency_ms') or 0):.0f}ms")
             else:
@@ -160,12 +182,16 @@ def register_dashboard(app: typer.Typer):
                     output_json(data)
                     return
                 err_rate = data.get("error_rate") or 0
-                rprint(f"\n  [bold]MCP Metrics[/bold]")
+                rprint("\n  [bold]MCP Metrics[/bold]")
                 rprint(f"  Downloads:  {data.get('total_downloads', 0)}")
                 rprint(f"  Total calls: {data.get('total_calls', 0)}")
-                rprint(f"  Error rate:  [{'red' if err_rate > 0.1 else 'yellow' if err_rate > 0.01 else 'green'}]{err_rate:.2%}[/]")
+                rprint(
+                    f"  Error rate:  [{'red' if err_rate > 0.1 else 'yellow' if err_rate > 0.01 else 'green'}]{err_rate:.2%}[/]"
+                )
                 rprint(f"  Avg latency: {(data.get('avg_latency_ms') or 0):.0f}ms")
-                rprint(f"  Latency p50/p90/p99: {data.get('p50_latency_ms', 0)}/{data.get('p90_latency_ms', 0)}/{data.get('p99_latency_ms', 0)}ms")
+                rprint(
+                    f"  Latency p50/p90/p99: {data.get('p50_latency_ms', 0)}/{data.get('p90_latency_ms', 0)}/{data.get('p99_latency_ms', 0)}ms"
+                )
             rprint()
 
         if watch:
@@ -210,6 +236,7 @@ def register_dashboard(app: typer.Typer):
 
 # ── Feedback ─────────────────────────────────────────────
 
+
 def register_feedback(app: typer.Typer):
 
     @app.command()
@@ -217,17 +244,20 @@ def register_feedback(app: typer.Typer):
         listing_id: str = typer.Argument(..., help="MCP or Agent ID, or @alias"),
         stars: int = typer.Option(..., "--stars", "-s", min=1, max=5, help="Rating 1-5"),
         listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
-        comment: Optional[str] = typer.Option(None, "--comment", "-c"),
+        comment: str | None = typer.Option(None, "--comment", "-c"),
     ):
         """Rate an MCP server or agent."""
         resolved = config.resolve_alias(listing_id)
         with spinner("Submitting rating..."):
-            client.post("/api/v1/feedback", {
-                "listing_id": resolved,
-                "listing_type": listing_type,
-                "rating": stars,
-                "comment": comment,
-            })
+            client.post(
+                "/api/v1/feedback",
+                {
+                    "listing_id": resolved,
+                    "listing_type": listing_type,
+                    "rating": stars,
+                    "comment": comment,
+                },
+            )
         rprint(f"[green]✓ Rated {star_rating(stars)}[/green]")
 
     @app.command()
@@ -268,7 +298,7 @@ eval_app = typer.Typer(help="Evaluation engine commands")
 @eval_app.command(name="run")
 def eval_run(
     agent_id: str = typer.Argument(..., help="Agent ID or @alias"),
-    trace_id: Optional[str] = typer.Option(None, "--trace"),
+    trace_id: str | None = typer.Option(None, "--trace"),
 ):
     """Run evaluation on an agent's traces."""
     resolved = config.resolve_alias(agent_id)
@@ -288,7 +318,7 @@ def eval_run(
 @eval_app.command(name="scorecards")
 def eval_scorecards(
     agent_id: str = typer.Argument(...),
-    version: Optional[str] = typer.Option(None, "--version", "-v"),
+    version: str | None = typer.Option(None, "--version", "-v"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
     """List scorecards for an agent."""
@@ -343,15 +373,17 @@ def eval_show(
 
     score = sc.get("overall_score", 0)
     color = "green" if score >= 7 else "yellow" if score >= 4 else "red"
-    console.print(kv_panel(
-        f"Scorecard — {sc.get('overall_grade', '?')} ({score:.1f}/10)",
-        [
-            ("Bottleneck", sc.get("bottleneck", "N/A")),
-            ("Recommendations", sc.get("recommendations", "N/A")),
-            ("ID", f"[dim]{sc['id']}[/dim]"),
-        ],
-        border_style=color,
-    ))
+    console.print(
+        kv_panel(
+            f"Scorecard — {sc.get('overall_grade', '?')} ({score:.1f}/10)",
+            [
+                ("Bottleneck", sc.get("bottleneck", "N/A")),
+                ("Recommendations", sc.get("recommendations", "N/A")),
+                ("ID", f"[dim]{sc['id']}[/dim]"),
+            ],
+            border_style=color,
+        )
+    )
 
     dims = sc.get("dimensions", [])
     if dims:
@@ -383,7 +415,9 @@ def eval_compare(
     """Compare two agent versions."""
     resolved = config.resolve_alias(agent_id)
     with spinner("Comparing versions..."):
-        data = client.get(f"/api/v1/eval/agents/{resolved}/compare", params={"version_a": version_a, "version_b": version_b})
+        data = client.get(
+            f"/api/v1/eval/agents/{resolved}/compare", params={"version_a": version_a, "version_b": version_b}
+        )
 
     if output == "json":
         output_json(data)
@@ -395,7 +429,7 @@ def eval_compare(
     diff = sb - sa
     arrow = "[green]↑[/green]" if diff > 0 else "[red]↓[/red]" if diff < 0 else "→"
 
-    rprint(f"\n  [bold]Version Comparison[/bold]")
+    rprint("\n  [bold]Version Comparison[/bold]")
     rprint(f"  {a.get('version', '?'):>8}  →  {b.get('version', '?')}")
     rprint(f"  {sa:.1f}/10     {arrow}  {sb:.1f}/10  ({diff:+.1f})")
     rprint(f"  ({a.get('count', 0)} scorecards)    ({b.get('count', 0)} scorecards)")
@@ -453,19 +487,22 @@ def admin_users(output: str = typer.Option("table", "--output", "-o")):
     table.add_column("ID", style="dim", max_width=12)
     for i, u in enumerate(data, 1):
         role_color = "green" if u["role"] == "admin" else "cyan" if u["role"] == "developer" else "white"
-        table.add_row(str(i), u["email"], u["name"], f"[{role_color}]{u['role']}[/{role_color}]", str(u["id"])[:8] + "…")
+        table.add_row(
+            str(i), u["email"], u["name"], f"[{role_color}]{u['role']}[/{role_color}]", str(u["id"])[:8] + "…"
+        )
     console.print(table)
 
 
 # ── Traces ───────────────────────────────────────────────
 
+
 def register_traces(app: typer.Typer):
 
     @app.command()
     def traces(
-        trace_type: Optional[str] = typer.Option(None, "--type", "-t"),
-        mcp_id: Optional[str] = typer.Option(None, "--mcp"),
-        agent_id: Optional[str] = typer.Option(None, "--agent"),
+        trace_type: str | None = typer.Option(None, "--type", "-t"),
+        mcp_id: str | None = typer.Option(None, "--mcp"),
+        agent_id: str | None = typer.Option(None, "--agent"),
         limit: int = typer.Option(20, "--limit", "-n"),
         output: str = typer.Option("table", "--output", "-o"),
     ):
@@ -487,6 +524,7 @@ def register_traces(app: typer.Typer):
             }
         }"""
         import httpx
+
         cfg = config.get_or_exit()
         with spinner("Querying traces..."):
             try:
@@ -555,6 +593,7 @@ def register_traces(app: typer.Typer):
             }
         }"""
         import httpx
+
         cfg = config.get_or_exit()
         with spinner("Querying spans..."):
             try:
@@ -594,7 +633,11 @@ def register_traces(app: typer.Typer):
         table.add_column("Status")
         table.add_column("Schema")
         for i, s in enumerate(spans_data, 1):
-            schema = "[green]✓[/green]" if s.get("toolSchemaValid") is True else ("[red]✗[/red]" if s.get("toolSchemaValid") is False else "[dim]—[/dim]")
+            schema = (
+                "[green]✓[/green]"
+                if s.get("toolSchemaValid") is True
+                else ("[red]✗[/red]" if s.get("toolSchemaValid") is False else "[dim]—[/dim]")
+            )
             latency = f"{s['latencyMs']}ms" if s.get("latencyMs") else "—"
             st = s.get("status", "")
             st_display = f"[red]{st}[/red]" if st == "error" else f"[green]{st}[/green]" if st == "success" else st
@@ -613,19 +656,23 @@ def register_traces(app: typer.Typer):
 
 # ── Upgrade / Downgrade ──────────────────────────────────
 
+
 def register_lifecycle(app: typer.Typer):
 
     @app.command()
     def upgrade():
         """Upgrade observal CLI to the latest version."""
         import subprocess
+
         with spinner("Upgrading..."):
             result = subprocess.run(
                 ["uv", "tool", "upgrade", "observal-cli"],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
         if result.returncode == 0:
-            rprint(f"[green]✓ Upgraded![/green]")
+            rprint("[green]✓ Upgraded![/green]")
             if result.stdout.strip():
                 rprint(f"[dim]{result.stdout.strip()}[/dim]")
         else:

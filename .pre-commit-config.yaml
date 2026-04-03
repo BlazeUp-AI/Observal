@@ -1,0 +1,49 @@
+repos:
+  # ── Python ─────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # ── YAML / TOML / JSON ────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: tsconfig\.json  # tsconfig allows comments
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  # ── TypeScript / JS ────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: bash -c 'cd observal-web && npx eslint --fix "$@"' --
+        language: system
+        files: ^observal-web/src/.*\.(ts|tsx)$
+        types: [file]
+
+      - id: tsc
+        name: typecheck
+        entry: bash -c 'cd observal-web && npx tsc --noEmit'
+        language: system
+        files: ^observal-web/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+  # ── Docker ─────────────────────────────────────────────
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: [--ignore, DL3008, --ignore, DL3013]

@@ -1,16 +1,15 @@
 """Shared rendering helpers for the Observal CLI."""
+
 from __future__ import annotations
 
 import json as _json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
+from rich import print as rprint
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-from rich.tree import Tree
-from rich import print as rprint
+from rich.table import Table  # noqa: TC002 - used at runtime
 
 console = Console()
 
@@ -34,12 +33,13 @@ def status_badge(status: str) -> str:
 
 # ── Relative time ────────────────────────────────────────
 
+
 def relative_time(iso: str | None) -> str:
     if not iso:
         return "—"
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         delta = now - dt
         secs = int(delta.total_seconds())
         if secs < 60:
@@ -58,11 +58,13 @@ def relative_time(iso: str | None) -> str:
 
 # ── Stars ────────────────────────────────────────────────
 
+
 def star_rating(n: int, max_stars: int = 5) -> str:
     return "[yellow]" + "★" * n + "[/yellow][dim]" + "☆" * (max_stars - n) + "[/dim]"
 
 
 # ── Output format dispatch ───────────────────────────────
+
 
 def output_json(data: Any):
     console.print_json(_json.dumps(data, default=str))
@@ -78,6 +80,7 @@ def output_plain(lines: list[str]):
 
 
 # ── Detail panels ────────────────────────────────────────
+
 
 def kv_panel(title: str, fields: list[tuple[str, str]], border_style: str = "blue") -> Panel:
     lines = []
@@ -109,6 +112,7 @@ def ide_tags(ides: list[str]) -> str:
 
 
 # ── Progress spinner context ─────────────────────────────
+
 
 def spinner(msg: str = "Loading..."):
     return console.status(f"[dim]{msg}[/dim]", spinner="dots")
