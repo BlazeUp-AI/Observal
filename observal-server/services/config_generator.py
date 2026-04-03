@@ -13,13 +13,18 @@ def _sanitize_name(name: str) -> str:
 
 def generate_config(listing: McpListing, ide: str) -> dict:
     name = _sanitize_name(listing.name)
-    if ide in ("cursor", "vscode"):
-        return {"mcpServers": {name: {"command": "python", "args": ["-m", name], "env": {}}}}
-    if ide == "kiro":
-        return {"mcpServers": {name: {"command": "python", "args": ["-m", name], "env": {}}}}
+    mcp_id = str(listing.id)
+
+    # Shim wraps the original command; auth comes from ~/.observal/config.json
+    shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", name]
+
     if ide == "claude-code":
-        # Use list format, not shell string
-        return {"command": ["claude", "mcp", "add", name, "--", "python", "-m", name], "type": "shell_command"}
+        return {
+            "command": ["claude", "mcp", "add", name, "--", "observal-shim"] + shim_args,
+            "type": "shell_command",
+        }
     if ide == "gemini-cli":
-        return {"mcpServers": {name: {"command": "python", "args": ["-m", name]}}}
-    return {"mcpServers": {name: {"command": "python", "args": ["-m", name], "env": {}}}}
+        return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args}}}
+
+    # cursor, vscode, kiro, windsurf, default
+    return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": {}}}}
