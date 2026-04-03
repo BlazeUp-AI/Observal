@@ -10,6 +10,7 @@ from models.feedback import Feedback
 from models.mcp import McpListing
 from models.user import User
 from schemas.feedback import FeedbackCreateRequest, FeedbackResponse, FeedbackSummary
+from services.clickhouse import insert_scores
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
 
@@ -38,6 +39,28 @@ async def create_feedback(
     db.add(fb)
     await db.commit()
     await db.refresh(fb)
+
+    # Dual-write: also insert into ClickHouse scores table
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    try:
+        await insert_scores([{
+            "score_id": str(fb.id),
+            "project_id": "default",
+            "mcp_id": str(req.listing_id) if req.listing_type == "mcp" else None,
+            "agent_id": str(req.listing_id) if req.listing_type == "agent" else None,
+            "user_id": str(current_user.id),
+            "name": "user_rating",
+            "source": "api",
+            "data_type": "numeric",
+            "value": float(req.rating),
+            "comment": req.comment,
+            "metadata": {"listing_type": req.listing_type},
+            "timestamp": now,
+        }])
+    except Exception:
+        pass  # Don't fail the request if ClickHouse write fails
+
     return FeedbackResponse.model_validate(fb)
 
 
