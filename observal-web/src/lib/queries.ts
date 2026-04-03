@@ -8,6 +8,7 @@ export const TRACES_QUERY = gql`
         traceType
         mcpId
         agentId
+        sessionId
         name
         startTime
         endTime
@@ -34,6 +35,7 @@ export const TRACE_DETAIL_QUERY = gql`
       mcpId
       agentId
       userId
+      sessionId
       name
       startTime
       endTime
@@ -42,6 +44,7 @@ export const TRACE_DETAIL_QUERY = gql`
       tags
       spans {
         spanId
+        parentSpanId
         type
         name
         method
@@ -54,7 +57,10 @@ export const TRACE_DETAIL_QUERY = gql`
         error
         toolSchemaValid
         toolsAvailable
+        tokenCountInput
+        tokenCountOutput
         tokenCountTotal
+        cost
       }
       scores {
         scoreId

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
+    "@tanstack/react-virtual": "^3.13.23",
     "@urql/exchange-graphcache": "^7.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
