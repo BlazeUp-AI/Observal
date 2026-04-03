@@ -1,8 +1,8 @@
 """Agent CLI commands."""
+
 from __future__ import annotations
 
 import json as _json
-from typing import Optional
 
 import typer
 from rich import print as rprint
@@ -11,7 +11,13 @@ from rich.tree import Tree
 
 from observal_cli import client, config
 from observal_cli.render import (
-    console, ide_tags, kv_panel, output_json, relative_time, spinner, status_badge,
+    console,
+    ide_tags,
+    kv_panel,
+    output_json,
+    relative_time,
+    spinner,
+    status_badge,
 )
 
 agent_app = typer.Typer(help="Agent registry commands")
@@ -19,11 +25,12 @@ agent_app = typer.Typer(help="Agent registry commands")
 
 @agent_app.command(name="create")
 def agent_create(
-    from_file: Optional[str] = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
+    from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
 ):
     """Create a new agent (interactive or from file)."""
     if from_file:
         import json
+
         with open(from_file) as f:
             payload = json.load(f)
         with spinner("Creating agent..."):
@@ -79,7 +86,7 @@ def agent_create(
         if sec_name.lower() == "done":
             break
         sec_desc = typer.prompt(f"  Description for '{sec_name}'", default="")
-        grounding = typer.confirm(f"  Grounding required?", default=False)
+        grounding = typer.confirm("  Grounding required?", default=False)
         sections.append({"name": sec_name, "description": sec_desc, "grounding_required": grounding})
 
     if not sections:
@@ -87,24 +94,27 @@ def agent_create(
         raise typer.Exit(1)
 
     with spinner("Creating agent..."):
-        result = client.post("/api/v1/agents", {
-            "name": name,
-            "version": version,
-            "description": description,
-            "owner": owner,
-            "prompt": prompt_text,
-            "model_name": model_name,
-            "model_config_json": model_cfg,
-            "supported_ides": supported_ides,
-            "mcp_server_ids": mcp_ids,
-            "goal_template": {"description": goal_desc, "sections": sections},
-        })
+        result = client.post(
+            "/api/v1/agents",
+            {
+                "name": name,
+                "version": version,
+                "description": description,
+                "owner": owner,
+                "prompt": prompt_text,
+                "model_name": model_name,
+                "model_config_json": model_cfg,
+                "supported_ides": supported_ides,
+                "mcp_server_ids": mcp_ids,
+                "goal_template": {"description": goal_desc, "sections": sections},
+            },
+        )
     rprint(f"\n[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
 
 
 @agent_app.command(name="list")
 def agent_list(
-    search: Optional[str] = typer.Option(None, "--search", "-s"),
+    search: str | None = typer.Option(None, "--search", "-s"),
     limit: int = typer.Option(50, "--limit", "-n"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
@@ -163,19 +173,21 @@ def agent_show(
         output_json(item)
         return
 
-    console.print(kv_panel(
-        f"{item['name']} v{item.get('version', '?')}",
-        [
-            ("Status", status_badge(item.get("status", ""))),
-            ("Model", f"[bold]{item.get('model_name', 'N/A')}[/bold]"),
-            ("Owner", item.get("owner", "N/A")),
-            ("Description", item.get("description", "")),
-            ("IDEs", ide_tags(item.get("supported_ides", []))),
-            ("Created", relative_time(item.get("created_at"))),
-            ("ID", f"[dim]{item['id']}[/dim]"),
-        ],
-        border_style="magenta",
-    ))
+    console.print(
+        kv_panel(
+            f"{item['name']} v{item.get('version', '?')}",
+            [
+                ("Status", status_badge(item.get("status", ""))),
+                ("Model", f"[bold]{item.get('model_name', 'N/A')}[/bold]"),
+                ("Owner", item.get("owner", "N/A")),
+                ("Description", item.get("description", "")),
+                ("IDEs", ide_tags(item.get("supported_ides", []))),
+                ("Created", relative_time(item.get("created_at"))),
+                ("ID", f"[dim]{item['id']}[/dim]"),
+            ],
+            border_style="magenta",
+        )
+    )
 
     # MCP links
     if item.get("mcp_links"):

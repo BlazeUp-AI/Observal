@@ -1,6 +1,6 @@
 import hashlib
+from collections.abc import AsyncGenerator
 from functools import wraps
-from typing import AsyncGenerator
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
@@ -34,5 +34,7 @@ def require_role(*roles: UserRole):
             if current_user.role not in roles:
                 raise HTTPException(status_code=403, detail="Insufficient permissions")
             return await func(*args, current_user=current_user, **kwargs)
+
         return wrapper
+
     return decorator

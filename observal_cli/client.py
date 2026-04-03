@@ -1,8 +1,10 @@
 import time
+
 import httpx
 import typer
 from rich import print as rprint
 from rich.console import Console
+
 from observal_cli import config
 
 console = Console(stderr=True)
@@ -17,10 +19,7 @@ def _client() -> tuple[str, dict]:
 
 def _handle_error(e: httpx.HTTPStatusError):
     ct = e.response.headers.get("content-type", "")
-    if "application/json" in ct:
-        detail = e.response.json().get("detail", e.response.text)
-    else:
-        detail = e.response.text
+    detail = e.response.json().get("detail", e.response.text) if "application/json" in ct else e.response.text
     code = e.response.status_code
     if code == 401:
         rprint("[red]Authentication failed.[/red] Run [bold]observal login[/bold] to re-authenticate.")

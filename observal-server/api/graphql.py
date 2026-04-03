@@ -2,8 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import strawberry
 from strawberry.dataloader import DataLoader
@@ -13,9 +12,7 @@ from strawberry.types import Info
 from services.clickhouse import (
     _escape,
     _query,
-    query_scores,
     query_span_by_id,
-    query_spans,
     query_trace_by_id,
     query_traces,
 )
@@ -398,7 +395,9 @@ class Query:
 
     @strawberry.field
     async def trends(self, start: str, end: str, granularity: str = "DAY") -> list[TrendPoint]:
-        trunc = {"HOUR": "toStartOfHour", "DAY": "toDate", "WEEK": "toStartOfWeek", "MONTH": "toStartOfMonth"}.get(granularity, "toDate")
+        trunc = {"HOUR": "toStartOfHour", "DAY": "toDate", "WEEK": "toStartOfWeek", "MONTH": "toStartOfMonth"}.get(
+            granularity, "toDate"
+        )
         rows = await _ch_json(
             f"SELECT {trunc}(start_time) as d, count() as traces "
             f"FROM traces FINAL WHERE project_id='{_escape(DEFAULT_PROJECT)}' AND is_deleted=0 "
@@ -429,7 +428,9 @@ class Query:
 @strawberry.type
 class Subscription:
     @strawberry.subscription
-    async def trace_created(self, mcp_id: str | None = None, agent_id: str | None = None) -> AsyncGenerator[Trace, None]:
+    async def trace_created(
+        self, mcp_id: str | None = None, agent_id: str | None = None
+    ) -> AsyncGenerator[Trace, None]:
         channel = "traces:created"
         async for data in subscribe(channel):
             if mcp_id and data.get("mcp_id") != mcp_id:

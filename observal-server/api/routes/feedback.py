@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -41,23 +42,28 @@ async def create_feedback(
     await db.refresh(fb)
 
     # Dual-write: also insert into ClickHouse scores table
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    from datetime import datetime
+
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     try:
-        await insert_scores([{
-            "score_id": str(fb.id),
-            "project_id": "default",
-            "mcp_id": str(req.listing_id) if req.listing_type == "mcp" else None,
-            "agent_id": str(req.listing_id) if req.listing_type == "agent" else None,
-            "user_id": str(current_user.id),
-            "name": "user_rating",
-            "source": "api",
-            "data_type": "numeric",
-            "value": float(req.rating),
-            "comment": req.comment,
-            "metadata": {"listing_type": req.listing_type},
-            "timestamp": now,
-        }])
+        await insert_scores(
+            [
+                {
+                    "score_id": str(fb.id),
+                    "project_id": "default",
+                    "mcp_id": str(req.listing_id) if req.listing_type == "mcp" else None,
+                    "agent_id": str(req.listing_id) if req.listing_type == "agent" else None,
+                    "user_id": str(current_user.id),
+                    "name": "user_rating",
+                    "source": "api",
+                    "data_type": "numeric",
+                    "value": float(req.rating),
+                    "comment": req.comment,
+                    "metadata": {"listing_type": req.listing_type},
+                    "timestamp": now,
+                }
+            ]
+        )
     except Exception:
         pass  # Don't fail the request if ClickHouse write fails
 
@@ -90,7 +96,9 @@ async def my_feedback_received(
     current_user: User = Depends(get_current_user),
 ):
     """Feedback received on listings submitted/created by the current user."""
-    mcp_ids = list((await db.execute(select(McpListing.id).where(McpListing.submitted_by == current_user.id))).scalars().all())
+    mcp_ids = list(
+        (await db.execute(select(McpListing.id).where(McpListing.submitted_by == current_user.id))).scalars().all()
+    )
     agent_ids = list((await db.execute(select(Agent.id).where(Agent.created_by == current_user.id))).scalars().all())
 
     all_ids = mcp_ids + agent_ids

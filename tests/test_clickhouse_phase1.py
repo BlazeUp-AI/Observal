@@ -1,6 +1,5 @@
 """Unit tests for ClickHouse service — Phase 1 (traces, spans, scores)."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,7 +22,6 @@ from services.clickhouse import (
     query_trace_by_id,
     query_traces,
 )
-
 
 # --- Helper function tests ---
 
@@ -122,25 +120,66 @@ class TestInitSQL:
 
     def test_traces_columns(self):
         traces_ddl = INIT_SQL[2]
-        for col in ["trace_id", "parent_trace_id", "trace_type", "mcp_id",
-                     "agent_id", "user_id", "session_id", "ide", "environment",
-                     "start_time", "end_time", "event_ts", "is_deleted", "tags"]:
+        for col in [
+            "trace_id",
+            "parent_trace_id",
+            "trace_type",
+            "mcp_id",
+            "agent_id",
+            "user_id",
+            "session_id",
+            "ide",
+            "environment",
+            "start_time",
+            "end_time",
+            "event_ts",
+            "is_deleted",
+            "tags",
+        ]:
             assert col in traces_ddl
 
     def test_spans_columns(self):
         spans_ddl = INIT_SQL[3]
-        for col in ["span_id", "trace_id", "parent_span_id", "type", "name",
-                     "method", "input", "output", "error", "latency_ms", "status",
-                     "token_count_input", "token_count_output", "cost",
-                     "cpu_ms", "memory_mb", "hop_count", "entities_retrieved",
-                     "tool_schema_valid", "tools_available"]:
+        for col in [
+            "span_id",
+            "trace_id",
+            "parent_span_id",
+            "type",
+            "name",
+            "method",
+            "input",
+            "output",
+            "error",
+            "latency_ms",
+            "status",
+            "token_count_input",
+            "token_count_output",
+            "cost",
+            "cpu_ms",
+            "memory_mb",
+            "hop_count",
+            "entities_retrieved",
+            "tool_schema_valid",
+            "tools_available",
+        ]:
             assert col in spans_ddl
 
     def test_scores_columns(self):
         scores_ddl = INIT_SQL[4]
-        for col in ["score_id", "trace_id", "span_id", "name", "source",
-                     "data_type", "value", "string_value", "comment",
-                     "eval_template_id", "eval_config_id", "eval_run_id"]:
+        for col in [
+            "score_id",
+            "trace_id",
+            "span_id",
+            "name",
+            "source",
+            "data_type",
+            "value",
+            "string_value",
+            "comment",
+            "eval_template_id",
+            "eval_config_id",
+            "eval_run_id",
+        ]:
             assert col in scores_ddl
 
 
@@ -199,8 +238,7 @@ class TestInsertTraces:
     @pytest.mark.asyncio
     async def test_batch_traces(self):
         traces = [
-            {"trace_id": f"t{i}", "project_id": "p1", "user_id": "u1",
-             "start_time": "2026-01-01 00:00:00.000"}
+            {"trace_id": f"t{i}", "project_id": "p1", "user_id": "u1", "start_time": "2026-01-01 00:00:00.000"}
             for i in range(3)
         ]
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
@@ -216,10 +254,16 @@ class TestInsertTraces:
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.side_effect = Exception("connection refused")
             with pytest.raises(Exception, match="connection refused"):
-                await insert_traces([{
-                    "trace_id": "t1", "project_id": "p1", "user_id": "u1",
-                    "start_time": "2026-01-01 00:00:00.000",
-                }])
+                await insert_traces(
+                    [
+                        {
+                            "trace_id": "t1",
+                            "project_id": "p1",
+                            "user_id": "u1",
+                            "start_time": "2026-01-01 00:00:00.000",
+                        }
+                    ]
+                )
 
 
 class TestInsertSpans:
@@ -232,8 +276,12 @@ class TestInsertSpans:
     @pytest.mark.asyncio
     async def test_single_span(self):
         span = {
-            "span_id": "s1", "trace_id": "t1", "project_id": "p1",
-            "user_id": "u1", "type": "tool_call", "name": "my_tool",
+            "span_id": "s1",
+            "trace_id": "t1",
+            "project_id": "p1",
+            "user_id": "u1",
+            "type": "tool_call",
+            "name": "my_tool",
             "start_time": "2026-01-01 00:00:00.000",
         }
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
@@ -247,11 +295,17 @@ class TestInsertSpans:
     @pytest.mark.asyncio
     async def test_domain_specific_fields(self):
         span = {
-            "span_id": "s1", "trace_id": "t1", "project_id": "p1",
-            "user_id": "u1", "type": "graph_traverse", "name": "query",
+            "span_id": "s1",
+            "trace_id": "t1",
+            "project_id": "p1",
+            "user_id": "u1",
+            "type": "graph_traverse",
+            "name": "query",
             "start_time": "2026-01-01 00:00:00.000",
-            "hop_count": 3, "entities_retrieved": 12,
-            "relationships_used": 8, "tool_schema_valid": 1,
+            "hop_count": 3,
+            "entities_retrieved": 12,
+            "relationships_used": 8,
+            "tool_schema_valid": 1,
         }
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
@@ -272,9 +326,14 @@ class TestInsertScores:
     @pytest.mark.asyncio
     async def test_single_score(self):
         score = {
-            "score_id": "sc1", "project_id": "p1", "user_id": "u1",
-            "name": "accuracy", "source": "eval", "data_type": "numeric",
-            "value": 0.95, "timestamp": "2026-01-01 00:00:00.000",
+            "score_id": "sc1",
+            "project_id": "p1",
+            "user_id": "u1",
+            "name": "accuracy",
+            "source": "eval",
+            "data_type": "numeric",
+            "value": 0.95,
+            "timestamp": "2026-01-01 00:00:00.000",
         }
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()

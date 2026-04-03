@@ -1,4 +1,5 @@
 """Observal CLI — MCP Server & Agent Registry."""
+
 import typer
 
 app = typer.Typer(
@@ -11,13 +12,18 @@ app = typer.Typer(
 
 # ── Register command groups ──────────────────────────────
 
+from observal_cli.cmd_agent import agent_app
 from observal_cli.cmd_auth import register_auth, register_config
 from observal_cli.cmd_mcp import register_mcp
-from observal_cli.cmd_agent import agent_app
 from observal_cli.cmd_ops import (
-    review_app, telemetry_app, eval_app, admin_app,
-    register_dashboard, register_feedback, register_traces,
+    admin_app,
+    eval_app,
+    register_dashboard,
+    register_feedback,
     register_lifecycle,
+    register_traces,
+    review_app,
+    telemetry_app,
 )
 
 register_auth(app)

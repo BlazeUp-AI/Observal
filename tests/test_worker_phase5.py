@@ -6,8 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.redis import close, enqueue_eval, get_pool, get_redis, publish, subscribe
-
+from services.redis import close, enqueue_eval, get_redis, publish
 
 # --- Redis client ---
 
@@ -80,18 +79,22 @@ class TestClose:
 class TestWorkerSettings:
     def test_has_functions(self):
         from worker import WorkerSettings
+
         assert len(WorkerSettings.functions) > 0
 
     def test_has_redis_settings(self):
         from worker import WorkerSettings
+
         assert WorkerSettings.redis_settings is not None
 
     def test_job_timeout(self):
         from worker import WorkerSettings
+
         assert WorkerSettings.job_timeout == 300
 
     def test_max_jobs(self):
         from worker import WorkerSettings
+
         assert WorkerSettings.max_jobs == 5
 
 
@@ -129,6 +132,7 @@ COMPOSE_PATH = str(Path(__file__).resolve().parent.parent / "docker" / "docker-c
 class TestDockerCompose:
     def test_redis_service_exists(self):
         import yaml
+
         with open(COMPOSE_PATH) as f:
             compose = yaml.safe_load(f)
         assert "observal-redis" in compose["services"]
@@ -136,6 +140,7 @@ class TestDockerCompose:
 
     def test_worker_service_exists(self):
         import yaml
+
         with open(COMPOSE_PATH) as f:
             compose = yaml.safe_load(f)
         assert "observal-worker" in compose["services"]
@@ -143,12 +148,14 @@ class TestDockerCompose:
 
     def test_redis_volume_exists(self):
         import yaml
+
         with open(COMPOSE_PATH) as f:
             compose = yaml.safe_load(f)
         assert "redisdata" in compose["volumes"]
 
     def test_api_depends_on_redis(self):
         import yaml
+
         with open(COMPOSE_PATH) as f:
             compose = yaml.safe_load(f)
         deps = compose["services"]["observal-api"]["depends_on"]

@@ -10,13 +10,11 @@ import logging
 import os
 import sys
 import time
-import uuid
-from datetime import datetime, timezone
 
 import httpx
 
 from observal_cli.config import load as load_config
-from observal_cli.shim import ShimState, extract_span_name, extract_span_type
+from observal_cli.shim import ShimState
 
 logger = logging.getLogger("observal-proxy")
 
@@ -37,7 +35,9 @@ class ProxyState(ShimState):
         self.target_url = target_url.rstrip("/")
 
 
-async def _handle_request(state: ProxyState, method: str, path: str, headers: dict, body: bytes) -> tuple[int, dict, bytes]:
+async def _handle_request(
+    state: ProxyState, method: str, path: str, headers: dict, body: bytes
+) -> tuple[int, dict, bytes]:
     """Forward a request to the target MCP server and capture telemetry."""
     url = f"{state.target_url}{path}"
 
@@ -118,7 +118,15 @@ async def run_proxy(mcp_id: str, target_url: str, port: int = 0):
             status, resp_headers, resp_body = await _handle_request(state, method, path, headers, body)
 
             # Write response
-            status_text = {200: "OK", 201: "Created", 204: "No Content", 400: "Bad Request", 404: "Not Found", 500: "Internal Server Error", 502: "Bad Gateway"}.get(status, "OK")
+            status_text = {
+                200: "OK",
+                201: "Created",
+                204: "No Content",
+                400: "Bad Request",
+                404: "Not Found",
+                500: "Internal Server Error",
+                502: "Bad Gateway",
+            }.get(status, "OK")
             writer.write(f"HTTP/1.1 {status} {status_text}\r\n".encode())
             resp_headers["content-length"] = str(len(resp_body))
             for k, v in resp_headers.items():

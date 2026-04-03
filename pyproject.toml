@@ -17,3 +17,52 @@ observal-proxy = "observal_cli.proxy:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# ── Ruff ─────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["observal_cli", "observal-server", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (typer needs this)
+    "UP007",  # use X | Y for union (keep Optional for typer compat)
+    "N805",   # first argument of a method should be named self (pydantic validators)
+    "B904",   # raise from in except (too noisy for HTTPException patterns)
+    "SIM105", # contextlib.suppress (explicit try/except is clearer for us)
+    "UP042",  # str enum inheritance (needed for SQLAlchemy compatibility)
+    "RUF012", # mutable class defaults (pydantic/sqlalchemy models)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["observal_cli", "models", "schemas", "services", "api"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F841", "RUF059", "B007"]  # unused vars common in test assertions
+"observal_cli/main.py" = ["E402"]       # imports after app = typer.Typer()
+"demo/*" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── Pytest ───────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

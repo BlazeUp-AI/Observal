@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -288,7 +288,7 @@ async def insert_agent_interaction(event: dict):
 
 def _now_ms() -> str:
     """Current UTC timestamp as ISO string with millisecond precision."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
 async def insert_traces(traces: list[dict]):
@@ -313,8 +313,7 @@ async def insert_traces(traces: list[dict]):
     sql = (
         "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
         "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
-        "metadata, tags, input, output, created_at, event_ts, is_deleted) VALUES "
-        + ", ".join(rows)
+        "metadata, tags, input, output, created_at, event_ts, is_deleted) VALUES " + ", ".join(rows)
     )
     try:
         r = await _query(sql)
@@ -362,8 +361,7 @@ async def insert_spans(spans: list[dict]):
         "end_time, latency_ms, status, level, token_count_input, token_count_output, "
         "token_count_total, cost, cpu_ms, memory_mb, hop_count, entities_retrieved, "
         "relationships_used, retry_count, tools_available, tool_schema_valid, ide, "
-        "environment, metadata, created_at, event_ts, is_deleted) VALUES "
-        + ", ".join(rows)
+        "environment, metadata, created_at, event_ts, is_deleted) VALUES " + ", ".join(rows)
     )
     try:
         r = await _query(sql)
@@ -399,8 +397,7 @@ async def insert_scores(scores: list[dict]):
         "INSERT INTO scores (score_id, trace_id, span_id, project_id, mcp_id, agent_id, "
         "user_id, name, source, data_type, value, string_value, comment, "
         "eval_template_id, eval_config_id, eval_run_id, environment, metadata, "
-        "timestamp, created_at, event_ts, is_deleted) VALUES "
-        + ", ".join(rows)
+        "timestamp, created_at, event_ts, is_deleted) VALUES " + ", ".join(rows)
     )
     try:
         r = await _query(sql)
@@ -509,10 +506,7 @@ async def query_spans(
     if status:
         conditions.append(f"status = '{_escape(status)}'")
     where = " AND ".join(conditions)
-    sql = (
-        f"SELECT * FROM spans FINAL WHERE {where} "
-        f"ORDER BY start_time ASC LIMIT {int(limit)} FORMAT JSON"
-    )
+    sql = f"SELECT * FROM spans FINAL WHERE {where} ORDER BY start_time ASC LIMIT {int(limit)} FORMAT JSON"
     try:
         r = await _query(sql)
         r.raise_for_status()
@@ -558,10 +552,7 @@ async def query_scores(
     if name:
         conditions.append(f"name = '{_escape(name)}'")
     where = " AND ".join(conditions)
-    sql = (
-        f"SELECT * FROM scores FINAL WHERE {where} "
-        f"ORDER BY timestamp DESC LIMIT {int(limit)} FORMAT JSON"
-    )
+    sql = f"SELECT * FROM scores FINAL WHERE {where} ORDER BY timestamp DESC LIMIT {int(limit)} FORMAT JSON"
     try:
         r = await _query(sql)
         r.raise_for_status()

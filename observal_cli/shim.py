@@ -11,7 +11,7 @@ import os
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -71,9 +71,7 @@ def extract_span_name(method: str, params: dict | None) -> str:
     return method or "unknown"
 
 
-def check_schema_compliance(
-    params: dict | None, tool_schemas: dict
-) -> tuple[int | None, int | None]:
+def check_schema_compliance(params: dict | None, tool_schemas: dict) -> tuple[int | None, int | None]:
     """Check if tool_call args match cached schema. Returns (tool_schema_valid, tools_available)."""
     if not tool_schemas:
         return None, None
@@ -114,7 +112,7 @@ class ShimState:
         self.session_id = os.environ.get("OBSERVAL_SESSION_ID", "")
         self.ide = os.environ.get("OBSERVAL_IDE", "")
         self.environment = os.environ.get("OBSERVAL_ENVIRONMENT", "default")
-        self.trace_start = datetime.now(timezone.utc)
+        self.trace_start = datetime.now(UTC)
 
         # Request tracking: id -> (method, params, start_time)
         self.pending: dict[str | int, tuple[str, dict | None, float]] = {}
@@ -124,7 +122,7 @@ class ShimState:
         self.lock = asyncio.Lock()
 
     def _now_iso(self) -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     def on_request(self, msg: dict):
         """Track an outgoing request for later pairing."""
@@ -149,17 +147,13 @@ class ShimState:
         # Cache tool schemas from tools/list response
         if method == "tools/list" and "result" in msg:
             tools = msg["result"].get("tools", [])
-            self.tool_schemas = {
-                t["name"]: t.get("inputSchema", {}) for t in tools if "name" in t
-            }
+            self.tool_schemas = {t["name"]: t.get("inputSchema", {}) for t in tools if "name" in t}
 
         # Schema compliance for tool_call
         tool_schema_valid = None
         tools_available = None
         if method == "tools/call":
-            tool_schema_valid, tools_available = check_schema_compliance(
-                params, self.tool_schemas
-            )
+            tool_schema_valid, tools_available = check_schema_compliance(params, self.tool_schemas)
 
         error_str = None
         status = "success"
@@ -206,19 +200,21 @@ class ShimState:
     async def _send(self, spans: list[dict]):
         """Fire-and-forget send to Observal server."""
         payload = {
-            "traces": [{
-                "trace_id": self.trace_id,
-                "parent_trace_id": self.parent_trace_id,
-                "trace_type": "mcp",
-                "mcp_id": self.mcp_id,
-                "agent_id": self.agent_id,
-                "session_id": self.session_id,
-                "ide": self.ide,
-                "name": f"shim:{self.mcp_id}",
-                "start_time": self.trace_start.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-                "tags": [],
-                "metadata": {},
-            }],
+            "traces": [
+                {
+                    "trace_id": self.trace_id,
+                    "parent_trace_id": self.parent_trace_id,
+                    "trace_type": "mcp",
+                    "mcp_id": self.mcp_id,
+                    "agent_id": self.agent_id,
+                    "session_id": self.session_id,
+                    "ide": self.ide,
+                    "name": f"shim:{self.mcp_id}",
+                    "start_time": self.trace_start.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+                    "tags": [],
+                    "metadata": {},
+                }
+            ],
             "spans": spans,
             "scores": [],
         }
@@ -266,7 +262,7 @@ async def _read_messages(stream: asyncio.StreamReader) -> asyncio.Queue:
                 except json.JSONDecodeError:
                     pass  # skip malformed
 
-    asyncio.create_task(_reader())
+    _task = asyncio.create_task(_reader())  # noqa: RUF006 - fire-and-forget by design
     return queue
 
 
@@ -401,7 +397,7 @@ def main():
             mcp_id = args[i + 1]
             i += 2
         elif args[i] == "--":
-            command = args[i + 1:]
+            command = args[i + 1 :]
             break
         else:
             i += 1

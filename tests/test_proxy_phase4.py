@@ -7,7 +7,6 @@ import pytest
 
 from observal_cli.proxy import ProxyState, _handle_request, _parse_jsonrpc_body
 
-
 # --- JSON-RPC body parsing ---
 
 
@@ -143,6 +142,7 @@ class TestConfigGeneratorHTTP:
 
     def test_proxy_port_cursor(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "cursor", proxy_port=9999)
         server = cfg["mcpServers"]["my-http-mcp"]
         assert server["url"] == "http://localhost:9999"
@@ -150,17 +150,20 @@ class TestConfigGeneratorHTTP:
 
     def test_proxy_port_claude_code(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "claude-code", proxy_port=9999)
         assert "http://localhost:9999" in str(cfg["command"])
 
     def test_proxy_port_kiro(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "kiro", proxy_port=8888)
         server = cfg["mcpServers"]["my-http-mcp"]
         assert server["url"] == "http://localhost:8888"
 
     def test_stdio_still_works(self):
         from services.config_generator import generate_config
+
         cfg = generate_config(self._make_listing(), "cursor")
         server = cfg["mcpServers"]["my-http-mcp"]
         assert server["command"] == "observal-shim"

@@ -128,7 +128,11 @@ async def delete_mcp(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     # Delete related records with correct type filter
-    for r in (await db.execute(select(Feedback).where(Feedback.listing_id == listing_id, Feedback.listing_type == "mcp"))).scalars().all():
+    for r in (
+        (await db.execute(select(Feedback).where(Feedback.listing_id == listing_id, Feedback.listing_type == "mcp")))
+        .scalars()
+        .all()
+    ):
         await db.delete(r)
     for r in (await db.execute(select(McpDownload).where(McpDownload.listing_id == listing_id))).scalars().all():
         await db.delete(r)

@@ -6,7 +6,6 @@ import pytest
 
 from services.eval_engine import (
     EVAL_TEMPLATES,
-    EvalBackend,
     FallbackBackend,
     LLMJudgeBackend,
     _extract_json,
@@ -18,8 +17,14 @@ from services.eval_engine import (
 
 class TestEvalTemplates:
     def test_has_required_templates(self):
-        for name in ["tool_selection_accuracy", "tool_output_utility", "reasoning_clarity",
-                      "response_quality", "graph_faithfulness", "recall_accuracy"]:
+        for name in [
+            "tool_selection_accuracy",
+            "tool_output_utility",
+            "reasoning_clarity",
+            "response_quality",
+            "graph_faithfulness",
+            "recall_accuracy",
+        ]:
             assert name in EVAL_TEMPLATES
 
     def test_templates_have_required_fields(self):

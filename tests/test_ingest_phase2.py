@@ -4,11 +4,11 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
 # We need to test the route handler logic. Build a minimal FastAPI app
 # that mounts just the telemetry router with auth mocked out.
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
 from api.routes.telemetry import router
 from models.user import User
@@ -47,6 +47,7 @@ def app(user):
 class TestIngestSchemas:
     def test_trace_ingest_minimal(self):
         from schemas.telemetry import TraceIngest
+
         t = TraceIngest(trace_id="t1", start_time="2026-01-01 00:00:00.000")
         assert t.trace_type == "mcp"
         assert t.tags == []
@@ -54,31 +55,42 @@ class TestIngestSchemas:
 
     def test_span_ingest_minimal(self):
         from schemas.telemetry import SpanIngest
+
         s = SpanIngest(
-            span_id="s1", trace_id="t1", type="tool_call",
-            name="my_tool", start_time="2026-01-01 00:00:00.000",
+            span_id="s1",
+            trace_id="t1",
+            type="tool_call",
+            name="my_tool",
+            start_time="2026-01-01 00:00:00.000",
         )
         assert s.status == "success"
         assert s.tool_schema_valid is None
 
     def test_score_ingest_minimal(self):
         from schemas.telemetry import ScoreIngest
+
         sc = ScoreIngest(score_id="sc1", name="accuracy", value=0.9)
         assert sc.source == "api"
         assert sc.data_type == "numeric"
 
     def test_ingest_batch_empty(self):
         from schemas.telemetry import IngestBatch
+
         b = IngestBatch()
         assert b.traces == []
         assert b.spans == []
         assert b.scores == []
 
     def test_ingest_batch_full(self):
-        from schemas.telemetry import IngestBatch, TraceIngest, SpanIngest, ScoreIngest
+        from schemas.telemetry import IngestBatch, ScoreIngest, SpanIngest, TraceIngest
+
         b = IngestBatch(
             traces=[TraceIngest(trace_id="t1", start_time="2026-01-01 00:00:00.000")],
-            spans=[SpanIngest(span_id="s1", trace_id="t1", type="tool_call", name="x", start_time="2026-01-01 00:00:00.000")],
+            spans=[
+                SpanIngest(
+                    span_id="s1", trace_id="t1", type="tool_call", name="x", start_time="2026-01-01 00:00:00.000"
+                )
+            ],
             scores=[ScoreIngest(score_id="sc1", name="acc", value=1.0)],
         )
         assert len(b.traces) == 1
@@ -101,12 +113,15 @@ class TestIngestEndpoint:
     async def test_ingest_traces(self, app):
         with patch("api.routes.telemetry.insert_traces", new_callable=AsyncMock) as mock_ins:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/ingest", json={
-                    "traces": [
-                        {"trace_id": "t1", "start_time": "2026-01-01 00:00:00.000"},
-                        {"trace_id": "t2", "start_time": "2026-01-01 00:00:01.000"},
-                    ]
-                })
+                r = await ac.post(
+                    "/api/v1/telemetry/ingest",
+                    json={
+                        "traces": [
+                            {"trace_id": "t1", "start_time": "2026-01-01 00:00:00.000"},
+                            {"trace_id": "t2", "start_time": "2026-01-01 00:00:01.000"},
+                        ]
+                    },
+                )
             assert r.status_code == 200
             assert r.json()["ingested"] == 2
             assert r.json()["errors"] == 0
@@ -122,12 +137,20 @@ class TestIngestEndpoint:
     async def test_ingest_spans(self, app):
         with patch("api.routes.telemetry.insert_spans", new_callable=AsyncMock) as mock_ins:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/ingest", json={
-                    "spans": [{
-                        "span_id": "s1", "trace_id": "t1", "type": "tool_call",
-                        "name": "my_tool", "start_time": "2026-01-01 00:00:00.000",
-                    }]
-                })
+                r = await ac.post(
+                    "/api/v1/telemetry/ingest",
+                    json={
+                        "spans": [
+                            {
+                                "span_id": "s1",
+                                "trace_id": "t1",
+                                "type": "tool_call",
+                                "name": "my_tool",
+                                "start_time": "2026-01-01 00:00:00.000",
+                            }
+                        ]
+                    },
+                )
             assert r.status_code == 200
             assert r.json()["ingested"] == 1
             rows = mock_ins.call_args[0][0]
@@ -137,12 +160,19 @@ class TestIngestEndpoint:
     async def test_ingest_scores(self, app):
         with patch("api.routes.telemetry.insert_scores", new_callable=AsyncMock) as mock_ins:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/ingest", json={
-                    "scores": [{
-                        "score_id": "sc1", "name": "accuracy",
-                        "value": 0.95, "source": "eval",
-                    }]
-                })
+                r = await ac.post(
+                    "/api/v1/telemetry/ingest",
+                    json={
+                        "scores": [
+                            {
+                                "score_id": "sc1",
+                                "name": "accuracy",
+                                "value": 0.95,
+                                "source": "eval",
+                            }
+                        ]
+                    },
+                )
             assert r.status_code == 200
             assert r.json()["ingested"] == 1
             rows = mock_ins.call_args[0][0]
@@ -159,11 +189,22 @@ class TestIngestEndpoint:
             patch("api.routes.telemetry.insert_scores", new_callable=AsyncMock),
         ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/ingest", json={
-                    "traces": [{"trace_id": "t1", "start_time": "2026-01-01 00:00:00.000"}],
-                    "spans": [{"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01 00:00:00.000"}],
-                    "scores": [{"score_id": "sc1", "name": "acc", "value": 1.0}],
-                })
+                r = await ac.post(
+                    "/api/v1/telemetry/ingest",
+                    json={
+                        "traces": [{"trace_id": "t1", "start_time": "2026-01-01 00:00:00.000"}],
+                        "spans": [
+                            {
+                                "span_id": "s1",
+                                "trace_id": "t1",
+                                "type": "tool_call",
+                                "name": "x",
+                                "start_time": "2026-01-01 00:00:00.000",
+                            }
+                        ],
+                        "scores": [{"score_id": "sc1", "name": "acc", "value": 1.0}],
+                    },
+                )
             assert r.json() == {"ingested": 3, "errors": 0}
 
     @pytest.mark.asyncio
@@ -173,10 +214,21 @@ class TestIngestEndpoint:
             patch("api.routes.telemetry.insert_spans", new_callable=AsyncMock) as mock_spans,
         ):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/ingest", json={
-                    "traces": [{"trace_id": "t1", "start_time": "2026-01-01 00:00:00.000"}],
-                    "spans": [{"span_id": "s1", "trace_id": "t1", "type": "tool_call", "name": "x", "start_time": "2026-01-01 00:00:00.000"}],
-                })
+                r = await ac.post(
+                    "/api/v1/telemetry/ingest",
+                    json={
+                        "traces": [{"trace_id": "t1", "start_time": "2026-01-01 00:00:00.000"}],
+                        "spans": [
+                            {
+                                "span_id": "s1",
+                                "trace_id": "t1",
+                                "type": "tool_call",
+                                "name": "x",
+                                "start_time": "2026-01-01 00:00:00.000",
+                            }
+                        ],
+                    },
+                )
             data = r.json()
             assert data["errors"] == 1  # trace failed
             assert data["ingested"] == 1  # span succeeded
@@ -198,22 +250,33 @@ class TestIngestEndpoint:
     async def test_tool_schema_valid_bool_to_int(self, app):
         with patch("api.routes.telemetry.insert_spans", new_callable=AsyncMock) as mock_ins:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/ingest", json={
-                    "spans": [{
-                        "span_id": "s1", "trace_id": "t1", "type": "tool_call",
-                        "name": "x", "start_time": "2026-01-01 00:00:00.000",
-                        "tool_schema_valid": True,
-                    }]
-                })
+                r = await ac.post(
+                    "/api/v1/telemetry/ingest",
+                    json={
+                        "spans": [
+                            {
+                                "span_id": "s1",
+                                "trace_id": "t1",
+                                "type": "tool_call",
+                                "name": "x",
+                                "start_time": "2026-01-01 00:00:00.000",
+                                "tool_schema_valid": True,
+                            }
+                        ]
+                    },
+                )
             rows = mock_ins.call_args[0][0]
             assert rows[0]["tool_schema_valid"] == 1  # bool → int for ClickHouse UInt8
 
     @pytest.mark.asyncio
     async def test_validation_error_returns_422(self, app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            r = await ac.post("/api/v1/telemetry/ingest", json={
-                "spans": [{"span_id": "s1"}]  # missing required fields
-            })
+            r = await ac.post(
+                "/api/v1/telemetry/ingest",
+                json={
+                    "spans": [{"span_id": "s1"}]  # missing required fields
+                },
+            )
         assert r.status_code == 422
 
 

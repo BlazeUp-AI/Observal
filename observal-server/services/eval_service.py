@@ -1,13 +1,12 @@
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 
 import httpx
 
 from config import settings
 from models.agent import Agent
-from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
+from models.eval import Scorecard, ScorecardDimension
 from services.clickhouse import _query
 
 logger = logging.getLogger(__name__)
@@ -99,6 +98,7 @@ async def _call_bedrock(prompt: str, model_id: str) -> dict:
 
     def _sync_call():
         import boto3
+
         region = getattr(settings, "AWS_REGION", "us-east-1")
         client = boto3.client("bedrock-runtime", region_name=region)
         response = client.converse(
@@ -213,11 +213,13 @@ def parse_scorecard(result: dict, agent: Agent, eval_run_id: uuid.UUID, trace_id
     for dim_name in DIMENSIONS:
         dim_data = dims.get(dim_name, {})
         score = float(dim_data.get("score", 0))
-        sc.dimensions.append(ScorecardDimension(
-            dimension=dim_name,
-            score=score,
-            grade=_score_to_grade(score),
-            notes=dim_data.get("notes"),
-        ))
+        sc.dimensions.append(
+            ScorecardDimension(
+                dimension=dim_name,
+                score=score,
+                grade=_score_to_grade(score),
+                notes=dim_data.get("notes"),
+            )
+        )
 
     return sc

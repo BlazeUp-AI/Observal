@@ -8,7 +8,7 @@ import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -26,37 +26,37 @@ EVAL_TEMPLATES: dict[str, dict] = {
         "id": "tpl-tool-selection",
         "name": "Tool Selection Accuracy",
         "applies_to": "tool_call",
-        "prompt": "Given the user's goal and available tools, was the correct tool selected?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (wrong tool) to 1.0 (perfect selection). Respond with JSON: {{\"score\": <float>, \"reason\": \"<brief>\"}}",
+        "prompt": 'Given the user\'s goal and available tools, was the correct tool selected?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (wrong tool) to 1.0 (perfect selection). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
     "tool_output_utility": {
         "id": "tpl-tool-utility",
         "name": "Tool Output Utility",
         "applies_to": "tool_call",
-        "prompt": "Did the tool's output advance the user's goal?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (useless) to 1.0 (essential). Respond with JSON: {{\"score\": <float>, \"reason\": \"<brief>\"}}",
+        "prompt": 'Did the tool\'s output advance the user\'s goal?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (useless) to 1.0 (essential). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
     "reasoning_clarity": {
         "id": "tpl-reasoning",
         "name": "Reasoning Clarity",
         "applies_to": "reasoning_step",
-        "prompt": "Evaluate the logical soundness of this reasoning step.\nTrace: {trace}\nSpan: {span}\nScore 0.0 (incoherent) to 1.0 (clear and logical). Respond with JSON: {{\"score\": <float>, \"reason\": \"<brief>\"}}",
+        "prompt": 'Evaluate the logical soundness of this reasoning step.\nTrace: {trace}\nSpan: {span}\nScore 0.0 (incoherent) to 1.0 (clear and logical). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
     "response_quality": {
         "id": "tpl-response-quality",
         "name": "Response Quality",
         "applies_to": "agent_turn",
-        "prompt": "Evaluate the overall quality of this agent response.\nTrace: {trace}\nSpan: {span}\nScore 0.0 (poor) to 1.0 (excellent). Respond with JSON: {{\"score\": <float>, \"reason\": \"<brief>\"}}",
+        "prompt": 'Evaluate the overall quality of this agent response.\nTrace: {trace}\nSpan: {span}\nScore 0.0 (poor) to 1.0 (excellent). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
     "graph_faithfulness": {
         "id": "tpl-graph-faith",
         "name": "Graph Faithfulness",
         "applies_to": "graph_traverse",
-        "prompt": "Does the output contradict the knowledge graph relationships?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (contradicts graph) to 1.0 (faithful). Respond with JSON: {{\"score\": <float>, \"reason\": \"<brief>\"}}",
+        "prompt": 'Does the output contradict the knowledge graph relationships?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (contradicts graph) to 1.0 (faithful). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
     "recall_accuracy": {
         "id": "tpl-recall",
         "name": "Recall Accuracy",
         "applies_to": "memory_retrieve",
-        "prompt": "Is the retrieved memory relevant to the current context?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (irrelevant) to 1.0 (highly relevant). Respond with JSON: {{\"score\": <float>, \"reason\": \"<brief>\"}}",
+        "prompt": 'Is the retrieved memory relevant to the current context?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (irrelevant) to 1.0 (highly relevant). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
 }
 
@@ -124,6 +124,7 @@ async def _call_bedrock(prompt: str, model_id: str) -> dict:
 
     def _sync():
         import boto3
+
         client = boto3.client("bedrock-runtime", region_name=getattr(settings, "AWS_REGION", "us-east-1"))
         r = client.converse(
             modelId=model_id,
@@ -190,7 +191,7 @@ async def run_eval_on_trace(
     if not spans:
         return []
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     scores_to_insert = []
 
     for span in spans:
@@ -200,23 +201,25 @@ async def run_eval_on_trace(
                 continue
             try:
                 result = await backend.score(tpl, trace, span)
-                scores_to_insert.append({
-                    "score_id": str(uuid.uuid4()),
-                    "trace_id": trace_id,
-                    "span_id": span.get("span_id", ""),
-                    "project_id": project_id,
-                    "mcp_id": span.get("mcp_id"),
-                    "agent_id": agent_id,
-                    "user_id": trace.get("user_id", ""),
-                    "name": tpl_name,
-                    "source": "eval",
-                    "data_type": "numeric",
-                    "value": result.get("score", 0),
-                    "comment": result.get("reason", ""),
-                    "eval_template_id": tpl["id"],
-                    "metadata": {},
-                    "timestamp": now,
-                })
+                scores_to_insert.append(
+                    {
+                        "score_id": str(uuid.uuid4()),
+                        "trace_id": trace_id,
+                        "span_id": span.get("span_id", ""),
+                        "project_id": project_id,
+                        "mcp_id": span.get("mcp_id"),
+                        "agent_id": agent_id,
+                        "user_id": trace.get("user_id", ""),
+                        "name": tpl_name,
+                        "source": "eval",
+                        "data_type": "numeric",
+                        "value": result.get("score", 0),
+                        "comment": result.get("reason", ""),
+                        "eval_template_id": tpl["id"],
+                        "metadata": {},
+                        "timestamp": now,
+                    }
+                )
             except Exception as e:
                 logger.error(f"Eval template {tpl_name} failed on span {span.get('span_id')}: {e}")
 
