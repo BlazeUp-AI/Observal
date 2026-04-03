@@ -18,4 +18,5 @@ dependencies = [
     "boto3",
     "redis[hiredis]",
     "arq",
+    "strawberry-graphql[fastapi]",
 ]

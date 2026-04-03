@@ -2,11 +2,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from strawberry.fastapi import GraphQLRouter
 
+from api.graphql import get_context, schema
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.auth import router as auth_router
-from api.routes.dashboard import router as dashboard_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.mcp import router as mcp_router
@@ -30,12 +31,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Observal", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# GraphQL (replaces REST dashboard endpoints)
+graphql_app = GraphQLRouter(schema, context_getter=get_context)
+app.include_router(graphql_app, prefix="/api/v1/graphql")
+
+# REST (CLI operations, auth, telemetry ingestion)
 app.include_router(auth_router)
 app.include_router(mcp_router)
 app.include_router(review_router)
 app.include_router(agent_router)
 app.include_router(telemetry_router)
-app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(eval_router)
 app.include_router(admin_router)
