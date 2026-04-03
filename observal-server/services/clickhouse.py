@@ -36,6 +36,7 @@ async def _query(sql: str, params: dict | None = None):
 
 
 INIT_SQL = [
+    # Legacy tables (kept for backward compat)
     """CREATE TABLE IF NOT EXISTS mcp_tool_calls (
         event_id UUID,
         timestamp DateTime64(3, 'UTC'),
@@ -65,6 +66,120 @@ INIT_SQL = [
     ) ENGINE = MergeTree()
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (agent_id, timestamp)""",
+    # New telemetry tables (Phase 1)
+    """CREATE TABLE IF NOT EXISTS traces (
+        trace_id        String,
+        parent_trace_id Nullable(String),
+        project_id      String,
+        mcp_id          Nullable(String),
+        agent_id        Nullable(String),
+        user_id         String,
+        session_id      Nullable(String),
+        ide             LowCardinality(String),
+        environment     LowCardinality(String) DEFAULT 'default',
+        start_time      DateTime64(3),
+        end_time        Nullable(DateTime64(3)),
+        trace_type      LowCardinality(String) DEFAULT 'mcp',
+        name            String DEFAULT '',
+        metadata        Map(LowCardinality(String), String),
+        tags            Array(String),
+        input           Nullable(String) CODEC(ZSTD(3)),
+        output          Nullable(String) CODEC(ZSTD(3)),
+        created_at      DateTime64(3) DEFAULT now(),
+        event_ts        DateTime64(3),
+        is_deleted      UInt8 DEFAULT 0,
+        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_parent_trace_id parent_trace_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_project_id project_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_mcp_id mcp_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_agent_id agent_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_user_id user_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_session_id session_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_trace_type trace_type TYPE bloom_filter(0.01) GRANULARITY 1
+    ) ENGINE = ReplacingMergeTree(event_ts, is_deleted)
+    PARTITION BY toYYYYMM(start_time)
+    PRIMARY KEY (project_id, user_id, toDate(start_time))
+    ORDER BY (project_id, user_id, toDate(start_time), trace_id)""",
+    """CREATE TABLE IF NOT EXISTS spans (
+        span_id                 String,
+        trace_id                String,
+        parent_span_id          Nullable(String),
+        project_id              String,
+        mcp_id                  Nullable(String),
+        agent_id                Nullable(String),
+        user_id                 String,
+        type                    LowCardinality(String),
+        name                    String,
+        method                  String DEFAULT '',
+        input                   Nullable(String) CODEC(ZSTD(3)),
+        output                  Nullable(String) CODEC(ZSTD(3)),
+        error                   Nullable(String) CODEC(ZSTD(3)),
+        start_time              DateTime64(3),
+        end_time                Nullable(DateTime64(3)),
+        latency_ms              Nullable(UInt32),
+        status                  LowCardinality(String) DEFAULT 'success',
+        level                   LowCardinality(String) DEFAULT 'DEFAULT',
+        token_count_input       Nullable(UInt32),
+        token_count_output      Nullable(UInt32),
+        token_count_total       Nullable(UInt32),
+        cost                    Nullable(Float64),
+        cpu_ms                  Nullable(UInt32),
+        memory_mb               Nullable(Float32),
+        hop_count               Nullable(UInt8),
+        entities_retrieved      Nullable(UInt16),
+        relationships_used      Nullable(UInt16),
+        retry_count             Nullable(UInt8),
+        tools_available         Nullable(UInt16),
+        tool_schema_valid       Nullable(UInt8),
+        ide                     LowCardinality(String) DEFAULT '',
+        environment             LowCardinality(String) DEFAULT 'default',
+        metadata                Map(LowCardinality(String), String),
+        created_at              DateTime64(3) DEFAULT now(),
+        event_ts                DateTime64(3),
+        is_deleted              UInt8 DEFAULT 0,
+        INDEX idx_span_id span_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_project_id project_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_name name TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_type type TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_status status TYPE bloom_filter(0.01) GRANULARITY 1
+    ) ENGINE = ReplacingMergeTree(event_ts, is_deleted)
+    PARTITION BY toYYYYMM(start_time)
+    PRIMARY KEY (project_id, user_id, type, toDate(start_time))
+    ORDER BY (project_id, user_id, type, toDate(start_time), span_id)""",
+    """CREATE TABLE IF NOT EXISTS scores (
+        score_id        String,
+        trace_id        Nullable(String),
+        span_id         Nullable(String),
+        project_id      String,
+        mcp_id          Nullable(String),
+        agent_id        Nullable(String),
+        user_id         String,
+        name            String,
+        source          LowCardinality(String),
+        data_type       LowCardinality(String),
+        value           Float64,
+        string_value    Nullable(String),
+        comment         Nullable(String) CODEC(ZSTD(1)),
+        eval_template_id Nullable(String),
+        eval_config_id  Nullable(String),
+        eval_run_id     Nullable(String),
+        environment     LowCardinality(String) DEFAULT 'default',
+        metadata        Map(LowCardinality(String), String),
+        timestamp       DateTime64(3),
+        created_at      DateTime64(3) DEFAULT now(),
+        event_ts        DateTime64(3),
+        is_deleted      UInt8 DEFAULT 0,
+        INDEX idx_score_id score_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_span_id span_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_project_id project_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_name name TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_source source TYPE bloom_filter(0.01) GRANULARITY 1
+    ) ENGINE = ReplacingMergeTree(event_ts, is_deleted)
+    PARTITION BY toYYYYMM(timestamp)
+    PRIMARY KEY (project_id, user_id, toDate(timestamp), name)
+    ORDER BY (project_id, user_id, toDate(timestamp), name, score_id)""",
 ]
 
 
