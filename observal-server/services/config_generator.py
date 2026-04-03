@@ -11,11 +11,21 @@ def _sanitize_name(name: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_-]', '-', name)
 
 
-def generate_config(listing: McpListing, ide: str) -> dict:
+def generate_config(listing: McpListing, ide: str, proxy_port: int | None = None) -> dict:
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
 
-    # Shim wraps the original command; auth comes from ~/.observal/config.json
+    # HTTP transport: point IDE at the proxy URL
+    if proxy_port is not None:
+        proxy_url = f"http://localhost:{proxy_port}"
+        if ide == "claude-code":
+            return {
+                "command": ["claude", "mcp", "add", name, "--url", proxy_url],
+                "type": "shell_command",
+            }
+        return {"mcpServers": {name: {"url": proxy_url}}}
+
+    # Stdio transport: shim wraps the original command
     shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", name]
 
     if ide == "claude-code":
