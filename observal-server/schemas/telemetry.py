@@ -33,3 +33,79 @@ class TelemetryStatusResponse(BaseModel):
     tool_call_events: int
     agent_interaction_events: int
     status: str
+
+
+# --- Phase 2: New ingestion schemas ---
+
+
+class TraceIngest(BaseModel):
+    trace_id: str
+    parent_trace_id: str | None = None
+    trace_type: str = "mcp"
+    mcp_id: str | None = None
+    agent_id: str | None = None
+    session_id: str | None = None
+    ide: str = ""
+    name: str = ""
+    start_time: str
+    end_time: str | None = None
+    input: str | None = None
+    output: str | None = None
+    metadata: dict[str, str] = {}
+    tags: list[str] = []
+
+
+class SpanIngest(BaseModel):
+    span_id: str
+    trace_id: str
+    parent_span_id: str | None = None
+    type: str
+    name: str
+    method: str = ""
+    input: str | None = None
+    output: str | None = None
+    error: str | None = None
+    start_time: str
+    end_time: str | None = None
+    latency_ms: int | None = None
+    status: str = "success"
+    ide: str = ""
+    metadata: dict[str, str] = {}
+    token_count_input: int | None = None
+    token_count_output: int | None = None
+    token_count_total: int | None = None
+    cost: float | None = None
+    cpu_ms: int | None = None
+    memory_mb: float | None = None
+    hop_count: int | None = None
+    entities_retrieved: int | None = None
+    relationships_used: int | None = None
+    retry_count: int | None = None
+    tools_available: int | None = None
+    tool_schema_valid: bool | None = None
+
+
+class ScoreIngest(BaseModel):
+    score_id: str
+    trace_id: str | None = None
+    span_id: str | None = None
+    mcp_id: str | None = None
+    agent_id: str | None = None
+    name: str
+    source: str = "api"
+    data_type: str = "numeric"
+    value: float
+    string_value: str | None = None
+    comment: str | None = None
+    metadata: dict[str, str] = {}
+
+
+class IngestBatch(BaseModel):
+    traces: list[TraceIngest] = []
+    spans: list[SpanIngest] = []
+    scores: list[ScoreIngest] = []
+
+
+class IngestResponse(BaseModel):
+    ingested: int
+    errors: int
