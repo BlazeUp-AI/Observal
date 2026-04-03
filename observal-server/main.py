@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import GraphQLRouter
 
-from api.graphql import get_context, schema
+from api.graphql import get_context_dep, schema
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.auth import router as auth_router
@@ -32,7 +32,7 @@ app = FastAPI(title="Observal", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # GraphQL (replaces REST dashboard endpoints)
-graphql_app = GraphQLRouter(schema, context_getter=get_context)
+graphql_app = GraphQLRouter(schema, context_getter=get_context_dep)
 app.include_router(graphql_app, prefix="/api/v1/graphql")
 
 # REST (CLI operations, auth, telemetry ingestion)
