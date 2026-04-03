@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -33,6 +34,48 @@ async def _query(sql: str, params: dict | None = None):
     if params:
         query_params.update(params)
     return await client.post(CLICKHOUSE_HTTP, content=sql, params=query_params)
+
+
+def _escape(val: str) -> str:
+    """Escape single quotes for ClickHouse SQL strings."""
+    return str(val).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _nullable_str(val: str | None) -> str:
+    """Format a value as a ClickHouse Nullable(String) literal."""
+    if val is None:
+        return "NULL"
+    return f"'{_escape(val)}'"
+
+
+def _nullable_uint(val: int | None) -> str:
+    """Format a value as a ClickHouse Nullable(UInt*) literal."""
+    if val is None:
+        return "NULL"
+    return str(int(val))
+
+
+def _nullable_float(val: float | None) -> str:
+    """Format a value as a ClickHouse Nullable(Float*) literal."""
+    if val is None:
+        return "NULL"
+    return str(float(val))
+
+
+def _map_literal(m: dict) -> str:
+    """Format a dict as a ClickHouse Map literal."""
+    if not m:
+        return "map()"
+    pairs = ", ".join(f"'{_escape(k)}', '{_escape(v)}'" for k, v in m.items())
+    return f"map({pairs})"
+
+
+def _array_literal(arr: list) -> str:
+    """Format a list as a ClickHouse Array literal."""
+    if not arr:
+        return "[]"
+    items = ", ".join(f"'{_escape(v)}'" for v in arr)
+    return f"[{items}]"
 
 
 INIT_SQL = [
@@ -243,6 +286,130 @@ async def insert_agent_interaction(event: dict):
         raise
 
 
+def _now_ms() -> str:
+    """Current UTC timestamp as ISO string with millisecond precision."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+async def insert_traces(traces: list[dict]):
+    """Batch insert traces into ClickHouse."""
+    if not traces:
+        return
+    event_ts = _now_ms()
+    rows = []
+    for t in traces:
+        rows.append(
+            f"('{t['trace_id']}', {_nullable_str(t.get('parent_trace_id'))}, "
+            f"'{t['project_id']}', {_nullable_str(t.get('mcp_id'))}, "
+            f"{_nullable_str(t.get('agent_id'))}, '{t['user_id']}', "
+            f"{_nullable_str(t.get('session_id'))}, '{t.get('ide', '')}', "
+            f"'{t.get('environment', 'default')}', '{t['start_time']}', "
+            f"{_nullable_str(t.get('end_time'))}, '{t.get('trace_type', 'mcp')}', "
+            f"'{_escape(t.get('name', ''))}', {_map_literal(t.get('metadata', {}))}, "
+            f"{_array_literal(t.get('tags', []))}, "
+            f"{_nullable_str(t.get('input'))}, {_nullable_str(t.get('output'))}, "
+            f"now(), '{event_ts}', 0)"
+        )
+    sql = (
+        "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
+        "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
+        "metadata, tags, input, output, created_at, event_ts, is_deleted) VALUES "
+        + ", ".join(rows)
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"ClickHouse insert_traces failed: {e}")
+        raise
+
+
+async def insert_spans(spans: list[dict]):
+    """Batch insert spans into ClickHouse."""
+    if not spans:
+        return
+    event_ts = _now_ms()
+    rows = []
+    for s in spans:
+        rows.append(
+            f"('{s['span_id']}', '{s['trace_id']}', "
+            f"{_nullable_str(s.get('parent_span_id'))}, '{s['project_id']}', "
+            f"{_nullable_str(s.get('mcp_id'))}, {_nullable_str(s.get('agent_id'))}, "
+            f"'{s['user_id']}', '{s['type']}', '{_escape(s['name'])}', "
+            f"'{_escape(s.get('method', ''))}', "
+            f"{_nullable_str(s.get('input'))}, {_nullable_str(s.get('output'))}, "
+            f"{_nullable_str(s.get('error'))}, '{s['start_time']}', "
+            f"{_nullable_str(s.get('end_time'))}, {_nullable_uint(s.get('latency_ms'))}, "
+            f"'{s.get('status', 'success')}', '{s.get('level', 'DEFAULT')}', "
+            f"{_nullable_uint(s.get('token_count_input'))}, "
+            f"{_nullable_uint(s.get('token_count_output'))}, "
+            f"{_nullable_uint(s.get('token_count_total'))}, "
+            f"{_nullable_float(s.get('cost'))}, "
+            f"{_nullable_uint(s.get('cpu_ms'))}, "
+            f"{_nullable_float(s.get('memory_mb'))}, "
+            f"{_nullable_uint(s.get('hop_count'))}, "
+            f"{_nullable_uint(s.get('entities_retrieved'))}, "
+            f"{_nullable_uint(s.get('relationships_used'))}, "
+            f"{_nullable_uint(s.get('retry_count'))}, "
+            f"{_nullable_uint(s.get('tools_available'))}, "
+            f"{_nullable_uint(s.get('tool_schema_valid'))}, "
+            f"'{s.get('ide', '')}', '{s.get('environment', 'default')}', "
+            f"{_map_literal(s.get('metadata', {}))}, now(), '{event_ts}', 0)"
+        )
+    sql = (
+        "INSERT INTO spans (span_id, trace_id, parent_span_id, project_id, mcp_id, "
+        "agent_id, user_id, type, name, method, input, output, error, start_time, "
+        "end_time, latency_ms, status, level, token_count_input, token_count_output, "
+        "token_count_total, cost, cpu_ms, memory_mb, hop_count, entities_retrieved, "
+        "relationships_used, retry_count, tools_available, tool_schema_valid, ide, "
+        "environment, metadata, created_at, event_ts, is_deleted) VALUES "
+        + ", ".join(rows)
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"ClickHouse insert_spans failed: {e}")
+        raise
+
+
+async def insert_scores(scores: list[dict]):
+    """Batch insert scores into ClickHouse."""
+    if not scores:
+        return
+    event_ts = _now_ms()
+    rows = []
+    for sc in scores:
+        rows.append(
+            f"('{sc['score_id']}', {_nullable_str(sc.get('trace_id'))}, "
+            f"{_nullable_str(sc.get('span_id'))}, '{sc['project_id']}', "
+            f"{_nullable_str(sc.get('mcp_id'))}, {_nullable_str(sc.get('agent_id'))}, "
+            f"'{sc['user_id']}', '{_escape(sc['name'])}', "
+            f"'{sc.get('source', 'api')}', '{sc.get('data_type', 'numeric')}', "
+            f"{sc.get('value', 0)}, {_nullable_str(sc.get('string_value'))}, "
+            f"{_nullable_str(sc.get('comment'))}, "
+            f"{_nullable_str(sc.get('eval_template_id'))}, "
+            f"{_nullable_str(sc.get('eval_config_id'))}, "
+            f"{_nullable_str(sc.get('eval_run_id'))}, "
+            f"'{sc.get('environment', 'default')}', "
+            f"{_map_literal(sc.get('metadata', {}))}, "
+            f"'{sc['timestamp']}', now(), '{event_ts}', 0)"
+        )
+    sql = (
+        "INSERT INTO scores (score_id, trace_id, span_id, project_id, mcp_id, agent_id, "
+        "user_id, name, source, data_type, value, string_value, comment, "
+        "eval_template_id, eval_config_id, eval_run_id, environment, metadata, "
+        "timestamp, created_at, event_ts, is_deleted) VALUES "
+        + ", ".join(rows)
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"ClickHouse insert_scores failed: {e}")
+        raise
+
+
 async def query_recent_events(minutes: int = 60) -> dict:
     """Get event counts from the last N minutes."""
     minutes = int(minutes)
@@ -268,3 +435,137 @@ async def query_recent_events(minutes: int = 60) -> dict:
         logger.warning(f"ClickHouse query agent_interactions failed: {e}")
 
     return {"tool_call_events": tool_count, "agent_interaction_events": agent_count}
+
+
+# --- Query functions for new tables ---
+
+
+async def query_traces(
+    project_id: str,
+    *,
+    trace_type: str | None = None,
+    mcp_id: str | None = None,
+    agent_id: str | None = None,
+    user_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """Query traces with optional filters."""
+    conditions = [f"project_id = '{_escape(project_id)}'", "is_deleted = 0"]
+    if trace_type:
+        conditions.append(f"trace_type = '{_escape(trace_type)}'")
+    if mcp_id:
+        conditions.append(f"mcp_id = '{_escape(mcp_id)}'")
+    if agent_id:
+        conditions.append(f"agent_id = '{_escape(agent_id)}'")
+    if user_id:
+        conditions.append(f"user_id = '{_escape(user_id)}'")
+    where = " AND ".join(conditions)
+    sql = (
+        f"SELECT * FROM traces FINAL WHERE {where} "
+        f"ORDER BY start_time DESC LIMIT {int(limit)} OFFSET {int(offset)} FORMAT JSON"
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception as e:
+        logger.error(f"ClickHouse query_traces failed: {e}")
+        return []
+
+
+async def query_trace_by_id(project_id: str, trace_id: str) -> dict | None:
+    """Get a single trace by ID."""
+    sql = (
+        f"SELECT * FROM traces FINAL WHERE project_id = '{_escape(project_id)}' "
+        f"AND trace_id = '{_escape(trace_id)}' AND is_deleted = 0 LIMIT 1 FORMAT JSON"
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        return data[0] if data else None
+    except Exception as e:
+        logger.error(f"ClickHouse query_trace_by_id failed: {e}")
+        return None
+
+
+async def query_spans(
+    project_id: str,
+    trace_id: str,
+    *,
+    span_type: str | None = None,
+    status: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """Query spans for a trace with optional filters."""
+    conditions = [
+        f"project_id = '{_escape(project_id)}'",
+        f"trace_id = '{_escape(trace_id)}'",
+        "is_deleted = 0",
+    ]
+    if span_type:
+        conditions.append(f"type = '{_escape(span_type)}'")
+    if status:
+        conditions.append(f"status = '{_escape(status)}'")
+    where = " AND ".join(conditions)
+    sql = (
+        f"SELECT * FROM spans FINAL WHERE {where} "
+        f"ORDER BY start_time ASC LIMIT {int(limit)} FORMAT JSON"
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception as e:
+        logger.error(f"ClickHouse query_spans failed: {e}")
+        return []
+
+
+async def query_span_by_id(project_id: str, span_id: str) -> dict | None:
+    """Get a single span by ID."""
+    sql = (
+        f"SELECT * FROM spans FINAL WHERE project_id = '{_escape(project_id)}' "
+        f"AND span_id = '{_escape(span_id)}' AND is_deleted = 0 LIMIT 1 FORMAT JSON"
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        return data[0] if data else None
+    except Exception as e:
+        logger.error(f"ClickHouse query_span_by_id failed: {e}")
+        return None
+
+
+async def query_scores(
+    project_id: str,
+    *,
+    trace_id: str | None = None,
+    span_id: str | None = None,
+    source: str | None = None,
+    name: str | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    """Query scores with optional filters."""
+    conditions = [f"project_id = '{_escape(project_id)}'", "is_deleted = 0"]
+    if trace_id:
+        conditions.append(f"trace_id = '{_escape(trace_id)}'")
+    if span_id:
+        conditions.append(f"span_id = '{_escape(span_id)}'")
+    if source:
+        conditions.append(f"source = '{_escape(source)}'")
+    if name:
+        conditions.append(f"name = '{_escape(name)}'")
+    where = " AND ".join(conditions)
+    sql = (
+        f"SELECT * FROM scores FINAL WHERE {where} "
+        f"ORDER BY timestamp DESC LIMIT {int(limit)} FORMAT JSON"
+    )
+    try:
+        r = await _query(sql)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception as e:
+        logger.error(f"ClickHouse query_scores failed: {e}")
+        return []
