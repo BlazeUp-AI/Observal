@@ -84,7 +84,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    command: ["python", "-m", "worker"]
+    command: ["uv", "run", "arq", "worker.WorkerSettings"]
     env_file:
       - ../.env
     environment:

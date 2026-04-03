@@ -55,7 +55,7 @@ async def _load_spans_by_trace_ids(keys: list[str]) -> list[list[dict]]:
     ids = ", ".join(f"'{_escape(k)}'" for k in keys)
     sql = (
         f"SELECT * FROM spans FINAL WHERE project_id = '{_escape(DEFAULT_PROJECT)}' "
-        f"AND trace_id IN ({ids}) AND is_deleted = 0 ORDER BY start_time ASC FORMAT JSON"
+        f"AND trace_id IN ({ids}) AND is_deleted = 0 ORDER BY start_time ASC"
     )
     rows = await _ch_json(sql)
     grouped: dict[str, list[dict]] = {k: [] for k in keys}
@@ -70,7 +70,7 @@ async def _load_scores_by_trace_ids(keys: list[str]) -> list[list[dict]]:
     ids = ", ".join(f"'{_escape(k)}'" for k in keys)
     sql = (
         f"SELECT * FROM scores FINAL WHERE project_id = '{_escape(DEFAULT_PROJECT)}' "
-        f"AND trace_id IN ({ids}) AND is_deleted = 0 ORDER BY timestamp DESC FORMAT JSON"
+        f"AND trace_id IN ({ids}) AND is_deleted = 0 ORDER BY timestamp DESC"
     )
     rows = await _ch_json(sql)
     grouped: dict[str, list[dict]] = {k: [] for k in keys}
@@ -85,7 +85,7 @@ async def _load_scores_by_span_ids(keys: list[str]) -> list[list[dict]]:
     ids = ", ".join(f"'{_escape(k)}'" for k in keys)
     sql = (
         f"SELECT * FROM scores FINAL WHERE project_id = '{_escape(DEFAULT_PROJECT)}' "
-        f"AND span_id IN ({ids}) AND is_deleted = 0 ORDER BY timestamp DESC FORMAT JSON"
+        f"AND span_id IN ({ids}) AND is_deleted = 0 ORDER BY timestamp DESC"
     )
     rows = await _ch_json(sql)
     grouped: dict[str, list[dict]] = {k: [] for k in keys}
@@ -454,6 +454,10 @@ def get_context() -> dict:
         "score_by_trace_loader": DataLoader(load_fn=_load_scores_by_trace_ids),
         "score_by_span_loader": DataLoader(load_fn=_load_scores_by_span_ids),
     }
+
+
+async def get_context_dep() -> dict:
+    return get_context()
 
 
 schema = strawberry.Schema(query=Query, subscription=Subscription)
