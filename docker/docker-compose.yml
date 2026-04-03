@@ -17,6 +17,8 @@ services:
         condition: service_healthy
       observal-clickhouse:
         condition: service_started
+      observal-redis:
+        condition: service_healthy
     networks:
       - observal-net
 
@@ -64,9 +66,46 @@ services:
     networks:
       - observal-net
 
+  observal-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - observal-net
+
+  observal-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    command: ["python", "-m", "worker"]
+    env_file:
+      - ../.env
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+    depends_on:
+      observal-db:
+        condition: service_healthy
+      observal-redis:
+        condition: service_healthy
+      observal-clickhouse:
+        condition: service_started
+    networks:
+      - observal-net
+
 volumes:
   pgdata:
   chdata:
+  redisdata:
 
 networks:
   observal-net:
