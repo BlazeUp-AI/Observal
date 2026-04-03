@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 observal = "observal_cli.main:app"
 observal-shim = "observal_cli.shim:main"
+observal-proxy = "observal_cli.proxy:main"
 
 [build-system]
 requires = ["hatchling"]
