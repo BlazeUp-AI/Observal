@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/observal"
     CLICKHOUSE_URL: str = "clickhouse://localhost:8123/observal"
+    REDIS_URL: str = "redis://localhost:6379"
     SECRET_KEY: str = "change-me-in-production"
     API_KEY_LENGTH: int = 32
     EVAL_MODEL_URL: str = ""       # OpenAI-compatible endpoint (e.g., https://bedrock-runtime.us-east-1.amazonaws.com)

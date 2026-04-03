@@ -15,6 +15,7 @@ from api.routes.telemetry import router as telemetry_router
 from database import engine
 from models import Base
 from services.clickhouse import init_clickhouse
+from services.redis import close as close_redis
 
 
 @asynccontextmanager
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     await init_clickhouse()
     yield
+    await close_redis()
 
 
 app = FastAPI(title="Observal", version="0.1.0", lifespan=lifespan)

@@ -16,4 +16,6 @@ dependencies = [
     "httpx",
     "gitpython",
     "boto3",
+    "redis[hiredis]",
+    "arq",
 ]
