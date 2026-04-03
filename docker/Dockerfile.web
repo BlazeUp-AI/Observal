@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:20-slim AS build
 
 WORKDIR /app
 
@@ -6,14 +6,15 @@ COPY observal-web/package*.json ./
 RUN npm ci
 
 COPY observal-web/ .
-
-ENV NEXT_TELEMETRY_DISABLED=1
-
 RUN npm run build
+
+FROM node:20-slim
+
+WORKDIR /app
+RUN npm install -g serve
+
+COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
 
-# API_INTERNAL_URL is a runtime env var (not NEXT_PUBLIC_), resolved server-side by rewrites
-ENV API_INTERNAL_URL=http://observal-api:8000
-
-CMD ["npm", "start"]
+CMD ["serve", "-s", "dist", "-l", "3000"]
