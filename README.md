@@ -35,7 +35,7 @@ Observal solves all of these as a single, self-hosted platform.
 | Backend API | Python, FastAPI, Uvicorn |
 | Database | PostgreSQL 16 (primary), ClickHouse (telemetry) |
 | ORM | SQLAlchemy (async) + AsyncPG |
-| Web UI | Next.js, React, TypeScript, Tailwind CSS |
+| Web UI | Vite, React, TypeScript, urql (GraphQL) |
 | CLI | Python, Typer, Rich |
 | Eval Engine | AWS Bedrock / OpenAI-compatible LLMs |
 | Dependency Management | uv |
@@ -275,7 +275,7 @@ The web UI is available at http://localhost:3000 after starting the Docker stack
 - Admin pages for review management, enterprise settings, and user management
 - Feedback and ratings on MCP servers and agents
 
-The frontend proxies all `/api/*` requests to the backend through Next.js rewrites, so no separate API URL configuration is needed in the browser.
+The frontend proxies all `/api/*` requests to the backend through Vite rewrites, so no separate API URL configuration is needed in the browser.
 
 Login with your API key at `/login`.
 
@@ -383,83 +383,80 @@ Observal/
 ├── observal-server/          # FastAPI backend
 │   ├── api/
 │   │   ├── deps.py           # Auth and dependency injection
-│   │   └── routes/           # API route handlers
-│   │       ├── auth.py       # Authentication
-│   │       ├── mcp.py        # MCP server CRUD
-│   │       ├── agent.py      # Agent CRUD
-│   │       ├── review.py     # Admin review workflow
-│   │       ├── telemetry.py  # Event ingestion
-│   │       ├── dashboard.py  # Metrics and overview
-│   │       ├── feedback.py   # Ratings and comments
-│   │       ├── eval.py       # Evaluation engine
-│   │       └── admin.py      # Settings and user management
+│   │   ├── graphql.py        # Strawberry GraphQL schema, DataLoaders, subscriptions
+│   │   └── routes/           # REST API route handlers
 │   ├── models/               # SQLAlchemy database models
 │   ├── schemas/              # Pydantic request/response schemas
 │   ├── services/             # Business logic
-│   │   ├── validation.py     # MCP repo validation pipeline
-│   │   ├── config_gen.py     # IDE config snippet generation
-│   │   ├── clickhouse.py     # ClickHouse client and queries
+│   │   ├── clickhouse.py     # ClickHouse client, DDL, insert/query helpers
+│   │   ├── redis.py          # Redis pub/sub and job queue
+│   │   ├── config_generator.py       # MCP IDE config generation
+│   │   ├── agent_config_generator.py # Agent IDE config generation
+│   │   ├── mcp_validator.py  # 2-stage MCP repo validation
 │   │   └── eval_engine.py    # LLM-as-judge evaluation
 │   ├── main.py               # App entrypoint
-│   ├── config.py             # Settings
-│   ├── pyproject.toml        # Server package config (uv)
-│   └── uv.lock               # Server lockfile
-├── observal-web/             # Next.js web UI
+│   ├── config.py             # Settings (pydantic-settings)
+│   └── worker.py             # arq background worker
+├── observal-web/             # Vite + React + urql SPA
 │   └── src/
-│       ├── app/              # App Router pages
-│       ├── components/       # Shared components
-│       └── lib/              # API client, auth context
+│       ├── components/       # TraceExplorer, TraceDetail, Overview, McpMetrics
+│       └── lib/              # urql client, GraphQL queries
 ├── observal_cli/             # Typer CLI application
-│   ├── main.py               # CLI commands
+│   ├── main.py               # App wiring
+│   ├── cmd_auth.py           # Auth and config commands
+│   ├── cmd_mcp.py            # MCP server commands
+│   ├── cmd_agent.py          # Agent commands
+│   ├── cmd_ops.py            # Review, telemetry, dashboard, eval, admin, traces
 │   ├── client.py             # HTTP client wrapper
-│   └── config.py             # CLI config management
+│   ├── config.py             # CLI config and alias management
+│   ├── render.py             # Shared Rich rendering helpers
+│   ├── shim.py               # observal-shim: transparent stdio MCP wrapper
+│   └── proxy.py              # observal-proxy: HTTP reverse proxy for MCPs
 ├── docker/
-│   ├── docker-compose.yml    # Full service stack
-│   ├── Dockerfile.api        # API container (uses uv)
-│   └── Dockerfile.web        # Web UI container
-├── tests/
-│   ├── test_phase_1_2.sh     # Auth and MCP integration tests
-│   ├── test_phase_3_4.sh     # Agent and telemetry integration tests
-│   ├── test_phase_5_6.sh     # Dashboard and feedback integration tests
-│   └── test_phase_7_8.sh     # Eval and admin integration tests
-├── docs/                     # Guides, test plans, and checkpoints
+│   ├── docker-compose.yml    # 6 services: api, web, db, clickhouse, redis, worker
+│   ├── Dockerfile.api        # API container (uv)
+│   └── Dockerfile.web        # Web UI container (Vite)
+├── tests/                    # 181 unit tests (pytest, all mocked)
+├── demo/                     # Mock MCP servers and IDE config examples
+├── docs/                     # Design documents
+├── AGENTS.md                 # Internal context for contributors and AI agents
+├── SETUP.md                  # Detailed setup and development guide
+├── Makefile                  # Dev shortcuts: lint, format, test, docker
+├── .pre-commit-config.yaml   # Pre-commit hooks: ruff, eslint, hadolint
 ├── .env.example              # Environment variable template
-├── pyproject.toml            # CLI package config (uv)
-└── uv.lock                   # CLI lockfile
+├── pyproject.toml            # CLI package config + ruff/pytest settings
+└── LICENSE                   # Apache License 2.0
 ```
 
 ## Running Tests
 
-The test suite is a set of bash scripts that run against a live Docker stack. Make sure the services are running first:
+The test suite is 181 unit tests that mock all external services — no Docker needed:
 
 ```bash
-cd docker
-docker compose up --build -d
-cd ..
+# Quick run
+make test
 
-# Auth and MCP server tests
-bash tests/test_phase_1_2.sh
+# Verbose
+make test-v
 
-# Agent and telemetry tests
-bash tests/test_phase_3_4.sh
-
-# Dashboard and feedback tests
-bash tests/test_phase_5_6.sh
-
-# Eval engine and admin tests
-bash tests/test_phase_7_8.sh
+# Manual
+cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/ -q
 ```
 
 ## Contributing
 
-Contributions are welcome. See the repository for contribution guidelines.
+Contributions are welcome!
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes
-4. Run the integration tests
-5. Commit and push
-6. Open a Pull Request
+2. Install pre-commit hooks: `make hooks`
+3. Create a feature branch: `git checkout -b feature/your-feature`
+4. Make your changes
+5. Run linting: `make lint`
+6. Run tests: `make test`
+7. Commit and push
+8. Open a Pull Request
+
+See [AGENTS.md](AGENTS.md) for internal codebase context.
 
 ## License
 
