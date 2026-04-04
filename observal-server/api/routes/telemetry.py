@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 
 from api.deps import get_current_user
 from models.user import User
@@ -45,7 +45,7 @@ async def ingest(
         try:
             rows = []
             for t in batch.traces:
-                rows.append(
+                    rows.append(
                     {
                         "trace_id": t.trace_id,
                         "parent_trace_id": t.parent_trace_id,
@@ -64,6 +64,12 @@ async def ingest(
                         "tags": t.tags,
                         "input": t.input,
                         "output": t.output,
+                        "tool_id": t.tool_id,
+                        "sandbox_id": t.sandbox_id,
+                        "graphrag_id": t.graphrag_id,
+                        "hook_id": t.hook_id,
+                        "skill_id": t.skill_id,
+                        "prompt_id": t.prompt_id,
                     }
                 )
             await insert_traces(rows)
@@ -111,6 +117,24 @@ async def ingest(
                         "retry_count": s.retry_count,
                         "tools_available": s.tools_available,
                         "tool_schema_valid": (int(s.tool_schema_valid) if s.tool_schema_valid is not None else None),
+                        "container_id": s.container_id,
+                        "exit_code": s.exit_code,
+                        "network_bytes_in": s.network_bytes_in,
+                        "network_bytes_out": s.network_bytes_out,
+                        "disk_read_bytes": s.disk_read_bytes,
+                        "disk_write_bytes": s.disk_write_bytes,
+                        "oom_killed": (int(s.oom_killed) if s.oom_killed is not None else None),
+                        "query_interface": s.query_interface,
+                        "relevance_score": s.relevance_score,
+                        "chunks_returned": s.chunks_returned,
+                        "embedding_latency_ms": s.embedding_latency_ms,
+                        "hook_event": s.hook_event,
+                        "hook_scope": s.hook_scope,
+                        "hook_action": s.hook_action,
+                        "hook_blocked": (int(s.hook_blocked) if s.hook_blocked is not None else None),
+                        "variables_provided": s.variables_provided,
+                        "template_tokens": s.template_tokens,
+                        "rendered_tokens": s.rendered_tokens,
                     }
                 )
             await insert_spans(rows)
@@ -213,3 +237,66 @@ async def telemetry_status(current_user: User = Depends(get_current_user)):
         agent_interaction_events=counts["agent_interaction_events"],
         status="ok",
     )
+
+
+@router.post("/hooks")
+async def ingest_hook(request: Request, current_user: User = Depends(get_current_user)):
+    """Ingest raw hook JSON from Claude Code/Kiro."""
+    body = await request.json()
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    hook_event_name = body.get("hook_event_name", "unknown")
+    span_type = "hook_exec" if hook_event_name == "PostToolUse" else f"hook_{hook_event_name.lower()}"
+    row = {
+        "span_id": str(uuid.uuid4()),
+        "trace_id": body.get("session_id", str(uuid.uuid4())),
+        "parent_span_id": None,
+        "project_id": DEFAULT_PROJECT,
+        "mcp_id": None,
+        "agent_id": None,
+        "user_id": str(current_user.id),
+        "type": span_type,
+        "name": body.get("tool_name", "hook"),
+        "method": "",
+        "input": body.get("tool_input"),
+        "output": body.get("tool_response"),
+        "error": None,
+        "start_time": now,
+        "end_time": now,
+        "latency_ms": None,
+        "status": "success",
+        "ide": "",
+        "environment": "default",
+        "metadata": {},
+        "token_count_input": None,
+        "token_count_output": None,
+        "token_count_total": None,
+        "cost": None,
+        "cpu_ms": None,
+        "memory_mb": None,
+        "hop_count": None,
+        "entities_retrieved": None,
+        "relationships_used": None,
+        "retry_count": None,
+        "tools_available": None,
+        "tool_schema_valid": None,
+        "container_id": None,
+        "exit_code": None,
+        "network_bytes_in": None,
+        "network_bytes_out": None,
+        "disk_read_bytes": None,
+        "disk_write_bytes": None,
+        "oom_killed": None,
+        "query_interface": None,
+        "relevance_score": None,
+        "chunks_returned": None,
+        "embedding_latency_ms": None,
+        "hook_event": hook_event_name,
+        "hook_scope": None,
+        "hook_action": None,
+        "hook_blocked": None,
+        "variables_provided": None,
+        "template_tokens": None,
+        "rendered_tokens": None,
+    }
+    await insert_spans([row])
+    return {"ingested": 1}

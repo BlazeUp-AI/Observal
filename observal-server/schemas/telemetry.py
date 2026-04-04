@@ -51,6 +51,12 @@ class TraceIngest(BaseModel):
     output: str | None = None
     metadata: dict[str, str] = {}
     tags: list[str] = []
+    tool_id: str | None = None
+    sandbox_id: str | None = None
+    graphrag_id: str | None = None
+    hook_id: str | None = None
+    skill_id: str | None = None
+    prompt_id: str | None = None
 
 
 class SpanIngest(BaseModel):
@@ -81,6 +87,28 @@ class SpanIngest(BaseModel):
     retry_count: int | None = None
     tools_available: int | None = None
     tool_schema_valid: bool | None = None
+    # Sandbox
+    container_id: str | None = None
+    exit_code: int | None = None
+    network_bytes_in: int | None = None
+    network_bytes_out: int | None = None
+    disk_read_bytes: int | None = None
+    disk_write_bytes: int | None = None
+    oom_killed: bool | None = None
+    # GraphRAG
+    query_interface: str | None = None
+    relevance_score: float | None = None
+    chunks_returned: int | None = None
+    embedding_latency_ms: int | None = None
+    # Hook
+    hook_event: str | None = None
+    hook_scope: str | None = None
+    hook_action: str | None = None
+    hook_blocked: bool | None = None
+    # Prompt
+    variables_provided: int | None = None
+    template_tokens: int | None = None
+    rendered_tokens: int | None = None
 
 
 class ScoreIngest(BaseModel):

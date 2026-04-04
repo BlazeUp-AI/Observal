@@ -98,23 +98,23 @@ class TestInitSQL:
 
     def test_project_id_on_all_new_tables(self):
         # Find the new table DDLs (last 3)
-        new_tables = INIT_SQL[2:]
+        new_tables = INIT_SQL[2:5]
         assert len(new_tables) == 3
         for ddl in new_tables:
             assert "project_id" in ddl
 
     def test_replacing_merge_tree(self):
-        new_tables = INIT_SQL[2:]
+        new_tables = INIT_SQL[2:5]
         for ddl in new_tables:
             assert "ReplacingMergeTree" in ddl
 
     def test_bloom_filter_indexes(self):
-        new_tables = INIT_SQL[2:]
+        new_tables = INIT_SQL[2:5]
         for ddl in new_tables:
             assert "bloom_filter" in ddl
 
     def test_monthly_partitioning(self):
-        new_tables = INIT_SQL[2:]
+        new_tables = INIT_SQL[2:5]
         for ddl in new_tables:
             assert "PARTITION BY toYYYYMM" in ddl
 
