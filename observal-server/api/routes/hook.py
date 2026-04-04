@@ -94,7 +94,10 @@ async def install_hook(
     db.add(HookDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
-    return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet={"name": listing.name})
+    from services.hook_config_generator import generate_hook_telemetry_config
+
+    config = generate_hook_telemetry_config(listing, req.ide)
+    return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
 @router.delete("/{listing_id}")

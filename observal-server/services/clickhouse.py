@@ -223,6 +223,32 @@ INIT_SQL = [
     PARTITION BY toYYYYMM(timestamp)
     PRIMARY KEY (project_id, user_id, toDate(timestamp), name)
     ORDER BY (project_id, user_id, toDate(timestamp), name, score_id)""",
+    # Registry expansion: new span columns
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS container_id Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS exit_code Nullable(Int16)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS network_bytes_in Nullable(UInt64)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS network_bytes_out Nullable(UInt64)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS disk_read_bytes Nullable(UInt64)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS disk_write_bytes Nullable(UInt64)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS oom_killed Nullable(UInt8)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS query_interface Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS relevance_score Nullable(Float32)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS chunks_returned Nullable(UInt16)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS embedding_latency_ms Nullable(UInt32)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS hook_event Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS hook_scope Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS hook_action Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS hook_blocked Nullable(UInt8)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS variables_provided Nullable(UInt8)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS template_tokens Nullable(UInt32)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS rendered_tokens Nullable(UInt32)""",
+    # Registry expansion: new trace columns
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS tool_id Nullable(String)""",
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS sandbox_id Nullable(String)""",
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS graphrag_id Nullable(String)""",
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS hook_id Nullable(String)""",
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS skill_id Nullable(String)""",
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS prompt_id Nullable(String)""",
 ]
 
 
@@ -308,12 +334,16 @@ async def insert_traces(traces: list[dict]):
             f"'{_escape(t.get('name', ''))}', {_map_literal(t.get('metadata', {}))}, "
             f"{_array_literal(t.get('tags', []))}, "
             f"{_nullable_str(t.get('input'))}, {_nullable_str(t.get('output'))}, "
-            f"now(), '{event_ts}', 0)"
+            f"now(), '{event_ts}', 0, "
+            f"{_nullable_str(t.get('tool_id'))}, {_nullable_str(t.get('sandbox_id'))}, "
+            f"{_nullable_str(t.get('graphrag_id'))}, {_nullable_str(t.get('hook_id'))}, "
+            f"{_nullable_str(t.get('skill_id'))}, {_nullable_str(t.get('prompt_id'))})"
         )
     sql = (
         "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
         "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
-        "metadata, tags, input, output, created_at, event_ts, is_deleted) VALUES " + ", ".join(rows)
+        "metadata, tags, input, output, created_at, event_ts, is_deleted, "
+        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id) VALUES " + ", ".join(rows)
     )
     try:
         r = await _query(sql)
@@ -353,7 +383,25 @@ async def insert_spans(spans: list[dict]):
             f"{_nullable_uint(s.get('tools_available'))}, "
             f"{_nullable_uint(s.get('tool_schema_valid'))}, "
             f"'{s.get('ide', '')}', '{s.get('environment', 'default')}', "
-            f"{_map_literal(s.get('metadata', {}))}, now(), '{event_ts}', 0)"
+            f"{_map_literal(s.get('metadata', {}))}, now(), '{event_ts}', 0, "
+            f"{_nullable_str(s.get('container_id'))}, "
+            f"{_nullable_uint(s.get('exit_code'))}, "
+            f"{_nullable_uint(s.get('network_bytes_in'))}, "
+            f"{_nullable_uint(s.get('network_bytes_out'))}, "
+            f"{_nullable_uint(s.get('disk_read_bytes'))}, "
+            f"{_nullable_uint(s.get('disk_write_bytes'))}, "
+            f"{_nullable_uint(s.get('oom_killed'))}, "
+            f"{_nullable_str(s.get('query_interface'))}, "
+            f"{_nullable_float(s.get('relevance_score'))}, "
+            f"{_nullable_uint(s.get('chunks_returned'))}, "
+            f"{_nullable_uint(s.get('embedding_latency_ms'))}, "
+            f"{_nullable_str(s.get('hook_event'))}, "
+            f"{_nullable_str(s.get('hook_scope'))}, "
+            f"{_nullable_str(s.get('hook_action'))}, "
+            f"{_nullable_uint(s.get('hook_blocked'))}, "
+            f"{_nullable_uint(s.get('variables_provided'))}, "
+            f"{_nullable_uint(s.get('template_tokens'))}, "
+            f"{_nullable_uint(s.get('rendered_tokens'))})"
         )
     sql = (
         "INSERT INTO spans (span_id, trace_id, parent_span_id, project_id, mcp_id, "
@@ -361,7 +409,12 @@ async def insert_spans(spans: list[dict]):
         "end_time, latency_ms, status, level, token_count_input, token_count_output, "
         "token_count_total, cost, cpu_ms, memory_mb, hop_count, entities_retrieved, "
         "relationships_used, retry_count, tools_available, tool_schema_valid, ide, "
-        "environment, metadata, created_at, event_ts, is_deleted) VALUES " + ", ".join(rows)
+        "environment, metadata, created_at, event_ts, is_deleted, "
+        "container_id, exit_code, network_bytes_in, network_bytes_out, "
+        "disk_read_bytes, disk_write_bytes, oom_killed, query_interface, "
+        "relevance_score, chunks_returned, embedding_latency_ms, "
+        "hook_event, hook_scope, hook_action, hook_blocked, "
+        "variables_provided, template_tokens, rendered_tokens) VALUES " + ", ".join(rows)
     )
     try:
         r = await _query(sql)
