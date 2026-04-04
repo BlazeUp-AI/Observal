@@ -14,6 +14,7 @@ app = typer.Typer(
 
 from observal_cli.cmd_agent import agent_app
 from observal_cli.cmd_auth import register_auth, register_config
+from observal_cli.cmd_doctor import doctor_app
 from observal_cli.cmd_graphrag import register_graphrag
 from observal_cli.cmd_hook import register_hook
 from observal_cli.cmd_mcp import register_mcp
@@ -51,6 +52,7 @@ app.add_typer(review_app, name="review")
 app.add_typer(telemetry_app, name="telemetry")
 app.add_typer(eval_app, name="eval")
 app.add_typer(admin_app, name="admin")
+app.add_typer(doctor_app, name="doctor")
 
 
 if __name__ == "__main__":
