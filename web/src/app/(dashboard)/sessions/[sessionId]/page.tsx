@@ -10,6 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
+interface RawOtelEvent {
+  timestamp: string;
+  event_name: string;
+  body?: string;
+  attributes?: Record<string, string>;
+  service_name?: string;
+}
+
 interface OtelEvent {
   timestamp: string;
   event_name: string;
@@ -22,12 +30,30 @@ interface OtelEvent {
   tool_name?: string;
   tool_success?: boolean;
   decision?: string;
-  [key: string]: unknown;
+  source?: string;
+}
+
+function normalizeEvent(raw: RawOtelEvent): OtelEvent {
+  const a = raw.attributes ?? {};
+  return {
+    timestamp: raw.timestamp,
+    event_name: raw.event_name,
+    body: raw.body || undefined,
+    prompt: a["prompt"] || a["user.prompt"] || undefined,
+    model: a["model"] || a["gen_ai.request.model"] || undefined,
+    input_tokens: a["input_tokens"] ? Number(a["input_tokens"]) : undefined,
+    output_tokens: a["output_tokens"] ? Number(a["output_tokens"]) : undefined,
+    duration_ms: a["duration_ms"] ? Number(a["duration_ms"]) : undefined,
+    tool_name: a["tool_name"] || a["tool.name"] || undefined,
+    tool_success: a["success"] != null ? a["success"] === "true" || a["success"] === "1" : undefined,
+    decision: a["decision"] || undefined,
+    source: a["source"] || undefined,
+  };
 }
 
 interface OtelSessionData {
   session_id: string;
-  events: OtelEvent[];
+  events: RawOtelEvent[];
   traces: unknown[];
   service_name: string;
 }
@@ -145,7 +171,7 @@ export default function SessionDetailPage({ params }: { params: Promise<{ sessio
   const { data, isLoading } = useOtelSession(sessionId);
   const session = data as OtelSessionData | undefined;
 
-  const events = session?.events ?? [];
+  const events = (session?.events ?? []).map(normalizeEvent);
   const totalTokensIn = events.reduce((sum, e) => sum + (e.input_tokens ?? 0), 0);
   const totalTokensOut = events.reduce((sum, e) => sum + (e.output_tokens ?? 0), 0);
   const totalDuration = events.length >= 2

@@ -58,7 +58,7 @@ export default function DashboardPage() {
   const hasData = !!s;
 
   const os = otelStats.data as
-    | { total_sessions: number; total_prompts: number; total_api_requests: number }
+    | { total_sessions: number; total_prompts: number; total_api_requests: number; total_tool_calls: number; total_input_tokens: number; total_output_tokens: number; total_traces: number; total_spans: number }
     | undefined;
 
   return (
@@ -117,6 +117,21 @@ export default function DashboardPage() {
             title="OTel API Requests"
             value={otelStats.isLoading ? "—" : (os?.total_api_requests ?? 0)}
             icon={Activity}
+          />
+          <StatCard
+            title="OTel Tool Calls"
+            value={otelStats.isLoading ? "—" : (os?.total_tool_calls ?? 0)}
+            icon={Wrench}
+          />
+          <StatCard
+            title="OTel Traces"
+            value={otelStats.isLoading ? "—" : (os?.total_traces ?? 0)}
+            icon={ListTree}
+          />
+          <StatCard
+            title="OTel Tokens"
+            value={otelStats.isLoading ? "—" : ((os?.total_input_tokens ?? 0) + (os?.total_output_tokens ?? 0)).toLocaleString()}
+            icon={BarChart3}
           />
 
           {/* Top items row */}
