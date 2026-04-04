@@ -1,10 +1,10 @@
 # Observal
 
-A self-hosted evaluation and observability platform for agentic coding workflows. Observal acts as a fitness coach for your human-in-the-loop development — it traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions, then tells you exactly what's helping and what isn't.
+A self-hosted evaluation and observability platform for agentic coding workflows. Observal acts as a fitness coach for your human-in-the-loop development - it traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions, then tells you exactly what's helping and what isn't.
 
 ## The Problem
 
-Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks — but none of this is measured. Teams can't answer basic questions:
+Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks - but none of this is measured. Teams can't answer basic questions:
 
 - Which tools speed up development and which ones waste time?
 - Are prompts producing good results or causing rework?
@@ -34,7 +34,7 @@ Every type goes through a unified admin review workflow before it's available to
 
 ## How It Works
 
-Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal — no code changes required.
+Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal - no code changes required.
 
 ```
 IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
@@ -52,16 +52,16 @@ The eval engine runs on traces after the fact. It scores agent sessions across d
 
 Config generation and telemetry collection work across all major agentic IDEs:
 
-| IDE | MCP | Agents | Skills | Hooks |
-|-----|:---:|:------:|:------:|:-----:|
-| Cursor | Yes | Yes | Yes | Yes |
-| Kiro IDE | Yes | Yes | Yes | Yes |
-| Kiro CLI | Yes | Yes | Yes | Yes |
-| Claude Code | Yes | Yes | Yes | Yes |
-| GitHub Copilot | — | — | Yes | — |
-| Gemini CLI | Yes | Yes | Yes | — |
-| VS Code | Yes | Yes | — | — |
-| Windsurf | Yes | Yes | — | — |
+| IDE | MCP | Agents | Skills | Hooks | Sandbox Exec | GraphRAGs | Prompts |
+|-----|:---:|:------:|:------:|:-----:|:------------:|:---------:|:-------:|
+| Cursor | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Kiro IDE | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Kiro CLI | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Claude Code | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| GitHub Copilot | - | - | Yes | - | - | - | Yes |
+| Gemini CLI | Yes | Yes | Yes | - | Yes | Yes | Yes |
+| VS Code | Yes | Yes | - | - | Yes | Yes | Yes |
+| Windsurf | Yes | Yes | - | - | Yes | Yes | Yes |
 
 ## Tech Stack
 
