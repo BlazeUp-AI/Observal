@@ -28,6 +28,7 @@ from observal_cli.cmd_ops import (
     review_app,
     telemetry_app,
 )
+from observal_cli.cmd_profile import register_use
 from observal_cli.cmd_prompt import register_prompt
 from observal_cli.cmd_sandbox import register_sandbox
 from observal_cli.cmd_skill import register_skill
@@ -46,6 +47,7 @@ register_hook(app)
 register_prompt(app)
 register_sandbox(app)
 register_graphrag(app)
+register_use(app)
 
 app.add_typer(agent_app, name="agent")
 app.add_typer(review_app, name="review")
