@@ -1,6 +1,7 @@
 import re
 
 from models.mcp import McpListing
+from services.codex_config_generator import generate_codex_config
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
@@ -11,7 +12,53 @@ def _sanitize_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
 
 
-def generate_config(listing: McpListing, ide: str, proxy_port: int | None = None) -> dict:
+def _otlp_env(observal_url: str) -> dict:
+    """OTLP env vars for IDEs with native OpenTelemetry support."""
+    return {
+        "OTEL_EXPORTER_OTLP_ENDPOINT": observal_url,
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_METRICS_EXPORTER": "otlp",
+        "OTEL_LOGS_EXPORTER": "otlp",
+        "OTEL_TRACES_EXPORTER": "otlp",
+    }
+
+
+def _claude_otlp_env(observal_url: str) -> dict:
+    """Claude Code specific OTLP env vars."""
+    return {
+        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+        "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA": "1",
+        "OTEL_LOG_USER_PROMPTS": "1",
+        "OTEL_LOG_TOOL_DETAILS": "1",
+        "OTEL_LOG_TOOL_CONTENT": "1",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+        "OTEL_METRICS_EXPORTER": "otlp",
+        "OTEL_LOGS_EXPORTER": "otlp",
+        "OTEL_TRACES_EXPORTER": "otlp",
+    }
+
+
+def _gemini_otlp_env(observal_url: str) -> dict:
+    """Gemini CLI specific OTLP env vars."""
+    return _otlp_env(observal_url)
+
+
+def _gemini_settings(observal_url: str) -> dict:
+    """Gemini CLI .gemini/settings.json telemetry block."""
+    return {
+        "telemetry": {
+            "enabled": True,
+            "target": "custom",
+            "otlpEndpoint": "http://localhost:4318",
+            "logPrompts": True,
+        }
+    }
+
+
+def generate_config(
+    listing: McpListing, ide: str, proxy_port: int | None = None, observal_url: str = "http://localhost:4318"
+) -> dict:
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
 
@@ -22,6 +69,19 @@ def generate_config(listing: McpListing, ide: str, proxy_port: int | None = None
             return {
                 "command": ["claude", "mcp", "add", name, "--url", proxy_url],
                 "type": "shell_command",
+                "otlp_env": _claude_otlp_env(observal_url),
+                "claude_settings_snippet": {"env": _claude_otlp_env(observal_url)},
+            }
+        if ide == "gemini-cli":
+            return {
+                "mcpServers": {name: {"url": proxy_url}},
+                "otlp_env": _gemini_otlp_env(observal_url),
+                "gemini_settings_snippet": _gemini_settings(observal_url),
+            }
+        if ide == "codex":
+            return {
+                "mcpServers": {name: {"url": proxy_url}},
+                "codex_config": generate_codex_config(observal_url),
             }
         return {"mcpServers": {name: {"url": proxy_url}}}
 
@@ -29,12 +89,26 @@ def generate_config(listing: McpListing, ide: str, proxy_port: int | None = None
     shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", name]
 
     if ide == "claude-code":
+        otlp = _claude_otlp_env(observal_url)
+        env_prefix = " ".join(f"{k}={v}" for k, v in otlp.items())
         return {
             "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
+            "shell_env_prefix": env_prefix,
+            "otlp_env": otlp,
+            "claude_settings_snippet": {"env": otlp},
         }
     if ide == "gemini-cli":
-        return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args}}}
+        return {
+            "mcpServers": {name: {"command": "observal-shim", "args": shim_args}},
+            "otlp_env": _gemini_otlp_env(observal_url),
+            "gemini_settings_snippet": _gemini_settings(observal_url),
+        }
+    if ide == "codex":
+        return {
+            "mcpServers": {name: {"command": "observal-shim", "args": shim_args}},
+            "codex_config": generate_codex_config(observal_url),
+        }
 
-    # cursor, vscode, kiro, windsurf, default
+    # cursor, vscode, kiro, kiro-cli, windsurf — no native OTel; telemetry collected via observal-shim
     return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": {}}}}

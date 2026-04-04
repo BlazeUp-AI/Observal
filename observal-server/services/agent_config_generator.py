@@ -1,7 +1,12 @@
 import re
 
 from models.agent import Agent
-from services.config_generator import generate_config
+from services.config_generator import (
+    _claude_otlp_env,
+    _gemini_otlp_env,
+    _gemini_settings,
+    generate_config,
+)
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
@@ -20,7 +25,7 @@ def _inject_agent_id(mcp_config: dict, agent_id: str):
             cfg["env"]["OBSERVAL_AGENT_ID"] = agent_id
 
 
-def _build_mcp_configs(agent: Agent, ide: str) -> dict:
+def _build_mcp_configs(agent: Agent, ide: str, observal_url: str) -> dict:
     """Build MCP server configs from registry links + external MCPs."""
     mcp_configs = {}
 
@@ -28,7 +33,7 @@ def _build_mcp_configs(agent: Agent, ide: str) -> dict:
         listing = link.mcp_listing
         if not listing:
             continue
-        cfg = generate_config(listing, ide)
+        cfg = generate_config(listing, ide, observal_url=observal_url)
         if "mcpServers" in cfg:
             mcp_configs.update(cfg["mcpServers"])
 
@@ -49,13 +54,14 @@ def _build_mcp_configs(agent: Agent, ide: str) -> dict:
     return mcp_configs
 
 
-def generate_agent_config(agent: Agent, ide: str) -> dict:
+def generate_agent_config(agent: Agent, ide: str, observal_url: str = "http://localhost:8000") -> dict:
     """Generate IDE-specific config for an agent."""
     safe_name = _sanitize_name(agent.name)
-    mcp_configs = _build_mcp_configs(agent, ide)
+    mcp_configs = _build_mcp_configs(agent, ide, observal_url)
 
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
+        # Telemetry collected via observal-shim, no native OTel
         return {
             "agent_file": {
                 "path": f"~/.kiro/agents/{safe_name}.json",
@@ -73,7 +79,7 @@ def generate_agent_config(agent: Agent, ide: str) -> dict:
         }
 
     if ide in ("claude-code", "claude_code"):
-        # Claude Code: .claude/settings.json for MCP + .claude/rules/ for prompt
+        otlp = _claude_otlp_env(observal_url)
         setup_commands = []
         claude_mcps = {}
         for name, cfg in mcp_configs.items():
@@ -85,15 +91,19 @@ def generate_agent_config(agent: Agent, ide: str) -> dict:
             "rules_file": {"path": f".claude/rules/{safe_name}.md", "content": agent.prompt},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
+            "otlp_env": otlp,
+            "claude_settings_snippet": {"env": otlp},
         }
 
     if ide in ("gemini-cli", "gemini_cli"):
         return {
             "rules_file": {"path": "GEMINI.md", "content": agent.prompt},
             "mcp_config": {"mcpServers": mcp_configs},
+            "otlp_env": _gemini_otlp_env(observal_url),
+            "gemini_settings_snippet": _gemini_settings(observal_url),
         }
 
-    # cursor, vscode, windsurf: rules file + mcp.json
+    # cursor, vscode, windsurf: rules file + mcp.json — telemetry via observal-shim
     ide_paths = {
         "cursor": (".cursor/rules/{name}.md", ".cursor/mcp.json"),
         "vscode": (".vscode/rules/{name}.md", ".vscode/mcp.json"),
