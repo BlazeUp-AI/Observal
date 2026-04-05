@@ -106,6 +106,7 @@ IDEs with **Native OTel** support send full distributed traces, user prompts, LL
 
 | Component | Technology |
 |-----------|------------|
+| Frontend | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Recharts |
 | Backend API | Python, FastAPI, Uvicorn |
 | Database | PostgreSQL 16 (primary), ClickHouse (telemetry) |
 | ORM | SQLAlchemy (async) + AsyncPG |
