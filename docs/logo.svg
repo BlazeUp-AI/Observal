@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon: stylized eye/lens representing observability -->
+  <g transform="translate(16, 16)">
+    <!-- Outer ring -->
+    <ellipse cx="44" cy="44" rx="42" ry="34" fill="none" stroke="url(#g1)" stroke-width="4"/>
+    <!-- Inner circle (iris) -->
+    <circle cx="44" cy="44" r="16" fill="url(#g1)" opacity="0.9"/>
+    <!-- Pupil highlight -->
+    <circle cx="38" cy="39" r="5" fill="#fff" opacity="0.6"/>
+    <!-- Signal arcs (telemetry waves) -->
+    <path d="M 78 20 Q 92 44 78 68" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 86 14 Q 104 44 86 74" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="136" y="76" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#e2e8f0" letter-spacing="-1">Observal</text>
+</svg>

@@ -1,10 +1,46 @@
-# Observal
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.svg">
+  <img alt="Observal" src="docs/logo-light.svg" width="320">
+</picture>
 
-A self-hosted evaluation and observability platform for agentic coding workflows. Observal acts as a fitness coach for your human-in-the-loop development - it traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions, then tells you exactly what's helping and what isn't.
+### Eval & observability for agentic coding — trace every tool call, score every session, improve every workflow.
+
+<p>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status">
+</p>
+
+---
+
+Observal is a self-hosted platform that traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions — then tells you exactly what's helping and what isn't.
+
+It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Windsurf, Codex CLI, and GitHub Copilot.
+
+## Quick Start
+
+```bash
+git clone https://github.com/BlazeUp-AI/Observal.git
+cd Observal
+cp .env.example .env          # edit with your values
+
+cd docker && docker compose up --build -d && cd ..
+uv tool install --editable .
+observal init                  # create admin account
+```
+
+Already have MCP servers in your IDE? Instrument them in one command:
+
+```bash
+observal scan                  # auto-detect, register, and instrument everything
+```
+
+This detects MCP servers from your IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry — without breaking your existing setup. A timestamped backup is created automatically.
 
 ## The Problem
 
-Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks - but none of this is measured. Teams can't answer basic questions:
+Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks — but none of this is measured. Teams can't answer basic questions:
 
 - Which tools speed up development and which ones waste time?
 - Are prompts producing good results or causing rework?
@@ -14,23 +50,6 @@ Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agent
 - How do two versions of an agent compare on real developer workflows?
 
 Without answers, teams can't improve their tooling. They guess, ship changes, and hope for the better.
-
-## What Observal Does
-
-Observal collects telemetry from every layer of the agentic coding stack, evaluates it with an LLM-as-judge engine, and surfaces actionable metrics. It manages 8 registry types that cover the full surface area of modern AI-assisted development:
-
-| Registry Type | What It Is | What Observal Measures |
-|--------------|-----------|----------------------|
-| MCP Servers | Model Context Protocol servers that expose tools to agents | Call volume, latency percentiles, error rates, schema compliance |
-| Agents | AI agent configurations with system prompts, model settings, and linked tools | Interaction count, acceptance rate, tool call efficiency, version-over-version comparison |
-| Tool Calls | Standalone tools (non-MCP) exposed directly to agents | Invocation count, success rate, retry rate, schema validation |
-| Skills | Portable instruction packages (SKILL.md) that agents load on demand | Activation frequency (auto vs manual), error rate correlation, session duration impact |
-| Hooks | Lifecycle callbacks that fire at specific points during agent sessions | Execution count per event type, block rate, latency overhead |
-| Prompts | Managed prompt templates with variable substitution | Render count, token expansion ratio, downstream LLM success rate |
-| Sandbox Exec | Docker/LXC execution environments for code running and testing | CPU/memory/disk/network usage, exit codes, OOM rate, timeout rate |
-| GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency, RAGAS evaluation (faithfulness, answer relevancy, context precision, context recall) |
-
-Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry — but you can use your own items and collect telemetry immediately, no approval needed.
 
 ## How It Works
 
@@ -47,6 +66,23 @@ IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
 ```
 
 The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, RAG relevance, and code correctness. Scorecards let you compare versions, identify bottlenecks, and track improvements over time. For GraphRAG endpoints, Observal runs RAGAS evaluation — computing faithfulness, answer relevancy, context precision, and context recall using LLM-as-judge on retrieval spans.
+
+## What It Covers
+
+Observal manages 8 registry types that cover the full surface area of modern AI-assisted development:
+
+| Registry Type | What It Is | What Observal Measures |
+|--------------|-----------|----------------------|
+| MCP Servers | Model Context Protocol servers that expose tools to agents | Call volume, latency percentiles, error rates, schema compliance |
+| Agents | AI agent configurations with system prompts, model settings, and linked tools | Interaction count, acceptance rate, tool call efficiency, version-over-version comparison |
+| Tool Calls | Standalone tools (non-MCP) exposed directly to agents | Invocation count, success rate, retry rate, schema validation |
+| Skills | Portable instruction packages (SKILL.md) that agents load on demand | Activation frequency (auto vs manual), error rate correlation, session duration impact |
+| Hooks | Lifecycle callbacks that fire at specific points during agent sessions | Execution count per event type, block rate, latency overhead |
+| Prompts | Managed prompt templates with variable substitution | Render count, token expansion ratio, downstream LLM success rate |
+| Sandbox Exec | Docker/LXC execution environments for code running and testing | CPU/memory/disk/network usage, exit codes, OOM rate, timeout rate |
+| GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency, RAGAS evaluation (faithfulness, answer relevancy, context precision, context recall) |
+
+Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry — but you can use your own items and collect telemetry immediately, no approval needed.
 
 ## IDE Support
 
@@ -80,66 +116,12 @@ IDEs with **Native OTel** support send full distributed traces, user prompts, LL
 | Dependency Management | uv |
 | Deployment | Docker Compose |
 
-## Prerequisites
+## Setup & Configuration
 
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Python 3.11+
-- Git
+For detailed setup, eval engine configuration, environment variables, and troubleshooting, see [SETUP.md](SETUP.md).
 
-## Getting Started
-
-```bash
-git clone https://github.com/BlazeUp-AI/Observal.git
-cd Observal
-cp .env.example .env
-# edit .env with your values
-
-cd docker
-docker compose up --build -d
-cd ..
-
-uv tool install --editable .
-observal init
-```
-
-This starts the API at http://localhost:8000 along with PostgreSQL, ClickHouse, Redis, and the background worker. The CLI is installed via `uv tool install` and `observal init` creates your admin account.
-
-### Instrumenting an Existing Setup
-
-Already have MCP servers configured in your IDE? No need to re-register them manually:
-
-```bash
-observal scan              # auto-detect IDE, register & instrument everything
-observal scan --dry-run    # preview what would change
-observal scan --ide cursor # target a specific IDE
-```
-
-This detects MCP servers from your IDE config files (Cursor, Kiro, VS Code, Windsurf, Claude Code, Gemini CLI), registers them with Observal, and wraps them with `observal-shim` for telemetry — without breaking your existing setup. A backup of your original config is created automatically.
-
-For detailed setup, eval engine configuration, and troubleshooting, see [SETUP.md](SETUP.md).
-
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | | PostgreSQL connection string (asyncpg) |
-| `CLICKHOUSE_URL` | Yes | | ClickHouse connection string |
-| `POSTGRES_USER` | Yes | `postgres` | PostgreSQL user |
-| `POSTGRES_PASSWORD` | Yes | | PostgreSQL password |
-| `SECRET_KEY` | Yes | | Secret key for API key hashing |
-| `CLICKHOUSE_USER` | No | `default` | ClickHouse user |
-| `CLICKHOUSE_PASSWORD` | No | `clickhouse` | ClickHouse password |
-| `EVAL_MODEL_URL` | No | | OpenAI-compatible endpoint for the eval engine |
-| `EVAL_MODEL_API_KEY` | No | | API key for the eval model |
-| `EVAL_MODEL_NAME` | No | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
-| `EVAL_MODEL_PROVIDER` | No | | `bedrock`, `openai`, or empty for auto-detect |
-| `AWS_ACCESS_KEY_ID` | No | | AWS credentials for Bedrock |
-| `AWS_SECRET_ACCESS_KEY` | No | | AWS credentials for Bedrock |
-| `AWS_SESSION_TOKEN` | No | | AWS session token (temporary credentials) |
-| `AWS_REGION` | No | `us-east-1` | AWS region for Bedrock |
-
-## CLI Usage
+<details>
+<summary><strong>CLI Usage</strong></summary>
 
 ### Authentication
 
@@ -256,7 +238,10 @@ observal rate <id> --stars 5 --type mcp --comment "Works great"
 observal feedback <id> --type mcp
 ```
 
-## API Endpoints
+</details>
+
+<details>
+<summary><strong>API Endpoints</strong></summary>
 
 ### Auth
 
@@ -343,60 +328,35 @@ All `{id}` parameters accept either a UUID or a name.
 |--------|----------|-------------|
 | `GET` | `/health` | Health check |
 
-## Project Structure
+</details>
 
-```
-Observal/
-├── observal-server/          # FastAPI backend
-│   ├── api/
-│   │   ├── deps.py           # Auth and dependency injection
-│   │   ├── graphql.py        # Strawberry GraphQL schema
-│   │   └── routes/           # REST route handlers (all 8 registry types + scan)
-│   ├── models/               # SQLAlchemy models
-│   ├── schemas/              # Pydantic request/response schemas
-│   ├── services/             # Business logic, validators, config generators
-│   ├── main.py               # App entrypoint
-│   ├── config.py             # Settings (pydantic-settings)
-│   └── worker.py             # arq background worker
-├── observal_cli/             # Typer CLI
-│   ├── main.py               # App wiring
-│   ├── cmd_auth.py           # Auth commands
-│   ├── cmd_mcp.py            # MCP server commands
-│   ├── cmd_agent.py          # Agent commands
-│   ├── cmd_tool.py           # Tool commands
-│   ├── cmd_skill.py          # Skill commands
-│   ├── cmd_hook.py           # Hook commands
-│   ├── cmd_prompt.py         # Prompt commands
-│   ├── cmd_sandbox.py        # Sandbox commands
-│   ├── cmd_graphrag.py       # GraphRAG commands
-│   ├── cmd_scan.py           # Auto-detect and instrument existing IDE configs
-│   ├── cmd_ops.py            # Review, telemetry, eval, admin, traces
-│   ├── client.py             # HTTP client wrapper
-│   ├── config.py             # CLI config and alias management
-│   ├── render.py             # Rich rendering helpers
-│   ├── shim.py               # observal-shim: stdio telemetry proxy
-│   ├── proxy.py              # observal-proxy: HTTP telemetry proxy
-│   ├── sandbox_runner.py     # observal-sandbox-run: Docker executor with log capture
-│   └── graphrag_proxy.py     # observal-graphrag-proxy: HTTP proxy for GraphRAG
-├── docker/
-│   ├── docker-compose.yml    # 5 services: api, db, clickhouse, redis, worker
-│   └── Dockerfile.api        # API container
-├── tests/                    # Unit tests (pytest, all mocked)
-├── demo/                     # E2E test scripts and mock MCP servers
-├── docs/                     # Design documents
-├── AGENTS.md                 # Internal context for AI agents
-├── SETUP.md                  # Setup and development guide
-├── CONTRIBUTING.md           # Contribution guide
-├── Makefile                  # Dev shortcuts
-├── .env.example              # Environment variable template
-├── pyproject.toml            # Package config
-└── LICENSE                   # Apache License 2.0
-```
+<details>
+<summary><strong>Environment Variables</strong></summary>
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | Yes | | PostgreSQL connection string (asyncpg) |
+| `CLICKHOUSE_URL` | Yes | | ClickHouse connection string |
+| `POSTGRES_USER` | Yes | `postgres` | PostgreSQL user |
+| `POSTGRES_PASSWORD` | Yes | | PostgreSQL password |
+| `SECRET_KEY` | Yes | | Secret key for API key hashing |
+| `CLICKHOUSE_USER` | No | `default` | ClickHouse user |
+| `CLICKHOUSE_PASSWORD` | No | `clickhouse` | ClickHouse password |
+| `EVAL_MODEL_URL` | No | | OpenAI-compatible endpoint for the eval engine |
+| `EVAL_MODEL_API_KEY` | No | | API key for the eval model |
+| `EVAL_MODEL_NAME` | No | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
+| `EVAL_MODEL_PROVIDER` | No | | `bedrock`, `openai`, or empty for auto-detect |
+| `AWS_ACCESS_KEY_ID` | No | | AWS credentials for Bedrock |
+| `AWS_SECRET_ACCESS_KEY` | No | | AWS credentials for Bedrock |
+| `AWS_SESSION_TOKEN` | No | | AWS session token (temporary credentials) |
+| `AWS_REGION` | No | `us-east-1` | AWS region for Bedrock |
+
+</details>
 
 ## Running Tests
 
 ```bash
-make test      # quick
+make test      # quick (308 tests)
 make test-v    # verbose
 ```
 
