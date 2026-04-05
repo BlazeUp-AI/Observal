@@ -40,9 +40,9 @@ def agent_create(
 
     name = typer.prompt("Agent name")
     version = typer.prompt("Version", default="1.0.0")
-    description = typer.prompt("Description (min 100 chars)")
+    description = typer.prompt("Description")
     owner = typer.prompt("Owner / Team")
-    prompt_text = typer.prompt("System prompt (min 50 chars)")
+    prompt_text = typer.prompt("System prompt")
     model_name = typer.prompt("Model name", default="claude-sonnet-4")
 
     max_tokens = typer.prompt("Max tokens", default="4096")

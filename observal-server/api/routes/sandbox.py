@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, resolve_listing
 from models.mcp import ListingStatus
 from models.sandbox import SandboxDownload, SandboxListing
 from models.user import User
@@ -66,9 +66,8 @@ async def list_sandboxes(
 
 
 @router.get("/{listing_id}", response_model=SandboxListingResponse)
-async def get_sandbox(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SandboxListing).where(SandboxListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+async def get_sandbox(listing_id: str, db: AsyncSession = Depends(get_db)):
+    listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return SandboxListingResponse.model_validate(listing)
@@ -76,17 +75,16 @@ async def get_sandbox(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db))
 
 @router.post("/{listing_id}/install", response_model=SandboxInstallResponse)
 async def install_sandbox(
-    listing_id: uuid.UUID,
+    listing_id: str,
     req: SandboxInstallRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(SandboxListing).where(SandboxListing.id == listing_id, SandboxListing.status == ListingStatus.approved)
-    )
-    listing = result.scalar_one_or_none()
+    listing = await resolve_listing(SandboxListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
-        raise HTTPException(status_code=404, detail="Approved listing not found")
+        listing = await resolve_listing(SandboxListing, listing_id, db)
+        if not listing or listing.submitted_by != current_user.id:
+            raise HTTPException(status_code=404, detail="Listing not found or not approved")
 
     db.add(SandboxDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
@@ -99,22 +97,21 @@ async def install_sandbox(
 
 @router.delete("/{listing_id}")
 async def delete_sandbox(
-    listing_id: uuid.UUID,
+    listing_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(SandboxListing).where(SandboxListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+    listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
     for r in (
-        await db.execute(select(SandboxDownload).where(SandboxDownload.listing_id == listing_id))
+        await db.execute(select(SandboxDownload).where(SandboxDownload.listing_id == listing.id))
     ).scalars().all():
         await db.delete(r)
 
     await db.delete(listing)
     await db.commit()
-    return {"deleted": str(listing_id)}
+    return {"deleted": str(listing.id)}

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, resolve_listing
 from models.mcp import ListingStatus
 from models.skill import SkillDownload, SkillListing
 from models.user import User
@@ -71,9 +71,8 @@ async def list_skills(
 
 
 @router.get("/{listing_id}", response_model=SkillListingResponse)
-async def get_skill(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SkillListing).where(SkillListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+async def get_skill(listing_id: str, db: AsyncSession = Depends(get_db)):
+    listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return SkillListingResponse.model_validate(listing)
@@ -81,17 +80,16 @@ async def get_skill(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{listing_id}/install", response_model=SkillInstallResponse)
 async def install_skill(
-    listing_id: uuid.UUID,
+    listing_id: str,
     req: SkillInstallRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(SkillListing).where(SkillListing.id == listing_id, SkillListing.status == ListingStatus.approved)
-    )
-    listing = result.scalar_one_or_none()
+    listing = await resolve_listing(SkillListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
-        raise HTTPException(status_code=404, detail="Approved listing not found")
+        listing = await resolve_listing(SkillListing, listing_id, db)
+        if not listing or listing.submitted_by != current_user.id:
+            raise HTTPException(status_code=404, detail="Listing not found or not approved")
 
     db.add(SkillDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
@@ -104,20 +102,19 @@ async def install_skill(
 
 @router.delete("/{listing_id}")
 async def delete_skill(
-    listing_id: uuid.UUID,
+    listing_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(SkillListing).where(SkillListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+    listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    for r in (await db.execute(select(SkillDownload).where(SkillDownload.listing_id == listing_id))).scalars().all():
+    for r in (await db.execute(select(SkillDownload).where(SkillDownload.listing_id == listing.id))).scalars().all():
         await db.delete(r)
 
     await db.delete(listing)
     await db.commit()
-    return {"deleted": str(listing_id)}
+    return {"deleted": str(listing.id)}

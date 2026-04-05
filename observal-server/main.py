@@ -21,6 +21,7 @@ from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
 from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
+from api.routes.scan import router as scan_router
 from api.routes.tool import router as tool_router
 from database import engine
 from models import Base
@@ -58,6 +59,7 @@ app.include_router(hook_router)
 app.include_router(prompt_router)
 app.include_router(sandbox_router)
 app.include_router(graphrag_router)
+app.include_router(scan_router)
 app.include_router(telemetry_router)
 app.include_router(dashboard_router)
 app.include_router(feedback_router)

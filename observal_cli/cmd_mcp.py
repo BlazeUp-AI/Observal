@@ -51,7 +51,7 @@ def register_mcp(app: typer.Typer):
         _desc = (
             prefill.get("description", "")
             if yes
-            else typer.prompt("Description (min 100 chars)", default=prefill.get("description", ""))
+            else typer.prompt("Description", default=prefill.get("description", ""))
         )
         _owner = typer.prompt("Owner / Team") if not yes else "default"
 

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, resolve_listing
 from models.mcp import ListingStatus, McpCustomField, McpDownload, McpListing
 from models.user import User
 from schemas.mcp import (
@@ -83,9 +83,8 @@ async def list_mcps(
 
 
 @router.get("/{listing_id}", response_model=McpListingResponse)
-async def get_mcp(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(McpListing).where(McpListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+async def get_mcp(listing_id: str, db: AsyncSession = Depends(get_db)):
+    listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return McpListingResponse.model_validate(listing)
@@ -93,17 +92,16 @@ async def get_mcp(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{listing_id}/install", response_model=McpInstallResponse)
 async def install_mcp(
-    listing_id: uuid.UUID,
+    listing_id: str,
     req: McpInstallRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(McpListing).where(McpListing.id == listing_id, McpListing.status == ListingStatus.approved)
-    )
-    listing = result.scalar_one_or_none()
+    listing = await resolve_listing(McpListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
-        raise HTTPException(status_code=404, detail="Approved listing not found")
+        listing = await resolve_listing(McpListing, listing_id, db)
+        if not listing or listing.submitted_by != current_user.id:
+            raise HTTPException(status_code=404, detail="Listing not found or not approved")
 
     db.add(McpDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
@@ -114,29 +112,27 @@ async def install_mcp(
 
 @router.delete("/{listing_id}")
 async def delete_mcp(
-    listing_id: uuid.UUID,
+    listing_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     from models.feedback import Feedback
 
-    result = await db.execute(select(McpListing).where(McpListing.id == listing_id))
-    listing = result.scalar_one_or_none()
+    listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Delete related records with correct type filter
     for r in (
-        (await db.execute(select(Feedback).where(Feedback.listing_id == listing_id, Feedback.listing_type == "mcp")))
+        (await db.execute(select(Feedback).where(Feedback.listing_id == listing.id, Feedback.listing_type == "mcp")))
         .scalars()
         .all()
     ):
         await db.delete(r)
-    for r in (await db.execute(select(McpDownload).where(McpDownload.listing_id == listing_id))).scalars().all():
+    for r in (await db.execute(select(McpDownload).where(McpDownload.listing_id == listing.id))).scalars().all():
         await db.delete(r)
 
     await db.delete(listing)
     await db.commit()
-    return {"deleted": str(listing_id)}
+    return {"deleted": str(listing.id)}

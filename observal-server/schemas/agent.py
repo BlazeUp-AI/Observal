@@ -28,9 +28,9 @@ class ExternalMcp(BaseModel):
 class AgentCreateRequest(BaseModel):
     name: str
     version: str
-    description: str = Field(min_length=100)
+    description: str = ""
     owner: str
-    prompt: str = Field(min_length=50)
+    prompt: str = ""
     model_name: str
     model_config_json: dict = {}
     supported_ides: list[str] = []
@@ -42,9 +42,9 @@ class AgentCreateRequest(BaseModel):
 class AgentUpdateRequest(BaseModel):
     name: str | None = None
     version: str | None = None
-    description: str | None = Field(None, min_length=100)
+    description: str | None = None
     owner: str | None = None
-    prompt: str | None = Field(None, min_length=50)
+    prompt: str | None = None
     model_name: str | None = None
     model_config_json: dict | None = None
     supported_ides: list[str] | None = None

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from models.mcp import ListingStatus
 
@@ -10,7 +10,7 @@ class McpSubmitRequest(BaseModel):
     git_url: str
     name: str
     version: str
-    description: str = Field(min_length=100)
+    description: str = ""
     category: str
     owner: str
     supported_ides: list[str] = []

@@ -1,4 +1,5 @@
 import uuid
+import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -29,6 +30,16 @@ _agent_load_options = [
     selectinload(Agent.mcp_links).selectinload(AgentMcpLink.mcp_listing),
     selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections),
 ]
+
+
+def _agent_id_clause(agent_id: str):
+    if isinstance(agent_id, _uuid.UUID):
+        return Agent.id == agent_id
+    try:
+        uid = _uuid.UUID(agent_id)
+        return Agent.id == uid
+    except ValueError:
+        return Agent.name == agent_id
 
 
 async def _load_agent(db: AsyncSession, *where_clauses) -> Agent | None:
@@ -134,8 +145,8 @@ async def list_agents(
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
-async def get_agent(agent_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    agent = await _load_agent(db, Agent.id == agent_id)
+async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+    agent = await _load_agent(db, _agent_id_clause(agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return _agent_to_response(agent)
@@ -143,12 +154,12 @@ async def get_agent(agent_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{agent_id}", response_model=AgentResponse)
 async def update_agent(
-    agent_id: uuid.UUID,
+    agent_id: str,
     req: AgentUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    agent = await _load_agent(db, Agent.id == agent_id)
+    agent = await _load_agent(db, _agent_id_clause(agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.created_by != current_user.id:
@@ -209,20 +220,22 @@ async def update_agent(
             )
 
     await db.commit()
-    agent = await _load_agent(db, Agent.id == agent_id)
+    agent = await _load_agent(db, Agent.id == agent.id)
     return _agent_to_response(agent)
 
 
 @router.post("/{agent_id}/install", response_model=AgentInstallResponse)
 async def install_agent(
-    agent_id: uuid.UUID,
+    agent_id: str,
     req: AgentInstallRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    agent = await _load_agent(db, Agent.id == agent_id, Agent.status == AgentStatus.active)
+    agent = await _load_agent(db, _agent_id_clause(agent_id), Agent.status == AgentStatus.active)
     if not agent:
-        raise HTTPException(status_code=404, detail="Active agent not found")
+        agent = await _load_agent(db, _agent_id_clause(agent_id))
+        if not agent or agent.created_by != current_user.id:
+            raise HTTPException(status_code=404, detail="Agent not found or not active")
 
     snippet = generate_agent_config(agent, req.ide)
     db.add(AgentDownload(agent_id=agent.id, user_id=current_user.id, ide=req.ide))
@@ -233,15 +246,14 @@ async def install_agent(
 
 @router.delete("/{agent_id}")
 async def delete_agent(
-    agent_id: uuid.UUID,
+    agent_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     from models.eval import EvalRun, Scorecard
     from models.feedback import Feedback
 
-    result = await db.execute(select(Agent).where(Agent.id == agent_id))
-    agent = result.scalar_one_or_none()
+    agent = await _load_agent(db, _agent_id_clause(agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.created_by != current_user.id and current_user.role.value != "admin":
@@ -249,19 +261,19 @@ async def delete_agent(
 
     # Delete related records with correct type filters
     for r in (
-        (await db.execute(select(Feedback).where(Feedback.listing_id == agent_id, Feedback.listing_type == "agent")))
+        (await db.execute(select(Feedback).where(Feedback.listing_id == agent.id, Feedback.listing_type == "agent")))
         .scalars()
         .all()
     ):
         await db.delete(r)
-    for r in (await db.execute(select(Scorecard).where(Scorecard.agent_id == agent_id))).scalars().all():
+    for r in (await db.execute(select(Scorecard).where(Scorecard.agent_id == agent.id))).scalars().all():
         await db.delete(r)
-    for r in (await db.execute(select(EvalRun).where(EvalRun.agent_id == agent_id))).scalars().all():
+    for r in (await db.execute(select(EvalRun).where(EvalRun.agent_id == agent.id))).scalars().all():
         await db.delete(r)
-    for r in (await db.execute(select(AgentDownload).where(AgentDownload.agent_id == agent_id))).scalars().all():
+    for r in (await db.execute(select(AgentDownload).where(AgentDownload.agent_id == agent.id))).scalars().all():
         await db.delete(r)
     # AgentMcpLink, AgentGoalTemplate, AgentGoalSection handled by cascade="all, delete-orphan"
 
     await db.delete(agent)
     await db.commit()
-    return {"deleted": str(agent_id)}
+    return {"deleted": str(agent.id)}

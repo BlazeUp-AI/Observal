@@ -30,11 +30,11 @@ Observal collects telemetry from every layer of the agentic coding stack, evalua
 | Sandbox Exec | Docker/LXC execution environments for code running and testing | CPU/memory/disk/network usage, exit codes, OOM rate, timeout rate |
 | GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency, RAGAS evaluation (faithfulness, answer relevancy, context precision, context recall) |
 
-Every type goes through a unified admin review workflow before it's available to developers. Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores.
+Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry — but you can use your own items and collect telemetry immediately, no approval needed.
 
 ## How It Works
 
-Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal - no code changes required.
+Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal - no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup — no manual registration required.
 
 ```
 IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
@@ -105,6 +105,18 @@ observal init
 
 This starts the API at http://localhost:8000 along with PostgreSQL, ClickHouse, Redis, and the background worker. The CLI is installed via `uv tool install` and `observal init` creates your admin account.
 
+### Instrumenting an Existing Setup
+
+Already have MCP servers configured in your IDE? No need to re-register them manually:
+
+```bash
+observal scan              # auto-detect IDE, register & instrument everything
+observal scan --dry-run    # preview what would change
+observal scan --ide cursor # target a specific IDE
+```
+
+This detects MCP servers from your IDE config files (Cursor, Kiro, VS Code, Windsurf, Claude Code, Gemini CLI), registers them with Observal, and wraps them with `observal-shim` for telemetry — without breaking your existing setup. A backup of your original config is created automatically.
+
 For detailed setup, eval engine configuration, and troubleshooting, see [SETUP.md](SETUP.md).
 
 ## Environment Variables
@@ -137,16 +149,25 @@ observal login         # login with API key
 observal whoami        # check current user
 ```
 
-### Registry Operations
-
-All registry types follow the same pattern: submit, list, show, install, delete.
+### Quick Start with Existing Setup
 
 ```bash
-# MCP Servers
+observal scan              # detect and instrument all IDE configs in current directory
+observal scan --ide cursor # target specific IDE
+observal scan --dry-run    # preview changes without modifying files
+observal scan /path/to/project --yes  # non-interactive
+```
+
+### Registry Operations
+
+All registry types follow the same pattern: submit, list, show, install, delete. All commands accept either an ID or a name.
+
+```bash
+# MCP Servers (ID or name works for all commands)
 observal submit <git-url>
 observal list [--category <cat>] [--search <term>]
-observal show <id>
-observal install <id> --ide <ide>
+observal show <id-or-name>
+observal install <id-or-name> --ide <ide>
 
 # Agents
 observal agent create
@@ -247,6 +268,8 @@ observal feedback <id> --type mcp
 
 ### Registry (per type: mcps, agents, tools, skills, hooks, prompts, sandboxes, graphrags)
 
+All `{id}` parameters accept either a UUID or a name.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v1/{type}` | Submit / create |
@@ -255,6 +278,12 @@ observal feedback <id> --type mcp
 | `POST` | `/api/v1/{type}/{id}/install` | Get IDE config snippet |
 | `DELETE` | `/api/v1/{type}/{id}` | Delete |
 | `GET` | `/api/v1/{type}/{id}/metrics` | Metrics |
+
+### Scan
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/scan` | Bulk register items from IDE config scan |
 
 ### Review
 
@@ -322,7 +351,7 @@ Observal/
 │   ├── api/
 │   │   ├── deps.py           # Auth and dependency injection
 │   │   ├── graphql.py        # Strawberry GraphQL schema
-│   │   └── routes/           # REST route handlers (all 8 registry types)
+│   │   └── routes/           # REST route handlers (all 8 registry types + scan)
 │   ├── models/               # SQLAlchemy models
 │   ├── schemas/              # Pydantic request/response schemas
 │   ├── services/             # Business logic, validators, config generators
@@ -340,6 +369,7 @@ Observal/
 │   ├── cmd_prompt.py         # Prompt commands
 │   ├── cmd_sandbox.py        # Sandbox commands
 │   ├── cmd_graphrag.py       # GraphRAG commands
+│   ├── cmd_scan.py           # Auto-detect and instrument existing IDE configs
 │   ├── cmd_ops.py            # Review, telemetry, eval, admin, traces
 │   ├── client.py             # HTTP client wrapper
 │   ├── config.py             # CLI config and alias management

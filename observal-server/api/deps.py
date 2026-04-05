@@ -38,3 +38,20 @@ def require_role(*roles: UserRole):
         return wrapper
 
     return decorator
+
+
+async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_status=None):
+    """Resolve a listing by UUID or name."""
+    import uuid as _uuid
+    if isinstance(identifier, _uuid.UUID):
+        stmt = select(model).where(model.id == identifier)
+    else:
+        try:
+            uid = _uuid.UUID(identifier)
+            stmt = select(model).where(model.id == uid)
+        except ValueError:
+            stmt = select(model).where(model.name == identifier)
+    if require_status is not None:
+        stmt = stmt.where(model.status == require_status)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()

@@ -1,10 +1,12 @@
 # AGENTS.md
 
-Internal context for contributors and AI coding agents. Use `README.md` as the public source of truth for API endpoints and CLI usage. Use `SETUP.md` for environment setup. Use `docs/design-new-registry-types.md` for the registry expansion design. Use `docs/telemetry-overhaul.md` for the telemetry pipeline design.
+Internal context for contributors and AI coding agents. Use `README.md` as the public source of truth for API endpoints and CLI usage. Use `SETUP.md` for environment setup. Use `docs/submission-and-install-guide.md` for the submission and install workflow.
 
 ## Current state
 
-Observal is an eval and observability platform for agentic coding workflows. It supports 8 registry types: MCP servers, agents, tools, skills, hooks, prompts, sandboxes, and GraphRAGs. All types have full CRUD, CLI commands, admin review, feedback, and telemetry collection. The design spec is at `docs/design-new-registry-types.md`.
+Observal is an eval and observability platform for agentic coding workflows. It supports 8 registry types: MCP servers, agents, tools, skills, hooks, prompts, sandboxes, and GraphRAGs. All types have full CRUD, CLI commands, admin review, feedback, and telemetry collection.
+
+All API routes accept either UUID or name for path parameters. Admin review controls public registry visibility only — submitters can install and use their own items immediately without approval.
 
 There is no frontend. The GraphQL API at `/api/v1/graphql` is the read layer for telemetry data and will serve a future frontend.
 
@@ -29,7 +31,7 @@ make format              # ruff format + ruff fix
 make check               # pre-commit on all files
 make hooks               # install pre-commit hooks
 
-# Tests (293 unit tests, run from observal-server/)
+# Tests (308 unit tests, run from observal-server/)
 make test                # quick
 make test-v              # verbose
 # or manually:
@@ -43,7 +45,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `main.py` : FastAPI app entrypoint; mounts REST routes + GraphQL at `/api/v1/graphql`
 - `config.py` : pydantic-settings: DATABASE_URL, CLICKHOUSE_URL, REDIS_URL, SECRET_KEY, eval model config
 - `worker.py` : arq WorkerSettings; background eval jobs consume from Redis queue
-- `api/deps.py` : auth dependency (`get_current_user` via X-API-Key header), DB session injection
+- `api/deps.py` : auth dependency (`get_current_user` via X-API-Key header), DB session injection, `resolve_listing` (name-or-UUID resolver used by all routes)
 - `api/graphql.py` : Strawberry schema: Query (traces, spans, metrics) + Subscription (traceCreated, spanCreated); DataLoaders for ClickHouse batch queries
 - `api/routes/auth.py` : init, login, whoami
 - `api/routes/mcp.py` : MCP server CRUD; submit triggers async validation pipeline
@@ -60,6 +62,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `api/routes/feedback.py` : Ratings with dual-write to PostgreSQL + ClickHouse scores table
 - `api/routes/eval.py` : Run evals, list scorecards, compare versions
 - `api/routes/admin.py` : Enterprise settings CRUD, user management, role changes
+- `api/routes/scan.py` : `POST /api/v1/scan` bulk registration from IDE config scans; deduplicates by name
 
 ### Models (`observal-server/models/`)
 
@@ -109,6 +112,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `cmd_prompt.py` : submit, list, show, install, render, delete
 - `cmd_sandbox.py` : submit, list, show, install, delete
 - `cmd_graphrag.py` : submit, list, show, install, delete
+- `cmd_scan.py` : `observal scan`: auto-detect IDE configs (Cursor, Kiro, VS Code, Windsurf, Claude Code, Gemini CLI), bulk-register MCPs, wrap with observal-shim; `--dry-run`, `--ide`, `--yes` flags
 - `cmd_ops.py` : review, telemetry, dashboard (overview, metrics --watch, top), feedback, eval (run, scorecards, show, compare), admin, traces, spans, upgrade/downgrade
 - `client.py` : httpx wrapper with get/post/put/delete/health; contextual error messages per status code
 - `config.py` : ~/.observal/config.json management; alias system (@name -> UUID resolution)
@@ -125,7 +129,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Tests (`tests/`)
 
-- 293 unit tests; all mock external services (no Docker needed to run)
+- 308 unit tests; all mock external services (no Docker needed to run)
 - `test_clickhouse_phase1.py` : DDL, SQL helpers, insert/query functions (43 tests)
 - `test_ingest_phase2.py` : Ingestion schemas, endpoint, partial failure (15 tests)
 - `test_shim_phase3.py` : JSON-RPC parsing, schema compliance, ShimState, config gen (43 tests)
@@ -150,12 +154,14 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - ClickHouse uses ReplacingMergeTree with bloom filter indexes. Queries go through the HTTP interface, not a native driver. The `_query` helper in `clickhouse.py` handles parameterized queries.
 - The shim is the core telemetry collection mechanism. It sits between the IDE and the MCP server, completely transparent. It never modifies messages: only observes. Telemetry is fire-and-forget via async POST; if the server is down, spans are silently dropped.
 - Config generators automatically wrap MCP commands with `observal-shim` for stdio transport or point to `observal-proxy` for HTTP transport. This is how telemetry collection is opt-in per install.
+- The `observal scan` command reads existing IDE config files, bulk-registers found MCP servers via `POST /api/v1/scan`, and rewrites configs to wrap commands with `observal-shim`. It creates timestamped backups before modifying any file. HTTP-transport MCPs are registered but not shimmed (they would need `observal-proxy`).
 - GraphQL is the read layer for telemetry data. REST still exists for auth, CRUD, feedback, eval, admin. The GraphQL layer uses DataLoaders to batch ClickHouse queries.
 - Redis serves two purposes: pub/sub for GraphQL subscriptions (live trace/span events) and arq job queue for background eval runs.
 - The eval engine is pluggable. `LLMJudgeBackend` calls Bedrock or OpenAI-compatible endpoints. `FallbackBackend` returns deterministic scores when no LLM is configured. The 6 managed templates are prompt strings, not code.
 - Feedback dual-writes: when a user rates an MCP/agent, it writes to PostgreSQL (for the feedback API) AND ClickHouse scores table (for unified analytics). The ClickHouse write is best-effort.
 - Auth is API key based. Keys are hashed with SECRET_KEY before storage. The `X-API-Key` header is checked on every authenticated request via `get_current_user` dependency.
-- The CLI stores config in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`. Both are plain JSON.
+- Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. This lets `observal scan` work — items are auto-registered as pending and immediately usable by the submitter.
+- The CLI stores config in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`. Both are plain JSON. All API path parameters accept UUID or name; the server resolves names via `resolve_listing()` in `deps.py`.
 - All CLI list/show commands support `--output table|json|plain`. Use `--output json` for scripting. Use `--raw` on install commands to pipe config directly to files.
 - Ruff is the Python linter and formatter. Line length is 120. Pre-commit hooks enforce it.
 - The `B008` ruff rule is suppressed because Typer requires function calls in argument defaults (`typer.Option(...)`, `typer.Argument(...)`).

@@ -33,10 +33,19 @@ def _require_admin(user: User):
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
-async def _find_listing(listing_id: uuid.UUID, db: AsyncSession):
-    """Try each listing model to find the listing by id."""
+async def _find_listing(listing_id: str, db: AsyncSession):
+    """Try each listing model to find the listing by id or name."""
+    import uuid as _uuid
+    if isinstance(listing_id, _uuid.UUID):
+        clause_fn = lambda model: model.id == listing_id
+    else:
+        try:
+            uid = _uuid.UUID(listing_id)
+            clause_fn = lambda model: model.id == uid
+        except ValueError:
+            clause_fn = lambda model: model.name == listing_id
     for listing_type, model in LISTING_MODELS.items():
-        result = await db.execute(select(model).where(model.id == listing_id))
+        result = await db.execute(select(model).where(clause_fn(model)))
         listing = result.scalar_one_or_none()
         if listing:
             return listing_type, listing
@@ -64,7 +73,7 @@ async def list_pending(
 
 @router.get("/{listing_id}")
 async def get_review(
-    listing_id: uuid.UUID,
+    listing_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -77,7 +86,7 @@ async def get_review(
 
 @router.post("/{listing_id}/approve")
 async def approve(
-    listing_id: uuid.UUID,
+    listing_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -93,7 +102,7 @@ async def approve(
 
 @router.post("/{listing_id}/reject")
 async def reject(
-    listing_id: uuid.UUID,
+    listing_id: str,
     req: ReviewActionRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
