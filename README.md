@@ -28,7 +28,7 @@ Observal collects telemetry from every layer of the agentic coding stack, evalua
 | Hooks | Lifecycle callbacks that fire at specific points during agent sessions | Execution count per event type, block rate, latency overhead |
 | Prompts | Managed prompt templates with variable substitution | Render count, token expansion ratio, downstream LLM success rate |
 | Sandbox Exec | Docker/LXC execution environments for code running and testing | CPU/memory/disk/network usage, exit codes, OOM rate, timeout rate |
-| GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency |
+| GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency, RAGAS evaluation (faithfulness, answer relevancy, context precision, context recall) |
 
 Every type goes through a unified admin review workflow before it's available to developers. Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores.
 
@@ -46,7 +46,7 @@ IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
           Eval Engine (LLM-as-judge)  -->  Scorecards
 ```
 
-The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, RAG relevance, and code correctness. Scorecards let you compare versions, identify bottlenecks, and track improvements over time.
+The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, RAG relevance, and code correctness. Scorecards let you compare versions, identify bottlenecks, and track improvements over time. For GraphRAG endpoints, Observal runs RAGAS evaluation — computing faithfulness, answer relevancy, context precision, and context recall using LLM-as-judge on retrieval spans.
 
 ## IDE Support
 
@@ -281,6 +281,8 @@ observal feedback <id> --type mcp
 | `GET` | `/api/v1/eval/agents/{id}/scorecards` | List scorecards |
 | `GET` | `/api/v1/eval/scorecards/{id}` | Scorecard details |
 | `GET` | `/api/v1/eval/agents/{id}/compare` | Compare versions |
+| `POST` | `/api/v1/dashboard/graphrag-ragas-eval` | Run RAGAS evaluation on GraphRAG retrieval spans |
+| `GET` | `/api/v1/dashboard/graphrag-ragas-scores` | Get RAGAS scores (aggregate or per-GraphRAG) |
 
 ### Feedback
 
