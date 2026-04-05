@@ -372,6 +372,10 @@ make test-v    # verbose
 
 All tests mock external services. No Docker needed.
 
+## Community
+
+Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions instead of opening issues — issues are reserved for bug reports and feature requests.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The short version:
