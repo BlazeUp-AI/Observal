@@ -131,6 +131,7 @@ export const dashboard = {
   ideUsage: () => get<unknown>('/dashboard/ide-usage'),
   sandboxMetrics: () => get<unknown>('/dashboard/sandbox-metrics'),
   graphragMetrics: () => get<unknown>('/dashboard/graphrag-metrics'),
+  ragasScores: (graphragId?: string) => get<unknown>(`/dashboard/graphrag-ragas-scores${graphragId ? `?graphrag_id=${encodeURIComponent(graphragId)}` : ''}`),
   latencyHeatmap: () => get<unknown[]>('/dashboard/latency-heatmap'),
   unannotatedTraces: () => get<unknown[]>('/dashboard/unannotated-traces'),
   otelSessions: () => get<unknown[]>('/otel/sessions'),

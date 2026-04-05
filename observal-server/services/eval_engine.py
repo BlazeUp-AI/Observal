@@ -48,9 +48,21 @@ EVAL_TEMPLATES: dict[str, dict] = {
     },
     "graph_faithfulness": {
         "id": "tpl-graph-faith",
-        "name": "Graph Faithfulness",
-        "applies_to": "graph_traverse",
-        "prompt": 'Does the output contradict the knowledge graph relationships?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (contradicts graph) to 1.0 (faithful). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
+        "name": "Graph Faithfulness (RAGAS)",
+        "applies_to": "retrieval",
+        "prompt": 'Evaluate faithfulness of this GraphRAG retrieval: is the output grounded in the retrieved context?\nTrace: {trace}\nSpan: {span}\nExtract claims from the output and verify each against the context. Score = supported claims / total claims.\nScore 0.0 (contradicts/hallucinates) to 1.0 (fully faithful). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
+    },
+    "graph_answer_relevancy": {
+        "id": "tpl-graph-relevancy",
+        "name": "Graph Answer Relevancy (RAGAS)",
+        "applies_to": "retrieval",
+        "prompt": 'Evaluate answer relevancy: does the GraphRAG output address the original query?\nTrace: {trace}\nSpan: {span}\nScore 0.0 (off-topic) to 1.0 (directly addresses query). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
+    },
+    "graph_context_precision": {
+        "id": "tpl-graph-precision",
+        "name": "Graph Context Precision (RAGAS)",
+        "applies_to": "retrieval",
+        "prompt": 'Evaluate context precision: are the retrieved chunks/entities relevant to the query?\nTrace: {trace}\nSpan: {span}\nScore = relevant chunks / total chunks. Score 0.0 (all noise) to 1.0 (all relevant). Respond with JSON: {{"score": <float>, "reason": "<brief>"}}',
     },
     "recall_accuracy": {
         "id": "tpl-recall",

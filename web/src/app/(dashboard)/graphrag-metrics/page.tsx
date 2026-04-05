@@ -15,7 +15,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { useGraphragMetrics } from "@/hooks/use-api";
+import { useGraphragMetrics, useRagasScores } from "@/hooks/use-api";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -29,11 +29,23 @@ interface GraphRagData {
   recent_queries: { span_id: string; name: string; query_interface: string; entities: number; relationships: number; relevance_score: number; latency_ms: number; timestamp: string }[];
 }
 
+interface RagasDimensionScore {
+  avg: number | null;
+  count: number;
+}
+
+interface RagasScoresData {
+  faithfulness: RagasDimensionScore;
+  answer_relevancy: RagasDimensionScore;
+  context_precision: RagasDimensionScore;
+  context_recall: RagasDimensionScore;
+}
+
 const RAGAS_DIMENSIONS = [
-  { key: "faithfulness", label: "Faithfulness", description: "Measures factual consistency of the generated answer with the retrieved context." },
+  { key: "faithfulness", label: "Faithfulness", description: "Measures factual consistency of the generated answer with the retrieved context. Claims are extracted and verified against context." },
   { key: "answer_relevancy", label: "Answer Relevancy", description: "Evaluates how pertinent the generated answer is to the given question." },
   { key: "context_precision", label: "Context Precision", description: "Measures signal-to-noise ratio of retrieved context — are relevant chunks ranked higher?" },
-  { key: "context_recall", label: "Context Recall", description: "Evaluates whether all relevant information needed to answer was actually retrieved." },
+  { key: "context_recall", label: "Context Recall", description: "Evaluates whether all relevant information needed to answer was actually retrieved. Requires ground truth." },
 ];
 
 function relevanceColor(score: number) {
@@ -54,7 +66,9 @@ function interfaceVariant(qi: string): "default" | "secondary" | "outline" | "de
 
 export default function GraphRagMetricsPage() {
   const { data, isLoading } = useGraphragMetrics();
+  const { data: ragasData, isLoading: ragasLoading } = useRagasScores();
   const d = data as GraphRagData | undefined;
+  const ragas = ragasData as RagasScoresData | undefined;
 
   const stats = {
     total: d?.total_queries ?? 0,
@@ -68,13 +82,13 @@ export default function GraphRagMetricsPage() {
   const rows = d?.recent_queries ?? [];
   const hasData = stats.total > 0;
 
-  const avgRelevance = d?.avg_relevance_score ?? 0;
   const ragasScores = {
-    faithfulness: Math.min(avgRelevance * 1.05, 1),
-    answer_relevancy: avgRelevance,
-    context_precision: Math.min(avgRelevance * 0.95, 1),
-    context_recall: Math.min(avgRelevance * 0.9, 1),
+    faithfulness: ragas?.faithfulness?.avg ?? null,
+    answer_relevancy: ragas?.answer_relevancy?.avg ?? null,
+    context_precision: ragas?.context_precision?.avg ?? null,
+    context_recall: ragas?.context_recall?.avg ?? null,
   };
+  const hasRagas = Object.values(ragasScores).some((v) => v !== null);
 
   return (
     <DashboardShell>
@@ -108,33 +122,39 @@ export default function GraphRagMetricsPage() {
           </DashboardCard>
         </div>
 
-        {/* RAGAS-Inspired Metrics */}
+        {/* RAGAS Metrics */}
         <div className="mt-3">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BrainCircuit className="h-4 w-4" /> RAGAS-Inspired Metrics
+                <BrainCircuit className="h-4 w-4" /> RAGAS Metrics
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="mb-4 text-xs text-muted-foreground">
-                Aggregate quality scores derived from retrieval telemetry, inspired by the RAGAS evaluation framework.
+                Quality scores computed via LLM-as-judge using the RAGAS evaluation methodology: claims extraction, context verification, and relevance scoring.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                {RAGAS_DIMENSIONS.map((dim) => {
-                  const score = ragasScores[dim.key as keyof typeof ragasScores];
-                  return (
-                    <div key={dim.key} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{dim.label}</span>
-                        <span className={cn("text-sm font-semibold", relevanceColor(score))}>{hasData ? (score * 100).toFixed(0) : "—"}%</span>
+              {!hasRagas ? (
+                <NoData description="No RAGAS evaluations have been run yet. Use the API to trigger an evaluation." />
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {RAGAS_DIMENSIONS.map((dim) => {
+                    const score = ragasScores[dim.key as keyof typeof ragasScores];
+                    return (
+                      <div key={dim.key} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{dim.label}</span>
+                          <span className={cn("text-sm font-semibold", score !== null ? relevanceColor(score) : "text-muted-foreground")}>
+                            {score !== null ? (score * 100).toFixed(0) : "—"}%
+                          </span>
+                        </div>
+                        <Progress value={score !== null ? score * 100 : 0} className="h-2" />
+                        <p className="text-xs text-muted-foreground">{dim.description}</p>
                       </div>
-                      <Progress value={hasData ? score * 100 : 0} className="h-2" />
-                      <p className="text-xs text-muted-foreground">{dim.description}</p>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

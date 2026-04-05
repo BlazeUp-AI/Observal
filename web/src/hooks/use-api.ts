@@ -215,6 +215,12 @@ export function useSandboxMetrics() {
 export function useGraphragMetrics() {
   return useQuery({ queryKey: ['dashboard', 'graphrag-metrics'], queryFn: dashboard.graphragMetrics });
 }
+export function useRagasScores(graphragId?: string) {
+  return useQuery({
+    queryKey: ['dashboard', 'ragas-scores', graphragId],
+    queryFn: () => dashboard.ragasScores(graphragId),
+  });
+}
 export function useLatencyHeatmap() {
   return useQuery({ queryKey: ['dashboard', 'latency-heatmap'], queryFn: dashboard.latencyHeatmap });
 }

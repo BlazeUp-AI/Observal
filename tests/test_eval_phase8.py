@@ -23,6 +23,8 @@ class TestEvalTemplates:
             "reasoning_clarity",
             "response_quality",
             "graph_faithfulness",
+            "graph_answer_relevancy",
+            "graph_context_precision",
             "recall_accuracy",
         ]:
             assert name in EVAL_TEMPLATES

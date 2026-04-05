@@ -20,6 +20,11 @@ from schemas.dashboard import (
     LatencyCell,
     McpMetrics,
     OverviewStats,
+    RagasDimensionScore,
+    RagasEvalRequest,
+    RagasEvalResponse,
+    RagasScores,
+    RagasSpanResult,
     RelevanceBucket,
     SandboxRun,
     SandboxStats,
@@ -456,6 +461,60 @@ async def graphrag_metrics(
             )
             for r in recent
         ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# RAGAS evaluation for GraphRAGs
+# ---------------------------------------------------------------------------
+
+
+@router.post("/dashboard/graphrag-ragas-eval", response_model=RagasEvalResponse)
+async def run_graphrag_ragas_eval(
+    req: RagasEvalRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run RAGAS evaluation on recent retrieval spans for a GraphRAG."""
+    from services.ragas_eval import run_ragas_on_graphrag
+
+    result = await run_ragas_on_graphrag(
+        graphrag_id=req.graphrag_id,
+        limit=req.limit,
+        ground_truths=req.ground_truths,
+    )
+    avgs = result.get("averages", {})
+    return RagasEvalResponse(
+        spans_evaluated=result["spans_evaluated"],
+        scores=[RagasSpanResult(**s) for s in result["scores"]],
+        averages=RagasScores(
+            faithfulness=RagasDimensionScore(avg=avgs.get("faithfulness"), count=result["spans_evaluated"]),
+            answer_relevancy=RagasDimensionScore(avg=avgs.get("answer_relevancy"), count=result["spans_evaluated"]),
+            context_precision=RagasDimensionScore(avg=avgs.get("context_precision"), count=result["spans_evaluated"]),
+            context_recall=RagasDimensionScore(avg=avgs.get("context_recall"), count=result["spans_evaluated"]),
+        ),
+    )
+
+
+@router.get("/dashboard/graphrag-ragas-scores", response_model=RagasScores)
+async def graphrag_ragas_scores(
+    graphrag_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get previously computed RAGAS scores. If graphrag_id is provided, scoped to that GraphRAG; otherwise aggregate."""
+    if graphrag_id:
+        from services.ragas_eval import get_ragas_scores
+        avgs = await get_ragas_scores(graphrag_id)
+    else:
+        from services.ragas_eval import get_ragas_aggregate
+        avgs = await get_ragas_aggregate()
+
+    return RagasScores(
+        faithfulness=RagasDimensionScore(**avgs.get("faithfulness", {"avg": None, "count": 0})),
+        answer_relevancy=RagasDimensionScore(**avgs.get("answer_relevancy", {"avg": None, "count": 0})),
+        context_precision=RagasDimensionScore(**avgs.get("context_precision", {"avg": None, "count": 0})),
+        context_recall=RagasDimensionScore(**avgs.get("context_recall", {"avg": None, "count": 0})),
     )
 
 
