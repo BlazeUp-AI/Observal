@@ -18,16 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useTokenStats } from "@/hooks/use-api";
-
-interface TokenStats {
-  total_input: number;
-  total_output: number;
-  total_tokens: number;
-  avg_per_trace: number;
-  by_agent: { agent_id: string; name: string; input: number; output: number; total: number; traces: number }[];
-  by_mcp: { mcp_id: string; name: string; input: number; output: number; total: number; traces: number }[];
-  over_time: { date: string; input: number; output: number }[];
-}
+import type { TokenStats } from "@/lib/types";
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -68,8 +59,8 @@ function UsageTable({ data, isLoading }: { data: { name: string; input: number; 
 
 export default function TokensPage() {
   const [range, setRange] = useState("7d");
-  const { data, isLoading } = useTokenStats();
-  const d = data as TokenStats | undefined;
+  const { data, isLoading } = useTokenStats(range);
+  const d = data;
 
   const avgPerTrace = d?.avg_per_trace ?? 0;
 

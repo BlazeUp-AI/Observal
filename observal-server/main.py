@@ -7,6 +7,7 @@ from strawberry.fastapi import GraphQLRouter
 from api.graphql import get_context_dep, schema
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
+from api.routes.alert import router as alert_router
 from api.routes.auth import router as auth_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.eval import router as eval_router
@@ -65,6 +66,7 @@ app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(eval_router)
 app.include_router(admin_router)
+app.include_router(alert_router)
 app.include_router(otel_dashboard_router)
 
 

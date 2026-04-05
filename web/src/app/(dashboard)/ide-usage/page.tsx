@@ -29,17 +29,9 @@ function getColor(ide: string) {
   return IDE_COLORS[ide] ?? "hsl(var(--muted-foreground))";
 }
 
-interface IdeRow {
-  ide: string;
-  traces: number;
-  avg_latency_ms: number;
-  error_count: number;
-  error_rate: number;
-}
-
 export default function IdeUsagePage() {
   const { data, isLoading } = useIdeUsage();
-  const ides = ((data as { ides?: IdeRow[] })?.ides ?? []) as IdeRow[];
+  const ides = data?.ides ?? [];
 
   const byIde = ides.map((r) => ({
     name: r.ide,

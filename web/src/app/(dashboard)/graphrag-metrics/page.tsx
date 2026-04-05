@@ -19,28 +19,6 @@ import { useGraphragMetrics, useRagasScores } from "@/hooks/use-api";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-interface GraphRagData {
-  total_queries: number;
-  avg_entities: number;
-  avg_relationships: number;
-  avg_relevance_score: number;
-  avg_embedding_latency_ms: number;
-  relevance_distribution: { bucket: string; count: number }[];
-  recent_queries: { span_id: string; name: string; query_interface: string; entities: number; relationships: number; relevance_score: number; latency_ms: number; timestamp: string }[];
-}
-
-interface RagasDimensionScore {
-  avg: number | null;
-  count: number;
-}
-
-interface RagasScoresData {
-  faithfulness: RagasDimensionScore;
-  answer_relevancy: RagasDimensionScore;
-  context_precision: RagasDimensionScore;
-  context_recall: RagasDimensionScore;
-}
-
 const RAGAS_DIMENSIONS = [
   { key: "faithfulness", label: "Faithfulness", description: "Measures factual consistency of the generated answer with the retrieved context. Claims are extracted and verified against context." },
   { key: "answer_relevancy", label: "Answer Relevancy", description: "Evaluates how pertinent the generated answer is to the given question." },
@@ -65,17 +43,15 @@ function interfaceVariant(qi: string): "default" | "secondary" | "outline" | "de
 }
 
 export default function GraphRagMetricsPage() {
-  const { data, isLoading } = useGraphragMetrics();
-  const { data: ragasData, isLoading: ragasLoading } = useRagasScores();
-  const d = data as GraphRagData | undefined;
-  const ragas = ragasData as RagasScoresData | undefined;
+  const { data: d, isLoading } = useGraphragMetrics();
+  const { data: ragas, isLoading: ragasLoading } = useRagasScores();
 
   const stats = {
     total: d?.total_queries ?? 0,
     avgEntities: d?.avg_entities?.toFixed(1) ?? "0",
     avgRels: d?.avg_relationships?.toFixed(1) ?? "0",
     avgRelevance: d?.avg_relevance_score?.toFixed(3) ?? "0",
-    avgEmbedLatency: d ? `${Math.round(d.avg_embedding_latency_ms)}ms` : "0ms",
+    avgEmbedLatency: d?.avg_embedding_latency_ms != null ? `${Math.round(d.avg_embedding_latency_ms)}ms` : "0ms",
   };
 
   const histogram = d?.relevance_distribution ?? [];

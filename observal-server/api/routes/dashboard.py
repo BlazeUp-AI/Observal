@@ -1,8 +1,8 @@
 import logging
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime as dt, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,12 @@ from services.clickhouse import _query
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
+
+_RANGE_MAP = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
+
+
+def _range_days(range_: str | None) -> int:
+    return _RANGE_MAP.get(range_ or "7d", 7)
 
 
 async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
@@ -121,6 +127,7 @@ async def agent_metrics(
 
 @router.get("/overview/stats", response_model=OverviewStats)
 async def overview_stats(
+    range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -130,8 +137,13 @@ async def overview_stats(
     total_agents = await db.scalar(select(func.count(Agent.id)).where(Agent.status == AgentStatus.active)) or 0
     total_users = await db.scalar(select(func.count(User.id))) or 0
 
-    tool_rows = await _ch_json("SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > today()")
-    agent_rows = await _ch_json("SELECT count() as cnt FROM agent_interactions WHERE timestamp > today()")
+    days = _range_days(range_)
+    tool_rows = await _ch_json(
+        f"SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {days} DAY"
+    )
+    agent_rows = await _ch_json(
+        f"SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {days} DAY"
+    )
 
     return OverviewStats(
         total_mcps=total_mcps,
@@ -167,12 +179,14 @@ async def top_agents(db: AsyncSession = Depends(get_db), current_user: User = De
 
 
 @router.get("/overview/trends", response_model=list[TrendPoint])
-async def trends(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    from datetime import datetime as dt
-    from datetime import timedelta
-
+async def trends(
+    range_: str | None = Query(None, alias="range"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    days = _range_days(range_)
     now = dt.now(UTC)
-    start = now - timedelta(days=30)
+    start = now - timedelta(days=days)
 
     day_col_mcp = func.date_trunc("day", McpListing.created_at).label("day")
     mcp_rows = await db.execute(
@@ -204,16 +218,19 @@ async def trends(db: AsyncSession = Depends(get_db), current_user: User = Depend
 
 @router.get("/dashboard/tokens", response_model=TokenStats)
 async def token_stats(
+    range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    days = _range_days(range_)
+    time_filter = f"AND start_time >= now() - INTERVAL {days} DAY"
     # Totals
     totals = await _ch_json(
         "SELECT "
         "sumIf(token_count_input, token_count_input IS NOT NULL) AS total_input, "
         "sumIf(token_count_output, token_count_output IS NOT NULL) AS total_output, "
         "sumIf(token_count_total, token_count_total IS NOT NULL) AS total_tokens "
-        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0"
+        f"FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 {time_filter}"
     )
     t = totals[0] if totals else {}
     total_input = int(t.get("total_input", 0))
@@ -224,7 +241,7 @@ async def token_stats(
     avg_rows = await _ch_json(
         "SELECT round(avg(s), 2) AS avg_per_trace FROM ("
         "SELECT trace_id, sum(token_count_total) AS s "
-        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 AND token_count_total IS NOT NULL "
+        f"FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 AND token_count_total IS NOT NULL {time_filter} "
         "GROUP BY trace_id"
         ")"
     )
@@ -239,7 +256,7 @@ async def token_stats(
         "count(DISTINCT t.trace_id) AS traces "
         "FROM spans AS s FINAL "
         "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.project_id = 'default' AND t.is_deleted = 0 "
-        "WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.agent_id != '' "
+        f"WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.agent_id != '' {time_filter.replace('start_time', 's.start_time')} "
         "GROUP BY t.agent_id ORDER BY total DESC LIMIT 20"
     )
     agent_ids = [r["agent_id"] for r in by_agent_rows if r.get("agent_id")]
@@ -261,7 +278,7 @@ async def token_stats(
         "count(DISTINCT t.trace_id) AS traces "
         "FROM spans AS s FINAL "
         "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.project_id = 'default' AND t.is_deleted = 0 "
-        "WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.mcp_id != '' "
+        f"WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.mcp_id != '' {time_filter.replace('start_time', 's.start_time')} "
         "GROUP BY t.mcp_id ORDER BY total DESC LIMIT 20"
     )
     mcp_ids = [r["mcp_id"] for r in by_mcp_rows if r.get("mcp_id")]
@@ -279,7 +296,7 @@ async def token_stats(
         "SELECT toDate(start_time) AS date, "
         "sumIf(token_count_input, token_count_input IS NOT NULL) AS input, "
         "sumIf(token_count_output, token_count_output IS NOT NULL) AS output "
-        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        f"FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 {time_filter} "
         "GROUP BY date ORDER BY date"
     )
     over_time = [TokenTimePoint(date=str(r["date"]), input=int(r["input"]), output=int(r["output"])) for r in over_time_rows]

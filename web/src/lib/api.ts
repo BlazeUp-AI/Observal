@@ -1,3 +1,28 @@
+import type {
+  OverviewStats,
+  TopItem,
+  TrendPoint,
+  OtelStats,
+  OtelTrace,
+  OtelSessionData,
+  LatencyCell,
+  TokenStats,
+  AlertRule,
+  AlertRuleCreate,
+  FeedbackItem,
+  Scorecard,
+  IdeUsageData,
+  SandboxData,
+  GraphRagData,
+  RagasScoresData,
+  AdminUser,
+  AdminSetting,
+  OtelSession,
+  TelemetryStatus,
+  ReviewItem,
+  RegistryItem,
+} from "./types";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -90,10 +115,10 @@ export type RegistryType =
 export const registry = {
   list: (type: RegistryType, params?: Record<string, string>) => {
     const qs = params ? `?${new URLSearchParams(params)}` : "";
-    return get<unknown[]>(`/${type}${qs}`);
+    return get<RegistryItem[]>(`/${type}${qs}`);
   },
-  get: (type: RegistryType, id: string) => get<unknown>(`/${type}/${id}`),
-  create: (type: RegistryType, body: unknown) => post<unknown>(`/${type}`, body),
+  get: (type: RegistryType, id: string) => get<RegistryItem>(`/${type}/${id}`),
+  create: (type: RegistryType, body: unknown) => post<RegistryItem>(`/${type}`, body),
   install: (type: RegistryType, id: string, body?: unknown) =>
     post<unknown>(`/${type}/${id}/install`, body),
   delete: (type: RegistryType, id: string) => del(`/${type}/${id}`),
@@ -105,9 +130,9 @@ export const registry = {
 export const review = {
   list: (params?: Record<string, string>) => {
     const qs = params ? `?${new URLSearchParams(params)}` : "";
-    return get<unknown[]>(`/review${qs}`);
+    return get<ReviewItem[]>(`/review${qs}`);
   },
-  get: (id: string) => get<unknown>(`/review/${id}`),
+  get: (id: string) => get<ReviewItem>(`/review/${id}`),
   approve: (id: string) => post(`/review/${id}/approve`),
   reject: (id: string, body: { reason: string }) =>
     post(`/review/${id}/reject`, body),
@@ -115,30 +140,30 @@ export const review = {
 
 // ── Telemetry ───────────────────────────────────────────────────────
 export const telemetry = {
-  status: () => get<unknown>("/telemetry/status"),
+  status: () => get<TelemetryStatus>("/telemetry/status"),
   ingest: (body: unknown) => post<unknown>("/telemetry/ingest", body),
 };
 
 // ── Dashboard ───────────────────────────────────────────────────────
 export const dashboard = {
-  stats: () => get<unknown>("/overview/stats"),
-  topMcps: () => get<unknown[]>("/overview/top-mcps"),
-  topAgents: () => get<unknown[]>("/overview/top-agents"),
-  trends: () => get<unknown>("/overview/trends"),
+  stats: (range?: string) => get<OverviewStats>(`/overview/stats${range ? `?range=${range}` : ''}`),
+  topMcps: () => get<TopItem[]>("/overview/top-mcps"),
+  topAgents: () => get<TopItem[]>("/overview/top-agents"),
+  trends: (range?: string) => get<TrendPoint[]>(`/overview/trends${range ? `?range=${range}` : ''}`),
   mcpMetrics: (id: string) => get<unknown>(`/mcps/${id}/metrics`),
   agentMetrics: (id: string) => get<unknown>(`/agents/${id}/metrics`),
-  tokenStats: () => get<unknown>('/dashboard/tokens'),
-  ideUsage: () => get<unknown>('/dashboard/ide-usage'),
-  sandboxMetrics: () => get<unknown>('/dashboard/sandbox-metrics'),
-  graphragMetrics: () => get<unknown>('/dashboard/graphrag-metrics'),
-  ragasScores: (graphragId?: string) => get<unknown>(`/dashboard/graphrag-ragas-scores${graphragId ? `?graphrag_id=${encodeURIComponent(graphragId)}` : ''}`),
-  latencyHeatmap: () => get<unknown[]>('/dashboard/latency-heatmap'),
+  tokenStats: (range?: string) => get<TokenStats>(`/dashboard/tokens${range ? `?range=${range}` : ''}`),
+  ideUsage: () => get<IdeUsageData>('/dashboard/ide-usage'),
+  sandboxMetrics: () => get<SandboxData>('/dashboard/sandbox-metrics'),
+  graphragMetrics: () => get<GraphRagData>('/dashboard/graphrag-metrics'),
+  ragasScores: (graphragId?: string) => get<RagasScoresData>(`/dashboard/graphrag-ragas-scores${graphragId ? `?graphrag_id=${encodeURIComponent(graphragId)}` : ''}`),
+  latencyHeatmap: () => get<LatencyCell[]>('/dashboard/latency-heatmap'),
   unannotatedTraces: () => get<unknown[]>('/dashboard/unannotated-traces'),
-  otelSessions: () => get<unknown[]>('/otel/sessions'),
-  otelSession: (id: string) => get<unknown>(`/otel/sessions/${encodeURIComponent(id)}`),
-  otelTraces: () => get<unknown[]>('/otel/traces'),
+  otelSessions: () => get<OtelSession[]>('/otel/sessions'),
+  otelSession: (id: string) => get<OtelSessionData>(`/otel/sessions/${encodeURIComponent(id)}`),
+  otelTraces: () => get<OtelTrace[]>('/otel/traces'),
   otelTrace: (id: string) => get<unknown>(`/otel/traces/${encodeURIComponent(id)}`),
-  otelStats: () => get<unknown>('/otel/stats'),
+  otelStats: () => get<OtelStats>('/otel/stats'),
 };
 
 // ── Feedback ────────────────────────────────────────────────────────
@@ -148,8 +173,8 @@ export const feedback = {
     listing_id: string;
     stars: number;
     comment?: string;
-  }) => post<unknown>("/feedback", body),
-  get: (type: string, id: string) => get<unknown[]>(`/feedback/${type}/${id}`),
+  }) => post<FeedbackItem>("/feedback", body),
+  get: (type: string, id: string) => get<FeedbackItem[]>(`/feedback/${type}/${id}`),
   summary: (id: string) => get<unknown>(`/feedback/summary/${id}`),
 };
 
@@ -159,10 +184,10 @@ export const eval_ = {
     post<unknown>(`/eval/agents/${agentId}`, body),
   scorecards: (agentId: string, params?: Record<string, string>) => {
     const qs = params ? `?${new URLSearchParams(params)}` : "";
-    return get<unknown[]>(`/eval/agents/${agentId}/scorecards${qs}`);
+    return get<Scorecard[]>(`/eval/agents/${agentId}/scorecards${qs}`);
   },
   show: (scorecardId: string) =>
-    get<unknown>(`/eval/scorecards/${scorecardId}`),
+    get<Scorecard>(`/eval/scorecards/${scorecardId}`),
   compare: (agentId: string, params: Record<string, string>) => {
     const qs = `?${new URLSearchParams(params)}`;
     return get<unknown>(`/eval/agents/${agentId}/compare${qs}`);
@@ -171,13 +196,21 @@ export const eval_ = {
 
 // ── Admin ───────────────────────────────────────────────────────────
 export const admin = {
-  settings: () => get<unknown>("/admin/settings"),
+  settings: () => get<AdminSetting[] | Record<string, string>>("/admin/settings"),
   updateSetting: (key: string, body: unknown) =>
     put<unknown>(`/admin/settings/${key}`, body),
-  users: () => get<unknown[]>("/admin/users"),
+  users: () => get<AdminUser[]>("/admin/users"),
   createUser: (body: unknown) => post<unknown>("/admin/users", body),
   updateRole: (id: string, body: { role: string }) =>
     put<unknown>(`/admin/users/${id}/role`, body),
+};
+
+// ── Alerts ──────────────────────────────────────────────────────────
+export const alerts = {
+  list: () => get<AlertRule[]>("/alerts"),
+  create: (body: AlertRuleCreate) => post<AlertRule>("/alerts", body),
+  update: (id: string, body: { status: string }) => request<AlertRule>("PATCH", `/alerts/${id}`, body),
+  delete: (id: string) => del(`/alerts/${id}`),
 };
 
 // ── Health ──────────────────────────────────────────────────────────

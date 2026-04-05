@@ -22,6 +22,7 @@ import {
 import { StatusBadge } from "@/components/registry/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/dashboard/query-error";
 import { ListTree } from "lucide-react";
 
 const TRACE_TYPES = [
@@ -56,7 +57,7 @@ export function TraceList() {
   if (traceType !== "all") filters.trace_type = traceType;
   if (ide !== "all") filters.ide = ide;
 
-  const { data: traces, isLoading } = useTraces(
+  const { data: traces, isLoading, isError, error, refetch } = useTraces(
     Object.keys(filters).length ? filters : undefined,
   );
 
@@ -104,7 +105,9 @@ export function TraceList() {
       </div>
 
       {/* Table */}
-      {isLoading ? (
+      {isError ? (
+        <QueryError message={error?.message} onRetry={refetch} />
+      ) : isLoading ? (
         <div className="space-y-2">
           <Skeleton className="h-8 w-full" />
           {Array.from({ length: 8 }).map((_, i) => (

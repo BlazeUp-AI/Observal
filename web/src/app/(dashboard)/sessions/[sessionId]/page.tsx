@@ -9,14 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-interface RawOtelEvent {
-  timestamp: string;
-  event_name: string;
-  body?: string;
-  attributes?: Record<string, string>;
-  service_name?: string;
-}
+import type { RawOtelEvent, OtelSessionData } from "@/lib/types";
 
 interface OtelEvent {
   timestamp: string;
@@ -49,13 +42,6 @@ function normalizeEvent(raw: RawOtelEvent): OtelEvent {
     decision: a["decision"] || undefined,
     source: a["source"] || undefined,
   };
-}
-
-interface OtelSessionData {
-  session_id: string;
-  events: RawOtelEvent[];
-  traces: unknown[];
-  service_name: string;
 }
 
 function formatDuration(ms: number) {
@@ -169,7 +155,7 @@ function EventBubble({ event }: { event: OtelEvent }) {
 export default function SessionDetailPage({ params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = use(params);
   const { data, isLoading } = useOtelSession(sessionId);
-  const session = data as OtelSessionData | undefined;
+  const session = data;
 
   const events = (session?.events ?? []).map(normalizeEvent);
   const totalTokensIn = events.reduce((sum, e) => sum + (e.input_tokens ?? 0), 0);

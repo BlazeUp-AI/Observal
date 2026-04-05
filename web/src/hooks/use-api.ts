@@ -15,14 +15,16 @@ import {
   eval_,
   admin,
   telemetry,
+  alerts,
   graphql,
   type RegistryType,
 } from "@/lib/api";
+import type { AlertRuleCreate } from "@/lib/types";
 
 // ── Dashboard ───────────────────────────────────────────────────────
 
-export function useOverviewStats() {
-  return useQuery({ queryKey: ["overview", "stats"], queryFn: dashboard.stats });
+export function useOverviewStats(range?: string) {
+  return useQuery({ queryKey: ["overview", "stats", range], queryFn: () => dashboard.stats(range) });
 }
 
 export function useTopMcps() {
@@ -33,8 +35,8 @@ export function useTopAgents() {
   return useQuery({ queryKey: ["overview", "top-agents"], queryFn: dashboard.topAgents });
 }
 
-export function useTrends() {
-  return useQuery({ queryKey: ["overview", "trends"], queryFn: dashboard.trends });
+export function useTrends(range?: string) {
+  return useQuery({ queryKey: ["overview", "trends", range], queryFn: () => dashboard.trends(range) });
 }
 
 // ── Traces (GraphQL) ────────────────────────────────────────────────
@@ -203,8 +205,8 @@ export function useTelemetryStatus() {
 
 // ── New Dashboard Hooks ─────────────────────────────────────────────
 
-export function useTokenStats() {
-  return useQuery({ queryKey: ['dashboard', 'tokens'], queryFn: dashboard.tokenStats });
+export function useTokenStats(range?: string) {
+  return useQuery({ queryKey: ['dashboard', 'tokens', range], queryFn: () => dashboard.tokenStats(range) });
 }
 export function useIdeUsage() {
   return useQuery({ queryKey: ['dashboard', 'ide-usage'], queryFn: dashboard.ideUsage });
@@ -244,4 +246,34 @@ export function useOtelTrace(id: string | undefined) {
 }
 export function useOtelStats() {
   return useQuery({ queryKey: ['otel', 'stats'], queryFn: dashboard.otelStats });
+}
+
+// ── Alerts ──────────────────────────────────────────────────────────
+
+export function useAlerts() {
+  return useQuery({ queryKey: ['alerts'], queryFn: alerts.list });
+}
+
+export function useCreateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AlertRuleCreate) => alerts.create(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+}
+
+export function useUpdateAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; status: string }) => alerts.update(vars.id, { status: vars.status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
+}
+
+export function useDeleteAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => alerts.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  });
 }

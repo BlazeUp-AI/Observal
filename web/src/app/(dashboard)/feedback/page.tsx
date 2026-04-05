@@ -13,18 +13,6 @@ import { Star } from "lucide-react";
 
 const TYPES = ["mcp", "agent", "tool", "skill", "hook", "prompt", "sandbox", "graphrag"];
 
-interface FeedbackItem {
-  id: string;
-  listing_id?: string;
-  listing_name?: string;
-  listing_type?: string;
-  stars: number;
-  comment?: string;
-  user?: string;
-  username?: string;
-  created_at?: string;
-}
-
 function Stars({ count }: { count: number }) {
   return (
     <span className="inline-flex gap-0.5">
@@ -68,7 +56,7 @@ export default function FeedbackPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(items as FeedbackItem[] | undefined)?.length ? (items as FeedbackItem[]).map((fb) => (
+            {items?.length ? items.map((fb) => (
               <TableRow key={fb.id}>
                 <TableCell className="font-medium">{fb.listing_name ?? fb.listing_id ?? "—"}</TableCell>
                 <TableCell><Badge variant="outline">{fb.listing_type ?? type}</Badge></TableCell>

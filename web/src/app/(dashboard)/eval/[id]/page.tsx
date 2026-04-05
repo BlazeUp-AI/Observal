@@ -9,30 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-
-interface Dimension {
-  name: string;
-  score: number;
-  comment?: string;
-}
-
-interface Scorecard {
-  id: string;
-  agent_id?: string;
-  agent_name?: string;
-  version?: string;
-  status?: string;
-  overall_score?: number;
-  created_at?: string;
-  dimensions?: Dimension[];
-  metadata?: Record<string, unknown>;
-}
+import type { Scorecard } from "@/lib/types";
 
 export default function ScorecardDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: scorecard, isLoading } = useQuery({
     queryKey: ["eval", "scorecard", id],
-    queryFn: () => eval_.show(id) as Promise<Scorecard>,
+    queryFn: () => eval_.show(id),
   });
 
   if (isLoading) {

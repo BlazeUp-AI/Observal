@@ -18,8 +18,8 @@ export function NoData({
 }: NoDataProps) {
   if (isLoading) {
     return (
-      <div className={cn("flex min-h-36 w-full items-center justify-center rounded-md", className)}>
-        <Skeleton className="h-full w-full" />
+      <div className={cn("min-h-36 w-full rounded-md", className)}>
+        <Skeleton className="h-36 w-full" />
       </div>
     );
   }

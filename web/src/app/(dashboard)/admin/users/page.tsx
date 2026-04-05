@@ -14,15 +14,6 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
-interface User {
-  id: string;
-  username?: string;
-  name?: string;
-  email?: string;
-  role: string;
-  created_at?: string;
-}
-
 const ROLES = ["admin", "developer", "user"];
 
 export default function AdminUsersPage() {
@@ -61,7 +52,7 @@ export default function AdminUsersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(users as User[] | undefined)?.length ? (users as User[]).map((u) => (
+            {users?.length ? users.map((u) => (
               <TableRow key={u.id}>
                 <TableCell className="font-medium">{u.username ?? u.name ?? "—"}</TableCell>
                 <TableCell>{u.email ?? "—"}</TableCell>

@@ -11,11 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Check } from "lucide-react";
-
-interface Setting {
-  key: string;
-  value: string;
-}
+import type { AdminSetting } from "@/lib/types";
 
 export default function AdminSettingsPage() {
   const qc = useQueryClient();
@@ -24,8 +20,8 @@ export default function AdminSettingsPage() {
   const [saved, setSaved] = useState<Set<string>>(new Set());
 
   // Normalize settings: could be array of {key,value} or object
-  const settings: Setting[] = Array.isArray(rawSettings)
-    ? (rawSettings as Setting[])
+  const settings: AdminSetting[] = Array.isArray(rawSettings)
+    ? (rawSettings as AdminSetting[])
     : rawSettings
       ? Object.entries(rawSettings as Record<string, string>).map(([key, value]) => ({ key, value: String(value) }))
       : [];

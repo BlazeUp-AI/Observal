@@ -23,6 +23,7 @@ import { DashboardCard } from "@/components/dashboard/dashboard-card";
 import { TimeRangeSelect } from "@/components/dashboard/time-range-select";
 import { NoData } from "@/components/dashboard/no-data";
 import { LatencyHeatmap } from "@/components/dashboard/latency-heatmap";
+import { QueryError } from "@/components/dashboard/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -34,32 +35,24 @@ import {
   useLatencyHeatmap,
   useOtelStats,
 } from "@/hooks/use-api";
+import type { TopItem, TrendPoint, LatencyCell } from "@/lib/types";
 
 export default function DashboardPage() {
   const [range, setRange] = useState("7d");
-  const stats = useOverviewStats();
+  const stats = useOverviewStats(range);
   const topMcps = useTopMcps();
   const topAgents = useTopAgents();
-  const trends = useTrends();
+  const trends = useTrends(range);
   const heatmap = useLatencyHeatmap();
   const otelStats = useOtelStats();
 
-  const s = stats.data as
-    | {
-        total_mcps: number;
-        total_agents: number;
-        total_users: number;
-        total_tool_calls_today: number;
-        total_agent_interactions_today: number;
-      }
-    | undefined;
+  const s = stats.data;
 
   const isLoading = stats.isLoading;
+  const hasError = stats.isError || otelStats.isError;
   const hasData = !!s;
 
-  const os = otelStats.data as
-    | { total_sessions: number; total_prompts: number; total_api_requests: number; total_tool_calls: number; total_input_tokens: number; total_output_tokens: number; total_traces: number; total_spans: number }
-    | undefined;
+  const os = otelStats.data;
 
   return (
     <DashboardShell>
@@ -70,6 +63,14 @@ export default function DashboardPage() {
         }
       />
       <DashboardContent>
+        {hasError && (
+          <div className="mb-3">
+            <QueryError
+              message={stats.error?.message ?? otelStats.error?.message}
+              onRetry={() => { stats.refetch(); otelStats.refetch(); }}
+            />
+          </div>
+        )}
         <div className="grid w-full grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-6">
           {/* Stat cards row - show real data or zeros */}
           <StatCard
@@ -88,19 +89,18 @@ export default function DashboardPage() {
             icon={Users}
           />
           <StatCard
-            title="Tool Calls Today"
+            title="Tool Calls"
             value={isLoading ? "—" : (s?.total_tool_calls_today ?? 0)}
             icon={Wrench}
           />
           <StatCard
-            title="Interactions Today"
+            title="Interactions"
             value={isLoading ? "—" : (s?.total_agent_interactions_today ?? 0)}
             icon={MessageSquare}
           />
-          {/* Extra stat for visual balance */}
           <StatCard
-            title="Active Traces"
-            value={isLoading ? "—" : 0}
+            title="OTel Spans"
+            value={otelStats.isLoading ? "—" : (os?.total_spans ?? 0)}
             icon={Activity}
           />
           <StatCard
@@ -137,14 +137,14 @@ export default function DashboardPage() {
           {/* Top items row */}
           <TopItemsCard
             title="Top MCP Servers"
-            data={topMcps.data as { id: string; name: string; value: number }[] | undefined}
+            data={topMcps.data}
             isLoading={topMcps.isLoading}
             linkPrefix="/mcps/"
             className="col-span-1 xl:col-span-3"
           />
           <TopItemsCard
             title="Top Agents"
-            data={topAgents.data as { id: string; name: string; value: number }[] | undefined}
+            data={topAgents.data}
             isLoading={topAgents.isLoading}
             linkPrefix="/agents/"
             className="col-span-1 xl:col-span-3"
@@ -156,12 +156,12 @@ export default function DashboardPage() {
             isLoading={trends.isLoading}
             className="col-span-1 lg:col-span-full"
           >
-            {!trends.data || !(trends.data as unknown[]).length ? (
+            {!trends.data || !trends.data.length ? (
               <NoData description="Trends will appear as submissions and user activity are recorded." />
             ) : (
               <div className="h-72">
                 <TrendChart
-                  data={trends.data as Array<{ date: string; submissions: number; users: number }>}
+                  data={trends.data}
                   lines={[
                     { key: "submissions", color: "hsl(var(--chart-1))", label: "Submissions" },
                     { key: "users", color: "hsl(var(--chart-2))", label: "Users" },
@@ -181,7 +181,7 @@ export default function DashboardPage() {
             {heatmap.isLoading ? null : !heatmap.data?.length ? (
               <NoData description="Latency heatmap data will appear as tool call telemetry is collected." />
             ) : (
-              <LatencyHeatmap data={heatmap.data as { name: string; hour: number; p50: number; p90: number; p99: number }[]} />
+              <LatencyHeatmap data={heatmap.data} />
             )}
           </DashboardCard>
 

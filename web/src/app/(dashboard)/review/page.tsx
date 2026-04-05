@@ -26,6 +26,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClipboardCheck } from "lucide-react";
+import type { ReviewItem } from "@/lib/types";
 
 const TYPES = [
   "all",
@@ -49,17 +50,6 @@ const TYPE_LABELS: Record<string, string> = {
   sandbox: "Sandboxes",
   graphrag: "GraphRAGs",
 };
-
-interface ReviewItem {
-  id: string;
-  name?: string;
-  type?: string;
-  listing_type?: string;
-  submitted_by?: string;
-  submitted_at?: string;
-  created_at?: string;
-  status?: string;
-}
 
 export default function ReviewPage() {
   const [typeFilter, setTypeFilter] = useState("all");
@@ -86,7 +76,7 @@ export default function ReviewPage() {
     }
   };
 
-  const reviewItems = items as ReviewItem[] | undefined;
+  const reviewItems = items;
 
   return (
     <DashboardShell>

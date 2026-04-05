@@ -10,16 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge } from "@/components/registry/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface OtelTrace {
-  trace_id: string;
-  span_name: string;
-  service_name?: string;
-  duration_ns: number;
-  status: string;
-  session_id?: string;
-  timestamp?: string;
-}
+import type { OtelTrace } from "@/lib/types";
 
 function formatNanos(ns: number) {
   const ms = ns / 1_000_000;

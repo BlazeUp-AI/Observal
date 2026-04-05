@@ -16,21 +16,8 @@ import {
 import { useSandboxMetrics } from "@/hooks/use-api";
 import { format } from "date-fns";
 
-interface SandboxData {
-  total_runs: number;
-  oom_count: number;
-  oom_rate: number;
-  timeout_count: number;
-  timeout_rate: number;
-  avg_exit_code: number;
-  recent_runs: { span_id: string; name: string; exit_code: number; duration_ms: number; memory_mb: number; cpu_ms: number; oom: boolean; timestamp: string }[];
-  cpu_over_time: { date: string; avg_cpu: number }[];
-  memory_over_time: { date: string; avg_memory: number }[];
-}
-
 export default function SandboxMetricsPage() {
-  const { data, isLoading } = useSandboxMetrics();
-  const d = data as SandboxData | undefined;
+  const { data: d, isLoading } = useSandboxMetrics();
 
   const stats = {
     total: d?.total_runs ?? 0,

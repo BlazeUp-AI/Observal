@@ -1,4 +1,5 @@
 from models.agent import Agent, AgentDownload, AgentGoalSection, AgentGoalTemplate, AgentMcpLink, AgentStatus
+from models.alert import AlertRule
 from models.base import Base
 from models.enterprise_config import EnterpriseConfig
 from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
@@ -19,6 +20,7 @@ __all__ = [
     "AgentGoalTemplate",
     "AgentMcpLink",
     "AgentStatus",
+    "AlertRule",
     "Base",
     "EnterpriseConfig",
     "EvalRun",

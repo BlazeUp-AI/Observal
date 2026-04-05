@@ -107,19 +107,11 @@ export function TraceStream() {
     setPaused(false);
   };
 
-  const filtered = buffer.filter((t) => {
-    const type = t.trace_type ?? t.traceType ?? "";
-    const ide = t.ide ?? "";
-    if (typeFilter !== "all" && type !== typeFilter) return false;
-    if (ideFilter !== "all" && ide !== ideFilter) return false;
-    return true;
-  });
-
   return (
     <div className="flex h-full flex-col gap-3">
       {/* Filter bar */}
       <div className="flex items-center gap-2">
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
+        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); seenIds.current.clear(); setBuffer([]); }}>
           <SelectTrigger className="h-8 w-[140px] text-sm">
             <SelectValue placeholder="Trace type" />
           </SelectTrigger>
@@ -131,7 +123,7 @@ export function TraceStream() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={ideFilter} onValueChange={setIdeFilter}>
+        <Select value={ideFilter} onValueChange={(v) => { setIdeFilter(v); seenIds.current.clear(); setBuffer([]); }}>
           <SelectTrigger className="h-8 w-[140px] text-sm">
             <SelectValue placeholder="IDE" />
           </SelectTrigger>
@@ -161,12 +153,12 @@ export function TraceStream() {
       {/* Stream */}
       <ScrollArea className="flex-1 rounded-md border">
         <div className="divide-y">
-          {filtered.length === 0 && (
+          {buffer.length === 0 && (
             <p className="p-8 text-center text-sm text-muted-foreground">
               Waiting for traces…
             </p>
           )}
-          {filtered.map((t) => {
+          {buffer.map((t) => {
             const traceId = t.traceId ?? t.id;
             const type = t.trace_type ?? t.traceType ?? "";
             const ts = t.startTime ?? t.start_time ?? "";

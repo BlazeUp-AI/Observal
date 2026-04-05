@@ -7,19 +7,7 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { DashboardShell, DashboardContent } from "@/components/layouts/dashboard-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface OtelSession {
-  session_id: string;
-  first_event_time: string;
-  last_event_time: string;
-  prompt_count: number;
-  api_request_count: number;
-  tool_result_count: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  model: string;
-  service_name: string;
-}
+import type { OtelSession } from "@/lib/types";
 
 function formatDuration(start: string, end: string) {
   const ms = new Date(end).getTime() - new Date(start).getTime();
@@ -32,7 +20,7 @@ function formatDuration(start: string, end: string) {
 export default function SessionsPage() {
   const router = useRouter();
   const { data, isLoading } = useOtelSessions();
-  const sessions = (data ?? []) as OtelSession[];
+  const sessions = data ?? [];
 
   return (
     <DashboardShell>

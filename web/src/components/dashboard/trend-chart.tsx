@@ -19,7 +19,8 @@ interface TrendLine {
 }
 
 interface TrendChartProps {
-  data: Array<{ date: string; [key: string]: number | string }>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: Array<Record<string, any>>;
   lines: TrendLine[];
   height?: number;
 }
