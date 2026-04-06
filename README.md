@@ -14,7 +14,7 @@
 
 ---
 
-Observal is a self-hosted platform that traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions — then tells you exactly what's helping and what isn't.
+Observal is a self-hosted platform that traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions,  then tells you exactly what's helping and what isn't.
 
 It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Windsurf, Codex CLI, and GitHub Copilot.
 
@@ -40,7 +40,7 @@ This detects MCP servers from your IDE config files, registers them with Observa
 
 ## The Problem
 
-Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks — but none of this is measured. Teams can't answer basic questions:
+Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks, but none of this is measured. Teams can't answer basic questions:
 
 - Which tools speed up development and which ones waste time?
 - Are prompts producing good results or causing rework?
@@ -53,7 +53,7 @@ Without answers, teams can't improve their tooling. They guess, ship changes, an
 
 ## How It Works
 
-Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal - no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup — no manual registration required.
+Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal - no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup; no manual registration required.
 
 ```
 IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
@@ -65,7 +65,7 @@ IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
           Eval Engine (LLM-as-judge)  -->  Scorecards
 ```
 
-The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, RAG relevance, and code correctness. Scorecards let you compare versions, identify bottlenecks, and track improvements over time. For GraphRAG endpoints, Observal runs RAGAS evaluation — computing faithfulness, answer relevancy, context precision, and context recall using LLM-as-judge on retrieval spans.
+The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, RAG relevance, and code correctness. Scorecards let you compare versions, identify bottlenecks, and track improvements over time. For GraphRAG endpoints, Observal runs RAGAS evaluation, computing faithfulness, answer relevancy, context precision, and context recall using LLM-as-judge on retrieval spans.
 
 ## What It Covers
 
@@ -82,7 +82,7 @@ Observal manages 8 registry types that cover the full surface area of modern AI-
 | Sandbox Exec | Docker/LXC execution environments for code running and testing | CPU/memory/disk/network usage, exit codes, OOM rate, timeout rate |
 | GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency, RAGAS evaluation (faithfulness, answer relevancy, context precision, context recall) |
 
-Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry — but you can use your own items and collect telemetry immediately, no approval needed.
+Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry, but you can use your own items and collect telemetry immediately, no approval needed.
 
 ## IDE Support
 
@@ -374,7 +374,7 @@ All tests mock external services. No Docker needed.
 
 ## Community
 
-Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions instead of opening issues — issues are reserved for bug reports and feature requests.
+Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions instead of opening issues, issues are reserved for bug reports and feature requests.
 
 ## Contributing
 
