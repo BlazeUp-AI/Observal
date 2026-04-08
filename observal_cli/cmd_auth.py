@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json as _json
+import os
+import shutil
+from pathlib import Path
 
 import httpx
 import typer
@@ -66,6 +69,8 @@ def register_auth(app: typer.Typer):
                 rprint("\n[bold]Your Admin API key:[/bold]")
                 rprint(f"  {data['api_key']}")
                 rprint("\n[dim]Keep this safe. You can now invite developers via the Web UI.[/dim]")
+
+                _configure_claude_code(server_url, data["api_key"])
                 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 400 and "already initialized" in e.response.text.lower():
@@ -234,3 +239,61 @@ def register_config(app: typer.Typer):
             rprint(f"  @{name} → [dim]{target}[/dim]")
 
     app.add_typer(config_app, name="config")
+
+
+def _configure_claude_code(server_url: str, api_key: str):
+    """Check for Claude Code and offer to configure its telemetry."""
+    claude_dir = Path.home() / ".claude"
+    claude_settings_file = claude_dir / "settings.json"
+
+    try:
+        claude_exists = claude_dir.is_dir() or shutil.which("claude")
+        if not claude_exists:
+            return
+
+        if not typer.confirm("\nDetected Claude Code installation.\nConfigure Claude Code telemetry → Observal?", default=True):
+            return
+
+        settings = {}
+        if claude_settings_file.exists():
+            with open(claude_settings_file, encoding="utf-8") as f:
+                try:
+                    settings = _json.load(f)
+                except _json.JSONDecodeError:
+                    rprint(f"[yellow]Warning: Could not parse {claude_settings_file}. A new file will be created.[/yellow]")
+                    pass  # Will create a new file
+
+        # Prepare OTEL config
+        otel_env = {
+            "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+            "OTEL_METRICS_EXPORTER": "otlp",
+            "OTEL_LOGS_EXPORTER": "otlp",
+            "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+            "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Bearer {api_key}",
+        }
+
+        # Set endpoint based on server_url
+        # Assumes OTLP/gRPC is on port 4317 of the same host
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(server_url)
+        scheme = "http" if parsed_url.hostname == "localhost" else "https"
+        otel_endpoint = f"{scheme}://{parsed_url.hostname}:4317"
+        otel_env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otel_endpoint
+
+        # Merge with existing settings
+        if "env" not in settings:
+            settings["env"] = {}
+        settings["env"].update(otel_env)
+
+        # Write back
+        claude_dir.mkdir(exist_ok=True)
+        with open(claude_settings_file, "w", encoding="utf-8") as f:
+            _json.dump(settings, f, indent=2)
+
+        rprint(f"✓ Updated [dim]{claude_settings_file}[/dim] — Claude Code will send traces to Observal.")
+        rprint("\nYou're all set. Open Claude Code and traces will appear in the dashboard.")
+
+    except Exception as e:
+        rprint(f"\n[yellow]Could not configure Claude Code automatically: {e}[/yellow]")
+        rprint("Please see documentation for manual configuration.")
