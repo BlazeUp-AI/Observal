@@ -162,3 +162,156 @@ async def update_user_role(
     await db.commit()
     await db.refresh(user)
     return UserAdminResponse.model_validate(user)
+
+
+# ── Penalty & Weight Customization ──────────────────────
+
+
+@router.get("/penalties", response_model=list[dict])
+async def list_penalties(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all penalty definitions."""
+    _require_admin(current_user)
+    from models.scoring import PenaltyDefinition
+
+    result = await db.execute(select(PenaltyDefinition).order_by(PenaltyDefinition.dimension, PenaltyDefinition.event_name))
+    return [
+        {
+            "id": str(p.id),
+            "dimension": p.dimension.value,
+            "event_name": p.event_name,
+            "amount": p.amount,
+            "severity": p.severity.value,
+            "trigger_type": p.trigger_type.value,
+            "description": p.description,
+            "is_active": p.is_active,
+        }
+        for p in result.scalars().all()
+    ]
+
+
+@router.put("/penalties/{penalty_id}", response_model=dict)
+async def update_penalty(
+    penalty_id: uuid.UUID,
+    req: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Enable/disable or modify a penalty definition."""
+    _require_admin(current_user)
+    from models.scoring import PenaltyDefinition
+
+    result = await db.execute(select(PenaltyDefinition).where(PenaltyDefinition.id == penalty_id))
+    penalty = result.scalar_one_or_none()
+    if not penalty:
+        raise HTTPException(status_code=404, detail="Penalty not found")
+
+    if "amount" in req:
+        penalty.amount = int(req["amount"])
+    if "is_active" in req:
+        penalty.is_active = bool(req["is_active"])
+    if "description" in req:
+        penalty.description = str(req["description"])
+
+    await db.commit()
+    await db.refresh(penalty)
+    return {
+        "id": str(penalty.id),
+        "event_name": penalty.event_name,
+        "amount": penalty.amount,
+        "is_active": penalty.is_active,
+    }
+
+
+@router.get("/weights", response_model=list[dict])
+async def list_weights(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List global dimension weights."""
+    _require_admin(current_user)
+    from models.scoring import DEFAULT_DIMENSION_WEIGHTS, DimensionWeight
+
+    result = await db.execute(select(DimensionWeight).where(DimensionWeight.agent_id.is_(None)))
+    db_weights = {w.dimension.value: w.weight for w in result.scalars().all()}
+
+    # Merge with defaults
+    weights = []
+    for dim, default_weight in DEFAULT_DIMENSION_WEIGHTS.items():
+        weights.append({
+            "dimension": dim.value,
+            "weight": db_weights.get(dim.value, default_weight),
+            "is_custom": dim.value in db_weights,
+        })
+    return weights
+
+
+@router.put("/weights", response_model=dict)
+async def set_global_weights(
+    req: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set global dimension weights. Body: {dimension: weight, ...}"""
+    _require_admin(current_user)
+    from models.scoring import DimensionWeight, ScoringDimension
+
+    updated = {}
+    for dim_name, weight in req.items():
+        try:
+            dim = ScoringDimension(dim_name)
+        except ValueError:
+            continue
+
+        result = await db.execute(
+            select(DimensionWeight).where(
+                DimensionWeight.agent_id.is_(None),
+                DimensionWeight.dimension == dim,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.weight = float(weight)
+        else:
+            db.add(DimensionWeight(dimension=dim, weight=float(weight)))
+        updated[dim_name] = float(weight)
+
+    await db.commit()
+    return {"updated": updated}
+
+
+@router.put("/weights/agents/{agent_id}", response_model=dict)
+async def set_agent_weights(
+    agent_id: uuid.UUID,
+    req: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set per-agent dimension weights. Body: {dimension: weight, ...}"""
+    _require_admin(current_user)
+    from models.scoring import DimensionWeight, ScoringDimension
+
+    updated = {}
+    for dim_name, weight in req.items():
+        try:
+            dim = ScoringDimension(dim_name)
+        except ValueError:
+            continue
+
+        result = await db.execute(
+            select(DimensionWeight).where(
+                DimensionWeight.agent_id == agent_id,
+                DimensionWeight.dimension == dim,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.weight = float(weight)
+        else:
+            db.add(DimensionWeight(agent_id=agent_id, dimension=dim, weight=float(weight)))
+        updated[dim_name] = float(weight)
+
+    await db.commit()
+    return {"agent_id": str(agent_id), "updated": updated}

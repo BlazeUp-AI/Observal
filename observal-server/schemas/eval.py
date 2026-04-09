@@ -26,6 +26,13 @@ class ScorecardResponse(BaseModel):
     bottleneck: str | None
     evaluated_at: datetime
     dimensions: list[ScorecardDimensionResponse] = []
+    # New structured scoring fields
+    dimension_scores: dict | None = None
+    composite_score: float | None = None
+    display_score: float | None = None
+    grade: str | None = None
+    scoring_recommendations: list[str] | None = None
+    penalty_count: int = 0
     model_config = {"from_attributes": True}
 
 

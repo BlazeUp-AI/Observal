@@ -49,9 +49,20 @@ class Scorecard(Base):
     raw_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
+    # New 5-dimension scoring fields
+    dimension_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    composite_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    display_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grade: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    scoring_recommendations: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    penalty_count: Mapped[int] = mapped_column(Integer, default=0)
+
     eval_run: Mapped["EvalRun"] = relationship(back_populates="scorecards")
     dimensions: Mapped[list["ScorecardDimension"]] = relationship(
         back_populates="scorecard", lazy="selectin", cascade="all, delete-orphan"
+    )
+    penalties: Mapped[list["TracePenalty"]] = relationship(
+        back_populates="scorecard", lazy="raise", cascade="all, delete-orphan"
     )
 
 
@@ -68,3 +79,7 @@ class ScorecardDimension(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     scorecard: Mapped["Scorecard"] = relationship(back_populates="dimensions")
+
+
+# Import for relationship resolution
+from models.scoring import TracePenalty  # noqa: E402, TC001
