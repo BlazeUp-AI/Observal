@@ -1,7 +1,7 @@
 """Unit tests for the structural scorer (rule-based, no LLM)."""
 
 
-from services.structural_scorer import StructuralScorer, _span_dedup_key
+from services.structural_scorer import StructuralScorer, _span_dedup_key, _span_asserts_external_state
 
 
 def _tool_span(name="tool_a", input_data="input1", output="result", status="success", latency_ms=100, span_id="s1", error=None):
@@ -92,30 +92,36 @@ class TestToolEfficiency:
         unused = [p for p in penalties if p["event_name"] == "unused_tool_result"]
         assert len(unused) == 0
 
-    def test_excessive_tool_calls(self):
-        spans = [_tool_span(name=f"tool_{i}", input_data=f"i{i}", span_id=f"s{i}") for i in range(25)]
-        penalties = self.scorer.score_tool_efficiency(spans, "agent-1", historical_median=10)
-        excessive = [p for p in penalties if p["event_name"] == "excessive_tool_calls"]
-        assert len(excessive) == 1
-        assert "25 tool calls" in excessive[0]["evidence"]
+    def test_ungrounded_claims_detected(self):
+        """Agent makes assertions about external state with no tool calls."""
+        spans = [_reasoning_span(input_data="the file contains a config block")]
+        penalties = self.scorer.score_tool_efficiency(spans, "agent-1")
+        ungrounded = [p for p in penalties if p["event_name"] == "ungrounded_claims"]
+        assert len(ungrounded) == 1
 
-    def test_no_excessive_when_under_threshold(self):
-        spans = [_tool_span(name=f"tool_{i}", input_data=f"i{i}", span_id=f"s{i}") for i in range(15)]
-        penalties = self.scorer.score_tool_efficiency(spans, "agent-1", historical_median=10)
+    def test_no_ungrounded_claims_without_assertions(self):
+        """Agent reasons without asserting external state — no penalty."""
+        spans = [_reasoning_span(input_data="let me think about the approach")]
+        penalties = self.scorer.score_tool_efficiency(spans, "agent-1")
+        ungrounded = [p for p in penalties if p["event_name"] == "ungrounded_claims"]
+        assert len(ungrounded) == 0
+
+    def test_no_ungrounded_claims_when_tools_used(self):
+        """Agent uses tools — even with assertion language, not penalized."""
+        spans = [
+            _tool_span(name="read_file", input_data="/a.py", output="content", span_id="s1"),
+            _reasoning_span(input_data="the file contains content"),
+        ]
+        penalties = self.scorer.score_tool_efficiency(spans, "agent-1")
+        ungrounded = [p for p in penalties if p["event_name"] == "ungrounded_claims"]
+        assert len(ungrounded) == 0
+
+    def test_many_unique_tool_calls_no_excessive_penalty(self):
+        """Many tool calls should not be penalized if they are all unique."""
+        spans = [_tool_span(name=f"tool_{i}", input_data=f"i{i}", span_id=f"s{i}") for i in range(25)]
+        penalties = self.scorer.score_tool_efficiency(spans, "agent-1")
         excessive = [p for p in penalties if p["event_name"] == "excessive_tool_calls"]
         assert len(excessive) == 0
-
-    def test_zero_tool_calls_when_needed(self):
-        spans = [_reasoning_span()]
-        penalties = self.scorer.score_tool_efficiency(spans, "agent-1", has_linked_mcps=True)
-        zero = [p for p in penalties if p["event_name"] == "zero_tool_calls_when_needed"]
-        assert len(zero) == 1
-
-    def test_zero_tool_calls_ok_when_no_mcps(self):
-        spans = [_reasoning_span()]
-        penalties = self.scorer.score_tool_efficiency(spans, "agent-1", has_linked_mcps=False)
-        zero = [p for p in penalties if p["event_name"] == "zero_tool_calls_when_needed"]
-        assert len(zero) == 0
 
 
 class TestToolFailures:

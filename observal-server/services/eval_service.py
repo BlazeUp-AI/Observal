@@ -253,12 +253,9 @@ async def run_structured_eval(
     structural_scorer = StructuralScorer()
     aggregator = ScoreAggregator()
 
-    # Determine if agent has linked MCPs
-    has_mcps = bool(agent.mcp_links) if hasattr(agent, "mcp_links") else False
-
     # Phase 1: Structural scoring (always runs)
     structural_penalties = structural_scorer.score_tool_efficiency(
-        spans, str(agent.id), has_linked_mcps=has_mcps
+        spans, str(agent.id)
     )
     structural_penalties += structural_scorer.score_tool_failures(spans)
 

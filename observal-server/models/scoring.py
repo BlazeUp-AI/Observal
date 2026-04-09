@@ -137,19 +137,11 @@ DEFAULT_PENALTIES: list[dict] = [
     },
     {
         "dimension": ScoringDimension.tool_efficiency,
-        "event_name": "excessive_tool_calls",
-        "amount": -10,
-        "severity": PenaltySeverity.moderate,
-        "trigger_type": PenaltyTriggerType.structural,
-        "description": "Number of tool calls exceeds 2x the rolling median for this agent.",
-    },
-    {
-        "dimension": ScoringDimension.tool_efficiency,
-        "event_name": "zero_tool_calls_when_needed",
+        "event_name": "ungrounded_claims",
         "amount": -20,
         "severity": PenaltySeverity.critical,
         "trigger_type": PenaltyTriggerType.structural,
-        "description": "Agent has linked MCPs but trace has zero tool call spans.",
+        "description": "Agent asserted facts about external state without any tool call to ground them.",
     },
     # Tool Failures (weight 0.15)
     {

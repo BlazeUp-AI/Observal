@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 # Timeout threshold in ms for tool calls
 DEFAULT_TIMEOUT_MS = 30_000
-# Default median tool calls for new agents
-DEFAULT_MEDIAN_TOOL_CALLS = 10
 
 
 class StructuralScorer:
@@ -27,8 +25,6 @@ class StructuralScorer:
         self,
         spans: list[dict],
         agent_id: str,
-        has_linked_mcps: bool = True,
-        historical_median: float | None = None,
     ) -> list[dict]:
         """Detect tool efficiency penalties from spans.
 
@@ -36,16 +32,27 @@ class StructuralScorer:
         """
         penalties: list[dict] = []
         tool_call_spans = [s for s in spans if s.get("type") == "tool_call"]
+        non_tool_spans = [s for s in spans if s.get("type") != "tool_call"]
 
-        # Zero tool calls when agent has linked MCPs
-        if has_linked_mcps and len(tool_call_spans) == 0:
-            penalties.append({
-                "event_name": "zero_tool_calls_when_needed",
-                "dimension": ScoringDimension.tool_efficiency,
-                "evidence": f"Agent {agent_id} has linked MCPs but trace contains 0 tool call spans.",
-                "trace_event_index": None,
-            })
-            return penalties
+        # Ungrounded claims: agent asserts external state (e.g. file contents,
+        # API responses) without any tool call providing that information.
+        # Detected when non-tool spans contain assertion patterns but the trace
+        # has zero tool calls to back them up.
+        if len(tool_call_spans) == 0 and len(non_tool_spans) > 0:
+            has_assertions = any(
+                _span_asserts_external_state(s) for s in non_tool_spans
+            )
+            if has_assertions:
+                penalties.append({
+                    "event_name": "ungrounded_claims",
+                    "dimension": ScoringDimension.tool_efficiency,
+                    "evidence": (
+                        f"Agent {agent_id} made assertions about external state "
+                        f"but trace contains 0 tool call spans to ground them."
+                    ),
+                    "trace_event_index": None,
+                })
+                return penalties
 
         # Duplicate tool calls: same tool name + same input hash
         seen: dict[str, int] = {}
@@ -64,7 +71,9 @@ class StructuralScorer:
             else:
                 seen[key] = idx
 
-        # Unused tool results: tool output not referenced by any subsequent span
+        # Unused tool results: tool output not referenced by any subsequent span.
+        # Each unused call is penalized individually rather than comparing against
+        # an arbitrary median, so the penalty scales with actual waste.
         for idx, span in enumerate(tool_call_spans):
             output = span.get("output") or ""
             if not output:
@@ -89,19 +98,6 @@ class StructuralScorer:
                     ),
                     "trace_event_index": idx,
                 })
-
-        # Excessive tool calls: count > 2x rolling median
-        median = historical_median if historical_median is not None else DEFAULT_MEDIAN_TOOL_CALLS
-        if median > 0 and len(tool_call_spans) > 2 * median:
-            penalties.append({
-                "event_name": "excessive_tool_calls",
-                "dimension": ScoringDimension.tool_efficiency,
-                "evidence": (
-                    f"Trace has {len(tool_call_spans)} tool calls, "
-                    f"exceeding 2x the rolling median ({median:.0f})."
-                ),
-                "trace_event_index": None,
-            })
 
         return penalties
 
@@ -194,6 +190,30 @@ class StructuralScorer:
                     })
 
         return penalties
+
+
+def _span_asserts_external_state(span: dict) -> bool:
+    """Heuristic: does a non-tool span contain language asserting external state?
+
+    Looks for patterns like file paths, status claims, or data references that
+    suggest the agent is stating facts about systems it did not query via tools.
+    """
+    text = str(span.get("input") or "") + str(span.get("output") or "")
+    if not text:
+        return False
+    assertion_markers = [
+        "the file contains",
+        "the response is",
+        "the output shows",
+        "returns",
+        "the error is",
+        "the result is",
+        "the status is",
+        "the value is",
+        "the content is",
+    ]
+    text_lower = text.lower()
+    return any(marker in text_lower for marker in assertion_markers)
 
 
 def _span_dedup_key(span: dict) -> str:
