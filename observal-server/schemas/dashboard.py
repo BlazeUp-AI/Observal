@@ -22,6 +22,10 @@ class AgentMetrics(BaseModel):
     acceptance_rate: float
     avg_tool_calls: float
     avg_latency_ms: float
+    # New structured scoring fields
+    dimension_averages: dict | None = None
+    weakest_dimension: str | None = None
+    drift_alert: bool = False
 
 
 class TimeSeriesPoint(BaseModel):

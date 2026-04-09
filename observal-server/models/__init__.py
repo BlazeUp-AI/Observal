@@ -9,11 +9,23 @@ from models.hook import HookDownload, HookListing
 from models.mcp import McpCustomField, McpDownload, McpListing, McpValidationResult
 from models.prompt import PromptDownload, PromptListing
 from models.sandbox import SandboxDownload, SandboxListing
+from models.scoring import (
+    DEFAULT_DIMENSION_WEIGHTS,
+    DEFAULT_PENALTIES,
+    DimensionWeight,
+    PenaltyDefinition,
+    PenaltySeverity,
+    PenaltyTriggerType,
+    ScoringDimension,
+    TracePenalty,
+)
 from models.skill import SkillDownload, SkillListing
 from models.tool import ToolDownload, ToolListing
 from models.user import User, UserRole
 
 __all__ = [
+    "DEFAULT_DIMENSION_WEIGHTS",
+    "DEFAULT_PENALTIES",
     "Agent",
     "AgentDownload",
     "AgentGoalSection",
@@ -22,6 +34,7 @@ __all__ = [
     "AgentStatus",
     "AlertRule",
     "Base",
+    "DimensionWeight",
     "EnterpriseConfig",
     "EvalRun",
     "EvalRunStatus",
@@ -34,16 +47,21 @@ __all__ = [
     "McpDownload",
     "McpListing",
     "McpValidationResult",
+    "PenaltyDefinition",
+    "PenaltySeverity",
+    "PenaltyTriggerType",
     "PromptDownload",
     "PromptListing",
     "SandboxDownload",
     "SandboxListing",
     "Scorecard",
     "ScorecardDimension",
+    "ScoringDimension",
     "SkillDownload",
     "SkillListing",
     "ToolDownload",
     "ToolListing",
+    "TracePenalty",
     "User",
     "UserRole",
 ]

@@ -11,6 +11,8 @@ import type {
   AlertRuleCreate,
   FeedbackItem,
   Scorecard,
+  TracePenalty,
+  AgentAggregate,
   IdeUsageData,
   SandboxData,
   GraphRagData,
@@ -192,6 +194,12 @@ export const eval_ = {
     const qs = `?${new URLSearchParams(params)}`;
     return get<unknown>(`/eval/agents/${agentId}/compare${qs}`);
   },
+  aggregate: (agentId: string, windowSize?: number) => {
+    const qs = windowSize ? `?window_size=${windowSize}` : "";
+    return get<AgentAggregate>(`/eval/agents/${agentId}/aggregate${qs}`);
+  },
+  penalties: (scorecardId: string) =>
+    get<TracePenalty[]>(`/eval/scorecards/${scorecardId}/penalties`),
 };
 
 // ── Admin ───────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import logging
 import uuid
-from datetime import UTC, datetime as dt, timedelta
+from datetime import UTC, timedelta
+from datetime import datetime as dt
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -100,6 +101,9 @@ async def agent_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from models.eval import Scorecard
+    from services.score_aggregator import ScoreAggregator
+
     dl_count = await db.scalar(select(func.count(AgentDownload.id)).where(AgentDownload.agent_id == agent_id)) or 0
 
     rows = await _ch_json(
@@ -115,6 +119,31 @@ async def agent_metrics(
     total = int(r.get("total", 0))
     accepted = int(r.get("accepted", 0))
 
+    # Fetch recent scorecards for dimension breakdown
+    sc_result = await db.execute(
+        select(Scorecard)
+        .where(Scorecard.agent_id == agent_id)
+        .order_by(Scorecard.evaluated_at.desc())
+        .limit(100)
+    )
+    scorecards = sc_result.scalars().all()
+    dimension_averages = None
+    weakest_dimension = None
+    drift_alert = False
+    if scorecards:
+        sc_dicts = [
+            {
+                "composite_score": sc.composite_score or (sc.overall_score * 10),
+                "dimension_scores": sc.dimension_scores or {},
+                "evaluated_at": str(sc.evaluated_at),
+            }
+            for sc in scorecards
+        ]
+        agg = ScoreAggregator().compute_agent_aggregate(sc_dicts)
+        dimension_averages = agg.get("dimension_averages")
+        weakest_dimension = agg.get("weakest_dimension")
+        drift_alert = agg.get("drift_alert", False)
+
     return AgentMetrics(
         agent_id=agent_id,
         total_interactions=total,
@@ -122,6 +151,9 @@ async def agent_metrics(
         acceptance_rate=round(accepted / total, 4) if total else 0,
         avg_tool_calls=float(r.get("avg_tools", 0)),
         avg_latency_ms=float(r.get("avg_latency", 0)),
+        dimension_averages=dimension_averages,
+        weakest_dimension=weakest_dimension,
+        drift_alert=drift_alert,
     )
 
 

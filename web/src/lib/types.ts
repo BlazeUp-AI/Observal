@@ -180,6 +180,33 @@ export interface Scorecard {
   created_at?: string;
   dimensions?: { name: string; score: number; comment?: string }[];
   metadata?: Record<string, unknown>;
+  // New structured scoring fields
+  dimension_scores?: Record<string, number>;
+  composite_score?: number;
+  display_score?: number;
+  grade?: string;
+  scoring_recommendations?: string[];
+  penalty_count?: number;
+}
+
+export interface TracePenalty {
+  event_name: string;
+  dimension: string;
+  amount: number;
+  evidence: string;
+  severity?: string;
+  trace_event_index?: number | null;
+}
+
+export interface AgentAggregate {
+  mean: number;
+  std: number;
+  ci_low: number;
+  ci_high: number;
+  dimension_averages: Record<string, number>;
+  weakest_dimension: string | null;
+  drift_alert: boolean;
+  trend: { timestamp: string; composite: number }[];
 }
 
 // ── IDE Usage ───────────────────────────────────────────────────────

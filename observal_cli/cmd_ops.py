@@ -373,38 +373,88 @@ def eval_show(
         output_json(sc)
         return
 
-    score = sc.get("overall_score", 0)
-    color = "green" if score >= 7 else "yellow" if score >= 4 else "red"
+    # Use new structured scoring if available, fall back to legacy
+    grade = sc.get("grade") or sc.get("overall_grade", "?")
+    composite = sc.get("composite_score")
+    display = sc.get("display_score") or sc.get("overall_score", 0)
+    grade_colors = {"A": "green", "B": "blue", "C": "yellow", "D": "#ff8c00", "F": "red"}
+    gc = grade_colors.get(grade[0] if grade else "F", "red")
+
+    header = f"Scorecard: [{gc}]{grade}[/{gc}] ({display:.1f}/10)"
+    if composite is not None:
+        header += f" [dim](composite: {composite:.1f}/100)[/dim]"
+
+    recs = sc.get("scoring_recommendations") or []
+    rec_str = sc.get("recommendations", "N/A")
+    if recs:
+        rec_str = "\n".join(f"  - {r}" for r in recs)
+
     console.print(
         kv_panel(
-            f"Scorecard: {sc.get('overall_grade', '?')} ({score:.1f}/10)",
+            header,
             [
                 ("Bottleneck", sc.get("bottleneck", "N/A")),
-                ("Recommendations", sc.get("recommendations", "N/A")),
+                ("Penalties", str(sc.get("penalty_count", 0))),
+                ("Recommendations", rec_str),
                 ("ID", f"[dim]{sc['id']}[/dim]"),
             ],
-            border_style=color,
+            border_style=gc,
         )
     )
 
-    dims = sc.get("dimensions", [])
-    if dims:
-        rprint("\n[bold]Dimensions:[/bold]")
+    # Show 5-dimension scores with colored bars
+    dim_scores = sc.get("dimension_scores")
+    if dim_scores:
+        rprint("\n[bold]Dimension Scores (0-100):[/bold]")
         table = Table(show_header=True, show_lines=False, padding=(0, 1))
-        table.add_column("Dimension", style="bold")
+        table.add_column("Dimension", style="bold", width=20)
         table.add_column("Score", justify="right", width=6)
-        table.add_column("Grade", width=5)
-        table.add_column("Notes")
-        for dim in dims:
-            ds = dim.get("score") or 0
-            dc = "green" if ds >= 7 else "yellow" if ds >= 4 else "red"
-            table.add_row(
-                dim.get("dimension", "?"),
-                f"[{dc}]{ds:.1f}[/{dc}]",
-                dim.get("grade", "?"),
-                dim.get("notes", ""),
-            )
+        table.add_column("Bar", width=30)
+        for dim_name, dim_score in dim_scores.items():
+            ds = float(dim_score)
+            dc = "green" if ds >= 85 else "blue" if ds >= 70 else "yellow" if ds >= 55 else "#ff8c00" if ds >= 40 else "red"
+            bar_len = int(ds / 100 * 25)
+            bar = f"[{dc}]{'█' * bar_len}[/{dc}][dim]{'░' * (25 - bar_len)}[/dim]"
+            table.add_row(dim_name, f"[{dc}]{ds:.0f}[/{dc}]", bar)
         console.print(table)
+    else:
+        # Legacy dimension display
+        dims = sc.get("dimensions", [])
+        if dims:
+            rprint("\n[bold]Dimensions:[/bold]")
+            table = Table(show_header=True, show_lines=False, padding=(0, 1))
+            table.add_column("Dimension", style="bold")
+            table.add_column("Score", justify="right", width=6)
+            table.add_column("Grade", width=5)
+            table.add_column("Notes")
+            for dim in dims:
+                ds = dim.get("score") or 0
+                dc = "green" if ds >= 7 else "yellow" if ds >= 4 else "red"
+                table.add_row(
+                    dim.get("dimension", "?"),
+                    f"[{dc}]{ds:.1f}[/{dc}]",
+                    dim.get("grade", "?"),
+                    dim.get("notes", ""),
+                )
+            console.print(table)
+
+    # Show top penalties with evidence
+    with spinner("Fetching penalties..."):
+        try:
+            penalties = client.get(f"/api/v1/eval/scorecards/{scorecard_id}/penalties")
+        except Exception:
+            penalties = []
+
+    if penalties:
+        rprint(f"\n[bold]Top Penalties ({len(penalties)} total):[/bold]")
+        for p in penalties[:3]:
+            severity_color = {"critical": "red", "moderate": "yellow", "minor": "dim"}.get(
+                p.get("severity", ""), "white"
+            )
+            rprint(
+                f"  [{severity_color}]{p.get('event_name', '?')}[/{severity_color}] "
+                f"({p.get('amount', 0)}) — {p.get('evidence', '')[:120]}"
+            )
 
 
 @eval_app.command(name="compare")
@@ -414,7 +464,7 @@ def eval_compare(
     version_b: str = typer.Option(..., "--b"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Compare two agent versions."""
+    """Compare two agent versions with dimension breakdown."""
     resolved = config.resolve_alias(agent_id)
     with spinner("Comparing versions..."):
         data = client.get(
@@ -435,6 +485,71 @@ def eval_compare(
     rprint(f"  {a.get('version', '?'):>8}  →  {b.get('version', '?')}")
     rprint(f"  {sa:.1f}/10     {arrow}  {sb:.1f}/10  ({diff:+.1f})")
     rprint(f"  ({a.get('count', 0)} scorecards)    ({b.get('count', 0)} scorecards)")
+
+    # Dimension-level comparison if available
+    a_dims = a.get("dimension_averages", {})
+    b_dims = b.get("dimension_averages", {})
+    if a_dims and b_dims:
+        rprint("\n  [bold]Dimension Breakdown:[/bold]")
+        table = Table(show_header=True, show_lines=False, padding=(0, 1))
+        table.add_column("Dimension", style="bold", width=20)
+        table.add_column(a.get("version", "A"), justify="right", width=8)
+        table.add_column(b.get("version", "B"), justify="right", width=8)
+        table.add_column("Delta", width=10)
+        for dim in sorted(set(list(a_dims.keys()) + list(b_dims.keys()))):
+            va = float(a_dims.get(dim, 0))
+            vb = float(b_dims.get(dim, 0))
+            d = vb - va
+            d_arrow = "[green]↑[/green]" if d > 0 else "[red]↓[/red]" if d < 0 else "→"
+            table.add_row(dim, f"{va:.0f}", f"{vb:.0f}", f"{d_arrow} {d:+.0f}")
+        console.print(table)
+    rprint()
+
+
+@eval_app.command(name="aggregate")
+def eval_aggregate(
+    agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    window: int = typer.Option(50, "--window", "-w", help="Number of recent scorecards"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """Show aggregate scoring stats for an agent."""
+    resolved = config.resolve_alias(agent_id)
+    with spinner("Computing aggregate..."):
+        data = client.get(f"/api/v1/eval/agents/{resolved}/aggregate", params={"window_size": window})
+
+    if output == "json":
+        output_json(data)
+        return
+
+    mean = data.get("mean", 0)
+    std = data.get("std", 0)
+    ci_low = data.get("ci_low", 0)
+    ci_high = data.get("ci_high", 0)
+    drift = data.get("drift_alert", False)
+    weakest = data.get("weakest_dimension", "N/A")
+
+    rprint("\n  [bold]Agent Aggregate Scores[/bold]")
+    rprint(f"  Mean composite:  {mean:.1f}/100")
+    rprint(f"  Std dev:         {std:.1f}")
+    rprint(f"  95% CI:          [{ci_low:.1f}, {ci_high:.1f}]")
+    rprint(f"  Weakest dim:     {weakest}")
+    drift_str = "[red]DRIFT DETECTED[/red]" if drift else "[green]Stable[/green]"
+    rprint(f"  Drift status:    {drift_str}")
+
+    dim_avgs = data.get("dimension_averages", {})
+    if dim_avgs:
+        rprint("\n  [bold]Dimension Averages:[/bold]")
+        table = Table(show_header=True, show_lines=False, padding=(0, 1))
+        table.add_column("Dimension", style="bold", width=20)
+        table.add_column("Avg Score", justify="right", width=10)
+        table.add_column("Bar", width=30)
+        for dim, avg in sorted(dim_avgs.items()):
+            ds = float(avg)
+            dc = "green" if ds >= 85 else "blue" if ds >= 70 else "yellow" if ds >= 55 else "#ff8c00" if ds >= 40 else "red"
+            bar_len = int(ds / 100 * 25)
+            bar = f"[{dc}]{'█' * bar_len}[/{dc}][dim]{'░' * (25 - bar_len)}[/dim]"
+            table.add_row(dim, f"[{dc}]{ds:.0f}[/{dc}]", bar)
+        console.print(table)
     rprint()
 
 
@@ -471,6 +586,99 @@ def admin_set(
     with spinner():
         client.put(f"/api/v1/admin/settings/{key}", {"value": value})
     rprint(f"[green]✓ {key} = {value}[/green]")
+
+
+@admin_app.command(name="penalties")
+def admin_penalties(output: str = typer.Option("table", "--output", "-o")):
+    """List the penalty catalog."""
+    with spinner():
+        data = client.get("/api/v1/admin/penalties")
+    if output == "json":
+        output_json(data)
+        return
+    if not data:
+        rprint("[dim]No penalties configured.[/dim]")
+        return
+    table = Table(title="Penalty Catalog", show_lines=False, padding=(0, 1))
+    table.add_column("Event Name", style="bold")
+    table.add_column("Dimension")
+    table.add_column("Amount", justify="right")
+    table.add_column("Severity")
+    table.add_column("Active")
+    for p in data:
+        sev_color = {"critical": "red", "moderate": "yellow", "minor": "dim"}.get(p.get("severity", ""), "white")
+        active = "[green]Yes[/green]" if p.get("is_active") else "[red]No[/red]"
+        table.add_row(
+            p["event_name"],
+            p["dimension"],
+            f"[{sev_color}]{p['amount']}[/{sev_color}]",
+            f"[{sev_color}]{p['severity']}[/{sev_color}]",
+            active,
+        )
+    console.print(table)
+
+
+@admin_app.command(name="penalty-set")
+def admin_penalty_set(
+    penalty_name: str = typer.Argument(..., help="Penalty event_name or ID"),
+    amount: int | None = typer.Option(None, "--amount", "-a"),
+    active: bool | None = typer.Option(None, "--active"),
+):
+    """Modify a penalty definition."""
+    # Look up by event name first
+    with spinner():
+        all_penalties = client.get("/api/v1/admin/penalties")
+    match = next((p for p in all_penalties if p["event_name"] == penalty_name or p["id"] == penalty_name), None)
+    if not match:
+        rprint(f"[red]Penalty '{penalty_name}' not found.[/red]")
+        raise typer.Exit(1)
+
+    body: dict = {}
+    if amount is not None:
+        body["amount"] = amount
+    if active is not None:
+        body["is_active"] = active
+
+    if not body:
+        rprint("[yellow]No changes specified. Use --amount or --active.[/yellow]")
+        return
+
+    with spinner("Updating penalty..."):
+        result = client.put(f"/api/v1/admin/penalties/{match['id']}", body)
+    rprint(f"[green]Updated {result.get('event_name', penalty_name)}: amount={result.get('amount')}, active={result.get('is_active')}[/green]")
+
+
+@admin_app.command(name="weights")
+def admin_weights(output: str = typer.Option("table", "--output", "-o")):
+    """Show global dimension weights."""
+    with spinner():
+        data = client.get("/api/v1/admin/weights")
+    if output == "json":
+        output_json(data)
+        return
+    table = Table(title="Dimension Weights", show_lines=False, padding=(0, 1))
+    table.add_column("Dimension", style="bold")
+    table.add_column("Weight", justify="right")
+    table.add_column("Custom")
+    for w in data:
+        custom = "[cyan]Custom[/cyan]" if w.get("is_custom") else "[dim]Default[/dim]"
+        table.add_row(w["dimension"], f"{w['weight']:.2f}", custom)
+    console.print(table)
+
+
+@admin_app.command(name="weight-set")
+def admin_weight_set(
+    dimension: str = typer.Argument(..., help="Dimension name (e.g. goal_completion)"),
+    weight: float = typer.Argument(..., help="New weight (0.0 - 1.0)"),
+):
+    """Set a global dimension weight."""
+    with spinner("Updating weight..."):
+        result = client.put("/api/v1/admin/weights", {dimension: weight})
+    updated = result.get("updated", {})
+    if dimension in updated:
+        rprint(f"[green]Set {dimension} = {updated[dimension]}[/green]")
+    else:
+        rprint(f"[red]Unknown dimension: {dimension}[/red]")
 
 
 @admin_app.command(name="users")

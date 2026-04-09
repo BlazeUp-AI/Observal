@@ -7,7 +7,12 @@ import httpx
 from config import settings
 from models.agent import Agent
 from models.eval import Scorecard, ScorecardDimension
+from models.scoring import DEFAULT_PENALTIES
 from services.clickhouse import _query
+from services.eval_engine import FallbackBackend, get_backend
+from services.score_aggregator import ScoreAggregator
+from services.slm_scorer import SLMScorer
+from services.structural_scorer import StructuralScorer
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +23,9 @@ DIMENSIONS = [
     "factual_grounding",
     "user_satisfaction",
 ]
+
+# Build penalty amount lookup from catalog
+_PENALTY_AMOUNTS: dict[str, int] = {p["event_name"]: p["amount"] for p in DEFAULT_PENALTIES}
 
 JUDGE_PROMPT = """You are an AI evaluation judge. Given an agent's goal template and a trace of its execution, evaluate the agent's performance.
 
@@ -223,3 +231,80 @@ def parse_scorecard(result: dict, agent: Agent, eval_run_id: uuid.UUID, trace_id
         )
 
     return sc
+
+
+# ---------------------------------------------------------------------------
+# New structured eval pipeline (5-dimension penalty-based scoring)
+# ---------------------------------------------------------------------------
+
+
+async def run_structured_eval(
+    agent: Agent,
+    trace: dict,
+    spans: list[dict],
+    eval_run_id: uuid.UUID,
+) -> Scorecard:
+    """Run the new 5-dimension structured eval on a trace.
+
+    1. Run StructuralScorer on spans -> structural penalties
+    2. Run SLMScorer on trace -> slm penalties (skip if no LLM backend)
+    3. Run ScoreAggregator to produce Scorecard
+    """
+    structural_scorer = StructuralScorer()
+    aggregator = ScoreAggregator()
+
+    # Determine if agent has linked MCPs
+    has_mcps = bool(agent.mcp_links) if hasattr(agent, "mcp_links") else False
+
+    # Phase 1: Structural scoring (always runs)
+    structural_penalties = structural_scorer.score_tool_efficiency(
+        spans, str(agent.id), has_linked_mcps=has_mcps
+    )
+    structural_penalties += structural_scorer.score_tool_failures(spans)
+
+    # Attach penalty amounts from catalog
+    for p in structural_penalties:
+        p["amount"] = _PENALTY_AMOUNTS.get(p["event_name"], 0)
+
+    # Phase 2: SLM scoring (only if LLM backend available)
+    slm_penalties: list[dict] = []
+    backend = get_backend()
+    if not isinstance(backend, FallbackBackend):
+        slm_scorer = SLMScorer(backend)
+        try:
+            # Goal completion
+            goal_desc = ""
+            required_sections: list[dict] = []
+            if agent.goal_template:
+                goal_desc = agent.goal_template.description
+                required_sections = [
+                    {"name": s.name, "grounding_required": s.grounding_required}
+                    for s in agent.goal_template.sections
+                ]
+            if required_sections:
+                slm_penalties += await slm_scorer.score_goal_completion(
+                    trace, spans, goal_desc, required_sections
+                )
+
+            # Factual grounding
+            slm_penalties += await slm_scorer.score_factual_grounding(trace, spans)
+
+            # Thought process
+            slm_penalties += await slm_scorer.score_thought_process(spans)
+        except Exception as e:
+            logger.error(f"SLM scoring failed: {e}")
+
+        for p in slm_penalties:
+            p["amount"] = _PENALTY_AMOUNTS.get(p["event_name"], 0)
+
+    # Phase 3: Aggregate into scorecard
+    scorecard = aggregator.compute_scorecard(
+        structural_penalties=structural_penalties,
+        slm_penalties=slm_penalties,
+        agent_id=agent.id,
+        eval_run_id=eval_run_id,
+        trace_id=trace.get("trace_id", trace.get("event_id", str(uuid.uuid4()))),
+        version=agent.version,
+    )
+
+    return scorecard
