@@ -56,18 +56,45 @@ observal scan                  # auto-detect, register, and instrument everythin
 
 This detects MCP servers from your IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry — without breaking your existing setup. A timestamped backup is created automatically.
 
+## How It Works (Simple Explanation)
+
+1. You use an AI coding tool like GitHub Copilot, Claude Code, or Cursor  
+2. Observal sits between your IDE and the tools you use  
+3. It tracks everything happening like tool calls, prompts, and outputs  
+4. This data is stored and analyzed  
+5. You get insights on what is working well and what needs improvement  
+
+This helps developers and teams improve their AI-assisted coding workflow.
+
+## Why Use Observal?
+
+- Understand how AI tools behave during development  
+- Identify slow or inefficient tools  
+- Improve prompt quality  
+- Compare different AI agents  
+- Make better engineering decisions using real data
+
+## Who is this for?
+
+- Developers using AI coding tools  
+- Engineering teams working on large codebases  
+- Teams experimenting with AI agents  
+- Anyone who wants better visibility into AI workflows  
+
 ## The Problem
 
-Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks, but none of this is measured. Teams can't answer basic questions:
+Engineering teams using AI coding tools often lack visibility into what happens during development.
 
-- Which tools speed up development and which ones waste time?
-- Are prompts producing good results or causing rework?
-- Do skills actually improve code quality when they activate?
-- Which hooks are blocking legitimate actions vs catching real issues?
-- Is the RAG system returning relevant context or noise?
-- How do two versions of an agent compare on real developer workflows?
+They struggle to understand:
 
-Without answers, teams can't improve their tooling. They guess, ship changes, and hope for the better.
+- Which tools improve productivity  
+- Whether prompts are effective  
+- If skills actually improve code quality  
+- Which hooks block or help workflows  
+- Whether RAG systems provide useful context  
+- How different agents perform in real scenarios  
+
+Without this visibility, teams rely on guesswork instead of data-driven decisions.
 
 ## How It Works
 
