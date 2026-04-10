@@ -1,7 +1,7 @@
 import uuid
 import uuid as _uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -252,6 +252,7 @@ async def update_agent(
 async def install_agent(
     agent_id: str,
     req: AgentInstallRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -262,15 +263,32 @@ async def install_agent(
             raise HTTPException(status_code=404, detail="Agent not found or not active")
 
     snippet = generate_agent_config(agent, req.ide)
-    db.add(AgentDownloadRecord(
+    from services.download_tracker import record_agent_download
+    await record_agent_download(
         agent_id=agent.id,
         user_id=current_user.id,
-        ide=req.ide,
         source="api",
-    ))
+        ide=req.ide,
+        request=request,
+        db=db,
+    )
     await db.commit()
 
     return AgentInstallResponse(agent_id=agent.id, ide=req.ide, config_snippet=snippet)
+
+
+@router.get("/{agent_id}/downloads")
+async def agent_download_stats(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    from services.download_tracker import get_download_stats
+    stats = await get_download_stats(agent.id, db)
+    return stats
 
 
 @router.delete("/{agent_id}")

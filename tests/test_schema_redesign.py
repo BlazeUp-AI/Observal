@@ -318,3 +318,191 @@ class TestFeedbackSubmissionUpdates:
         from models.submission import Submission
         col = Submission.__table__.c.listing_type
         assert col.type.length >= 50
+
+
+class TestDownloadTracking:
+    """Tests for download tracking with bot prevention (#93)."""
+
+    def test_anonymous_fingerprint_deterministic(self):
+        from unittest.mock import MagicMock
+        from services.download_tracker import _anonymous_fingerprint
+
+        request = MagicMock()
+        request.client.host = "192.168.1.1"
+        request.headers.get.return_value = "Mozilla/5.0"
+
+        fp1 = _anonymous_fingerprint(request)
+        fp2 = _anonymous_fingerprint(request)
+        assert fp1 == fp2
+        assert len(fp1) == 64  # SHA-256 hex digest
+
+    def test_anonymous_fingerprint_varies_by_ip(self):
+        from unittest.mock import MagicMock
+        from services.download_tracker import _anonymous_fingerprint
+
+        req1 = MagicMock()
+        req1.client.host = "192.168.1.1"
+        req1.headers.get.return_value = "Mozilla/5.0"
+
+        req2 = MagicMock()
+        req2.client.host = "10.0.0.1"
+        req2.headers.get.return_value = "Mozilla/5.0"
+
+        assert _anonymous_fingerprint(req1) != _anonymous_fingerprint(req2)
+
+    def test_anonymous_fingerprint_varies_by_ua(self):
+        from unittest.mock import MagicMock
+        from services.download_tracker import _anonymous_fingerprint
+
+        req1 = MagicMock()
+        req1.client.host = "192.168.1.1"
+        req1.headers.get.return_value = "Mozilla/5.0"
+
+        req2 = MagicMock()
+        req2.client.host = "192.168.1.1"
+        req2.headers.get.return_value = "curl/7.88"
+
+        assert _anonymous_fingerprint(req1) != _anonymous_fingerprint(req2)
+
+    def test_download_record_model_constraints(self):
+        from models.download import AgentDownloadRecord
+        constraints = {c.name for c in AgentDownloadRecord.__table__.constraints if hasattr(c, 'name') and c.name}
+        assert "uq_agent_downloads_agent_user" in constraints
+        assert "uq_agent_downloads_agent_fingerprint" in constraints
+
+    def test_component_download_not_deduplicated(self):
+        """ComponentDownloadRecord should have no multi-column unique constraints."""
+        from models.download import ComponentDownloadRecord
+        unique_constraints = [
+            c for c in ComponentDownloadRecord.__table__.constraints
+            if hasattr(c, 'columns') and len(c.columns) > 1
+        ]
+        # Only the PK constraint, no multi-column uniques
+        assert len(unique_constraints) == 0
+
+    def test_agent_has_download_count_fields(self):
+        from models.agent import Agent
+        assert hasattr(Agent, "download_count")
+        assert hasattr(Agent, "unique_users")
+        col_dl = Agent.__table__.columns["download_count"]
+        col_uu = Agent.__table__.columns["unique_users"]
+        assert col_dl.default.arg == 0
+        assert col_uu.default.arg == 0
+
+    def test_download_tracker_module_exists(self):
+        from services.download_tracker import record_agent_download, record_component_download, get_download_stats, _anonymous_fingerprint
+        assert callable(record_agent_download)
+        assert callable(record_component_download)
+        assert callable(get_download_stats)
+        assert callable(_anonymous_fingerprint)
+
+    def test_install_agent_route_accepts_request(self):
+        """The install_agent endpoint should accept a Request parameter for fingerprinting."""
+        import inspect
+        from api.routes.agent import install_agent
+        sig = inspect.signature(install_agent)
+        param_names = list(sig.parameters.keys())
+        assert "request" in param_names
+
+
+class TestFastMcpEnforcement:
+    """Tests for FastMCP validation enforcement (#92)."""
+
+    def test_mcp_has_fastmcp_validated_field(self):
+        from models.mcp import McpListing
+        assert hasattr(McpListing, "fastmcp_validated")
+
+    def test_fastmcp_validated_defaults_false(self):
+        from models.mcp import McpListing
+        col = McpListing.__table__.columns["fastmcp_validated"]
+        # default is False
+        assert col.default.arg is False
+
+    @pytest.mark.asyncio
+    async def test_approve_blocks_non_fastmcp(self):
+        """Review approve should reject MCPs that haven't passed FastMCP validation."""
+        from unittest.mock import AsyncMock, MagicMock
+        from api.routes.review import approve
+        from models.mcp import ListingStatus
+
+        # Create a mock MCP listing with fastmcp_validated=False
+        listing = MagicMock()
+        listing.id = uuid.uuid4()
+        listing.name = "test-mcp"
+        listing.status = ListingStatus.pending
+        listing.fastmcp_validated = False
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.role = MagicMock(value="admin")
+        mock_user.role.__eq__ = lambda self, other: True  # pass admin check
+
+        # Patch _find_listing to return our mock
+        import api.routes.review as review_mod
+        original_find = review_mod._find_listing
+        review_mod._find_listing = AsyncMock(return_value=("mcp", listing))
+
+        from fastapi import HTTPException
+        try:
+            with pytest.raises(HTTPException) as exc_info:
+                await approve(str(listing.id), mock_db, mock_user)
+            assert exc_info.value.status_code == 400
+            assert "FastMCP" in exc_info.value.detail
+        finally:
+            review_mod._find_listing = original_find
+
+    @pytest.mark.asyncio
+    async def test_approve_allows_fastmcp_validated(self):
+        """Review approve should allow MCPs that passed FastMCP validation."""
+        from unittest.mock import AsyncMock, MagicMock
+        from api.routes.review import approve
+        from models.mcp import ListingStatus
+
+        listing = MagicMock()
+        listing.id = uuid.uuid4()
+        listing.name = "validated-mcp"
+        listing.status = ListingStatus.pending
+        listing.fastmcp_validated = True
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.role = MagicMock(value="admin")
+        mock_user.role.__eq__ = lambda self, other: True
+
+        import api.routes.review as review_mod
+        original_find = review_mod._find_listing
+        review_mod._find_listing = AsyncMock(return_value=("mcp", listing))
+
+        try:
+            result = await approve(str(listing.id), mock_db, mock_user)
+            assert result["status"] == "approved"
+        finally:
+            review_mod._find_listing = original_find
+
+    @pytest.mark.asyncio
+    async def test_approve_non_mcp_not_affected(self):
+        """Non-MCP listings should not be affected by FastMCP check."""
+        from unittest.mock import AsyncMock, MagicMock
+        from api.routes.review import approve
+        from models.mcp import ListingStatus
+
+        listing = MagicMock()
+        listing.id = uuid.uuid4()
+        listing.name = "test-skill"
+        listing.status = ListingStatus.pending
+        # Skills don't have fastmcp_validated
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.role = MagicMock(value="admin")
+        mock_user.role.__eq__ = lambda self, other: True
+
+        import api.routes.review as review_mod
+        original_find = review_mod._find_listing
+        review_mod._find_listing = AsyncMock(return_value=("skill", listing))
+
+        try:
+            result = await approve(str(listing.id), mock_db, mock_user)
+            assert result["status"] == "approved"
+        finally:
+            review_mod._find_listing = original_find

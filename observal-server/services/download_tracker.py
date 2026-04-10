@@ -1,0 +1,110 @@
+import hashlib
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import Request
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.agent import Agent
+from models.download import AgentDownloadRecord, ComponentDownloadRecord
+
+
+def _anonymous_fingerprint(request: Request) -> str:
+    """Generate fingerprint from IP + user-agent for anonymous deduplication."""
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")
+    return hashlib.sha256(f"{ip}:{ua}".encode()).hexdigest()
+
+
+async def record_agent_download(
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    source: str,
+    ide: str | None,
+    request: Request,
+    db: AsyncSession,
+) -> bool:
+    """Record an agent download with deduplication. Returns True if new download, False if duplicate."""
+    fingerprint = _anonymous_fingerprint(request) if not user_id else None
+
+    record = AgentDownloadRecord(
+        agent_id=agent_id,
+        user_id=user_id,
+        fingerprint=fingerprint,
+        source=source,
+        ide=ide,
+    )
+    try:
+        db.add(record)
+        await db.flush()
+        # Update aggregate counts
+        await _update_agent_counts(agent_id, db)
+        return True
+    except IntegrityError:
+        await db.rollback()
+        return False
+
+
+async def record_component_download(
+    component_type: str,
+    component_id: uuid.UUID,
+    version_ref: str,
+    agent_id: uuid.UUID,
+    source: str,
+    db: AsyncSession,
+) -> None:
+    """Record a component download (not deduplicated)."""
+    db.add(ComponentDownloadRecord(
+        component_type=component_type,
+        component_id=component_id,
+        version_ref=version_ref,
+        agent_id=agent_id,
+        source=source,
+    ))
+    await db.flush()
+
+
+async def _update_agent_counts(agent_id: uuid.UUID, db: AsyncSession) -> None:
+    """Recompute download_count and unique_users for an agent."""
+    total = await db.scalar(
+        select(func.count(AgentDownloadRecord.id)).where(AgentDownloadRecord.agent_id == agent_id)
+    ) or 0
+    unique = await db.scalar(
+        select(func.count(func.distinct(AgentDownloadRecord.user_id))).where(
+            AgentDownloadRecord.agent_id == agent_id,
+            AgentDownloadRecord.user_id.isnot(None),
+        )
+    ) or 0
+    agent = await db.get(Agent, agent_id)
+    if agent:
+        agent.download_count = total
+        agent.unique_users = unique
+
+
+async def get_download_stats(agent_id: uuid.UUID, db: AsyncSession) -> dict:
+    """Get download statistics for an agent."""
+    total = await db.scalar(
+        select(func.count(AgentDownloadRecord.id)).where(AgentDownloadRecord.agent_id == agent_id)
+    ) or 0
+    unique = await db.scalar(
+        select(func.count(func.distinct(AgentDownloadRecord.user_id))).where(
+            AgentDownloadRecord.agent_id == agent_id,
+            AgentDownloadRecord.user_id.isnot(None),
+        )
+    ) or 0
+
+    # Source breakdown
+    source_rows = await db.execute(
+        select(AgentDownloadRecord.source, func.count(AgentDownloadRecord.id).label("cnt"))
+        .where(AgentDownloadRecord.agent_id == agent_id)
+        .group_by(AgentDownloadRecord.source)
+    )
+    sources = {r.source: r.cnt for r in source_rows.all()}
+
+    return {
+        "total_downloads": total,
+        "unique_users": unique,
+        "sources": sources,
+    }
