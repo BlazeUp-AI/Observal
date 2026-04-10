@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -6,6 +7,8 @@ from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from models.agent import Agent
 from models.download import AgentDownloadRecord, ComponentDownloadRecord
@@ -27,7 +30,7 @@ async def record_agent_download(
     db: AsyncSession,
 ) -> bool:
     """Record an agent download with deduplication. Returns True if new download, False if duplicate."""
-    fingerprint = _anonymous_fingerprint(request) if not user_id else None
+    fingerprint = _anonymous_fingerprint(request) if user_id is None else None
 
     record = AgentDownloadRecord(
         agent_id=agent_id,
@@ -43,6 +46,7 @@ async def record_agent_download(
         await _update_agent_counts(agent_id, db)
         return True
     except IntegrityError:
+        logger.debug("Duplicate download for agent %s (user=%s), skipping", agent_id, user_id)
         await db.rollback()
         return False
 
