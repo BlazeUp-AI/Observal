@@ -26,6 +26,16 @@ When you use tools like GitHub Copilot or Claude Code, many things happen in the
 
 This helps teams improve their AI workflows and build better software faster.
 
+## How It Works (Simple Explanation)
+
+1. You use an AI coding tool like GitHub Copilot, Claude Code, or Cursor  
+2. Observal sits between your IDE and the tools you use  
+3. It tracks everything happening like tool calls, prompts, and outputs  
+4. This data is stored and analyzed  
+5. You get insights on what is working well and what needs improvement  
+
+This helps developers and teams improve their AI-assisted coding workflow.
+
 ## Quick Start
 
 ```bash
