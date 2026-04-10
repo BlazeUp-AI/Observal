@@ -3,6 +3,7 @@
 import logging
 
 from arq.connections import RedisSettings
+from arq.cron import cron
 
 from config import settings
 from services.redis import publish
@@ -57,6 +58,48 @@ async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None):
         logger.exception(f"Eval job failed: {e}")
 
 
+async def sync_component_sources(ctx: dict):
+    """Background job: sync component sources that are due for re-sync."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import or_, select
+
+    from database import async_session
+    from models.component_source import ComponentSource
+    from services.git_mirror_service import sync_source
+
+    async with async_session() as db:
+        # Find sources due for sync
+        now = datetime.now(UTC)
+        stmt = select(ComponentSource).where(
+            ComponentSource.auto_sync_interval.isnot(None),
+            or_(
+                ComponentSource.last_synced_at.is_(None),
+                ComponentSource.last_synced_at + ComponentSource.auto_sync_interval < now,
+            ),
+        )
+        result = await db.execute(stmt)
+        sources = result.scalars().all()
+
+        for source in sources:
+            logger.info("Syncing component source %s (%s)", source.id, source.url)
+            source.sync_status = "syncing"
+            await db.commit()
+
+            sync_result = sync_source(source.url, source.component_type)
+
+            source.last_synced_at = now
+            source.sync_status = "success" if sync_result.success else "failed"
+            source.sync_error = sync_result.error if not sync_result.success else None
+            await db.commit()
+            logger.info(
+                "Sync %s: %s (%d components)",
+                source.url,
+                source.sync_status,
+                len(sync_result.components),
+            )
+
+
 async def startup(ctx: dict):
     logger.info("arq worker started")
 
@@ -68,7 +111,8 @@ async def shutdown(ctx: dict):
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [run_eval]
+    functions = [run_eval, sync_component_sources]
+    cron_jobs = [cron(sync_component_sources, hour={0, 6, 12, 18})]  # Every 6 hours
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = _redis_settings()
