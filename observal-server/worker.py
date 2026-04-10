@@ -25,13 +25,17 @@ def _redis_settings() -> RedisSettings:
 
 async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None):
     """Background job: run eval on an agent's traces."""
-    logger.info(f"Running eval for agent={agent_id} trace={trace_id}")
+    logger.info(f"[START] Running eval for agent={agent_id}, trace={trace_id}")
+
     try:
         from services.clickhouse import query_traces
         from services.eval_engine import run_eval_on_trace
 
         if trace_id:
             scores = await run_eval_on_trace(agent_id, trace_id)
+
+            logger.info(f"[SUCCESS] Eval completed for trace={trace_id}, scores={len(scores)}")
+
             await publish(
                 f"eval:{agent_id}",
                 {
@@ -40,11 +44,25 @@ async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None):
                     "scores_written": len(scores),
                 },
             )
+
         else:
             traces = await query_traces("default", agent_id=agent_id, limit=20)
+
+            if not traces:
+                logger.warning(f"[WARNING] No traces found for agent={agent_id}")
+                return
+
             for t in traces:
                 tid = t.get("trace_id", "")
+
+                if not tid:
+                    logger.warning("[SKIP] Missing trace_id in trace data")
+                    continue
+
                 scores = await run_eval_on_trace(agent_id, tid)
+
+                logger.info(f"[SUCCESS] Eval completed for trace={tid}, scores={len(scores)}")
+
                 await publish(
                     f"eval:{agent_id}",
                     {
@@ -53,9 +71,9 @@ async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None):
                         "scores_written": len(scores),
                     },
                 )
-    except Exception as e:
-        logger.exception(f"Eval job failed: {e}")
 
+    except Exception as e:
+        logger.exception(f"[ERROR] Eval job failed for agent={agent_id}: {e}")
 
 async def startup(ctx: dict):
     logger.info("arq worker started")
