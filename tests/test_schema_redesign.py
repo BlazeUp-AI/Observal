@@ -199,3 +199,61 @@ class TestAgentComponentModel:
         col = AgentComponent.__table__.c.component_id
         fks = col.foreign_keys
         assert len(fks) == 0, "component_id should have no FK constraints"
+
+
+class TestDownloadModels:
+    def test_agent_download_tablename(self):
+        from models.download import AgentDownloadRecord
+        assert AgentDownloadRecord.__tablename__ == "agent_download_records"
+
+    def test_agent_download_has_required_columns(self):
+        from models.download import AgentDownloadRecord
+        cols = {c.name for c in AgentDownloadRecord.__table__.columns}
+        required = {"id", "agent_id", "user_id", "fingerprint", "source", "ide", "installed_at"}
+        assert required.issubset(cols)
+
+    def test_agent_download_user_id_nullable(self):
+        """user_id nullable for anonymous users (fingerprint used instead)."""
+        from models.download import AgentDownloadRecord
+        col = AgentDownloadRecord.__table__.c.user_id
+        assert col.nullable is True
+
+    def test_agent_download_has_unique_constraints(self):
+        from models.download import AgentDownloadRecord
+        table = AgentDownloadRecord.__table__
+        unique_constraints = [
+            uc for uc in table.constraints
+            if hasattr(uc, "columns") and len(uc.columns) == 2
+        ]
+        col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
+        assert frozenset({"agent_id", "user_id"}) in col_sets
+        assert frozenset({"agent_id", "fingerprint"}) in col_sets
+
+    def test_component_download_tablename(self):
+        from models.download import ComponentDownloadRecord
+        assert ComponentDownloadRecord.__tablename__ == "component_download_records"
+
+    def test_component_download_has_required_columns(self):
+        from models.download import ComponentDownloadRecord
+        cols = {c.name for c in ComponentDownloadRecord.__table__.columns}
+        required = {"id", "component_type", "component_id", "version_ref",
+                    "agent_id", "source", "downloaded_at"}
+        assert required.issubset(cols)
+
+    def test_component_download_no_unique_constraint(self):
+        """Component downloads are NOT deduplicated — count every agent pull."""
+        from models.download import ComponentDownloadRecord
+        table = ComponentDownloadRecord.__table__
+        # Should only have PK constraint
+        non_pk_unique = [
+            uc for uc in table.constraints
+            if hasattr(uc, "columns") and len(uc.columns) > 1
+        ]
+        assert len(non_pk_unique) == 0, "component_download_records should have no multi-column unique constraints"
+
+    def test_component_download_no_fk_on_component_id(self):
+        """component_id should NOT have a FK constraint (polymorphic)."""
+        from models.download import ComponentDownloadRecord
+        col = ComponentDownloadRecord.__table__.c.component_id
+        fks = col.foreign_keys
+        assert len(fks) == 0
