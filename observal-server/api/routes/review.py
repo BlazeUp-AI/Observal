@@ -90,6 +90,15 @@ async def approve(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    if listing_type == "mcp" and not listing.fastmcp_validated:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot approve: MCP server has not passed FastMCP validation. "
+                "Server must use FastMCP (from mcp.server.fastmcp import FastMCP). "
+                "See: https://github.com/jlowin/fastmcp"
+            ),
+        )
     listing.status = ListingStatus.approved
     await db.commit()
     await db.refresh(listing)

@@ -59,6 +59,7 @@ async def submit_mcp(
     except Exception:
         pass
 
+    await db.refresh(listing)
     return McpListingResponse.model_validate(listing)
 
 

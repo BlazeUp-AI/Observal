@@ -82,6 +82,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
             continue
 
     if not entry_point:
+        listing.fastmcp_validated = False
         db.add(
             McpValidationResult(
                 listing_id=listing.id,
@@ -93,6 +94,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
         await db.commit()
         return None
 
+    listing.fastmcp_validated = True
     db.add(
         McpValidationResult(
             listing_id=listing.id,
@@ -174,6 +176,9 @@ async def _manifest_validation(listing: McpListing, db: AsyncSession, entry_poin
     details = f"Server: {server_name or 'unknown'}, Tools: {len(tools_found)}"
     if issues:
         details += "\nIssues:\n- " + "\n- ".join(issues)
+
+    if not passed:
+        listing.fastmcp_validated = False
 
     db.add(
         McpValidationResult(

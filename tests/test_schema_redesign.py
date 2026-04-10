@@ -424,6 +424,7 @@ class TestFastMcpEnforcement:
         from unittest.mock import AsyncMock, MagicMock
         from api.routes.review import approve
         from models.mcp import ListingStatus
+        from models.user import UserRole
 
         # Create a mock MCP listing with fastmcp_validated=False
         listing = MagicMock()
@@ -434,8 +435,7 @@ class TestFastMcpEnforcement:
 
         mock_db = AsyncMock()
         mock_user = MagicMock()
-        mock_user.role = MagicMock(value="admin")
-        mock_user.role.__eq__ = lambda self, other: True  # pass admin check
+        mock_user.role = UserRole.admin
 
         # Patch _find_listing to return our mock
         import api.routes.review as review_mod
@@ -457,6 +457,7 @@ class TestFastMcpEnforcement:
         from unittest.mock import AsyncMock, MagicMock
         from api.routes.review import approve
         from models.mcp import ListingStatus
+        from models.user import UserRole
 
         listing = MagicMock()
         listing.id = uuid.uuid4()
@@ -466,8 +467,7 @@ class TestFastMcpEnforcement:
 
         mock_db = AsyncMock()
         mock_user = MagicMock()
-        mock_user.role = MagicMock(value="admin")
-        mock_user.role.__eq__ = lambda self, other: True
+        mock_user.role = UserRole.admin
 
         import api.routes.review as review_mod
         original_find = review_mod._find_listing
@@ -485,6 +485,7 @@ class TestFastMcpEnforcement:
         from unittest.mock import AsyncMock, MagicMock
         from api.routes.review import approve
         from models.mcp import ListingStatus
+        from models.user import UserRole
 
         listing = MagicMock()
         listing.id = uuid.uuid4()
@@ -494,8 +495,7 @@ class TestFastMcpEnforcement:
 
         mock_db = AsyncMock()
         mock_user = MagicMock()
-        mock_user.role = MagicMock(value="admin")
-        mock_user.role.__eq__ = lambda self, other: True
+        mock_user.role = UserRole.admin
 
         import api.routes.review as review_mod
         original_find = review_mod._find_listing
