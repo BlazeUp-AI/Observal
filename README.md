@@ -4,7 +4,7 @@
   <img alt="Observal" src="docs/logo-light.svg" width="320">
 </picture>
 
-### Eval & observability for agentic coding — trace every tool call, score every session, improve every workflow.
+### Agent registry with built-in observability — discover, distribute, and monitor AI coding agents.
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
@@ -14,7 +14,7 @@
 
 ---
 
-Observal is a self-hosted platform that traces every tool call, skill activation, hook execution, sandbox run, and RAG query across your team's AI-assisted coding sessions,  then tells you exactly what's helping and what isn't.
+Observal is a self-hosted agent registry and observability platform. Discover, publish, and pull complete AI coding agents — bundled with their MCP servers, skills, hooks, prompts, and sandboxes. Every component emits telemetry into ClickHouse so you can measure what's actually working.
 
 It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Windsurf, Codex CLI, and GitHub Copilot.
 
@@ -34,29 +34,30 @@ Already have MCP servers in your IDE? Instrument them in one command:
 
 ```bash
 observal scan                  # auto-detect, register, and instrument everything
+observal pull <agent-id> --ide cursor  # install a complete agent
 ```
 
 This detects MCP servers from your IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry — without breaking your existing setup. A timestamped backup is created automatically.
 
 ## The Problem
 
-Engineering teams using Cursor, Kiro, Claude Code, Gemini CLI, and similar agentic IDEs have no visibility into what actually happens during AI-assisted development. Agents call tools, activate skills, execute code in sandboxes, query knowledge graphs, and fire lifecycle hooks, but none of this is measured. Teams can't answer basic questions:
+Teams building AI coding agents have no way to package and distribute complete agent configurations. Components (MCP servers, skills, hooks) are scattered across repos with no standard packaging. There's no visibility into agent performance in production, and no way to compare agent versions on real workflows.
 
-- Which tools speed up development and which ones waste time?
-- Are prompts producing good results or causing rework?
-- Do skills actually improve code quality when they activate?
-- Which hooks are blocking legitimate actions vs catching real issues?
-- Is the RAG system returning relevant context or noise?
-- How do two versions of an agent compare on real developer workflows?
+- How do you ship a complete AI agent with all its dependencies?
+- Which components actually improve productivity vs which ones add noise?
+- How does version 2.0 of your agent compare to 1.0 on real developer workflows?
+- Can you measure what's working before investing more in tooling?
 
-Without answers, teams can't improve their tooling. They guess, ship changes, and hope for the better.
+Without answers, teams can't improve their agents. They guess, ship changes, and hope for the better.
 
 ## How It Works
 
-Observal sits between your IDE and your tools. A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install a tool through Observal - no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup; no manual registration required.
+Observal is a registry for AI agents. Each agent bundles MCP servers, skills, hooks, prompts, and sandboxes into a single installable package. Run `observal pull <agent-id>` to install a complete agent with all its components.
+
+A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install an agent or component - no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup.
 
 ```
-IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
+IDE  <-->  observal-shim  <-->  MCP Server / Sandbox
                 |
                 v (fire-and-forget)
           Observal API  -->  ClickHouse (traces, spans, scores)
@@ -65,22 +66,20 @@ IDE  <-->  observal-shim  <-->  MCP Server / Tool / Sandbox / GraphRAG
           Eval Engine (LLM-as-judge)  -->  Scorecards
 ```
 
-The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, RAG relevance, and code correctness. Scorecards let you compare versions, identify bottlenecks, and track improvements over time. For GraphRAG endpoints, Observal runs RAGAS evaluation, computing faithfulness, answer relevancy, context precision, and context recall using LLM-as-judge on retrieval spans.
+The eval engine runs on traces after the fact. It scores agent sessions across dimensions like tool selection quality, prompt effectiveness, and code correctness. Scorecards let you compare agent versions, identify bottlenecks, and track improvements over time.
 
 ## What It Covers
 
-Observal manages 8 registry types that cover the full surface area of modern AI-assisted development:
+Observal manages 6 component types that agents bundle together:
 
 | Registry Type | What It Is | What Observal Measures |
 |--------------|-----------|----------------------|
-| MCP Servers | Model Context Protocol servers that expose tools to agents | Call volume, latency percentiles, error rates, schema compliance |
-| Agents | AI agent configurations with system prompts, model settings, and linked tools | Interaction count, acceptance rate, tool call efficiency, version-over-version comparison |
-| Tool Calls | Standalone tools (non-MCP) exposed directly to agents | Invocation count, success rate, retry rate, schema validation |
-| Skills | Portable instruction packages (SKILL.md) that agents load on demand | Activation frequency (auto vs manual), error rate correlation, session duration impact |
-| Hooks | Lifecycle callbacks that fire at specific points during agent sessions | Execution count per event type, block rate, latency overhead |
-| Prompts | Managed prompt templates with variable substitution | Render count, token expansion ratio, downstream LLM success rate |
-| Sandbox Exec | Docker/LXC execution environments for code running and testing | CPU/memory/disk/network usage, exit codes, OOM rate, timeout rate |
-| GraphRAGs | Knowledge graph and RAG system endpoints | Entities retrieved, relationships traversed, relevance scores, embedding latency, RAGAS evaluation (faithfulness, answer relevancy, context precision, context recall) |
+| Agents | AI agent configurations that bundle components (MCPs, skills, hooks, prompts, sandboxes) | Interaction count, acceptance rate, tool call efficiency, version comparison |
+| MCP Servers | Model Context Protocol servers that expose tools to agents | Call volume, latency, error rates, schema compliance, FastMCP validation |
+| Skills | Portable instruction packages (SKILL.md) that agents load on demand | Activation frequency, error rate correlation, session duration impact |
+| Hooks | Lifecycle callbacks that fire at specific points during agent sessions | Execution count, block rate, latency overhead |
+| Prompts | Managed prompt templates with variable substitution | Render count, token expansion, downstream success rate |
+| Sandbox Exec | Docker execution environments for code running and testing | CPU/memory/disk, exit codes, OOM rate, timeout rate |
 
 Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry, but you can use your own items and collect telemetry immediately, no approval needed.
 
@@ -88,17 +87,17 @@ Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, a
 
 Config generation and telemetry collection work across all major agentic IDEs:
 
-| IDE | MCP | Agents | Skills | Hooks | Sandbox Exec | GraphRAGs | Prompts | Native OTel |
-|-----|:---:|:------:|:------:|:-----:|:------------:|:---------:|:-------:|:-----------:|
-| Claude Code | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Codex CLI | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes |
-| Gemini CLI | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes |
-| GitHub Copilot | - | - | Yes | - | - | - | Yes | Yes |
-| Kiro IDE | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - |
-| Kiro CLI | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - |
-| Cursor | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - |
-| VS Code | Yes | Yes | - | - | Yes | Yes | Yes | - |
-| Windsurf | Yes | Yes | - | - | Yes | Yes | Yes | - |
+| IDE | MCP | Agents | Skills | Hooks | Sandbox Exec | Prompts | Native OTel |
+|-----|:---:|:------:|:------:|:-----:|:------------:|:-------:|:-----------:|
+| Claude Code | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Codex CLI | Yes | Yes | Yes | - | Yes | Yes | Yes |
+| Gemini CLI | Yes | Yes | Yes | - | Yes | Yes | Yes |
+| GitHub Copilot | - | - | Yes | - | - | Yes | Yes |
+| Kiro IDE | Yes | Yes | Yes | Yes | Yes | Yes | - |
+| Kiro CLI | Yes | Yes | Yes | Yes | Yes | Yes | - |
+| Cursor | Yes | Yes | Yes | Yes | Yes | Yes | - |
+| VS Code | Yes | Yes | - | - | Yes | Yes | - |
+| Windsurf | Yes | Yes | - | - | Yes | Yes | - |
 
 IDEs with **Native OTel** support send full distributed traces, user prompts, LLM token usage, and tool execution telemetry directly to Observal via OpenTelemetry. This is configured automatically when you run `observal install`. IDEs without native OTel support use the `observal-shim` transparent proxy for MCP tool call telemetry.
 
@@ -141,9 +140,26 @@ observal scan --dry-run    # preview changes without modifying files
 observal scan /path/to/project --yes  # non-interactive
 ```
 
+### Agent Workflow
+
+```bash
+# Agent Workflow
+observal pull <agent-id> --ide <ide>    # install complete agent
+observal agent init <name>              # scaffold new agent
+observal agent add mcp <name@version>   # add component
+observal agent add skill <name>         # add skill
+observal agent build                    # generate agent.yaml
+observal agent test                     # run in sandbox
+observal agent publish                  # submit to registry
+
+# Component Sources
+observal registry add-source <git-url>  # add component source
+observal registry sync                  # trigger re-sync
+```
+
 ### Registry Operations
 
-All registry types follow the same pattern: submit, list, show, install, delete. All commands accept either an ID or a name.
+All component types follow the same pattern. All commands accept either an ID or a name.
 
 ```bash
 # MCP Servers (ID or name works for all commands)
@@ -168,11 +184,6 @@ observal hook submit
 observal hook list [--event <event>] [--scope <scope>]
 observal hook install <id> --ide <ide>
 
-# Tools
-observal tool submit
-observal tool list [--category <cat>]
-observal tool install <id> --ide <ide>
-
 # Prompts
 observal prompt submit [--from-file <path>]
 observal prompt list [--category <cat>]
@@ -182,11 +193,6 @@ observal prompt render <id> --var key=value
 observal sandbox submit
 observal sandbox list [--runtime docker|lxc]
 observal sandbox install <id> --ide <ide>
-
-# GraphRAGs
-observal graphrag submit
-observal graphrag list [--query-interface graphql|rest|cypher|sparql]
-observal graphrag install <id> --ide <ide>
 ```
 
 ### Admin Review
@@ -194,7 +200,7 @@ observal graphrag install <id> --ide <ide>
 All registry types go through a single review workflow:
 
 ```bash
-observal review list [--type mcp|agent|skill|hook|tool|prompt|sandbox|graphrag]
+observal review list [--type mcp|agent|skill|hook|prompt|sandbox]
 observal review show <id>
 observal review approve <id>
 observal review reject <id> --reason "Missing documentation"
@@ -252,7 +258,7 @@ observal feedback <id> --type mcp
 | `POST` | `/api/v1/auth/login` | Login with API key |
 | `GET` | `/api/v1/auth/whoami` | Current user info |
 
-### Registry (per type: mcps, agents, tools, skills, hooks, prompts, sandboxes, graphrags)
+### Registry (per type: mcps, agents, skills, hooks, prompts, sandboxes)
 
 All `{id}` parameters accept either a UUID or a name.
 
@@ -264,6 +270,11 @@ All `{id}` parameters accept either a UUID or a name.
 | `POST` | `/api/v1/{type}/{id}/install` | Get IDE config snippet |
 | `DELETE` | `/api/v1/{type}/{id}` | Delete |
 | `GET` | `/api/v1/{type}/{id}/metrics` | Metrics |
+| `POST` | `/api/v1/agents/{id}/pull` | Pull agent (installs all components) |
+| `GET` | `/api/v1/organizations` | List organizations |
+| `POST` | `/api/v1/organizations` | Create organization |
+| `GET` | `/api/v1/component-sources` | List component sources |
+| `POST` | `/api/v1/component-sources` | Add component source |
 
 ### Scan
 
@@ -296,8 +307,6 @@ All `{id}` parameters accept either a UUID or a name.
 | `GET` | `/api/v1/eval/agents/{id}/scorecards` | List scorecards |
 | `GET` | `/api/v1/eval/scorecards/{id}` | Scorecard details |
 | `GET` | `/api/v1/eval/agents/{id}/compare` | Compare versions |
-| `POST` | `/api/v1/dashboard/graphrag-ragas-eval` | Run RAGAS evaluation on GraphRAG retrieval spans |
-| `GET` | `/api/v1/dashboard/graphrag-ragas-scores` | Get RAGAS scores (aggregate or per-GraphRAG) |
 
 ### Feedback
 
@@ -366,7 +375,7 @@ All `{id}` parameters accept either a UUID or a name.
 ## Running Tests
 
 ```bash
-make test      # quick (308 tests)
+make test      # quick (377 tests)
 make test-v    # verbose
 ```
 
