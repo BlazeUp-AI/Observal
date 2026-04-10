@@ -13,7 +13,6 @@ const IDE_OPTIONS = [
   "Kiro CLI",
   "Claude Code",
   "VS Code",
-  "Windsurf",
   "Gemini CLI",
 ];
 

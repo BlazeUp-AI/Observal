@@ -21,7 +21,6 @@ const IDE_COLORS: Record<string, string> = {
   "Claude Code": "hsl(var(--chart-4))",
   "Gemini CLI": "hsl(var(--chart-5))",
   "VS Code": "hsl(210 80% 55%)",
-  "Windsurf": "hsl(170 70% 45%)",
   "GitHub Copilot": "hsl(260 60% 55%)",
 };
 

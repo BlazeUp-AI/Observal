@@ -110,5 +110,5 @@ def generate_config(
             "codex_config": generate_codex_config(observal_url),
         }
 
-    # cursor, vscode, kiro, kiro-cli, windsurf — no native OTel; telemetry collected via observal-shim
+    # cursor, vscode, kiro, kiro-cli — no native OTel; telemetry collected via observal-shim
     return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": {}}}}

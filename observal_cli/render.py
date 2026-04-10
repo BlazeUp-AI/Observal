@@ -97,7 +97,6 @@ _IDE_COLORS = {
     "kiro": "magenta",
     "claude_code": "yellow",
     "claude-code": "yellow",
-    "windsurf": "green",
     "gemini_cli": "red",
     "gemini-cli": "red",
 }

@@ -16,7 +16,7 @@
 
 Observal is a self-hosted agent registry and observability platform. Discover, publish, and pull complete AI coding agents — bundled with their MCP servers, skills, hooks, prompts, and sandboxes. Every component emits telemetry into ClickHouse so you can measure what's actually working.
 
-It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Windsurf, Codex CLI, and GitHub Copilot.
+It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Codex CLI, and GitHub Copilot.
 
 ## Quick Start
 
@@ -97,7 +97,6 @@ Config generation and telemetry collection work across all major agentic IDEs:
 | Kiro CLI | Yes | Yes | Yes | Yes | Yes | Yes | - |
 | Cursor | Yes | Yes | Yes | Yes | Yes | Yes | - |
 | VS Code | Yes | Yes | - | - | Yes | Yes | - |
-| Windsurf | Yes | Yes | - | - | Yes | Yes | - |
 
 IDEs with **Native OTel** support send full distributed traces, user prompts, LLM token usage, and tool execution telemetry directly to Observal via OpenTelemetry. This is configured automatically when you run `observal install`. IDEs without native OTel support use the `observal-shim` transparent proxy for MCP tool call telemetry.
 

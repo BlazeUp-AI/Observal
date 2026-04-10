@@ -111,7 +111,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `cmd_hook.py` : submit, list, show, install, delete
 - `cmd_prompt.py` : submit, list, show, install, render, delete
 - `cmd_sandbox.py` : submit, list, show, install, delete
-- `cmd_scan.py` : `observal scan`: auto-detect IDE configs (Cursor, Kiro, VS Code, Windsurf, Claude Code, Gemini CLI), bulk-register MCPs, wrap with observal-shim; `--dry-run`, `--ide`, `--yes` flags
+- `cmd_scan.py` : `observal scan`: auto-detect IDE configs (Cursor, Kiro, VS Code, Claude Code, Gemini CLI), bulk-register MCPs, wrap with observal-shim; `--dry-run`, `--ide`, `--yes` flags
 - `cmd_ops.py` : review, telemetry, dashboard (overview, metrics --watch, top), feedback, eval (run, scorecards, show, compare), admin, traces, spans, upgrade/downgrade
 - `client.py` : httpx wrapper with get/post/put/delete/health; contextual error messages per status code
 - `config.py` : ~/.observal/config.json management; alias system (@name -> UUID resolution)

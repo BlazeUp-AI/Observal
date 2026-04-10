@@ -44,7 +44,6 @@ const IDES = [
   "claude-code",
   "gemini-cli",
   "vscode",
-  "windsurf",
 ];
 
 export function TraceList() {

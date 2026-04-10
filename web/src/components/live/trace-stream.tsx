@@ -40,7 +40,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const TRACE_TYPES = ["all", "mcp", "agent", "tool", "skill", "hook", "prompt", "sandbox", "graphrag"];
-const IDES = ["all", "cursor", "kiro", "kiro-cli", "claude-code", "gemini-cli", "vscode", "windsurf"];
+const IDES = ["all", "cursor", "kiro", "kiro-cli", "claude-code", "gemini-cli", "vscode"];
 const MAX_BUFFER = 200;
 
 function relativeTime(ts: string): string {

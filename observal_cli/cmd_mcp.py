@@ -55,7 +55,7 @@ def register_mcp(app: typer.Typer):
         )
         _owner = typer.prompt("Owner / Team") if not yes else "default"
 
-        ide_choices = ["vscode", "cursor", "windsurf", "kiro", "claude_code", "gemini_cli"]
+        ide_choices = ["vscode", "cursor", "kiro", "claude_code", "gemini_cli"]
         if not yes:
             rprint(f"[dim]IDEs: {', '.join(ide_choices)}[/dim]")
             ides_input = typer.prompt("Supported IDEs (comma-separated)", default=",".join(ide_choices))
@@ -204,7 +204,6 @@ def register_mcp(app: typer.Typer):
             "kiro": ".kiro/settings/mcp.json",
             "cursor": ".cursor/mcp.json",
             "vscode": ".vscode/mcp.json",
-            "windsurf": ".windsurf/mcp.json",
             "claude-code": "(run the command below)",
             "claude_code": "(run the command below)",
             "gemini-cli": ".gemini/settings.json",

@@ -33,7 +33,6 @@ _IDE_HINTS = {
     "copilot": "github_copilot",
     "cursor": "cursor",
     "kiro": "kiro",
-    "windsurf": "windsurf",
 }
 
 

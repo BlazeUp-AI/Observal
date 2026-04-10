@@ -121,11 +121,10 @@ def generate_agent_config(
             "gemini_settings_snippet": _gemini_settings(observal_url),
         }
 
-    # cursor, vscode, windsurf: rules file + mcp.json — telemetry via observal-shim
+    # cursor, vscode: rules file + mcp.json — telemetry via observal-shim
     ide_paths = {
         "cursor": (".cursor/rules/{name}.md", ".cursor/mcp.json"),
         "vscode": (".vscode/rules/{name}.md", ".vscode/mcp.json"),
-        "windsurf": (".windsurf/rules/{name}.md", ".windsurf/mcp.json"),
     }
     rules_path, mcp_path = ide_paths.get(ide, (f".rules/{safe_name}.md", ".mcp.json"))
     return {

@@ -21,7 +21,6 @@ _IDE_MCP_CONFIGS = {
     "cursor": ".cursor/mcp.json",
     "kiro": ".kiro/settings/mcp.json",
     "vscode": ".vscode/mcp.json",
-    "windsurf": ".windsurf/mcp.json",
     "claude-code": ".claude/mcp.json",
     "gemini-cli": ".gemini/settings.json",
 }
@@ -41,7 +40,7 @@ def _parse_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
     """Extract mcpServers dict from IDE config, handling format differences."""
     if ide == "gemini-cli":
         return config.get("mcpServers", {})
-    # cursor, kiro, vscode, windsurf, claude-code all use mcpServers at top level
+    # cursor, kiro, vscode, claude-code all use mcpServers at top level
     return config.get("mcpServers", config.get("servers", {}))
 
 
