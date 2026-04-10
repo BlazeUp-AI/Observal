@@ -147,7 +147,7 @@
     --light-blue: 214 94.6% 92.7%;
     --dark-blue: 217 91.2% 59.8%;
 
-    --radius: 0.5rem;
+    --radius: 0.25rem;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -221,7 +221,7 @@
     --light-blue: 224 64.3% 32.9%;
     --dark-blue: 212 96.4% 78.4%;
 
-    --radius: 0.5rem;
+    --radius: 0.25rem;
 
     --sidebar-background: 222.2 84% 4.9%;
     --sidebar-foreground: 210 40% 83%;
@@ -278,7 +278,7 @@
     --dark-green: 142 76.7% 73.1%;
     --light-blue: 224 64.3% 32.9%;
     --dark-blue: 212 96.4% 78.4%;
-    --radius: 0.5rem;
+    --radius: 0.25rem;
     --sidebar-background: 230 35% 7%;
     --sidebar-foreground: 220 20% 85%;
     --sidebar-primary: 220 20% 90%;
@@ -333,7 +333,7 @@
     --dark-green: 142 76.7% 73.1%;
     --light-blue: 224 64.3% 32.9%;
     --dark-blue: 212 96.4% 78.4%;
-    --radius: 0.5rem;
+    --radius: 0.25rem;
     --sidebar-background: 150 20% 7%;
     --sidebar-foreground: 140 15% 82%;
     --sidebar-primary: 140 15% 88%;
@@ -388,7 +388,7 @@
     --dark-green: 142 76.7% 73.1%;
     --light-blue: 224 64.3% 32.9%;
     --dark-blue: 212 96.4% 78.4%;
-    --radius: 0.5rem;
+    --radius: 0.25rem;
     --sidebar-background: 25 30% 8%;
     --sidebar-foreground: 35 25% 82%;
     --sidebar-primary: 35 25% 88%;
