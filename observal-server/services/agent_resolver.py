@@ -2,8 +2,9 @@
 
 import logging
 import uuid
-from dataclasses import dataclass, field
+from typing import Literal
 
+from pydantic import BaseModel, Field, computed_field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,8 @@ from models.skill import SkillListing
 
 logger = logging.getLogger(__name__)
 
+ComponentType = Literal["mcp", "skill", "hook", "prompt", "sandbox"]
+
 # Maps component_type string to its ORM model
 _LISTING_MODELS: dict[str, type] = {
     "mcp": McpListing,
@@ -27,40 +30,42 @@ _LISTING_MODELS: dict[str, type] = {
 }
 
 
-@dataclass
-class ResolvedComponent:
+class ResolvedComponent(BaseModel):
     """A fully resolved component with its listing data."""
-    component_type: str
+    model_config = {"frozen": True}
+
+    component_type: ComponentType
     component_id: uuid.UUID
     name: str
     version: str
     git_url: str
-    git_ref: str
-    description: str
-    order_index: int
+    git_ref: str = ""
+    description: str = ""
+    order_index: int = 0
     config_override: dict | None = None
     listing_status: str = ""
-    # Type-specific fields carried through for config generation
-    extra: dict = field(default_factory=dict)
+    extra: dict = Field(default_factory=dict)
 
 
-@dataclass
-class ResolutionError:
+class ResolutionError(BaseModel):
     """A single resolution failure."""
+    model_config = {"frozen": True}
+
     component_type: str
     component_id: uuid.UUID
     reason: str
 
 
-@dataclass
-class ResolvedAgent:
+class ResolvedAgent(BaseModel):
     """Complete resolution result for an agent."""
+
     agent_id: uuid.UUID
     agent_name: str
     agent_version: str
-    components: list[ResolvedComponent] = field(default_factory=list)
-    errors: list[ResolutionError] = field(default_factory=list)
+    components: list[ResolvedComponent] = Field(default_factory=list)
+    errors: list[ResolutionError] = Field(default_factory=list)
 
+    @computed_field
     @property
     def ok(self) -> bool:
         return len(self.errors) == 0
@@ -125,16 +130,13 @@ async def resolve_agent(
     Looks up each AgentComponent's listing in the correct table,
     validates status, and returns a ResolvedAgent with full details.
     """
-    result = ResolvedAgent(
-        agent_id=agent.id,
-        agent_name=agent.name,
-        agent_version=agent.version,
-    )
+    components: list[ResolvedComponent] = []
+    errors: list[ResolutionError] = []
 
     for comp in agent.components:
         model = _LISTING_MODELS.get(comp.component_type)
         if model is None:
-            result.errors.append(ResolutionError(
+            errors.append(ResolutionError(
                 component_type=comp.component_type,
                 component_id=comp.component_id,
                 reason=f"Unknown component type: {comp.component_type}",
@@ -145,7 +147,7 @@ async def resolve_agent(
         listing = (await db.execute(stmt)).scalar_one_or_none()
 
         if listing is None:
-            result.errors.append(ResolutionError(
+            errors.append(ResolutionError(
                 component_type=comp.component_type,
                 component_id=comp.component_id,
                 reason=f"{comp.component_type} listing {comp.component_id} not found",
@@ -153,14 +155,14 @@ async def resolve_agent(
             continue
 
         if require_approved and listing.status != ListingStatus.approved:
-            result.errors.append(ResolutionError(
+            errors.append(ResolutionError(
                 component_type=comp.component_type,
                 component_id=comp.component_id,
                 reason=f"{comp.component_type} '{listing.name}' is not approved (status: {listing.status.value})",
             ))
             continue
 
-        result.components.append(ResolvedComponent(
+        components.append(ResolvedComponent(
             component_type=comp.component_type,
             component_id=comp.component_id,
             name=listing.name,
@@ -174,7 +176,13 @@ async def resolve_agent(
             extra=_extract_extra(listing, comp.component_type),
         ))
 
-    return result
+    return ResolvedAgent(
+        agent_id=agent.id,
+        agent_name=agent.name,
+        agent_version=agent.version,
+        components=components,
+        errors=errors,
+    )
 
 
 async def validate_component_ids(
@@ -192,11 +200,19 @@ async def validate_component_ids(
     for ref in components:
         ctype = ref.get("component_type", "")
         cid = ref.get("component_id")
+        if cid is None:
+            errors.append(ResolutionError(
+                component_type=ctype,
+                component_id=uuid.UUID(int=0),
+                reason=f"Missing component_id for {ctype}",
+            ))
+            continue
+
         model = _LISTING_MODELS.get(ctype)
         if model is None:
             errors.append(ResolutionError(
                 component_type=ctype,
-                component_id=cid or uuid.UUID(int=0),
+                component_id=cid,
                 reason=f"Unknown component type: {ctype}",
             ))
             continue

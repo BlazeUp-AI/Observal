@@ -789,7 +789,7 @@ class TestBuildCompositionSummary:
             agent_id=uuid.uuid4(),
             agent_name="bad-agent",
             agent_version="1.0",
-            errors=[ResolutionError("mcp", uuid.uuid4(), "missing")],
+            errors=[ResolutionError(component_type="mcp", component_id=uuid.uuid4(), reason="missing")],
         )
         summary = build_composition_summary(resolved)
         assert summary["resolved"] is False
@@ -856,6 +856,100 @@ class TestComponentLinkResponseInAgentResponse:
             order=0,
         )
         assert link.config_override is None
+
+
+class TestPydanticValidation:
+    """Verify Pydantic validation on resolver/builder models."""
+
+    def test_resolved_component_is_frozen(self):
+        from services.agent_resolver import ResolvedComponent
+        comp = ResolvedComponent(
+            component_type="mcp", component_id=uuid.uuid4(),
+            name="test", version="1.0", git_url="url",
+        )
+        with pytest.raises(Exception):
+            comp.name = "changed"
+
+    def test_resolution_error_is_frozen(self):
+        from services.agent_resolver import ResolutionError
+        err = ResolutionError(
+            component_type="mcp", component_id=uuid.uuid4(), reason="test",
+        )
+        with pytest.raises(Exception):
+            err.reason = "changed"
+
+    def test_resolved_agent_serializes_to_dict(self):
+        from services.agent_resolver import ResolvedAgent
+        ra = ResolvedAgent(
+            agent_id=uuid.uuid4(),
+            agent_name="test",
+            agent_version="1.0",
+        )
+        data = ra.model_dump()
+        assert data["agent_name"] == "test"
+        assert data["ok"] is True
+
+    def test_resolved_component_rejects_invalid_type(self):
+        from pydantic import ValidationError
+        from services.agent_resolver import ResolvedComponent
+        with pytest.raises(ValidationError):
+            ResolvedComponent(
+                component_type="invalid_type", component_id=uuid.uuid4(),
+                name="bad", version="1.0", git_url="url",
+            )
+
+    def test_manifest_component_dump_compact(self):
+        from services.agent_builder import ManifestComponent
+        comp = ManifestComponent(
+            name="test-mcp", version="1.0", git_url="url",
+            description="desc", transport="stdio",
+        )
+        dumped = comp.model_dump_compact()
+        assert "transport" in dumped
+        assert "image" not in dumped  # None fields excluded
+        assert "slash_command" not in dumped
+
+    def test_agent_manifest_model_validates(self):
+        from services.agent_builder import AgentManifest, ManifestComponent, ManifestComponents
+        manifest = AgentManifest(
+            name="my-agent",
+            version="2.0",
+            components=ManifestComponents(
+                mcps=[ManifestComponent(name="a", version="1.0", git_url="url")],
+            ),
+        )
+        assert manifest.name == "my-agent"
+        assert len(manifest.components.mcps) == 1
+        compact = manifest.model_dump_compact()
+        assert compact["components"]["mcps"][0]["name"] == "a"
+        assert "skills" not in compact["components"]
+
+    def test_ide_agent_config_model(self):
+        from services.agent_builder import AgentFile, IdeAgentConfig
+        config = IdeAgentConfig(
+            ide="claude-code",
+            files=[
+                AgentFile(path=".claude/rules/test.md", content="# Rules", format="markdown"),
+                AgentFile(path=".mcp.json", content={"mcpServers": {}}, format="json"),
+            ],
+            env={"OTEL_ENDPOINT": "http://localhost:4318"},
+        )
+        assert len(config.files) == 2
+        assert config.files[0].format == "markdown"
+        assert config.files[1].format == "json"
+
+    def test_composition_summary_model(self):
+        from services.agent_builder import CompositionSummary
+        summary = CompositionSummary(
+            agent_id=str(uuid.uuid4()),
+            agent_name="test",
+            agent_version="1.0",
+            resolved=True,
+            component_counts={"mcp": 2, "skill": 1},
+        )
+        data = summary.model_dump()
+        assert data["resolved"] is True
+        assert data["component_counts"]["mcp"] == 2
 
 
 class TestResolverAndBuilderModulesImportable:
