@@ -12,7 +12,6 @@ from api.routes.auth import router as auth_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
-from api.routes.graphrag import router as graphrag_router
 from api.routes.hook import router as hook_router
 from api.routes.mcp import router as mcp_router
 from api.routes.otel_dashboard import router as otel_dashboard_router
@@ -23,7 +22,6 @@ from api.routes.sandbox import router as sandbox_router
 from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
 from api.routes.scan import router as scan_router
-from api.routes.tool import router as tool_router
 from database import engine
 from models import Base
 from services.clickhouse import init_clickhouse
@@ -54,12 +52,10 @@ app.include_router(auth_router)
 app.include_router(mcp_router)
 app.include_router(review_router)
 app.include_router(agent_router)
-app.include_router(tool_router)
 app.include_router(skill_router)
 app.include_router(hook_router)
 app.include_router(prompt_router)
 app.include_router(sandbox_router)
-app.include_router(graphrag_router)
 app.include_router(scan_router)
 app.include_router(telemetry_router)
 app.include_router(dashboard_router)

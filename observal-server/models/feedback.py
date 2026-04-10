@@ -17,7 +17,7 @@ class Feedback(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     listing_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    listing_type: Mapped[str] = mapped_column(String(10), nullable=False)  # "mcp" or "agent"
+    listing_type: Mapped[str] = mapped_column(String(50), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)

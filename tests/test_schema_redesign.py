@@ -279,3 +279,42 @@ class TestExporterConfigModel:
         ]
         col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
         assert frozenset({"org_id", "exporter_type"}) in col_sets
+
+
+class TestRemovedTypes:
+    def test_tool_listing_not_importable(self):
+        """ToolListing should no longer exist in models.__init__."""
+        import models
+        assert not hasattr(models, "ToolListing")
+        assert not hasattr(models, "ToolDownload")
+
+    def test_graphrag_listing_not_importable(self):
+        """GraphRagListing should no longer exist in models.__init__."""
+        import models
+        assert not hasattr(models, "GraphRagListing")
+        assert not hasattr(models, "GraphRagDownload")
+
+    def test_new_models_importable(self):
+        """All new models should be importable from models package."""
+        from models import (
+            Organization, ComponentSource, AgentComponent,
+            AgentDownloadRecord, ComponentDownloadRecord, ExporterConfig,
+        )
+        assert Organization.__tablename__ == "organizations"
+        assert ComponentSource.__tablename__ == "component_sources"
+        assert AgentComponent.__tablename__ == "agent_components"
+        assert AgentDownloadRecord.__tablename__ == "agent_download_records"
+        assert ComponentDownloadRecord.__tablename__ == "component_download_records"
+        assert ExporterConfig.__tablename__ == "exporter_configs"
+
+
+class TestFeedbackSubmissionUpdates:
+    def test_feedback_listing_type_wider(self):
+        from models.feedback import Feedback
+        col = Feedback.__table__.c.listing_type
+        assert col.type.length >= 50
+
+    def test_submission_listing_type_wider(self):
+        from models.submission import Submission
+        col = Submission.__table__.c.listing_type
+        assert col.type.length >= 50

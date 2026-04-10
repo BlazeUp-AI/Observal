@@ -13,7 +13,7 @@ class Submission(Base):
     __tablename__ = "submissions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    listing_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    listing_type: Mapped[str] = mapped_column(String(50), nullable=False)
     listing_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.pending)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
