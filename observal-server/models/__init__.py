@@ -1,6 +1,8 @@
 from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
 from models.agent_component import AgentComponent
 from models.alert import AlertRule
+from models.component_source import ComponentSource
+from models.download import AgentDownloadRecord, ComponentDownloadRecord
 from models.base import Base
 from models.enterprise_config import EnterpriseConfig
 from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
@@ -29,11 +31,14 @@ __all__ = [
     "DEFAULT_PENALTIES",
     "Agent",
     "AgentComponent",
+    "AgentDownloadRecord",
     "AgentGoalSection",
     "AgentGoalTemplate",
     "AgentStatus",
     "AlertRule",
     "Base",
+    "ComponentDownloadRecord",
+    "ComponentSource",
     "DimensionWeight",
     "EnterpriseConfig",
     "EvalRun",
