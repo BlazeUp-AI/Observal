@@ -16,6 +16,7 @@ from services.git_mirror_service import (
     SyncResult,
     _mirror_path,
     _parse_manifest,
+    _safe_path,
     _scan_by_convention,
     clone_or_update,
     discover_components,
@@ -397,3 +398,56 @@ class TestMirrorPath:
     def test_path_under_base(self, tmp_base):
         p = _mirror_path("https://github.com/org/repo.git", tmp_base)
         assert str(p).startswith(str(tmp_base))
+
+
+# ── Security ─────────────────────────────────────────────────────────
+
+
+class TestPathTraversalPrevention:
+    def test_safe_path_allows_normal(self, tmp_path):
+        assert _safe_path(tmp_path, "src/my-mcp") is True
+        assert _safe_path(tmp_path, "skills/tdd") is True
+
+    def test_safe_path_blocks_traversal(self, tmp_path):
+        assert _safe_path(tmp_path, "../../etc/passwd") is False
+        assert _safe_path(tmp_path, "../../../sensitive") is False
+
+    def test_safe_path_blocks_absolute(self, tmp_path):
+        assert _safe_path(tmp_path, "/etc/passwd") is False
+
+    def test_manifest_rejects_traversal_paths(self, tmp_path):
+        """Manifest entries with path traversal should be skipped."""
+        manifest = {
+            "mcps": [
+                {"name": "legit", "path": "src/legit"},
+                {"name": "evil", "path": "../../etc/passwd"},
+                {"name": "also-evil", "path": "../../../sensitive"},
+            ],
+        }
+        components = _parse_manifest(manifest, mirror_dir=tmp_path)
+        names = {c.name for c in components}
+        assert "legit" in names
+        assert "evil" not in names
+        assert "also-evil" not in names
+
+    def test_convention_scan_skips_symlinks(self, tmp_path, tmp_base):
+        """Symlinks in convention directories should be skipped."""
+        repo_dir = tmp_path / "symlink-repo"
+        external = tmp_path / "external_secret"
+        external.mkdir()
+        (external / "server.py").write_text("from mcp.server.fastmcp import FastMCP\n")
+
+        files = {
+            "src/legit/server.py": "from mcp.server.fastmcp import FastMCP\nmcp = FastMCP('legit')\n",
+        }
+        repo = _create_git_repo(repo_dir, files)
+
+        # Create symlink after repo init (git may not track it, but the mirror dir will have it)
+        mirror = clone_or_update(str(repo), branch="main", base=tmp_base)
+        symlink_target = mirror / "src" / "evil-link"
+        symlink_target.symlink_to(external)
+
+        mcps = discover_components(mirror, component_type="mcp")
+        names = {c.name for c in mcps}
+        assert "legit" in names
+        assert "evil-link" not in names

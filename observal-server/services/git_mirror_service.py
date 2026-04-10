@@ -92,7 +92,7 @@ def discover_components(mirror_dir: Path, component_type: str | None = None) -> 
         if manifest_path.exists():
             try:
                 manifest = json.loads(manifest_path.read_text())
-                return _parse_manifest(manifest, component_type)
+                return _parse_manifest(manifest, component_type, mirror_dir=mirror_dir)
             except (json.JSONDecodeError, KeyError) as e:
                 logger.warning("Invalid manifest %s: %s", manifest_path, e)
                 # Fall through to convention scan
@@ -101,7 +101,16 @@ def discover_components(mirror_dir: Path, component_type: str | None = None) -> 
     return _scan_by_convention(mirror_dir, component_type)
 
 
-def _parse_manifest(manifest: dict, component_type: str | None = None) -> list[DiscoveredComponent]:
+def _safe_path(base: Path, rel: str) -> bool:
+    """Check that a relative path stays within base (no traversal)."""
+    try:
+        resolved = (base / rel).resolve()
+        return resolved == base.resolve() or str(resolved).startswith(str(base.resolve()) + "/")
+    except (OSError, ValueError):
+        return False
+
+
+def _parse_manifest(manifest: dict, component_type: str | None = None, mirror_dir: Path | None = None) -> list[DiscoveredComponent]:
     """Parse .observal.json manifest."""
     components = []
     type_keys = {
@@ -120,9 +129,14 @@ def _parse_manifest(manifest: dict, component_type: str | None = None) -> list[D
 
     for ctype, key in types_to_scan.items():
         for entry in manifest.get(key, []):
+            comp_path = entry.get("path", "")
+            # Reject path traversal attempts
+            if mirror_dir and not _safe_path(mirror_dir, comp_path):
+                logger.warning("Skipping component with unsafe path: %s", comp_path)
+                continue
             components.append(DiscoveredComponent(
-                name=entry.get("name", entry.get("path", "").split("/")[-1]),
-                path=entry.get("path", ""),
+                name=entry.get("name", comp_path.split("/")[-1]),
+                path=comp_path,
                 component_type=ctype,
                 description=entry.get("description", ""),
             ))
@@ -141,7 +155,7 @@ _CONVENTION_DIRS = {
 
 # Markers that identify a valid component directory
 _COMPONENT_MARKERS = {
-    "mcp": lambda p: any(p.rglob("*.py")),  # Python files present
+    "mcp": lambda p: any(f for f in p.rglob("*.py") if ".git" not in f.parts),
     "skill": lambda p: (p / "SKILL.md").exists(),
     "hook": lambda p: (p / "hook.json").exists(),
     "prompt": lambda p: any(p.glob("*.md")) or any(p.glob("*.txt")),
@@ -165,7 +179,11 @@ def _scan_by_convention(mirror_dir: Path, component_type: str | None = None) -> 
             if not base.exists() or not base.is_dir():
                 continue
             for item in sorted(base.iterdir()):
-                if item.is_dir() and marker(item):
+                if item.is_symlink() or not item.is_dir():
+                    continue
+                if not _safe_path(mirror_dir, str(item.relative_to(mirror_dir))):
+                    continue
+                if marker(item):
                     components.append(DiscoveredComponent(
                         name=item.name,
                         path=str(item.relative_to(mirror_dir)),
@@ -183,6 +201,8 @@ _FASTMCP_PATTERN = re.compile(
 def validate_mcp_component(component_path: Path) -> tuple[bool, str]:
     """Validate an MCP component uses FastMCP. Returns (passed, detail)."""
     for py_file in component_path.rglob("*.py"):
+        if ".git" in py_file.parts or py_file.is_symlink():
+            continue
         try:
             content = py_file.read_text(errors="ignore")
             if _FASTMCP_PATTERN.search(content):
