@@ -25,10 +25,7 @@ import type {
   RegistryItem,
 } from "./types";
 
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const API = `${BASE_URL}/api/v1`;
+const API = "/api/v1";
 
 function getApiKey(): string | null {
   if (typeof window === "undefined") return null;
@@ -41,6 +38,20 @@ export function setApiKey(key: string) {
 
 export function clearApiKey() {
   localStorage.removeItem("observal_api_key");
+}
+
+export function setUserRole(role: string) {
+  localStorage.setItem("observal_user_role", role);
+}
+
+export function getUserRole(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("observal_user_role");
+}
+
+export function clearSession() {
+  localStorage.removeItem("observal_api_key");
+  localStorage.removeItem("observal_user_role");
 }
 
 async function request<T = unknown>(
@@ -96,11 +107,11 @@ export async function graphql<T = unknown>(
 
 // ── Auth ────────────────────────────────────────────────────────────
 export const auth = {
-  init: (body: { username: string; password: string }) =>
-    post<{ api_key: string }>("/auth/init", body),
+  init: (body: { email: string; name: string }) =>
+    post<{ user: { id: string; email: string; name: string; role: string; created_at: string }; api_key: string }>("/auth/init", body),
   login: (body: { api_key: string }) =>
-    post<{ username: string }>("/auth/login", body),
-  whoami: () => get<{ id: string; username: string; role: string }>("/auth/whoami"),
+    post<{ id: string; email: string; name: string; role: string; created_at: string }>("/auth/login", body),
+  whoami: () => get<{ id: string; email: string; name: string; role: string }>("/auth/whoami"),
 };
 
 // ── Registry (all 8 types) ─────────────────────────────────────────
@@ -223,4 +234,4 @@ export const alerts = {
 
 // ── Health ──────────────────────────────────────────────────────────
 export const health = () =>
-  fetch(`${BASE_URL}/health`).then((r) => r.json());
+  fetch("/health").then((r) => r.json());
