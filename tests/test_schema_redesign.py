@@ -257,3 +257,25 @@ class TestDownloadModels:
         col = ComponentDownloadRecord.__table__.c.component_id
         fks = col.foreign_keys
         assert len(fks) == 0
+
+
+class TestExporterConfigModel:
+    def test_exporter_config_tablename(self):
+        from models.exporter_config import ExporterConfig
+        assert ExporterConfig.__tablename__ == "exporter_configs"
+
+    def test_exporter_config_has_required_columns(self):
+        from models.exporter_config import ExporterConfig
+        cols = {c.name for c in ExporterConfig.__table__.columns}
+        required = {"id", "org_id", "exporter_type", "enabled", "config", "created_at", "updated_at"}
+        assert required.issubset(cols)
+
+    def test_exporter_config_unique_per_org(self):
+        from models.exporter_config import ExporterConfig
+        table = ExporterConfig.__table__
+        unique_constraints = [
+            uc for uc in table.constraints
+            if hasattr(uc, "columns") and len(uc.columns) == 2
+        ]
+        col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
+        assert frozenset({"org_id", "exporter_type"}) in col_sets
