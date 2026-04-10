@@ -4,7 +4,7 @@ Internal context for contributors and AI coding agents. Use `README.md` as the p
 
 ## Current state
 
-Observal is an eval and observability platform for agentic coding workflows. It supports 8 registry types: MCP servers, agents, tools, skills, hooks, prompts, sandboxes, and GraphRAGs. All types have full CRUD, CLI commands, admin review, feedback, and telemetry collection.
+Observal is an agent-centric registry and observability platform for AI coding agents. Agents are the primary entity, bundling 5 component types: MCP servers, skills, hooks, prompts, and sandboxes. All components have CRUD, CLI commands, admin review, feedback, and telemetry collection. Agents bundle components via a polymorphic junction table (`agent_components`).
 
 All API routes accept either UUID or name for path parameters. Admin review controls public registry visibility only — submitters can install and use their own items immediately without approval.
 
@@ -31,7 +31,7 @@ make format              # ruff format + ruff fix
 make check               # pre-commit on all files
 make hooks               # install pre-commit hooks
 
-# Tests (308 unit tests, run from observal-server/)
+# Tests (377 unit tests, run from observal-server/)
 make test                # quick
 make test-v              # verbose
 # or manually:
@@ -49,14 +49,12 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `api/graphql.py` : Strawberry schema: Query (traces, spans, metrics) + Subscription (traceCreated, spanCreated); DataLoaders for ClickHouse batch queries
 - `api/routes/auth.py` : init, login, whoami
 - `api/routes/mcp.py` : MCP server CRUD; submit triggers async validation pipeline
-- `api/routes/agent.py` : Agent CRUD with goal templates, MCP linking, external MCP support
-- `api/routes/tool.py` : Tool CRUD; install generates observal-proxy or PostToolUse hook config
+- `api/routes/agent.py` : Agent CRUD with goal templates, component linking via agent_components table
 - `api/routes/skill.py` : Skill CRUD; install generates SessionStart/End hook config
 - `api/routes/hook.py` : Hook CRUD; install generates IDE-specific HTTP hook config
 - `api/routes/prompt.py` : Prompt CRUD + `/render` endpoint that emits prompt_render spans
 - `api/routes/sandbox.py` : Sandbox CRUD; install generates observal-sandbox-run config
-- `api/routes/graphrag.py` : GraphRAG CRUD; install generates observal-graphrag-proxy config
-- `api/routes/review.py` : Admin approve/reject workflow (unified across all 8 types)
+- `api/routes/review.py` : Admin approve/reject workflow (unified across all component types)
 - `api/routes/telemetry.py` : `POST /ingest` (batch traces/spans/scores) + legacy `/events` + `POST /hooks` (raw IDE hook JSON)
 - `api/routes/dashboard.py` : MCP metrics, agent metrics, overview stats, top items, trends
 - `api/routes/feedback.py` : Ratings with dual-write to PostgreSQL + ClickHouse scores table
@@ -68,19 +66,22 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 ### Models (`observal-server/models/`)
 
 - `user.py` : User with UserRole enum (admin, developer, user); API key is hashed with SECRET_KEY
-- `mcp.py` : McpListing, McpCustomField, McpValidationResult, McpDownload; ListingStatus enum (pending, approved, rejected)
-- `agent.py` : Agent, AgentMcpLink, GoalTemplate, GoalSection, AgentDownload; AgentStatus enum
+- `mcp.py` : McpListing, McpValidationResult, McpDownload; ListingStatus enum (shared by all models)
+- `agent.py` : Agent, AgentGoalTemplate, AgentGoalSection, AgentStatus enum
 - `alert.py` : AlertRule (metric threshold alerts with webhook URLs)
-- `tool.py` : ToolListing, ToolDownload
-- `skill.py` : SkillListing, SkillDownload, AgentSkillLink
-- `hook.py` : HookListing, HookDownload, AgentHookLink
+- `skill.py` : SkillListing, SkillDownload
+- `hook.py` : HookListing, HookDownload
 - `prompt.py` : PromptListing, PromptDownload
 - `sandbox.py` : SandboxListing, SandboxDownload
-- `graphrag.py` : GraphRagListing, GraphRagDownload
 - `submission.py` : Submission (unified pending submissions)
 - `eval.py` : EvalRun, Scorecard, ScoreCardDimension; EvalRunStatus enum
-- `feedback.py` : Feedback (polymorphic on listing_type across all 8 types)
+- `feedback.py` : Feedback (polymorphic on listing_type across all component types)
 - `enterprise_config.py` : Key-value enterprise settings
+- `organization.py` : Organization (id, name, slug, created_at, updated_at)
+- `component_source.py` : ComponentSource — Git mirror origins for component discovery
+- `agent_component.py` : AgentComponent — polymorphic junction table (agent_id, component_type, component_id); NO FK on component_id
+- `download.py` : AgentDownloadRecord (deduplicated by user_id + fingerprint), ComponentDownloadRecord (not deduplicated)
+- `exporter_config.py` : ExporterConfig — per-org telemetry export settings (grafana, datadog, loki, otel)
 
 ### Services (`observal-server/services/`)
 
@@ -89,8 +90,6 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `config_generator.py` : Generates IDE config snippets per MCP; wraps commands with `observal-shim`; handles stdio vs HTTP transport
 - `agent_config_generator.py` : Generates bundled agent configs (rules file + MCP configs); injects OBSERVAL_AGENT_ID env var
 - `sandbox_config_generator.py` : Wraps sandbox execution with `observal-sandbox-run` entry point
-- `graphrag_config_generator.py` : Routes GraphRAG traffic through `observal-graphrag-proxy`
-- `tool_config_generator.py` : HTTP tools use `observal-proxy`; non-HTTP tools emit PostToolUse hooks
 - `skill_config_generator.py` : Emits SessionStart/End hooks for skill activation telemetry
 - `hook_config_generator.py` : Generates IDE-specific HTTP hook configs (Claude Code, Kiro, Cursor)
 - `mcp_validator.py` : 2-stage validation: clone+inspect (git clone, find entry point, parse AST for FastMCP tools) + manifest validation
@@ -107,13 +106,11 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `main.py` : Typer app wiring; imports and registers all command modules
 - `cmd_auth.py` : init, login, logout, whoami, status, version; `config` subcommand (show, set, path, alias, aliases)
 - `cmd_mcp.py` : submit (with --yes for non-interactive), list (--sort, --limit, --output), show, install (--raw), delete
-- `cmd_agent.py` : create (--from-file), list, show (tree view for goal templates), install, delete
-- `cmd_tool.py` : submit, list, show, install, delete
+- `cmd_agent.py` : create (--from-file), list, show, install, delete; new: pull, init, add, build, test, publish
 - `cmd_skill.py` : submit, list, show, install, delete
 - `cmd_hook.py` : submit, list, show, install, delete
 - `cmd_prompt.py` : submit, list, show, install, render, delete
 - `cmd_sandbox.py` : submit, list, show, install, delete
-- `cmd_graphrag.py` : submit, list, show, install, delete
 - `cmd_scan.py` : `observal scan`: auto-detect IDE configs (Cursor, Kiro, VS Code, Windsurf, Claude Code, Gemini CLI), bulk-register MCPs, wrap with observal-shim; `--dry-run`, `--ide`, `--yes` flags
 - `cmd_ops.py` : review, telemetry, dashboard (overview, metrics --watch, top), feedback, eval (run, scorecards, show, compare), admin, traces, spans, upgrade/downgrade
 - `client.py` : httpx wrapper with get/post/put/delete/health; contextual error messages per status code
@@ -122,7 +119,6 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `shim.py` : `observal-shim`: transparent stdio JSON-RPC proxy; pairs requests/responses into spans; caches tools/list for schema compliance; buffered async telemetry flush
 - `proxy.py` : `observal-proxy`: HTTP reverse proxy reusing ShimState; same telemetry pipeline
 - `sandbox_runner.py` : `observal-sandbox-run`: Docker SDK executor; captures stdout/stderr via container.logs(); reports exit code, OOM, container ID
-- `graphrag_proxy.py` : `observal-graphrag-proxy`: HTTP reverse proxy for GraphRAG endpoints; detects query interface (graphql/sparql/cypher/rest); captures retrieval spans
 
 ### Docker (`docker/`)
 
@@ -131,7 +127,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Tests (`tests/`)
 
-- 308 unit tests; all mock external services (no Docker needed to run)
+- 377 unit tests; all mock external services (no Docker needed to run)
 - `test_clickhouse_phase1.py` : DDL, SQL helpers, insert/query functions (43 tests)
 - `test_ingest_phase2.py` : Ingestion schemas, endpoint, partial failure (15 tests)
 - `test_shim_phase3.py` : JSON-RPC parsing, schema compliance, ShimState, config gen (43 tests)
@@ -140,8 +136,9 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `test_graphql_phase6.py` : Strawberry types, DataLoaders, resolvers (27 tests)
 - `test_eval_phase8.py` : Templates, backends, run_eval_on_trace (17 tests)
 - `test_phase9_10.py` : Dual-write, CLI commands (7 tests)
-- `test_registry_types.py` : Models, schemas, routes, review, feedback, CLI for all 6 new types (80 tests)
-- `test_telemetry_collection.py` : Sandbox runner, GraphRAG proxy, config generators, install route wiring (32 tests)
+- `test_registry_types.py` : Models, schemas, routes, review, feedback, CLI for all 6 new types (72 tests)
+- `test_telemetry_collection.py` : Sandbox runner, config generators, install route wiring (20 tests)
+- `test_schema_redesign.py` : Organization, ComponentSource, AgentComponent, downloads, ExporterConfig, feedback/submission updates (56 tests)
 - `conftest.py` : Adds observal-server to sys.path so tests can import server modules
 
 ### Web Frontend (`web/`)
@@ -159,8 +156,8 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Demo (`demo/`)
 
-- `test_all_types.sh` : Full e2e test: submit, approve, install, and test all 7 registry types with real Docker containers and ClickHouse verification
-- `mock_mcp.py`, `mock_agent_mcp.py`, `mock_graphrag_mcp.py` : Mock MCP servers for local testing
+- `test_all_types.sh` : Full e2e test: submit, approve, install, and test all component types with real Docker containers and ClickHouse verification
+- `mock_mcp.py`, `mock_agent_mcp.py` : Mock MCP servers for local testing
 - `run_demo.sh` : Automated demo script
 
 ## Implementation notes
@@ -180,3 +177,4 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - All CLI list/show commands support `--output table|json|plain`. Use `--output json` for scripting. Use `--raw` on install commands to pipe config directly to files.
 - Ruff is the Python linter and formatter. Line length is 120. Pre-commit hooks enforce it.
 - The `B008` ruff rule is suppressed because Typer requires function calls in argument defaults (`typer.Option(...)`, `typer.Argument(...)`).
+- The data model is agent-centric. Agents bundle components (MCPs, skills, hooks, prompts, sandboxes) via `agent_components`, a polymorphic junction table with NO foreign key on `component_id` (allows cross-type references). Agent downloads are deduplicated by `(user_id)` and `(fingerprint)` unique constraints; component downloads are not deduplicated. All components support organization ownership via `is_private` + `owner_org_id` fields. Git-based versioning: components require `git_url` + `git_ref` for reproducible installs.
