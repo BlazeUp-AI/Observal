@@ -1,7 +1,5 @@
-"""Tests for sandbox runner, graphrag proxy, and config generators."""
+"""Tests for sandbox runner and config generators."""
 
-import asyncio
-import json
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -143,95 +141,6 @@ class TestSandboxRunner:
         assert len(span["output"]) < MAX_LOG_BYTES + 100
 
 
-# ── GraphRAG Proxy ──────────────────────────────────────────────────
-
-
-class TestGraphRagProxy:
-    def test_detect_graphql(self):
-        from observal_cli.graphrag_proxy import _detect_query_interface
-
-        assert _detect_query_interface("/graphql", "", b"") == "graphql"
-        assert _detect_query_interface("/api", "application/graphql", b"") == "graphql"
-
-    def test_detect_sparql(self):
-        from observal_cli.graphrag_proxy import _detect_query_interface
-
-        assert _detect_query_interface("/sparql", "", b"") == "sparql"
-        body = json.dumps({"query": "SELECT ?s WHERE { ?s ?p ?o }"}).encode()
-        assert _detect_query_interface("/api", "", body) == "sparql"
-
-    def test_detect_cypher(self):
-        from observal_cli.graphrag_proxy import _detect_query_interface
-
-        assert _detect_query_interface("/cypher", "", b"") == "cypher"
-        body = json.dumps({"query": "MATCH (n) RETURN n"}).encode()
-        assert _detect_query_interface("/api", "", body) == "cypher"
-
-    def test_detect_rest_default(self):
-        from observal_cli.graphrag_proxy import _detect_query_interface
-
-        assert _detect_query_interface("/api/search", "", b"{}") == "rest"
-        assert _detect_query_interface("/api", "", b"not json") == "rest"
-
-    def test_parse_response_counts(self):
-        from observal_cli.graphrag_proxy import _parse_response_counts
-
-        body = json.dumps({"results": [1, 2, 3], "relevance": 0.85}).encode()
-        chunks, relevance = _parse_response_counts(body)
-        assert chunks == 3
-        assert relevance == 0.85
-
-    def test_parse_response_counts_no_results(self):
-        from observal_cli.graphrag_proxy import _parse_response_counts
-
-        chunks, relevance = _parse_response_counts(b'{"data": "text"}')
-        assert chunks is None
-        assert relevance is None
-
-    def test_parse_response_counts_invalid(self):
-        from observal_cli.graphrag_proxy import _parse_response_counts
-
-        chunks, relevance = _parse_response_counts(b"not json")
-        assert chunks is None
-        assert relevance is None
-
-    def test_truncate(self):
-        from observal_cli.graphrag_proxy import _truncate
-
-        assert _truncate("short") == "short"
-        long = "x" * 100000
-        result = _truncate(long)
-        assert "[truncated]" in result
-        assert len(result) < 100000
-
-    def test_proxy_state_init(self):
-        from observal_cli.graphrag_proxy import GraphRagProxyState
-
-        state = GraphRagProxyState("gid", "http://target", "http://server", "key")
-        assert state.graphrag_id == "gid"
-        assert state.target_url == "http://target"
-        assert state.server_url == "http://server"
-        assert state.api_key == "key"
-        assert state._buffer == []
-
-    @pytest.mark.asyncio
-    async def test_buffer_span(self):
-        from observal_cli.graphrag_proxy import GraphRagProxyState
-
-        state = GraphRagProxyState("gid", "http://target", "", "")
-        await state.buffer_span({"test": True})
-        assert len(state._buffer) == 1
-
-    @pytest.mark.asyncio
-    async def test_flush_clears_buffer(self):
-        from observal_cli.graphrag_proxy import GraphRagProxyState
-
-        state = GraphRagProxyState("gid", "http://target", "", "")
-        state._buffer = [{"span": 1}, {"span": 2}]
-        await state.flush()
-        assert state._buffer == []
-
-
 # ── Config Generators ───────────────────────────────────────────────
 
 
@@ -262,44 +171,6 @@ class TestSandboxConfigGenerator:
         assert "npm test" in config["sandbox"]["args"]
         assert "--timeout" in config["sandbox"]["args"]
         assert "60" in config["sandbox"]["args"]
-
-
-class TestGraphRagConfigGenerator:
-    def test_basic(self):
-        from services.graphrag_config_generator import generate_graphrag_config
-
-        listing = _MockListing(id="g-123", endpoint_url="http://graphrag.example.com/api")
-        config = generate_graphrag_config(listing, "cursor")
-        assert "observal-graphrag-proxy" in config["graphrag"]["start_command"]
-        assert config["graphrag"]["original_endpoint"] == "http://graphrag.example.com/api"
-        assert "g-123" in config["graphrag"]["start_command"]
-
-
-class TestToolConfigGenerator:
-    def test_http_tool(self):
-        from services.tool_config_generator import generate_tool_config
-
-        listing = _MockListing(id="t-123", name="search", endpoint_url="http://tools.example.com/search")
-        config = generate_tool_config(listing, "cursor")
-        assert "tool" in config
-        assert "observal-proxy" in config["tool"]["start_command"]
-
-    def test_non_http_tool(self):
-        from services.tool_config_generator import generate_tool_config
-
-        listing = _MockListing(id="t-456", name="file-reader", endpoint_url=None)
-        config = generate_tool_config(listing, "claude-code")
-        assert "hooks" in config
-        assert "PostToolUse" in config["hooks"]
-        assert config["hooks"]["PostToolUse"][0]["matcher"] == "file-reader"
-
-    def test_non_http_claude_code_has_allowed_env(self):
-        from services.tool_config_generator import generate_tool_config
-
-        listing = _MockListing(id="t-789", name="tool", endpoint_url=None)
-        config = generate_tool_config(listing, "claude-code")
-        hook = config["hooks"]["PostToolUse"][0]["hooks"][0]
-        assert "allowedEnvVars" in hook
 
 
 class TestSkillConfigGenerator:

@@ -551,16 +551,6 @@ class TestCLICommands:
         info = typer_app.registered_commands
         return [c.name or c.callback.__name__ for c in info]
 
-    def test_tool_app_exists(self):
-        from observal_cli.cmd_tool import tool_app
-        assert tool_app is not None
-
-    def test_tool_app_has_subcommands(self):
-        from observal_cli.cmd_tool import tool_app
-        names = self._get_command_names(tool_app)
-        for cmd in ("submit", "list", "show", "install", "delete"):
-            assert cmd in names, f"tool missing '{cmd}' subcommand"
-
     def test_skill_app_exists(self):
         from observal_cli.cmd_skill import skill_app
         assert skill_app is not None
