@@ -63,3 +63,80 @@ class TestComponentSourceModel:
         ]
         col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
         assert frozenset({"url", "component_type"}) in col_sets
+
+
+class TestComponentTableUpdates:
+    """All component tables must have: is_private, owner_org_id, download_count, unique_agents."""
+
+    @pytest.mark.parametrize("model_path,model_name", [
+        ("models.mcp", "McpListing"),
+        ("models.skill", "SkillListing"),
+        ("models.hook", "HookListing"),
+        ("models.prompt", "PromptListing"),
+        ("models.sandbox", "SandboxListing"),
+    ])
+    def test_component_has_org_fields(self, model_path, model_name):
+        import importlib
+        mod = importlib.import_module(model_path)
+        cls = getattr(mod, model_name)
+        cols = {c.name for c in cls.__table__.columns}
+        assert "is_private" in cols, f"{model_name} missing is_private"
+        assert "owner_org_id" in cols, f"{model_name} missing owner_org_id"
+
+    @pytest.mark.parametrize("model_path,model_name", [
+        ("models.mcp", "McpListing"),
+        ("models.skill", "SkillListing"),
+        ("models.hook", "HookListing"),
+        ("models.prompt", "PromptListing"),
+        ("models.sandbox", "SandboxListing"),
+    ])
+    def test_component_has_download_counts(self, model_path, model_name):
+        import importlib
+        mod = importlib.import_module(model_path)
+        cls = getattr(mod, model_name)
+        cols = {c.name for c in cls.__table__.columns}
+        assert "download_count" in cols, f"{model_name} missing download_count"
+        assert "unique_agents" in cols, f"{model_name} missing unique_agents"
+
+    @pytest.mark.parametrize("model_path,model_name", [
+        ("models.mcp", "McpListing"),
+        ("models.skill", "SkillListing"),
+        ("models.hook", "HookListing"),
+        ("models.prompt", "PromptListing"),
+        ("models.sandbox", "SandboxListing"),
+    ])
+    def test_component_has_git_url(self, model_path, model_name):
+        import importlib
+        mod = importlib.import_module(model_path)
+        cls = getattr(mod, model_name)
+        cols = {c.name for c in cls.__table__.columns}
+        assert "git_url" in cols, f"{model_name} missing git_url"
+
+    @pytest.mark.parametrize("model_path,model_name", [
+        ("models.mcp", "McpListing"),
+        ("models.skill", "SkillListing"),
+        ("models.hook", "HookListing"),
+        ("models.prompt", "PromptListing"),
+        ("models.sandbox", "SandboxListing"),
+    ])
+    def test_component_has_git_ref(self, model_path, model_name):
+        import importlib
+        mod = importlib.import_module(model_path)
+        cls = getattr(mod, model_name)
+        cols = {c.name for c in cls.__table__.columns}
+        assert "git_ref" in cols, f"{model_name} missing git_ref"
+
+    def test_mcp_has_fastmcp_validated(self):
+        from models.mcp import McpListing
+        cols = {c.name for c in McpListing.__table__.columns}
+        assert "fastmcp_validated" in cols
+
+    def test_skill_link_table_removed(self):
+        """AgentSkillLink should no longer exist — replaced by AgentComponent."""
+        from models import skill
+        assert not hasattr(skill, "AgentSkillLink")
+
+    def test_hook_link_table_removed(self):
+        """AgentHookLink should no longer exist — replaced by AgentComponent."""
+        from models import hook
+        assert not hasattr(hook, "AgentHookLink")

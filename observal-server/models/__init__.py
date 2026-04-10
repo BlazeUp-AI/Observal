@@ -6,7 +6,7 @@ from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
 from models.feedback import Feedback
 from models.graphrag import GraphRagDownload, GraphRagListing
 from models.hook import HookDownload, HookListing
-from models.mcp import McpCustomField, McpDownload, McpListing, McpValidationResult
+from models.mcp import McpDownload, McpListing, McpValidationResult
 from models.prompt import PromptDownload, PromptListing
 from models.sandbox import SandboxDownload, SandboxListing
 from models.scoring import (
@@ -43,7 +43,6 @@ __all__ = [
     "GraphRagListing",
     "HookDownload",
     "HookListing",
-    "McpCustomField",
     "McpDownload",
     "McpListing",
     "McpValidationResult",
