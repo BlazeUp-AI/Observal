@@ -1,4 +1,5 @@
-from models.agent import Agent, AgentDownload, AgentGoalSection, AgentGoalTemplate, AgentMcpLink, AgentStatus
+from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
+from models.agent_component import AgentComponent
 from models.alert import AlertRule
 from models.base import Base
 from models.enterprise_config import EnterpriseConfig
@@ -27,10 +28,9 @@ __all__ = [
     "DEFAULT_DIMENSION_WEIGHTS",
     "DEFAULT_PENALTIES",
     "Agent",
-    "AgentDownload",
+    "AgentComponent",
     "AgentGoalSection",
     "AgentGoalTemplate",
-    "AgentMcpLink",
     "AgentStatus",
     "AlertRule",
     "Base",

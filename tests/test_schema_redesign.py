@@ -140,3 +140,62 @@ class TestComponentTableUpdates:
         """AgentHookLink should no longer exist — replaced by AgentComponent."""
         from models import hook
         assert not hasattr(hook, "AgentHookLink")
+
+
+class TestAgentModelUpdate:
+    def test_agent_has_org_fields(self):
+        from models.agent import Agent
+        cols = {c.name for c in Agent.__table__.columns}
+        assert "is_private" in cols
+        assert "owner_org_id" in cols
+
+    def test_agent_has_git_url(self):
+        from models.agent import Agent
+        cols = {c.name for c in Agent.__table__.columns}
+        assert "git_url" in cols
+
+    def test_agent_has_download_metrics(self):
+        from models.agent import Agent
+        cols = {c.name for c in Agent.__table__.columns}
+        assert "download_count" in cols
+        assert "unique_users" in cols
+
+    def test_agent_git_url_is_nullable(self):
+        from models.agent import Agent
+        git_col = Agent.__table__.c.git_url
+        assert git_col.nullable is True
+
+    def test_agent_mcp_link_removed(self):
+        """AgentMcpLink should no longer exist — replaced by AgentComponent."""
+        from models import agent
+        assert not hasattr(agent, "AgentMcpLink")
+
+
+class TestAgentComponentModel:
+    def test_agent_component_tablename(self):
+        from models.agent_component import AgentComponent
+        assert AgentComponent.__tablename__ == "agent_components"
+
+    def test_agent_component_has_required_columns(self):
+        from models.agent_component import AgentComponent
+        cols = {c.name for c in AgentComponent.__table__.columns}
+        required = {"id", "agent_id", "component_type", "component_id",
+                    "version_ref", "order_index", "config_override", "created_at"}
+        assert required.issubset(cols)
+
+    def test_agent_component_has_unique_constraint(self):
+        from models.agent_component import AgentComponent
+        table = AgentComponent.__table__
+        unique_constraints = [
+            uc for uc in table.constraints
+            if hasattr(uc, "columns") and len(uc.columns) == 3
+        ]
+        col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
+        assert frozenset({"agent_id", "component_type", "component_id"}) in col_sets
+
+    def test_agent_component_no_fk_on_component_id(self):
+        """component_id should NOT have a FK constraint (polymorphic, future flexibility)."""
+        from models.agent_component import AgentComponent
+        col = AgentComponent.__table__.c.component_id
+        fks = col.foreign_keys
+        assert len(fks) == 0, "component_id should have no FK constraints"
