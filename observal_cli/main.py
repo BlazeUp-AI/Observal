@@ -29,6 +29,7 @@ from observal_cli.cmd_ops import (
 )
 from observal_cli.cmd_profile import register_use
 from observal_cli.cmd_prompt import register_prompt
+from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import register_sandbox
 from observal_cli.cmd_scan import register_scan
 from observal_cli.cmd_skill import register_skill
@@ -44,6 +45,7 @@ register_skill(app)
 register_hook(app)
 register_prompt(app)
 register_sandbox(app)
+register_pull(app)
 register_scan(app)
 register_use(app)
 

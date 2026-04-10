@@ -121,6 +121,16 @@ def generate_agent_config(
             "gemini_settings_snippet": _gemini_settings(observal_url),
         }
 
+    if ide == "codex":
+        return {
+            "rules_file": {"path": "AGENTS.md", "content": agent.prompt},
+        }
+
+    if ide == "copilot":
+        return {
+            "rules_file": {"path": ".github/copilot-instructions.md", "content": agent.prompt},
+        }
+
     # cursor, vscode: rules file + mcp.json — telemetry via observal-shim
     ide_paths = {
         "cursor": (".cursor/rules/{name}.md", ".cursor/mcp.json"),
