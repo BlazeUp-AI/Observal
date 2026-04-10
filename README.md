@@ -18,6 +18,14 @@ Observal is a self-hosted platform that traces every tool call, skill activation
 
 It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Windsurf, Codex CLI, and GitHub Copilot.
 
+## Beginner Friendly Explanation
+
+Observal is a tool that helps developers understand what happens when they use AI coding assistants.
+
+When you use tools like GitHub Copilot or Claude Code, many things happen in the background like tool calls, prompts, and code execution. Observal tracks all these activities and shows what is working well and what needs improvement.
+
+This helps teams improve their AI workflows and build better software faster.
+
 ## Quick Start
 
 ```bash
