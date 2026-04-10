@@ -39,3 +39,27 @@ class TestUserOrgField:
         from models.user import User
         org_col = User.__table__.c.org_id
         assert org_col.nullable is True
+
+
+class TestComponentSourceModel:
+    def test_component_source_tablename(self):
+        from models.component_source import ComponentSource
+        assert ComponentSource.__tablename__ == "component_sources"
+
+    def test_component_source_has_required_columns(self):
+        from models.component_source import ComponentSource
+        cols = {c.name for c in ComponentSource.__table__.columns}
+        required = {"id", "url", "provider", "component_type", "is_public", "owner_org_id",
+                    "auto_sync_interval", "last_synced_at", "sync_status", "sync_error",
+                    "created_at", "updated_at"}
+        assert required.issubset(cols)
+
+    def test_component_source_url_type_unique(self):
+        from models.component_source import ComponentSource
+        table = ComponentSource.__table__
+        unique_constraints = [
+            uc for uc in table.constraints
+            if hasattr(uc, "columns") and len(uc.columns) == 2
+        ]
+        col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
+        assert frozenset({"url", "component_type"}) in col_sets
