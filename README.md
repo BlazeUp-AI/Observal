@@ -215,7 +215,6 @@ observal telemetry status
 # Metrics for any registry type
 observal metrics <id> --type mcp
 observal metrics <id> --type agent
-observal metrics <id> --type tool
 
 # Enterprise overview
 observal overview
