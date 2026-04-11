@@ -98,7 +98,7 @@ const SidebarProvider = React.forwardRef<
           ref={ref}
           data-sidebar-state={state}
           style={{ "--sidebar-width": SIDEBAR_WIDTH, "--sidebar-width-icon": SIDEBAR_WIDTH_ICON, ...style } as React.CSSProperties}
-          className={cn("flex h-dvh w-full overflow-hidden", className)}
+          className={cn("flex h-dvh w-full", className)}
           {...props}
         >
           {children}
@@ -220,7 +220,7 @@ const SidebarInset = React.forwardRef<HTMLDivElement, React.ComponentProps<"main
   ({ className, ...props }, ref) => (
     <main
       ref={ref}
-      className={cn("relative flex min-w-0 flex-1 flex-col bg-background", className)}
+      className={cn("relative flex min-w-0 flex-1 flex-col overflow-y-auto bg-background", className)}
       {...props}
     />
   ),
