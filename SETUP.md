@@ -43,10 +43,29 @@ Install the CLI and run first-time setup:
 ```bash
 cd ..
 uv tool install --editable .
-observal init
+observal auth login
 ```
 
-`observal init` prompts for the server URL (defaults to http://localhost:8000), your admin email, and name. It creates the admin account and saves your API key to `~/.observal/config.json`.
+On a fresh server, `observal auth login` auto-detects that no users exist and bootstraps an admin account automatically — no prompts needed. Your credentials are saved to `~/.observal/config.json`.
+
+To invite team members:
+
+```bash
+observal admin invite              # prints a short code like OBS-A7X9B2
+```
+
+Share the code. They run:
+
+```bash
+observal auth login --code OBS-A7X9B2
+```
+
+For CI/scripts, use environment variables instead of interactive login:
+
+```bash
+export OBSERVAL_SERVER_URL=http://your-server:8000
+export OBSERVAL_API_KEY=<your-key>
+```
 
 You're ready to go. See the [README](README.md) for usage.
 
@@ -138,14 +157,15 @@ uv tool install --editable .
 This installs the `observal` command globally. Configure it to point at your local server:
 
 ```bash
-observal init
+observal auth login
 # Server URL: http://localhost:8000
 ```
 
-Your config is saved to `~/.observal/config.json`. You can also log in with an existing API key:
+On a fresh server this auto-creates an admin account. On an existing server, log in with an API key or invite code:
 
 ```bash
-observal login
+observal auth login --code OBS-XXXX    # invite code
+observal auth login --key <api-key>    # API key
 ```
 
 ## Eval Engine Setup
@@ -301,7 +321,7 @@ docker compose down -v
 docker compose up --build -d
 ```
 
-The `-v` flag removes the named volumes (`pgdata`, `chdata`), which deletes all data. After restarting, run `observal init` again to create a new admin account.
+The `-v` flag removes the named volumes (`pgdata`, `chdata`), which deletes all data. After restarting, run `observal auth login` again — it will auto-create a new admin account.
 
 ## Docker Details
 
@@ -350,7 +370,7 @@ The CLI cannot reach the API. Check that the Docker stack is up (`docker compose
 Another process is using port 8000, 3000, 5432, or 8123. Either stop the conflicting process or change the port mappings in `docker/docker-compose.yml`.
 
 **"System already initialized"**
-`observal init` was already run. Use `observal login` instead, or reset the database (see above).
+The server already has users. Use `observal auth login` with an API key or invite code, or reset the database (see above).
 
 **ClickHouse not receiving data**
 Check that `CLICKHOUSE_URL` in `.env` matches the credentials in the docker-compose ClickHouse environment. The default is `clickhouse://default:clickhouse@observal-clickhouse:8123/observal`.

@@ -56,7 +56,7 @@ make logs                # tail logs
 
 # CLI (installed via uv)
 uv tool install --editable .
-observal auth init       # first-run admin setup
+observal auth login      # auto-creates admin on fresh server, or login
 observal auth whoami     # check auth
 observal auth status     # server health check
 
@@ -82,7 +82,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `worker.py` : arq WorkerSettings; background eval jobs consume from Redis queue
 - `api/deps.py` : auth dependency (`get_current_user` via X-API-Key header), DB session injection, `resolve_listing` (name-or-UUID resolver used by all routes)
 - `api/graphql.py` : Strawberry schema: Query (traces, spans, metrics) + Subscription (traceCreated, spanCreated); DataLoaders for ClickHouse batch queries
-- `api/routes/auth.py` : init, login, whoami
+- `api/routes/auth.py` : bootstrap (auto-admin), login, whoami, invite codes (create/redeem/list)
 - `api/routes/mcp.py` : MCP server CRUD; submit triggers async validation pipeline
 - `api/routes/agent.py` : Agent CRUD with goal templates, component linking via agent_components table
 - `api/routes/skill.py` : Skill CRUD; install generates SessionStart/End hook config
@@ -100,7 +100,8 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Models (`observal-server/models/`)
 
-- `user.py` : User with UserRole enum (admin, developer, user); API key is hashed with SECRET_KEY
+- `user.py` : User with UserRole enum (admin, developer, user); API key is hashed with SHA-256
+- `invite.py` : InviteCode model — short codes (OBS-XXXXXX) for user onboarding, with expiry and one-time use tracking
 - `mcp.py` : McpListing, McpValidationResult, McpDownload; ListingStatus enum (shared by all models)
 - `agent.py` : Agent, AgentGoalTemplate, AgentGoalSection, AgentStatus enum
 - `alert.py` : AlertRule (metric threshold alerts with webhook URLs)
@@ -139,7 +140,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 ### CLI (`observal_cli/`)
 
 - `main.py` : Typer app wiring; creates `registry_app` parent group (mcp, skill, hook, prompt, sandbox), registers all command modules, adds deprecated backward-compat aliases
-- `cmd_auth.py` : `auth_app` subgroup: init, login, logout, whoami, status. Also `config_app` subgroup: show, set, path, alias, aliases. `register_deprecated_auth()` adds hidden root-level aliases
+- `cmd_auth.py` : `auth_app` subgroup: login (smart — auto-bootstrap on fresh server, supports --code for invite codes, --key for API keys), init (alias for login), logout, whoami, status. Also `config_app` subgroup: show, set, path, alias, aliases
 - `cmd_mcp.py` : `mcp_app` subgroup: submit (with --yes for non-interactive), list (--sort, --limit, --output), show, install (--raw), delete. `register_deprecated_mcp()` adds hidden root-level bare aliases (submit, list, show, install, delete)
 - `cmd_agent.py` : `agent_app` subgroup: create (--from-file), list, show, install, delete; authoring: init, add, build, publish
 - `cmd_skill.py` : `skill_app` subgroup: submit, list, show, install, delete
@@ -252,7 +253,7 @@ Three route groups organize the UI by access level:
 - Redis serves two purposes: pub/sub for GraphQL subscriptions (live trace/span events) and arq job queue for background eval runs.
 - The eval engine is pluggable. `LLMJudgeBackend` calls Bedrock or OpenAI-compatible endpoints. `FallbackBackend` returns deterministic scores when no LLM is configured. The 6 managed templates are prompt strings, not code.
 - Feedback dual-writes: when a user rates an MCP/agent, it writes to PostgreSQL (for the feedback API) AND ClickHouse scores table (for unified analytics). The ClickHouse write is best-effort.
-- Auth is API key based. Keys are hashed with SECRET_KEY before storage. The `X-API-Key` header is checked on every authenticated request via `get_current_user` dependency.
+- Auth is API key based. Keys are SHA-256 hashed before storage. The `X-API-Key` header is checked on every authenticated request via `get_current_user` dependency. User onboarding uses short invite codes (OBS-XXXXXX) — admin generates a code, new user redeems it to get an API key. Fresh servers auto-bootstrap an admin account on first `observal auth login` (zero prompts). The `/health` endpoint returns `initialized: bool` so the CLI knows whether to bootstrap or prompt for credentials.
 - Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. This lets `observal scan` work. Items are auto-registered as pending and immediately usable by the submitter.
 - The CLI stores config in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`. Both are plain JSON. All API path parameters accept UUID or name; the server resolves names via `resolve_listing()` in `deps.py`.
 - All CLI list/show commands support `--output table|json|plain`. Use `--output json` for scripting. Use `--raw` on install commands to pipe config directly to files.

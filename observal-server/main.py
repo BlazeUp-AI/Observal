@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from strawberry.fastapi import GraphQLRouter
 
+from api.deps import get_db
 from api.graphql import get_context_dep, schema
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
@@ -25,6 +28,7 @@ from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
 from database import engine
 from models import Base
+from models.user import User
 from services.clickhouse import init_clickhouse
 from services.redis import close as close_redis
 
@@ -69,5 +73,6 @@ app.include_router(component_source_router)
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
+async def health(db: AsyncSession = Depends(get_db)):
+    count = await db.scalar(select(func.count()).select_from(User))
+    return {"status": "ok", "initialized": (count or 0) > 0}

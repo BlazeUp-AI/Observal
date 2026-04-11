@@ -34,7 +34,7 @@ cp .env.example .env          # edit with your values
 
 cd docker && docker compose up --build -d && cd ..
 uv tool install --editable .
-observal auth init             # create admin account
+observal auth login            # auto-creates admin on fresh server
 ```
 
 Already have MCP servers in your IDE? Instrument them in one command:
@@ -102,11 +102,16 @@ observal profile                     # show active profile and backup info
 <summary><strong>Authentication</strong> &mdash; <code>observal auth</code></summary>
 
 ```bash
-observal auth init             # first-time setup (connect to team or create admin)
-observal auth login             # login with API key
-observal auth logout            # clear saved credentials
-observal auth whoami            # show current user
-observal auth status            # check server connectivity and health
+observal auth login            # auto-creates admin on fresh server, or login with key
+observal auth logout           # clear saved credentials
+observal auth whoami           # show current user
+observal auth status           # check server connectivity and health
+```
+
+For CI/scripts, use environment variables:
+```bash
+export OBSERVAL_SERVER_URL=http://localhost:8000
+export OBSERVAL_API_KEY=<your-key>
 ```
 
 </details>
@@ -169,6 +174,10 @@ observal ops telemetry test
 <summary><strong>Admin</strong> &mdash; <code>observal admin</code></summary>
 
 ```bash
+# Invite team members
+observal admin invite              # generate invite code (e.g. OBS-A7X9B2)
+observal admin invites             # list all invite codes
+
 # Settings and users
 observal admin settings
 observal admin set <key> <value>
@@ -247,9 +256,12 @@ For detailed setup, eval engine configuration, environment variables, and troubl
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/auth/init` | First-run admin setup |
+| `POST` | `/api/v1/auth/bootstrap` | Auto-create admin on fresh server |
 | `POST` | `/api/v1/auth/login` | Login with API key |
 | `GET` | `/api/v1/auth/whoami` | Current user info |
+| `POST` | `/api/v1/auth/invite` | Create invite code (admin) |
+| `POST` | `/api/v1/auth/redeem` | Redeem invite code → get API key |
+| `GET` | `/api/v1/auth/invites` | List invite codes (admin) |
 
 ### Registry (per type: mcps, agents, skills, hooks, prompts, sandboxes)
 

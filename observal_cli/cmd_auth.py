@@ -28,92 +28,107 @@ config_app = typer.Typer(help="CLI configuration")
 
 
 @auth_app.command()
-def init(server: str = typer.Option(None, "--server", "-s", help="Server URL")):
-    """First-run setup: connect to a team server or initialize a new local server."""
-    server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
+def login(
+    server: str = typer.Option(None, "--server", "-s", help="Server URL"),
+    key: str = typer.Option(None, "--key", "-k", help="API key (skip prompt)"),
+    code: str = typer.Option(None, "--code", "-c", help="Invite code (e.g. OBS-A7X9B2)"),
+    name: str = typer.Option(None, "--name", "-n", help="Your name (used with invite code)"),
+):
+    """Connect to Observal.
 
-    # 1. Verify Connectivity First
+    On a fresh server: auto-creates admin, no prompts needed.
+    With an invite code: redeems it and creates your account.
+    On an existing server: logs in with an API key.
+    """
+    server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
+    server_url = server_url.rstrip("/")
+
+    # 1. Check connectivity + initialization state
     try:
-        with spinner("Checking server..."):
-            r = httpx.get(f"{server_url.rstrip('/')}/health", timeout=10)
+        with spinner("Connecting..."):
+            r = httpx.get(f"{server_url}/health", timeout=10)
             r.raise_for_status()
+            health_data = r.json()
     except httpx.ConnectError:
-        rprint(f"[red]x Connection failed.[/red] Is the server running at {server_url}?")
+        rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
         raise typer.Exit(1)
     except Exception as e:
-        rprint(f"[red]x Server error:[/red] {e!s}")
+        rprint(f"[red]Server error:[/red] {e!s}")
         raise typer.Exit(1)
 
-    rprint("[green]Connected to server[/green]\n")
+    initialized = health_data.get("initialized", True)
 
-    # 2. Smart Detection: Determine if we are a Developer (Connect) or Admin (Setup)
-    setup_choice = typer.prompt(
-        "Are you connecting to an existing team (C) or setting up a brand new server (N)?", default="C"
-    )
-
-    if setup_choice.lower().startswith("c"):
-        # --- DEVELOPER PATH (No Docker, just API Key) ---
-        api_key = typer.prompt("Your API Key", hide_input=True)
-        _do_login(server_url, api_key)
-
-    else:
-        # --- ADMIN PATH (Provisioning the first account) ---
-        admin_email = typer.prompt("Admin email")
-        admin_name = typer.prompt("Admin name")
+    # 2. Fresh server → auto-bootstrap admin
+    if not initialized:
+        rprint("[green]Connected.[/green] No users yet — creating admin account.\n")
         try:
-            with spinner("Creating admin account..."):
-                r = httpx.post(
-                    f"{server_url.rstrip('/')}/api/v1/auth/init",
-                    json={"email": admin_email, "name": admin_name},
-                    timeout=30,
-                )
+            with spinner("Bootstrapping..."):
+                r = httpx.post(f"{server_url}/api/v1/auth/bootstrap", timeout=30)
                 r.raise_for_status()
                 data = r.json()
 
-            config.save({"server_url": server_url, "api_key": data["api_key"]})
-            rprint(f"\n[green]Platform Initialized![/green] Config saved to [dim]{config.CONFIG_FILE}[/dim]")
-            rprint("\n[bold]Your Admin API key:[/bold]")
-            rprint(f"  {data['api_key']}")
-            rprint("\n[dim]Keep this safe. You can now invite developers via the Web UI.[/dim]")
+            api_key = data["api_key"]
+            user = data["user"]
+            config.save({"server_url": server_url, "api_key": api_key})
 
-            _configure_claude_code(server_url, data["api_key"])
+            rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [admin]")
+            rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
+            rprint("[bold]To invite team members:[/bold]")
+            rprint("  observal admin invite")
+            rprint("  [dim]Share the code — they run: observal auth login --code OBS-XXXX[/dim]")
+
+            _configure_claude_code(server_url, api_key)
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 400 and "already initialized" in e.response.text.lower():
-                rprint("\n[yellow]System is already initialized.[/yellow]")
-                rprint("Switching to login flow...")
-                api_key = typer.prompt("API Key", hide_input=True)
-                _do_login(server_url, api_key)
+                rprint("[yellow]Server was just initialized by someone else.[/yellow]")
+                _do_key_login(server_url, key)
             else:
-                rprint(f"[red]Error {e.response.status_code}: {e.response.text}[/red]")
+                rprint(f"[red]Bootstrap failed ({e.response.status_code}):[/red] {e.response.text}")
                 raise typer.Exit(1)
+        return
+
+    rprint("[green]Connected.[/green]\n")
+
+    # 3. Invite code → redeem
+    if code:
+        _do_invite_login(server_url, code, name)
+        return
+
+    # 4. No code provided → check if user wants to use one
+    if not key:
+        choice = typer.prompt("Login with [K]ey or [I]nvite code?", default="K")
+        if choice.strip().upper().startswith("I"):
+            invite_code = typer.prompt("Invite code")
+            invite_name = typer.prompt("Your name", default="")
+            _do_invite_login(server_url, invite_code, invite_name or None)
+            return
+
+    # 5. API key login
+    _do_key_login(server_url, key)
 
 
 @auth_app.command()
-def login(
-    server: str = typer.Option(None, "--server", "-s", help="Server URL (skips prompt)"),
-    key: str = typer.Option(None, "--key", "-k", help="API key (skips prompt)"),
+def init(
+    server: str = typer.Option(None, "--server", "-s", help="Server URL"),
 ):
-    """Login with an existing API key."""
-    server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
-    _do_login(server_url, key)
+    """First-run setup (alias for login)."""
+    login(server=server, key=None, code=None, name=None)
 
 
 @auth_app.command()
 def logout():
     """Clear saved credentials."""
     if config.CONFIG_FILE.exists():
-        # Read strictly from disk to avoid mixing with env variables
         import json
 
         raw_cfg = json.loads(config.CONFIG_FILE.read_text())
 
-        # Remove the key and save directly
         if "api_key" in raw_cfg:
             del raw_cfg["api_key"]
             config.CONFIG_FILE.write_text(json.dumps(raw_cfg, indent=2))
 
-        rprint("[green]Logged out (removed from disk).[/green]")
+        rprint("[green]Logged out.[/green]")
     else:
         rprint("[dim]No config to clear.[/dim]")
 
@@ -176,27 +191,27 @@ _DEPRECATION_MSG = "Deprecated: use 'observal auth {cmd}' instead"
 
 
 def _deprecation_notice(cmd_name: str):
-    """Print a deprecation warning for a root-level auth command."""
     rprint(f"[yellow]{_DEPRECATION_MSG.format(cmd=cmd_name)}[/yellow]\n")
 
 
 def register_deprecated_auth(app: typer.Typer):
-    """Register deprecated root-level aliases that delegate to auth subgroup commands."""
+    """Register deprecated root-level aliases."""
 
     @app.command(name="init", hidden=True)
     def deprecated_init(server: str = typer.Option(None, "--server", "-s", help="Server URL")):
-        """[Deprecated] Use 'observal auth init' instead."""
-        _deprecation_notice("init")
-        init(server=server)
+        """[Deprecated] Use 'observal auth login' instead."""
+        _deprecation_notice("login")
+        login(server=server, key=None, code=None, name=None)
 
     @app.command(name="login", hidden=True)
     def deprecated_login(
-        server: str = typer.Option(None, "--server", "-s", help="Server URL (skips prompt)"),
-        key: str = typer.Option(None, "--key", "-k", help="API key (skips prompt)"),
+        server: str = typer.Option(None, "--server", "-s", help="Server URL"),
+        key: str = typer.Option(None, "--key", "-k", help="API key"),
+        code: str = typer.Option(None, "--code", "-c", help="Invite code"),
     ):
         """[Deprecated] Use 'observal auth login' instead."""
         _deprecation_notice("login")
-        login(server=server, key=key)
+        login(server=server, key=key, code=code, name=None)
 
     @app.command(name="logout", hidden=True)
     def deprecated_logout():
@@ -228,12 +243,13 @@ def register_deprecated_auth(app: typer.Typer):
 # ── Helper functions ────────────────────────────────────────
 
 
-def _do_login(server_url: str, api_key: str | None = None):
+def _do_key_login(server_url: str, api_key: str | None = None):
+    """Authenticate with an API key."""
     api_key = api_key or typer.prompt("API Key", hide_input=True)
     try:
         with spinner("Authenticating..."):
             r = httpx.get(
-                f"{server_url.rstrip('/')}/api/v1/auth/whoami",
+                f"{server_url}/api/v1/auth/whoami",
                 headers={"X-API-Key": api_key},
                 timeout=30,
             )
@@ -246,6 +262,38 @@ def _do_login(server_url: str, api_key: str | None = None):
         raise typer.Exit(1)
     except httpx.HTTPStatusError:
         rprint("[red]Invalid API key.[/red]")
+        raise typer.Exit(1)
+
+
+def _do_invite_login(server_url: str, code: str, name: str | None = None):
+    """Redeem an invite code to create account and log in."""
+    payload: dict = {"code": code.strip()}
+    if name:
+        payload["name"] = name
+    try:
+        with spinner("Redeeming invite code..."):
+            r = httpx.post(
+                f"{server_url}/api/v1/auth/redeem",
+                json=payload,
+                timeout=30,
+            )
+            r.raise_for_status()
+            data = r.json()
+
+        api_key = data["api_key"]
+        user = data["user"]
+        config.save({"server_url": server_url, "api_key": api_key})
+        rprint(f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
+
+        _configure_claude_code(server_url, api_key)
+
+    except httpx.HTTPStatusError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", e.response.text)
+        except Exception:
+            detail = e.response.text
+        rprint(f"[red]Failed:[/red] {detail}")
         raise typer.Exit(1)
 
 
@@ -321,7 +369,8 @@ def _configure_claude_code(server_url: str, api_key: str):
             return
 
         if not typer.confirm(
-            "\nDetected Claude Code installation.\nConfigure Claude Code telemetry -> Observal?", default=True
+            "\nDetected Claude Code. Configure telemetry -> Observal?",
+            default=True,
         ):
             return
 
@@ -334,9 +383,7 @@ def _configure_claude_code(server_url: str, api_key: str):
                     rprint(
                         f"[yellow]Warning: Could not parse {claude_settings_file}. A new file will be created.[/yellow]"
                     )
-                    pass  # Will create a new file
 
-        # Prepare OTEL config
         otel_env = {
             "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
             "OTEL_METRICS_EXPORTER": "otlp",
@@ -345,8 +392,6 @@ def _configure_claude_code(server_url: str, api_key: str):
             "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Bearer {api_key}",
         }
 
-        # Set endpoint based on server_url
-        # Assumes OTLP/gRPC is on port 4317 of the same host
         from urllib.parse import urlparse
 
         parsed_url = urlparse(server_url)
@@ -354,19 +399,16 @@ def _configure_claude_code(server_url: str, api_key: str):
         otel_endpoint = f"{scheme}://{parsed_url.hostname}:4317"
         otel_env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otel_endpoint
 
-        # Merge with existing settings
         if "env" not in settings:
             settings["env"] = {}
         settings["env"].update(otel_env)
 
-        # Write back
         claude_dir.mkdir(exist_ok=True)
         with open(claude_settings_file, "w", encoding="utf-8") as f:
             _json.dump(settings, f, indent=2)
 
-        rprint(f"Updated [dim]{claude_settings_file}[/dim] -- Claude Code will send traces to Observal.")
-        rprint("\nYou're all set. Open Claude Code and traces will appear in the dashboard.")
+        rprint(f"Updated [dim]{claude_settings_file}[/dim] — telemetry will flow to Observal.")
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Claude Code automatically: {e}[/yellow]")
-        rprint("Please see documentation for manual configuration.")
+        rprint("See documentation for manual configuration.")

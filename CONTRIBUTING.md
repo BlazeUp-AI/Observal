@@ -40,10 +40,10 @@ docker compose up --build -d
 cd ..
 
 uv tool install --editable .
-observal init
+observal auth login
 ```
 
-The API starts at http://localhost:8000.
+The API starts at http://localhost:8000. On a fresh server, `auth login` auto-creates an admin account.
 
 ### Frontend
 
