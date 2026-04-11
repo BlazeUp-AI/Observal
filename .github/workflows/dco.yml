@@ -9,6 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: DCO Check
-        uses: tim-actions/dco@master
+        uses: christophebedard/dco-check@0.5.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
