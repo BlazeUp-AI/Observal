@@ -10,13 +10,16 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status">
+  <a href="https://github.com/BlazeUp-AI/Observal/stargazers"><img src="https://img.shields.io/github/stars/BlazeUp-AI/Observal?style=flat-square" alt="Stars"></a>
 </p>
+
+> If you find Observal useful, please consider giving it a star. It helps others discover the project and keeps development going.
 
 ---
 
-Observal is a self-hosted agent registry and observability platform. Discover, publish, and pull complete AI coding agents bundled with their MCP servers, skills, hooks, prompts, and sandboxes. Every component emits telemetry into ClickHouse so you can measure what's actually working.
+Observal is a **self-hosted agent registry and observability platform**. Think Docker Hub for AI agents. Discover, publish, and pull complete AI coding agents bundled with their MCP servers, skills, hooks, prompts, and sandboxes. Every component emits telemetry into ClickHouse so you can measure what's actually working.
 
-It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Codex CLI, and GitHub Copilot.
+Works with **Cursor**, **Kiro**, **Claude Code**, **Gemini CLI**, **VS Code**, **Codex CLI**, and **GitHub Copilot**.
 
 ## Quick Start
 
@@ -27,14 +30,14 @@ cp .env.example .env          # edit with your values
 
 cd docker && docker compose up --build -d && cd ..
 uv tool install --editable .
-observal init                  # create admin account
+observal auth init             # create admin account
 ```
 
 Already have MCP servers in your IDE? Instrument them in one command:
 
 ```bash
 observal scan                  # auto-detect, register, and instrument everything
-observal pull <agent-id> --ide cursor  # install a complete agent
+observal pull <agent> --ide cursor  # install a complete agent
 ```
 
 This detects MCP servers from your IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry without breaking your existing setup. A timestamped backup is created automatically.
@@ -52,9 +55,9 @@ Without answers, teams can't improve their agents. They guess, ship changes, and
 
 ## How It Works
 
-Observal is a registry for AI agents. Each agent bundles MCP servers, skills, hooks, prompts, and sandboxes into a single installable package. Run `observal pull <agent-id>` to install a complete agent with all its components.
+Observal is a registry for AI agents. Each agent bundles MCP servers, skills, hooks, prompts, and sandboxes into a single installable package. Run `observal pull <agent>` to install a complete agent with all its components.
 
-A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install an agent or component - no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup.
+A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) intercepts traffic without modifying it, pairs requests with responses into spans, and streams them to ClickHouse. The shim is injected automatically when you install an agent or component — no code changes required. You can also run `observal scan` to automatically detect and instrument your existing IDE setup.
 
 ```
 IDE  <-->  observal-shim  <-->  MCP Server / Sandbox
@@ -74,14 +77,14 @@ Observal manages 6 component types that agents bundle together:
 
 | Registry Type | What It Is | What Observal Measures |
 |--------------|-----------|----------------------|
-| Agents | AI agent configurations that bundle components (MCPs, skills, hooks, prompts, sandboxes) | Interaction count, acceptance rate, tool call efficiency, version comparison |
-| MCP Servers | Model Context Protocol servers that expose tools to agents | Call volume, latency, error rates, schema compliance, FastMCP validation |
-| Skills | Portable instruction packages (SKILL.md) that agents load on demand | Activation frequency, error rate correlation, session duration impact |
-| Hooks | Lifecycle callbacks that fire at specific points during agent sessions | Execution count, block rate, latency overhead |
-| Prompts | Managed prompt templates with variable substitution | Render count, token expansion, downstream success rate |
-| Sandbox Exec | Docker execution environments for code running and testing | CPU/memory/disk, exit codes, OOM rate, timeout rate |
+| **Agents** | AI agent configurations that bundle components | Interaction count, acceptance rate, tool call efficiency, version comparison |
+| **MCP Servers** | Model Context Protocol servers that expose tools to agents | Call volume, latency, error rates, schema compliance |
+| **Skills** | Portable instruction packages (SKILL.md) that agents load on demand | Activation frequency, error rate correlation, session duration impact |
+| **Hooks** | Lifecycle callbacks that fire at specific points during agent sessions | Execution count, block rate, latency overhead |
+| **Prompts** | Managed prompt templates with variable substitution | Render count, token expansion, downstream success rate |
+| **Sandbox Exec** | Docker execution environments for code running and testing | CPU/memory/disk, exit codes, OOM rate, timeout rate |
 
-Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry, but you can use your own items and collect telemetry immediately, no approval needed.
+Every type emits telemetry into ClickHouse. Every type gets metrics, feedback, and eval scores. Admin review controls visibility in the public registry, but you can use your own items and collect telemetry immediately — no approval needed.
 
 ## IDE Support
 
@@ -99,6 +102,153 @@ Config generation and telemetry collection work across all major agentic IDEs:
 | VS Code | Yes | Yes | - | - | Yes | Yes | - |
 
 IDEs with **Native OTel** support send full distributed traces, user prompts, LLM token usage, and tool execution telemetry directly to Observal via OpenTelemetry. This is configured automatically when you run `observal install`. IDEs without native OTel support use the `observal-shim` transparent proxy for MCP tool call telemetry.
+
+## CLI Reference
+
+The CLI is organized into command groups. Run `observal --help` or `observal <group> --help` for full details.
+
+### Primary Workflows
+
+```bash
+observal pull <agent> --ide <ide>    # install a complete agent with all dependencies
+observal scan [--ide <ide>]          # detect and instrument existing IDE configs
+observal use <git-url|path>          # swap IDE configs to a git-hosted profile
+observal profile                     # show active profile and backup info
+```
+
+### Authentication (`observal auth`)
+
+```bash
+observal auth init             # first-time setup (connect to team or create admin)
+observal auth login             # login with API key
+observal auth logout            # clear saved credentials
+observal auth whoami            # show current user
+observal auth status            # check server connectivity and health
+```
+
+### Component Registry (`observal registry`)
+
+All 5 component types live under `observal registry <type>`. Each type supports the same core commands:
+
+```bash
+# MCP Servers
+observal registry mcp submit <git-url>
+observal registry mcp list [--category <cat>] [--search <term>]
+observal registry mcp show <id-or-name>
+observal registry mcp install <id-or-name> --ide <ide>
+observal registry mcp delete <id-or-name>
+
+# Skills
+observal registry skill submit [--from-file <path>]
+observal registry skill list [--task-type <type>] [--target-agent <agent>]
+observal registry skill show <id>
+observal registry skill install <id> --ide <ide>
+observal registry skill delete <id>
+
+# Hooks
+observal registry hook submit [--from-file <path>]
+observal registry hook list [--event <event>] [--scope <scope>]
+observal registry hook show <id>
+observal registry hook install <id> --ide <ide>
+observal registry hook delete <id>
+
+# Prompts
+observal registry prompt submit [--from-file <path>]
+observal registry prompt list [--category <cat>]
+observal registry prompt show <id>
+observal registry prompt render <id> --var key=value
+observal registry prompt install <id> --ide <ide>
+observal registry prompt delete <id>
+
+# Sandboxes
+observal registry sandbox submit [--from-file <path>]
+observal registry sandbox list [--runtime docker|lxc]
+observal registry sandbox show <id>
+observal registry sandbox install <id> --ide <ide>
+observal registry sandbox delete <id>
+```
+
+### Agent Authoring (`observal agent`)
+
+```bash
+# Browse and manage agents
+observal agent create              # interactive agent creation
+observal agent list [--search <term>]
+observal agent show <id>
+observal agent install <id> --ide <ide>
+observal agent delete <id>
+
+# Local YAML workflow
+observal agent init                # scaffold observal-agent.yaml
+observal agent add <type> <id>     # add component (mcp, skill, hook, prompt, sandbox)
+observal agent build               # validate against server (dry-run)
+observal agent publish             # submit to registry
+```
+
+### Observability (`observal ops`)
+
+```bash
+observal ops overview              # enterprise dashboard stats
+observal ops metrics <id> [--type mcp|agent] [--watch]
+observal ops top [--type mcp|agent]
+observal ops traces [--type <type>] [--mcp <id>] [--agent <id>]
+observal ops spans <trace-id>
+observal ops rate <id> --stars 5 [--type mcp|agent] [--comment "..."]
+observal ops feedback <id> [--type mcp|agent]
+observal ops telemetry status
+observal ops telemetry test
+```
+
+### Admin (`observal admin`)
+
+```bash
+# Settings and users
+observal admin settings
+observal admin set <key> <value>
+observal admin users
+
+# Review workflow
+observal admin review list
+observal admin review show <id>
+observal admin review approve <id>
+observal admin review reject <id> --reason "..."
+
+# Evaluation engine
+observal admin eval run <agent-id> [--trace <trace-id>]
+observal admin eval scorecards <agent-id> [--version "1.0.0"]
+observal admin eval show <scorecard-id>
+observal admin eval compare <agent-id> --a "1.0.0" --b "2.0.0"
+observal admin eval aggregate <agent-id> [--window 50]
+
+# Penalty and weight tuning
+observal admin penalties
+observal admin penalty-set <name> [--amount 10] [--active]
+observal admin weights
+observal admin weight-set <dimension> <weight>
+```
+
+### Configuration (`observal config`)
+
+```bash
+observal config show               # show current config
+observal config set <key> <value>  # set a config value
+observal config path               # show config file path
+observal config alias <name> <id>  # create @alias for an ID
+observal config aliases            # list all aliases
+```
+
+### Self-Management (`observal self`)
+
+```bash
+observal self upgrade              # upgrade CLI to latest version
+observal self downgrade            # downgrade to previous version
+```
+
+### Diagnostics (`observal doctor`)
+
+```bash
+observal doctor [--ide <ide>] [--fix]  # diagnose IDE settings compatibility
+```
 
 ## Tech Stack
 
@@ -119,132 +269,6 @@ IDEs with **Native OTel** support send full distributed traces, user prompts, LL
 ## Setup & Configuration
 
 For detailed setup, eval engine configuration, environment variables, and troubleshooting, see [SETUP.md](SETUP.md).
-
-<details>
-<summary><strong>CLI Usage</strong></summary>
-
-### Authentication
-
-```bash
-observal init          # first-time admin setup
-observal login         # login with API key
-observal whoami        # check current user
-```
-
-### Quick Start with Existing Setup
-
-```bash
-observal scan              # detect and instrument all IDE configs in current directory
-observal scan --ide cursor # target specific IDE
-observal scan --dry-run    # preview changes without modifying files
-observal scan /path/to/project --yes  # non-interactive
-```
-
-### Agent Workflow
-
-```bash
-# Agent Workflow
-observal pull <agent-id> --ide <ide>    # install complete agent
-observal agent init <name>              # scaffold new agent
-observal agent add mcp <name@version>   # add component
-observal agent add skill <name>         # add skill
-observal agent build                    # generate agent.yaml
-observal agent test                     # run in sandbox
-observal agent publish                  # submit to registry
-
-# Component Sources
-observal registry add-source <git-url>  # add component source
-observal registry sync                  # trigger re-sync
-```
-
-### Registry Operations
-
-All component types follow the same pattern. All commands accept either an ID or a name.
-
-```bash
-# MCP Servers (ID or name works for all commands)
-observal submit <git-url>
-observal list [--category <cat>] [--search <term>]
-observal show <id-or-name>
-observal install <id-or-name> --ide <ide>
-
-# Agents
-observal agent create
-observal agent list [--search <term>]
-observal agent show <id>
-observal agent install <id> --ide <ide>
-
-# Skills
-observal skill submit <git-url-or-path>
-observal skill list [--task-type <type>] [--target-agent <agent>]
-observal skill install <id> --ide <ide>
-
-# Hooks
-observal hook submit
-observal hook list [--event <event>] [--scope <scope>]
-observal hook install <id> --ide <ide>
-
-# Prompts
-observal prompt submit [--from-file <path>]
-observal prompt list [--category <cat>]
-observal prompt render <id> --var key=value
-
-# Sandboxes
-observal sandbox submit
-observal sandbox list [--runtime docker|lxc]
-observal sandbox install <id> --ide <ide>
-```
-
-### Admin Review
-
-All registry types go through a single review workflow:
-
-```bash
-observal review list [--type mcp|agent|skill|hook|prompt|sandbox]
-observal review show <id>
-observal review approve <id>
-observal review reject <id> --reason "Missing documentation"
-```
-
-### Observability
-
-```bash
-# Telemetry status
-observal telemetry status
-
-# Metrics for any registry type
-observal metrics <id> --type mcp
-observal metrics <id> --type agent
-
-# Enterprise overview
-observal overview
-```
-
-### Evaluation
-
-```bash
-# Run eval on agent traces
-observal eval run <agent-id>
-
-# List and inspect scorecards
-observal eval scorecards <agent-id> [--version "1.0.0"]
-observal eval show <scorecard-id>
-
-# Compare versions
-observal eval compare <agent-id> --a "1.0.0" --b "2.0.0"
-```
-
-### Feedback
-
-```bash
-# Rate any registry item (1-5 stars)
-observal rate <id> --stars 5 --type mcp --comment "Works great"
-
-# View feedback
-observal feedback <id> --type mcp
-```
-
-</details>
 
 <details>
 <summary><strong>API Endpoints</strong></summary>
@@ -270,10 +294,6 @@ All `{id}` parameters accept either a UUID or a name.
 | `DELETE` | `/api/v1/{type}/{id}` | Delete |
 | `GET` | `/api/v1/{type}/{id}/metrics` | Metrics |
 | `POST` | `/api/v1/agents/{id}/pull` | Pull agent (installs all components) |
-| `GET` | `/api/v1/organizations` | List organizations |
-| `POST` | `/api/v1/organizations` | Create organization |
-| `GET` | `/api/v1/component-sources` | List component sources |
-| `POST` | `/api/v1/component-sources` | Add component source |
 
 ### Scan
 
@@ -306,6 +326,7 @@ All `{id}` parameters accept either a UUID or a name.
 | `GET` | `/api/v1/eval/agents/{id}/scorecards` | List scorecards |
 | `GET` | `/api/v1/eval/scorecards/{id}` | Scorecard details |
 | `GET` | `/api/v1/eval/agents/{id}/compare` | Compare versions |
+| `GET` | `/api/v1/eval/agents/{id}/aggregate` | Aggregate scoring stats |
 
 ### Feedback
 
@@ -324,15 +345,10 @@ All `{id}` parameters accept either a UUID or a name.
 | `GET` | `/api/v1/admin/users` | List users |
 | `POST` | `/api/v1/admin/users` | Create user |
 | `PUT` | `/api/v1/admin/users/{id}/role` | Change role |
-
-### Alerts
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/v1/alerts` | List alert rules |
-| `POST` | `/api/v1/alerts` | Create alert rule |
-| `PATCH` | `/api/v1/alerts/{id}` | Update alert status |
-| `DELETE` | `/api/v1/alerts/{id}` | Delete alert rule |
+| `GET` | `/api/v1/admin/penalties` | List penalty catalog |
+| `PUT` | `/api/v1/admin/penalties/{id}` | Modify penalty |
+| `GET` | `/api/v1/admin/weights` | Get dimension weights |
+| `PUT` | `/api/v1/admin/weights` | Set dimension weights |
 
 ### GraphQL
 
@@ -382,7 +398,7 @@ All tests mock external services. No Docker needed.
 
 ## Community
 
-Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions instead of opening issues, issues are reserved for bug reports and feature requests.
+Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions instead of opening issues — issues are reserved for bug reports and feature requests.
 
 ## Contributing
 
@@ -399,3 +415,15 @@ See [AGENTS.md](AGENTS.md) for internal codebase context useful when working wit
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).
+
+## Star History
+
+If you find Observal useful, please star the repo — it helps others discover the project and motivates continued development.
+
+<a href="https://www.star-history.com/?repos=BlazeUp-AI%2FObserval&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=BlazeUp-AI/Observal&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=BlazeUp-AI/Observal&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=BlazeUp-AI/Observal&type=date&legend=top-left" />
+ </picture>
+</a>
