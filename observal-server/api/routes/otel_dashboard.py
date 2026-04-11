@@ -1,8 +1,10 @@
+import json
 import logging
+from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from services.clickhouse import _escape, _query
+from services.clickhouse import _escape, _map_literal, _query
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
@@ -28,8 +30,10 @@ async def list_sessions():
         "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt') AS prompt_count, "
         "countIf(LogAttributes['event.name'] = 'api_request') AS api_request_count, "
         "countIf(LogAttributes['event.name'] = 'tool_result') AS tool_result_count, "
+        "countIf(LogAttributes['event.name'] LIKE 'hook_%') AS hook_event_count, "
         "sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input_tokens, "
         "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens, "
+        "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
         "anyIf(LogAttributes['model'], LogAttributes['model'] != '') AS model, "
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
@@ -165,3 +169,206 @@ async def otel_stats():
         "total_traces": int(tr.get("total_traces", 0)),
         "total_spans": int(tr.get("total_spans", 0)),
     }
+
+
+# ── Hook ingestion (unauthenticated — Claude Code hooks fire from CLI) ──
+
+
+def _truncate(s: str, max_len: int = 64000) -> str:
+    """Truncate a string to fit in ClickHouse without blowing up storage."""
+    if len(s) <= max_len:
+        return s
+    return s[:max_len] + f"\n... [truncated, {len(s)} total chars]"
+
+
+def _safe_json(obj: object) -> str:
+    """Serialize to JSON string, falling back to str()."""
+    if obj is None:
+        return ""
+    if isinstance(obj, str):
+        return obj
+    try:
+        return json.dumps(obj, default=str)
+    except Exception:
+        return str(obj)
+
+
+@router.post("/hooks")
+async def ingest_hook(request: Request):
+    """Ingest hook events from Claude Code and store in otel_logs.
+
+    This is intentionally unauthenticated because Claude Code hooks fire
+    from the CLI and can't easily carry auth tokens.  The endpoint only
+    writes to ClickHouse — no destructive operations.
+    """
+    body = await request.json()
+    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+    hook_event = body.get("hook_event_name", "unknown")
+    session_id = body.get("session_id", "")
+    tool_name = body.get("tool_name", "")
+
+    # Build the attributes map that the frontend already reads
+    attrs: dict[str, str] = {
+        "session.id": session_id,
+        "event.name": f"hook_{hook_event.lower()}",
+        "hook_event": hook_event,
+        "tool_name": tool_name,
+    }
+
+    # ── Agent attribution (present on ALL events fired within a subagent) ──
+    if body.get("agent_id"):
+        attrs["agent_id"] = body["agent_id"]
+    if body.get("agent_type"):
+        attrs["agent_type"] = body["agent_type"]
+
+    # Capture full content — this is the Langfuse-equivalent visibility
+    tool_input_raw = body.get("tool_input")
+    tool_response_raw = body.get("tool_response")
+
+    if tool_input_raw is not None:
+        attrs["tool_input"] = _truncate(_safe_json(tool_input_raw))
+    if tool_response_raw is not None:
+        attrs["tool_response"] = _truncate(_safe_json(tool_response_raw))
+
+    # UserPromptSubmit — capture the actual user prompt
+    if hook_event == "UserPromptSubmit":
+        prompt_text = body.get("prompt") or body.get("user_prompt") or ""
+        if prompt_text:
+            attrs["tool_input"] = _truncate(prompt_text)
+            attrs["prompt_length"] = str(len(prompt_text))
+        attrs["tool_name"] = "user_prompt"
+
+    # SubagentStart — capture agent spawn
+    if hook_event == "SubagentStart":
+        if body.get("last_assistant_message"):
+            attrs["tool_input"] = _truncate(body["last_assistant_message"])
+
+    # SubagentStop — capture agent final output
+    if hook_event == "SubagentStop":
+        if body.get("last_assistant_message"):
+            attrs["tool_response"] = _truncate(body["last_assistant_message"])
+
+    # PostToolUseFailure — tool failure (critical for debugging)
+    if hook_event == "PostToolUseFailure":
+        if body.get("error"):
+            attrs["error"] = _truncate(str(body["error"]))
+
+    # Stop — session/turn end (command hook sends assistant response text)
+    if hook_event == "Stop":
+        if body.get("stop_reason"):
+            attrs["stop_reason"] = body["stop_reason"]
+        # If the stop hook captured Claude's response, mark it clearly
+        if tool_name == "assistant_response" and tool_response_raw:
+            attrs["event.name"] = "hook_assistant_response"
+
+    # StopFailure — API error on turn end
+    if hook_event == "StopFailure":
+        if body.get("error"):
+            attrs["error"] = _truncate(str(body["error"]))
+        if body.get("stop_reason"):
+            attrs["stop_reason"] = body["stop_reason"]
+
+    # SessionStart — session lifecycle
+    if hook_event == "SessionStart":
+        if body.get("resume"):
+            attrs["session_resumed"] = str(body["resume"])
+
+    # Notification
+    if hook_event == "Notification":
+        if body.get("message"):
+            attrs["tool_response"] = _truncate(str(body["message"]))
+        if body.get("title"):
+            attrs["notification_title"] = str(body["title"])
+
+    # TaskCreated / TaskCompleted
+    if hook_event in ("TaskCreated", "TaskCompleted"):
+        for field in ("task_id", "task_subject", "task_status"):
+            if body.get(field):
+                attrs[field] = str(body[field])
+
+    # PreCompact / PostCompact — context compaction
+    if hook_event in ("PreCompact", "PostCompact"):
+        if body.get("summary"):
+            attrs["tool_response"] = _truncate(str(body["summary"]))
+
+    # WorktreeCreate / WorktreeRemove
+    if hook_event in ("WorktreeCreate", "WorktreeRemove"):
+        if body.get("worktree_path"):
+            attrs["worktree_path"] = str(body["worktree_path"])
+        if body.get("branch"):
+            attrs["branch"] = str(body["branch"])
+
+    # Elicitation / ElicitationResult — MCP server interactions
+    if hook_event in ("Elicitation", "ElicitationResult"):
+        for field in ("mcp_server_name", "message", "response", "elicitation_id"):
+            if body.get(field):
+                key = "tool_input" if field == "message" else ("tool_response" if field == "response" else field)
+                attrs[key] = _truncate(str(body[field]))
+
+    # Extra context fields (present on most events)
+    if body.get("tool_use_id"):
+        attrs["tool_use_id"] = body["tool_use_id"]
+    if body.get("cwd"):
+        attrs["cwd"] = body["cwd"]
+    if body.get("permission_mode"):
+        attrs["permission_mode"] = body["permission_mode"]
+
+    # Build the Body as a readable summary
+    agent_prefix = f"[{attrs.get('agent_type', '')}] " if attrs.get("agent_id") else ""
+    if hook_event in ("PostToolUse", "PreToolUse"):
+        body_text = f"{agent_prefix}{hook_event}: {tool_name}"
+    elif hook_event == "PostToolUseFailure":
+        body_text = f"{agent_prefix}ToolFailure: {tool_name}"
+    elif hook_event == "UserPromptSubmit":
+        prompt_preview = (attrs.get("tool_input") or "")[:100]
+        body_text = f"Prompt: {prompt_preview}"
+    elif hook_event in ("SubagentStop", "SubagentStart"):
+        body_text = f"{hook_event}: {attrs.get('agent_type', 'unknown')}"
+    elif hook_event in ("Elicitation", "ElicitationResult"):
+        body_text = f"{hook_event}: {body.get('mcp_server_name', 'unknown')}"
+    elif hook_event == "Stop" and tool_name == "assistant_response":
+        preview = (attrs.get("tool_response") or "")[:100]
+        body_text = f"Response: {preview}"
+    elif hook_event == "Stop":
+        body_text = f"Stop: {body.get('stop_reason', 'end_turn')}"
+    elif hook_event == "StopFailure":
+        body_text = f"StopFailure: {attrs.get('error', 'unknown')[:80]}"
+    elif hook_event == "SessionStart":
+        resumed = " (resumed)" if attrs.get("session_resumed") == "True" else ""
+        body_text = f"SessionStart{resumed}"
+    elif hook_event == "Notification":
+        body_text = f"Notification: {attrs.get('notification_title', '')}"
+    elif hook_event in ("TaskCreated", "TaskCompleted"):
+        body_text = f"{hook_event}: {attrs.get('task_subject', '')[:60]}"
+    elif hook_event in ("PreCompact", "PostCompact"):
+        body_text = f"{hook_event}"
+    elif hook_event in ("WorktreeCreate", "WorktreeRemove"):
+        body_text = f"{hook_event}: {attrs.get('branch', '')}"
+    else:
+        body_text = f"{agent_prefix}hook: {hook_event}"
+
+    # Event name for the EventName column (used by list_sessions countIf)
+    event_name = attrs.get("event.name", f"hook_{hook_event.lower()}")
+
+    # INSERT into otel_logs
+    attr_map = _map_literal(attrs)
+    sql = (
+        "INSERT INTO otel_logs "
+        "(Timestamp, EventName, Body, LogAttributes, ServiceName, "
+        "SeverityText, SeverityNumber) VALUES "
+        f"('{_escape(now)}', '{_escape(event_name)}', "
+        f"'{_escape(body_text)}', {attr_map}, "
+        f"'observal-hooks', 'INFO', 9)"
+    )
+
+    try:
+        r = await _query(sql)
+        if r.status_code != 200:
+            logger.warning(f"Hook insert failed: {r.status_code} {r.text[:200]}")
+            return {"ingested": 0, "error": "insert failed"}
+    except Exception as e:
+        logger.warning(f"Hook insert failed: {e}")
+        return {"ingested": 0, "error": str(e)}
+
+    return {"ingested": 1, "session_id": session_id, "event": hook_event}

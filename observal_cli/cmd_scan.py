@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -14,31 +15,331 @@ from rich.table import Table
 from observal_cli import client
 from observal_cli.render import console, spinner
 
-# IDE config file locations (relative to project root)
-_IDE_MCP_CONFIGS = {
+# ── IDE config file locations (relative to project root) ────
+
+_IDE_PROJECT_CONFIGS = {
     "cursor": ".cursor/mcp.json",
     "kiro": ".kiro/settings/mcp.json",
     "vscode": ".vscode/mcp.json",
-    "claude-code": ".claude/mcp.json",
     "gemini-cli": ".gemini/settings.json",
 }
 
 
-def _detect_ide(project_dir: Path) -> list[tuple[str, Path]]:
-    """Return list of (ide_name, config_path) for detected IDE configs."""
+# ── Data containers for discovered items ────────────────────
+
+
+class DiscoveredMcp:
+    def __init__(self, name: str, command: str | None, args: list[str], url: str | None, description: str, source: str):
+        self.name = name
+        self.command = command
+        self.args = args
+        self.url = url
+        self.description = description
+        self.source = source
+
+    def display_cmd(self) -> str:
+        if self.url:
+            return self.url[:60]
+        cmd = f"{self.command or '?'} {' '.join(self.args[:3])}"
+        return cmd[:60] + "..." if len(cmd) > 60 else cmd
+
+
+class DiscoveredSkill:
+    def __init__(self, name: str, description: str, source: str, task_type: str = "general"):
+        self.name = name
+        self.description = description
+        self.source = source
+        self.task_type = task_type
+
+
+class DiscoveredHook:
+    def __init__(self, name: str, event: str, handler_type: str, handler_config: dict, description: str, source: str):
+        self.name = name
+        self.event = event
+        self.handler_type = handler_type
+        self.handler_config = handler_config
+        self.description = description
+        self.source = source
+
+
+class DiscoveredAgent:
+    def __init__(self, name: str, description: str, model_name: str, prompt: str, source_file: str):
+        self.name = name
+        self.description = description
+        self.model_name = model_name
+        self.prompt = prompt
+        self.source_file = source_file
+
+
+# ── Claude Code ~/.claude scanner ───────────────────────────
+
+
+def _scan_claude_home(
+    claude_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.claude for all component types using the real plugin system."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    settings_file = claude_dir / "settings.json"
+    if not settings_file.exists():
+        return mcps, skills, hooks, agents
+
+    try:
+        settings = json.loads(settings_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return mcps, skills, hooks, agents
+
+    enabled_plugins = settings.get("enabledPlugins", {})
+    active_plugins = {name for name, enabled in enabled_plugins.items() if enabled}
+
+    # Load installed_plugins.json to get install paths
+    installed_file = claude_dir / "plugins" / "installed_plugins.json"
+    plugin_paths: dict[str, Path] = {}
+    if installed_file.exists():
+        try:
+            installed = json.loads(installed_file.read_text())
+            for plugin_key, entries in installed.get("plugins", {}).items():
+                if plugin_key in active_plugins and entries:
+                    install_path = entries[0].get("installPath")
+                    if install_path:
+                        plugin_paths[plugin_key] = Path(install_path)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Fallback: also scan plugin cache directly for active plugins
+    cache_dir = claude_dir / "plugins" / "cache"
+    if cache_dir.exists():
+        for plugin_key in active_plugins:
+            if plugin_key in plugin_paths:
+                continue
+            # Parse "name@marketplace" format
+            parts = plugin_key.split("@", 1)
+            name = parts[0]
+            marketplace = parts[1] if len(parts) > 1 else ""
+            # Try to find in cache
+            market_dir = cache_dir / marketplace / name if marketplace else cache_dir / name / name
+            if market_dir.exists():
+                # Pick latest version directory
+                versions = sorted(market_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+                if versions:
+                    plugin_paths[plugin_key] = versions[0]
+
+    # Scan each active plugin directory
+    for plugin_key, plugin_dir in plugin_paths.items():
+        if not plugin_dir.is_dir():
+            continue
+
+        plugin_name = plugin_key.split("@")[0]
+
+        # Read plugin metadata
+        plugin_desc = f"Plugin: {plugin_name}"
+        plugin_json = plugin_dir / ".claude-plugin" / "plugin.json"
+        if plugin_json.exists():
+            try:
+                meta = json.loads(plugin_json.read_text())
+                plugin_desc = meta.get("description", plugin_desc)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # ── Discover MCPs ───────────────────────────
+        mcp_file = plugin_dir / ".mcp.json"
+        if mcp_file.exists():
+            try:
+                mcp_data = json.loads(mcp_file.read_text())
+                servers = _extract_mcp_servers(mcp_data)
+                for srv_name, srv_config in servers.items():
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=srv_name,
+                            command=srv_config.get("command"),
+                            args=srv_config.get("args", []),
+                            url=srv_config.get("url"),
+                            description=plugin_desc,
+                            source=f"plugin:{plugin_name}",
+                        )
+                    )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # ── Discover Skills ─────────────────────────
+        for skill_md in plugin_dir.rglob("SKILL.md"):
+            skill_name_part = skill_md.parent.name
+            # Unique name: plugin/skill
+            full_name = f"{plugin_name}/{skill_name_part}"
+            desc = ""
+            try:
+                content = skill_md.read_text()
+                desc = _parse_frontmatter_field(content, "description") or ""
+                # If no description in frontmatter, use first non-empty line after frontmatter
+                if not desc:
+                    desc = _first_content_line(content)
+            except OSError:
+                pass
+            skills.append(
+                DiscoveredSkill(
+                    name=full_name,
+                    description=desc or f"Skill from {plugin_name}",
+                    source=f"plugin:{plugin_name}",
+                )
+            )
+
+        # ── Discover Hooks ──────────────────────────
+        for hooks_file in plugin_dir.rglob("hooks.json"):
+            try:
+                hooks_data = json.loads(hooks_file.read_text())
+                hook_events = hooks_data.get("hooks", {})
+                for event_name, event_hooks in hook_events.items():
+                    hook_full_name = f"{plugin_name}/{event_name}"
+                    handler_type = "command"
+                    handler_config = {}
+                    if isinstance(event_hooks, list) and event_hooks:
+                        first = event_hooks[0]
+                        if isinstance(first, dict):
+                            inner = first.get("hooks", [first])
+                            if inner and isinstance(inner[0], dict):
+                                handler_type = inner[0].get("type", "command")
+                                handler_config = inner[0]
+                    hooks.append(
+                        DiscoveredHook(
+                            name=hook_full_name,
+                            event=event_name,
+                            handler_type=handler_type,
+                            handler_config=handler_config,
+                            description=f"Hook from {plugin_name}: {event_name}",
+                            source=f"plugin:{plugin_name}",
+                        )
+                    )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # ── Discover Agents from ~/.claude/agents/ ──────
+    agents_dir = claude_dir / "agents"
+    if agents_dir.is_dir():
+        for agent_md in sorted(agents_dir.glob("*.md")):
+            try:
+                content = agent_md.read_text()
+                name = agent_md.stem
+                model = _parse_frontmatter_field(content, "model") or ""
+                desc = _first_content_line(content)
+                prompt_body = _extract_body(content)
+                agents.append(
+                    DiscoveredAgent(
+                        name=name,
+                        description=desc or f"Agent: {name}",
+                        model_name=model,
+                        prompt=prompt_body,
+                        source_file=str(agent_md),
+                    )
+                )
+            except OSError:
+                pass
+
+    return mcps, skills, hooks, agents
+
+
+def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
+    """Extract server entries from .mcp.json, handling both formats.
+
+    Format 1 (bare): {"server-name": {"command": "...", "args": [...]}}
+    Format 2 (wrapped): {"mcpServers": {"server-name": {"command": "...", "args": [...]}}}
+    """
+    if "mcpServers" in mcp_data:
+        return mcp_data["mcpServers"]
+    # Bare format: every top-level key is a server name
+    servers = {}
+    for key, val in mcp_data.items():
+        if isinstance(val, dict) and ("command" in val or "url" in val or "type" in val):
+            servers[key] = val
+    return servers
+
+
+def _parse_frontmatter_field(content: str, field: str) -> str | None:
+    """Extract a field from YAML frontmatter (--- delimited)."""
+    match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if not match:
+        return None
+    for line in match.group(1).splitlines():
+        if line.startswith(f"{field}:"):
+            val = line[len(field) + 1 :].strip().strip('"').strip("'")
+            return val
+    return None
+
+
+def _extract_body(content: str) -> str:
+    """Extract everything after YAML frontmatter."""
+    match = re.match(r"^---\s*\n.*?\n---\s*\n?", content, re.DOTALL)
+    if match:
+        return content[match.end():]
+    return content
+
+
+def _first_content_line(content: str) -> str:
+    """Get first non-empty, non-heading content line after frontmatter."""
+    in_frontmatter = False
+    past_frontmatter = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "---":
+            if not in_frontmatter:
+                in_frontmatter = True
+                continue
+            else:
+                past_frontmatter = True
+                continue
+        if not past_frontmatter and in_frontmatter:
+            continue
+        if past_frontmatter and stripped and not stripped.startswith("#"):
+            return stripped[:200]
+    return ""
+
+
+# ── Project-dir scanner (Cursor, VS Code, Kiro, Gemini) ────
+
+
+def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[str, str, DiscoveredMcp, Path]]:
+    """Scan project directory for IDE MCP configs. Returns (ide, name, mcp, config_path) tuples."""
     found = []
-    for ide, rel in _IDE_MCP_CONFIGS.items():
-        p = project_dir / rel
-        if p.exists():
-            found.append((ide, p))
+    for ide, rel in _IDE_PROJECT_CONFIGS.items():
+        if ide_filter and ide != ide_filter:
+            continue
+        config_path = project_dir / rel
+        if not config_path.exists():
+            continue
+        try:
+            config = json.loads(config_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        servers = _parse_project_mcp_servers(config, ide)
+        for name, entry in servers.items():
+            if _is_already_shimmed(entry):
+                continue
+            found.append(
+                (
+                    ide,
+                    name,
+                    DiscoveredMcp(
+                        name=name,
+                        command=entry.get("command"),
+                        args=entry.get("args", []),
+                        url=entry.get("url"),
+                        description=f"MCP from {ide} config",
+                        source=f"ide:{ide}",
+                    ),
+                    config_path,
+                )
+            )
     return found
 
 
-def _parse_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
-    """Extract mcpServers dict from IDE config, handling format differences."""
-    if ide == "gemini-cli":
-        return config.get("mcpServers", {})
-    # cursor, kiro, vscode, claude-code all use mcpServers at top level
+def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
+    """Extract MCP servers dict from project-level IDE config."""
+    if ide == "vscode":
+        return config.get("servers", config.get("mcpServers", {}))
+    # cursor, kiro, gemini-cli all use mcpServers at top level
     return config.get("mcpServers", config.get("servers", {}))
 
 
@@ -54,8 +355,6 @@ def _is_already_shimmed(entry: dict) -> bool:
 def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
     """Wrap an MCP server entry with observal-shim for telemetry."""
     if entry.get("url"):
-        # HTTP transport — can't shim stdio, leave as-is for now
-        # The proxy approach would need observal-proxy, skip for scan
         return entry
 
     original_cmd = entry.get("command", "")
@@ -75,145 +374,298 @@ def _backup_config(config_path: Path) -> Path:
     return backup
 
 
+# ── CLI command ─────────────────────────────────────────────
+
+
 def register_scan(app: typer.Typer):
     @app.command(name="scan")
     def scan(
         project_dir: str = typer.Argument(".", help="Project directory to scan"),
         ide: str | None = typer.Option(None, "--ide", "-i", help="Target IDE (auto-detected if omitted)"),
-        dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without modifying files"),
+        home: bool = typer.Option(
+            False, "--home", help="Scan ~/.claude for Claude Code plugins, agents, skills, hooks"
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", "-n", help="Show what would be registered without making changes"
+        ),
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+        shim: bool = typer.Option(
+            False, "--shim", help="Rewrite project IDE configs to route MCPs through observal-shim"
+        ),
     ):
-        """Scan existing IDE configs, register items in Observal, and wrap with telemetry shims.
+        """Scan IDE configs and register discovered components with Observal.
 
-        Detects MCP servers from your IDE config files, registers them with Observal,
-        and rewrites configs to route through observal-shim for telemetry collection.
-        Your existing setup keeps working — the shim is transparent.
+        By default, scans the current project directory for Cursor, VS Code, Kiro,
+        and Gemini CLI MCP configs.
+
+        With --home, scans your ~/.claude directory to discover all installed
+        plugins, agents, skills, and hooks from your Claude Code setup.
         """
+        all_mcps: list[DiscoveredMcp] = []
+        all_skills: list[DiscoveredSkill] = []
+        all_hooks: list[DiscoveredHook] = []
+        all_agents: list[DiscoveredAgent] = []
+        project_mcp_entries: list[tuple[str, str, DiscoveredMcp, Path]] = []
+
+        # ── Scan ~/.claude if --home ────────────────
+        if home:
+            claude_dir = Path.home() / ".claude"
+            if not claude_dir.is_dir():
+                rprint("[red]~/.claude directory not found.[/red]")
+                raise typer.Exit(1)
+
+            with spinner("Scanning ~/.claude..."):
+                h_mcps, h_skills, h_hooks, h_agents = _scan_claude_home(claude_dir)
+            all_mcps.extend(h_mcps)
+            all_skills.extend(h_skills)
+            all_hooks.extend(h_hooks)
+            all_agents.extend(h_agents)
+
+        # ── Scan project directory ──────────────────
         root = Path(project_dir).resolve()
-        if not root.is_dir():
-            rprint(f"[red]Not a directory: {root}[/red]")
+        if root.is_dir():
+            project_mcp_entries = _scan_project_dir(root, ide)
+            # Add project MCPs to the list (dedup by name)
+            seen_names = {m.name for m in all_mcps}
+            for _ide, _name, mcp, _path in project_mcp_entries:
+                if mcp.name not in seen_names:
+                    all_mcps.append(mcp)
+                    seen_names.add(mcp.name)
+
+        total = len(all_mcps) + len(all_skills) + len(all_hooks) + len(all_agents)
+        if total == 0:
+            rprint("[yellow]No components found.[/yellow]")
+            if not home:
+                rprint("[dim]Tip: use --home to scan ~/.claude for Claude Code plugins and agents.[/dim]")
             raise typer.Exit(1)
 
-        # Detect IDEs
-        detected = _detect_ide(root)
-        if ide:
-            detected = [(i, p) for i, p in detected if i == ide]
+        # ── Display discovery results ───────────────
+        rprint(f"\n[bold]Discovered {total} components[/bold]\n")
 
-        if not detected:
-            rprint("[yellow]No IDE configs found.[/yellow]")
-            rprint(f"[dim]Looked for: {', '.join(_IDE_MCP_CONFIGS.values())}[/dim]")
-            raise typer.Exit(1)
+        if all_mcps:
+            tbl = Table(title=f"MCP Servers ({len(all_mcps)})", show_lines=False, padding=(0, 1))
+            tbl.add_column("Name", style="bold")
+            tbl.add_column("Command/URL", style="dim")
+            tbl.add_column("Source", style="cyan")
+            for m in all_mcps:
+                tbl.add_row(m.name, m.display_cmd(), m.source)
+            console.print(tbl)
+            rprint()
 
-        rprint(f"\n[bold]Scanning {root}[/bold]\n")
+        if all_skills:
+            # Show summary for skills (can be hundreds)
+            by_plugin: dict[str, int] = {}
+            for s in all_skills:
+                by_plugin[s.source] = by_plugin.get(s.source, 0) + 1
+            tbl = Table(title=f"Skills ({len(all_skills)})", show_lines=False, padding=(0, 1))
+            tbl.add_column("Source Plugin", style="cyan")
+            tbl.add_column("Count", style="bold", justify="right")
+            for src, count in sorted(by_plugin.items()):
+                tbl.add_row(src, str(count))
+            console.print(tbl)
+            rprint()
 
-        all_items = []  # (ide, name, entry, config_path)
-        for ide_name, config_path in detected:
-            try:
-                config = json.loads(config_path.read_text())
-            except (json.JSONDecodeError, OSError) as e:
-                rprint(f"[yellow]⚠ Could not parse {config_path}: {e}[/yellow]")
-                continue
+        if all_hooks:
+            tbl = Table(title=f"Hooks ({len(all_hooks)})", show_lines=False, padding=(0, 1))
+            tbl.add_column("Name", style="bold")
+            tbl.add_column("Event", style="cyan")
+            tbl.add_column("Source", style="dim")
+            for h in all_hooks:
+                tbl.add_row(h.name, h.event, h.source)
+            console.print(tbl)
+            rprint()
 
-            servers = _parse_mcp_servers(config, ide_name)
-            if not servers:
-                rprint(f"[dim]{ide_name}: no MCP servers found in {config_path}[/dim]")
-                continue
-
-            for name, entry in servers.items():
-                if _is_already_shimmed(entry):
-                    rprint(f"  [dim]⊘ {name} (already shimmed)[/dim]")
-                    continue
-                all_items.append((ide_name, name, entry, config_path))
-
-        if not all_items:
-            rprint("[green]✓ Nothing to do — all items already instrumented or no items found.[/green]")
-            return
-
-        # Show what we found
-        table = Table(title=f"Found {len(all_items)} MCP servers to instrument", show_lines=False, padding=(0, 1))
-        table.add_column("IDE", style="cyan")
-        table.add_column("Name", style="bold")
-        table.add_column("Command/URL", style="dim")
-        for ide_name, name, entry, _ in all_items:
-            cmd = entry.get("url") or f"{entry.get('command', '?')} {' '.join(entry.get('args', [])[:3])}"
-            if len(cmd) > 60:
-                cmd = cmd[:57] + "..."
-            table.add_row(ide_name, name, cmd)
-        console.print(table)
-        rprint()
+        if all_agents:
+            tbl = Table(title=f"Agents ({len(all_agents)})", show_lines=False, padding=(0, 1))
+            tbl.add_column("Name", style="bold")
+            tbl.add_column("Model", style="cyan")
+            tbl.add_column("Description", style="dim", max_width=60)
+            for a in all_agents:
+                tbl.add_row(a.name, a.model_name or "-", a.description[:60])
+            console.print(tbl)
+            rprint()
 
         if dry_run:
             rprint("[yellow]Dry run — no changes made.[/yellow]")
             return
 
-        if not yes and not typer.confirm("Register and instrument these items?"):
+        if not yes and not typer.confirm("Register these components with Observal?"):
             raise typer.Abort()
 
-        # Group by IDE for bulk registration
-        by_ide: dict[str, list[tuple[str, dict, Path]]] = {}
-        for ide_name, name, entry, config_path in all_items:
-            by_ide.setdefault(ide_name, []).append((name, entry, config_path))
+        # ── Register via bulk scan API ──────────────
+        scan_payload = {
+            "ide": "claude-code" if home else (ide or "auto"),
+            "mcps": [
+                {
+                    "name": m.name,
+                    "command": m.command,
+                    "args": m.args,
+                    "url": m.url,
+                    "description": m.description,
+                    "source_plugin": m.source,
+                }
+                for m in all_mcps
+            ],
+            "skills": [
+                {
+                    "name": s.name,
+                    "description": s.description,
+                    "source_plugin": s.source,
+                    "task_type": s.task_type,
+                }
+                for s in all_skills
+            ],
+            "hooks": [
+                {
+                    "name": h.name,
+                    "event": h.event,
+                    "handler_type": h.handler_type,
+                    "handler_config": h.handler_config,
+                    "description": h.description,
+                    "source_plugin": h.source,
+                }
+                for h in all_hooks
+            ],
+            "agents": [
+                {
+                    "name": a.name,
+                    "description": a.description,
+                    "model_name": a.model_name,
+                    "prompt": a.prompt,
+                    "source_file": a.source_file,
+                }
+                for a in all_agents
+            ],
+        }
 
-        total_registered = 0
-        total_shimmed = 0
+        with spinner(f"Registering {total} components..."):
+            try:
+                result = client.post("/api/v1/scan", scan_payload)
+            except (Exception, SystemExit) as e:
+                rprint(f"[red]Failed to register: {e}[/red]")
+                raise typer.Exit(1) from None
 
-        for ide_name, items in by_ide.items():
-            # Bulk register via /api/v1/scan
-            scan_payload = {
-                "ide": ide_name,
-                "mcps": [
-                    {
-                        "name": name,
-                        "command": entry.get("command"),
-                        "args": entry.get("args", []),
-                        "url": entry.get("url"),
-                        "env": entry.get("env", {}),
-                    }
-                    for name, entry, _ in items
-                ],
-            }
+        # Show registration results
+        new_count = 0
+        existing_count = 0
+        for reg in result.get("registered", []):
+            if reg["status"] == "created":
+                rprint(f"  [green]+ new[/green] [{reg['type']}] {reg['name']} -> {reg['id'][:8]}...")
+                new_count += 1
+            else:
+                rprint(f"  [dim]= existing[/dim] [{reg['type']}] {reg['name']}")
+                existing_count += 1
 
-            with spinner(f"Registering {len(items)} items for {ide_name}..."):
-                try:
-                    result = client.post("/api/v1/scan", scan_payload)
-                except (Exception, SystemExit) as e:
-                    rprint(f"[red]✗ Failed to register items for {ide_name}: {e}[/red]")
-                    continue
+        rprint(f"\n[green]Done![/green] {new_count} new, {existing_count} existing.")
 
-            # Build name -> id mapping
-            id_map = {}
-            for reg in result.get("registered", []):
-                id_map[reg["name"]] = reg["id"]
-                status_icon = "[green]✓ new[/green]" if reg["status"] == "created" else "[cyan]↻ existing[/cyan]"
-                rprint(f"  {status_icon} {reg['name']} → {reg['id'][:8]}…")
-                total_registered += 1
+        # ── Optionally shim project MCP configs ─────
+        if shim and project_mcp_entries:
+            id_map = {r["name"]: r["id"] for r in result.get("registered", []) if r["type"] == "mcp"}
+            shimmed_count = 0
+            configs_to_update: dict[str, dict] = {}
 
-            # Rewrite config files
-            configs_to_update: dict[str, dict] = {}  # path -> full config
-            for name, _entry, config_path in items:
+            for ide_name, name, _mcp, config_path in project_mcp_entries:
                 mcp_id = id_map.get(name)
                 if not mcp_id:
                     continue
-
                 path_str = str(config_path)
                 if path_str not in configs_to_update:
                     configs_to_update[path_str] = json.loads(config_path.read_text())
 
                 config = configs_to_update[path_str]
-                servers = _parse_mcp_servers(config, ide_name)
+                servers = _parse_project_mcp_servers(config, ide_name)
                 if name in servers and not _is_already_shimmed(servers[name]):
                     servers[name] = _wrap_with_shim(servers[name], mcp_id)
-                    total_shimmed += 1
+                    shimmed_count += 1
 
-            # Write updated configs
             for path_str, config in configs_to_update.items():
                 config_path = Path(path_str)
                 backup = _backup_config(config_path)
                 config_path.write_text(json.dumps(config, indent=2) + "\n")
                 rprint(f"  [dim]Backup: {backup.name}[/dim]")
 
-        rprint(
-            f"\n[green]✓ Done![/green] Registered {total_registered} items, instrumented {total_shimmed} with telemetry."
-        )
-        rprint("[dim]Your existing tools still work exactly the same — observal-shim is transparent.[/dim]")
-        rprint("[dim]Telemetry flows to Observal even without admin approval.[/dim]")
+            if shimmed_count:
+                rprint(f"[green]Shimmed {shimmed_count} MCP entries for telemetry.[/green]")
+
+        # ── Auto-inject hooks into ~/.claude/settings.json ─────
+        if home:
+            from observal_cli.config import load as _load_config
+
+            cfg = _load_config()
+            server_url = cfg.get("server_url", "http://localhost:8000").rstrip("/")
+            hooks_url = f"{server_url}/api/v1/otel/hooks"
+            http_hook = [{"hooks": [{"type": "http", "url": hooks_url}]}]
+
+            # Stop uses a command hook to read transcript for Claude's response
+            stop_script = Path(__file__).parent / "hooks" / "observal-stop-hook.sh"
+            stop_hook = (
+                [{"hooks": [{"type": "command", "command": str(stop_script.resolve())}]}]
+                if stop_script.is_file()
+                else http_hook
+            )
+
+            hooks_block = {
+                "SessionStart": http_hook,
+                "UserPromptSubmit": http_hook,
+                "PreToolUse": http_hook,
+                "PostToolUse": http_hook,
+                "PostToolUseFailure": http_hook,
+                "SubagentStart": http_hook,
+                "SubagentStop": http_hook,
+                "Stop": stop_hook,
+                "StopFailure": http_hook,
+                "Notification": http_hook,
+                "TaskCreated": http_hook,
+                "TaskCompleted": http_hook,
+                "PreCompact": http_hook,
+                "PostCompact": http_hook,
+                "WorktreeCreate": http_hook,
+                "WorktreeRemove": http_hook,
+                "Elicitation": http_hook,
+                "ElicitationResult": http_hook,
+            }
+
+            claude_settings = Path.home() / ".claude" / "settings.json"
+            try:
+                settings: dict = {}
+                if claude_settings.exists():
+                    settings = json.loads(claude_settings.read_text())
+
+                existing_hooks = settings.get("hooks", {})
+                needs_update = False
+
+                # Check if hooks already point to the right URL
+                for event_name, _entry in hooks_block.items():
+                    if event_name not in existing_hooks:
+                        needs_update = True
+                        break
+                    # Check URL or command matches
+                    existing_target = ""
+                    try:
+                        h = existing_hooks[event_name][0]["hooks"][0]
+                        existing_target = h.get("url") or h.get("command", "")
+                    except (KeyError, IndexError, TypeError):
+                        pass
+                    expected_target = hooks_block[event_name][0]["hooks"][0].get("url") or hooks_block[event_name][0]["hooks"][0].get("command", "")
+                    if existing_target != expected_target:
+                        needs_update = True
+                        break
+
+                if needs_update:
+                    settings["hooks"] = {**existing_hooks, **hooks_block}
+                    # Ensure the stop hook env var is set
+                    if "env" not in settings:
+                        settings["env"] = {}
+                    settings["env"]["OBSERVAL_HOOKS_URL"] = hooks_url
+                    claude_settings.write_text(json.dumps(settings, indent=2) + "\n")
+                    rprint(f"\n[green]Injected hooks config into {claude_settings}[/green]")
+                    rprint(f"[dim]Hooks endpoint: {hooks_url}[/dim]")
+                    rprint(
+                        "[dim]Captures: prompts, tool I/O, MCP responses, "
+                        "subagents, elicitations[/dim]"
+                    )
+                else:
+                    rprint(f"\n[dim]Hooks already configured -> {hooks_url}[/dim]")
+            except Exception as e:
+                rprint(f"\n[yellow]Could not auto-inject hooks: {e}[/yellow]")
+                rprint("[dim]Add hooks manually — see docs.[/dim]")

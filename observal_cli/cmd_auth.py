@@ -360,6 +360,19 @@ def register_config(app: typer.Typer):
     app.add_typer(config_app, name="config")
 
 
+def _find_stop_hook_script() -> str | None:
+    """Locate the observal-stop-hook.sh script."""
+    # Check common locations
+    candidates = [
+        Path(__file__).parent / "hooks" / "observal-stop-hook.sh",
+        Path(shutil.which("observal-stop-hook.sh") or ""),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return str(p.resolve())
+    return None
+
+
 def _configure_claude_code(server_url: str, api_key: str):
     """Check for Claude Code and offer to configure its telemetry."""
     claude_dir = Path.home() / ".claude"
@@ -405,11 +418,47 @@ def _configure_claude_code(server_url: str, api_key: str):
             settings["env"] = {}
         settings["env"].update(otel_env)
 
+        # ── Inject hooks for full content capture (prompts, tool I/O, MCP, agents) ──
+        hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+        http_hook = [{"hooks": [{"type": "http", "url": hooks_url}]}]
+
+        # Stop uses a command hook to read the transcript for Claude's response text
+        stop_script = _find_stop_hook_script()
+        stop_hook = (
+            [{"hooks": [{"type": "command", "command": stop_script}]}]
+            if stop_script
+            else http_hook
+        )
+
+        settings["hooks"] = {
+            "SessionStart": http_hook,
+            "UserPromptSubmit": http_hook,
+            "PreToolUse": http_hook,
+            "PostToolUse": http_hook,
+            "PostToolUseFailure": http_hook,
+            "SubagentStart": http_hook,
+            "SubagentStop": http_hook,
+            "Stop": stop_hook,
+            "StopFailure": http_hook,
+            "Notification": http_hook,
+            "TaskCreated": http_hook,
+            "TaskCompleted": http_hook,
+            "PreCompact": http_hook,
+            "PostCompact": http_hook,
+            "WorktreeCreate": http_hook,
+            "WorktreeRemove": http_hook,
+            "Elicitation": http_hook,
+            "ElicitationResult": http_hook,
+        }
+
+        # Set the hooks URL env var so the stop script knows where to POST
+        settings["env"]["OBSERVAL_HOOKS_URL"] = hooks_url
+
         claude_dir.mkdir(exist_ok=True)
         with open(claude_settings_file, "w", encoding="utf-8") as f:
             _json.dump(settings, f, indent=2)
 
-        rprint(f"Updated [dim]{claude_settings_file}[/dim] — telemetry will flow to Observal.")
+        rprint(f"Updated [dim]{claude_settings_file}[/dim] — telemetry + hooks will flow to Observal.")
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Claude Code automatically: {e}[/yellow]")
