@@ -16,10 +16,19 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_current_user(
-    x_api_key: str = Header(...),
+    x_api_key: str | None = Header(None),
+    authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+    # Try X-API-Key header first
+    api_key = x_api_key
+    # Fall back to Bearer token in Authorization header
+    if not api_key and authorization and authorization.startswith("Bearer "):
+        api_key = authorization.removeprefix("Bearer ").strip()
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     result = await db.execute(select(User).where(User.api_key_hash == key_hash))
     user = result.scalar_one_or_none()
     if not user:

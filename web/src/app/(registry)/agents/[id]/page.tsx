@@ -9,6 +9,10 @@ import {
   Check,
   Copy,
   Users,
+  Download,
+  BarChart3,
+  Loader2,
+  Activity,
 } from "lucide-react";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
@@ -17,7 +21,11 @@ import {
   useAgentDownloads,
   useFeedback,
   useFeedbackSummary,
+  useEvalAggregate,
+  useWhoami,
 } from "@/hooks/use-api";
+import { registry } from "@/lib/api";
+import { getUserRole } from "@/lib/api";
 import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
 import { StatusBadge } from "@/components/registry/status-badge";
@@ -38,6 +46,7 @@ interface AgentDetail {
   version?: string;
   owner?: string;
   description?: string;
+  prompt?: string;
   model_name?: string;
   download_count?: number;
   component_links?: ComponentLink[];
@@ -57,6 +66,151 @@ interface ComponentLink {
   component_id?: string;
   mcp_id?: string;
   status?: string;
+}
+
+function ExportButton({ agentId }: { agentId: string }) {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const manifest = await registry.manifest(agentId);
+      const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `agent-${agentId.slice(0, 8)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Agent manifest exported");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to export agent");
+    } finally {
+      setExporting(false);
+    }
+  }, [agentId]);
+
+  return (
+    <Button variant="outline" size="sm" className="h-8" onClick={handleExport} disabled={exporting}>
+      {exporting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+      Export
+    </Button>
+  );
+}
+
+function AnalyticsTab({ agentId }: { agentId: string }) {
+  const { data: aggregate, isLoading } = useEvalAggregate(agentId);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!aggregate) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title="No analytics yet"
+        description="Run evaluations on this agent to generate analytics data. Traces and spans will be collected as the agent is used."
+      />
+    );
+  }
+
+  const dims = aggregate.dimension_averages ?? {};
+  const trend = aggregate.trend ?? [];
+
+  return (
+    <div className="space-y-6">
+      {/* Score overview */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="rounded-md border border-border p-3 space-y-1">
+          <span className="text-xs text-muted-foreground">Composite Score</span>
+          <p className="text-xl font-mono font-bold">{aggregate.mean.toFixed(1)}</p>
+        </div>
+        <div className="rounded-md border border-border p-3 space-y-1">
+          <span className="text-xs text-muted-foreground">Std Dev</span>
+          <p className="text-xl font-mono font-bold">{aggregate.std.toFixed(2)}</p>
+        </div>
+        <div className="rounded-md border border-border p-3 space-y-1">
+          <span className="text-xs text-muted-foreground">95% CI</span>
+          <p className="text-sm font-mono font-medium">{aggregate.ci_low.toFixed(1)} - {aggregate.ci_high.toFixed(1)}</p>
+        </div>
+        <div className="rounded-md border border-border p-3 space-y-1">
+          <span className="text-xs text-muted-foreground">Drift Alert</span>
+          <p className="text-sm font-medium">
+            {aggregate.drift_alert ? (
+              <Badge variant="destructive" className="text-[10px]">Drift detected</Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">Stable</Badge>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {/* Dimension scores */}
+      {Object.keys(dims).length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dimension Averages</h4>
+          <div className="space-y-2">
+            {Object.entries(dims).map(([dim, score]) => (
+              <div key={dim} className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground w-32 shrink-0 truncate">{dim}</span>
+                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${Math.min(Number(score) * 10, 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs font-mono w-10 text-right">{Number(score).toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+          {aggregate.weakest_dimension && (
+            <p className="text-xs text-muted-foreground">
+              Weakest: <span className="text-foreground font-medium">{aggregate.weakest_dimension}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Score trend */}
+      {trend.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Score Trend</h4>
+          <div className="rounded-md border border-border p-4 overflow-x-auto">
+            <div className="flex items-end gap-1 h-24 min-w-[200px]">
+              {trend.map((t, i) => {
+                const height = Math.max(t.composite * 10, 2);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${new Date(t.timestamp).toLocaleDateString()}: ${t.composite.toFixed(1)}`}>
+                    <div
+                      className="w-full bg-primary/70 rounded-t transition-all hover:bg-primary"
+                      style={{ height: `${height}%` }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Link to traces */}
+      <div className="rounded-md border border-border p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-muted-foreground" />
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Traces & Spans</h4>
+        </div>
+        <p className="text-xs text-muted-foreground">View detailed trace and span data for this agent in the admin dashboard.</p>
+        <Link href="/traces" className="text-xs text-primary hover:underline inline-flex items-center gap-1">
+          View traces →
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export default function AgentDetailPage({
@@ -84,7 +238,10 @@ export default function AgentDetailPage({
     typeof window !== "undefined" &&
     !!localStorage.getItem("observal_api_key");
 
-  // `a` mirrors `agent` with extended fields; always guarded by `!agent` below
+  const isAdmin =
+    typeof window !== "undefined" &&
+    getUserRole() === "admin";
+
   const a = agent as unknown as AgentDetail | undefined;
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
   const goalTemplate = a?.goal_template;
@@ -103,6 +260,9 @@ export default function AgentDetailPage({
           { label: "Agents", href: "/agents" },
           { label: isLoading ? "..." : agentName },
         ]}
+        actionButtonsRight={
+          !isLoading && a ? <ExportButton agentId={id} /> : undefined
+        }
       />
 
       <div className="p-6 lg:p-8 max-w-[1200px]">
@@ -187,6 +347,7 @@ export default function AgentDetailPage({
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="install">Install</TabsTrigger>
+                  {isAdmin && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6 mt-6">
@@ -248,11 +409,25 @@ export default function AgentDetailPage({
 
                 <TabsContent value="components" className="mt-6">
                   {components.length === 0 ? (
-                    <EmptyState
-                      icon={Puzzle}
-                      title="No components linked"
-                      description="This agent does not have any linked MCP servers or components."
-                    />
+                    a.prompt ? (
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          This agent was registered via scan and uses an inline system prompt instead of linked components.
+                        </p>
+                        <div className="rounded-md border border-border bg-muted/20 p-4">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">System Prompt</h4>
+                          <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words text-foreground/80 leading-relaxed max-h-[400px] overflow-y-auto">
+                            {String(a.prompt)}
+                          </pre>
+                        </div>
+                      </div>
+                    ) : (
+                      <EmptyState
+                        icon={Puzzle}
+                        title="No components linked"
+                        description="This agent does not have any linked MCP servers or components."
+                      />
+                    )
                   ) : (
                     <div className="space-y-2">
                       {components.map((comp: ComponentLink, i: number) => {
@@ -343,7 +518,7 @@ export default function AgentDetailPage({
                                 <Star
                                   key={i}
                                   className={`h-3.5 w-3.5 ${
-                                    i < fb.stars
+                                    i < fb.rating
                                       ? "fill-current text-amber-500"
                                       : "text-muted-foreground/30"
                                   }`}
@@ -391,6 +566,12 @@ export default function AgentDetailPage({
                     <ConfigSnippet agentName={a.name} />
                   </div>
                 </TabsContent>
+
+                {isAdmin && (
+                  <TabsContent value="analytics" className="mt-6">
+                    <AnalyticsTab agentId={id} />
+                  </TabsContent>
+                )}
               </Tabs>
             </div>
 

@@ -33,10 +33,23 @@ from services.clickhouse import init_clickhouse
 from services.redis import close as close_redis
 
 
+async def _ensure_columns(conn):
+    """Add columns that may be missing on existing databases."""
+    from sqlalchemy import text
+
+    try:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)"
+        ))
+    except Exception:
+        pass  # column already exists or DB doesn't support IF NOT EXISTS
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_columns(conn)
     await init_clickhouse()
     yield
     await close_redis()

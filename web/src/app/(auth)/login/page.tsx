@@ -9,23 +9,67 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+type Mode = "login" | "register" | "api-key";
+
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
   const [apiKey, setKey] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-  const [initMode, setInitMode] = useState(false);
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  async function handleLogin() {
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError("");
+  }
+
+  async function handlePasswordLogin() {
     setError("");
     setLoading(true);
     try {
-      setApiKey(apiKey);
-      const user = await auth.login({ api_key: apiKey });
-      setUserRole(user.role);
+      const res = await auth.login({ email, password });
+      setApiKey(res.api_key);
+      setUserRole(res.user.role);
+      toast.success("Signed in successfully");
+      router.push("/");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Login failed";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegister() {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await auth.register({ email, name, password });
+      setApiKey(res.api_key);
+      setUserRole(res.user.role);
+      toast.success("Account created");
+      router.push("/");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Registration failed";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleApiKeyLogin() {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await auth.login({ api_key: apiKey });
+      setApiKey(res.api_key);
+      setUserRole(res.user.role);
       toast.success("Signed in successfully");
       router.push("/");
     } catch (e) {
@@ -37,23 +81,7 @@ export default function LoginPage() {
     }
   }
 
-  async function handleInit() {
-    setError("");
-    setLoading(true);
-    try {
-      const res = await auth.init({ email, name });
-      setApiKey(res.api_key);
-      setUserRole(res.user.role);
-      toast.success("Admin account created");
-      router.push("/");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Initialization failed";
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const onSubmit = mode === "login" ? handlePasswordLogin : mode === "register" ? handleRegister : handleApiKeyLogin;
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-surface-sunken p-6">
@@ -65,90 +93,84 @@ export default function LoginPage() {
               Observal
             </h1>
             <p className="text-sm text-muted-foreground">
-              {initMode
-                ? "Create the first admin account"
-                : "The agent registry for your team"}
+              {mode === "register"
+                ? "Create your account"
+                : mode === "api-key"
+                  ? "Sign in with API key"
+                  : "Sign in to your account"}
             </p>
           </div>
 
           {/* Form */}
           <div className="px-8 py-6">
-            {initMode ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleInit();
-                }}
-                className="space-y-4"
-              >
-                <div className="space-y-2 animate-in">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="admin@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2 animate-in stagger-1">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    placeholder="Admin User"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
-                {error && (
-                  <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2.5 text-sm text-destructive animate-in">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{error}</span>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onSubmit();
+              }}
+              className="space-y-4"
+            >
+              {/* Email + Password mode (login & register) */}
+              {mode !== "api-key" && (
+                <>
+                  <div className="space-y-2 animate-in">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="you@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                    />
                   </div>
-                )}
-                <div className="animate-in stagger-2">
-                  <Button type="submit" disabled={loading} className="w-full">
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        Create Admin Account
-                        <ArrowRight className="ml-1 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="animate-in stagger-3">
-                  <button
-                    type="button"
-                    className="w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    onClick={() => {
-                      setInitMode(false);
-                      setError("");
-                    }}
-                  >
-                    Already have a key? Sign in
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleLogin();
-                }}
-                className="space-y-4"
-              >
+                  {mode === "register" && (
+                    <div className="space-y-2 animate-in stagger-1">
+                      <Label htmlFor="name">Name</Label>
+                      <Input
+                        id="name"
+                        placeholder="Your Name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-2 animate-in stagger-1">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={mode === "register" ? "Create a password" : "Enter password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        className="absolute right-0 top-0 flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* API Key mode */}
+              {mode === "api-key" && (
                 <div className="space-y-2 animate-in">
                   <Label htmlFor="api-key">API Key</Label>
                   <div className="relative">
                     <Input
                       id="api-key"
-                      type={showKey ? "text" : "password"}
-                      placeholder="obs_..."
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Paste your API key"
                       value={apiKey}
                       onChange={(e) => setKey(e.target.value)}
                       required
@@ -159,48 +181,76 @@ export default function LoginPage() {
                       type="button"
                       tabIndex={-1}
                       className="absolute right-0 top-0 flex h-full w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={() => setShowKey(!showKey)}
+                      onClick={() => setShowPassword(!showPassword)}
                     >
-                      {showKey ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
-                {error && (
-                  <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2.5 text-sm text-destructive animate-in">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <div className="animate-in stagger-1">
-                  <Button type="submit" disabled={loading} className="w-full">
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        Sign in
-                        <ArrowRight className="ml-1 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2.5 text-sm text-destructive animate-in">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{error}</span>
                 </div>
-                <div className="animate-in stagger-2">
+              )}
+
+              {/* Submit */}
+              <div className="animate-in stagger-2">
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      {mode === "register" ? "Create Account" : "Sign in"}
+                      <ArrowRight className="ml-1 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Mode switches */}
+              <div className="animate-in stagger-3 space-y-2 text-center">
+                {mode === "login" && (
+                  <>
+                    <button
+                      type="button"
+                      className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      onClick={() => switchMode("register")}
+                    >
+                      Don&apos;t have an account? Register
+                    </button>
+                    <button
+                      type="button"
+                      className="block w-full text-sm text-muted-foreground/60 transition-colors hover:text-foreground"
+                      onClick={() => switchMode("api-key")}
+                    >
+                      Sign in with API key instead
+                    </button>
+                  </>
+                )}
+                {mode === "register" && (
                   <button
                     type="button"
-                    className="w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
-                    onClick={() => {
-                      setInitMode(true);
-                      setError("");
-                    }}
+                    className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => switchMode("login")}
                   >
-                    First time? Create admin account
+                    Already have an account? Sign in
                   </button>
-                </div>
-              </form>
-            )}
+                )}
+                {mode === "api-key" && (
+                  <button
+                    type="button"
+                    className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={() => switchMode("login")}
+                  >
+                    Sign in with email instead
+                  </button>
+                )}
+              </div>
+            </form>
           </div>
         </div>
       </div>

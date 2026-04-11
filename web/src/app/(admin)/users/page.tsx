@@ -1,16 +1,28 @@
 "use client";
 
-import { Users } from "lucide-react";
-import { useAdminUsers } from "@/hooks/use-api";
+import { useState, useCallback } from "react";
+import { Users, Plus, Copy, Check, Loader2, Key } from "lucide-react";
+import { toast } from "sonner";
+import { useAdminUsers, useCreateUser, useUpdateUserRole } from "@/hooks/use-api";
 import type { AdminUser } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+
+const ROLES = ["admin", "developer", "viewer"] as const;
 
 function roleBadge(role: string) {
   switch (role) {
@@ -23,8 +35,71 @@ function roleBadge(role: string) {
   }
 }
 
+function RoleSelect({ userId, currentRole }: { userId: string; currentRole: string }) {
+  const mutation = useUpdateUserRole();
+
+  return (
+    <Select
+      value={currentRole}
+      onValueChange={(value) => mutation.mutate({ id: userId, role: value })}
+      disabled={mutation.isPending}
+    >
+      <SelectTrigger className="h-7 w-[120px] text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {ROLES.map((r) => (
+          <SelectItem key={r} value={r} className="text-xs">
+            {r}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export default function UsersPage() {
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
+  const createUser = useCreateUser();
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<string>("developer");
+  const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCreate = useCallback(async () => {
+    if (!name.trim() || !email.trim()) return;
+    createUser.mutate(
+      { email: email.trim(), name: name.trim(), role },
+      {
+        onSuccess: (data) => {
+          setCreatedApiKey(data.api_key);
+          setName("");
+          setEmail("");
+          setRole("developer");
+        },
+      },
+    );
+  }, [name, email, role, createUser]);
+
+  const handleCopyKey = useCallback(() => {
+    if (!createdApiKey) return;
+    navigator.clipboard.writeText(createdApiKey);
+    setCopied(true);
+    toast.success("API key copied");
+    setTimeout(() => setCopied(false), 2000);
+  }, [createdApiKey]);
+
+  const closeDialog = useCallback(() => {
+    setShowCreate(false);
+    setCreatedApiKey(null);
+    setName("");
+    setEmail("");
+    setRole("developer");
+  }, []);
+
+  const userCount = (users ?? []).length;
 
   return (
     <>
@@ -34,51 +109,146 @@ export default function UsersPage() {
           { label: "Dashboard", href: "/dashboard" },
           { label: "Users" },
         ]}
+        actionButtonsRight={
+          <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add User
+          </Button>
+        }
       />
       <div className="p-6 max-w-6xl mx-auto space-y-4">
         {isLoading ? (
           <TableSkeleton rows={5} cols={4} />
         ) : isError ? (
           <ErrorState message={error?.message} onRetry={() => refetch()} />
-        ) : (users ?? []).length === 0 ? (
+        ) : userCount === 0 ? (
           <EmptyState
             icon={Users}
             title="No users yet"
             description="Users will appear here once they sign up or are added by an admin."
           />
         ) : (
-          <div className="animate-in overflow-x-auto rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-8 text-xs">Name</TableHead>
-                  <TableHead className="h-8 text-xs">Email</TableHead>
-                  <TableHead className="h-8 text-xs">Role</TableHead>
-                  <TableHead className="h-8 text-xs text-right">Joined</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(users ?? []).map((u: AdminUser) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="py-1.5">
-                      <span className="text-sm font-medium">{u.name ?? u.username ?? "-"}</span>
-                    </TableCell>
-                    <TableCell className="py-1.5 text-sm text-muted-foreground">
-                      {u.email ?? "-"}
-                    </TableCell>
-                    <TableCell className="py-1.5">
-                      {roleBadge(u.role)}
-                    </TableCell>
-                    <TableCell className="py-1.5 text-xs text-muted-foreground text-right tabular-nums">
-                      {u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}
-                    </TableCell>
+          <div className="animate-in space-y-3">
+            <p className="text-xs text-muted-foreground">{userCount} user{userCount !== 1 ? "s" : ""}</p>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-8 text-xs">Name</TableHead>
+                    <TableHead className="h-8 text-xs">Email</TableHead>
+                    <TableHead className="h-8 text-xs">Role</TableHead>
+                    <TableHead className="h-8 text-xs text-right">Joined</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {(users ?? []).map((u: AdminUser) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="py-1.5">
+                        <span className="text-sm font-medium">{u.name ?? u.username ?? "-"}</span>
+                      </TableCell>
+                      <TableCell className="py-1.5 text-sm text-muted-foreground font-[family-name:var(--font-mono)]">
+                        {u.email ?? "-"}
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <RoleSelect userId={u.id} currentRole={u.role} />
+                      </TableCell>
+                      <TableCell className="py-1.5 text-xs text-muted-foreground text-right tabular-nums">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Create User Dialog */}
+      <Dialog open={showCreate} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{createdApiKey ? "User Created" : "Add User"}</DialogTitle>
+            <DialogDescription>
+              {createdApiKey
+                ? "Save this API key — it will not be shown again."
+                : "Create a new user account. They will receive an API key for authentication."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdApiKey ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Key className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">API Key</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-[family-name:var(--font-mono)] text-foreground break-all flex-1 select-all">
+                    {createdApiKey}
+                  </code>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={handleCopyKey}>
+                    {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button size="sm" onClick={closeDialog}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Name</label>
+                <Input
+                  placeholder="Jane Smith"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-8 text-sm"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Email</label>
+                <Input
+                  type="email"
+                  placeholder="jane@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-8 text-sm"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Role</label>
+                <Select value={role} onValueChange={setRole}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" size="sm" onClick={closeDialog}>Cancel</Button>
+                <Button
+                  size="sm"
+                  onClick={handleCreate}
+                  disabled={createUser.isPending || !name.trim() || !email.trim()}
+                >
+                  {createUser.isPending ? (
+                    <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Creating...</>
+                  ) : (
+                    "Create User"
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

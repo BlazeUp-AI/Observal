@@ -158,7 +158,7 @@ export interface FeedbackItem {
   listing_id?: string;
   listing_name?: string;
   listing_type?: string;
-  stars: number;
+  rating: number;
   comment?: string;
   user?: string;
   username?: string;

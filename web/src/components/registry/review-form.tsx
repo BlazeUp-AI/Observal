@@ -31,7 +31,7 @@ export function ReviewForm({
       {
         listing_type: listingType,
         listing_id: listingId,
-        stars: rating,
+        rating: rating,
         comment: comment.trim() || undefined,
       },
       {

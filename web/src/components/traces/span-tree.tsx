@@ -21,7 +21,6 @@ export interface Span {
   metadata?: Record<string, unknown>;
   token_input?: number;
   token_output?: number;
-  cost?: number;
   tool_schema_valid?: boolean;
 }
 

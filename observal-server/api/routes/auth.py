@@ -18,10 +18,17 @@ from schemas.auth import (
     InviteRedeemRequest,
     InviteResponse,
     LoginRequest,
+    RegisterRequest,
     UserResponse,
 )
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+
+def _generate_api_key() -> tuple[str, str]:
+    """Return (raw_key, sha256_hash)."""
+    raw = secrets.token_hex(settings.API_KEY_LENGTH)
+    return raw, hashlib.sha256(raw.encode()).hexdigest()
 
 
 @router.post("/init", response_model=InitResponse)
@@ -30,8 +37,7 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
     if count and count > 0:
         raise HTTPException(status_code=400, detail="System already initialized")
 
-    api_key = secrets.token_hex(settings.API_KEY_LENGTH)
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    api_key, key_hash = _generate_api_key()
 
     user = User(
         email=req.email,
@@ -39,6 +45,8 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
         role=UserRole.admin,
         api_key_hash=key_hash,
     )
+    if req.password:
+        user.set_password(req.password)
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -53,8 +61,7 @@ async def bootstrap(db: AsyncSession = Depends(get_db)):
     if count and count > 0:
         raise HTTPException(status_code=400, detail="System already initialized")
 
-    api_key = secrets.token_hex(settings.API_KEY_LENGTH)
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    api_key, key_hash = _generate_api_key()
 
     user = User(
         email="admin@localhost",
@@ -69,14 +76,53 @@ async def bootstrap(db: AsyncSession = Depends(get_db)):
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/register", response_model=InitResponse)
+async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Create a new account with email + password."""
+    existing = await db.execute(select(User).where(User.email == req.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    api_key, key_hash = _generate_api_key()
+
+    user = User(
+        email=req.email,
+        name=req.name,
+        role=UserRole.user,
+        api_key_hash=key_hash,
+    )
+    user.set_password(req.password)
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
+
+
+@router.post("/login", response_model=InitResponse)
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    key_hash = hashlib.sha256(req.api_key.encode()).hexdigest()
-    result = await db.execute(select(User).where(User.api_key_hash == key_hash))
+    """Login with API key or email+password. Returns user info and API key."""
+    if req.api_key:
+        key_hash = hashlib.sha256(req.api_key.encode()).hexdigest()
+        result = await db.execute(select(User).where(User.api_key_hash == key_hash))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        return InitResponse(user=UserResponse.model_validate(user), api_key=req.api_key)
+
+    # Email + password login
+    result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return UserResponse.model_validate(user)
+    if not user or not user.verify_password(req.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Return the user's current API key (regenerate so they always have a fresh one)
+    api_key, key_hash = _generate_api_key()
+    user.api_key_hash = key_hash
+    await db.commit()
+    await db.refresh(user)
+
+    return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
 
 
 @router.get("/whoami", response_model=UserResponse)
@@ -127,8 +173,7 @@ async def redeem_invite(req: InviteRedeemRequest, db: AsyncSession = Depends(get
         raise HTTPException(status_code=400, detail="Invite code expired")
 
     # Generate user credentials
-    api_key = secrets.token_hex(settings.API_KEY_LENGTH)
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    api_key, key_hash = _generate_api_key()
 
     name = req.name or f"user-{code[-4:]}"
     email = req.email or f"{name.lower().replace(' ', '-')}@localhost"

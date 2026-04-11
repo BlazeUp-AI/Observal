@@ -207,6 +207,35 @@ export function useAdminUsers() {
   return useQuery({ queryKey: ["admin", "users"], queryFn: admin.users });
 }
 
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: admin.createUser,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success("User created");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to create user");
+    },
+  });
+}
+
+export function useUpdateUserRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; role: string }) =>
+      admin.updateRole(vars.id, { role: vars.role }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success("Role updated");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update role");
+    },
+  });
+}
+
 export function useAdminSettings() {
   return useQuery({ queryKey: ["admin", "settings"], queryFn: admin.settings });
 }

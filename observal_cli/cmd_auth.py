@@ -31,14 +31,17 @@ config_app = typer.Typer(help="CLI configuration")
 def login(
     server: str = typer.Option(None, "--server", "-s", help="Server URL"),
     key: str = typer.Option(None, "--key", "-k", help="API key (skip prompt)"),
+    email: str = typer.Option(None, "--email", "-e", help="Email (for password login)"),
+    password: str = typer.Option(None, "--password", "-p", help="Password (for password login)"),
     code: str = typer.Option(None, "--code", "-c", help="Invite code (e.g. OBS-A7X9B2)"),
-    name: str = typer.Option(None, "--name", "-n", help="Your name (used with invite code)"),
+    name: str = typer.Option(None, "--name", "-n", help="Your name (used with invite/register)"),
 ):
     """Connect to Observal.
 
     On a fresh server: auto-creates admin, no prompts needed.
+    With email+password: logs in with credentials.
     With an invite code: redeems it and creates your account.
-    On an existing server: logs in with an API key.
+    With --key: logs in with an API key.
     """
     server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
     server_url = server_url.rstrip("/")
@@ -90,22 +93,79 @@ def login(
 
     rprint("[green]Connected.[/green]\n")
 
-    # 3. Invite code → redeem
+    # 3. Email+password provided via flags → password login
+    if email and password:
+        _do_password_login(server_url, email, password)
+        return
+
+    # 4. API key provided via flag → key login
+    if key:
+        _do_key_login(server_url, key)
+        return
+
+    # 5. Invite code → redeem
     if code:
         _do_invite_login(server_url, code, name)
         return
 
-    # 4. No code provided → check if user wants to use one
-    if not key:
-        choice = typer.prompt("Login with [K]ey or [I]nvite code?", default="K")
-        if choice.strip().upper().startswith("I"):
-            invite_code = typer.prompt("Invite code")
-            invite_name = typer.prompt("Your name", default="")
-            _do_invite_login(server_url, invite_code, invite_name or None)
-            return
+    # 6. Interactive: choose method
+    choice = typer.prompt("Login with [E]mail, [K]ey, or [I]nvite code?", default="E")
+    ch = choice.strip().upper()
+    if ch.startswith("I"):
+        invite_code = typer.prompt("Invite code")
+        invite_name = typer.prompt("Your name", default="")
+        _do_invite_login(server_url, invite_code, invite_name or None)
+    elif ch.startswith("K"):
+        _do_key_login(server_url, None)
+    else:
+        login_email = email or typer.prompt("Email")
+        login_password = password or typer.prompt("Password", hide_input=True)
+        _do_password_login(server_url, login_email, login_password)
 
-    # 5. API key login
-    _do_key_login(server_url, key)
+
+@auth_app.command()
+def register(
+    server: str = typer.Option(None, "--server", "-s", help="Server URL"),
+    email: str = typer.Option(None, "--email", "-e", help="Email"),
+    password: str = typer.Option(None, "--password", "-p", help="Password"),
+    name: str = typer.Option(None, "--name", "-n", help="Your name"),
+):
+    """Create a new account with email + password."""
+    server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
+    server_url = server_url.rstrip("/")
+    reg_email = email or typer.prompt("Email")
+    reg_name = name or typer.prompt("Name")
+    reg_password = password or typer.prompt("Password", hide_input=True)
+
+    try:
+        with spinner("Creating account..."):
+            r = httpx.post(
+                f"{server_url}/api/v1/auth/register",
+                json={"email": reg_email, "name": reg_name, "password": reg_password},
+                timeout=30,
+            )
+            r.raise_for_status()
+            data = r.json()
+
+        api_key = data["api_key"]
+        user = data["user"]
+        config.save({"server_url": server_url, "api_key": api_key})
+        rprint(f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
+        rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
+
+        _configure_claude_code(server_url, api_key)
+
+    except httpx.HTTPStatusError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", e.response.text)
+        except Exception:
+            detail = e.response.text
+        rprint(f"[red]Registration failed:[/red] {detail}")
+        raise typer.Exit(1)
+    except httpx.ConnectError:
+        rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
+        raise typer.Exit(1)
 
 
 @auth_app.command()
@@ -113,7 +173,7 @@ def init(
     server: str = typer.Option(None, "--server", "-s", help="Server URL"),
 ):
     """First-run setup (alias for login)."""
-    login(server=server, key=None, code=None, name=None)
+    login(server=server, key=None, email=None, password=None, code=None, name=None)
 
 
 @auth_app.command()
@@ -201,7 +261,7 @@ def register_deprecated_auth(app: typer.Typer):
     def deprecated_init(server: str = typer.Option(None, "--server", "-s", help="Server URL")):
         """[Deprecated] Use 'observal auth login' instead."""
         _deprecation_notice("login")
-        login(server=server, key=None, code=None, name=None)
+        login(server=server, key=None, email=None, password=None, code=None, name=None)
 
     @app.command(name="login", hidden=True)
     def deprecated_login(
@@ -211,7 +271,7 @@ def register_deprecated_auth(app: typer.Typer):
     ):
         """[Deprecated] Use 'observal auth login' instead."""
         _deprecation_notice("login")
-        login(server=server, key=key, code=code, name=None)
+        login(server=server, key=key, email=None, password=None, code=code, name=None)
 
     @app.command(name="logout", hidden=True)
     def deprecated_logout():
@@ -248,20 +308,55 @@ def _do_key_login(server_url: str, api_key: str | None = None):
     api_key = api_key or typer.prompt("API Key", hide_input=True)
     try:
         with spinner("Authenticating..."):
-            r = httpx.get(
-                f"{server_url}/api/v1/auth/whoami",
-                headers={"X-API-Key": api_key},
+            r = httpx.post(
+                f"{server_url}/api/v1/auth/login",
+                json={"api_key": api_key},
                 timeout=30,
             )
             r.raise_for_status()
-            user = r.json()
-        config.save({"server_url": server_url, "api_key": api_key})
+            data = r.json()
+        # Use the key returned by server (same key echoed back)
+        config.save({"server_url": server_url, "api_key": data.get("api_key", api_key)})
+        user = data.get("user", data)
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
     except httpx.ConnectError:
         rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
         raise typer.Exit(1)
     except httpx.HTTPStatusError:
         rprint("[red]Invalid API key.[/red]")
+        raise typer.Exit(1)
+
+
+def _do_password_login(server_url: str, email: str, password: str):
+    """Authenticate with email + password."""
+    try:
+        with spinner("Authenticating..."):
+            r = httpx.post(
+                f"{server_url}/api/v1/auth/login",
+                json={"email": email, "password": password},
+                timeout=30,
+            )
+            r.raise_for_status()
+            data = r.json()
+
+        api_key = data["api_key"]
+        user = data["user"]
+        config.save({"server_url": server_url, "api_key": api_key})
+        rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
+        rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
+
+        _configure_claude_code(server_url, api_key)
+
+    except httpx.ConnectError:
+        rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
+        raise typer.Exit(1)
+    except httpx.HTTPStatusError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", e.response.text)
+        except Exception:
+            detail = e.response.text
+        rprint(f"[red]Login failed:[/red] {detail}")
         raise typer.Exit(1)
 
 

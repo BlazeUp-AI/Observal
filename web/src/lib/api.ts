@@ -106,11 +106,15 @@ export async function graphql<T = unknown>(
 }
 
 // ── Auth ────────────────────────────────────────────────────────────
+type AuthResponse = { user: { id: string; email: string; name: string; role: string; created_at: string }; api_key: string };
+
 export const auth = {
-  init: (body: { email: string; name: string }) =>
-    post<{ user: { id: string; email: string; name: string; role: string; created_at: string }; api_key: string }>("/auth/init", body),
-  login: (body: { api_key: string }) =>
-    post<{ id: string; email: string; name: string; role: string; created_at: string }>("/auth/login", body),
+  init: (body: { email: string; name: string; password?: string }) =>
+    post<AuthResponse>("/auth/init", body),
+  register: (body: { email: string; name: string; password: string }) =>
+    post<AuthResponse>("/auth/register", body),
+  login: (body: { api_key?: string; email?: string; password?: string }) =>
+    post<AuthResponse>("/auth/login", body),
   whoami: () => get<{ id: string; email: string; name: string; role: string }>("/auth/whoami"),
 };
 
@@ -136,6 +140,7 @@ export const registry = {
   metrics: (type: RegistryType, id: string) =>
     get<unknown>(`/${type}/${id}/metrics`),
   resolve: (id: string) => get<unknown>(`/agents/${id}/resolve`),
+  manifest: (id: string) => get<Record<string, unknown>>(`/agents/${id}/manifest`),
   downloads: (id: string) =>
     get<{ total: number; unique_users: number; recent_7d: number }>(`/agents/${id}/downloads`),
   validate: (body: { components: { component_type: string; component_id: string }[] }) =>
@@ -190,7 +195,7 @@ export const feedback = {
   submit: (body: {
     listing_type: string;
     listing_id: string;
-    stars: number;
+    rating: number;
     comment?: string;
   }) => post<FeedbackItem>("/feedback", body),
   get: (type: string, id: string) => get<FeedbackItem[]>(`/feedback/${type}/${id}`),
@@ -224,10 +229,12 @@ export const admin = {
   settings: () => get<AdminSetting[] | Record<string, string>>("/admin/settings"),
   updateSetting: (key: string, body: unknown) =>
     put<unknown>(`/admin/settings/${key}`, body),
+  deleteSetting: (key: string) => del(`/admin/settings/${key}`),
   users: () => get<AdminUser[]>("/admin/users"),
-  createUser: (body: unknown) => post<unknown>("/admin/users", body),
+  createUser: (body: { email: string; name: string; role?: string }) =>
+    post<{ id: string; email: string; name: string; role: string; api_key: string }>("/admin/users", body),
   updateRole: (id: string, body: { role: string }) =>
-    put<unknown>(`/admin/users/${id}/role`, body),
+    put<AdminUser>(`/admin/users/${id}/role`, body),
 };
 
 // ── Health ──────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -18,6 +19,7 @@ class UserAdminResponse(BaseModel):
     email: str
     name: str
     role: str
+    created_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
