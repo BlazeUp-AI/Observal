@@ -11,7 +11,6 @@
   <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status">
   <a href="https://github.com/BlazeUp-AI/Observal/stargazers"><img src="https://img.shields.io/github/stars/BlazeUp-AI/Observal?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/BlazeUp-AI/Observal/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BlazeUp-AI/Observal/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
 </p>
 
 > If you find Observal useful, please consider giving it a star. It helps others discover the project and keeps development going.
