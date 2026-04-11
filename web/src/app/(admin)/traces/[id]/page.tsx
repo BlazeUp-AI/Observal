@@ -175,30 +175,70 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
   const hasHooks = events.some((e) => isHookEvent(getEventName(e)));
   if (!hasHooks) return events;
 
-  // Build a set of tool_use_ids covered by hooks
-  const hookToolUseIds = new Set<string>();
+  // OTEL tool_result events have rich metadata (duration_ms, success,
+  // tool_result_size_bytes) but NO tool_use_id. Hook PostToolUse events have
+  // rich content (tool_input, tool_response) and a tool_use_id.
+  // Merge strategy: match by tool_name + timestamp proximity (within 50ms).
+
+  // Index OTEL tool_result events by tool_name for proximity matching
+  const otelToolResults: { ts: number; attrs: Record<string, string>; matched: boolean }[] = [];
   for (const evt of events) {
     const eName = getEventName(evt);
-    const tuid = evt.attributes?.tool_use_id;
-    if (tuid && isHookEvent(eName)) hookToolUseIds.add(tuid);
+    if (eName === "tool_result") {
+      otelToolResults.push({
+        ts: new Date(evt.timestamp).getTime(),
+        attrs: evt.attributes ?? {},
+        matched: false,
+      });
+    }
   }
 
-  return events.filter((evt) => {
+  const result: RawOtelEvent[] = [];
+  for (const evt of events) {
     const eName = getEventName(evt);
 
-    // Remove OTEL user_prompt when we have hook_userpromptsubmit (hooks have full text)
-    if (eName === "user_prompt" && hasHooks) return false;
+    // Drop OTEL user_prompt when hooks have the richer version
+    if (eName === "user_prompt" && hasHooks) continue;
 
-    // Remove OTEL tool_decision/tool_result when hooks cover the same tool call
-    if (eName === "tool_decision" || eName === "tool_result") {
-      const tuid = evt.attributes?.tool_use_id;
-      if (tuid && hookToolUseIds.has(tuid)) return false;
-      // Even without matching tool_use_id, if hooks exist, they're richer
-      if (hasHooks) return false;
+    // Drop OTEL tool_decision / tool_result — their metadata gets merged into hooks below
+    if ((eName === "tool_decision" || eName === "tool_result") && hasHooks) continue;
+
+    // For hook PostToolUse, find the closest OTEL tool_result with same tool_name
+    // and merge its metadata (duration_ms, success, tool_result_size_bytes)
+    if (eName === "hook_posttooluse") {
+      const hookTs = new Date(evt.timestamp).getTime();
+      const hookTool = evt.attributes?.tool_name ?? "";
+
+      let bestIdx = -1;
+      let bestDiff = Infinity;
+      for (let i = 0; i < otelToolResults.length; i++) {
+        const o = otelToolResults[i];
+        if (o.matched) continue;
+        if (o.attrs.tool_name !== hookTool) continue;
+        const diff = Math.abs(o.ts - hookTs);
+        if (diff < bestDiff && diff <= 50) {
+          bestDiff = diff;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx >= 0) {
+        otelToolResults[bestIdx].matched = true;
+        const otelAttrs = otelToolResults[bestIdx].attrs;
+        // Merge OTEL fields the hook doesn't have (don't overwrite hook's richer content)
+        const merged = { ...evt.attributes };
+        for (const [k, v] of Object.entries(otelAttrs)) {
+          if (!merged[k] || merged[k] === "") merged[k] = v;
+        }
+        result.push({ ...evt, attributes: merged });
+        continue;
+      }
     }
 
-    return true;
-  });
+    result.push(evt);
+  }
+
+  return result;
 }
 
 function buildEventTree(events: RawOtelEvent[]): { turns: Turn[]; preSessionEvents: RawOtelEvent[] } {
@@ -378,9 +418,13 @@ function EventSummary({ event }: { event: RawOtelEvent }) {
   }
 
   if (eName === "hook_posttooluse" || eName === "hook_pretooluse") {
+    const success = attrs.success !== undefined ? attrs.success === "true" : undefined;
     return (
       <div className="flex items-center gap-3 flex-wrap">
-        <Badge variant={eName === "hook_posttooluse" ? "success" : "muted"}>{attrs.tool_name || "?"}</Badge>
+        <Badge variant={success === false ? "warning" : eName === "hook_posttooluse" ? "success" : "muted"}>{attrs.tool_name || "?"}</Badge>
+        {attrs.duration_ms && <Stat label="" value={formatDuration(attrs.duration_ms)} icon={Clock} />}
+        {attrs.tool_result_size_bytes && <Stat label="size" value={`${formatTokens(attrs.tool_result_size_bytes)}B`} />}
+        {success === false && <Badge variant="warning">failed</Badge>}
       </div>
     );
   }
