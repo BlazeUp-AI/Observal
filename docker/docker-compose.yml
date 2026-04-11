@@ -16,7 +16,7 @@ services:
       observal-db:
         condition: service_healthy
       observal-clickhouse:
-        condition: service_started
+        condition: service_healthy
       observal-redis:
         condition: service_healthy
     networks:
@@ -50,6 +50,11 @@ services:
       CLICKHOUSE_DB: observal
     volumes:
       - chdata:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - observal-net
 
@@ -105,13 +110,15 @@ services:
   observal-otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     command: ["--config", "/etc/otelcol/config.yaml"]
+    restart: on-failure
     ports:
       - "4317:4317"
       - "4318:4318"
     volumes:
       - ../otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
     depends_on:
-      - observal-clickhouse
+      observal-clickhouse:
+        condition: service_healthy
     networks:
       - observal-net
 
