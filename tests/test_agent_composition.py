@@ -8,6 +8,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 # ── Schema Tests ────────────────────────────────────────────────────
 
@@ -985,7 +986,7 @@ class TestPydanticValidation:
             version="1.0",
             git_url="url",
         )
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
             comp.name = "changed"
 
     def test_resolution_error_is_frozen(self):
@@ -996,7 +997,7 @@ class TestPydanticValidation:
             component_id=uuid.uuid4(),
             reason="test",
         )
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValidationError)):
             err.reason = "changed"
 
     def test_resolved_agent_serializes_to_dict(self):
