@@ -22,10 +22,8 @@ import {
   useFeedback,
   useFeedbackSummary,
   useEvalAggregate,
-  useWhoami,
 } from "@/hooks/use-api";
-import { registry } from "@/lib/api";
-import { getUserRole } from "@/lib/api";
+import { registry, getUserRole } from "@/lib/api";
 import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
 import { StatusBadge } from "@/components/registry/status-badge";

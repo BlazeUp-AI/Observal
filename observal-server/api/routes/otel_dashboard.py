@@ -269,19 +269,16 @@ async def ingest_hook(request: Request):
         attrs["tool_name"] = "user_prompt"
 
     # SubagentStart — capture agent spawn
-    if hook_event == "SubagentStart":
-        if body.get("last_assistant_message"):
-            attrs["tool_input"] = _truncate(body["last_assistant_message"])
+    if hook_event == "SubagentStart" and body.get("last_assistant_message"):
+        attrs["tool_input"] = _truncate(body["last_assistant_message"])
 
     # SubagentStop — capture agent final output
-    if hook_event == "SubagentStop":
-        if body.get("last_assistant_message"):
-            attrs["tool_response"] = _truncate(body["last_assistant_message"])
+    if hook_event == "SubagentStop" and body.get("last_assistant_message"):
+        attrs["tool_response"] = _truncate(body["last_assistant_message"])
 
     # PostToolUseFailure — tool failure (critical for debugging)
-    if hook_event == "PostToolUseFailure":
-        if body.get("error"):
-            attrs["error"] = _truncate(str(body["error"]))
+    if hook_event == "PostToolUseFailure" and body.get("error"):
+        attrs["error"] = _truncate(str(body["error"]))
 
     # Stop — session/turn end (command hook sends assistant response text)
     if hook_event == "Stop":
@@ -304,9 +301,8 @@ async def ingest_hook(request: Request):
             attrs["stop_reason"] = body["stop_reason"]
 
     # SessionStart — session lifecycle
-    if hook_event == "SessionStart":
-        if body.get("resume"):
-            attrs["session_resumed"] = str(body["resume"])
+    if hook_event == "SessionStart" and body.get("resume"):
+        attrs["session_resumed"] = str(body["resume"])
 
     # Notification
     if hook_event == "Notification":
@@ -322,9 +318,8 @@ async def ingest_hook(request: Request):
                 attrs[field] = str(body[field])
 
     # PreCompact / PostCompact — context compaction
-    if hook_event in ("PreCompact", "PostCompact"):
-        if body.get("summary"):
-            attrs["tool_response"] = _truncate(str(body["summary"]))
+    if hook_event in ("PreCompact", "PostCompact") and body.get("summary"):
+        attrs["tool_response"] = _truncate(str(body["summary"]))
 
     # WorktreeCreate / WorktreeRemove
     if hook_event in ("WorktreeCreate", "WorktreeRemove"):

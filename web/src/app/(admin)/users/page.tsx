@@ -5,7 +5,6 @@ import { Users, Plus, Copy, Check, Loader2, Key } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminUsers, useCreateUser, useUpdateUserRole } from "@/hooks/use-api";
 import type { AdminUser } from "@/lib/types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,17 +22,6 @@ import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 
 const ROLES = ["admin", "developer", "viewer"] as const;
-
-function roleBadge(role: string) {
-  switch (role) {
-    case "admin":
-      return <Badge variant="default" className="text-[10px] px-1.5 py-0">{role}</Badge>;
-    case "developer":
-      return <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{role}</Badge>;
-    default:
-      return <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">{role}</Badge>;
-  }
-}
 
 function RoleSelect({ userId, currentRole }: { userId: string; currentRole: string }) {
   const mutation = useUpdateUserRole();

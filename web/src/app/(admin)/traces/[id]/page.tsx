@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useCallback, useMemo } from "react";
+import { use, useState, useCallback, useMemo, createElement } from "react";
 import { useOtelSession } from "@/hooks/use-api";
 import type { OtelSessionData, RawOtelEvent } from "@/lib/types";
 import {
@@ -663,20 +663,22 @@ function EventDetail({ event }: { event: RawOtelEvent }) {
   if (isHookEvent(eName) && (attrs.tool_input || attrs.tool_response)) {
     // Try to render a diff view for Edit tool events
     const toolName = attrs.tool_name ?? "";
-    let diffView: React.ReactNode = null;
+    let diffView: { filePath: string; oldStr: string; newStr: string } | null = null;
 
     if (toolName === "Edit" && attrs.tool_input) {
       try {
         const parsed = JSON.parse(attrs.tool_input);
         if (parsed.old_string && parsed.new_string) {
-          diffView = <DiffBlock filePath={parsed.file_path || "unknown"} oldStr={parsed.old_string} newStr={parsed.new_string} />;
+          diffView = { filePath: parsed.file_path || "unknown", oldStr: parsed.old_string, newStr: parsed.new_string };
         }
       } catch { /* not valid JSON, fall through */ }
     }
 
     return (
       <div className="ml-6 mr-3 mb-2 mt-1 space-y-3">
-        {diffView || (
+        {diffView ? (
+          <DiffBlock filePath={diffView.filePath} oldStr={diffView.oldStr} newStr={diffView.newStr} />
+        ) : (
           <>
             {attrs.tool_input && <ContentBlock label="Input" content={attrs.tool_input} />}
             {attrs.tool_response && <ContentBlock label="Response" content={attrs.tool_response} />}
@@ -794,7 +796,7 @@ function LeafEvent({ event, isExpanded, onToggle, depth = 0 }: {
 }) {
   const eName = getEventName(event);
   const attrs = event.attributes ?? {};
-  const Icon = eventIcon(eName);
+  const icon = eventIcon(eName);
   const color = eventColor(eName);
 
   return (
@@ -808,7 +810,7 @@ function LeafEvent({ event, isExpanded, onToggle, depth = 0 }: {
         {isExpanded
           ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
           : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${color}`} />
+        {createElement(icon, { className: `h-3.5 w-3.5 shrink-0 ${color}` })}
         <span className="text-xs font-medium w-24 shrink-0 truncate">{eventLabel(event)}</span>
         {attrs.agent_id && (
           <span className="text-[10px] px-1 py-0.5 rounded bg-indigo-500/10 text-indigo-500 font-medium shrink-0">
@@ -935,10 +937,6 @@ function TurnNode({ turn, index, expandedSet, onToggleEvent, activeFilters, sear
   const promptPreview = fullPrompt.slice(0, 80);
 
   const filteredTop = filterTurnEvents(turn.topLevelEvents, activeFilters, searchQuery);
-  const hasMatchingAgents = turn.agents.some((a) => {
-    const agentFiltered = filterTurnEvents(a.events, activeFilters, searchQuery);
-    return agentFiltered.length > 0 || activeFilters.size === 0;
-  });
 
   // Count totals for the turn
   const toolCount = turn.allEvents.filter((e) => {
