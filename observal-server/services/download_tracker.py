@@ -39,15 +39,18 @@ async def record_agent_download(
         source=source,
         ide=ide,
     )
+    # Use a savepoint so that IntegrityError rollback doesn't expire
+    # all objects in the outer session (which causes MissingGreenlet
+    # when the caller later accesses ORM attributes in sync context).
     try:
-        db.add(record)
-        await db.flush()
-        # Update aggregate counts
+        async with db.begin_nested():
+            db.add(record)
+            await db.flush()
+        # Update aggregate counts (outside savepoint, still in main txn)
         await _update_agent_counts(agent_id, db)
         return True
     except IntegrityError:
         logger.debug("Duplicate download for agent %s (user=%s), skipping", agent_id, user_id)
-        await db.rollback()
         return False
 
 

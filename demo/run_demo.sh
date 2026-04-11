@@ -236,18 +236,19 @@ for plugin in $MCP_PLUGINS; do
 
     info "Registering MCP: $plugin (category: $CATEGORY)"
 
-    PAYLOAD=$(python3 -c "
-import json
+    PAYLOAD=$(DESC="$DESC" GIT_URL="$GIT_URL" CATEGORY="$CATEGORY" PLUGIN="$plugin" python3 -c "
+import json, os
 print(json.dumps({
-    'name': '$plugin',
-    'description': $(python3 -c "import json; print(json.dumps('$DESC'))" 2>/dev/null),
-    'git_url': '$GIT_URL',
-    'category': '$CATEGORY',
-    'transport': 'stdio'
+    'name': os.environ['PLUGIN'],
+    'description': os.environ['DESC'],
+    'git_url': os.environ['GIT_URL'],
+    'category': os.environ['CATEGORY'],
+    'version': '1.0.0',
+    'owner': 'e2e-demo'
 }))
 " 2>/dev/null)
 
-    RESP=$(api_post "${OBSERVAL_SERVER}/api/v1/mcps" "$PAYLOAD" || echo "")
+    RESP=$(api_post "${OBSERVAL_SERVER}/api/v1/mcps/submit" "$PAYLOAD" || echo "")
     if [ -n "$RESP" ]; then
         MCP_ID=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
         if [ -n "$MCP_ID" ]; then
@@ -288,17 +289,20 @@ for plugin in $SKILL_PLUGINS; do
 
     info "Registering skill: $plugin"
 
-    PAYLOAD=$(python3 -c "
-import json
+    PAYLOAD=$(DESC="$DESC" PLUGIN="$plugin" python3 -c "
+import json, os
 print(json.dumps({
-    'name': '$plugin',
-    'description': $(python3 -c "import json; print(json.dumps('$DESC'))" 2>/dev/null),
-    'content': 'Skill plugin from claude-plugins-official',
-    'category': 'general'
+    'name': os.environ['PLUGIN'],
+    'description': os.environ['DESC'],
+    'version': '1.0.0',
+    'owner': 'e2e-demo',
+    'git_url': 'https://github.com/anthropics/claude-code-plugins',
+    'task_type': 'coding',
+    'supported_ides': ['claude-code']
 }))
 " 2>/dev/null)
 
-    RESP=$(api_post "${OBSERVAL_SERVER}/api/v1/skills" "$PAYLOAD" || echo "")
+    RESP=$(api_post "${OBSERVAL_SERVER}/api/v1/skills/submit" "$PAYLOAD" || echo "")
     if [ -n "$RESP" ]; then
         SKILL_ID=$(echo "$RESP" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
         if [ -n "$SKILL_ID" ]; then
@@ -361,8 +365,7 @@ info "Skills in registry: $SKILL_COUNT"
 
 header "Phase 5: Compose Agent from Real Components"
 
-# Build component_links from registered IDs
-COMPONENTS="[]"
+# Build components array from registered IDs
 COMP_ARRAY="["
 FIRST=true
 
@@ -370,14 +373,14 @@ for plugin in "${!MCP_IDS[@]}"; do
     id="${MCP_IDS[$plugin]}"
     [ -z "$id" ] && continue
     if [ "$FIRST" = true ]; then FIRST=false; else COMP_ARRAY="$COMP_ARRAY,"; fi
-    COMP_ARRAY="$COMP_ARRAY{\"type\":\"mcp\",\"id\":\"$id\"}"
+    COMP_ARRAY="$COMP_ARRAY{\"component_type\":\"mcp\",\"component_id\":\"$id\"}"
 done
 
 for plugin in "${!SKILL_IDS[@]}"; do
     id="${SKILL_IDS[$plugin]}"
     [ -z "$id" ] && continue
     if [ "$FIRST" = true ]; then FIRST=false; else COMP_ARRAY="$COMP_ARRAY,"; fi
-    COMP_ARRAY="$COMP_ARRAY{\"type\":\"skill\",\"id\":\"$id\"}"
+    COMP_ARRAY="$COMP_ARRAY{\"component_type\":\"skill\",\"component_id\":\"$id\"}"
 done
 
 COMP_ARRAY="$COMP_ARRAY]"
@@ -390,8 +393,13 @@ print(json.dumps({
     'name': 'e2e-test-agent',
     'description': 'End-to-end test agent built from real local Claude Code setup',
     'version': '1.0.0',
-    'model': 'claude-sonnet-4-6',
-    'component_links': json.loads('$COMP_ARRAY')
+    'owner': 'e2e-demo',
+    'model_name': 'claude-sonnet-4-6',
+    'components': json.loads('$COMP_ARRAY'),
+    'goal_template': {
+        'description': 'E2E test agent with local components',
+        'sections': [{'name': 'default', 'description': 'Default goal section'}]
+    }
 }))
 " 2>/dev/null)
 
@@ -491,7 +499,7 @@ fi
 header "Phase 7: Feedback & Rating"
 
 if [ -n "$AGENT_ID" ]; then
-    RATE_RESP=$(api_post "${OBSERVAL_SERVER}/api/v1/feedback" "{\"target_id\":\"$AGENT_ID\",\"target_type\":\"agent\",\"stars\":5,\"comment\":\"E2E test — works great\"}" || echo "")
+    RATE_RESP=$(api_post "${OBSERVAL_SERVER}/api/v1/feedback" "{\"listing_id\":\"$AGENT_ID\",\"listing_type\":\"agent\",\"rating\":5,\"comment\":\"E2E test — works great\"}" || echo "")
     if [ -n "$RATE_RESP" ]; then
         ok "Rating submitted (5 stars)"
         PASS=$((PASS + 1))

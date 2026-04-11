@@ -17,7 +17,7 @@ class PromptListing(Base):
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
-    git_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    git_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     git_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     template: Mapped[str] = mapped_column(Text, nullable=False)

@@ -398,10 +398,15 @@ async def install_agent(
         mcp_listings_map = {row.id: row for row in mcp_rows}
 
     snippet = generate_agent_config(agent, req.ide, mcp_listings=mcp_listings_map)
+
+    # Capture agent.id before any DB operations that might expire the ORM
+    # instance (e.g. savepoint rollback on duplicate download).
+    resolved_agent_id = agent.id
+
     from services.download_tracker import record_agent_download
 
     await record_agent_download(
-        agent_id=agent.id,
+        agent_id=resolved_agent_id,
         user_id=current_user.id,
         source="api",
         ide=req.ide,
@@ -410,7 +415,7 @@ async def install_agent(
     )
     await db.commit()
 
-    return AgentInstallResponse(agent_id=agent.id, ide=req.ide, config_snippet=snippet)
+    return AgentInstallResponse(agent_id=resolved_agent_id, ide=req.ide, config_snippet=snippet)
 
 
 @router.get("/{agent_id}/downloads")

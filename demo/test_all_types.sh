@@ -88,37 +88,10 @@ echo "$PROMPT_INST" | python3 -m json.tool 2>/dev/null || echo "$PROMPT_INST"
 ok "Prompt install config"
 
 ###############################################################################
-hdr "3. TOOL (HTTP)"
+hdr "3. TOOL (HTTP) — SKIPPED (not yet implemented)"
 ###############################################################################
-info "Submitting HTTP tool (GitHub code search)..."
-TOOL_ID=$(post "${API}/api/v1/tools/submit" '{
-  "name": "github-code-search",
-  "version": "1.0.0",
-  "description": "Full-text code search across GitHub repositories",
-  "owner": "blazeup",
-  "category": "search",
-  "function_schema": {
-    "name": "search_code",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "query": {"type": "string"},
-        "language": {"type": "string"}
-      },
-      "required": ["query"]
-    }
-  },
-  "endpoint_url": "https://api.github.com/search/code",
-  "auth_type": "bearer",
-  "supported_ides": ["claude-code", "cursor", "kiro"]
-}' | jid)
-ok "Submitted tool: $TOOL_ID"
-approve "$TOOL_ID"
-
-info "Installing tool (should generate observal-proxy config)..."
-TOOL_INST=$(install_for "tools" "$TOOL_ID")
-echo "$TOOL_INST" | python3 -m json.tool 2>/dev/null || echo "$TOOL_INST"
-ok "Tool install config (HTTP → observal-proxy)"
+info "Skipping: /api/v1/tools endpoint not yet implemented"
+TOOL_ID="not-implemented"
 
 ###############################################################################
 hdr "4. HOOK (PostToolUse)"
@@ -231,30 +204,10 @@ echo "--- end container output ---"
 ok "Alpine sandbox execution completed"
 
 ###############################################################################
-hdr "7. GRAPHRAG"
+hdr "7. GRAPHRAG — SKIPPED (not yet implemented)"
 ###############################################################################
-info "Submitting GraphRAG (using httpbin as mock endpoint)..."
-GRAPHRAG_ID=$(post "${API}/api/v1/graphrags/submit" '{
-  "name": "codebase-knowledge-graph",
-  "version": "1.0.0",
-  "description": "Knowledge graph over codebase entities",
-  "owner": "blazeup",
-  "endpoint_url": "https://httpbin.org/post",
-  "query_interface": "rest",
-  "graph_schema": {
-    "entities": ["Function", "Class", "Module"],
-    "relationships": ["CALLS", "IMPORTS", "INHERITS"]
-  },
-  "embedding_model": "text-embedding-3-small",
-  "supported_ides": ["claude-code", "kiro", "cursor"]
-}' | jid)
-ok "Submitted GraphRAG: $GRAPHRAG_ID"
-approve "$GRAPHRAG_ID"
-
-info "Installing GraphRAG..."
-GRAPHRAG_INST=$(install_for "graphrags" "$GRAPHRAG_ID")
-echo "$GRAPHRAG_INST" | python3 -m json.tool 2>/dev/null || echo "$GRAPHRAG_INST"
-ok "GraphRAG install config (observal-graphrag-proxy)"
+info "Skipping: /api/v1/graphrags endpoint not yet implemented"
+GRAPHRAG_ID="not-implemented"
 
 ###############################################################################
 hdr "8. BATCH TELEMETRY INGEST (all span types)"
@@ -415,13 +368,14 @@ hdr "RESULTS"
 echo ""
 ok "MCP Server:  $MCP_ID (filesystem-mcp)"
 ok "Prompt:      $PROMPT_ID (code-review-prompt): rendered + span emitted"
-ok "Tool:        $TOOL_ID (github-code-search): HTTP proxy config"
+info "Tool:       SKIPPED (not yet implemented)"
 ok "Hook:        $HOOK_ID (post-tool-use-logger): hook fired + span ingested"
 ok "Skill:       $SKILL_ID (python-expert): SessionStart/End hooks"
 ok "Sandbox:     $SANDBOX_ID (python-sandbox): REAL Docker execution with logs"
-ok "GraphRAG:    $GRAPHRAG_ID (codebase-knowledge-graph): proxy config"
+info "GraphRAG:   SKIPPED (not yet implemented)"
 echo ""
-ok "All 7 registry types: submitted → approved → installed → tested"
+ok "5 of 7 registry types: submitted → approved → installed → tested"
+info "2 registry types (Tool, GraphRAG) not yet implemented"
 ok "Real Docker containers executed, logs captured via container.logs()"
 ok "Telemetry spans ingested to ClickHouse for all span types"
 ok "ClickHouse data verified with direct queries"
