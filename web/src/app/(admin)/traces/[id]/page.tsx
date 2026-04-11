@@ -869,7 +869,8 @@ function TurnNode({ turn, index, expandedSet, onToggleEvent, activeFilters, sear
   const nodeKey = `turn-${index}`;
   const isOpen = expandedSet.has(nodeKey);
   const attrs = turn.promptEvent?.attributes ?? {};
-  const promptPreview = (attrs.tool_input || attrs.prompt_text || "").slice(0, 120);
+  const fullPrompt = attrs.tool_input || attrs.prompt_text || "";
+  const promptPreview = fullPrompt.slice(0, 80);
 
   const filteredTop = filterTurnEvents(turn.topLevelEvents, activeFilters, searchQuery);
   const hasMatchingAgents = turn.agents.some((a) => {
@@ -915,8 +916,8 @@ function TurnNode({ turn, index, expandedSet, onToggleEvent, activeFilters, sear
             </div>
           </div>
           {promptPreview && (
-            <p className="text-xs text-muted-foreground mt-1 truncate max-w-2xl">
-              {promptPreview}{(attrs.tool_input?.length ?? 0) > 120 ? "..." : ""}
+            <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-2xl">
+              {promptPreview}{fullPrompt.length > 80 ? "…" : ""}
             </p>
           )}
         </div>
@@ -930,6 +931,18 @@ function TurnNode({ turn, index, expandedSet, onToggleEvent, activeFilters, sear
       {/* Turn children */}
       {isOpen && (
         <div className="border-t border-border">
+          {/* Full user prompt */}
+          {fullPrompt && (
+            <div className="mx-3 mt-3 mb-2 rounded-md border border-purple-500/20 bg-purple-500/5 overflow-hidden">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-purple-500/10">
+                <MessageSquare className="h-3 w-3 text-purple-500" />
+                <span className="text-[11px] font-medium text-purple-600 dark:text-purple-400">User Prompt</span>
+              </div>
+              <div className="px-3 py-2.5 text-sm text-foreground whitespace-pre-wrap break-words leading-relaxed max-h-[300px] overflow-auto">
+                {fullPrompt}
+              </div>
+            </div>
+          )}
           {/* Top-level events (not inside any agent) */}
           {filteredTop.map((evt, i) => {
             const key = `turn-${index}-evt-${i}`;
