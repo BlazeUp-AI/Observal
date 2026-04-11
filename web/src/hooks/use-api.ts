@@ -253,3 +253,19 @@ export function useEvalAggregate(agentId: string) {
   });
 }
 
+export function useEvalPenalties(scorecardId: string | undefined) {
+  return useQuery({
+    queryKey: ["eval", "penalties", scorecardId],
+    enabled: !!scorecardId,
+    queryFn: () => eval_.penalties(scorecardId!),
+  });
+}
+
+export function useEvalScorecard(scorecardId: string | undefined) {
+  return useQuery({
+    queryKey: ["eval", "scorecard", scorecardId],
+    enabled: !!scorecardId,
+    queryFn: () => eval_.show(scorecardId!),
+  });
+}
+
