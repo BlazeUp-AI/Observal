@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -56,6 +56,9 @@ class Scorecard(Base):
     grade: Mapped[str | None] = mapped_column(String(2), nullable=True)
     scoring_recommendations: Mapped[list | None] = mapped_column(JSON, nullable=True)
     penalty_count: Mapped[int] = mapped_column(Integer, default=0)
+    partial_evaluation: Mapped[bool] = mapped_column(Boolean, default=False)
+    dimensions_skipped: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     eval_run: Mapped["EvalRun"] = relationship(back_populates="scorecards")
     dimensions: Mapped[list["ScorecardDimension"]] = relationship(
