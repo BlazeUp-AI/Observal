@@ -176,9 +176,7 @@ async def list_penalties(
     _require_admin(current_user)
     from models.scoring import PenaltyDefinition
 
-    result = await db.execute(
-        select(PenaltyDefinition).order_by(PenaltyDefinition.dimension, PenaltyDefinition.event_name)
-    )
+    result = await db.execute(select(PenaltyDefinition).order_by(PenaltyDefinition.dimension, PenaltyDefinition.event_name))
     return [
         {
             "id": str(p.id),
@@ -242,13 +240,11 @@ async def list_weights(
     # Merge with defaults
     weights = []
     for dim, default_weight in DEFAULT_DIMENSION_WEIGHTS.items():
-        weights.append(
-            {
-                "dimension": dim.value,
-                "weight": db_weights.get(dim.value, default_weight),
-                "is_custom": dim.value in db_weights,
-            }
-        )
+        weights.append({
+            "dimension": dim.value,
+            "weight": db_weights.get(dim.value, default_weight),
+            "is_custom": dim.value in db_weights,
+        })
     return weights
 
 
@@ -319,3 +315,74 @@ async def set_agent_weights(
 
     await db.commit()
     return {"agent_id": str(agent_id), "updated": updated}
+
+
+# ── Canary Configuration ──────────────────────────────────
+
+# In-memory canary store (would be DB-backed in production)
+_canary_configs: dict[str, list[dict]] = {}  # agent_id -> list of canary configs
+_canary_reports: dict[str, list[dict]] = {}  # agent_id -> list of reports
+
+
+@router.post("/canaries", response_model=dict)
+async def create_canary(
+    req: dict,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a canary configuration for an agent."""
+    _require_admin(current_user)
+    from services.canary import CanaryConfig
+
+    agent_id = req.get("agent_id")
+    if not agent_id:
+        raise HTTPException(status_code=422, detail="agent_id required")
+
+    config = CanaryConfig(
+        agent_id=str(agent_id),
+        enabled=True,
+        canary_type=req.get("canary_type", "numeric"),
+        injection_point=req.get("injection_point", "tool_output"),
+        canary_value=req.get("canary_value", ""),
+        expected_behavior=req.get("expected_behavior", "flag_anomaly"),
+    )
+
+    if agent_id not in _canary_configs:
+        _canary_configs[agent_id] = []
+    _canary_configs[agent_id].append(config.model_dump())
+
+    return {"id": config.id, "agent_id": agent_id, "canary_type": config.canary_type}
+
+
+@router.get("/canaries/{agent_id}", response_model=list[dict])
+async def list_canaries(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """List canary configs for an agent."""
+    _require_admin(current_user)
+    return _canary_configs.get(agent_id, [])
+
+
+@router.get("/canaries/{agent_id}/reports", response_model=list[dict])
+async def list_canary_reports(
+    agent_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """List canary reports with pass/fail stats."""
+    _require_admin(current_user)
+    return _canary_reports.get(agent_id, [])
+
+
+@router.delete("/canaries/{canary_id}")
+async def delete_canary(
+    canary_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a canary config."""
+    _require_admin(current_user)
+    for agent_id, configs in _canary_configs.items():
+        for i, config in enumerate(configs):
+            if config.get("id") == canary_id:
+                configs.pop(i)
+                return {"deleted": canary_id}
+    raise HTTPException(status_code=404, detail="Canary config not found")

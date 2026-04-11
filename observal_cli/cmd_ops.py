@@ -799,6 +799,103 @@ def admin_invites(output: str = typer.Option("table", "--output", "-o")):
     console.print(table)
 
 
+@admin_app.command(name="canaries")
+def admin_canaries(
+    agent_id: str = typer.Argument(..., help="Agent ID to list canaries for"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """List canary configs for an agent."""
+    with spinner():
+        data = client.get(f"/api/v1/admin/canaries/{agent_id}")
+    if output == "json":
+        output_json(data)
+        return
+    if not data:
+        rprint(f"[dim]No canaries configured for agent {agent_id}.[/dim]")
+        return
+    table = Table(title=f"Canaries for {agent_id[:8]}...", show_lines=False, padding=(0, 1))
+    table.add_column("ID", style="dim", max_width=12)
+    table.add_column("Type", style="bold")
+    table.add_column("Injection Point")
+    table.add_column("Enabled")
+    table.add_column("Expected Behavior")
+    for c in data:
+        enabled = "[green]Yes[/green]" if c.get("enabled") else "[red]No[/red]"
+        table.add_row(
+            str(c.get("id", ""))[:8] + "...",
+            c.get("canary_type", ""),
+            c.get("injection_point", ""),
+            enabled,
+            c.get("expected_behavior", ""),
+        )
+    console.print(table)
+
+
+@admin_app.command(name="canary-add")
+def admin_canary_add(
+    agent_id: str = typer.Argument(..., help="Agent ID"),
+    canary_type: str = typer.Option("numeric", "--type", "-t", help="numeric, entity, or instruction"),
+    injection_point: str = typer.Option("tool_output", "--point", "-p", help="tool_output or context"),
+    canary_value: str = typer.Option("", "--value", "-v", help="Canary value to inject"),
+    expected: str = typer.Option("flag_anomaly", "--expected", "-e", help="Expected agent behavior"),
+):
+    """Add a canary config for an agent."""
+    body = {
+        "agent_id": agent_id,
+        "canary_type": canary_type,
+        "injection_point": injection_point,
+        "canary_value": canary_value,
+        "expected_behavior": expected,
+    }
+    with spinner("Creating canary..."):
+        result = client.post("/api/v1/admin/canaries", body)
+    rprint(f"[green]Canary created: id={result.get('id', '')[:8]}... type={result.get('canary_type')}[/green]")
+
+
+@admin_app.command(name="canary-reports")
+def admin_canary_reports(
+    agent_id: str = typer.Argument(..., help="Agent ID"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """Show canary detection reports for an agent."""
+    with spinner():
+        data = client.get(f"/api/v1/admin/canaries/{agent_id}/reports")
+    if output == "json":
+        output_json(data)
+        return
+    if not data:
+        rprint(f"[dim]No canary reports for agent {agent_id}.[/dim]")
+        return
+    table = Table(title=f"Canary Reports for {agent_id[:8]}...", show_lines=False, padding=(0, 1))
+    table.add_column("Trace", style="dim", max_width=12)
+    table.add_column("Type")
+    table.add_column("Behavior", style="bold")
+    table.add_column("Penalty")
+    table.add_column("Evidence", max_width=40)
+    for r in data:
+        behavior = r.get("agent_behavior", "")
+        behavior_color = {"parroted": "red", "flagged": "green", "ignored": "yellow", "corrected": "cyan"}.get(behavior, "white")
+        penalty = "[red]Yes[/red]" if r.get("penalty_applied") else "[green]No[/green]"
+        table.add_row(
+            str(r.get("trace_id", ""))[:8] + "...",
+            r.get("canary_type", ""),
+            f"[{behavior_color}]{behavior}[/{behavior_color}]",
+            penalty,
+            r.get("evidence", "")[:40],
+        )
+    console.print(table)
+
+
+@admin_app.command(name="canary-delete")
+def admin_canary_delete(
+    canary_id: str = typer.Argument(..., help="Canary config ID to delete"),
+):
+    """Delete a canary config."""
+    with spinner("Deleting canary..."):
+        client.delete(f"/api/v1/admin/canaries/{canary_id}")
+    rprint(f"[green]Canary {canary_id[:8]}... deleted.[/green]")
+
+
 # ── Traces / Spans (on ops_app) ─────────────────────────
 
 
