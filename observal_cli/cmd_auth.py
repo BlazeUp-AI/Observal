@@ -283,7 +283,9 @@ def _do_invite_login(server_url: str, code: str, name: str | None = None):
         api_key = data["api_key"]
         user = data["user"]
         config.save({"server_url": server_url, "api_key": api_key})
-        rprint(f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
+        rprint(
+            f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]"
+        )
 
         _configure_claude_code(server_url, api_key)
 
