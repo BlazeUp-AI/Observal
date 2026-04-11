@@ -506,6 +506,125 @@ function EventSummary({ event }: { event: RawOtelEvent }) {
 
 /* ── Pretty JSON / content block ──────────────────────── */
 
+/* ── Simple line diff (no external dep) ─────────────────── */
+
+function computeLineDiff(oldStr: string, newStr: string): { type: "same" | "add" | "remove"; text: string }[] {
+  const oldLines = oldStr.split("\n");
+  const newLines = newStr.split("\n");
+
+  // Simple LCS-based diff for reasonable sizes (< 500 lines each)
+  // For very large diffs, fall back to showing old/new blocks
+  if (oldLines.length > 500 || newLines.length > 500) {
+    return [
+      ...oldLines.map((l) => ({ type: "remove" as const, text: l })),
+      ...newLines.map((l) => ({ type: "add" as const, text: l })),
+    ];
+  }
+
+  const m = oldLines.length;
+  const n = newLines.length;
+  // Build LCS table
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = oldLines[i - 1] === newLines[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  // Backtrack
+  const result: { type: "same" | "add" | "remove"; text: string }[] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      result.push({ type: "same", text: oldLines[i - 1] });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.push({ type: "add", text: newLines[j - 1] });
+      j--;
+    } else {
+      result.push({ type: "remove", text: oldLines[i - 1] });
+      i--;
+    }
+  }
+  result.reverse();
+  return result;
+}
+
+function DiffBlock({ filePath, oldStr, newStr }: { filePath: string; oldStr: string; newStr: string }) {
+  const [showFull, setShowFull] = useState(false);
+  const diff = useMemo(() => computeLineDiff(oldStr, newStr), [oldStr, newStr]);
+  const changedCount = diff.filter((d) => d.type !== "same").length;
+  const addCount = diff.filter((d) => d.type === "add").length;
+  const removeCount = diff.filter((d) => d.type === "remove").length;
+
+  // Collapse to context: show 3 lines around changes
+  const contextLines = 3;
+  const visible = showFull
+    ? diff
+    : diff.reduce<(typeof diff[0] | { type: "collapse"; count: number })[]>((acc, line, idx) => {
+        const nearChange = diff.slice(Math.max(0, idx - contextLines), Math.min(diff.length, idx + contextLines + 1)).some((d) => d.type !== "same");
+        if (nearChange || line.type !== "same") {
+          acc.push(line);
+        } else {
+          const prev = acc[acc.length - 1];
+          if (prev && "count" in prev) {
+            prev.count++;
+          } else {
+            acc.push({ type: "collapse", count: 1 });
+          }
+        }
+        return acc;
+      }, []);
+
+  // Line numbers
+  let oldLine = 1;
+  let newLine = 1;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Diff</span>
+        <span className="text-[11px] font-[family-name:var(--font-mono)] text-muted-foreground">{filePath.split("/").pop()}</span>
+        <span className="text-[11px] text-emerald-500">+{addCount}</span>
+        <span className="text-[11px] text-red-400">-{removeCount}</span>
+      </div>
+      <div className="text-xs font-[family-name:var(--font-mono)] border border-border rounded-md overflow-hidden max-h-[400px] overflow-auto">
+        {visible.map((line, idx) => {
+          if ("count" in line) {
+            return (
+              <div key={idx} className="px-2 py-0.5 text-muted-foreground bg-muted/30 text-center text-[10px]">
+                ··· {line.count} unchanged lines ···
+              </div>
+            );
+          }
+          const bgCls = line.type === "add" ? "bg-emerald-500/10" : line.type === "remove" ? "bg-red-500/10" : "";
+          const textCls = line.type === "add" ? "text-emerald-600 dark:text-emerald-400" : line.type === "remove" ? "text-red-400" : "text-foreground/60";
+          const prefix = line.type === "add" ? "+" : line.type === "remove" ? "-" : " ";
+          const ln = line.type === "remove" ? oldLine : line.type === "add" ? newLine : oldLine;
+          if (line.type === "remove" || line.type === "same") oldLine++;
+          if (line.type === "add" || line.type === "same") newLine++;
+          return (
+            <div key={idx} className={`flex ${bgCls} hover:brightness-95`}>
+              <span className="w-8 shrink-0 text-right pr-1 text-muted-foreground/40 select-none">{ln}</span>
+              <span className={`px-1 select-none ${textCls}`}>{prefix}</span>
+              <span className={`whitespace-pre-wrap break-all ${textCls}`}>{line.text || " "}</span>
+            </div>
+          );
+        })}
+      </div>
+      {changedCount > 0 && !showFull && diff.length > 20 && (
+        <button type="button" onClick={() => setShowFull(true)} className="text-[11px] text-primary-accent hover:underline">
+          Show full diff ({diff.length} lines)
+        </button>
+      )}
+      {showFull && (
+        <button type="button" onClick={() => setShowFull(false)} className="text-[11px] text-primary-accent hover:underline">
+          Show context only
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ContentBlock({ label, content }: { label: string; content: string }) {
   let display = content;
   let isJson = false;
@@ -542,10 +661,27 @@ function EventDetail({ event }: { event: RawOtelEvent }) {
   const eName = getEventName(event);
 
   if (isHookEvent(eName) && (attrs.tool_input || attrs.tool_response)) {
+    // Try to render a diff view for Edit tool events
+    const toolName = attrs.tool_name ?? "";
+    let diffView: React.ReactNode = null;
+
+    if (toolName === "Edit" && attrs.tool_input) {
+      try {
+        const parsed = JSON.parse(attrs.tool_input);
+        if (parsed.old_string && parsed.new_string) {
+          diffView = <DiffBlock filePath={parsed.file_path || "unknown"} oldStr={parsed.old_string} newStr={parsed.new_string} />;
+        }
+      } catch { /* not valid JSON, fall through */ }
+    }
+
     return (
       <div className="ml-6 mr-3 mb-2 mt-1 space-y-3">
-        {attrs.tool_input && <ContentBlock label="Input" content={attrs.tool_input} />}
-        {attrs.tool_response && <ContentBlock label="Response" content={attrs.tool_response} />}
+        {diffView || (
+          <>
+            {attrs.tool_input && <ContentBlock label="Input" content={attrs.tool_input} />}
+            {attrs.tool_response && <ContentBlock label="Response" content={attrs.tool_response} />}
+          </>
+        )}
         <HookMetaGrid attrs={attrs} />
       </div>
     );
