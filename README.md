@@ -4,7 +4,7 @@
   <img alt="Observal" src="docs/logo-light.svg" width="320">
 </picture>
 
-### Agent registry with built-in observability — discover, distribute, and monitor AI coding agents.
+### Agent registry with built-in observability. Discover, distribute, and monitor AI coding agents.
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
@@ -14,7 +14,7 @@
 
 ---
 
-Observal is a self-hosted agent registry and observability platform. Discover, publish, and pull complete AI coding agents — bundled with their MCP servers, skills, hooks, prompts, and sandboxes. Every component emits telemetry into ClickHouse so you can measure what's actually working.
+Observal is a self-hosted agent registry and observability platform. Discover, publish, and pull complete AI coding agents bundled with their MCP servers, skills, hooks, prompts, and sandboxes. Every component emits telemetry into ClickHouse so you can measure what's actually working.
 
 It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Codex CLI, and GitHub Copilot.
 
@@ -37,7 +37,7 @@ observal scan                  # auto-detect, register, and instrument everythin
 observal pull <agent-id> --ide cursor  # install a complete agent
 ```
 
-This detects MCP servers from your IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry — without breaking your existing setup. A timestamped backup is created automatically.
+This detects MCP servers from your IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry without breaking your existing setup. A timestamped backup is created automatically.
 
 ## The Problem
 
@@ -113,7 +113,8 @@ IDEs with **Native OTel** support send full distributed traces, user prompts, LL
 | Background Jobs | arq + Redis |
 | Real-time | GraphQL subscriptions (Strawberry + WebSocket) |
 | Dependency Management | uv |
-| Deployment | Docker Compose |
+| Telemetry Pipeline | OpenTelemetry Collector |
+| Deployment | Docker Compose (7 services) |
 
 ## Setup & Configuration
 
@@ -373,7 +374,7 @@ All `{id}` parameters accept either a UUID or a name.
 ## Running Tests
 
 ```bash
-make test      # quick (377 tests)
+make test      # quick (526 tests)
 make test-v    # verbose
 ```
 

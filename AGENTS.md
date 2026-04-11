@@ -1,19 +1,19 @@
 # AGENTS.md
 
-Internal context for contributors and AI coding agents. Use `README.md` as the public source of truth for API endpoints and CLI usage. Use `SETUP.md` for environment setup. Use `docs/submission-and-install-guide.md` for the submission and install workflow.
+Internal context for contributors and AI coding agents. Use `README.md` as the public source of truth for API endpoints and CLI usage. Use `SETUP.md` for environment setup. Use `docs/superpowers/specs/2026-04-10-product-vision.md` for the product vision.
 
 ## Current state
 
 Observal is an agent-centric registry and observability platform for AI coding agents. Agents are the primary entity, bundling 5 component types: MCP servers, skills, hooks, prompts, and sandboxes. All components have CRUD, CLI commands, admin review, feedback, and telemetry collection. Agents bundle components via a polymorphic junction table (`agent_components`).
 
-All API routes accept either UUID or name for path parameters. Admin review controls public registry visibility only — submitters can install and use their own items immediately without approval.
+All API routes accept either UUID or name for path parameters. Admin review controls public registry visibility only. Submitters can install and use their own items immediately without approval.
 
-The web frontend is a Next.js 16 / React 19 app in `web/`. It uses shadcn/ui components, Recharts for charts, TanStack Query for data fetching, and TanStack Table for sortable/filterable tables. Shared API response types live in `web/src/lib/types.ts`. The GraphQL API at `/api/v1/graphql` is the read layer for telemetry data; REST endpoints serve everything else.
+The web frontend is a Next.js 16 / React 19 app in `web/`. It uses three route groups: `(auth)` for login, `(registry)` for the public-facing agent browser and component library, and `(admin)` for the admin dashboard, traces, eval, review, and user management. It uses shadcn/ui components, Recharts for charts, TanStack Query for data fetching, and TanStack Table for sortable/filterable tables. Shared API response types live in `web/src/lib/types.ts`. The GraphQL API at `/api/v1/graphql` is the read layer for telemetry data; REST endpoints serve everything else.
 
 ## Commands
 
 ```bash
-# Docker stack (5 containers: api, db, clickhouse, redis, worker)
+# Docker stack (7 containers: api, db, clickhouse, redis, worker, web, otel-collector)
 make up                  # start
 make down                # stop
 make rebuild             # rebuild and restart
@@ -31,7 +31,7 @@ make format              # ruff format + ruff fix
 make check               # pre-commit on all files
 make hooks               # install pre-commit hooks
 
-# Tests (377 unit tests, run from observal-server/)
+# Tests (526 tests across 18 files, run from observal-server/)
 make test                # quick
 make test-v              # verbose
 # or manually:
@@ -78,10 +78,10 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `feedback.py` : Feedback (polymorphic on listing_type across all component types)
 - `enterprise_config.py` : Key-value enterprise settings
 - `organization.py` : Organization (id, name, slug, created_at, updated_at)
-- `component_source.py` : ComponentSource — Git mirror origins for component discovery
-- `agent_component.py` : AgentComponent — polymorphic junction table (agent_id, component_type, component_id); NO FK on component_id
+- `component_source.py` : ComponentSource, Git mirror origins for component discovery
+- `agent_component.py` : AgentComponent, polymorphic junction table (agent_id, component_type, component_id); NO FK on component_id
 - `download.py` : AgentDownloadRecord (deduplicated by user_id + fingerprint), ComponentDownloadRecord (not deduplicated)
-- `exporter_config.py` : ExporterConfig — per-org telemetry export settings (grafana, datadog, loki, otel)
+- `exporter_config.py` : ExporterConfig, per-org telemetry export settings (grafana, datadog, loki, otel)
 
 ### Services (`observal-server/services/`)
 
@@ -122,37 +122,70 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Docker (`docker/`)
 
-- `docker-compose.yml` : 5 services: api (8000), db (PostgreSQL 16), clickhouse (8123/9000), redis (6379), worker (arq)
+- `docker-compose.yml` : 7 services: api (8000), db (PostgreSQL 16), clickhouse (8123/9000), redis (6379), worker (arq), web (3000), otel-collector (4317/4318)
 - `Dockerfile.api` : uv-based Python build
+- `Dockerfile.web` : Node 24-alpine, multi-stage build with standalone output
 
 ### Tests (`tests/`)
 
-- 377 unit tests; all mock external services (no Docker needed to run)
-- `test_clickhouse_phase1.py` : DDL, SQL helpers, insert/query functions (43 tests)
-- `test_ingest_phase2.py` : Ingestion schemas, endpoint, partial failure (15 tests)
-- `test_shim_phase3.py` : JSON-RPC parsing, schema compliance, ShimState, config gen (43 tests)
-- `test_proxy_phase4.py` : Proxy, HTTP transport config (13 tests)
-- `test_worker_phase5.py` : Redis, arq, docker-compose validation (16 tests)
-- `test_graphql_phase6.py` : Strawberry types, DataLoaders, resolvers (27 tests)
-- `test_eval_phase8.py` : Templates, backends, run_eval_on_trace (17 tests)
-- `test_phase9_10.py` : Dual-write, CLI commands (7 tests)
-- `test_registry_types.py` : Models, schemas, routes, review, feedback, CLI for all 6 new types (72 tests)
-- `test_telemetry_collection.py` : Sandbox runner, config generators, install route wiring (20 tests)
-- `test_schema_redesign.py` : Organization, ComponentSource, AgentComponent, downloads, ExporterConfig, feedback/submission updates (56 tests)
-- `conftest.py` : Adds observal-server to sys.path so tests can import server modules
+- 526 tests across 18 files; all mock external services (no Docker needed to run)
+- `test_clickhouse_phase1.py` : DDL, SQL helpers, insert/query functions
+- `test_ingest_phase2.py` : Ingestion schemas, endpoint, partial failure
+- `test_shim_phase3.py` : JSON-RPC parsing, schema compliance, ShimState, config gen
+- `test_proxy_phase4.py` : Proxy, HTTP transport config
+- `test_worker_phase5.py` : Redis, arq, docker-compose validation
+- `test_graphql_phase6.py` : Strawberry types, DataLoaders, resolvers
+- `test_eval_phase8.py` : Templates, backends, run_eval_on_trace
+- `test_phase9_10.py` : Dual-write, CLI commands
+- `test_registry_types.py` : Models, schemas, routes, review, feedback, CLI for all 6 types
+- `test_telemetry_collection.py` : Sandbox runner, config generators, install route wiring
+- `test_schema_redesign.py` : Organization, ComponentSource, AgentComponent, downloads, ExporterConfig, feedback/submission updates
+- `test_agent_composition.py` : Agent composition resolver and multi-component support
+- `test_pull_and_agent_cli.py` : Pull command and agent CLI commands
+- `test_git_mirror.py` : Git mirroring service
+- `test_ragas_eval.py` : RAGAS evaluation metrics
+- `test_structural_scorer.py` : Rule-based structural scoring
+- `test_slm_scorer.py` : LLM-based SLM scoring
+- `test_score_aggregator.py` : Score aggregation and composite grading
 
 ### Web Frontend (`web/`)
 
+Three route groups organize the UI by access level:
+
+**`(auth)/`** - Login and initialization
+- `login/page.tsx` : Email/name login and first-run admin init
+
+**`(registry)/`** - Public agent browser (requires auth)
+- `page.tsx` : Registry home with search, trending agents, top rated
+- `agents/page.tsx` : Agent list table with search and filters
+- `agents/[id]/page.tsx` : Agent detail with pull command box
+- `components/page.tsx` : Tabbed component browser (MCPs, skills, hooks, prompts, sandboxes)
+- `components/[id]/page.tsx` : Component detail view
+
+**`(admin)/`** - Admin dashboard (requires admin role)
+- `dashboard/page.tsx` : Overview stats, recent agents, latest traces
+- `traces/page.tsx` : Trace list with filtering
+- `traces/[id]/page.tsx` : Trace detail with resizable span tree + JSON viewer
+- `review/page.tsx` : Admin review queue
+- `users/page.tsx` : User management
+- `settings/page.tsx` : Enterprise settings
+- `eval/page.tsx` : Eval overview with agent scores
+- `eval/[agentId]/page.tsx` : Eval detail with aggregate chart, dimension radar, penalty accordion
+
+**Shared components:**
 - `src/lib/api.ts` : Typed fetch wrapper; all REST + GraphQL calls; auth via localStorage API key
 - `src/lib/types.ts` : Shared TypeScript interfaces for all API responses
 - `src/hooks/use-api.ts` : TanStack Query hooks for every endpoint (queries + mutations)
-- `src/app/(dashboard)/page.tsx` : Dashboard home with stat cards, trends, heatmap, quick nav
-- `src/app/(dashboard)/layout.tsx` : Sidebar + auth guard + command menu + toaster
-- `src/components/nav/app-sidebar.tsx` : Navigation sidebar with all registry/observability/eval sections
-- `src/components/traces/` : Trace list, trace detail (resizable span tree + JSON viewer), span tree with collapsible thread lines
-- `src/components/live/trace-stream.tsx` : Real-time trace stream with pause/resume and server-side filtering
-- `src/components/registry/` : Generic registry table (TanStack Table), detail view, install dialog, metrics panel
+- `src/hooks/use-auth.ts` : Auth guard hook (checks API key exists)
+- `src/hooks/use-admin-guard.ts` : Admin role check hook
+- `src/components/layouts/auth-guard.tsx` : Auth guard wrapper
+- `src/components/layouts/admin-guard.tsx` : Admin guard wrapper
+- `src/components/nav/registry-sidebar.tsx` : Unified sidebar with conditional admin section
+- `src/components/nav/command-menu.tsx` : Command palette (Cmd+K)
 - `src/components/dashboard/` : Reusable stat cards, trend charts, bar lists, heatmap, time range select, no-data/error states
+- `src/components/traces/` : Trace list, trace detail, span tree with collapsible thread lines
+- `src/components/registry/` : Agent card, pull command with IDE selector
+- `src/components/eval/` : Eval-specific components
 
 ### Demo (`demo/`)
 
@@ -172,9 +205,10 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - The eval engine is pluggable. `LLMJudgeBackend` calls Bedrock or OpenAI-compatible endpoints. `FallbackBackend` returns deterministic scores when no LLM is configured. The 6 managed templates are prompt strings, not code.
 - Feedback dual-writes: when a user rates an MCP/agent, it writes to PostgreSQL (for the feedback API) AND ClickHouse scores table (for unified analytics). The ClickHouse write is best-effort.
 - Auth is API key based. Keys are hashed with SECRET_KEY before storage. The `X-API-Key` header is checked on every authenticated request via `get_current_user` dependency.
-- Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. This lets `observal scan` work — items are auto-registered as pending and immediately usable by the submitter.
+- Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. This lets `observal scan` work. Items are auto-registered as pending and immediately usable by the submitter.
 - The CLI stores config in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`. Both are plain JSON. All API path parameters accept UUID or name; the server resolves names via `resolve_listing()` in `deps.py`.
 - All CLI list/show commands support `--output table|json|plain`. Use `--output json` for scripting. Use `--raw` on install commands to pipe config directly to files.
 - Ruff is the Python linter and formatter. Line length is 120. Pre-commit hooks enforce it.
 - The `B008` ruff rule is suppressed because Typer requires function calls in argument defaults (`typer.Option(...)`, `typer.Argument(...)`).
 - The data model is agent-centric. Agents bundle components (MCPs, skills, hooks, prompts, sandboxes) via `agent_components`, a polymorphic junction table with NO foreign key on `component_id` (allows cross-type references). Agent downloads are deduplicated by `(user_id)` and `(fingerprint)` unique constraints; component downloads are not deduplicated. All components support organization ownership via `is_private` + `owner_org_id` fields. Git-based versioning: components require `git_url` + `git_ref` for reproducible installs.
+- The web frontend proxies all API calls through Next.js rewrites (`/api/v1/*` -> backend). The backend URL is configured via `NEXT_PUBLIC_API_URL` env var (defaults to `http://localhost:8000`). Auth state (API key, user role) is stored in localStorage. Role-based access is enforced client-side via AuthGuard and AdminGuard components, not Next.js middleware.
