@@ -29,6 +29,7 @@ DIMENSION_DISPLAY_NAMES = {
     ScoringDimension.tool_failures: "tool_failures",
     ScoringDimension.factual_grounding: "factual_grounding",
     ScoringDimension.thought_process: "thought_process",
+    ScoringDimension.adversarial_robustness: "adversarial_robustness",
 }
 
 
@@ -67,17 +68,20 @@ class ScoreAggregator:
         trace_id: str,
         version: str,
         weights: dict[ScoringDimension, float] | None = None,
+        skipped_dimensions: list[str] | None = None,
     ) -> Scorecard:
         """Compute a scorecard from structural and SLM penalties.
 
         1. Group all penalties by dimension
         2. Per dimension: score = max(0, 100 - sum(abs(penalty.amount)))
-        3. Weighted average for composite
-        4. Generate recommendations from worst dimensions
+        3. Skipped dimensions get score=None and weight is redistributed
+        4. Weighted average for composite
+        5. Generate recommendations from worst dimensions
         """
         all_penalties = structural_penalties + slm_penalties
         if weights is None:
             weights = dict(DEFAULT_DIMENSION_WEIGHTS)
+        skipped = set(skipped_dimensions or [])
 
         # Group penalties by dimension
         by_dimension: dict[ScoringDimension, list[dict]] = defaultdict(list)
@@ -91,18 +95,35 @@ class ScoreAggregator:
             if dim:
                 by_dimension[dim].append(p)
 
-        # Compute per-dimension scores
-        dimension_scores: dict[str, float] = {}
+        # Compute per-dimension scores (None for skipped)
+        dimension_scores: dict[str, float | None] = {}
         for dim in ScoringDimension:
-            dim_penalties = by_dimension.get(dim, [])
-            total_penalty = sum(abs(self._get_penalty_amount(p)) for p in dim_penalties)
-            score = max(0, 100 - total_penalty)
-            dimension_scores[dim.value] = score
+            if dim.value in skipped:
+                dimension_scores[dim.value] = None
+            else:
+                dim_penalties = by_dimension.get(dim, [])
+                total_penalty = sum(abs(self._get_penalty_amount(p)) for p in dim_penalties)
+                score = max(0, 100 - total_penalty)
+                dimension_scores[dim.value] = score
 
-        # Weighted composite
+        # Re-weight if dimensions were skipped
+        active_dims = [d for d in ScoringDimension if d.value not in skipped]
+        if skipped and active_dims:
+            total_active_weight = sum(weights.get(d, 0) for d in active_dims)
+            if total_active_weight > 0:
+                # Redistribute proportionally so active weights sum to 1.0
+                effective_weights = {
+                    d: weights.get(d, 0) / total_active_weight for d in active_dims
+                }
+            else:
+                effective_weights = {d: 1.0 / len(active_dims) for d in active_dims}
+        else:
+            effective_weights = {d: weights.get(d, 0) for d in ScoringDimension}
+
+        # Weighted composite (only over active dimensions)
         composite = sum(
-            dimension_scores[dim.value] * weights.get(dim, 0)
-            for dim in ScoringDimension
+            (dimension_scores[dim.value] or 0) * effective_weights.get(dim, 0)
+            for dim in active_dims
         )
         composite = max(0, min(100, composite))
 
@@ -113,7 +134,16 @@ class ScoreAggregator:
         grade = _score_to_grade(composite)
 
         # Recommendations from worst dimensions
-        recommendations = self._generate_recommendations(dimension_scores, by_dimension)
+        active_scores = {k: v for k, v in dimension_scores.items() if v is not None}
+        recommendations = self._generate_recommendations(active_scores, by_dimension)
+
+        # Add recommendations for skipped dimensions
+        for dim_name in skipped:
+            recommendations.append(
+                f"Dimension '{dim_name}' was not evaluated (SLM backend unavailable)."
+            )
+
+        partial = bool(skipped)
 
         # Build Scorecard ORM object
         sc = Scorecard(
@@ -124,7 +154,7 @@ class ScoreAggregator:
             overall_score=display_score,
             overall_grade=_old_grade(display_score),
             recommendations="; ".join(recommendations) if recommendations else None,
-            bottleneck=self._find_bottleneck(dimension_scores),
+            bottleneck=self._find_bottleneck(active_scores),
             raw_output={"penalties": [_serialize_penalty(p) for p in all_penalties]},
             # New fields
             dimension_scores=dimension_scores,
@@ -133,20 +163,33 @@ class ScoreAggregator:
             grade=grade,
             scoring_recommendations=recommendations,
             penalty_count=len(all_penalties),
+            partial_evaluation=partial,
+            dimensions_skipped=list(skipped) if skipped else None,
         )
 
         # Add ScorecardDimension records for backwards compat
         for dim in ScoringDimension:
-            score = dimension_scores[dim.value]
-            dim_display = round(score / 10, 1)
-            sc.dimensions.append(
-                ScorecardDimension(
-                    dimension=DIMENSION_DISPLAY_NAMES[dim],
-                    score=dim_display,
-                    grade=_old_grade(dim_display),
-                    notes=f"{len(by_dimension.get(dim, []))} penalties applied",
+            dim_score = dimension_scores[dim.value]
+            if dim_score is None:
+                # Skipped dimension — record as 0 with note
+                sc.dimensions.append(
+                    ScorecardDimension(
+                        dimension=DIMENSION_DISPLAY_NAMES.get(dim, dim.value),
+                        score=0,
+                        grade="N/A",
+                        notes="Dimension skipped (SLM backend unavailable)",
+                    )
                 )
-            )
+            else:
+                dim_display = round(dim_score / 10, 1)
+                sc.dimensions.append(
+                    ScorecardDimension(
+                        dimension=DIMENSION_DISPLAY_NAMES.get(dim, dim.value),
+                        score=dim_display,
+                        grade=_old_grade(dim_display),
+                        notes=f"{len(by_dimension.get(dim, []))} penalties applied",
+                    )
+                )
 
         return sc
 
@@ -272,6 +315,11 @@ class ScoreAggregator:
             elif dim == ScoringDimension.thought_process:
                 recommendations.append(
                     f"Improve thought process (score: {score:.0f}). "
+                    f"Issues: {', '.join(unique_names[:3])}."
+                )
+            elif dim == ScoringDimension.adversarial_robustness:
+                recommendations.append(
+                    f"Adversarial robustness issues detected (score: {score:.0f}). "
                     f"Issues: {', '.join(unique_names[:3])}."
                 )
 
