@@ -19,6 +19,22 @@ from observal_cli.render import (
     status_badge,
 )
 
+_DEPRECATION_TPL = (
+    "[yellow]Warning:[/yellow] [dim]`observal {old}` is deprecated. "
+    "Use `observal {new}` instead.[/dim]\n"
+)
+
+# ═══════════════════════════════════════════════════════════
+# ops_app — Observability / operational commands group
+# ═══════════════════════════════════════════════════════════
+
+ops_app = typer.Typer(
+    name="ops",
+    help="Observability and operational commands (traces, telemetry, dashboard, feedback)",
+    no_args_is_help=True,
+)
+
+
 # ── Review ───────────────────────────────────────────────
 
 review_app = typer.Typer(help="Admin review commands")
@@ -131,165 +147,180 @@ def telemetry_test():
     rprint(f"[green]✓ Test event sent![/green] Ingested: {result.get('ingested', 0)}")
 
 
-# ── Dashboard ────────────────────────────────────────────
+# ── Dashboard (on ops_app) ──────────────────────────────
 
 
-def register_dashboard(app: typer.Typer):
-
-    @app.command(name="overview")
-    def overview(output: str = typer.Option("table", "--output", "-o")):
-        """Show enterprise overview stats."""
-        with spinner("Loading overview..."):
-            data = client.get("/api/v1/overview/stats")
-        if output == "json":
-            output_json(data)
-            return
-        rprint()
-        rprint(f"  [bold cyan]MCP Servers[/bold cyan]     {data.get('total_mcps', 0)}")
-        rprint(f"  [bold magenta]Agents[/bold magenta]          {data.get('total_agents', 0)}")
-        rprint(f"  [bold]Users[/bold]           {data.get('total_users', 0)}")
-        rprint(f"  [bold green]Tool calls[/bold green]      {data.get('total_tool_calls_today', 0)} today")
-        rprint(f"  [bold yellow]Interactions[/bold yellow]    {data.get('total_agent_interactions_today', 0)} today")
-        rprint()
-
-    @app.command(name="metrics")
-    def metrics(
-        item_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-        item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
-        output: str = typer.Option("table", "--output", "-o"),
-        watch: bool = typer.Option(False, "--watch", "-w", help="Refresh every 5s"),
-    ):
-        """Show metrics for an MCP server or agent."""
-        resolved = config.resolve_alias(item_id)
-
-        def _fetch_and_print():
-            if item_type == "agent":
-                data = client.get(f"/api/v1/agents/{resolved}/metrics")
-                if output == "json":
-                    output_json(data)
-                    return
-                total = data.get("total_interactions", 0)
-                rate = data.get("acceptance_rate") or 0
-                rprint("\n  [bold]Agent Metrics[/bold]")
-                rprint(f"  Interactions:   {total}")
-                rprint(f"  Downloads:      {data.get('total_downloads', 0)}")
-                rprint(
-                    f"  Acceptance:     [{'green' if rate > 0.7 else 'yellow' if rate > 0.4 else 'red'}]{rate:.1%}[/]"
-                )
-                rprint(f"  Avg tool calls: {data.get('avg_tool_calls', 0)}")
-                rprint(f"  Avg latency:    {(data.get('avg_latency_ms') or 0):.0f}ms")
-            else:
-                data = client.get(f"/api/v1/mcps/{resolved}/metrics")
-                if output == "json":
-                    output_json(data)
-                    return
-                err_rate = data.get("error_rate") or 0
-                rprint("\n  [bold]MCP Metrics[/bold]")
-                rprint(f"  Downloads:  {data.get('total_downloads', 0)}")
-                rprint(f"  Total calls: {data.get('total_calls', 0)}")
-                rprint(
-                    f"  Error rate:  [{'red' if err_rate > 0.1 else 'yellow' if err_rate > 0.01 else 'green'}]{err_rate:.2%}[/]"
-                )
-                rprint(f"  Avg latency: {(data.get('avg_latency_ms') or 0):.0f}ms")
-                rprint(
-                    f"  Latency p50/p90/p99: {data.get('p50_latency_ms', 0)}/{data.get('p90_latency_ms', 0)}/{data.get('p99_latency_ms', 0)}ms"
-                )
-            rprint()
-
-        if watch:
-            try:
-                while True:
-                    console.clear()
-                    rprint(f"[dim]Watching metrics for {resolved} (Ctrl+C to stop)[/dim]")
-                    _fetch_and_print()
-                    time.sleep(5)
-            except KeyboardInterrupt:
-                rprint("\n[dim]Stopped.[/dim]")
-        else:
-            with spinner("Loading metrics..."):
-                pass
-            _fetch_and_print()
-
-    @app.command(name="top")
-    def top(
-        item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
-        output: str = typer.Option("table", "--output", "-o"),
-    ):
-        """Show top MCP servers or agents by usage."""
-        endpoint = "/api/v1/overview/top-mcps" if item_type == "mcp" else "/api/v1/overview/top-agents"
-        with spinner():
-            data = client.get(endpoint)
-        if output == "json":
-            output_json(data)
-            return
-        if not data:
-            rprint(f"[dim]No {item_type} data yet.[/dim]")
-            return
-        label = "MCP Servers" if item_type == "mcp" else "Agents"
-        table = Table(title=f"Top {label}", show_lines=False, padding=(0, 1))
-        table.add_column("#", style="dim", width=3)
-        table.add_column("Name", style="bold")
-        table.add_column("Downloads", justify="right")
-        table.add_column("ID", style="dim", max_width=12)
-        for i, item in enumerate(data, 1):
-            table.add_row(str(i), item["name"], str(int(item["value"])), str(item["id"])[:8] + "…")
-        console.print(table)
+@ops_app.command(name="overview")
+def _overview(output: str = typer.Option("table", "--output", "-o")):
+    """Show enterprise overview stats."""
+    with spinner("Loading overview..."):
+        data = client.get("/api/v1/overview/stats")
+    if output == "json":
+        output_json(data)
+        return
+    rprint()
+    rprint(f"  [bold cyan]MCP Servers[/bold cyan]     {data.get('total_mcps', 0)}")
+    rprint(f"  [bold magenta]Agents[/bold magenta]          {data.get('total_agents', 0)}")
+    rprint(f"  [bold]Users[/bold]           {data.get('total_users', 0)}")
+    rprint(f"  [bold green]Tool calls[/bold green]      {data.get('total_tool_calls_today', 0)} today")
+    rprint(f"  [bold yellow]Interactions[/bold yellow]    {data.get('total_agent_interactions_today', 0)} today")
+    rprint()
 
 
-# ── Feedback ─────────────────────────────────────────────
+@ops_app.command(name="metrics")
+def _metrics(
+    item_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+    output: str = typer.Option("table", "--output", "-o"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Refresh every 5s"),
+):
+    """Show metrics for an MCP server or agent."""
+    _metrics_impl(item_id, item_type, output, watch)
 
 
-def register_feedback(app: typer.Typer):
+def _metrics_impl(item_id, item_type, output, watch):
+    resolved = config.resolve_alias(item_id)
 
-    @app.command()
-    def rate(
-        listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-        stars: int = typer.Option(..., "--stars", "-s", min=1, max=5, help="Rating 1-5"),
-        listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
-        comment: str | None = typer.Option(None, "--comment", "-c"),
-    ):
-        """Rate an MCP server or agent."""
-        resolved = config.resolve_alias(listing_id)
-        with spinner("Submitting rating..."):
-            client.post(
-                "/api/v1/feedback",
-                {
-                    "listing_id": resolved,
-                    "listing_type": listing_type,
-                    "rating": stars,
-                    "comment": comment,
-                },
+    def _fetch_and_print():
+        if item_type == "agent":
+            data = client.get(f"/api/v1/agents/{resolved}/metrics")
+            if output == "json":
+                output_json(data)
+                return
+            total = data.get("total_interactions", 0)
+            rate = data.get("acceptance_rate") or 0
+            rprint("\n  [bold]Agent Metrics[/bold]")
+            rprint(f"  Interactions:   {total}")
+            rprint(f"  Downloads:      {data.get('total_downloads', 0)}")
+            rprint(
+                f"  Acceptance:     [{'green' if rate > 0.7 else 'yellow' if rate > 0.4 else 'red'}]{rate:.1%}[/]"
             )
-        rprint(f"[green]✓ Rated {star_rating(stars)}[/green]")
-
-    @app.command()
-    def feedback(
-        listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-        listing_type: str = typer.Option("mcp", "--type", "-t"),
-        output: str = typer.Option("table", "--output", "-o"),
-    ):
-        """Show feedback for an MCP server or agent."""
-        resolved = config.resolve_alias(listing_id)
-        with spinner():
-            data = client.get(f"/api/v1/feedback/{listing_type}/{resolved}")
-            summary = client.get(f"/api/v1/feedback/summary/{resolved}")
-
-        if output == "json":
-            output_json({"summary": summary, "reviews": data})
-            return
-
-        if not data:
-            rprint("[dim]No feedback yet.[/dim]")
-            return
-
-        avg = summary.get("average_rating", 0)
-        total = summary.get("total_reviews", 0)
-        rprint(f"\n  {star_rating(round(avg))} [bold]{avg:.1f}[/bold]/5 ({total} reviews)\n")
-        for fb in data:
-            stars_str = star_rating(fb.get("rating", 0))
-            comment = f"  {fb['comment']}" if fb.get("comment") else ""
-            rprint(f"  {stars_str}{comment}")
+            rprint(f"  Avg tool calls: {data.get('avg_tool_calls', 0)}")
+            rprint(f"  Avg latency:    {(data.get('avg_latency_ms') or 0):.0f}ms")
+        else:
+            data = client.get(f"/api/v1/mcps/{resolved}/metrics")
+            if output == "json":
+                output_json(data)
+                return
+            err_rate = data.get("error_rate") or 0
+            rprint("\n  [bold]MCP Metrics[/bold]")
+            rprint(f"  Downloads:  {data.get('total_downloads', 0)}")
+            rprint(f"  Total calls: {data.get('total_calls', 0)}")
+            rprint(
+                f"  Error rate:  [{'red' if err_rate > 0.1 else 'yellow' if err_rate > 0.01 else 'green'}]{err_rate:.2%}[/]"
+            )
+            rprint(f"  Avg latency: {(data.get('avg_latency_ms') or 0):.0f}ms")
+            rprint(
+                f"  Latency p50/p90/p99: {data.get('p50_latency_ms', 0)}/{data.get('p90_latency_ms', 0)}/{data.get('p99_latency_ms', 0)}ms"
+            )
         rprint()
+
+    if watch:
+        try:
+            while True:
+                console.clear()
+                rprint(f"[dim]Watching metrics for {resolved} (Ctrl+C to stop)[/dim]")
+                _fetch_and_print()
+                time.sleep(5)
+        except KeyboardInterrupt:
+            rprint("\n[dim]Stopped.[/dim]")
+    else:
+        with spinner("Loading metrics..."):
+            pass
+        _fetch_and_print()
+
+
+@ops_app.command(name="top")
+def _top(
+    item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """Show top MCP servers or agents by usage."""
+    _top_impl(item_type, output)
+
+
+def _top_impl(item_type, output):
+    endpoint = "/api/v1/overview/top-mcps" if item_type == "mcp" else "/api/v1/overview/top-agents"
+    with spinner():
+        data = client.get(endpoint)
+    if output == "json":
+        output_json(data)
+        return
+    if not data:
+        rprint(f"[dim]No {item_type} data yet.[/dim]")
+        return
+    label = "MCP Servers" if item_type == "mcp" else "Agents"
+    table = Table(title=f"Top {label}", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold")
+    table.add_column("Downloads", justify="right")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(str(i), item["name"], str(int(item["value"])), str(item["id"])[:8] + "…")
+    console.print(table)
+
+
+# ── Feedback (on ops_app) ────────────────────────────────
+
+
+@ops_app.command(name="rate")
+def _rate(
+    listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    stars: int = typer.Option(..., "--stars", "-s", min=1, max=5, help="Rating 1-5"),
+    listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+    comment: str | None = typer.Option(None, "--comment", "-c"),
+):
+    """Rate an MCP server or agent."""
+    _rate_impl(listing_id, stars, listing_type, comment)
+
+
+def _rate_impl(listing_id, stars, listing_type, comment):
+    resolved = config.resolve_alias(listing_id)
+    with spinner("Submitting rating..."):
+        client.post(
+            "/api/v1/feedback",
+            {
+                "listing_id": resolved,
+                "listing_type": listing_type,
+                "rating": stars,
+                "comment": comment,
+            },
+        )
+    rprint(f"[green]✓ Rated {star_rating(stars)}[/green]")
+
+
+@ops_app.command(name="feedback")
+def _feedback(
+    listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    listing_type: str = typer.Option("mcp", "--type", "-t"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """Show feedback for an MCP server or agent."""
+    _feedback_impl(listing_id, listing_type, output)
+
+
+def _feedback_impl(listing_id, listing_type, output):
+    resolved = config.resolve_alias(listing_id)
+    with spinner():
+        data = client.get(f"/api/v1/feedback/{listing_type}/{resolved}")
+        summary = client.get(f"/api/v1/feedback/summary/{resolved}")
+
+    if output == "json":
+        output_json({"summary": summary, "reviews": data})
+        return
+
+    if not data:
+        rprint("[dim]No feedback yet.[/dim]")
+        return
+
+    avg = summary.get("average_rating", 0)
+    total = summary.get("total_reviews", 0)
+    rprint(f"\n  {star_rating(round(avg))} [bold]{avg:.1f}[/bold]/5 ({total} reviews)\n")
+    for fb in data:
+        stars_str = star_rating(fb.get("rating", 0))
+        comment = f"  {fb['comment']}" if fb.get("comment") else ""
+        rprint(f"  {stars_str}{comment}")
+    rprint()
 
 
 # ── Eval ─────────────────────────────────────────────────
@@ -703,168 +734,201 @@ def admin_users(output: str = typer.Option("table", "--output", "-o")):
     console.print(table)
 
 
-# ── Traces ───────────────────────────────────────────────
+# ── Traces / Spans (on ops_app) ─────────────────────────
 
 
-def register_traces(app: typer.Typer):
+@ops_app.command(name="traces")
+def _traces(
+    trace_type: str | None = typer.Option(None, "--type", "-t"),
+    mcp_id: str | None = typer.Option(None, "--mcp"),
+    agent_id: str | None = typer.Option(None, "--agent"),
+    limit: int = typer.Option(20, "--limit", "-n"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """List recent traces."""
+    _traces_impl(trace_type, mcp_id, agent_id, limit, output)
 
-    @app.command()
-    def traces(
-        trace_type: str | None = typer.Option(None, "--type", "-t"),
-        mcp_id: str | None = typer.Option(None, "--mcp"),
-        agent_id: str | None = typer.Option(None, "--agent"),
-        limit: int = typer.Option(20, "--limit", "-n"),
-        output: str = typer.Option("table", "--output", "-o"),
-    ):
-        """List recent traces."""
-        variables = {"limit": limit}
-        if trace_type:
-            variables["traceType"] = trace_type
-        if mcp_id:
-            variables["mcpId"] = config.resolve_alias(mcp_id)
-        if agent_id:
-            variables["agentId"] = config.resolve_alias(agent_id)
 
-        query = """query($traceType: String, $mcpId: String, $agentId: String, $limit: Int) {
-            traces(traceType: $traceType, mcpId: $mcpId, agentId: $agentId, limit: $limit) {
-                items {
-                    traceId traceType name mcpId agentId ide startTime
-                    metrics { totalSpans errorCount toolCallCount }
-                }
+def _traces_impl(trace_type, mcp_id, agent_id, limit, output):
+    variables = {"limit": limit}
+    if trace_type:
+        variables["traceType"] = trace_type
+    if mcp_id:
+        variables["mcpId"] = config.resolve_alias(mcp_id)
+    if agent_id:
+        variables["agentId"] = config.resolve_alias(agent_id)
+
+    query = """query($traceType: String, $mcpId: String, $agentId: String, $limit: Int) {
+        traces(traceType: $traceType, mcpId: $mcpId, agentId: $agentId, limit: $limit) {
+            items {
+                traceId traceType name mcpId agentId ide startTime
+                metrics { totalSpans errorCount toolCallCount }
             }
-        }"""
-        import httpx
+        }
+    }"""
+    import httpx
 
-        cfg = config.get_or_exit()
-        with spinner("Querying traces..."):
-            try:
-                r = httpx.post(
-                    f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
-                    json={"query": query, "variables": variables},
-                    timeout=30,
-                )
-                r.raise_for_status()
-                items = r.json().get("data", {}).get("traces", {}).get("items", [])
-            except Exception as e:
-                rprint(f"[red]Failed to query traces: {e}[/red]")
-                raise typer.Exit(1)
-
-        if output == "json":
-            output_json(items)
-            return
-
-        if not items:
-            rprint("[dim]No traces found.[/dim]")
-            return
-
-        table = Table(title=f"Traces ({len(items)})", show_lines=False, padding=(0, 1))
-        table.add_column("#", style="dim", width=3)
-        table.add_column("Trace ID", style="dim", max_width=14)
-        table.add_column("Type")
-        table.add_column("Name", no_wrap=True)
-        table.add_column("Ref", style="dim", max_width=16)
-        table.add_column("IDE")
-        table.add_column("Spans", justify="right")
-        table.add_column("Err", justify="right")
-        table.add_column("Tools", justify="right")
-        table.add_column("When")
-        for i, t in enumerate(items, 1):
-            m = t.get("metrics", {})
-            ref = t.get("mcpId") or t.get("agentId") or "--"
-            errs = m.get("errorCount", 0)
-            err_style = "red" if errs > 0 else ""
-            table.add_row(
-                str(i),
-                t["traceId"][:12] + "…",
-                t.get("traceType", ""),
-                t.get("name", "") or "--",
-                ref[:16],
-                t.get("ide", "") or "--",
-                str(m.get("totalSpans", 0)),
-                f"[{err_style}]{errs}[/{err_style}]" if err_style else str(errs),
-                str(m.get("toolCallCount", 0)),
-                relative_time(t.get("startTime")),
+    cfg = config.get_or_exit()
+    with spinner("Querying traces..."):
+        try:
+            r = httpx.post(
+                f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
+                json={"query": query, "variables": variables},
+                timeout=30,
             )
-        console.print(table)
-
-    @app.command()
-    def spans(
-        trace_id: str = typer.Argument(..., help="Trace ID"),
-        output: str = typer.Option("table", "--output", "-o"),
-    ):
-        """List spans for a trace."""
-        query = """query($traceId: String!) {
-            trace(traceId: $traceId) {
-                traceId name
-                spans {
-                    spanId type name method latencyMs status
-                    toolSchemaValid toolsAvailable
-                }
-            }
-        }"""
-        import httpx
-
-        cfg = config.get_or_exit()
-        with spinner("Querying spans..."):
-            try:
-                r = httpx.post(
-                    f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
-                    json={"query": query, "variables": {"traceId": trace_id}},
-                    timeout=30,
-                )
-                r.raise_for_status()
-                trace_data = r.json().get("data", {}).get("trace")
-            except Exception as e:
-                rprint(f"[red]Failed to query spans: {e}[/red]")
-                raise typer.Exit(1)
-
-        if not trace_data:
-            rprint(f"[yellow]Trace {trace_id} not found.[/yellow]")
+            r.raise_for_status()
+            items = r.json().get("data", {}).get("traces", {}).get("items", [])
+        except Exception as e:
+            rprint(f"[red]Failed to query traces: {e}[/red]")
             raise typer.Exit(1)
 
-        if output == "json":
-            output_json(trace_data)
-            return
+    if output == "json":
+        output_json(items)
+        return
 
-        rprint(f"\n[bold]Trace:[/bold] {trace_data['traceId']}: {trace_data.get('name', '')}\n")
+    if not items:
+        rprint("[dim]No traces found.[/dim]")
+        return
 
-        spans_data = trace_data.get("spans", [])
-        if not spans_data:
-            rprint("[dim]No spans.[/dim]")
-            return
+    table = Table(title=f"Traces ({len(items)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Trace ID", style="dim", max_width=14)
+    table.add_column("Type")
+    table.add_column("Name", no_wrap=True)
+    table.add_column("Ref", style="dim", max_width=16)
+    table.add_column("IDE")
+    table.add_column("Spans", justify="right")
+    table.add_column("Err", justify="right")
+    table.add_column("Tools", justify="right")
+    table.add_column("When")
+    for i, t in enumerate(items, 1):
+        m = t.get("metrics", {})
+        ref = t.get("mcpId") or t.get("agentId") or "--"
+        errs = m.get("errorCount", 0)
+        err_style = "red" if errs > 0 else ""
+        table.add_row(
+            str(i),
+            t["traceId"][:12] + "…",
+            t.get("traceType", ""),
+            t.get("name", "") or "--",
+            ref[:16],
+            t.get("ide", "") or "--",
+            str(m.get("totalSpans", 0)),
+            f"[{err_style}]{errs}[/{err_style}]" if err_style else str(errs),
+            str(m.get("toolCallCount", 0)),
+            relative_time(t.get("startTime")),
+        )
+    console.print(table)
 
-        table = Table(show_lines=False, padding=(0, 1))
-        table.add_column("#", style="dim", width=3)
-        table.add_column("Span ID", style="dim", max_width=14)
-        table.add_column("Type")
-        table.add_column("Name", no_wrap=True)
-        table.add_column("Method")
-        table.add_column("Latency", justify="right")
-        table.add_column("Status")
-        table.add_column("Schema")
-        for i, s in enumerate(spans_data, 1):
-            schema = (
-                "[green]✓[/green]"
-                if s.get("toolSchemaValid") is True
-                else ("[red]✗[/red]" if s.get("toolSchemaValid") is False else "[dim]--[/dim]")
+
+@ops_app.command(name="spans")
+def _spans(
+    trace_id: str = typer.Argument(..., help="Trace ID"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """List spans for a trace."""
+    _spans_impl(trace_id, output)
+
+
+def _spans_impl(trace_id, output):
+    query = """query($traceId: String!) {
+        trace(traceId: $traceId) {
+            traceId name
+            spans {
+                spanId type name method latencyMs status
+                toolSchemaValid toolsAvailable
+            }
+        }
+    }"""
+    import httpx
+
+    cfg = config.get_or_exit()
+    with spinner("Querying spans..."):
+        try:
+            r = httpx.post(
+                f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
+                json={"query": query, "variables": {"traceId": trace_id}},
+                timeout=30,
             )
-            latency = f"{s['latencyMs']}ms" if s.get("latencyMs") else "--"
-            st = s.get("status", "")
-            st_display = f"[red]{st}[/red]" if st == "error" else f"[green]{st}[/green]" if st == "success" else st
-            table.add_row(
-                str(i),
-                s["spanId"][:12] + "…",
-                s.get("type", ""),
-                s.get("name", ""),
-                s.get("method", "") or "--",
-                latency,
-                st_display,
-                schema,
-            )
-        console.print(table)
+            r.raise_for_status()
+            trace_data = r.json().get("data", {}).get("trace")
+        except Exception as e:
+            rprint(f"[red]Failed to query spans: {e}[/red]")
+            raise typer.Exit(1)
+
+    if not trace_data:
+        rprint(f"[yellow]Trace {trace_id} not found.[/yellow]")
+        raise typer.Exit(1)
+
+    if output == "json":
+        output_json(trace_data)
+        return
+
+    rprint(f"\n[bold]Trace:[/bold] {trace_data['traceId']}: {trace_data.get('name', '')}\n")
+
+    spans_data = trace_data.get("spans", [])
+    if not spans_data:
+        rprint("[dim]No spans.[/dim]")
+        return
+
+    table = Table(show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Span ID", style="dim", max_width=14)
+    table.add_column("Type")
+    table.add_column("Name", no_wrap=True)
+    table.add_column("Method")
+    table.add_column("Latency", justify="right")
+    table.add_column("Status")
+    table.add_column("Schema")
+    for i, s in enumerate(spans_data, 1):
+        schema = (
+            "[green]✓[/green]"
+            if s.get("toolSchemaValid") is True
+            else ("[red]✗[/red]" if s.get("toolSchemaValid") is False else "[dim]--[/dim]")
+        )
+        latency = f"{s['latencyMs']}ms" if s.get("latencyMs") else "--"
+        st = s.get("status", "")
+        st_display = f"[red]{st}[/red]" if st == "error" else f"[green]{st}[/green]" if st == "success" else st
+        table.add_row(
+            str(i),
+            s["spanId"][:12] + "…",
+            s.get("type", ""),
+            s.get("name", ""),
+            s.get("method", "") or "--",
+            latency,
+            st_display,
+            schema,
+        )
+    console.print(table)
 
 
-# ── Upgrade / Downgrade ──────────────────────────────────
+# ── Upgrade / Downgrade (stays at root) ─────────────────
+
+
+def _upgrade_impl():
+    """Upgrade observal CLI to the latest version."""
+    import subprocess
+
+    with spinner("Upgrading..."):
+        result = subprocess.run(
+            ["uv", "tool", "upgrade", "observal-cli"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    if result.returncode == 0:
+        rprint("[green]✓ Upgraded![/green]")
+        if result.stdout.strip():
+            rprint(f"[dim]{result.stdout.strip()}[/dim]")
+    else:
+        rprint(f"[red]Upgrade failed:[/red] {result.stderr.strip()}")
+        raise typer.Exit(1)
+
+
+def _downgrade_impl():
+    """Downgrade observal CLI to a previous version."""
+    rprint("[yellow]WIP: not yet implemented.[/yellow]")
+    rprint("[dim]Track: https://github.com/BlazeUp-AI/Observal/issues/19[/dim]")
 
 
 def register_lifecycle(app: typer.Typer):
@@ -872,25 +936,209 @@ def register_lifecycle(app: typer.Typer):
     @app.command()
     def upgrade():
         """Upgrade observal CLI to the latest version."""
-        import subprocess
-
-        with spinner("Upgrading..."):
-            result = subprocess.run(
-                ["uv", "tool", "upgrade", "observal-cli"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-        if result.returncode == 0:
-            rprint("[green]✓ Upgraded![/green]")
-            if result.stdout.strip():
-                rprint(f"[dim]{result.stdout.strip()}[/dim]")
-        else:
-            rprint(f"[red]Upgrade failed:[/red] {result.stderr.strip()}")
-            raise typer.Exit(1)
+        _upgrade_impl()
 
     @app.command()
     def downgrade():
         """Downgrade observal CLI to a previous version."""
-        rprint("[yellow]WIP: not yet implemented.[/yellow]")
-        rprint("[dim]Track: https://github.com/BlazeUp-AI/Observal/issues/19[/dim]")
+        _downgrade_impl()
+
+
+# ═══════════════════════════════════════════════════════════
+# Wire sub-Typers into ops_app and admin_app
+# ═══════════════════════════════════════════════════════════
+
+# telemetry is a subgroup of ops
+ops_app.add_typer(telemetry_app, name="telemetry")
+
+# review and eval are subgroups of admin
+admin_app.add_typer(review_app, name="review")
+admin_app.add_typer(eval_app, name="eval")
+
+
+# ═══════════════════════════════════════════════════════════
+# Deprecated root-level aliases (hidden, print deprecation notice)
+# ═══════════════════════════════════════════════════════════
+
+
+def register_deprecated_ops(app: typer.Typer):
+    """Register backward-compat aliases at root level for commands now under `observal ops`."""
+
+    @app.command(name="traces", hidden=True)
+    def deprecated_traces(
+        trace_type: str | None = typer.Option(None, "--type", "-t"),
+        mcp_id: str | None = typer.Option(None, "--mcp"),
+        agent_id: str | None = typer.Option(None, "--agent"),
+        limit: int = typer.Option(20, "--limit", "-n"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal ops traces` instead."""
+        rprint(_DEPRECATION_TPL.format(old="traces", new="ops traces"))
+        _traces_impl(trace_type, mcp_id, agent_id, limit, output)
+
+    @app.command(name="spans", hidden=True)
+    def deprecated_spans(
+        trace_id: str = typer.Argument(..., help="Trace ID"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal ops spans` instead."""
+        rprint(_DEPRECATION_TPL.format(old="spans", new="ops spans"))
+        _spans_impl(trace_id, output)
+
+    @app.command(name="overview", hidden=True)
+    def deprecated_overview(output: str = typer.Option("table", "--output", "-o")):
+        """(Deprecated) Use `observal ops overview` instead."""
+        rprint(_DEPRECATION_TPL.format(old="overview", new="ops overview"))
+        _overview(output)
+
+    @app.command(name="metrics", hidden=True)
+    def deprecated_metrics(
+        item_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+        item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+        output: str = typer.Option("table", "--output", "-o"),
+        watch: bool = typer.Option(False, "--watch", "-w", help="Refresh every 5s"),
+    ):
+        """(Deprecated) Use `observal ops metrics` instead."""
+        rprint(_DEPRECATION_TPL.format(old="metrics", new="ops metrics"))
+        _metrics_impl(item_id, item_type, output, watch)
+
+    @app.command(name="top", hidden=True)
+    def deprecated_top(
+        item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal ops top` instead."""
+        rprint(_DEPRECATION_TPL.format(old="top", new="ops top"))
+        _top_impl(item_type, output)
+
+    @app.command(name="rate", hidden=True)
+    def deprecated_rate(
+        listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+        stars: int = typer.Option(..., "--stars", "-s", min=1, max=5, help="Rating 1-5"),
+        listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+        comment: str | None = typer.Option(None, "--comment", "-c"),
+    ):
+        """(Deprecated) Use `observal ops rate` instead."""
+        rprint(_DEPRECATION_TPL.format(old="rate", new="ops rate"))
+        _rate_impl(listing_id, stars, listing_type, comment)
+
+    @app.command(name="feedback", hidden=True)
+    def deprecated_feedback(
+        listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+        listing_type: str = typer.Option("mcp", "--type", "-t"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal ops feedback` instead."""
+        rprint(_DEPRECATION_TPL.format(old="feedback", new="ops feedback"))
+        _feedback_impl(listing_id, listing_type, output)
+
+
+def register_deprecated_admin(app: typer.Typer):
+    """Register backward-compat aliases at root level for commands now nested under `observal admin`."""
+
+    # `observal review` was a top-level Typer; now it's `observal admin review`.
+    # We add it as a hidden sub-Typer alias at root.
+    _deprecated_review = typer.Typer(help="(Deprecated) Use `observal admin review` instead.", hidden=True)
+
+    @_deprecated_review.callback(invoke_without_command=True)
+    def _review_deprecation_notice(ctx: typer.Context):
+        rprint(_DEPRECATION_TPL.format(old="review ...", new="admin review ..."))
+        if ctx.invoked_subcommand is None:
+            ctx.invoke(review_list)
+
+    @_deprecated_review.command(name="list")
+    def _dep_review_list(output: str = typer.Option("table", "--output", "-o")):
+        """(Deprecated) Use `observal admin review list`."""
+        review_list(output)
+
+    @_deprecated_review.command(name="show")
+    def _dep_review_show(review_id: str = typer.Argument(...), output: str = typer.Option("table", "--output", "-o")):
+        """(Deprecated) Use `observal admin review show`."""
+        review_show(review_id, output)
+
+    @_deprecated_review.command(name="approve")
+    def _dep_review_approve(review_id: str = typer.Argument(...)):
+        """(Deprecated) Use `observal admin review approve`."""
+        review_approve(review_id)
+
+    @_deprecated_review.command(name="reject")
+    def _dep_review_reject(
+        review_id: str = typer.Argument(...),
+        reason: str = typer.Option(..., "--reason", "-r", help="Rejection reason"),
+    ):
+        """(Deprecated) Use `observal admin review reject`."""
+        review_reject(review_id, reason)
+
+    app.add_typer(_deprecated_review, name="review")
+
+    # `observal telemetry` was a top-level Typer; now it's `observal ops telemetry`.
+    _deprecated_telemetry = typer.Typer(help="(Deprecated) Use `observal ops telemetry` instead.", hidden=True)
+
+    @_deprecated_telemetry.callback(invoke_without_command=True)
+    def _telemetry_deprecation_notice(ctx: typer.Context):
+        rprint(_DEPRECATION_TPL.format(old="telemetry ...", new="ops telemetry ..."))
+
+    @_deprecated_telemetry.command(name="status")
+    def _dep_telemetry_status():
+        """(Deprecated) Use `observal ops telemetry status`."""
+        telemetry_status()
+
+    @_deprecated_telemetry.command(name="test")
+    def _dep_telemetry_test():
+        """(Deprecated) Use `observal ops telemetry test`."""
+        telemetry_test()
+
+    app.add_typer(_deprecated_telemetry, name="telemetry")
+
+    # `observal eval` was a top-level Typer; now it's `observal admin eval`.
+    _deprecated_eval = typer.Typer(help="(Deprecated) Use `observal admin eval` instead.", hidden=True)
+
+    @_deprecated_eval.callback(invoke_without_command=True)
+    def _eval_deprecation_notice(ctx: typer.Context):
+        rprint(_DEPRECATION_TPL.format(old="eval ...", new="admin eval ..."))
+
+    @_deprecated_eval.command(name="run")
+    def _dep_eval_run(
+        agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+        trace_id: str | None = typer.Option(None, "--trace"),
+    ):
+        """(Deprecated) Use `observal admin eval run`."""
+        eval_run(agent_id, trace_id)
+
+    @_deprecated_eval.command(name="scorecards")
+    def _dep_eval_scorecards(
+        agent_id: str = typer.Argument(...),
+        version: str | None = typer.Option(None, "--version", "-v"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal admin eval scorecards`."""
+        eval_scorecards(agent_id, version, output)
+
+    @_deprecated_eval.command(name="show")
+    def _dep_eval_show(
+        scorecard_id: str = typer.Argument(...),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal admin eval show`."""
+        eval_show(scorecard_id, output)
+
+    @_deprecated_eval.command(name="compare")
+    def _dep_eval_compare(
+        agent_id: str = typer.Argument(...),
+        version_a: str = typer.Option(..., "--a"),
+        version_b: str = typer.Option(..., "--b"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal admin eval compare`."""
+        eval_compare(agent_id, version_a, version_b, output)
+
+    @_deprecated_eval.command(name="aggregate")
+    def _dep_eval_aggregate(
+        agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+        window: int = typer.Option(50, "--window", "-w", help="Number of recent scorecards"),
+        output: str = typer.Option("table", "--output", "-o"),
+    ):
+        """(Deprecated) Use `observal admin eval aggregate`."""
+        eval_aggregate(agent_id, window, output)
+
+    app.add_typer(_deprecated_eval, name="eval")
