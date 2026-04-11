@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import DateTime, ForeignKey, Interval, String, Text, UniqueConstraint, Boolean
+from sqlalchemy import Boolean, DateTime, ForeignKey, Interval, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 

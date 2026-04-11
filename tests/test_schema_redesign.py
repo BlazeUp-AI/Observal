@@ -1,7 +1,6 @@
 """Tests for the agent-centric schema redesign."""
 
 import uuid
-from datetime import UTC, datetime
 
 import pytest
 
@@ -297,8 +296,12 @@ class TestRemovedTypes:
     def test_new_models_importable(self):
         """All new models should be importable from models package."""
         from models import (
-            Organization, ComponentSource, AgentComponent,
-            AgentDownloadRecord, ComponentDownloadRecord, ExporterConfig,
+            AgentComponent,
+            AgentDownloadRecord,
+            ComponentDownloadRecord,
+            ComponentSource,
+            ExporterConfig,
+            Organization,
         )
         assert Organization.__tablename__ == "organizations"
         assert ComponentSource.__tablename__ == "component_sources"
@@ -325,6 +328,7 @@ class TestDownloadTracking:
 
     def test_anonymous_fingerprint_deterministic(self):
         from unittest.mock import MagicMock
+
         from services.download_tracker import _anonymous_fingerprint
 
         request = MagicMock()
@@ -338,6 +342,7 @@ class TestDownloadTracking:
 
     def test_anonymous_fingerprint_varies_by_ip(self):
         from unittest.mock import MagicMock
+
         from services.download_tracker import _anonymous_fingerprint
 
         req1 = MagicMock()
@@ -352,6 +357,7 @@ class TestDownloadTracking:
 
     def test_anonymous_fingerprint_varies_by_ua(self):
         from unittest.mock import MagicMock
+
         from services.download_tracker import _anonymous_fingerprint
 
         req1 = MagicMock()
@@ -390,7 +396,12 @@ class TestDownloadTracking:
         assert col_uu.default.arg == 0
 
     def test_download_tracker_module_exists(self):
-        from services.download_tracker import record_agent_download, record_component_download, get_download_stats, _anonymous_fingerprint
+        from services.download_tracker import (
+            _anonymous_fingerprint,
+            get_download_stats,
+            record_agent_download,
+            record_component_download,
+        )
         assert callable(record_agent_download)
         assert callable(record_component_download)
         assert callable(get_download_stats)
@@ -399,6 +410,7 @@ class TestDownloadTracking:
     def test_install_agent_route_accepts_request(self):
         """The install_agent endpoint should accept a Request parameter for fingerprinting."""
         import inspect
+
         from api.routes.agent import install_agent
         sig = inspect.signature(install_agent)
         param_names = list(sig.parameters.keys())
@@ -422,6 +434,7 @@ class TestMcpValidationField:
     async def test_approve_allows_non_validated_mcp(self):
         """Review approve should allow MCPs regardless of validation status."""
         from unittest.mock import AsyncMock, MagicMock
+
         from api.routes.review import approve
         from models.mcp import ListingStatus
         from models.user import UserRole
@@ -452,6 +465,7 @@ class TestMcpValidationField:
     async def test_approve_allows_validated_mcp(self):
         """Review approve should allow MCPs that passed validation."""
         from unittest.mock import AsyncMock, MagicMock
+
         from api.routes.review import approve
         from models.mcp import ListingStatus
         from models.user import UserRole
@@ -480,6 +494,7 @@ class TestMcpValidationField:
     async def test_approve_non_mcp_not_affected(self):
         """Non-MCP listings should not be affected by validation check."""
         from unittest.mock import AsyncMock, MagicMock
+
         from api.routes.review import approve
         from models.mcp import ListingStatus
         from models.user import UserRole

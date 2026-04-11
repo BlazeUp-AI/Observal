@@ -18,13 +18,12 @@ References:
 Content was rephrased for compliance with licensing restrictions.
 """
 
-import json
 import logging
 import uuid
 from datetime import UTC, datetime
 
-from services.clickhouse import insert_scores, query_spans
-from services.eval_engine import _call_model, _extract_json, get_backend
+from services.clickhouse import insert_scores
+from services.eval_engine import _call_model
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +192,7 @@ async def run_ragas_on_graphrag(
     Returns:
         Dict with per-span scores and aggregate averages.
     """
-    from services.clickhouse import _query, _escape
+    from services.clickhouse import _escape, _query
 
     ground_truths = ground_truths or {}
 
@@ -276,7 +275,7 @@ async def get_ragas_scores(
     project_id: str = "default",
 ) -> dict:
     """Fetch previously computed RAGAS scores from ClickHouse."""
-    from services.clickhouse import _query, _escape
+    from services.clickhouse import _escape, _query
 
     averages = {}
     for dim in RAGAS_DIMENSIONS:
@@ -306,7 +305,7 @@ async def get_ragas_scores(
 
 async def get_ragas_aggregate(project_id: str = "default") -> dict:
     """Fetch aggregate RAGAS scores across all GraphRAGs."""
-    from services.clickhouse import _query, _escape
+    from services.clickhouse import _escape, _query
 
     averages = {}
     for dim in RAGAS_DIMENSIONS:

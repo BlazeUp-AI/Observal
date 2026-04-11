@@ -9,7 +9,7 @@ import typer
 from rich import print as rprint
 
 from observal_cli import client, config
-from observal_cli.render import console, spinner
+from observal_cli.render import spinner
 
 
 def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> str:

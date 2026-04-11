@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Sandbox Runner ──────────────────────────────────────────────────
 
 
@@ -62,6 +61,7 @@ class TestSandboxRunner:
 
         with patch.dict("sys.modules", {"docker": mock_docker}):
             import importlib
+
             import observal_cli.sandbox_runner as sr
             importlib.reload(sr)
 

@@ -19,24 +19,24 @@ def load() -> dict:
     cfg = dict(DEFAULTS)
     if CONFIG_FILE.exists():
         cfg.update(json.loads(CONFIG_FILE.read_text()))
-        
+
     # Environment variable overrides (No login required if these are set)
     if env_url := os.environ.get("OBSERVAL_SERVER_URL"):
         cfg["server_url"] = env_url
     if env_key := os.environ.get("OBSERVAL_API_KEY"):
         cfg["api_key"] = env_key
-        
+
     return cfg
 
 def save(data: dict):
     """Save config to disk (safely ignoring environment variables)."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     # Read strictly from disk so we don't accidentally save env vars
     existing = {}
     if CONFIG_FILE.exists():
         existing = json.loads(CONFIG_FILE.read_text())
-        
+
     existing.update(data)
     CONFIG_FILE.write_text(json.dumps(existing, indent=2))
 

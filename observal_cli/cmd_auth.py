@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json as _json
-import os
 import shutil
-import sys
 from pathlib import Path
 
 import httpx
@@ -43,7 +41,7 @@ def init(server: str = typer.Option(None, "--server", "-s", help="Server URL")):
         rprint(f"[red]x Connection failed.[/red] Is the server running at {server_url}?")
         raise typer.Exit(1)
     except Exception as e:
-        rprint(f"[red]x Server error:[/red] {str(e)}")
+        rprint(f"[red]x Server error:[/red] {e!s}")
         raise typer.Exit(1)
 
     rprint("[green]Connected to server[/green]\n")

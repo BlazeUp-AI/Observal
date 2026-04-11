@@ -8,10 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = logging.getLogger(__name__)
-
 from models.agent import Agent
 from models.download import AgentDownloadRecord, ComponentDownloadRecord
+
+logger = logging.getLogger(__name__)
 
 
 def _anonymous_fingerprint(request: Request) -> str:

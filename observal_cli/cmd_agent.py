@@ -317,10 +317,9 @@ def agent_init(
     dir_path = Path(directory)
     yaml_path = dir_path / YAML_FILE
 
-    if yaml_path.exists():
-        if not typer.confirm(f"{YAML_FILE} already exists in {dir_path}. Overwrite?"):
-            rprint("[yellow]Aborted.[/yellow]")
-            raise typer.Exit(code=1)
+    if yaml_path.exists() and not typer.confirm(f"{YAML_FILE} already exists in {dir_path}. Overwrite?"):
+        rprint("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(code=1)
 
     name = typer.prompt("Agent name")
     version = typer.prompt("Version", default="1.0.0")
@@ -405,8 +404,8 @@ def agent_build(
         ctype = comp["component_type"]
         cid = comp["component_id"]
         # API convention: plural resource name
-        _PLURAL = {"mcp": "mcps", "skill": "skills", "hook": "hooks", "prompt": "prompts", "sandbox": "sandboxes"}
-        endpoint = f"/api/v1/{_PLURAL[ctype]}/{cid}"
+        plural = {"mcp": "mcps", "skill": "skills", "hook": "hooks", "prompt": "prompts", "sandbox": "sandboxes"}
+        endpoint = f"/api/v1/{plural[ctype]}/{cid}"
         try:
             with spinner(f"Checking {ctype} {cid[:8]}..."):
                 client.get(endpoint)
