@@ -35,6 +35,8 @@ async def list_sessions():
         "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens, "
         "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
         "anyIf(LogAttributes['model'], LogAttributes['model'] != '') AS model, "
+        "anyIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_id, "
+        "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
         "WHERE LogAttributes['session.id'] != '' "
@@ -140,6 +142,33 @@ async def get_trace(trace_id: str):
             }
         )
     return spans
+
+
+@router.get("/errors")
+async def list_errors():
+    """List recent error events (tool failures, stop failures, API errors)."""
+    rows = await _ch_json(
+        "SELECT "
+        "Timestamp AS timestamp, "
+        "if(LogAttributes['event.name'] != '', LogAttributes['event.name'], EventName) AS event_name, "
+        "Body AS body, "
+        "LogAttributes['session.id'] AS session_id, "
+        "LogAttributes['tool_name'] AS tool_name, "
+        "LogAttributes['error'] AS error, "
+        "LogAttributes['agent_id'] AS agent_id, "
+        "LogAttributes['agent_type'] AS agent_type, "
+        "LogAttributes['tool_input'] AS tool_input, "
+        "LogAttributes['tool_response'] AS tool_response, "
+        "LogAttributes['stop_reason'] AS stop_reason, "
+        "LogAttributes['user.id'] AS user_id "
+        "FROM otel_logs "
+        "WHERE LogAttributes['event.name'] IN "
+        "('hook_posttoolusefailure', 'hook_stopfailure', 'api_error') "
+        "OR EventName = 'api_error' "
+        "ORDER BY Timestamp DESC "
+        "LIMIT 200"
+    )
+    return rows
 
 
 @router.get("/stats")

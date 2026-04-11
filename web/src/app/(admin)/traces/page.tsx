@@ -35,6 +35,8 @@ interface SessionRow {
   total_output_tokens?: number;
   total_cache_read_tokens?: number;
   model?: string;
+  user_id?: string;
+  terminal_type?: string;
 }
 
 function formatTokens(n: number | string | undefined): string {
@@ -68,6 +70,27 @@ const columns: ColumnDef<SessionRow>[] = [
           {m ? m.replace("claude-", "").replace("-20251001", "") : "-"}
         </span>
       );
+    },
+  },
+  {
+    accessorKey: "user_id",
+    header: "User",
+    cell: ({ row }) => {
+      const uid = row.original.user_id;
+      return (
+        <span className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground" title={uid}>
+          {uid ? uid.slice(0, 8) + "…" : "-"}
+        </span>
+      );
+    },
+  },
+  {
+    accessorKey: "terminal_type",
+    header: "IDE",
+    cell: ({ row }) => {
+      const t = row.original.terminal_type;
+      const label = t ? t.replace("wsl-", "WSL ") : "-";
+      return <span className="text-xs">{label}</span>;
     },
   },
   {
