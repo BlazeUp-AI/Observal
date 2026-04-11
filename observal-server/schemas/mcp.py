@@ -44,7 +44,7 @@ class McpListingResponse(BaseModel):
     supported_ides: list[str]
     setup_instructions: str | None
     changelog: str | None
-    fastmcp_validated: bool = False
+    mcp_validated: bool = False
     status: ListingStatus
     rejection_reason: str | None = None
     submitted_by: uuid.UUID

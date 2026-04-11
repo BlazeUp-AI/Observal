@@ -126,10 +126,10 @@ class TestComponentTableUpdates:
         cols = {c.name for c in cls.__table__.columns}
         assert "git_ref" in cols, f"{model_name} missing git_ref"
 
-    def test_mcp_has_fastmcp_validated(self):
+    def test_mcp_has_mcp_validated(self):
         from models.mcp import McpListing
         cols = {c.name for c in McpListing.__table__.columns}
-        assert "fastmcp_validated" in cols
+        assert "mcp_validated" in cols
 
     def test_skill_link_table_removed(self):
         """AgentSkillLink should no longer exist — replaced by AgentComponent."""
@@ -405,33 +405,33 @@ class TestDownloadTracking:
         assert "request" in param_names
 
 
-class TestFastMcpEnforcement:
-    """Tests for FastMCP validation enforcement (#92)."""
+class TestMcpValidationField:
+    """Tests for MCP validation field (#92)."""
 
-    def test_mcp_has_fastmcp_validated_field(self):
+    def test_mcp_has_mcp_validated_field(self):
         from models.mcp import McpListing
-        assert hasattr(McpListing, "fastmcp_validated")
+        assert hasattr(McpListing, "mcp_validated")
 
-    def test_fastmcp_validated_defaults_false(self):
+    def test_mcp_validated_defaults_false(self):
         from models.mcp import McpListing
-        col = McpListing.__table__.columns["fastmcp_validated"]
+        col = McpListing.__table__.columns["mcp_validated"]
         # default is False
         assert col.default.arg is False
 
     @pytest.mark.asyncio
-    async def test_approve_blocks_non_fastmcp(self):
-        """Review approve should reject MCPs that haven't passed FastMCP validation."""
+    async def test_approve_allows_non_validated_mcp(self):
+        """Review approve should allow MCPs regardless of validation status."""
         from unittest.mock import AsyncMock, MagicMock
         from api.routes.review import approve
         from models.mcp import ListingStatus
         from models.user import UserRole
 
-        # Create a mock MCP listing with fastmcp_validated=False
+        # Create a mock MCP listing with mcp_validated=False
         listing = MagicMock()
         listing.id = uuid.uuid4()
         listing.name = "test-mcp"
         listing.status = ListingStatus.pending
-        listing.fastmcp_validated = False
+        listing.mcp_validated = False
 
         mock_db = AsyncMock()
         mock_user = MagicMock()
@@ -442,18 +442,15 @@ class TestFastMcpEnforcement:
         original_find = review_mod._find_listing
         review_mod._find_listing = AsyncMock(return_value=("mcp", listing))
 
-        from fastapi import HTTPException
         try:
-            with pytest.raises(HTTPException) as exc_info:
-                await approve(str(listing.id), mock_db, mock_user)
-            assert exc_info.value.status_code == 400
-            assert "FastMCP" in exc_info.value.detail
+            result = await approve(str(listing.id), mock_db, mock_user)
+            assert result["status"] == "approved"
         finally:
             review_mod._find_listing = original_find
 
     @pytest.mark.asyncio
-    async def test_approve_allows_fastmcp_validated(self):
-        """Review approve should allow MCPs that passed FastMCP validation."""
+    async def test_approve_allows_validated_mcp(self):
+        """Review approve should allow MCPs that passed validation."""
         from unittest.mock import AsyncMock, MagicMock
         from api.routes.review import approve
         from models.mcp import ListingStatus
@@ -463,7 +460,7 @@ class TestFastMcpEnforcement:
         listing.id = uuid.uuid4()
         listing.name = "validated-mcp"
         listing.status = ListingStatus.pending
-        listing.fastmcp_validated = True
+        listing.mcp_validated = True
 
         mock_db = AsyncMock()
         mock_user = MagicMock()
@@ -481,7 +478,7 @@ class TestFastMcpEnforcement:
 
     @pytest.mark.asyncio
     async def test_approve_non_mcp_not_affected(self):
-        """Non-MCP listings should not be affected by FastMCP check."""
+        """Non-MCP listings should not be affected by validation check."""
         from unittest.mock import AsyncMock, MagicMock
         from api.routes.review import approve
         from models.mcp import ListingStatus
@@ -491,7 +488,6 @@ class TestFastMcpEnforcement:
         listing.id = uuid.uuid4()
         listing.name = "test-skill"
         listing.status = ListingStatus.pending
-        # Skills don't have fastmcp_validated
 
         mock_db = AsyncMock()
         mock_user = MagicMock()

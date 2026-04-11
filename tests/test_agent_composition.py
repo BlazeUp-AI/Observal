@@ -245,11 +245,11 @@ class TestExtractExtra:
         listing = MagicMock()
         listing.transport = "stdio"
         listing.tools_schema = {"tools": []}
-        listing.fastmcp_validated = True
+        listing.mcp_validated = True
         listing.setup_instructions = "pip install"
         extra = _extract_extra(listing, "mcp")
         assert extra["transport"] == "stdio"
-        assert extra["fastmcp_validated"] is True
+        assert extra["mcp_validated"] is True
         assert extra["tools_schema"] == {"tools": []}
 
     def test_skill_extra(self):
@@ -432,7 +432,7 @@ class TestResolveAgent:
         listing.description = "A good MCP"
         listing.transport = "stdio"
         listing.tools_schema = None
-        listing.fastmcp_validated = True
+        listing.mcp_validated = True
         listing.setup_instructions = None
 
         mock_result = MagicMock()
@@ -527,7 +527,7 @@ class TestResolveAgent:
         good_listing.description = ""
         good_listing.transport = None
         good_listing.tools_schema = None
-        good_listing.fastmcp_validated = True
+        good_listing.mcp_validated = True
         good_listing.setup_instructions = None
 
         # Return good listing for first call, None for second
@@ -650,7 +650,7 @@ class TestBuildAgentManifest:
                     git_url="https://github.com/org/repo.git", git_ref="abc123",
                     description="FS ops", order_index=0,
                     extra={"transport": "stdio", "tools_schema": None,
-                           "fastmcp_validated": True, "setup_instructions": None},
+                           "mcp_validated": True, "setup_instructions": None},
                 ),
             ],
         )

@@ -27,7 +27,7 @@ class McpListing(Base):
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
     transport: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    fastmcp_validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    mcp_validated: Mapped[bool] = mapped_column(Boolean, default=False)
     tools_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     supported_ides: Mapped[list] = mapped_column(JSON, default=list)
     setup_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -83,7 +83,7 @@ def _extract_extra(listing, component_type: str) -> dict:
         return {
             "transport": getattr(listing, "transport", None),
             "tools_schema": getattr(listing, "tools_schema", None),
-            "fastmcp_validated": getattr(listing, "fastmcp_validated", False),
+            "mcp_validated": getattr(listing, "mcp_validated", False),
             "setup_instructions": getattr(listing, "setup_instructions", None),
         }
     if component_type == "skill":
