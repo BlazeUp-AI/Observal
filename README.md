@@ -10,7 +10,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status">
-  <a href="https://github.com/BlazeUp-AI/Observal/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BlazeUp-AI/Observal/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
 </p>
 
 ---
