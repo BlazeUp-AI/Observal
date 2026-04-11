@@ -14,8 +14,6 @@ from rich.table import Table
 from observal_cli import client
 from observal_cli.render import console, spinner
 
-scan_app = typer.Typer(help="Scan and instrument existing IDE configs")
-
 # IDE config file locations (relative to project root)
 _IDE_MCP_CONFIGS = {
     "cursor": ".cursor/mcp.json",
@@ -80,7 +78,6 @@ def _backup_config(config_path: Path) -> Path:
 
 
 def register_scan(app: typer.Typer):
-    app.add_typer(scan_app, name="scan")
 
     @app.command(name="scan")
     def scan(

@@ -902,7 +902,15 @@ def _spans_impl(trace_id, output):
     console.print(table)
 
 
-# ── Upgrade / Downgrade (stays at root) ─────────────────
+# ═══════════════════════════════════════════════════════════
+# self_app — CLI self-management commands
+# ═══════════════════════════════════════════════════════════
+
+self_app = typer.Typer(
+    name="self",
+    help="CLI self-management commands (upgrade, downgrade)",
+    no_args_is_help=True,
+)
 
 
 def _upgrade_impl():
@@ -931,16 +939,31 @@ def _downgrade_impl():
     rprint("[dim]Track: https://github.com/BlazeUp-AI/Observal/issues/19[/dim]")
 
 
-def register_lifecycle(app: typer.Typer):
+@self_app.command()
+def upgrade():
+    """Upgrade observal CLI to the latest version."""
+    _upgrade_impl()
 
-    @app.command()
-    def upgrade():
-        """Upgrade observal CLI to the latest version."""
+
+@self_app.command()
+def downgrade():
+    """Downgrade observal CLI to a previous version."""
+    _downgrade_impl()
+
+
+def register_deprecated_lifecycle(app: typer.Typer):
+    """Register deprecated root-level upgrade/downgrade aliases."""
+
+    @app.command(name="upgrade", hidden=True)
+    def deprecated_upgrade():
+        """(Deprecated) Use `observal self upgrade` instead."""
+        rprint(_DEPRECATION_TPL.format(old="upgrade", new="self upgrade"))
         _upgrade_impl()
 
-    @app.command()
-    def downgrade():
-        """Downgrade observal CLI to a previous version."""
+    @app.command(name="downgrade", hidden=True)
+    def deprecated_downgrade():
+        """(Deprecated) Use `observal self downgrade` instead."""
+        rprint(_DEPRECATION_TPL.format(old="downgrade", new="self downgrade"))
         _downgrade_impl()
 
 
