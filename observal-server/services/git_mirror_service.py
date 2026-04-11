@@ -41,7 +41,7 @@ def _mirror_path(git_url: str, base: Path = DEFAULT_MIRROR_BASE) -> Path:
 def _run_git(args: list[str], cwd: str | None = None, timeout: int = 120) -> subprocess.CompletedProcess:
     """Run a git command with timeout."""
     return subprocess.run(
-        ["git"] + args,
+        ["git", *args],
         cwd=cwd,
         capture_output=True,
         text=True,

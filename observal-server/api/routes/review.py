@@ -1,4 +1,3 @@
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -33,13 +32,16 @@ async def _find_listing(listing_id: str, db: AsyncSession):
     """Try each listing model to find the listing by id or name."""
     import uuid as _uuid
     if isinstance(listing_id, _uuid.UUID):
-        clause_fn = lambda model: model.id == listing_id
+        def clause_fn(model):
+            return model.id == listing_id
     else:
         try:
             uid = _uuid.UUID(listing_id)
-            clause_fn = lambda model: model.id == uid
+            def clause_fn(model):
+                return model.id == uid
         except ValueError:
-            clause_fn = lambda model: model.name == listing_id
+            def clause_fn(model):
+                return model.name == listing_id
     for listing_type, model in LISTING_MODELS.items():
         result = await db.execute(select(model).where(clause_fn(model)))
         listing = result.scalar_one_or_none()

@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.agent import Agent
-from models.agent_component import AgentComponent
 from models.hook import HookListing
 from models.mcp import ListingStatus, McpListing
 from models.prompt import PromptListing

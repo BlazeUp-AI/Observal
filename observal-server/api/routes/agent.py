@@ -149,7 +149,7 @@ async def create_agent(
 
     # Legacy: mcp_server_ids → AgentComponent(type=mcp)
     order = 0
-    for mid, listing in zip(req.mcp_server_ids, mcp_listings):
+    for mid, listing in zip(req.mcp_server_ids, mcp_listings, strict=False):
         db.add(AgentComponent(
             agent_id=agent.id,
             component_type="mcp",
@@ -319,7 +319,7 @@ async def update_agent(
         ).scalars().all()
         for comp in old_comps:
             await db.delete(comp)
-        for i, (mid, listing) in enumerate(zip(req.mcp_server_ids, mcp_listings)):
+        for i, (mid, listing) in enumerate(zip(req.mcp_server_ids, mcp_listings, strict=False)):
             db.add(AgentComponent(
                 agent_id=agent.id,
                 component_type="mcp",
@@ -383,7 +383,7 @@ async def install_agent(
         mcp_rows = (await db.execute(
             select(McpListing).where(McpListing.id.in_(mcp_comp_ids))
         )).scalars().all()
-        mcp_listings_map = {l.id: l for l in mcp_rows}
+        mcp_listings_map = {row.id: row for row in mcp_rows}
 
     snippet = generate_agent_config(agent, req.ide, mcp_listings=mcp_listings_map)
     from services.download_tracker import record_agent_download

@@ -152,15 +152,15 @@ async def otel_stats():
         "count() AS total_spans "
         "FROM otel_traces"
     )
-    l = log_rows[0] if log_rows else {}
-    t = trace_rows[0] if trace_rows else {}
+    log = log_rows[0] if log_rows else {}
+    tr = trace_rows[0] if trace_rows else {}
     return {
-        "total_sessions": int(l.get("total_sessions", 0)),
-        "total_prompts": int(l.get("total_prompts", 0)),
-        "total_api_requests": int(l.get("total_api_requests", 0)),
-        "total_tool_calls": int(l.get("total_tool_calls", 0)),
-        "total_input_tokens": int(l.get("total_input_tokens", 0)),
-        "total_output_tokens": int(l.get("total_output_tokens", 0)),
-        "total_traces": int(t.get("total_traces", 0)),
-        "total_spans": int(t.get("total_spans", 0)),
+        "total_sessions": int(log.get("total_sessions", 0)),
+        "total_prompts": int(log.get("total_prompts", 0)),
+        "total_api_requests": int(log.get("total_api_requests", 0)),
+        "total_tool_calls": int(log.get("total_tool_calls", 0)),
+        "total_input_tokens": int(log.get("total_input_tokens", 0)),
+        "total_output_tokens": int(log.get("total_output_tokens", 0)),
+        "total_traces": int(tr.get("total_traces", 0)),
+        "total_spans": int(tr.get("total_spans", 0)),
     }

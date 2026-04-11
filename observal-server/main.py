@@ -8,8 +8,8 @@ from api.graphql import get_context_dep, schema
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.alert import router as alert_router
-from api.routes.component_source import router as component_source_router
 from api.routes.auth import router as auth_router
+from api.routes.component_source import router as component_source_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
@@ -20,9 +20,9 @@ from api.routes.otlp import router as otlp_router
 from api.routes.prompt import router as prompt_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
+from api.routes.scan import router as scan_router
 from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
-from api.routes.scan import router as scan_router
 from database import engine
 from models import Base
 from services.clickhouse import init_clickhouse

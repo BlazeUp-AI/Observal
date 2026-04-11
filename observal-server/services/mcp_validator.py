@@ -238,7 +238,7 @@ async def _manifest_validation(listing: McpListing, db: AsyncSession, entry_poin
 
     # Find @mcp.tool / @app.tool / @server.tool decorated functions
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         is_tool = any(
             (isinstance(d, ast.Attribute) and d.attr == "tool")
@@ -350,7 +350,7 @@ async def analyze_repo(git_url: str) -> dict:
 
         tools = []
         for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 continue
             is_tool = any(
                 (isinstance(d, ast.Attribute) and d.attr == "tool")

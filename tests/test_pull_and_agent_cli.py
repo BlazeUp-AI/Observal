@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import re
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-import pytest
+import typer
+import yaml
 from typer.testing import CliRunner
 
 from observal_cli.main import app as cli_app
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 runner = CliRunner()
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escape codes from text."""
+    return _ANSI_RE.sub("", text)
 
 # ── Helpers ──────────────────────────────────────────────────
 
@@ -439,17 +451,16 @@ class TestPullHelp:
     def test_help_flag(self):
         result = runner.invoke(cli_app, ["pull", "--help"])
         assert result.exit_code == 0
-        assert "Fetch agent config" in result.output
-        assert "--ide" in result.output
-        assert "--dir" in result.output
-        assert "--dry-run" in result.output
+        out = _plain(result.output)
+        assert "Fetch agent config" in out
+        assert "--ide" in out
+        assert "--dir" in out
+        assert "--dry-run" in out
 
 
 # ═══════════════════════════════════════════════════════════════
 # Agent authoring CLI tests
 # ═══════════════════════════════════════════════════════════════
-
-import yaml
 
 
 def _make_agent_yaml(tmp_path: Path, **overrides) -> Path:

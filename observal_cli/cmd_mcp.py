@@ -185,7 +185,7 @@ def _install_impl(mcp_id, ide, raw):
         print(_json.dumps(snippet, indent=2))
         return
 
-    _IDE_CONFIG_PATHS = {
+    ide_config_paths = {
         "kiro": ".kiro/settings/mcp.json",
         "cursor": ".cursor/mcp.json",
         "vscode": ".vscode/mcp.json",
@@ -197,7 +197,7 @@ def _install_impl(mcp_id, ide, raw):
 
     rprint(f"\n[bold]Config for {ide}:[/bold]\n")
     console.print_json(_json.dumps(snippet, indent=2))
-    config_path = _IDE_CONFIG_PATHS.get(ide, "")
+    config_path = ide_config_paths.get(ide, "")
     if config_path and not config_path.startswith("("):
         rprint(f"\n[dim]Add to:[/dim] [bold]{config_path}[/bold]")
         rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --ide {ide} --raw > {config_path}")

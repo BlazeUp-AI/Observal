@@ -4,27 +4,21 @@ These tests create real git repos in tmpdir and exercise the full clone/discover
 """
 
 import json
-import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from services.git_mirror_service import (
-    DiscoveredComponent,
-    SyncResult,
     _mirror_path,
     _parse_manifest,
     _safe_path,
-    _scan_by_convention,
     clone_or_update,
     discover_components,
     get_commit_sha,
     sync_source,
     validate_mcp_component,
 )
-
 
 # ── Helpers ─────────────────────────────────────────────────────────
 

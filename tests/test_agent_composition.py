@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-
 # ── Schema Tests ────────────────────────────────────────────────────
 
 
@@ -34,10 +33,11 @@ class TestComponentRefSchema:
 
     def test_valid_component_types_constant(self):
         from schemas.agent import VALID_COMPONENT_TYPES
-        assert VALID_COMPONENT_TYPES == {"mcp", "skill", "hook", "prompt", "sandbox"}
+        assert {"mcp", "skill", "hook", "prompt", "sandbox"} == VALID_COMPONENT_TYPES
 
     def test_component_ref_rejects_invalid_type(self):
         from pydantic import ValidationError
+
         from schemas.agent import ComponentRef
         with pytest.raises(ValidationError):
             ComponentRef(component_type="invalid", component_id=uuid.uuid4())
@@ -59,7 +59,7 @@ class TestComponentLinkResponseSchema:
 
 class TestAgentCreateRequestWithComponents:
     def test_create_request_accepts_components(self):
-        from schemas.agent import AgentCreateRequest, ComponentRef, GoalTemplateRequest, GoalSectionRequest
+        from schemas.agent import AgentCreateRequest, ComponentRef, GoalSectionRequest, GoalTemplateRequest
         cid = uuid.uuid4()
         req = AgentCreateRequest(
             name="test-agent",
@@ -80,7 +80,7 @@ class TestAgentCreateRequestWithComponents:
 
     def test_create_request_backwards_compat(self):
         """mcp_server_ids should still work."""
-        from schemas.agent import AgentCreateRequest, GoalTemplateRequest, GoalSectionRequest
+        from schemas.agent import AgentCreateRequest, GoalSectionRequest, GoalTemplateRequest
         req = AgentCreateRequest(
             name="legacy-agent",
             version="1.0.0",
@@ -97,7 +97,7 @@ class TestAgentCreateRequestWithComponents:
 
     def test_create_request_both_fields(self):
         """Both mcp_server_ids and components can coexist."""
-        from schemas.agent import AgentCreateRequest, ComponentRef, GoalTemplateRequest, GoalSectionRequest
+        from schemas.agent import AgentCreateRequest, ComponentRef, GoalSectionRequest, GoalTemplateRequest
         req = AgentCreateRequest(
             name="dual-agent",
             version="1.0.0",
@@ -155,7 +155,7 @@ class TestResolvedAgentDataclass:
         assert ra.ok is True
 
     def test_not_ok_when_errors(self):
-        from services.agent_resolver import ResolvedAgent, ResolutionError
+        from services.agent_resolver import ResolutionError, ResolvedAgent
         ra = ResolvedAgent(
             agent_id=uuid.uuid4(),
             agent_name="test",
@@ -700,7 +700,7 @@ class TestBuildAgentManifest:
 
     def test_manifest_includes_errors(self):
         from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent, ResolutionError
+        from services.agent_resolver import ResolutionError, ResolvedAgent
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
             agent_name="error-agent",
@@ -805,7 +805,7 @@ class TestBuildCompositionSummary:
 
     def test_summary_not_resolved_with_errors(self):
         from services.agent_builder import build_composition_summary
-        from services.agent_resolver import ResolvedAgent, ResolutionError
+        from services.agent_resolver import ResolutionError, ResolvedAgent
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
             agent_name="bad-agent",
@@ -888,7 +888,7 @@ class TestPydanticValidation:
             component_type="mcp", component_id=uuid.uuid4(),
             name="test", version="1.0", git_url="url",
         )
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, AttributeError)):
             comp.name = "changed"
 
     def test_resolution_error_is_frozen(self):
@@ -896,7 +896,7 @@ class TestPydanticValidation:
         err = ResolutionError(
             component_type="mcp", component_id=uuid.uuid4(), reason="test",
         )
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, AttributeError)):
             err.reason = "changed"
 
     def test_resolved_agent_serializes_to_dict(self):
@@ -912,6 +912,7 @@ class TestPydanticValidation:
 
     def test_resolved_component_rejects_invalid_type(self):
         from pydantic import ValidationError
+
         from services.agent_resolver import ResolvedComponent
         with pytest.raises(ValidationError):
             ResolvedComponent(
@@ -976,8 +977,9 @@ class TestPydanticValidation:
 class TestResolverAndBuilderModulesImportable:
     def test_resolver_module_importable(self):
         from services.agent_resolver import (
-            ResolvedAgent, ResolvedComponent, ResolutionError,
-            resolve_agent, validate_component_ids, _LISTING_MODELS,
+            _LISTING_MODELS,
+            resolve_agent,
+            validate_component_ids,
         )
         assert callable(resolve_agent)
         assert callable(validate_component_ids)
@@ -985,8 +987,10 @@ class TestResolverAndBuilderModulesImportable:
 
     def test_builder_module_importable(self):
         from services.agent_builder import (
-            build_agent_manifest, build_composition_summary,
-            generate_ide_agent_files, SUPPORTED_IDES,
+            SUPPORTED_IDES,
+            build_agent_manifest,
+            build_composition_summary,
+            generate_ide_agent_files,
         )
         assert callable(build_agent_manifest)
         assert callable(build_composition_summary)
@@ -1000,7 +1004,9 @@ class TestGenerateIdeAgentFiles:
 
     def _make_manifest(self, **overrides):
         from services.agent_builder import (
-            AgentManifest, ManifestComponent, ManifestComponents,
+            AgentManifest,
+            ManifestComponent,
+            ManifestComponents,
         )
         defaults = {
             "name": "test-agent",
@@ -1071,8 +1077,8 @@ class TestGenerateIdeAgentFiles:
         config = generate_ide_agent_files(manifest, "cursor")
         assert config.ide == "cursor"
         assert len(config.files) == 2
-        rules = [f for f in config.files if f.format == "markdown"][0]
-        mcp_json = [f for f in config.files if f.format == "json"][0]
+        rules = next(f for f in config.files if f.format == "markdown")
+        mcp_json = next(f for f in config.files if f.format == "json")
         assert rules.path == ".cursor/rules/test-agent.md"
         assert mcp_json.path == ".cursor/mcp.json"
         assert "mcpServers" in mcp_json.content
@@ -1085,8 +1091,8 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "vscode")
         assert config.ide == "vscode"
-        rules = [f for f in config.files if f.format == "markdown"][0]
-        mcp_json = [f for f in config.files if f.format == "json"][0]
+        rules = next(f for f in config.files if f.format == "markdown")
+        mcp_json = next(f for f in config.files if f.format == "json")
         assert rules.path == ".vscode/rules/test-agent.md"
         assert mcp_json.path == ".vscode/mcp.json"
 
@@ -1141,8 +1147,8 @@ class TestGenerateIdeAgentFiles:
         config = generate_ide_agent_files(manifest, "codex")
         assert config.ide == "codex"
         assert len(config.files) == 2
-        md_file = [f for f in config.files if f.format == "markdown"][0]
-        toml_file = [f for f in config.files if f.format == "toml"][0]
+        md_file = next(f for f in config.files if f.format == "markdown")
+        toml_file = next(f for f in config.files if f.format == "toml")
         assert md_file.path == "AGENTS.md"
         assert toml_file.path == "~/.codex/config.toml"
         assert "[otel]" in toml_file.content
@@ -1166,7 +1172,7 @@ class TestGenerateIdeAgentFiles:
         from services.agent_builder import generate_ide_agent_files
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "cursor")
-        rules = [f for f in config.files if f.format == "markdown"][0]
+        rules = next(f for f in config.files if f.format == "markdown")
         content = rules.content
         assert "## MCP Servers" in content
         assert "**github-mcp**" in content
@@ -1184,8 +1190,7 @@ class TestGenerateIdeAgentFiles:
         assert "## MCP Servers" in content
 
     def test_rules_markdown_no_components(self):
-        from services.agent_builder import AgentManifest, ManifestComponents
-        from services.agent_builder import generate_ide_agent_files
+        from services.agent_builder import AgentManifest, ManifestComponents, generate_ide_agent_files
         manifest = AgentManifest(
             name="bare-agent",
             version="1.0",
@@ -1209,7 +1214,9 @@ class TestGenerateIdeAgentFiles:
 
     def test_no_mcps_produces_empty_servers(self):
         from services.agent_builder import (
-            AgentManifest, ManifestComponent, ManifestComponents,
+            AgentManifest,
+            ManifestComponent,
+            ManifestComponents,
             generate_ide_agent_files,
         )
         manifest = AgentManifest(
@@ -1238,6 +1245,7 @@ class TestGenerateIdeAgentFiles:
 
     def test_unsupported_ide_raises_value_error(self):
         import pytest
+
         from services.agent_builder import generate_ide_agent_files
         manifest = self._make_manifest()
         with pytest.raises(ValueError, match="Unsupported IDE"):
@@ -1247,7 +1255,9 @@ class TestGenerateIdeAgentFiles:
 
     def test_hooks_appear_in_rules_markdown(self):
         from services.agent_builder import (
-            AgentManifest, ManifestComponent, ManifestComponents,
+            AgentManifest,
+            ManifestComponent,
+            ManifestComponents,
             generate_ide_agent_files,
         )
         manifest = AgentManifest(
@@ -1272,7 +1282,7 @@ class TestGenerateIdeAgentFiles:
     # ── All supported IDEs produce valid output ────────────────
 
     def test_all_supported_ides_produce_output(self):
-        from services.agent_builder import generate_ide_agent_files, SUPPORTED_IDES
+        from services.agent_builder import SUPPORTED_IDES, generate_ide_agent_files
         manifest = self._make_manifest()
         for ide in SUPPORTED_IDES:
             config = generate_ide_agent_files(manifest, ide)

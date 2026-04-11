@@ -333,7 +333,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                     log_attrs = _extract_attrs(rec.get("attributes", []))
                     all_attrs = {**res_attrs, **log_attrs}
                     event_name = all_attrs.get("event.name", "")
-                    print(f"OTLP log: event_name={repr(event_name)}, all_attr_keys={list(all_attrs.keys())[:15]}", flush=True)
+                    print(f"OTLP log: event_name={event_name!r}, all_attr_keys={list(all_attrs.keys())[:15]}", flush=True)
                     time_nano = rec.get("timeUnixNano", "0")
                     dt = _nanos_to_dt(time_nano) if int(time_nano) > 0 else _now_ms()
 

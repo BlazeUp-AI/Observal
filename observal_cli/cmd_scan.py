@@ -48,9 +48,7 @@ def _is_already_shimmed(entry: dict) -> bool:
     args = entry.get("args", [])
     if cmd == "observal-shim" or "observal-shim" in cmd:
         return True
-    if any("observal-shim" in str(a) for a in args):
-        return True
-    return False
+    return bool(any("observal-shim" in str(a) for a in args))
 
 
 def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
@@ -193,7 +191,7 @@ def register_scan(app: typer.Typer):
 
             # Rewrite config files
             configs_to_update: dict[str, dict] = {}  # path -> full config
-            for name, entry, config_path in items:
+            for name, _entry, config_path in items:
                 mcp_id = id_map.get(name)
                 if not mcp_id:
                     continue
