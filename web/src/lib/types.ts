@@ -58,16 +58,6 @@ export interface RawOtelEvent {
   service_name?: string;
 }
 
-// ── Latency ─────────────────────────────────────────────────────────
-
-export interface LatencyCell {
-  name: string;
-  hour: number;
-  p50: number;
-  p90: number;
-  p99: number;
-}
-
 // ── Tokens ──────────────────────────────────────────────────────────
 
 export interface TokenStats {
@@ -126,32 +116,6 @@ export interface Score {
   string_value?: string;
   comment?: string;
   timestamp: string;
-}
-
-// ── Alerts ──────────────────────────────────────────────────────────
-
-export interface AlertRule {
-  id: string;
-  name: string;
-  metric: "error_rate" | "latency_p99" | "token_usage";
-  threshold: number;
-  condition: "above" | "below";
-  target_type: "mcp" | "agent" | "all";
-  target_id: string;
-  webhook_url: string;
-  status: "active" | "paused";
-  last_triggered: string | null;
-  created_at: string;
-}
-
-export interface AlertRuleCreate {
-  name: string;
-  metric: string;
-  threshold: number;
-  condition: string;
-  target_type: string;
-  target_id?: string;
-  webhook_url?: string;
 }
 
 // ── Feedback ────────────────────────────────────────────────────────
@@ -221,55 +185,6 @@ export interface IdeRow {
 
 export interface IdeUsageData {
   ides: IdeRow[];
-}
-
-// ── Sandbox ─────────────────────────────────────────────────────────
-
-export interface SandboxRun {
-  span_id: string;
-  name: string;
-  exit_code: number | null;
-  duration_ms: number | null;
-  memory_mb: number | null;
-  cpu_ms: number | null;
-  oom: boolean;
-  timestamp: string;
-}
-
-export interface SandboxData {
-  total_runs: number;
-  oom_count: number;
-  oom_rate: number;
-  timeout_count: number;
-  timeout_rate: number;
-  avg_exit_code: number | null;
-  recent_runs: SandboxRun[];
-  cpu_over_time: { date: string; avg_cpu: number }[];
-  memory_over_time: { date: string; avg_memory: number }[];
-}
-
-// ── GraphRAG ────────────────────────────────────────────────────────
-
-export interface GraphRagData {
-  total_queries: number;
-  avg_entities: number | null;
-  avg_relationships: number | null;
-  avg_relevance_score: number | null;
-  avg_embedding_latency_ms: number | null;
-  relevance_distribution: { bucket: string; count: number }[];
-  recent_queries: { span_id: string; name: string; query_interface: string; entities: number | null; relationships: number | null; relevance_score: number | null; latency_ms: number | null; timestamp: string }[];
-}
-
-export interface RagasDimensionScore {
-  avg: number | null;
-  count: number;
-}
-
-export interface RagasScoresData {
-  faithfulness: RagasDimensionScore;
-  answer_relevancy: RagasDimensionScore;
-  context_precision: RagasDimensionScore;
-  context_recall: RagasDimensionScore;
 }
 
 // ── Admin ───────────────────────────────────────────────────────────

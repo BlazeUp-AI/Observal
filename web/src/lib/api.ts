@@ -5,18 +5,12 @@ import type {
   OtelStats,
   OtelTrace,
   OtelSessionData,
-  LatencyCell,
   TokenStats,
-  AlertRule,
-  AlertRuleCreate,
   FeedbackItem,
   Scorecard,
   TracePenalty,
   AgentAggregate,
   IdeUsageData,
-  SandboxData,
-  GraphRagData,
-  RagasScoresData,
   AdminUser,
   AdminSetting,
   OtelSession,
@@ -118,12 +112,10 @@ export const auth = {
 export type RegistryType =
   | "mcps"
   | "agents"
-  | "tools"
   | "skills"
   | "hooks"
   | "prompts"
-  | "sandboxes"
-  | "graphrags";
+  | "sandboxes";
 
 export const registry = {
   list: (type: RegistryType, params?: Record<string, string>) => {
@@ -167,11 +159,6 @@ export const dashboard = {
   agentMetrics: (id: string) => get<unknown>(`/agents/${id}/metrics`),
   tokenStats: (range?: string) => get<TokenStats>(`/dashboard/tokens${range ? `?range=${range}` : ''}`),
   ideUsage: () => get<IdeUsageData>('/dashboard/ide-usage'),
-  sandboxMetrics: () => get<SandboxData>('/dashboard/sandbox-metrics'),
-  graphragMetrics: () => get<GraphRagData>('/dashboard/graphrag-metrics'),
-  ragasScores: (graphragId?: string) => get<RagasScoresData>(`/dashboard/graphrag-ragas-scores${graphragId ? `?graphrag_id=${encodeURIComponent(graphragId)}` : ''}`),
-  latencyHeatmap: () => get<LatencyCell[]>('/dashboard/latency-heatmap'),
-  unannotatedTraces: () => get<unknown[]>('/dashboard/unannotated-traces'),
   otelSessions: () => get<OtelSession[]>('/otel/sessions'),
   otelSession: (id: string) => get<OtelSessionData>(`/otel/sessions/${encodeURIComponent(id)}`),
   otelTraces: () => get<OtelTrace[]>('/otel/traces'),
@@ -222,14 +209,6 @@ export const admin = {
   createUser: (body: unknown) => post<unknown>("/admin/users", body),
   updateRole: (id: string, body: { role: string }) =>
     put<unknown>(`/admin/users/${id}/role`, body),
-};
-
-// ── Alerts ──────────────────────────────────────────────────────────
-export const alerts = {
-  list: () => get<AlertRule[]>("/alerts"),
-  create: (body: AlertRuleCreate) => post<AlertRule>("/alerts", body),
-  update: (id: string, body: { status: string }) => request<AlertRule>("PATCH", `/alerts/${id}`, body),
-  delete: (id: string) => del(`/alerts/${id}`),
 };
 
 // ── Health ──────────────────────────────────────────────────────────

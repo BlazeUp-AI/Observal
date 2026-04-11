@@ -15,11 +15,9 @@ import {
   eval_,
   admin,
   telemetry,
-  alerts,
   graphql,
   type RegistryType,
 } from "@/lib/api";
-import type { AlertRuleCreate } from "@/lib/types";
 
 // ── Dashboard ───────────────────────────────────────────────────────
 
@@ -211,25 +209,6 @@ export function useTokenStats(range?: string) {
 export function useIdeUsage() {
   return useQuery({ queryKey: ['dashboard', 'ide-usage'], queryFn: dashboard.ideUsage });
 }
-export function useSandboxMetrics() {
-  return useQuery({ queryKey: ['dashboard', 'sandbox-metrics'], queryFn: dashboard.sandboxMetrics });
-}
-export function useGraphragMetrics() {
-  return useQuery({ queryKey: ['dashboard', 'graphrag-metrics'], queryFn: dashboard.graphragMetrics });
-}
-export function useRagasScores(graphragId?: string) {
-  return useQuery({
-    queryKey: ['dashboard', 'ragas-scores', graphragId],
-    queryFn: () => dashboard.ragasScores(graphragId),
-  });
-}
-export function useLatencyHeatmap() {
-  return useQuery({ queryKey: ['dashboard', 'latency-heatmap'], queryFn: dashboard.latencyHeatmap });
-}
-export function useUnannotatedTraces() {
-  return useQuery({ queryKey: ['dashboard', 'unannotated-traces'], queryFn: dashboard.unannotatedTraces });
-}
-
 // ── OTel ────────────────────────────────────────────────────────────
 
 export function useOtelSessions() {
@@ -248,32 +227,3 @@ export function useOtelStats() {
   return useQuery({ queryKey: ['otel', 'stats'], queryFn: dashboard.otelStats });
 }
 
-// ── Alerts ──────────────────────────────────────────────────────────
-
-export function useAlerts() {
-  return useQuery({ queryKey: ['alerts'], queryFn: alerts.list });
-}
-
-export function useCreateAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: AlertRuleCreate) => alerts.create(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
-  });
-}
-
-export function useUpdateAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { id: string; status: string }) => alerts.update(vars.id, { status: vars.status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
-  });
-}
-
-export function useDeleteAlert() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => alerts.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
-  });
-}
