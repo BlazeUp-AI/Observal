@@ -118,6 +118,16 @@ def register_pull(app: typer.Typer):
                 status = _write_file(p, agent_file["content"])
                 written.append((str(p), status))
 
+        # ── steering_file (Kiro) ───────────────────────────
+        steering_file = snippet.get("steering_file")
+        if steering_file:
+            p = _resolve_path(steering_file["path"], target_dir)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                status = _write_file(p, steering_file["content"])
+                written.append((str(p), status))
+
         # ── Output summary ──────────────────────────────────
         if not written:
             rprint("[yellow]No files to write from the config snippet.[/yellow]")

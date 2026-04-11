@@ -33,6 +33,9 @@ _IDE_HINTS = {
     "copilot": "github_copilot",
     "cursor": "cursor",
     "kiro": "kiro",
+    "kiro-cli": "kiro",
+    "amazon-kiro": "kiro",
+    "aws-kiro": "kiro",
 }
 
 
@@ -248,7 +251,7 @@ def _process_span_events(
             event_time = event.get("timeUnixNano", "0")
             dt = _nanos_to_dt(event_time) if int(event_time) > 0 else _now_ms()
 
-            if event_name in ("claude_code.user_prompt", "user_prompt"):
+            if event_name in ("claude_code.user_prompt", "kiro.user_prompt", "user_prompt"):
                 # Captured as trace input via log handler; also emit a span
                 spans_out.append(
                     {
@@ -268,7 +271,7 @@ def _process_span_events(
                         "metadata": {},
                     }
                 )
-            elif event_name in ("claude_code.tool_result", "tool_result"):
+            elif event_name in ("claude_code.tool_result", "kiro.tool_result", "tool_result"):
                 dur = _safe_int(event_attrs.get("duration_ms"))
                 spans_out.append(
                     {
@@ -289,13 +292,26 @@ def _process_span_events(
                         "metadata": {},
                     }
                 )
-            elif event_name in ("claude_code.api_request", "api_request"):
-                tok_in = _safe_int(event_attrs.get("input_tokens"))
-                tok_out = _safe_int(event_attrs.get("output_tokens"))
+            elif event_name in ("claude_code.api_request", "kiro.api_request", "api_request"):
+                tok_in = (
+                    _safe_int(event_attrs.get("input_tokens"))
+                    or _safe_int(event_attrs.get("gen_ai.usage.input_tokens"))
+                    or _safe_int(event_attrs.get("aws.bedrock.invocation.input_tokens"))
+                )
+                tok_out = (
+                    _safe_int(event_attrs.get("output_tokens"))
+                    or _safe_int(event_attrs.get("gen_ai.usage.output_tokens"))
+                    or _safe_int(event_attrs.get("aws.bedrock.invocation.output_tokens"))
+                )
                 tok_total = (tok_in or 0) + (tok_out or 0) if (tok_in is not None or tok_out is not None) else None
                 meta: dict[str, str] = {}
-                if event_attrs.get("model"):
-                    meta["model"] = event_attrs["model"]
+                model = (
+                    event_attrs.get("model")
+                    or event_attrs.get("gen_ai.request.model")
+                    or event_attrs.get("aws.bedrock.model_id")
+                )
+                if model:
+                    meta["model"] = model
                 spans_out.append(
                     {
                         "span_id": uuid.uuid4().hex,
@@ -364,7 +380,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                     body_val = rec.get("body", {})
                     body_text = body_val.get("stringValue", "") if isinstance(body_val, dict) else str(body_val)
 
-                    if event_name in ("claude_code.user_prompt", "user_prompt"):
+                    if event_name in ("claude_code.user_prompt", "kiro.user_prompt", "user_prompt"):
                         prompt_text = (
                             all_attrs.get("prompt")
                             or body_text
@@ -400,7 +416,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                         else:
                             prompt_traces[trace_id]["input"] = prompt_text
 
-                    elif event_name in ("claude_code.tool_result", "tool_result"):
+                    elif event_name in ("claude_code.tool_result", "kiro.tool_result", "tool_result"):
                         # Ensure trace exists
                         if trace_id not in prompt_traces:
                             prompt_traces[trace_id] = {
@@ -436,7 +452,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                             }
                         )
 
-                    elif event_name in ("claude_code.api_request", "api_request"):
+                    elif event_name in ("claude_code.api_request", "kiro.api_request", "api_request"):
                         if trace_id not in prompt_traces:
                             prompt_traces[trace_id] = {
                                 "trace_id": trace_id,
@@ -451,14 +467,27 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                                 "metadata": {"prompt_id": prompt_id} if prompt_id else {},
                                 "tags": [],
                             }
-                        tok_in = _safe_int(all_attrs.get("input_tokens"))
-                        tok_out = _safe_int(all_attrs.get("output_tokens"))
+                        tok_in = (
+                            _safe_int(all_attrs.get("input_tokens"))
+                            or _safe_int(all_attrs.get("gen_ai.usage.input_tokens"))
+                            or _safe_int(all_attrs.get("aws.bedrock.invocation.input_tokens"))
+                        )
+                        tok_out = (
+                            _safe_int(all_attrs.get("output_tokens"))
+                            or _safe_int(all_attrs.get("gen_ai.usage.output_tokens"))
+                            or _safe_int(all_attrs.get("aws.bedrock.invocation.output_tokens"))
+                        )
                         tok_total = (
                             (tok_in or 0) + (tok_out or 0) if (tok_in is not None or tok_out is not None) else None
                         )
                         meta: dict[str, str] = {}
-                        if all_attrs.get("model"):
-                            meta["model"] = all_attrs["model"]
+                        model = (
+                            all_attrs.get("model")
+                            or all_attrs.get("gen_ai.request.model")
+                            or all_attrs.get("aws.bedrock.model_id")
+                        )
+                        if model:
+                            meta["model"] = model
                         spans.append(
                             {
                                 "span_id": uuid.uuid4().hex,

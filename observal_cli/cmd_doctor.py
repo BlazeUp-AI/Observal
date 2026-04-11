@@ -147,6 +147,60 @@ def _check_kiro(path: Path, data: dict, issues: list, warnings: list):
         pass  # default, fine
 
 
+def _check_kiro_installation(issues: list, warnings: list):
+    """Check Kiro CLI installation and agent hook configuration."""
+    # Check kiro-cli binary
+    if os.system("which kiro-cli > /dev/null 2>&1") != 0:
+        warnings.append(
+            "`kiro-cli` not found in PATH. Install with: curl -fsSL https://cli.kiro.dev/install | bash"
+        )
+    else:
+        # Check if kiro-cli is authenticated
+        if os.system("kiro-cli whoami > /dev/null 2>&1") != 0:
+            warnings.append("`kiro-cli` is installed but not authenticated. Run `kiro-cli login`.")
+
+    # Check for Kiro agents directory
+    agents_dir = Path.home() / ".kiro" / "agents"
+    if agents_dir.exists():
+        agent_files = list(agents_dir.glob("*.json"))
+        if agent_files:
+            # Check if any agents have Observal hooks configured
+            has_observal_hooks = False
+            for af in agent_files:
+                agent_data = _load_json(af)
+                if agent_data and "hooks" in agent_data:
+                    hooks = agent_data["hooks"]
+                    for _event, hook_list in hooks.items():
+                        for h in hook_list if isinstance(hook_list, list) else []:
+                            cmd = h.get("command", "")
+                            if "observal" in cmd or "telemetry/hooks" in cmd:
+                                has_observal_hooks = True
+                                break
+            if not has_observal_hooks:
+                warnings.append(
+                    "No Kiro agents have Observal telemetry hooks. "
+                    "Run `observal scan --ide kiro --home` to inject hooks."
+                )
+
+    # Check MCP config for observal-shim
+    mcp_path = Path.home() / ".kiro" / "settings" / "mcp.json"
+    if mcp_path.exists():
+        mcp_data = _load_json(mcp_path)
+        if mcp_data:
+            servers = mcp_data.get("mcpServers", {})
+            unwrapped = [
+                n for n, c in servers.items()
+                if isinstance(c, dict) and "observal-shim" not in c.get("command", "")
+                and "observal-proxy" not in c.get("command", "")
+                and "url" not in c  # HTTP transport doesn't need shim
+            ]
+            if unwrapped:
+                warnings.append(
+                    f"Kiro MCP servers not wrapped with observal-shim: {', '.join(unwrapped)}. "
+                    "Run `observal scan --ide kiro` to wrap them."
+                )
+
+
 def _check_cursor(path: Path, data: dict, issues: list, warnings: list):
     """Check Cursor MCP config for Observal conflicts."""
     servers = data.get("mcpServers", {})
@@ -266,7 +320,12 @@ def doctor(
     rprint("[cyan]Checking environment...[/cyan]")
     _check_environment(issues, warnings)
 
-    # 3. Check IDE configs
+    # 3. Kiro-specific installation checks
+    if not ide or ide in ("kiro", "kiro-cli"):
+        rprint("[cyan]Checking Kiro installation...[/cyan]")
+        _check_kiro_installation(issues, warnings)
+
+    # 4. Check IDE configs
     ides_to_check = [ide] if ide else list(IDE_CONFIGS.keys())
 
     for ide_name in ides_to_check:
@@ -338,5 +397,13 @@ def doctor(
                 rprint("  Run: observal login")
             elif "Cannot reach" in issue:
                 rprint("  Start the server: cd docker && docker compose up -d")
+            elif "kiro-cli" in issue and "not found" in issue:
+                rprint("  Install: curl -fsSL https://cli.kiro.dev/install | bash")
+            elif "kiro-cli" in issue and "not authenticated" in issue:
+                rprint("  Run: kiro-cli login")
+            elif "Observal telemetry hooks" in issue:
+                rprint("  Run: observal scan --ide kiro --home")
+            elif "observal-shim" in issue and "Kiro" in issue:
+                rprint("  Run: observal scan --ide kiro")
 
     raise typer.Exit(1 if issues else 0)

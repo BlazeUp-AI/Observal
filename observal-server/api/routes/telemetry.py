@@ -239,12 +239,38 @@ async def telemetry_status(current_user: User = Depends(get_current_user)):
     )
 
 
+# Kiro CLI uses camelCase event names; normalize to PascalCase
+_KIRO_EVENT_MAP = {
+    "agentSpawn": "SessionStart",
+    "userPromptSubmit": "UserPromptSubmit",
+    "promptSubmit": "UserPromptSubmit",
+    "preToolUse": "PreToolUse",
+    "postToolUse": "PostToolUse",
+    "stop": "Stop",
+    "agentStop": "Stop",
+}
+
+
 @router.post("/hooks")
 async def ingest_hook(request: Request, current_user: User = Depends(get_current_user)):
     """Ingest raw hook JSON from Claude Code/Kiro."""
     body = await request.json()
+
+    # Normalize Kiro camelCase field names to snake_case
+    if "hookEventName" in body and "hook_event_name" not in body:
+        body["hook_event_name"] = body["hookEventName"]
+    if "toolName" in body and "tool_name" not in body:
+        body["tool_name"] = body["toolName"]
+    if "toolInput" in body and "tool_input" not in body:
+        body["tool_input"] = body["toolInput"]
+    if "toolResponse" in body and "tool_response" not in body:
+        body["tool_response"] = body["toolResponse"]
+    if "sessionId" in body and "session_id" not in body:
+        body["session_id"] = body["sessionId"]
+
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    hook_event_name = body.get("hook_event_name", "unknown")
+    raw_event = body.get("hook_event_name", "unknown")
+    hook_event_name = _KIRO_EVENT_MAP.get(raw_event, raw_event)
     span_type = "hook_exec" if hook_event_name == "PostToolUse" else f"hook_{hook_event_name.lower()}"
     row = {
         "span_id": str(uuid.uuid4()),

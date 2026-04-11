@@ -79,8 +79,20 @@ def generate_agent_config(
 
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
-        # Telemetry collected via observal-shim, no native OTel
-        return {
+        # Telemetry collected via observal-shim + hook bridge
+        curl_cmd = (
+            f"cat | curl -sf -X POST {observal_url}/api/v1/telemetry/hooks "
+            f'-H "Content-Type: application/json" '
+            f'-H "X-API-Key: $OBSERVAL_API_KEY" '
+            f"-d @-"
+        )
+        hooks = {
+            "agentSpawn": [{"command": curl_cmd}],
+            "preToolUse": [{"matcher": "*", "command": curl_cmd}],
+            "postToolUse": [{"matcher": "*", "command": curl_cmd}],
+            "stop": [{"command": curl_cmd}],
+        }
+        result: dict = {
             "agent_file": {
                 "path": f"~/.kiro/agents/{safe_name}.json",
                 "content": {
@@ -89,12 +101,23 @@ def generate_agent_config(
                     "prompt": agent.prompt,
                     "mcpServers": mcp_configs,
                     "tools": [f"@{n}" for n in mcp_configs] + ["read", "write", "shell"],
-                    "hooks": {},
+                    "hooks": hooks,
                     "includeMcpJson": True,
                     "model": agent.model_name,
                 },
             },
         }
+        # Also generate a Steering file for richer instruction support
+        if agent.prompt:
+            result["steering_file"] = {
+                "path": f".kiro/steering/{safe_name}.md",
+                "content": (
+                    f"---\ninclusion: always\nname: {safe_name}\n"
+                    f"description: {(agent.description or safe_name)[:100]}\n---\n\n"
+                    f"{agent.prompt}"
+                ),
+            }
+        return result
 
     if ide in ("claude-code", "claude_code"):
         otlp = _claude_otlp_env(observal_url)

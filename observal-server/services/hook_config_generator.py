@@ -1,4 +1,29 @@
 def generate_hook_telemetry_config(hook_listing, ide: str, server_url: str = "http://localhost:8000") -> dict:
+    if ide in ("kiro", "kiro-cli"):
+        # Kiro uses shell-command hooks, not HTTP hooks.
+        # Generate a runCommand hook that pipes STDIN JSON to the Observal API via curl.
+        curl_cmd = (
+            f"cat | curl -sf -X POST {server_url}/api/v1/telemetry/hooks "
+            f'-H "Content-Type: application/json" '
+            f'-H "X-API-Key: $OBSERVAL_API_KEY" '
+            f'-H "X-Observal-Hook-Id: {hook_listing.id}" '
+            f"-d @-"
+        )
+        event = str(hook_listing.event)
+        # Map Claude Code PascalCase events to Kiro camelCase
+        kiro_event_map = {
+            "SessionStart": "agentSpawn",
+            "UserPromptSubmit": "userPromptSubmit",
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "stop",
+        }
+        kiro_event = kiro_event_map.get(event, event)
+        hook_entry = {"command": curl_cmd}
+        if kiro_event in ("preToolUse", "postToolUse"):
+            hook_entry["matcher"] = "*"
+        return {"hooks": {kiro_event: [hook_entry]}}
+
     hook_entry = {
         "type": "http",
         "url": f"{server_url}/api/v1/telemetry/hooks",
@@ -8,7 +33,7 @@ def generate_hook_telemetry_config(hook_listing, ide: str, server_url: str = "ht
 
     if ide == "claude-code":
         hook_entry["allowedEnvVars"] = ["OBSERVAL_API_KEY"]
-    elif ide not in ("kiro", "kiro-cli", "cursor"):
+    elif ide != "cursor":
         return {"comment": f"IDE '{ide}' requires manual hook setup. See Observal docs for configuration."}
 
     event = str(hook_listing.event)

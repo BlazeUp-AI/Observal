@@ -25,6 +25,32 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/dashboard/query-error";
 import { ListTree } from "lucide-react";
 
+const IDE_BADGE_STYLES: Record<string, string> = {
+  claude_code: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  "claude-code": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  kiro: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  "kiro-cli": "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+  cursor: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
+  gemini_cli: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  "gemini-cli": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  vscode: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  github_copilot: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  codex: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+};
+
+const IDE_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  "claude-code": "Claude Code",
+  kiro: "Kiro",
+  "kiro-cli": "Kiro CLI",
+  cursor: "Cursor",
+  gemini_cli: "Gemini CLI",
+  "gemini-cli": "Gemini CLI",
+  vscode: "VS Code",
+  github_copilot: "Copilot",
+  codex: "Codex",
+};
+
 const TRACE_TYPES = [
   "all",
   "mcp",
@@ -158,8 +184,19 @@ export function TraceList() {
                     <TableCell className="px-3 py-2 text-sm">
                       {(t.name ?? "—") as string}
                     </TableCell>
-                    <TableCell className="px-3 py-2 text-xs text-muted-foreground">
-                      {(t.ide ?? "—") as string}
+                    <TableCell className="px-3 py-2">
+                      {(() => {
+                        const ideVal = (t.ide ?? "") as string;
+                        const style = IDE_BADGE_STYLES[ideVal];
+                        const label = IDE_LABELS[ideVal] || ideVal || "—";
+                        return style ? (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>
+                            {label}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{label}</span>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="px-3 py-2 text-xs text-muted-foreground">
                       {t.startTime || t.start_time
