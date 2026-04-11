@@ -370,6 +370,10 @@ All tests mock external services. No Docker needed.
 
 Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions instead of opening issues. Issues are reserved for bug reports and feature requests.
 
+## Security
+
+To report a vulnerability, please use [GitHub Private Vulnerability Reporting](https://github.com/BlazeUp-AI/Observal/security/advisories) or email contact@blazeup.app. **Do not open a public issue.** See [SECURITY.md](SECURITY.md) for full details.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The short version:
