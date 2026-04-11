@@ -245,6 +245,9 @@ export function useOtelTrace(id: string | undefined) {
 export function useOtelStats() {
   return useQuery({ queryKey: ['otel', 'stats'], queryFn: dashboard.otelStats });
 }
+export function useOtelErrors() {
+  return useQuery({ queryKey: ['otel', 'errors'], queryFn: dashboard.otelErrors });
+}
 
 // ── Agent-specific ──────────────────────────────────────────────────
 

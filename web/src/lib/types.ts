@@ -252,6 +252,21 @@ export interface OtelSession {
   service_name: string;
 }
 
+export interface OtelErrorEvent {
+  timestamp: string;
+  event_name: string;
+  body: string;
+  session_id: string;
+  tool_name: string;
+  error: string;
+  agent_id: string;
+  agent_type: string;
+  tool_input: string;
+  tool_response: string;
+  stop_reason: string;
+  user_id: string;
+}
+
 // ── Telemetry ───────────────────────────────────────────────────────
 
 export interface TelemetryStatus {

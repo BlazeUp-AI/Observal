@@ -16,6 +16,7 @@ import type {
   AdminUser,
   AdminSetting,
   OtelSession,
+  OtelErrorEvent,
   TelemetryStatus,
   ReviewItem,
   RegistryItem,
@@ -181,6 +182,7 @@ export const dashboard = {
   otelTraces: () => get<OtelTrace[]>('/otel/traces'),
   otelTrace: (id: string) => get<unknown>(`/otel/traces/${encodeURIComponent(id)}`),
   otelStats: () => get<OtelStats>('/otel/stats'),
+  otelErrors: () => get<OtelErrorEvent[]>('/otel/errors'),
 };
 
 // ── Feedback ────────────────────────────────────────────────────────

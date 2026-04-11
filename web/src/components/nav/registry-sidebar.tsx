@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Users,
   Settings,
+  AlertTriangle,
 } from "lucide-react";
 import { getUserRole } from "@/lib/api";
 
@@ -43,6 +44,7 @@ const registryNav: { title: string; href: string; icon: typeof Home; requiresAut
 const adminNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Traces", href: "/traces", icon: Activity },
+  { title: "Errors", href: "/errors", icon: AlertTriangle },
   { title: "Evals", href: "/eval", icon: FlaskConical },
   { title: "Review", href: "/review", icon: ShieldCheck },
   { title: "Users", href: "/users", icon: Users },
