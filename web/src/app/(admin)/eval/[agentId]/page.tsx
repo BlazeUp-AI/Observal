@@ -3,6 +3,7 @@
 import { use } from "react";
 import { FlaskConical } from "lucide-react";
 import { useEvalScorecards, useEvalAggregate, useRegistryItem, useEvalRun, useEvalPenalties } from "@/hooks/use-api";
+import type { RegistryItem, Scorecard } from "@/lib/types";
 import { AgentAggregateChart } from "@/components/dashboard/agent-aggregate-chart";
 import { DimensionRadar } from "@/components/dashboard/dimension-radar";
 import { PenaltyAccordion } from "@/components/dashboard/penalty-accordion";
@@ -13,7 +14,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { PageHeader } from "@/components/layouts/page-header";
-import { DetailSkeleton, TableSkeleton, ChartSkeleton } from "@/components/shared/skeleton-layouts";
+import { TableSkeleton, ChartSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -42,9 +43,9 @@ export default function EvalDetailPage({ params }: { params: Promise<{ agentId: 
   const { data: aggregate, isLoading: aggLoading } = useEvalAggregate(agentId);
   const runEval = useEvalRun();
 
-  const a = agent as any;
+  const a = agent as RegistryItem | undefined;
   const cards = scorecards ?? [];
-  const latest = cards[0] as any;
+  const latest = cards[0] as Scorecard | undefined;
 
   const { data: latestPenalties } = useEvalPenalties(latest?.id);
 
@@ -118,7 +119,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ agentId: 
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {cards.map((sc: any) => (
+                      {cards.map((sc: Scorecard) => (
                         <TableRow key={sc.id}>
                           <TableCell className="py-1.5 text-xs tabular-nums">
                             {sc.created_at ? new Date(sc.created_at).toLocaleDateString() : "-"}

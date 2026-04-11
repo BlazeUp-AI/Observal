@@ -2,6 +2,7 @@
 
 import { Settings } from "lucide-react";
 import { useAdminSettings } from "@/hooks/use-api";
+import type { AdminSetting } from "@/lib/types";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -11,7 +12,7 @@ export default function SettingsPage() {
   const { data: settings, isLoading, isError, error, refetch } = useAdminSettings();
 
   const entries: [string, unknown][] = Array.isArray(settings)
-    ? settings.map((s: any) => [s.key, s.value])
+    ? settings.map((s: AdminSetting) => [s.key, s.value])
     : Object.entries(settings ?? {});
 
   return (

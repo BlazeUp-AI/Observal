@@ -5,16 +5,16 @@ import { getUserRole } from "@/lib/api";
 
 export function useAdminGuard() {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [ready] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return getUserRole() === "admin";
+  });
 
   useEffect(() => {
-    const role = getUserRole();
-    if (role !== "admin") {
+    if (!ready) {
       router.replace("/");
-      return;
     }
-    setReady(true);
-  }, [router]);
+  }, [ready, router]);
 
   return ready;
 }

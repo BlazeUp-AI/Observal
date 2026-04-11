@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
@@ -101,16 +101,14 @@ export default function TracesPage() {
 
   // Debounced search
   const [searchValue, setSearchValue] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleSearch = useCallback(
-    (() => {
-      let timeout: ReturnType<typeof setTimeout>;
-      return (value: string) => {
-        setSearchValue(value);
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setGlobalFilter(value), 300);
-      };
-    })(),
-    [],
+    (value: string) => {
+      setSearchValue(value);
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => setGlobalFilter(value), 300);
+    },
+    [setGlobalFilter],
   );
 
   return (

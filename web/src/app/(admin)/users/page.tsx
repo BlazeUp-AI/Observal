@@ -2,6 +2,7 @@
 
 import { Users } from "lucide-react";
 import { useAdminUsers } from "@/hooks/use-api";
+import type { AdminUser } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -57,7 +58,7 @@ export default function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(users ?? []).map((u: any) => (
+                {(users ?? []).map((u: AdminUser) => (
                   <TableRow key={u.id}>
                     <TableCell className="py-1.5">
                       <span className="text-sm font-medium">{u.name ?? u.username ?? "-"}</span>

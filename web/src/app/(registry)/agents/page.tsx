@@ -35,20 +35,22 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   flexRender,
+  type Column,
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+import type { RegistryItem } from "@/lib/types";
 
 type ViewMode = "table" | "grid";
 
-function SortIcon({ column }: { column: any }) {
+function SortIcon({ column }: { column: Column<RegistryItem> }) {
   const sorted = column.getIsSorted();
   if (sorted === "asc") return <ArrowUp className="h-3 w-3" />;
   if (sorted === "desc") return <ArrowDown className="h-3 w-3" />;
   return <ArrowUpDown className="h-3 w-3 opacity-40" />;
 }
 
-const columns: ColumnDef<any>[] = [
+const columns: ColumnDef<RegistryItem>[] = [
   {
     accessorKey: "name",
     header: ({ column }) => (
@@ -90,7 +92,7 @@ const columns: ColumnDef<any>[] = [
     cell: ({ row }) => (
       <span className="text-muted-foreground text-sm font-mono">
         {row.original.download_count != null
-          ? compactNumber(row.original.download_count)
+          ? compactNumber(row.original.download_count as number)
           : "-"}
       </span>
     ),
@@ -109,7 +111,7 @@ const columns: ColumnDef<any>[] = [
     cell: ({ row }) => (
       <span className="text-muted-foreground text-sm">
         {row.original.average_rating != null
-          ? row.original.average_rating.toFixed(1)
+          ? (row.original.average_rating as number).toFixed(1)
           : "-"}
       </span>
     ),
@@ -119,7 +121,7 @@ const columns: ColumnDef<any>[] = [
     header: "Version",
     cell: ({ row }) => (
       <span className="text-muted-foreground text-sm font-mono">
-        {row.original.version ?? "-"}
+        {(row.original.version as string | undefined) ?? "-"}
       </span>
     ),
   },
@@ -314,18 +316,18 @@ export default function AgentListPage() {
                 "repeat(auto-fill, minmax(min(320px, 100%), 1fr))",
             }}
           >
-            {filtered.map((agent: any, i: number) => (
+            {filtered.map((agent: RegistryItem, i: number) => (
               <AgentCard
                 key={agent.id}
                 id={agent.id}
                 name={agent.name}
-                description={agent.description}
-                owner={agent.owner}
-                version={agent.version}
-                downloads={agent.download_count}
-                score={agent.average_rating ?? undefined}
+                description={agent.description as string | undefined}
+                owner={agent.owner as string | undefined}
+                version={agent.version as string | undefined}
+                downloads={agent.download_count as number | undefined}
+                score={(agent.average_rating as number | null) ?? undefined}
                 status={agent.status}
-                component_count={agent.component_count}
+                component_count={agent.component_count as number | undefined}
                 className={`animate-in stagger-${Math.min(i + 1, 5)}`}
               />
             ))}

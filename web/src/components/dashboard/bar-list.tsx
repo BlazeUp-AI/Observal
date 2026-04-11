@@ -2,8 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { cn } from "@/lib/utils";
-
 interface BarListItem {
   name: ReactNode;
   value: number;

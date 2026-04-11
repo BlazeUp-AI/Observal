@@ -4,21 +4,17 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
-  X,
   Plus,
   Trash2,
   Loader2,
   ArrowRight,
-  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Tabs,
   TabsList,
@@ -444,7 +440,7 @@ export default function AgentBuilderPage() {
                     Goal Template
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Define the agent's objective in structured sections.
+                    Define the agent&apos;s objective in structured sections.
                   </p>
                 </div>
                 <Button

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Play } from "lucide-react";
 import { useRegistryList, useEvalScorecards, useEvalRun } from "@/hooks/use-api";
-import { Badge } from "@/components/ui/badge";
+import type { RegistryItem, Scorecard } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layouts/page-header";
 import { CardSkeleton } from "@/components/shared/skeleton-layouts";
@@ -19,11 +19,11 @@ function gradeColor(grade: string | undefined): string {
   return "bg-destructive/15 text-destructive";
 }
 
-function AgentEvalCard({ agent }: { agent: any }) {
+function AgentEvalCard({ agent }: { agent: RegistryItem }) {
   const { data: scorecards } = useEvalScorecards(agent.id);
   const runEval = useEvalRun();
 
-  const latest = (scorecards ?? [])[0] as any;
+  const latest = (scorecards ?? [])[0] as Scorecard | undefined;
   const evalCount = (scorecards ?? []).length;
 
   return (
@@ -108,7 +108,7 @@ export default function EvalPage() {
           />
         ) : (
           <div className="animate-in stagger-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(agents ?? []).map((a: any) => (
+            {(agents ?? []).map((a: RegistryItem) => (
               <AgentEvalCard key={a.id} agent={a} />
             ))}
           </div>

@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { CheckCircle2, X } from "lucide-react";
 import { useReviewList, useReviewAction } from "@/hooks/use-api";
+import type { ReviewItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 
 function ReviewCard({ item, onApprove, onReject }: {
-  item: any;
+  item: ReviewItem;
   onApprove: (id: string) => void;
   onReject: (id: string, reason: string) => void;
 }) {
@@ -56,7 +57,7 @@ function ReviewCard({ item, onApprove, onReject }: {
 
       <div className="text-xs text-muted-foreground">
         {item.submitted_at || item.created_at
-          ? new Date(item.submitted_at ?? item.created_at).toLocaleDateString()
+          ? new Date((item.submitted_at ?? item.created_at)!).toLocaleDateString()
           : ""}
       </div>
 
@@ -146,7 +147,7 @@ export default function ReviewPage() {
           />
         ) : (
           <div className="animate-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(items ?? []).map((item: any) => (
+            {(items ?? []).map((item: ReviewItem) => (
               <ReviewCard
                 key={item.id}
                 item={item}

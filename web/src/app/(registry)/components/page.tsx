@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useRegistryList } from "@/hooks/use-api";
 import type { RegistryType } from "@/lib/api";
+import type { RegistryItem } from "@/lib/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -51,7 +52,7 @@ function ComponentTable({ type, search }: { type: RegistryType; search: string }
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item: any) => (
+          {items.map((item: RegistryItem) => (
             <TableRow key={item.id}>
               <TableCell>
                 <Link href={`/components/${item.id}?type=${type}`} className="font-medium hover:underline">

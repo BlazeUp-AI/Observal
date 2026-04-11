@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentCard } from "@/components/registry/agent-card";
 import {
   useRegistryList,
@@ -32,7 +32,7 @@ import { CardSkeleton, TableSkeleton } from "@/components/shared/skeleton-layout
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { compactNumber } from "@/lib/utils";
-import type { LeaderboardWindow, TopAgentItem } from "@/lib/types";
+import type { LeaderboardWindow, TopAgentItem, RegistryItem } from "@/lib/types";
 
 export default function RegistryHome() {
   const [search, setSearch] = useState("");
@@ -68,7 +68,7 @@ export default function RegistryHome() {
 
   const trending = (topAgents ?? []).slice(0, 6);
   const recentlyAdded = (agents ?? [])
-    .sort((a: any, b: any) => {
+    .sort((a: RegistryItem, b: RegistryItem) => {
       const da = a.created_at ? new Date(a.created_at).getTime() : 0;
       const db = b.created_at ? new Date(b.created_at).getTime() : 0;
       return db - da;
@@ -310,17 +310,17 @@ export default function RegistryHome() {
                   "repeat(auto-fill, minmax(min(320px, 100%), 1fr))",
               }}
             >
-              {recentlyAdded.map((agent: any, i: number) => (
+              {recentlyAdded.map((agent: RegistryItem, i: number) => (
                 <AgentCard
                   key={agent.id}
                   id={agent.id}
                   name={agent.name}
-                  description={agent.description}
-                  owner={agent.owner}
-                  version={agent.version}
-                  downloads={agent.download_count}
-                  score={agent.average_rating ?? undefined}
-                  component_count={agent.component_count}
+                  description={agent.description as string | undefined}
+                  owner={agent.owner as string | undefined}
+                  version={agent.version as string | undefined}
+                  downloads={agent.download_count as number | undefined}
+                  score={(agent.average_rating as number | null) ?? undefined}
+                  component_count={agent.component_count as number | undefined}
                   className={`animate-in stagger-${Math.min(i + 1, 5)}`}
                 />
               ))}

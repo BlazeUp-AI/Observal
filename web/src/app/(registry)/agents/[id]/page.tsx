@@ -18,6 +18,7 @@ import {
   useFeedback,
   useFeedbackSummary,
 } from "@/hooks/use-api";
+import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
 import { StatusBadge } from "@/components/registry/status-badge";
 import { ReviewForm } from "@/components/registry/review-form";
@@ -30,6 +31,33 @@ import { DetailSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { compactNumber } from "@/lib/utils";
+
+interface AgentDetail {
+  name: string;
+  status?: string;
+  version?: string;
+  owner?: string;
+  description?: string;
+  model_name?: string;
+  download_count?: number;
+  component_links?: ComponentLink[];
+  mcp_links?: ComponentLink[];
+  goal_template?: {
+    description?: string;
+    sections?: { name: string; description?: string }[];
+  };
+  [key: string]: unknown;
+}
+
+interface ComponentLink {
+  mcp_name?: string;
+  component_name?: string;
+  name?: string;
+  component_type?: string;
+  component_id?: string;
+  mcp_id?: string;
+  status?: string;
+}
 
 export default function AgentDetailPage({
   params,
@@ -56,8 +84,9 @@ export default function AgentDetailPage({
     typeof window !== "undefined" &&
     !!localStorage.getItem("observal_api_key");
 
-  const a = agent as any;
-  const components = a?.component_links ?? a?.mcp_links ?? [];
+  // `a` mirrors `agent` with extended fields; always guarded by `!agent` below
+  const a = agent as unknown as AgentDetail | undefined;
+  const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
   const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);
   const totalDownloads = downloadData?.total ?? a?.download_count;
@@ -81,7 +110,7 @@ export default function AgentDetailPage({
           <DetailSkeleton />
         ) : isError ? (
           <ErrorState message={error?.message} onRetry={() => refetch()} />
-        ) : !agent ? (
+        ) : !a ? (
           <ErrorState message="Agent not found" />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
@@ -194,7 +223,7 @@ export default function AgentDetailPage({
                         </p>
                       )}
                       {goalTemplate.sections?.map(
-                        (sec: any, i: number) => (
+                        (sec: { name: string; description?: string }, i: number) => (
                           <div key={i} className="space-y-1">
                             <h4 className="text-sm font-medium text-foreground">
                               {sec.name}
@@ -226,7 +255,7 @@ export default function AgentDetailPage({
                     />
                   ) : (
                     <div className="space-y-2">
-                      {components.map((comp: any, i: number) => {
+                      {components.map((comp: ComponentLink, i: number) => {
                         const compName =
                           comp.mcp_name ??
                           comp.component_name ??
@@ -303,7 +332,7 @@ export default function AgentDetailPage({
                     />
                   ) : (
                     <div className="space-y-4">
-                      {feedbackItems.map((fb: any) => (
+                      {feedbackItems.map((fb: FeedbackItem) => (
                         <div
                           key={fb.id}
                           className="rounded-md border border-border p-4 space-y-2"
@@ -359,7 +388,7 @@ export default function AgentDetailPage({
                       Add the following to your IDE configuration to use this
                       agent directly.
                     </p>
-                    <ConfigSnippet agentName={a.name} agentId={id} />
+                    <ConfigSnippet agentName={a.name} />
                   </div>
                 </TabsContent>
               </Tabs>
@@ -448,10 +477,8 @@ export default function AgentDetailPage({
 
 function ConfigSnippet({
   agentName,
-  agentId,
 }: {
   agentName: string;
-  agentId: string;
 }) {
   const [copied, setCopied] = useState(false);
 

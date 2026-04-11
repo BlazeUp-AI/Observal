@@ -404,7 +404,7 @@ SidebarMenuBadge.displayName = "SidebarMenuBadge"
 
 const SidebarMenuSkeleton = React.forwardRef<HTMLDivElement, React.ComponentProps<"div"> & { showIcon?: boolean }>(
   ({ className, showIcon = false, ...props }, ref) => {
-    const width = React.useMemo(() => `${Math.floor(Math.random() * 40) + 50}%`, [])
+    const width = "70%"
     return (
       <div ref={ref} data-sidebar="menu-skeleton" className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)} {...props}>
         {showIcon && <Skeleton className="size-4 rounded-md" />}

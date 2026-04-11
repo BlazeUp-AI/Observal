@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Bot, Activity, TrendingUp, TrendingDown, Minus, Download } from "lucide-react";
 import { useOverviewStats, useRegistryList, useTopAgents, useOtelSessions } from "@/hooks/use-api";
+import type { RegistryItem, OtelSession, TopAgentItem } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -125,7 +126,7 @@ export default function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(agents ?? []).slice(0, 10).map((a: any) => (
+                      {(agents ?? []).slice(0, 10).map((a: RegistryItem) => (
                         <TableRow key={a.id} className="group">
                           <TableCell className="py-1.5">
                             <Link
@@ -136,7 +137,7 @@ export default function DashboardPage() {
                             </Link>
                           </TableCell>
                           <TableCell className="py-1.5 text-xs text-muted-foreground font-[family-name:var(--font-mono)]">
-                            {a.version ?? "-"}
+                            {String(a.version ?? "-")}
                           </TableCell>
                           <TableCell className="py-1.5">
                             <Badge
@@ -181,7 +182,7 @@ export default function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {recentSessions.map((s: any) => (
+                      {recentSessions.map((s: OtelSession) => (
                         <TableRow key={s.session_id} className="group">
                           <TableCell className="py-1.5">
                             <Link
@@ -222,7 +223,7 @@ export default function DashboardPage() {
                 />
               ) : (
                 <div className="rounded-md border border-border p-3">
-                  <TopDownloadsBar items={topAgents.slice(0, 8).map((a: any) => ({ name: a.name, value: a.download_count ?? a.value ?? 0 }))} />
+                  <TopDownloadsBar items={topAgents.slice(0, 8).map((a: TopAgentItem) => ({ name: a.name, value: a.download_count ?? 0 }))} />
                 </div>
               )}
             </section>

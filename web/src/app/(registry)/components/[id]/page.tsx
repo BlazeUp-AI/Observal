@@ -15,8 +15,7 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
   const type = (searchParams.get("type") ?? "mcps") as RegistryType;
   const { data: item, isLoading, isError, error, refetch } = useRegistryItem(type, id);
 
-  const c = item as any;
-  const componentName = c?.name ?? id.slice(0, 8);
+  const componentName = item?.name ?? id.slice(0, 8);
 
   return (
     <>
@@ -40,17 +39,17 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="outline">{type.replace(/s$/, "")}</Badge>
-                {c.status && <Badge variant={c.status === "approved" ? "default" : "secondary"}>{c.status}</Badge>}
+                {item.status && <Badge variant={item.status === "approved" ? "default" : "secondary"}>{item.status}</Badge>}
               </div>
             </div>
 
-            {c.description && <p className="text-sm">{c.description}</p>}
+            {item.description && <p className="text-sm">{item.description}</p>}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              {c.version && <div><span className="text-muted-foreground">Version:</span> {c.version}</div>}
-              {c.git_url && <div><span className="text-muted-foreground">Source:</span> <a href={c.git_url} className="underline" target="_blank" rel="noopener noreferrer">{c.git_url}</a></div>}
-              {c.transport && <div><span className="text-muted-foreground">Transport:</span> {c.transport}</div>}
-              {c.created_at && <div><span className="text-muted-foreground">Created:</span> {new Date(c.created_at).toLocaleDateString()}</div>}
+              {"version" in item && item.version != null && <div><span className="text-muted-foreground">Version:</span> {String(item.version)}</div>}
+              {"git_url" in item && item.git_url != null && <div><span className="text-muted-foreground">Source:</span> <a href={String(item.git_url)} className="underline" target="_blank" rel="noopener noreferrer">{String(item.git_url)}</a></div>}
+              {"transport" in item && item.transport != null && <div><span className="text-muted-foreground">Transport:</span> {String(item.transport)}</div>}
+              {item.created_at && <div><span className="text-muted-foreground">Created:</span> {new Date(item.created_at).toLocaleDateString()}</div>}
             </div>
           </>
         )}

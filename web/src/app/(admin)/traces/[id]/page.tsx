@@ -1,7 +1,8 @@
 "use client";
 
-import { use, useState, useCallback } from "react";
+import { use, useState, useCallback, useMemo } from "react";
 import { useOtelSession } from "@/hooks/use-api";
+import type { OtelSessionData, RawOtelEvent } from "@/lib/types";
 import { FileText, ChevronDown, ChevronRight, ChevronsUpDown } from "lucide-react";
 import { PageHeader } from "@/components/layouts/page-header";
 import { DetailSkeleton } from "@/components/shared/skeleton-layouts";
@@ -39,7 +40,7 @@ function EventRow({
   isExpanded,
   onToggle,
 }: {
-  event: any;
+  event: RawOtelEvent;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -77,8 +78,8 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const { data, isLoading, isError, error, refetch } = useOtelSession(id);
 
-  const session = data as any;
-  const events: any[] = session?.events ?? [];
+  const session = data as OtelSessionData;
+  const events: RawOtelEvent[] = useMemo(() => session?.events ?? [], [session]);
 
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
 
@@ -101,7 +102,7 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
       }
       return new Set(events.map((_, i) => i));
     });
-  }, [events.length]);
+  }, [events]);
 
   const allExpanded = expandedSet.size === events.length && events.length > 0;
 
@@ -169,7 +170,7 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
                     {allExpanded ? "Collapse all" : "Expand all"}
                   </Button>
                 </div>
-                {events.map((evt: any, i: number) => (
+                {events.map((evt: RawOtelEvent, i: number) => (
                   <div key={i}>
                     <EventRow
                       event={evt}

@@ -182,6 +182,7 @@ export interface Scorecard {
   composite_score?: number;
   display_score?: number;
   grade?: string;
+  overall_grade?: string;
   scoring_recommendations?: string[];
   penalty_count?: number;
 }

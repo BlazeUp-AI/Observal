@@ -6,8 +6,16 @@ import { auth, setUserRole, getUserRole } from "@/lib/api";
 export function useAuthGuard() {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
-  const [role, setRole] = useState<string | null>(null);
+  const [ready, setReady] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const key = localStorage.getItem("observal_api_key");
+    if (!key) return true;
+    return !!getUserRole();
+  });
+  const [role, setRole] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return getUserRole();
+  });
 
   useEffect(() => {
     const key = localStorage.getItem("observal_api_key");
@@ -16,14 +24,13 @@ export function useAuthGuard() {
       return;
     }
     if (!key) {
-      setReady(true);
+      // Already ready from initial state
       return;
     }
 
     const cached = getUserRole();
     if (cached) {
-      setRole(cached);
-      setReady(true);
+      // Already ready from initial state
       return;
     }
 
@@ -45,22 +52,31 @@ export function useAuthGuard() {
  * Does NOT redirect to login.
  */
 export function useOptionalAuth() {
-  const [ready, setReady] = useState(false);
-  const [role, setRole] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [ready, setReady] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const key = localStorage.getItem("observal_api_key");
+    if (!key) return true;
+    return !!getUserRole();
+  });
+  const [role, setRole] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return getUserRole();
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!getUserRole();
+  });
 
   useEffect(() => {
     const key = localStorage.getItem("observal_api_key");
     if (!key) {
-      setReady(true);
+      // Already ready from initial state
       return;
     }
 
     const cached = getUserRole();
     if (cached) {
-      setRole(cached);
-      setIsAuthenticated(true);
-      setReady(true);
+      // Already ready from initial state
       return;
     }
 
