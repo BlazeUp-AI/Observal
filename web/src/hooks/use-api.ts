@@ -6,6 +6,7 @@ import {
   useQueryClient,
   type UseQueryOptions,
 } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   auth,
   registry,
@@ -117,7 +118,13 @@ export function useReviewAction() {
       vars.action === "approve"
         ? review.approve(vars.id)
         : review.reject(vars.id, { reason: vars.reason ?? "" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["review"] }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success(vars.action === "approve" ? "Submission approved" : "Submission rejected");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Review action failed");
+    },
   });
 }
 
@@ -128,7 +135,13 @@ export function useEvalRun() {
   return useMutation({
     mutationFn: (vars: { agentId: string; body?: unknown }) =>
       eval_.run(vars.agentId, vars.body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["eval"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["eval"] });
+      toast.success("Eval run started");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Eval run failed");
+    },
   });
 }
 
@@ -168,7 +181,13 @@ export function useSubmitFeedback() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: feedback.submit,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["feedback"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["feedback"] });
+      toast.success("Feedback submitted");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to submit feedback");
+    },
   });
 }
 

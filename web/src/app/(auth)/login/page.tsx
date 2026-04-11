@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Telescope, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { auth, setApiKey, setUserRole } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +26,12 @@ export default function LoginPage() {
       setApiKey(apiKey);
       const user = await auth.login({ api_key: apiKey });
       setUserRole(user.role);
+      toast.success("Signed in successfully");
       router.push("/");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid API key");
+      const msg = e instanceof Error ? e.message : "Invalid API key";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -40,9 +44,12 @@ export default function LoginPage() {
       const res = await auth.init({ email, name });
       setApiKey(res.api_key);
       setUserRole(res.user.role);
+      toast.success("Admin account created");
       router.push("/");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Initialization failed");
+      const msg = e instanceof Error ? e.message : "Initialization failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
