@@ -129,6 +129,9 @@ export const registry = {
   delete: (type: RegistryType, id: string) => del(`/${type}/${id}`),
   metrics: (type: RegistryType, id: string) =>
     get<unknown>(`/${type}/${id}/metrics`),
+  resolve: (id: string) => get<unknown>(`/agents/${id}/resolve`),
+  downloads: (id: string) =>
+    get<{ total: number; recent_7d: number }>(`/agents/${id}/downloads`),
 };
 
 // ── Review ──────────────────────────────────────────────────────────

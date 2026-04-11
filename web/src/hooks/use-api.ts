@@ -227,3 +227,29 @@ export function useOtelStats() {
   return useQuery({ queryKey: ['otel', 'stats'], queryFn: dashboard.otelStats });
 }
 
+// ── Agent-specific ──────────────────────────────────────────────────
+
+export function useAgentResolve(id: string) {
+  return useQuery({
+    queryKey: ["agent-resolve", id],
+    queryFn: () => registry.resolve(id),
+    enabled: !!id,
+  });
+}
+
+export function useAgentDownloads(id: string) {
+  return useQuery({
+    queryKey: ["agent-downloads", id],
+    queryFn: () => registry.downloads(id),
+    enabled: !!id,
+  });
+}
+
+export function useEvalAggregate(agentId: string) {
+  return useQuery({
+    queryKey: ["eval-aggregate", agentId],
+    queryFn: () => eval_.aggregate(agentId),
+    enabled: !!agentId,
+  });
+}
+
