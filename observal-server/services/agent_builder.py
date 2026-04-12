@@ -1,7 +1,7 @@
 """Agent builder — composes resolved components into portable agent manifests.
 
 Generates IDE-specific agent files from a ResolvedAgent:
-- Claude Code: .claude/rules/<name>.md (markdown) + MCP JSON config
+- Claude Code: .claude/agents/<name>.md (markdown) + MCP JSON config
 - Cursor: .cursor/rules/<name>.md (markdown) + .cursor/mcp.json
 - Gemini CLI: GEMINI.md (markdown) + MCP JSON config
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
@@ -333,7 +333,7 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
 
 
 def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate Claude Code agent config (.claude/rules/<name>.md + MCP commands)."""
+    """Generate Claude Code agent config (.claude/agents/<name>.md + MCP commands)."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
@@ -348,7 +348,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
         ide="claude-code",
         files=[
             AgentFile(
-                path=f".claude/rules/{safe_name}.md",
+                path=f".claude/agents/{safe_name}.md",
                 content=rules_content,
                 format="markdown",
             ),

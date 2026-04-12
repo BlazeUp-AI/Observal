@@ -184,7 +184,7 @@ def generate_agent_config(
             setup_commands.append(["claude", "mcp", "add", name, "--", cmd, *args])
             claude_mcps[name] = {"command": cmd, "args": args, "env": cfg.get("env", {})}
         return {
-            "rules_file": {"path": f".claude/rules/{safe_name}.md", "content": rules_content},
+            "rules_file": {"path": f".claude/agents/{safe_name}.md", "content": rules_content},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
             "otlp_env": otlp,
