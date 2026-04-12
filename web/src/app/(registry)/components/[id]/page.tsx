@@ -3,11 +3,12 @@
 import { use } from "react";
 import { useSearchParams } from "next/navigation";
 import { useState, useCallback } from "react";
-import { Star, Check, Copy } from "lucide-react";
+import { Star, Check, Copy, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useRegistryItem, useFeedback, useFeedbackSummary, useRegistryMetrics } from "@/hooks/use-api";
 import type { RegistryType } from "@/lib/api";
 import type { FeedbackItem, RegistryItem } from "@/lib/types";
+import Link from "next/link";
 import { ReviewForm } from "@/components/registry/review-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,14 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
           { label: "Components", href: "/components" },
           { label: isLoading ? "..." : componentName },
         ]}
+        actionButtonsLeft={
+          <Button variant="ghost" size="sm" className="h-7 px-2 gap-1 text-muted-foreground" asChild>
+            <Link href="/components">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span className="text-xs">Back</span>
+            </Link>
+          </Button>
+        }
       />
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         {isLoading ? (
