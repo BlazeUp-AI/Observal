@@ -459,6 +459,28 @@ async def agent_download_stats(
     return stats
 
 
+@router.get("/{agent_id}/traces")
+async def get_agent_traces(
+    agent_id: str,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all traces where this agent participated."""
+    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    from services.clickhouse import query_traces
+
+    traces = await query_traces(
+        project_id="default",
+        agent_id=str(agent.id),
+        limit=limit,
+        offset=offset,
+    )
+    return {"agent_id": str(agent.id), "traces": traces, "count": len(traces)}
+
+
 @router.get("/{agent_id}/resolve")
 async def resolve_agent_components(
     agent_id: str,

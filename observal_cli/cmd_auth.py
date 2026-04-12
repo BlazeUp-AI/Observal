@@ -72,7 +72,7 @@ def login(
 
             api_key = data["api_key"]
             user = data["user"]
-            config.save({"server_url": server_url, "api_key": api_key})
+            config.save({"server_url": server_url, "api_key": api_key, "user_id": user.get("id", "")})
 
             rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [admin]")
             rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
@@ -149,7 +149,7 @@ def register(
 
         api_key = data["api_key"]
         user = data["user"]
-        config.save({"server_url": server_url, "api_key": api_key})
+        config.save({"server_url": server_url, "api_key": api_key, "user_id": user.get("id", "")})
         rprint(
             f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]"
         )
@@ -318,8 +318,8 @@ def _do_key_login(server_url: str, api_key: str | None = None):
             r.raise_for_status()
             data = r.json()
         # Use the key returned by server (same key echoed back)
-        config.save({"server_url": server_url, "api_key": data.get("api_key", api_key)})
         user = data.get("user", data)
+        config.save({"server_url": server_url, "api_key": data.get("api_key", api_key), "user_id": user.get("id", "")})
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
     except httpx.ConnectError:
         rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
@@ -343,7 +343,7 @@ def _do_password_login(server_url: str, email: str, password: str):
 
         api_key = data["api_key"]
         user = data["user"]
-        config.save({"server_url": server_url, "api_key": api_key})
+        config.save({"server_url": server_url, "api_key": api_key, "user_id": user.get("id", "")})
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
         rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
 
@@ -379,7 +379,7 @@ def _do_invite_login(server_url: str, code: str, name: str | None = None):
 
         api_key = data["api_key"]
         user = data["user"]
-        config.save({"server_url": server_url, "api_key": api_key})
+        config.save({"server_url": server_url, "api_key": api_key, "user_id": user.get("id", "")})
         rprint(
             f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]"
         )
@@ -517,7 +517,12 @@ def _configure_claude_code(server_url: str, api_key: str):
 
         # ── Inject hooks for full content capture (prompts, tool I/O, MCP, agents) ──
         hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
-        http_hook = [{"hooks": [{"type": "http", "url": hooks_url}]}]
+        hook_def: dict = {"type": "http", "url": hooks_url}
+        # Inject Observal user identity via header so the server can attribute sessions
+        cfg = config.load()
+        if cfg.get("user_id"):
+            hook_def["headers"] = {"X-Observal-User-Id": cfg["user_id"]}
+        http_hook = [{"hooks": [hook_def]}]
 
         # Stop uses a command hook to read the transcript for Claude's response text
         stop_script = _find_stop_hook_script()
@@ -546,6 +551,11 @@ def _configure_claude_code(server_url: str, api_key: str):
 
         # Set the hooks URL env var so the stop script knows where to POST
         settings["env"]["OBSERVAL_HOOKS_URL"] = hooks_url
+
+        # Inject user identity so hooks carry the Observal user ID
+        cfg = config.load()
+        if cfg.get("user_id"):
+            settings["env"]["OBSERVAL_USER_ID"] = cfg["user_id"]
 
         claude_dir.mkdir(exist_ok=True)
         with open(claude_settings_file, "w", encoding="utf-8") as f:

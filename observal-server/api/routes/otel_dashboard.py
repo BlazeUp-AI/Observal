@@ -24,7 +24,11 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
 async def list_sessions():
     rows = await _ch_json(
         "SELECT "
-        "LogAttributes['session.id'] AS session_id, "
+        # For Kiro sessions with a conversation_id, group by that instead of
+        # the ephemeral $PPID-based session_id.  This merges resumed sessions.
+        "if(LogAttributes['conversation_id'] != '', "
+        "   LogAttributes['conversation_id'], "
+        "   LogAttributes['session.id']) AS session_id, "
         "min(Timestamp) AS first_event_time, "
         "max(Timestamp) AS last_event_time, "
         "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt') AS prompt_count, "
@@ -52,6 +56,12 @@ async def list_sessions():
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     sid = _escape(session_id)
+    # Match either session.id or conversation_id so resumed Kiro sessions
+    # (which share a conversation_id) resolve correctly.
+    session_filter = (
+        f"(LogAttributes['session.id'] = '{sid}' "
+        f"OR LogAttributes['conversation_id'] = '{sid}')"
+    )
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -60,7 +70,7 @@ async def get_session(session_id: str):
         "LogAttributes AS attributes, "
         "ServiceName AS service_name "
         f"FROM otel_logs "
-        f"WHERE LogAttributes['session.id'] = '{sid}' "
+        f"WHERE {session_filter} "
         "ORDER BY Timestamp ASC"
     )
     traces = await _ch_json(
@@ -291,6 +301,14 @@ async def ingest_hook(request: Request):
         attrs["agent_name"] = body["agent_name"]
     if body.get("model"):
         attrs["model"] = body["model"]
+
+    # ── User identity (from Observal login, injected by CLI) ──
+    # Kiro: user_id in body (via sed injection)
+    # Claude Code: X-Observal-User-Id header (via HTTP hook header)
+    # Claude Code also sends native user.id in some events
+    user_id = body.get("user_id") or request.headers.get("x-observal-user-id") or ""
+    if user_id:
+        attrs["user.id"] = user_id
 
     # Capture full content — this is the Langfuse-equivalent visibility
     tool_input_raw = body.get("tool_input")

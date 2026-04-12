@@ -746,7 +746,10 @@ def register_scan(app: typer.Typer):
             cfg = _load_config()
             server_url = cfg.get("server_url", "http://localhost:8000").rstrip("/")
             hooks_url = f"{server_url}/api/v1/otel/hooks"
-            http_hook = [{"hooks": [{"type": "http", "url": hooks_url}]}]
+            hook_def: dict = {"type": "http", "url": hooks_url}
+            if cfg.get("user_id"):
+                hook_def["headers"] = {"X-Observal-User-Id": cfg["user_id"]}
+            http_hook = [{"hooks": [hook_def]}]
 
             # Stop uses a command hook to read transcript for Claude's response
             stop_script = Path(__file__).parent / "hooks" / "observal-stop-hook.sh"
@@ -811,6 +814,8 @@ def register_scan(app: typer.Typer):
                     if "env" not in settings:
                         settings["env"] = {}
                     settings["env"]["OBSERVAL_HOOKS_URL"] = hooks_url
+                    if cfg.get("user_id"):
+                        settings["env"]["OBSERVAL_USER_ID"] = cfg["user_id"]
                     claude_settings.write_text(json.dumps(settings, indent=2) + "\n")
                     rprint(f"\n[green]Injected hooks config into {claude_settings}[/green]")
                     rprint(f"[dim]Hooks endpoint: {hooks_url}[/dim]")
@@ -833,15 +838,21 @@ def register_scan(app: typer.Typer):
             hook_script = hooks_dir / "kiro_hook.py"
             stop_script = hooks_dir / "kiro_stop_hook.py"
 
+            kiro_user_id = kcfg.get("user_id", "")
+
             def _kiro_sed_prefix(agent_name: str, model: str) -> str:
                 """Build the sed expression that injects metadata into JSON."""
                 meta_fields = (
                     f'"session_id":"kiro-\'$PPID\'",'
                     f'"service_name":"kiro-cli",'
-                    f'"agent_name":"{agent_name}"'
+                    f'"agent_name":"{agent_name}",'
+                    f'"terminal_type":"\'$TERM\'",'
+                    f'"shell":"\'$SHELL\'"'
                 )
                 if model:
                     meta_fields += f',"model":"{model}"'
+                if kiro_user_id:
+                    meta_fields += f',"user_id":"{kiro_user_id}"'
                 return "cat | sed 's/^{/{" + meta_fields + ",/' "
 
             def _kiro_hook_cmd(agent_name: str, model: str) -> str:

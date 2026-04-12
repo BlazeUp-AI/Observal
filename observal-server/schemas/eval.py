@@ -113,3 +113,4 @@ class EvalRunDetailResponse(EvalRunResponse):
 
 class EvalRequest(BaseModel):
     trace_id: str | None = None  # Evaluate specific trace, or all recent if None
+    session_id: str | None = None  # Evaluate a hook-based session (Kiro, etc.)

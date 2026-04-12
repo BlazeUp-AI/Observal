@@ -13,6 +13,7 @@ from models.user import User
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
 from services.clickhouse import query_spans
 from services.eval_service import evaluate_trace, fetch_traces, parse_scorecard, run_structured_eval
+from services.hook_materializer import materialize_session_spans
 from services.score_aggregator import ScoreAggregator
 
 router = APIRouter(prefix="/api/v1/eval", tags=["eval"])
@@ -44,7 +45,14 @@ async def run_evaluation(
     await db.flush()
 
     trace_id = req.trace_id if req else None
+    session_id = req.session_id if req and hasattr(req, "session_id") else None
     traces = await fetch_traces(str(agent.id), trace_id=trace_id)
+
+    # If no traces from agent_interactions, try materializing from hook events
+    if not traces and session_id:
+        mat_trace, mat_spans = await materialize_session_spans(session_id)
+        if mat_trace and mat_spans:
+            traces = [mat_trace]
 
     if not traces:
         eval_run.status = EvalRunStatus.completed
@@ -60,6 +68,9 @@ async def run_evaluation(
 
             # Try new structured eval first (uses spans from ClickHouse)
             spans = await query_spans("default", tid, limit=500)
+            if not spans and trace.get("source") == "hook_materializer":
+                # Use materialized spans from hook events
+                _, spans = await materialize_session_spans(tid)
             if spans:
                 sc = await run_structured_eval(agent, trace, spans, eval_run.id)
             else:
@@ -141,6 +152,72 @@ async def compare_versions(
         return {"version": version, "avg_score": round(float(row.avg_overall or 0), 2), "count": row.count}
 
     return {"version_a": await _avg_scores(version_a), "version_b": await _avg_scores(version_b)}
+
+
+# ---------------------------------------------------------------------------
+# Session-based eval (hook data — Kiro, etc.)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sessions/{session_id}", response_model=dict)
+async def eval_session(
+    session_id: str,
+    agent_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Evaluate a hook-based session by materializing otel_logs into spans.
+
+    Works for Kiro and any other hook-sourced session. If agent_id is provided,
+    the eval uses the agent's goal template; otherwise a generic eval is run.
+    """
+    trace, spans = await materialize_session_spans(session_id)
+    if not trace or not spans:
+        raise HTTPException(status_code=404, detail="No hook events found for session")
+
+    agent = None
+    if agent_id:
+        result = await db.execute(
+            select(Agent)
+            .where(Agent.id == agent_id)
+            .options(selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections))
+        )
+        agent = result.scalar_one_or_none()
+
+    if agent:
+        eval_run = EvalRun(agent_id=agent.id, triggered_by=current_user.id)
+        db.add(eval_run)
+        await db.flush()
+
+        sc = await run_structured_eval(agent, trace, spans, eval_run.id)
+        db.add(sc)
+        eval_run.status = EvalRunStatus.completed
+        eval_run.traces_evaluated = 1
+        eval_run.completed_at = datetime.now(UTC)
+        await db.commit()
+
+        return {
+            "session_id": session_id,
+            "eval_run_id": str(eval_run.id),
+            "composite_score": sc.composite_score,
+            "overall_grade": sc.overall_grade,
+            "dimension_scores": sc.dimension_scores,
+            "span_count": len(spans),
+            "source": "hook_materializer",
+        }
+
+    # No agent — return materialized data summary (useful for inspection)
+    return {
+        "session_id": session_id,
+        "trace": trace,
+        "span_count": len(spans),
+        "spans_summary": [
+            {"type": s["type"], "name": s["name"], "status": s["status"]}
+            for s in spans
+        ],
+        "source": "hook_materializer",
+        "note": "No agent_id provided — returning materialized spans without scoring.",
+    }
 
 
 # ---------------------------------------------------------------------------
