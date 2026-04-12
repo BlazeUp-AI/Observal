@@ -32,7 +32,7 @@ async def list_sessions():
         "   LogAttributes['session.id']) AS session_id, "
         "min(Timestamp) AS first_event_time, "
         "max(Timestamp) AS last_event_time, "
-        "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt') AS prompt_count, "
+        "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS prompt_count, "
         "countIf(LogAttributes['event.name'] = 'api_request') AS api_request_count, "
         "countIf(LogAttributes['event.name'] = 'tool_result') AS tool_result_count, "
         "countIf(LogAttributes['event.name'] LIKE 'hook_%') AS hook_event_count, "
@@ -189,7 +189,7 @@ async def otel_stats():
     log_rows = await _ch_json(
         "SELECT "
         "count(DISTINCT LogAttributes['session.id']) AS total_sessions, "
-        "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt') AS total_prompts, "
+        "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS total_prompts, "
         "countIf(LogAttributes['event.name'] = 'api_request') AS total_api_requests, "
         "countIf(LogAttributes['event.name'] = 'tool_result') AS total_tool_calls, "
         "sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input_tokens, "
@@ -336,7 +336,8 @@ async def ingest_hook(request: Request):
             attrs["tool_input"] = _truncate(prompt_text)
             attrs["prompt_length"] = str(len(prompt_text))
         attrs["tool_name"] = "user_prompt"
-        attrs["event.name"] = "user_prompt"
+        # Keep as hook_userpromptsubmit — the frontend uses this to start
+        # new turns. "user_prompt" gets deduped away when hooks are present.
 
     # SessionStart / agentSpawn — capture initial prompt and mark as session start
     if hook_event == "SessionStart":
