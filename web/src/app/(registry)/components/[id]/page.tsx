@@ -101,7 +101,7 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="install">Install</TabsTrigger>
+                <TabsTrigger value="install">Add to Agent</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="mt-6 space-y-6">
@@ -167,9 +167,9 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
 
               <TabsContent value="install" className="mt-6 space-y-6">
                 <div className="space-y-2">
-                  <h3 className="text-sm font-semibold font-display">Quick Install</h3>
+                  <h3 className="text-sm font-semibold font-display">Add to Agent</h3>
                   <p className="text-xs text-muted-foreground">
-                    Use the Observal CLI to add this {singularType} to your agent configuration.
+                    Add this {singularType} to a local agent configuration. Run this inside a directory with an <code className="font-mono text-foreground/70">observal-agent.yaml</code> file.
                   </p>
                 </div>
                 <InstallSnippet type={singularType} name={item.name} />
@@ -260,7 +260,7 @@ function MetricsSection({ entries }: { entries: [string, string][] }) {
 
 function InstallSnippet({ type, name }: { type: string; name: string }) {
   const [copied, setCopied] = useState(false);
-  const cmd = `observal add ${type} ${name}`;
+  const cmd = `observal agent add ${type} ${name}`;
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(cmd);
