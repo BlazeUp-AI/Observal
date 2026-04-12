@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, resolve_prefix_id
 from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
@@ -38,20 +38,20 @@ _agent_load_options = [
 ]
 
 
-def _agent_id_clause(agent_id: str):
-    if isinstance(agent_id, _uuid.UUID):
-        return Agent.id == agent_id
+async def _load_agent(db: AsyncSession, agent_id: str, extra_conditions=None) -> Agent | None:
+    """Load an agent by UUID, prefix, or name with eager loading."""
     try:
-        uid = _uuid.UUID(agent_id)
-        return Agent.id == uid
-    except ValueError:
-        return Agent.name == agent_id
-
-
-async def _load_agent(db: AsyncSession, *where_clauses) -> Agent | None:
-    stmt = select(Agent).where(*where_clauses).options(*_agent_load_options)
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
+        return await resolve_prefix_id(
+            Agent, agent_id, db, load_options=_agent_load_options, extra_conditions=extra_conditions
+        )
+    except HTTPException as e:
+        if e.status_code == 400:
+            raise e
+        stmt = select(Agent).where(Agent.name == agent_id).options(*_agent_load_options)
+        if extra_conditions:
+            stmt = stmt.where(*extra_conditions)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
 
 def _agent_to_response(agent: Agent, name_map: dict[str, str] | None = None) -> AgentResponse:
@@ -270,7 +270,7 @@ async def list_agents(
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     name_map = await _resolve_component_names(agent.components, db)
@@ -284,7 +284,7 @@ async def update_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.created_by != current_user.id:
@@ -411,9 +411,9 @@ async def install_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    agent = await _load_agent(db, _agent_id_clause(agent_id), Agent.status == AgentStatus.active)
+    agent = await _load_agent(db, agent_id, extra_conditions=[Agent.status == AgentStatus.active])
     if not agent:
-        agent = await _load_agent(db, _agent_id_clause(agent_id))
+        agent = await _load_agent(db, agent_id)
         if not agent or agent.created_by != current_user.id:
             raise HTTPException(status_code=404, detail="Agent not found or not active")
 
@@ -450,7 +450,7 @@ async def agent_download_stats(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     from services.download_tracker import get_download_stats
@@ -467,7 +467,7 @@ async def get_agent_traces(
     db: AsyncSession = Depends(get_db),
 ):
     """Return all traces where this agent participated."""
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     from services.clickhouse import query_traces
@@ -488,7 +488,7 @@ async def resolve_agent_components(
     current_user: User = Depends(get_current_user),
 ):
     """Resolve all components for an agent — validates they exist and are approved."""
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     from services.agent_resolver import resolve_agent
@@ -506,7 +506,7 @@ async def get_agent_manifest(
     current_user: User = Depends(get_current_user),
 ):
     """Generate a portable agent manifest with all resolved components."""
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     from services.agent_resolver import resolve_agent
@@ -565,7 +565,7 @@ async def delete_agent(
     from models.eval import EvalRun, Scorecard
     from models.feedback import Feedback
 
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.created_by != current_user.id and current_user.role.value != "admin":
