@@ -7,6 +7,7 @@ import type { ValidationResult } from "@/lib/types";
 interface PreviewPanelProps {
   name: string;
   description: string;
+  modelName?: string;
   selectedComponents: Record<string, { id: string; name: string }[]>;
   goalSections: { id: string; title: string; content: string }[];
   validationResult: ValidationResult | null;
@@ -15,41 +16,63 @@ interface PreviewPanelProps {
 export function PreviewPanel({
   name,
   description,
+  modelName,
   selectedComponents,
   goalSections,
   validationResult,
 }: PreviewPanelProps) {
   const lines: string[] = [];
 
+  // YAML frontmatter (Claude Code agent format)
+  lines.push("---");
   lines.push(`name: ${name || "(untitled)"}`);
   if (description) {
-    lines.push(`description: |`);
-    description.split("\n").forEach((l) => lines.push(`  ${l}`));
+    const descLine = description.replace(/\n/g, " ").trim();
+    lines.push(`description: "${descLine}"`);
+  }
+  if (modelName) {
+    lines.push(`model: ${modelName}`);
+  }
+
+  const mcps = selectedComponents.mcps ?? [];
+  if (mcps.length > 0) {
+    lines.push("mcpServers:");
+    mcps.forEach((item) => lines.push(`  - ${item.name}`));
+  }
+
+  lines.push("---");
+
+  // Body: prompt/description + component summary
+  if (description) {
+    lines.push("");
+    lines.push(description);
   }
 
   const hasComponents = Object.values(selectedComponents).some(
     (arr) => arr.length > 0,
   );
   if (hasComponents) {
-    lines.push("");
-    lines.push("components:");
     for (const [type, items] of Object.entries(selectedComponents)) {
       if (items.length === 0) continue;
-      lines.push(`  ${type}:`);
-      items.forEach((item) => lines.push(`    - ${item.name}`));
+      const heading =
+        type === "mcps" ? "MCP Servers" :
+        type.charAt(0).toUpperCase() + type.slice(1);
+      lines.push("");
+      lines.push(`## ${heading}`);
+      lines.push("");
+      items.forEach((item) => lines.push(`- **${item.name}**`));
     }
   }
 
   const nonEmptyGoals = goalSections.filter((s) => s.title || s.content);
   if (nonEmptyGoals.length > 0) {
     lines.push("");
-    lines.push("goal:");
+    lines.push("## Goals");
+    lines.push("");
     nonEmptyGoals.forEach((section) => {
-      lines.push(`  ${section.title || "(section)"}:`);
+      lines.push(`### ${section.title || "(section)"}`);
       if (section.content) {
-        section.content
-          .split("\n")
-          .forEach((l) => lines.push(`    ${l}`));
+        lines.push(section.content);
       }
     });
   }
