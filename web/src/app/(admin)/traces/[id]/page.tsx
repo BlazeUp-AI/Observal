@@ -197,8 +197,14 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
   for (const evt of events) {
     const eName = getEventName(evt);
 
-    // Drop OTEL user_prompt when hooks have the richer version
-    if (eName === "user_prompt" && hasHooks) continue;
+    // Drop OTEL user_prompt when hooks have the richer version.
+    // But keep hook-sourced user_prompt events (they have hook_event attr
+    // or prompt_length — these were stored before the event name fix).
+    if (eName === "user_prompt" && hasHooks) {
+      const a = evt.attributes ?? {};
+      const isFromHook = a.hook_event || a.prompt_length || a.tool_name === "user_prompt";
+      if (!isFromHook) continue;
+    }
 
     // Drop OTEL tool_decision / tool_result — their metadata gets merged into hooks below
     if ((eName === "tool_decision" || eName === "tool_result") && hasHooks) continue;
