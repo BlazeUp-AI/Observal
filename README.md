@@ -106,7 +106,22 @@ observal auth login            # auto-creates admin on fresh server, or login wi
 observal auth logout           # clear saved credentials
 observal auth whoami           # show current user
 observal auth status           # check server connectivity and health
+observal auth reset-password   # reset a forgotten password (uses server-logged code)
 ```
+
+**Forgot your password?** If you've lost access to an account (e.g. an admin account created before passwords were set up), use the reset flow:
+
+```bash
+observal auth reset-password --email admin@localhost
+```
+
+This requests a 6-character reset code that gets logged to the server console. Check the server logs (`make logs` or `docker logs <container>`) for a line like:
+
+```
+WARNING - PASSWORD RESET CODE for admin@localhost: A7X9B2 (expires in 15 minutes)
+```
+
+Enter the code and your new password to regain access. The same flow is available from the web UI via the "Forgot password?" link on the login page.
 
 For CI/scripts, use environment variables:
 ```bash
@@ -257,8 +272,10 @@ For detailed setup, eval engine configuration, environment variables, and troubl
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v1/auth/bootstrap` | Auto-create admin on fresh server |
-| `POST` | `/api/v1/auth/login` | Login with API key |
+| `POST` | `/api/v1/auth/login` | Login with API key or email+password |
 | `GET` | `/api/v1/auth/whoami` | Current user info |
+| `POST` | `/api/v1/auth/request-reset` | Request password reset (code logged to server console) |
+| `POST` | `/api/v1/auth/reset-password` | Reset password with code + new password |
 | `POST` | `/api/v1/auth/invite` | Create invite code (admin) |
 | `POST` | `/api/v1/auth/redeem` | Redeem invite code → get API key |
 | `GET` | `/api/v1/auth/invites` | List invite codes (admin) |
@@ -327,6 +344,7 @@ All `{id}` parameters accept either a UUID or a name.
 | `GET` | `/api/v1/admin/users` | List users |
 | `POST` | `/api/v1/admin/users` | Create user |
 | `PUT` | `/api/v1/admin/users/{id}/role` | Change role |
+| `PUT` | `/api/v1/admin/users/{id}/password` | Reset user password (admin) |
 | `GET` | `/api/v1/admin/penalties` | List penalty catalog |
 | `PUT` | `/api/v1/admin/penalties/{id}` | Modify penalty |
 | `GET` | `/api/v1/admin/weights` | Get dimension weights |
