@@ -80,17 +80,29 @@ def generate_agent_config(
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
         # Telemetry collected via observal-shim + hook bridge
+        model_field = f',\\"model\\":\\"{agent.model_name}\\"' if agent.model_name else ""
         curl_cmd = (
-            f"cat | curl -sf -X POST {observal_url}/api/v1/telemetry/hooks "
+            f"cat | sed 's/^{{/{{\"session_id\":\"kiro-'$PPID'\",\"service_name\":\"kiro-cli\","
+            f"\"agent_name\":\"{safe_name}\"{model_field},/' "
+            f"| curl -sf -X POST {observal_url}/api/v1/otel/hooks "
             f'-H "Content-Type: application/json" '
-            f'-H "X-API-Key: $OBSERVAL_API_KEY" '
             f"-d @-"
+        )
+        # Stop hook: enrich with model/token data from Kiro SQLite DB.
+        # Uses the observal CLI's enrichment script if installed, otherwise
+        # falls back to the same curl command as other events.
+        stop_cmd = (
+            f"cat | sed 's/^{{/{{\"session_id\":\"kiro-'$PPID'\",\"service_name\":\"kiro-cli\","
+            f"\"agent_name\":\"{safe_name}\"{model_field},/' "
+            f"| python3 -m observal_cli.hooks.kiro_stop_hook "
+            f"--url {observal_url}/api/v1/otel/hooks"
         )
         hooks = {
             "agentSpawn": [{"command": curl_cmd}],
+            "userPromptSubmit": [{"command": curl_cmd}],
             "preToolUse": [{"matcher": "*", "command": curl_cmd}],
             "postToolUse": [{"matcher": "*", "command": curl_cmd}],
-            "stop": [{"command": curl_cmd}],
+            "stop": [{"command": stop_cmd}],
         }
         result: dict = {
             "agent_file": {

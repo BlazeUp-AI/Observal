@@ -26,6 +26,7 @@ class ScannedMcp(BaseModel):
     env: dict[str, str] = {}
     description: str = ""
     source_plugin: str | None = None
+    source_ide: str = ""
 
 
 class ScannedSkill(BaseModel):
@@ -34,6 +35,7 @@ class ScannedSkill(BaseModel):
     source_plugin: str | None = None
     task_type: str = "general"
     skill_path: str = "/"
+    source_ide: str = ""
 
 
 class ScannedHook(BaseModel):
@@ -43,6 +45,7 @@ class ScannedHook(BaseModel):
     handler_config: dict = {}
     description: str = ""
     source_plugin: str | None = None
+    source_ide: str = ""
 
 
 class ScannedAgent(BaseModel):
@@ -51,6 +54,7 @@ class ScannedAgent(BaseModel):
     model_name: str = ""
     prompt: str = ""
     source_file: str | None = None
+    source_ide: str = ""
 
 
 class ScanRequest(BaseModel):
@@ -99,14 +103,15 @@ async def bulk_scan(
             counts["mcp"] += 1
             continue
 
+        ide_tag = mcp.source_ide or req.ide
         listing = McpListing(
             name=mcp.name,
             version="0.1.0",
             git_url=mcp.url or "",
-            description=mcp.description or f"Auto-scanned MCP from {req.ide}: {mcp.name}",
+            description=mcp.description or f"Auto-scanned MCP from {ide_tag}: {mcp.name}",
             category="scanned",
             owner=owner,
-            supported_ides=[req.ide],
+            supported_ides=[ide_tag],
             status=ListingStatus.pending,
             submitted_by=current_user.id,
         )
@@ -124,6 +129,7 @@ async def bulk_scan(
             counts["skill"] += 1
             continue
 
+        ide_tag = skill.source_ide or req.ide
         listing = SkillListing(
             name=skill.name,
             version="0.1.0",
@@ -131,7 +137,7 @@ async def bulk_scan(
             owner=owner,
             task_type=skill.task_type,
             skill_path=skill.skill_path,
-            supported_ides=[req.ide],
+            supported_ides=[ide_tag],
             status=ListingStatus.pending,
             submitted_by=current_user.id,
         )
@@ -149,6 +155,7 @@ async def bulk_scan(
             counts["hook"] += 1
             continue
 
+        ide_tag = hook.source_ide or req.ide
         listing = HookListing(
             name=hook.name,
             version="0.1.0",
@@ -157,7 +164,7 @@ async def bulk_scan(
             event=hook.event,
             handler_type=hook.handler_type,
             handler_config=hook.handler_config,
-            supported_ides=[req.ide],
+            supported_ides=[ide_tag],
             status=ListingStatus.pending,
             submitted_by=current_user.id,
         )
@@ -175,6 +182,7 @@ async def bulk_scan(
             counts["agent"] += 1
             continue
 
+        ide_tag = agent.source_ide or req.ide
         new_agent = Agent(
             name=agent.name,
             version="0.1.0",
@@ -182,7 +190,7 @@ async def bulk_scan(
             owner=owner,
             prompt=agent.prompt or "",
             model_name=agent.model_name or "sonnet-4-6",
-            supported_ides=[req.ide],
+            supported_ides=[ide_tag],
             created_by=current_user.id,
         )
         db.add(new_agent)

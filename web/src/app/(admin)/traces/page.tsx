@@ -37,6 +37,19 @@ interface SessionRow {
   model?: string;
   user_id?: string;
   terminal_type?: string;
+  credits?: string;
+  tools_used?: string;
+}
+
+function isKiroSession(row: SessionRow): boolean {
+  return row.service_name === "kiro-cli" || row.session_id.startsWith("kiro-");
+}
+
+function formatCredits(c: string | undefined): string {
+  if (!c) return "-";
+  const num = parseFloat(c);
+  if (isNaN(num)) return "-";
+  return num < 0.01 ? num.toFixed(4) : num.toFixed(2);
 }
 
 function formatTokens(n: number | string | undefined): string {
@@ -96,11 +109,20 @@ const columns: ColumnDef<SessionRow>[] = [
   {
     accessorKey: "total_input_tokens",
     header: "Tokens In",
-    cell: ({ row }) => (
-      <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
-        {formatTokens(row.original.total_input_tokens)}
-      </span>
-    ),
+    cell: ({ row }) => {
+      if (isKiroSession(row.original)) {
+        return (
+          <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-orange-500" title="Kiro credits">
+            {formatCredits(row.original.credits)} cr
+          </span>
+        );
+      }
+      return (
+        <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
+          {formatTokens(row.original.total_input_tokens)}
+        </span>
+      );
+    },
   },
   {
     accessorKey: "api_request_count",
@@ -123,11 +145,21 @@ const columns: ColumnDef<SessionRow>[] = [
   {
     accessorKey: "total_output_tokens",
     header: "Tokens Out",
-    cell: ({ row }) => (
-      <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
-        {formatTokens(row.original.total_output_tokens)}
-      </span>
-    ),
+    cell: ({ row }) => {
+      if (isKiroSession(row.original)) {
+        const tools = row.original.tools_used;
+        return (
+          <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={tools}>
+            {tools || "-"}
+          </span>
+        );
+      }
+      return (
+        <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
+          {formatTokens(row.original.total_output_tokens)}
+        </span>
+      );
+    },
   },
   {
     accessorKey: "first_event_time",

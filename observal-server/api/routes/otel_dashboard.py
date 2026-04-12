@@ -37,6 +37,8 @@ async def list_sessions():
         "anyIf(LogAttributes['model'], LogAttributes['model'] != '') AS model, "
         "anyIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_id, "
         "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
+        "anyIf(LogAttributes['credits'], LogAttributes['credits'] != '') AS credits, "
+        "anyIf(LogAttributes['tools_used'], LogAttributes['tools_used'] != '') AS tools_used, "
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
         "WHERE LogAttributes['session.id'] != '' "
@@ -222,20 +224,55 @@ def _safe_json(obj: object) -> str:
         return str(obj)
 
 
+_KIRO_TO_CC_EVENT = {
+    "agentSpawn": "SessionStart",
+    "userPromptSubmit": "UserPromptSubmit",
+    "preToolUse": "PreToolUse",
+    "postToolUse": "PostToolUse",
+    "stop": "Stop",
+}
+
+_KIRO_FIELD_MAP = {
+    "hookEventName": "hook_event_name",
+    "sessionId": "session_id",
+    "toolName": "tool_name",
+    "toolInput": "tool_input",
+    "toolResponse": "tool_response",
+    "toolUseId": "tool_use_id",
+    "agentId": "agent_id",
+    "agentType": "agent_type",
+    "stopReason": "stop_reason",
+    "permissionMode": "permission_mode",
+    "lastAssistantMessage": "last_assistant_message",
+    "userPrompt": "user_prompt",
+}
+
+
 @router.post("/hooks")
 async def ingest_hook(request: Request):
-    """Ingest hook events from Claude Code and store in otel_logs.
+    """Ingest hook events from Claude Code / Kiro and store in otel_logs.
 
-    This is intentionally unauthenticated because Claude Code hooks fire
-    from the CLI and can't easily carry auth tokens.  The endpoint only
+    This is intentionally unauthenticated because CLI hooks fire
+    from the terminal and can't easily carry auth tokens.  The endpoint only
     writes to ClickHouse — no destructive operations.
     """
     body = await request.json()
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-    hook_event = body.get("hook_event_name", "unknown")
+    # ── Normalize Kiro camelCase fields to snake_case ──
+    normalized: dict = {}
+    for key, value in body.items():
+        normalized[_KIRO_FIELD_MAP.get(key, key)] = value
+    body = normalized
+
+    # ── Normalize Kiro camelCase event names to PascalCase ──
+    raw_event = body.get("hook_event_name", "unknown")
+    hook_event = _KIRO_TO_CC_EVENT.get(raw_event, raw_event)
+    body["hook_event_name"] = hook_event
+
     session_id = body.get("session_id", "")
     tool_name = body.get("tool_name", "")
+    service_name = body.get("service_name", "observal-hooks")
 
     # Build the attributes map that the frontend already reads
     attrs: dict[str, str] = {
@@ -245,11 +282,15 @@ async def ingest_hook(request: Request):
         "tool_name": tool_name,
     }
 
-    # ── Agent attribution (present on ALL events fired within a subagent) ──
+    # ── Agent attribution ──
     if body.get("agent_id"):
         attrs["agent_id"] = body["agent_id"]
     if body.get("agent_type"):
         attrs["agent_type"] = body["agent_type"]
+    if body.get("agent_name"):
+        attrs["agent_name"] = body["agent_name"]
+    if body.get("model"):
+        attrs["model"] = body["model"]
 
     # Capture full content — this is the Langfuse-equivalent visibility
     tool_input_raw = body.get("tool_input")
@@ -260,6 +301,15 @@ async def ingest_hook(request: Request):
     if tool_response_raw is not None:
         attrs["tool_response"] = _truncate(_safe_json(tool_response_raw))
 
+    # ── Kiro-specific field extraction ──
+    # Kiro sends `prompt` on agentSpawn/userPromptSubmit,
+    # `assistant_response` on stop, and tool_input/tool_response as dicts.
+    if body.get("prompt") and not attrs.get("tool_input"):
+        attrs["tool_input"] = _truncate(str(body["prompt"]))
+    if body.get("assistant_response") and not attrs.get("tool_response"):
+        attrs["tool_response"] = _truncate(str(body["assistant_response"]))
+        attrs["event.name"] = "hook_assistant_response"
+
     # UserPromptSubmit — capture the actual user prompt
     if hook_event == "UserPromptSubmit":
         prompt_text = body.get("prompt") or body.get("user_prompt") or ""
@@ -267,6 +317,14 @@ async def ingest_hook(request: Request):
             attrs["tool_input"] = _truncate(prompt_text)
             attrs["prompt_length"] = str(len(prompt_text))
         attrs["tool_name"] = "user_prompt"
+        attrs["event.name"] = "user_prompt"
+
+    # SessionStart / agentSpawn — capture initial prompt and mark as session start
+    if hook_event == "SessionStart":
+        prompt_text = body.get("prompt") or ""
+        if prompt_text:
+            attrs["tool_input"] = _truncate(prompt_text)
+        attrs["event.name"] = "hook_sessionstart"
 
     # SubagentStart — capture agent spawn
     if hook_event == "SubagentStart" and body.get("last_assistant_message"):
@@ -284,14 +342,17 @@ async def ingest_hook(request: Request):
     if hook_event == "Stop":
         if body.get("stop_reason"):
             attrs["stop_reason"] = body["stop_reason"]
-        # If the stop hook captured Claude's response, mark it clearly
-        if tool_name == "assistant_response" and tool_response_raw:
+        # Kiro sends assistant_response directly; Claude Code sends via tool_response
+        if body.get("assistant_response"):
+            attrs["tool_response"] = _truncate(str(body["assistant_response"]))
             attrs["event.name"] = "hook_assistant_response"
-            # Sequence metadata for interleaving with tool calls
-            if body.get("message_sequence") is not None:
-                attrs["message_sequence"] = str(body["message_sequence"])
-            if body.get("message_total") is not None:
-                attrs["message_total"] = str(body["message_total"])
+        elif tool_name == "assistant_response" and tool_response_raw:
+            attrs["event.name"] = "hook_assistant_response"
+        # Sequence metadata for interleaving with tool calls
+        if body.get("message_sequence") is not None:
+            attrs["message_sequence"] = str(body["message_sequence"])
+        if body.get("message_total") is not None:
+            attrs["message_total"] = str(body["message_total"])
 
     # StopFailure — API error on turn end
     if hook_event == "StopFailure":
@@ -343,6 +404,14 @@ async def ingest_hook(request: Request):
     if body.get("permission_mode"):
         attrs["permission_mode"] = body["permission_mode"]
 
+    # ── Enriched fields from Kiro SQLite DB (sent by kiro_stop_hook.py) ──
+    for enriched_field in (
+        "input_tokens", "output_tokens",
+        "turn_count", "credits", "tools_used", "conversation_id",
+    ):
+        if body.get(enriched_field):
+            attrs[enriched_field] = str(body[enriched_field])
+
     # Build the Body as a readable summary
     agent_prefix = f"[{attrs.get('agent_type', '')}] " if attrs.get("agent_id") else ""
     if hook_event in ("PostToolUse", "PreToolUse"):
@@ -356,7 +425,7 @@ async def ingest_hook(request: Request):
         body_text = f"{hook_event}: {attrs.get('agent_type', 'unknown')}"
     elif hook_event in ("Elicitation", "ElicitationResult"):
         body_text = f"{hook_event}: {body.get('mcp_server_name', 'unknown')}"
-    elif hook_event == "Stop" and tool_name == "assistant_response":
+    elif hook_event == "Stop" and (tool_name == "assistant_response" or body.get("assistant_response")):
         seq = attrs.get("message_sequence", "")
         total = attrs.get("message_total", "")
         seq_label = f" [{seq}/{total}]" if seq and total else ""
@@ -368,7 +437,8 @@ async def ingest_hook(request: Request):
         body_text = f"StopFailure: {attrs.get('error', 'unknown')[:80]}"
     elif hook_event == "SessionStart":
         resumed = " (resumed)" if attrs.get("session_resumed") == "True" else ""
-        body_text = f"SessionStart{resumed}"
+        prompt_preview = (attrs.get("tool_input") or "")[:100]
+        body_text = f"SessionStart{resumed}: {prompt_preview}" if prompt_preview else f"SessionStart{resumed}"
     elif hook_event == "Notification":
         body_text = f"Notification: {attrs.get('notification_title', '')}"
     elif hook_event in ("TaskCreated", "TaskCompleted"):
@@ -391,7 +461,7 @@ async def ingest_hook(request: Request):
         "SeverityText, SeverityNumber) VALUES "
         f"('{_escape(now)}', '{_escape(event_name)}', "
         f"'{_escape(body_text)}', {attr_map}, "
-        f"'observal-hooks', 'INFO', 9)"
+        f"'{_escape(service_name)}', 'INFO', 9)"
     )
 
     try:

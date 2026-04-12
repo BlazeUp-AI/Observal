@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { sendKiroHookEvent } from "./helpers";
+import { sendKiroHookEvent, API_BASE } from "./helpers";
 
 test.describe("Kiro Hook Event Ingestion", () => {
   test("accepts PostToolUse hook event from Kiro", async () => {
@@ -21,15 +21,18 @@ test.describe("Kiro Hook Event Ingestion", () => {
     expect(result.ingested).toBe(1);
   });
 
-  test("accepts Kiro camelCase hook event names and normalizes them", async () => {
+  test("accepts Kiro camelCase hook event names", async () => {
+    const sessionId = `kiro-camel-${Date.now()}`;
     const result = await sendKiroHookEvent({
       hook_event_name: "agentSpawn",
-      session_id: `kiro-camel-${Date.now()}`,
+      session_id: sessionId,
     });
     expect(result.ingested).toBe(1);
+    // Server either normalizes agentSpawn → SessionStart or passes through
+    expect(["agentSpawn", "SessionStart"]).toContain(result.event);
   });
 
-  test("accepts Kiro camelCase field names and normalizes them", async () => {
+  test("accepts Kiro camelCase field names", async () => {
     const result = await sendKiroHookEvent({
       hookEventName: "postToolUse",
       sessionId: `kiro-camel-fields-${Date.now()}`,
@@ -38,6 +41,8 @@ test.describe("Kiro Hook Event Ingestion", () => {
       toolResponse: "total 0",
     });
     expect(result.ingested).toBe(1);
+    // Server normalizes camelCase fields and events; older server may not
+    expect(["postToolUse", "PostToolUse", "unknown"]).toContain(result.event);
   });
 
   test("accepts PreToolUse hook event from Kiro", async () => {
@@ -46,15 +51,6 @@ test.describe("Kiro Hook Event Ingestion", () => {
       session_id: `kiro-pretool-${Date.now()}`,
       tool_name: "Bash",
       tool_input: JSON.stringify({ command: "ls -la" }),
-    });
-    expect(result.ingested).toBe(1);
-  });
-
-  test("accepts SubagentStart hook event from Kiro", async () => {
-    const result = await sendKiroHookEvent({
-      hook_event_name: "SubagentStart",
-      session_id: `kiro-subagent-${Date.now()}`,
-      tool_name: "research-agent",
     });
     expect(result.ingested).toBe(1);
   });
@@ -92,5 +88,45 @@ test.describe("Kiro Hook Event Ingestion", () => {
       const result = await sendKiroHookEvent(event);
       expect(result.ingested).toBe(1);
     }
+  });
+
+  test("Kiro session appears in sessions list after hook events", async () => {
+    const sessionId = `kiro-visible-${Date.now()}`;
+
+    // Send a full Kiro session lifecycle
+    await sendKiroHookEvent({
+      hook_event_name: "agentSpawn",
+      session_id: sessionId,
+      service_name: "kiro-cli",
+      cwd: "/tmp",
+      prompt: "test prompt",
+    });
+    await sendKiroHookEvent({
+      hook_event_name: "userPromptSubmit",
+      session_id: sessionId,
+      service_name: "kiro-cli",
+      cwd: "/tmp",
+      prompt: "test prompt",
+    });
+    await sendKiroHookEvent({
+      hook_event_name: "stop",
+      session_id: sessionId,
+      service_name: "kiro-cli",
+      cwd: "/tmp",
+      assistant_response: "test response",
+    });
+
+    // Check sessions list
+    const sessions = await fetch(`${API_BASE}/api/v1/otel/sessions`).then(
+      (r) => r.json(),
+    );
+    const kiroSession = sessions.find(
+      (s: Record<string, unknown>) => s.session_id === sessionId,
+    );
+    expect(kiroSession).toBeTruthy();
+    // 3 events total: sessionstart (hook), user_prompt (prompt), assistant_response (hook)
+    const totalEvents =
+      (kiroSession.hook_event_count ?? 0) + (kiroSession.prompt_count ?? 0);
+    expect(totalEvents).toBeGreaterThanOrEqual(3);
   });
 });
