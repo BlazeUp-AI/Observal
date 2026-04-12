@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, resolve_prefix_id
 from models.agent import Agent, AgentGoalTemplate
 from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User
@@ -30,20 +30,20 @@ _eval_run_load = [selectinload(EvalRun.scorecards).selectinload(Scorecard.dimens
 
 @router.post("/agents/{agent_id}", response_model=EvalRunDetailResponse)
 async def run_evaluation(
-    agent_id: uuid.UUID,
+    agent_id: str,
     req: EvalRequest | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     # Load agent with goal template
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.id == agent_id)
-        .options(selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections))
+    agent = await resolve_prefix_id(
+        Agent,
+        agent_id,
+        db,
+        load_options=[
+            selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)
+        ],
     )
-    agent = result.scalar_one_or_none()
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
 
     # Create eval run
     eval_run = EvalRun(agent_id=agent.id, triggered_by=current_user.id)
@@ -101,22 +101,24 @@ async def run_evaluation(
 
 @router.get("/agents/{agent_id}/runs", response_model=list[EvalRunResponse])
 async def list_eval_runs(
-    agent_id: uuid.UUID,
+    agent_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent_id).order_by(EvalRun.started_at.desc()))
+    agent = await resolve_prefix_id(Agent, agent_id, db)
+    result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent.id).order_by(EvalRun.started_at.desc()))
     return [EvalRunResponse.model_validate(r) for r in result.scalars().all()]
 
 
 @router.get("/agents/{agent_id}/scorecards", response_model=list[ScorecardResponse])
 async def list_scorecards(
-    agent_id: uuid.UUID,
+    agent_id: str,
     version: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = select(Scorecard).where(Scorecard.agent_id == agent_id).options(*_scorecard_load)
+    agent = await resolve_prefix_id(Agent, agent_id, db)
+    stmt = select(Scorecard).where(Scorecard.agent_id == agent.id).options(*_scorecard_load)
     if version:
         stmt = stmt.where(Scorecard.version == version)
     result = await db.execute(stmt.order_by(Scorecard.evaluated_at.desc()).limit(50))
@@ -125,20 +127,19 @@ async def list_scorecards(
 
 @router.get("/scorecards/{scorecard_id}", response_model=ScorecardResponse)
 async def get_scorecard(
-    scorecard_id: uuid.UUID,
+    scorecard_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Scorecard).where(Scorecard.id == scorecard_id).options(*_scorecard_load))
-    sc = result.scalar_one_or_none()
-    if not sc:
-        raise HTTPException(status_code=404, detail="Scorecard not found")
+    sc = await resolve_prefix_id(
+        Scorecard, scorecard_id, db, load_options=_scorecard_load, display_field="version"
+    )
     return ScorecardResponse.model_validate(sc)
 
 
 @router.get("/agents/{agent_id}/compare", response_model=dict)
 async def compare_versions(
-    agent_id: uuid.UUID,
+    agent_id: str,
     version_a: str = Query(...),
     version_b: str = Query(...),
     db: AsyncSession = Depends(get_db),
@@ -146,13 +147,13 @@ async def compare_versions(
 ):
     """Compare average scores between two agent versions."""
     from sqlalchemy import func
-
+    agent = await resolve_prefix_id(Agent, agent_id, db)
     async def _avg_scores(version: str) -> dict:
         result = await db.execute(
             select(
                 func.avg(Scorecard.overall_score).label("avg_overall"),
                 func.count(Scorecard.id).label("count"),
-            ).where(Scorecard.agent_id == agent_id, Scorecard.version == version)
+            ).where(Scorecard.agent_id == agent.id, Scorecard.version == version)
         )
         row = result.one()
         return {"version": version, "avg_score": round(float(row.avg_overall or 0), 2), "count": row.count}
@@ -168,7 +169,7 @@ async def compare_versions(
 @router.post("/sessions/{session_id}", response_model=dict)
 async def eval_session(
     session_id: str,
-    agent_id: uuid.UUID | None = Query(None),
+    agent_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -183,12 +184,14 @@ async def eval_session(
 
     agent = None
     if agent_id:
-        result = await db.execute(
-            select(Agent)
-            .where(Agent.id == agent_id)
-            .options(selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections))
+        agent = await resolve_prefix_id(
+            Agent,
+            agent_id,
+            db,
+            load_options=[
+                selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)
+            ],
         )
-        agent = result.scalar_one_or_none()
 
     if agent:
         eval_run = EvalRun(agent_id=agent.id, triggered_by=current_user.id)
@@ -247,9 +250,8 @@ async def eval_agent_in_session(
     - SLM scoring with full session context + delegation prompt as goal
     """
     # Load agent from DB (by UUID or name)
-    from api.routes.agent import _agent_id_clause, _load_agent
-
-    agent = await _load_agent(db, _agent_id_clause(agent_id))
+    from api.routes.agent import _load_agent
+    agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -347,15 +349,16 @@ async def eval_agent_in_session(
 
 @router.get("/agents/{agent_id}/aggregate", response_model=dict)
 async def agent_aggregate(
-    agent_id: uuid.UUID,
+    agent_id: str,
     window_size: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get aggregate scoring stats for an agent (CI, drift, dimension breakdown)."""
+    agent = await resolve_prefix_id(Agent, agent_id, db)
     result = await db.execute(
         select(Scorecard)
-        .where(Scorecard.agent_id == agent_id)
+        .where(Scorecard.agent_id == agent.id)
         .order_by(Scorecard.evaluated_at.desc())
         .limit(window_size + 50)  # extra for baseline
     )
@@ -374,15 +377,12 @@ async def agent_aggregate(
 
 @router.get("/scorecards/{scorecard_id}/penalties", response_model=list[dict])
 async def scorecard_penalties(
-    scorecard_id: uuid.UUID,
+    scorecard_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get the list of penalties applied to a scorecard with evidence."""
-    result = await db.execute(select(Scorecard).where(Scorecard.id == scorecard_id))
-    sc = result.scalar_one_or_none()
-    if not sc:
-        raise HTTPException(status_code=404, detail="Scorecard not found")
+    sc = await resolve_prefix_id(Scorecard, scorecard_id, db, display_field="version")
 
     # Penalties are stored in raw_output
     raw = sc.raw_output or {}

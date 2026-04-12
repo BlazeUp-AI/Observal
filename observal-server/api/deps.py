@@ -1,6 +1,8 @@
 import hashlib
+import uuid as _uuid
 from collections.abc import AsyncGenerator
 from functools import wraps
+
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select, cast, String
@@ -51,7 +53,6 @@ def require_role(*roles: UserRole):
 
 async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_status=None):
     """Resolve a listing by UUID or name."""
-    import uuid as _uuid
 
     if isinstance(identifier, _uuid.UUID):
         stmt = select(model).where(model.id == identifier)
