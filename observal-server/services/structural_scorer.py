@@ -345,14 +345,14 @@ class MatchingEngine:
             return json.dumps(normalized, sort_keys=True)
         if isinstance(value, list):
             return json.dumps([self._normalize_json_value(v) for v in value])
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return json.dumps(float(value))
         if isinstance(value, str):
             # Try to parse as JSON dict/list
             stripped = value.strip()
             try:
                 parsed = json.loads(stripped)
-                if isinstance(parsed, (dict, list)):
+                if isinstance(parsed, dict | list):
                     return self._normalize_json_value(parsed)
             except (json.JSONDecodeError, ValueError):
                 pass

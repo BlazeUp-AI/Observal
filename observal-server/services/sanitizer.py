@@ -198,13 +198,13 @@ class TraceSanitizer:
                 value = obj[key]
                 if isinstance(value, str):
                     obj[key] = self._sanitize_string(value, report)
-                elif isinstance(value, (dict, list)):
+                elif isinstance(value, dict | list):
                     self._sanitize_dict(value, report)
         elif isinstance(obj, list):
             for i, item in enumerate(obj):
                 if isinstance(item, str):
                     obj[i] = self._sanitize_string(item, report)
-                elif isinstance(item, (dict, list)):
+                elif isinstance(item, dict | list):
                     self._sanitize_dict(item, report)
 
     def _sanitize_string(self, text: str, report: SanitizationReport) -> str:
