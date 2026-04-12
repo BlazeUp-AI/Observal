@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 
+from arq import create_pool
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from strawberry.fastapi import GraphQLRouter
@@ -53,7 +55,21 @@ async def lifespan(app: FastAPI):
     await close_redis()
 
 
-app = FastAPI(title="Observal", version="0.1.0", lifespan=lifespan)
+# Create the FastAPI app
+app = FastAPI(
+    title="Observal API",
+    description="API for Observal Agents & Capabilities Hub",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# Add SessionMiddleware for Authlib (OAuth state)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="dev-hardcoded-secret-key",
+    max_age=3600  # 1 hour
+)
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # GraphQL (replaces REST dashboard endpoints)

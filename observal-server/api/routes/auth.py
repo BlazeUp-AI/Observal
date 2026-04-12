@@ -4,7 +4,9 @@ import secrets
 import string
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from authlib.integrations.starlette_client import OAuth
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +36,19 @@ _reset_tokens: dict[str, tuple[str, datetime]] = {}
 RESET_TOKEN_TTL_MINUTES = 15
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+# Configure OAuth client
+oauth = OAuth()
+if settings.OAUTH_CLIENT_ID and settings.OAUTH_CLIENT_SECRET and settings.OAUTH_SERVER_METADATA_URL:
+    oauth.register(
+        name="oidc",
+        client_id=settings.OAUTH_CLIENT_ID,
+        client_secret=settings.OAUTH_CLIENT_SECRET,
+        server_metadata_url=settings.OAUTH_SERVER_METADATA_URL,
+        client_kwargs={
+            "scope": "openid email profile",
+        },
+    )
 
 
 def _generate_api_key() -> tuple[str, str]:
@@ -134,6 +149,67 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
+
+
+@router.get("/oauth/login")
+async def oauth_login(request: Request):
+    """Initiates the OAuth SSO flow"""
+    if not oauth.oidc:
+        raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
+    
+    # Needs absolute URL so reverse handles schemes correctly for proxy deployments
+    redirect_uri = str(request.base_url).rstrip("/") + "/api/v1/auth/oauth/callback"
+    return await oauth.oidc.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/oauth/callback")
+async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    """Handles the OAuth SSO callback, authenticates, and redirects to frontend with credentials"""
+    if not oauth.oidc:
+        raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
+
+    try:
+        token = await oauth.oidc.authorize_access_token(request)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"OAuth authorization failed: {e}")
+        
+    userinfo = token.get("userinfo")
+    if not userinfo:
+        raise HTTPException(status_code=400, detail="Missing userinfo in token")
+        
+    email = userinfo.get("email")
+    name = userinfo.get("name") or userinfo.get("preferred_username") or "SSO User"
+    
+    # Handle Okta / Entry specific formatting
+    if not email:
+        raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
+        
+    # Check if user exists
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    
+    api_key, key_hash = _generate_api_key()
+    
+    if user:
+        # Existing user, just update their API key
+        user.api_key_hash = key_hash
+    else:
+        # Auto-create new user via SSO
+        user = User(
+            email=email,
+            name=name,
+            role=UserRole.user,
+            api_key_hash=key_hash,
+        )
+        db.add(user)
+        
+    await db.commit()
+    await db.refresh(user)
+    
+    # Normally we'd use a more secure form of handoff (like Secure cookies for sessions), 
+    # but since the system primarily relies on X-API-Key exchange dynamically:
+    frontend_redirect = f"{settings.FRONTEND_URL}/login?apiKey={api_key}&role={user.role.value}"
+    return RedirectResponse(url=frontend_redirect)
 
 
 @router.get("/whoami", response_model=UserResponse)

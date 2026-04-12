@@ -9,7 +9,7 @@ export function useAuthGuard() {
   const [ready, setReady] = useState(() => {
     if (typeof window === "undefined") return false;
     const key = localStorage.getItem("observal_api_key");
-    if (!key) return true;
+    if (!key) return false;
     return !!getUserRole();
   });
   const [role, setRole] = useState<string | null>(() => {

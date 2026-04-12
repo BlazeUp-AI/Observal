@@ -38,6 +38,7 @@ export function setApiKey(key: string) {
 
 export function clearApiKey() {
   localStorage.removeItem("observal_api_key");
+  localStorage.removeItem("observal_user_role");
 }
 
 export function setUserRole(role: string) {

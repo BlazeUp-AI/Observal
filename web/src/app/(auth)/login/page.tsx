@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { auth, setApiKey, setUserRole } from "@/lib/api";
+import { auth, setApiKey, setUserRole, getUserRole } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ type Mode = "login" | "register" | "api-key" | "reset-request" | "reset-confirm"
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +23,33 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    // If the user is already authenticated, redirect to the home page
+    if (typeof window !== "undefined" && getUserRole()) {
+      router.replace("/");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    // Handling SSO callback logic dynamically in same route or query params
+    const ssoApiKey = searchParams.get("apiKey");
+    const ssoRole = searchParams.get("role");
+
+    if (ssoApiKey && ssoRole) {
+      setLoading(true);
+      setApiKey(ssoApiKey);
+      setUserRole(ssoRole);
+      toast.success("Signed in successfully via SSO");
+      
+      // Cleanup URL params and redirect cleanly to main page
+      router.push("/");
+    } else if (searchParams.get("error")) {
+      setError(searchParams.get("error") || "SSO Authentication Failed");
+    }
+  }, [searchParams, router]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -117,6 +144,12 @@ export default function LoginPage() {
     }
   }
 
+  function handleSsoLogin() {
+    setSsoLoading(true);
+    // Redirects to backend SSO endpoint which initializes OAuth flow
+    window.location.href = "/api/v1/auth/oauth/login";
+  }
+
   const onSubmit =
     mode === "login" ? handlePasswordLogin
     : mode === "register" ? handleRegister
@@ -129,8 +162,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="rounded-lg border bg-card shadow-sm">
           {/* Brand header */}
-          <div className="flex flex-col items-center gap-2 border-b px-8 pb-6 pt-8 animate-in">
-            <h1 className="text-2xl font-semibold tracking-tight font-[family-name:var(--font-display)]">
+          <div className="flex flex-col items-center gap-2 border-b px-8 pb-6 pt-8 animate-in
+">
+            <h1 className="text-2xl font-semibold tracking-tight font-[family-name:var(--font
+-display)]">
               Observal
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -305,9 +340,9 @@ export default function LoginPage() {
               )}
 
               {/* Submit */}
-              <div className="animate-in stagger-2">
-                <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? (
+              <div className="animate-in stagger-2 space-y-3">
+                <Button type="submit" disabled={loading || ssoLoading} className="w-full">
+                  {loading && !ssoLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
@@ -319,6 +354,34 @@ export default function LoginPage() {
                     </>
                   )}
                 </Button>
+
+                {mode === "login" && (
+                  <div className="relative py-2">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">Or</span>
+                    </div>
+                  </div>
+                )}
+                
+                {mode === "login" && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={handleSsoLogin}
+                    disabled={loading || ssoLoading}
+                  >
+                    {ssoLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sign in with SSO
+                  </Button>
+                )}
               </div>
 
               {/* Mode switches */}

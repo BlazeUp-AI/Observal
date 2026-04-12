@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
 import Link from "next/link";
-import { clearApiKey } from "@/lib/api";
+import { clearSession } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 function initials(name: string) {
@@ -81,7 +81,7 @@ export function NavUser({ user }: NavUserProps) {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
-            clearApiKey();
+            clearSession();
             router.push("/login");
           }}
         >
