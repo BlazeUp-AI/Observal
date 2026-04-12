@@ -84,7 +84,7 @@ def test_docker_down_called(mock_rmtree: MagicMock, mock_run: MagicMock, tmp_pat
     # Find the docker compose call
     docker_calls = [
         c for c in mock_run.call_args_list
-        if c.args and c.args[0] == ["docker", "compose", "down", "-v"]
+        if c.args and c.args[0] == ["docker", "compose", "down", "-v", "--rmi", "all"]
     ]
     assert len(docker_calls) == 1
     assert docker_calls[0].kwargs["cwd"] == repo / "docker"
@@ -258,7 +258,7 @@ def test_explicit_repo_dir_option(mock_rmtree: MagicMock, mock_run: MagicMock, t
     assert result.exit_code == 0
     docker_calls = [
         c for c in mock_run.call_args_list
-        if c.args and c.args[0] == ["docker", "compose", "down", "-v"]
+        if c.args and c.args[0] == ["docker", "compose", "down", "-v", "--rmi", "all"]
     ]
     assert len(docker_calls) == 1
     assert docker_calls[0].kwargs["cwd"] == repo / "docker"

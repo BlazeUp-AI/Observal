@@ -13,7 +13,7 @@ from rich import print as rprint
 from observal_cli.config import CONFIG_DIR
 from observal_cli.render import spinner
 
-CONFIRMATION_PHRASE = "uninstall observal"
+CONFIRMATION_PHRASE = "confirm"
 
 
 def _find_repo_root(explicit_dir: str | None) -> Path | None:
@@ -37,19 +37,19 @@ def _find_repo_root(explicit_dir: str | None) -> Path | None:
 
 
 def _docker_teardown(repo_root: Path) -> bool:
-    """Run docker compose down -v to stop containers and remove volumes."""
+    """Run docker compose down -v --rmi all to stop containers, remove volumes and images."""
     docker_dir = repo_root / "docker"
     try:
-        with spinner("Stopping containers and removing volumes..."):
+        with spinner("Stopping containers, removing volumes and images..."):
             result = subprocess.run(
-                ["docker", "compose", "down", "-v"],
+                ["docker", "compose", "down", "-v", "--rmi", "all"],
                 cwd=docker_dir,
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
         if result.returncode == 0:
-            rprint("[green]\u2713 Docker containers and volumes removed.[/green]")
+            rprint("[green]\u2713 Docker containers, volumes, and images removed.[/green]")
             return True
         else:
             rprint(f"[red]Docker teardown failed:[/red] {result.stderr.strip()}")
@@ -148,8 +148,8 @@ def register_uninstall(app: typer.Typer):
 
         # ── Phase 2: Delete repo directory ────────────────
         if repo_root:
-            # Move out of the repo dir before deleting it
-            os.chdir(Path.home())
+            # Move to parent of repo dir before deleting it
+            os.chdir(repo_root.parent)
             _delete_directory(repo_root, "Observal repo")
 
         # ── Phase 3: Delete config directory ──────────────
