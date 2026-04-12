@@ -240,6 +240,106 @@ def _scan_claude_home(
     return mcps, skills, hooks, agents
 
 
+# ── Kiro ~/.kiro scanner ────────────────────────────────────
+
+
+def _scan_kiro_home(
+    kiro_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.kiro for agents, MCP servers, and hooks."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    # ── Global MCP servers from ~/.kiro/settings/mcp.json ──
+    mcp_file = kiro_dir / "settings" / "mcp.json"
+    if mcp_file.exists():
+        try:
+            mcp_data = json.loads(mcp_file.read_text())
+            servers = _extract_mcp_servers(mcp_data)
+            for srv_name, srv_config in servers.items():
+                mcps.append(
+                    DiscoveredMcp(
+                        name=srv_name,
+                        command=srv_config.get("command"),
+                        args=srv_config.get("args", []),
+                        url=srv_config.get("url"),
+                        description=f"Kiro global MCP: {srv_name}",
+                        source="kiro:global",
+                    )
+                )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # ── Agents from ~/.kiro/agents/*.json ──
+    agents_dir = kiro_dir / "agents"
+    if agents_dir.is_dir():
+        for agent_file in sorted(agents_dir.glob("*.json")):
+            try:
+                data = json.loads(agent_file.read_text())
+                name = data.get("name", agent_file.stem)
+                desc = data.get("description", "")
+                model = data.get("model", "")
+                prompt = data.get("prompt", "")
+
+                agents.append(
+                    DiscoveredAgent(
+                        name=name,
+                        description=desc or f"Kiro agent: {name}",
+                        model_name=model,
+                        prompt=prompt,
+                        source_file=str(agent_file),
+                    )
+                )
+
+                # ── Agent-level MCP servers ──
+                agent_mcps = data.get("mcpServers", {})
+                for srv_name, srv_config in agent_mcps.items():
+                    if isinstance(srv_config, dict):
+                        mcps.append(
+                            DiscoveredMcp(
+                                name=srv_name,
+                                command=srv_config.get("command"),
+                                args=srv_config.get("args", []),
+                                url=srv_config.get("url"),
+                                description=f"From Kiro agent: {name}",
+                                source=f"kiro:agent:{name}",
+                            )
+                        )
+
+                # ── Agent-level hooks ──
+                agent_hooks = data.get("hooks", {})
+                for event_name, event_handlers in agent_hooks.items():
+                    hook_name = f"kiro:{name}/{event_name}"
+                    handler_config = {}
+                    if isinstance(event_handlers, list) and event_handlers:
+                        handler_config = event_handlers[0] if isinstance(event_handlers[0], dict) else {}
+                    hooks.append(
+                        DiscoveredHook(
+                            name=hook_name,
+                            event=event_name,
+                            handler_type="command",
+                            handler_config=handler_config,
+                            description=f"Kiro hook: {event_name} on agent {name}",
+                            source=f"kiro:agent:{name}",
+                        )
+                    )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    # Deduplicate MCPs by name (global + agent-level may overlap)
+    seen: set[str] = set()
+    deduped: list[DiscoveredMcp] = []
+    for m in mcps:
+        if m.name not in seen:
+            deduped.append(m)
+            seen.add(m.name)
+    mcps = deduped
+
+    return mcps, skills, hooks, agents
+
+
 def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
     """Extract server entries from .mcp.json, handling both formats.
 
@@ -383,7 +483,10 @@ def register_scan(app: typer.Typer):
         project_dir: str = typer.Argument(".", help="Project directory to scan"),
         ide: str | None = typer.Option(None, "--ide", "-i", help="Target IDE (auto-detected if omitted)"),
         home: bool = typer.Option(
-            False, "--home", help="Scan ~/.claude for Claude Code plugins, agents, skills, hooks"
+            False, "--home", help="Scan IDE home directories for plugins, agents, skills, hooks"
+        ),
+        all_ides: bool = typer.Option(
+            False, "--all-ides", help="Scan home directories for ALL IDEs (Claude Code, Kiro, Cursor)"
         ),
         dry_run: bool = typer.Option(
             False, "--dry-run", "-n", help="Show what would be registered without making changes"
@@ -398,28 +501,63 @@ def register_scan(app: typer.Typer):
         By default, scans the current project directory for Cursor, VS Code, Kiro,
         and Gemini CLI MCP configs.
 
-        With --home, scans your ~/.claude directory to discover all installed
-        plugins, agents, skills, and hooks from your Claude Code setup.
+        With --home, scans your IDE home directory. Use --ide to target a specific
+        IDE (e.g. --home --ide kiro), or --all-ides to scan all IDEs at once.
+
+        With --all-ides, scans ~/.claude, ~/.kiro, and ~/.cursor to discover
+        all agents, MCP servers, skills, and hooks across every IDE you use.
         """
         all_mcps: list[DiscoveredMcp] = []
         all_skills: list[DiscoveredSkill] = []
         all_hooks: list[DiscoveredHook] = []
         all_agents: list[DiscoveredAgent] = []
         project_mcp_entries: list[tuple[str, str, DiscoveredMcp, Path]] = []
+        scanned_ides: list[str] = []
 
-        # ── Scan ~/.claude if --home ────────────────
-        if home:
+        # ── Determine which IDE home dirs to scan ──
+        scan_claude = False
+        scan_kiro = False
+
+        if all_ides:
+            home = True  # --all-ides implies --home
+            scan_claude = True
+            scan_kiro = True
+        elif home:
+            if ide == "kiro":
+                scan_kiro = True
+            elif ide == "claude-code" or ide is None:
+                scan_claude = True
+                # When no --ide specified, also scan kiro if it exists
+                if ide is None:
+                    scan_kiro = True
+
+        # ── Scan ~/.claude ─────────────────────────────
+        if scan_claude:
             claude_dir = Path.home() / ".claude"
-            if not claude_dir.is_dir():
-                rprint("[red]~/.claude directory not found.[/red]")
-                raise typer.Exit(1)
+            if claude_dir.is_dir():
+                with spinner("Scanning ~/.claude..."):
+                    h_mcps, h_skills, h_hooks, h_agents = _scan_claude_home(claude_dir)
+                all_mcps.extend(h_mcps)
+                all_skills.extend(h_skills)
+                all_hooks.extend(h_hooks)
+                all_agents.extend(h_agents)
+                scanned_ides.append("claude-code")
+            elif not all_ides:
+                rprint("[yellow]~/.claude directory not found.[/yellow]")
 
-            with spinner("Scanning ~/.claude..."):
-                h_mcps, h_skills, h_hooks, h_agents = _scan_claude_home(claude_dir)
-            all_mcps.extend(h_mcps)
-            all_skills.extend(h_skills)
-            all_hooks.extend(h_hooks)
-            all_agents.extend(h_agents)
+        # ── Scan ~/.kiro ───────────────────────────────
+        if scan_kiro:
+            kiro_dir = Path.home() / ".kiro"
+            if kiro_dir.is_dir():
+                with spinner("Scanning ~/.kiro..."):
+                    k_mcps, k_skills, k_hooks, k_agents = _scan_kiro_home(kiro_dir)
+                all_mcps.extend(k_mcps)
+                all_skills.extend(k_skills)
+                all_hooks.extend(k_hooks)
+                all_agents.extend(k_agents)
+                scanned_ides.append("kiro")
+            elif not all_ides:
+                rprint("[yellow]~/.kiro directory not found.[/yellow]")
 
         # ── Scan project directory ──────────────────
         root = Path(project_dir).resolve()
@@ -436,7 +574,7 @@ def register_scan(app: typer.Typer):
         if total == 0:
             rprint("[yellow]No components found.[/yellow]")
             if not home:
-                rprint("[dim]Tip: use --home to scan ~/.claude for Claude Code plugins and agents.[/dim]")
+                rprint("[dim]Tip: use --home to scan IDE home dirs, or --all-ides to scan all IDEs.[/dim]")
             raise typer.Exit(1)
 
         # ── Display discovery results ───────────────
@@ -493,8 +631,16 @@ def register_scan(app: typer.Typer):
             raise typer.Abort()
 
         # ── Register via bulk scan API ──────────────
+        def _ide_from_source(source: str) -> str:
+            """Infer source IDE from component source string."""
+            if source.startswith("kiro:"):
+                return "kiro"
+            if source.startswith("plugin:") or source.startswith("claude:"):
+                return "claude-code"
+            return ide or "auto"
+
         scan_payload = {
-            "ide": "claude-code" if home else (ide or "auto"),
+            "ide": ide or ("multi" if all_ides else ("claude-code" if home else "auto")),
             "mcps": [
                 {
                     "name": m.name,
@@ -503,6 +649,7 @@ def register_scan(app: typer.Typer):
                     "url": m.url,
                     "description": m.description,
                     "source_plugin": m.source,
+                    "source_ide": _ide_from_source(m.source),
                 }
                 for m in all_mcps
             ],
@@ -512,6 +659,7 @@ def register_scan(app: typer.Typer):
                     "description": s.description,
                     "source_plugin": s.source,
                     "task_type": s.task_type,
+                    "source_ide": _ide_from_source(s.source),
                 }
                 for s in all_skills
             ],
@@ -523,6 +671,7 @@ def register_scan(app: typer.Typer):
                     "handler_config": h.handler_config,
                     "description": h.description,
                     "source_plugin": h.source,
+                    "source_ide": _ide_from_source(h.source),
                 }
                 for h in all_hooks
             ],
@@ -533,6 +682,9 @@ def register_scan(app: typer.Typer):
                     "model_name": a.model_name,
                     "prompt": a.prompt,
                     "source_file": a.source_file,
+                    "source_ide": _ide_from_source(
+                        f"kiro:{a.source_file}" if a.source_file and ".kiro" in a.source_file else a.source_file or ""
+                    ),
                 }
                 for a in all_agents
             ],
@@ -588,7 +740,7 @@ def register_scan(app: typer.Typer):
                 rprint(f"[green]Shimmed {shimmed_count} MCP entries for telemetry.[/green]")
 
         # ── Auto-inject hooks into ~/.claude/settings.json ─────
-        if home:
+        if scan_claude:
             from observal_cli.config import load as _load_config
 
             cfg = _load_config()
@@ -668,3 +820,99 @@ def register_scan(app: typer.Typer):
             except Exception as e:
                 rprint(f"\n[yellow]Could not auto-inject hooks: {e}[/yellow]")
                 rprint("[dim]Add hooks manually — see docs.[/dim]")
+
+        # ── Auto-inject hooks into ~/.kiro/agents/*.json ──────
+        if scan_kiro:
+            from observal_cli.config import load as _load_kiro_config
+
+            kcfg = _load_kiro_config()
+            kiro_server_url = kcfg.get("server_url", "http://localhost:8000").rstrip("/")
+            kiro_hooks_url = f"{kiro_server_url}/api/v1/otel/hooks"
+
+            hooks_dir = Path(__file__).parent / "hooks"
+            hook_script = hooks_dir / "kiro_hook.py"
+            stop_script = hooks_dir / "kiro_stop_hook.py"
+
+            def _kiro_sed_prefix(agent_name: str, model: str) -> str:
+                """Build the sed expression that injects metadata into JSON."""
+                meta_fields = (
+                    f'"session_id":"kiro-\'$PPID\'",'
+                    f'"service_name":"kiro-cli",'
+                    f'"agent_name":"{agent_name}"'
+                )
+                if model:
+                    meta_fields += f',"model":"{model}"'
+                return "cat | sed 's/^{/{" + meta_fields + ",/' "
+
+            def _kiro_hook_cmd(agent_name: str, model: str) -> str:
+                """Build a per-agent hook command with conversation_id lookup."""
+                prefix = _kiro_sed_prefix(agent_name, model)
+                if hook_script.is_file():
+                    return f"{prefix}| python3 {hook_script.resolve()} --url {kiro_hooks_url}"
+                return (
+                    f"{prefix}"
+                    f"| curl -sf -X POST {kiro_hooks_url} "
+                    f'-H "Content-Type: application/json" '
+                    f"-d @-"
+                )
+
+            def _kiro_stop_cmd(agent_name: str, model: str) -> str:
+                """Build the stop hook command with full SQLite enrichment."""
+                prefix = _kiro_sed_prefix(agent_name, model)
+                if stop_script.is_file():
+                    return f"{prefix}| python3 {stop_script.resolve()} --url {kiro_hooks_url}"
+                return (
+                    f"{prefix}"
+                    f"| curl -sf -X POST {kiro_hooks_url} "
+                    f'-H "Content-Type: application/json" '
+                    f"-d @-"
+                )
+
+            def _kiro_hooks_block(agent_name: str, model: str) -> dict:
+                cmd = _kiro_hook_cmd(agent_name, model)
+                stop_cmd = _kiro_stop_cmd(agent_name, model)
+                return {
+                    "agentSpawn": [{"command": cmd}],
+                    "userPromptSubmit": [{"command": cmd}],
+                    "preToolUse": [{"matcher": "*", "command": cmd}],
+                    "postToolUse": [{"matcher": "*", "command": cmd}],
+                    "stop": [{"command": stop_cmd}],
+                }
+
+            kiro_agents_dir = Path.home() / ".kiro" / "agents"
+            if kiro_agents_dir.is_dir():
+                injected_count = 0
+                for agent_file in sorted(kiro_agents_dir.glob("*.json")):
+                    try:
+                        agent_data = json.loads(agent_file.read_text())
+                        existing = agent_data.get("hooks", {})
+
+                        # Check if already pointing to correct URL
+                        already_configured = False
+                        for _evt, handlers in existing.items():
+                            if isinstance(handlers, list) and handlers:
+                                cmd = handlers[0].get("command", "")
+                                if kiro_hooks_url in cmd:
+                                    already_configured = True
+                                    break
+
+                        if already_configured:
+                            continue
+
+                        # Extract agent metadata for per-agent hook enrichment
+                        agent_name = agent_data.get("name", agent_file.stem)
+                        agent_model = agent_data.get("model", "")
+
+                        # Backup and inject
+                        _backup_config(agent_file)
+                        agent_data["hooks"] = _kiro_hooks_block(agent_name, agent_model)
+                        agent_file.write_text(json.dumps(agent_data, indent=2) + "\n")
+                        injected_count += 1
+                    except (json.JSONDecodeError, OSError) as e:
+                        rprint(f"  [yellow]Skipped {agent_file.name}: {e}[/yellow]")
+
+                if injected_count:
+                    rprint(f"\n[green]Injected Observal hooks into {injected_count} Kiro agents[/green]")
+                    rprint(f"[dim]Hooks endpoint: {kiro_hooks_url}[/dim]")
+                else:
+                    rprint(f"\n[dim]Kiro agent hooks already configured -> {kiro_hooks_url}[/dim]")

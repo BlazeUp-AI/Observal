@@ -3,10 +3,9 @@ def generate_hook_telemetry_config(hook_listing, ide: str, server_url: str = "ht
         # Kiro uses shell-command hooks, not HTTP hooks.
         # Generate a runCommand hook that pipes STDIN JSON to the Observal API via curl.
         curl_cmd = (
-            f"cat | curl -sf -X POST {server_url}/api/v1/telemetry/hooks "
+            "cat | sed 's/^{/{\"session_id\":\"kiro-'$PPID'\",\"service_name\":\"kiro-cli\",/' "
+            f"| curl -sf -X POST {server_url}/api/v1/otel/hooks "
             f'-H "Content-Type: application/json" '
-            f'-H "X-API-Key: $OBSERVAL_API_KEY" '
-            f'-H "X-Observal-Hook-Id: {hook_listing.id}" '
             f"-d @-"
         )
         event = str(hook_listing.event)
@@ -19,6 +18,16 @@ def generate_hook_telemetry_config(hook_listing, ide: str, server_url: str = "ht
             "Stop": "stop",
         }
         kiro_event = kiro_event_map.get(event, event)
+
+        # For stop events, use the enrichment script to capture model/tokens
+        if kiro_event == "stop":
+            stop_cmd = (
+                "cat | sed 's/^{/{\"session_id\":\"kiro-'$PPID'\",\"service_name\":\"kiro-cli\",/' "
+                f"| python3 -m observal_cli.hooks.kiro_stop_hook "
+                f"--url {server_url}/api/v1/otel/hooks"
+            )
+            return {"hooks": {kiro_event: [{"command": stop_cmd}]}}
+
         hook_entry = {"command": curl_cmd}
         if kiro_event in ("preToolUse", "postToolUse"):
             hook_entry["matcher"] = "*"
@@ -26,8 +35,7 @@ def generate_hook_telemetry_config(hook_listing, ide: str, server_url: str = "ht
 
     hook_entry = {
         "type": "http",
-        "url": f"{server_url}/api/v1/telemetry/hooks",
-        "headers": {"X-API-Key": "$OBSERVAL_API_KEY", "X-Observal-Hook-Id": str(hook_listing.id)},
+        "url": f"{server_url}/api/v1/otel/hooks",
         "timeout": 10,
     }
 

@@ -1059,12 +1059,17 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
     let apiCalls = 0;
     let toolCalls = 0;
     let hookEvents = 0;
+    let credits = 0;
+    let isKiro = false;
     const models = new Set<string>();
     const tools: Record<string, number> = {};
 
     for (const evt of events) {
       const attrs = evt.attributes ?? {};
       const eName = getEventName(evt);
+      const svc = evt.service_name ?? "";
+
+      if (svc === "kiro-cli") isKiro = true;
 
       if (eName === "api_request") {
         apiCalls++;
@@ -1073,6 +1078,10 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
         if (attrs.cache_read_tokens) totalCacheRead += parseInt(attrs.cache_read_tokens, 10);
         if (attrs.model) models.add(attrs.model);
       }
+
+      // Kiro enriched stop events carry credits and model
+      if (attrs.credits) credits += parseFloat(attrs.credits) || 0;
+      if (attrs.model) models.add(attrs.model);
 
       if (eName === "tool_result") {
         toolCalls++;
@@ -1089,23 +1098,34 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
       }
     }
 
-    return { totalInputTokens, totalOutputTokens, totalCacheRead, apiCalls, toolCalls, hookEvents, models, tools };
+    return { totalInputTokens, totalOutputTokens, totalCacheRead, apiCalls, toolCalls, hookEvents, credits, isKiro, models, tools };
   }, [events]);
+
+  const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-      <div className="space-y-1">
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Input Tokens</p>
-        <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalInputTokens)}</p>
-      </div>
-      <div className="space-y-1">
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Output Tokens</p>
-        <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalOutputTokens)}</p>
-      </div>
-      <div className="space-y-1">
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Read</p>
-        <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheRead)}</p>
-      </div>
+      {stats.isKiro && stats.credits > 0 ? (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Credits</p>
+          <p className="text-lg font-semibold tabular-nums text-orange-500">{formatCredits(stats.credits)}</p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Input Tokens</p>
+            <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalInputTokens)}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Output Tokens</p>
+            <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalOutputTokens)}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Read</p>
+            <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheRead)}</p>
+          </div>
+        </>
+      )}
       <div className="space-y-1">
         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">API Calls</p>
         <p className="text-lg font-semibold tabular-nums">{stats.apiCalls}</p>

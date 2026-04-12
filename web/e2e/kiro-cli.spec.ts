@@ -33,6 +33,24 @@ test.describe("Kiro CLI Commands", () => {
     run("rm -rf /tmp/kiro-e2e-scan");
   });
 
+  test("observal scan --home --ide kiro --dry-run discovers Kiro agents", () => {
+    const output = run("observal scan --home --ide kiro --dry-run 2>&1 || true");
+    expect(output).not.toContain("Traceback");
+    // Should discover Kiro agents from ~/.kiro/agents/
+    expect(output).toMatch(/Agents/);
+    expect(output).toMatch(/coder|backend|frontend/i);
+  });
+
+  test("observal scan --all-ides --dry-run discovers components from multiple IDEs", () => {
+    const output = run("observal scan --all-ides --dry-run 2>&1 || true");
+    expect(output).not.toContain("Traceback");
+    // Should discover components (strip ANSI codes for matching)
+    const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
+    expect(clean).toMatch(/Discovered \d+ components/);
+    // Should have entries from both IDEs
+    expect(clean).toMatch(/kiro/i);
+  });
+
   test("observal pull --ide kiro --dry-run generates Kiro config", () => {
     // Get an agent to pull
     let agents: { id?: string; name?: string }[];
