@@ -76,8 +76,8 @@ export function PageHeader({
       <div className="bg-header">
         <div className="flex min-h-10 w-full flex-wrap items-center justify-between gap-1 px-3 py-1 md:flex-nowrap">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold leading-7">{title}</h2>
             {actionButtonsLeft}
+            <h2 className="text-lg font-semibold leading-7">{title}</h2>
           </div>
           <div className="ml-auto flex items-center gap-1">
             {actionButtonsRight}
