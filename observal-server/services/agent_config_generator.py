@@ -63,19 +63,62 @@ def _build_mcp_configs(agent: Agent, ide: str, observal_url: str, mcp_listings: 
     return mcp_configs
 
 
+def _build_rules_content(agent: Agent, component_names: dict | None = None) -> str:
+    """Build markdown rules content from the agent and its components.
+
+    Assembles the agent prompt (if any), description, and a summary of
+    all bundled components so the rules file is never empty.
+    """
+    sections: list[str] = []
+
+    if agent.prompt:
+        sections.append(agent.prompt)
+    elif agent.description:
+        sections.append(agent.description)
+
+    # Group components by type and resolve display names
+    names = component_names or {}
+    by_type: dict[str, list[str]] = {}
+    for comp in agent.components:
+        cname = names.get(str(comp.component_id), str(comp.component_id)[:8])
+        by_type.setdefault(comp.component_type, []).append(cname)
+
+    type_labels = {
+        "mcp": ("MCP Servers", "MCP server"),
+        "skill": ("Skills", "skill"),
+        "hook": ("Hooks", "hook"),
+        "prompt": ("Prompts", "prompt"),
+        "sandbox": ("Sandboxes", "sandbox"),
+    }
+
+    for comp_type, (heading, _singular) in type_labels.items():
+        comp_names = by_type.get(comp_type)
+        if not comp_names:
+            continue
+        lines = [f"## {heading}", ""]
+        for n in comp_names:
+            lines.append(f"- **{n}**")
+        sections.append("\n".join(lines))
+
+    return "\n\n".join(sections) if sections else f"# {agent.name}\n\n{agent.description or ''}"
+
+
 def generate_agent_config(
     agent: Agent,
     ide: str,
     observal_url: str = "http://localhost:8000",
     mcp_listings: dict | None = None,
+    component_names: dict | None = None,
 ) -> dict:
     """Generate IDE-specific config for an agent.
 
     Args:
         mcp_listings: optional {component_id: McpListing} map pre-loaded by caller.
+        component_names: optional {component_id_str: name} map for all component types.
     """
     safe_name = _sanitize_name(agent.name)
     mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings)
+    rules_content = _build_rules_content(agent, component_names)
 
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
@@ -141,7 +184,7 @@ def generate_agent_config(
             setup_commands.append(["claude", "mcp", "add", name, "--", cmd, *args])
             claude_mcps[name] = {"command": cmd, "args": args, "env": cfg.get("env", {})}
         return {
-            "rules_file": {"path": f".claude/rules/{safe_name}.md", "content": agent.prompt},
+            "rules_file": {"path": f".claude/rules/{safe_name}.md", "content": rules_content},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
             "otlp_env": otlp,
@@ -150,7 +193,7 @@ def generate_agent_config(
 
     if ide in ("gemini-cli", "gemini_cli"):
         return {
-            "rules_file": {"path": "GEMINI.md", "content": agent.prompt},
+            "rules_file": {"path": "GEMINI.md", "content": rules_content},
             "mcp_config": {"path": ".gemini/mcp.json", "content": {"mcpServers": mcp_configs}},
             "otlp_env": _gemini_otlp_env(observal_url),
             "gemini_settings_snippet": _gemini_settings(observal_url),
@@ -158,12 +201,12 @@ def generate_agent_config(
 
     if ide == "codex":
         return {
-            "rules_file": {"path": "AGENTS.md", "content": agent.prompt},
+            "rules_file": {"path": "AGENTS.md", "content": rules_content},
         }
 
     if ide == "copilot":
         return {
-            "rules_file": {"path": ".github/copilot-instructions.md", "content": agent.prompt},
+            "rules_file": {"path": ".github/copilot-instructions.md", "content": rules_content},
         }
 
     # cursor, vscode: rules file + mcp.json — telemetry via observal-shim
@@ -173,6 +216,6 @@ def generate_agent_config(
     }
     rules_path, mcp_path = ide_paths.get(ide, (f".rules/{safe_name}.md", ".mcp.json"))
     return {
-        "rules_file": {"path": rules_path.format(name=safe_name), "content": agent.prompt},
+        "rules_file": {"path": rules_path.format(name=safe_name), "content": rules_content},
         "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
     }

@@ -424,7 +424,10 @@ async def install_agent(
         mcp_rows = (await db.execute(select(McpListing).where(McpListing.id.in_(mcp_comp_ids)))).scalars().all()
         mcp_listings_map = {row.id: row for row in mcp_rows}
 
-    snippet = generate_agent_config(agent, req.ide, mcp_listings=mcp_listings_map)
+    # Resolve all component names for rules file content
+    name_map = await _resolve_component_names(agent.components, db)
+
+    snippet = generate_agent_config(agent, req.ide, mcp_listings=mcp_listings_map, component_names=name_map)
 
     # Capture agent.id before any DB operations that might expire the ORM
     # instance (e.g. savepoint rollback on duplicate download).
