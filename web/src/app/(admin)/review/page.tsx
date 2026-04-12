@@ -84,15 +84,14 @@ function ReviewCard({ item, onApprove, onReject }: {
       <div className="flex items-center gap-2">
         <Button
           size="sm"
-          className="h-7 text-xs flex-1 bg-success hover:bg-success/90 text-success-foreground"
+          className="h-7 text-xs flex-1 bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
           onClick={() => onApprove(item.id)}
         >
           Approve
         </Button>
         <Button
-          variant="destructive"
           size="sm"
-          className="h-7 text-xs flex-1"
+          className="h-7 text-xs flex-1 bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
           onClick={handleReject}
         >
           {showRejectInput ? "Confirm" : "Reject"}
