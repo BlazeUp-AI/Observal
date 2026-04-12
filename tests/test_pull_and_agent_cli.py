@@ -221,10 +221,19 @@ class TestPullClaudeCode:
         assert "mcpServers:" in content
         assert "Claude Code Agent" in content
 
-    def test_shows_setup_commands(self, tmp_path: Path):
+    def test_auto_runs_setup_commands(self, tmp_path: Path):
         with _patch_config(), _patch_post(_claude_code_snippet()):
             result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "claude-code", "--dir", str(tmp_path)])
 
+        assert "Registering MCP servers" in result.output
+
+    def test_dry_run_shows_setup_commands_without_running(self, tmp_path: Path):
+        with _patch_config(), _patch_post(_claude_code_snippet()):
+            result = runner.invoke(
+                cli_app, ["pull", "abc123", "--ide", "claude-code", "--dir", str(tmp_path), "--dry-run"]
+            )
+
+        assert "Would run these setup commands" in result.output
         assert "claude mcp add" in result.output
 
     def test_shows_otlp_env(self, tmp_path: Path):

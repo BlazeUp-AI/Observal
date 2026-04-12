@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import typer
@@ -146,8 +147,19 @@ def register_pull(app: typer.Typer):
 
         # ── Setup commands (Claude Code) ────────────────────
         setup_cmds = snippet.get("mcp_setup_commands")
-        if setup_cmds:
-            rprint("\n[bold]Run these commands to finish setup:[/bold]")
+        if setup_cmds and not dry_run:
+            rprint("\n[bold]Registering MCP servers...[/bold]")
+            for cmd in setup_cmds:
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                if proc.returncode == 0:
+                    rprint(f"  [green]✓[/green]  {' '.join(cmd[:4])}...")
+                else:
+                    stderr = (proc.stderr or "").strip()
+                    rprint(f"  [red]✗[/red]  {' '.join(cmd)}")
+                    if stderr:
+                        rprint(f"      [dim]{stderr}[/dim]")
+        elif setup_cmds and dry_run:
+            rprint("\n[bold]Would run these setup commands:[/bold]")
             for cmd in setup_cmds:
                 rprint(f"  [cyan]$ {' '.join(cmd)}[/cyan]")
 
