@@ -128,6 +128,9 @@ export interface ValidationResult {
 export interface ReviewItem {
   id: string;
   name?: string;
+  description?: string;
+  version?: string;
+  owner?: string;
   type?: string;
   listing_type?: string;
   submitted_by?: string;

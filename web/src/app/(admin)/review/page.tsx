@@ -127,71 +127,78 @@ function ReviewRow({ item, onApprove, onReject }: {
   }, []);
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-[family-name:var(--font-display)] font-semibold truncate">
-            {item.name ?? "Unnamed"}
-          </span>
-          {item.type && (
-            <Badge variant="outline" className="text-[10px] shrink-0">
-              {item.type ?? item.listing_type ?? "-"}
-            </Badge>
+    <div className="px-5 py-4 border-b border-border last:border-b-0 hover:bg-muted/20 transition-colors space-y-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-2.5">
+            <span className="text-sm font-[family-name:var(--font-display)] font-semibold truncate">
+              {item.name ?? "Unnamed"}
+            </span>
+            {item.type && (
+              <Badge variant="outline" className="text-[10px] shrink-0">
+                {item.type ?? item.listing_type ?? "-"}
+              </Badge>
+            )}
+            {item.version && (
+              <span className="text-xs text-muted-foreground">v{item.version}</span>
+            )}
+          </div>
+          {item.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2 max-w-2xl">
+              {item.description}
+            </p>
           )}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {item.submitted_by && <span>by {item.submitted_by}</span>}
+            {(item.submitted_at || item.created_at) && (
+              <span>{new Date((item.submitted_at ?? item.created_at)!).toLocaleDateString()}</span>
+            )}
+            {item.owner && <span>{item.owner}</span>}
+          </div>
         </div>
-        {item.submitted_by && (
-          <p className="text-xs text-muted-foreground mt-0.5">
-            by {item.submitted_by}
-          </p>
+        {showRejectInput ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <Input
+              placeholder="Reason for rejection..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              className="h-8 text-xs w-52"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleReject();
+                if (e.key === "Escape") cancelReject();
+              }}
+              autoFocus
+            />
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
+              onClick={handleReject}
+            >
+              Confirm
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={cancelReject}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
+              onClick={() => onApprove(item.id)}
+            >
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
+              onClick={handleReject}
+            >
+              Reject
+            </Button>
+          </div>
         )}
       </div>
-      <span className="text-xs text-muted-foreground shrink-0 hidden sm:block">
-        {item.submitted_at || item.created_at
-          ? new Date((item.submitted_at ?? item.created_at)!).toLocaleDateString()
-          : ""}
-      </span>
-      {showRejectInput ? (
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Reason..."
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            className="h-7 text-xs w-40"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleReject();
-              if (e.key === "Escape") cancelReject();
-            }}
-            autoFocus
-          />
-          <Button
-            size="sm"
-            className="h-7 text-xs bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
-            onClick={handleReject}
-          >
-            Confirm
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={cancelReject}>
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            size="sm"
-            className="h-7 text-xs bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
-            onClick={() => onApprove(item.id)}
-          >
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            className="h-7 text-xs bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
-            onClick={handleReject}
-          >
-            Reject
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
