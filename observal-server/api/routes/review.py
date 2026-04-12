@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, resolve_prefix_id
 from models.hook import HookListing
 from models.mcp import ListingStatus, McpListing
 from models.prompt import PromptListing
@@ -28,29 +28,33 @@ def _require_admin(user: User):
 
 
 async def _find_listing(listing_id: str, db: AsyncSession):
-    """Try each listing model to find the listing by id or name."""
-    import uuid as _uuid
-
-    if isinstance(listing_id, _uuid.UUID):
-
-        def clause_fn(model):
-            return model.id == listing_id
-    else:
-        try:
-            uid = _uuid.UUID(listing_id)
-
-            def clause_fn(model):
-                return model.id == uid
-        except ValueError:
-
-            def clause_fn(model):
-                return model.name == listing_id
-
+    """Find a listing by ID, prefix, or name across all component types."""
+    hits = []
     for listing_type, model in LISTING_MODELS.items():
-        result = await db.execute(select(model).where(clause_fn(model)))
+        try:
+            listing = await resolve_prefix_id(model, listing_id, db)
+            hits.append((listing_type, listing))
+        except HTTPException as e:
+            if e.status_code == 400:
+                raise e
+            continue
+
+    if len(hits) == 1:
+        return hits[0]
+    if len(hits) > 1:
+        types = [h[0] for h in hits]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Prefix '{listing_id}' matches records across multiple types: {', '.join(types)}",
+        )
+
+    # Fallback: name-based lookup
+    for listing_type, model in LISTING_MODELS.items():
+        result = await db.execute(select(model).where(model.name == listing_id))
         listing = result.scalar_one_or_none()
         if listing:
             return listing_type, listing
+
     return None, None
 
 
