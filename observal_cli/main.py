@@ -56,6 +56,7 @@ from observal_cli.cmd_prompt import prompt_app
 from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import sandbox_app
 from observal_cli.cmd_scan import register_scan
+from observal_cli.cmd_uninstall import register_uninstall
 from observal_cli.cmd_skill import skill_app
 
 # ═══════════════════════════════════════════════════════════
@@ -84,6 +85,7 @@ register_deprecated_auth(app)
 register_config(app)
 register_pull(app)
 register_scan(app)
+register_uninstall(app)
 register_use(app)
 
 # ── Subgroups ─────────────────────────────────────────────

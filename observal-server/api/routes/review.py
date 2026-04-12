@@ -64,11 +64,13 @@ async def list_pending(
 
     models_to_query = {type: LISTING_MODELS[type]} if type and type in LISTING_MODELS else LISTING_MODELS
     items = []
+    user_ids = set()
     for listing_type, model in models_to_query.items():
         result = await db.execute(
             select(model).where(model.status == ListingStatus.pending).order_by(model.created_at.desc())
         )
         for r in result.scalars().all():
+            user_ids.add(r.submitted_by)
             items.append(
                 {
                     "type": listing_type,
@@ -78,10 +80,22 @@ async def list_pending(
                     "version": getattr(r, "version", None) or "",
                     "owner": getattr(r, "owner", None) or "",
                     "status": r.status.value,
-                    "submitted_by": str(r.submitted_by),
+                    "submitted_by": r.submitted_by,
                     "created_at": r.created_at.isoformat(),
                 }
             )
+
+    # Resolve user UUIDs to display names
+    user_map = {}
+    if user_ids:
+        result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in result.scalars().all():
+            user_map[u.id] = u.name or u.email
+
+    for item in items:
+        uid = item["submitted_by"]
+        item["submitted_by"] = user_map.get(uid, str(uid))
+
     return items
 
 

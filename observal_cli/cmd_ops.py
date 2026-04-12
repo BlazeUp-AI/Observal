@@ -57,14 +57,14 @@ def review_list(output: str = typer.Option("table", "--output", "-o")):
     table.add_column("Name", style="bold")
     table.add_column("Submitted By")
     table.add_column("Status")
-    table.add_column("ID", style="dim", max_width=12)
+    table.add_column("ID", style="dim", no_wrap=True)
     for i, item in enumerate(data, 1):
         table.add_row(
             str(i),
             item.get("name", ""),
             item.get("submitted_by", ""),
             status_badge(item.get("status", "")),
-            str(item["id"])[:8] + "…",
+            str(item["id"]),
         )
     console.print(table)
 
