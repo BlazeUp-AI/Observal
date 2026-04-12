@@ -18,6 +18,13 @@ from models.mcp import ListingStatus
 from models.user import User, UserRole
 
 
+def _user_result(*users):
+    """Mock result for a select(User) query returning User-like objects."""
+    r = MagicMock()
+    r.scalars.return_value.all.return_value = list(users)
+    return r
+
+
 # ── Helpers ──────────────────────────────────────────────
 
 
@@ -47,6 +54,19 @@ def _app_with(user=None, db=None):
     return app, db, user
 
 
+_SUBMITTER_ID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+_SUBMITTER_NAME = "Test Submitter"
+
+
+def _submitter_mock():
+    """A User-like mock matching the default submitted_by UUID."""
+    u = MagicMock()
+    u.id = _SUBMITTER_ID
+    u.name = _SUBMITTER_NAME
+    u.email = "test@example.com"
+    return u
+
+
 def _listing_mock(status=ListingStatus.pending, **extra):
     m = MagicMock()
     m.id = uuid.uuid4()
@@ -56,7 +76,7 @@ def _listing_mock(status=ListingStatus.pending, **extra):
     m.owner = extra.get("owner", "testowner")
     m.status = status
     m.rejection_reason = None
-    m.submitted_by = uuid.uuid4()
+    m.submitted_by = extra.get("submitted_by", _SUBMITTER_ID)
     m.created_at = datetime.now(UTC)
     m.updated_at = datetime.now(UTC)
     for k, v in extra.items():
@@ -96,8 +116,8 @@ class TestListPending:
             version="2.1.0",
             owner="acme-corp",
         )
-        # 5 listing types queried; put our listing in the first result, empty for rest
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        # 5 listing types + 1 User resolution query
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_user_result(_submitter_mock())]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -116,7 +136,7 @@ class TestListPending:
         """Verify the full shape of each item in the list_pending response."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_user_result(_submitter_mock())]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -124,7 +144,17 @@ class TestListPending:
 
         assert r.status_code == 200
         item = r.json()[0]
-        expected_keys = {"type", "id", "name", "description", "version", "owner", "status", "submitted_by", "created_at"}
+        expected_keys = {
+            "type",
+            "id",
+            "name",
+            "description",
+            "version",
+            "owner",
+            "status",
+            "submitted_by",
+            "created_at",
+        }
         assert expected_keys == set(item.keys())
 
     @pytest.mark.asyncio
@@ -133,7 +163,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.description = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_user_result(_submitter_mock())]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -147,7 +177,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.version = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_user_result(_submitter_mock())]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -161,7 +191,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.owner = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_user_result(_submitter_mock())]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -174,14 +204,16 @@ class TestListPending:
         """The ?type= query param should only query that one listing type."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        # 1 listing query + 1 User resolution query
+        results = [_result_with(listing), _user_result(_submitter_mock())]
+        db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get("/api/v1/review?type=mcp")
 
         assert r.status_code == 200
-        # Only one call to db.execute (for the single type)
-        assert db.execute.call_count == 1
+        # 1 listing query + 1 User query
+        assert db.execute.call_count == 2
         assert r.json()[0]["type"] == "mcp"
 
     @pytest.mark.asyncio
@@ -194,6 +226,7 @@ class TestListPending:
             r = await ac.get("/api/v1/review?type=nonexistent")
 
         assert r.status_code == 200
+        # No listings found → no User query, just the 5 listing type queries
         assert db.execute.call_count == len(LISTING_MODELS)
 
     @pytest.mark.asyncio
@@ -208,6 +241,7 @@ class TestListPending:
             _empty_result(),
             _empty_result(),
             _empty_result(),
+            _user_result(_submitter_mock()),
         ]
         db.execute = AsyncMock(side_effect=results)
 
