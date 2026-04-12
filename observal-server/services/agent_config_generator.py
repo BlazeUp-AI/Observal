@@ -45,6 +45,14 @@ def _build_mcp_configs(agent: Agent, ide: str, observal_url: str, mcp_listings: 
         cfg = generate_config(listing, ide, observal_url=observal_url)
         if "mcpServers" in cfg:
             mcp_configs.update(cfg["mcpServers"])
+        elif ide in ("claude-code", "claude_code"):
+            # generate_config returns shell commands for Claude Code, not
+            # an mcpServers dict. Build the shim entry directly so the
+            # agent file gets proper mcpServers frontmatter.
+            safe = _sanitize_name(listing.name)
+            mcp_id = str(listing.id)
+            shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", safe]
+            mcp_configs[safe] = {"command": "observal-shim", "args": shim_args, "env": {}}
 
     for ext in agent.external_mcps or []:
         name = _sanitize_name(ext.get("name", ""))
