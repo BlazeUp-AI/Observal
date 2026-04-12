@@ -393,10 +393,18 @@ export default function AgentBuilderPage() {
                   </Label>
                   <Input
                     id="agent-model"
+                    list="model-suggestions"
                     placeholder="claude-sonnet-4-20250514"
                     value={modelName}
                     onChange={(e) => setModelName(e.target.value)}
                   />
+                  <datalist id="model-suggestions">
+                    <option value="claude-opus-4-6-20250725" />
+                    <option value="claude-sonnet-4-6-20250725" />
+                    <option value="claude-sonnet-4-20250514" />
+                    <option value="claude-opus-4-20250514" />
+                    <option value="claude-haiku-4-5-20251001" />
+                  </datalist>
                 </div>
               </div>
             </section>
