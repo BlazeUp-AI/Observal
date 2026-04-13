@@ -261,9 +261,13 @@ def reset_password(
 @auth_app.command()
 def init(
     server: str = typer.Option(None, "--server", "-s", help="Server URL"),
+    config_only: bool = typer.Option(False, "--config-only", help="Initialize config without server validation"),
 ):
     """First-run setup (alias for login)."""
-    login(server=server, key=None, email=None, password=None, code=None, name=None)
+    if config_only:
+        _do_config_only_init(server)
+    else:
+        login(server=server, key=None, email=None, password=None, code=None, name=None)
 
 
 @auth_app.command()
@@ -365,10 +369,16 @@ def register_deprecated_auth(app: typer.Typer):
     """Register deprecated root-level aliases."""
 
     @app.command(name="init", hidden=True)
-    def deprecated_init(server: str = typer.Option(None, "--server", "-s", help="Server URL")):
+    def deprecated_init(
+        server: str = typer.Option(None, "--server", "-s", help="Server URL"),
+        config_only: bool = typer.Option(False, "--config-only", help="Initialize config without server validation"),
+    ):
         """[Deprecated] Use 'observal auth login' instead."""
         _deprecation_notice("login")
-        login(server=server, key=None, email=None, password=None, code=None, name=None)
+        if config_only:
+            _do_config_only_init(server)
+        else:
+            login(server=server, key=None, email=None, password=None, code=None, name=None)
 
     @app.command(name="login", hidden=True)
     def deprecated_login(
@@ -408,6 +418,24 @@ def register_deprecated_auth(app: typer.Typer):
 
 
 # ── Helper functions ────────────────────────────────────────
+
+
+def _do_config_only_init(server_url: str | None = None):
+    """Initialize config without validating server connection."""
+    server_url = server_url or typer.prompt("Server URL", default="http://localhost:8000")
+    server_url = server_url.rstrip("/")
+
+    api_key = typer.prompt("API Key (optional, press Enter to skip)", default="", show_default=False)
+
+    cfg_data = {"server_url": server_url}
+    if api_key:
+        cfg_data["api_key"] = api_key
+
+    config.save(cfg_data)
+    rprint(f"[green]Config initialized.[/green]")
+    rprint(f"[dim]Saved to {config.CONFIG_FILE}[/dim]")
+    rprint("\n[yellow]Note:[/yellow] Server connection not validated.")
+    rprint("[dim]Run 'observal auth login' to authenticate when the server is running.[/dim]")
 
 
 def _do_key_login(server_url: str, api_key: str | None = None):
