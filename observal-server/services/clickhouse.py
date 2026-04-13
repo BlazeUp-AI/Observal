@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import UTC, datetime
 from urllib.parse import urlparse
@@ -24,7 +25,18 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
-async def _query(sql: str, params: dict | None = None):
+async def _query(sql: str, params: dict | None = None, *, data: str | None = None):
+    """Execute a ClickHouse query via HTTP.
+
+    Args:
+        sql: The SQL statement.  Use ``{name:Type}`` placeholders for
+            parameterized queries.
+        params: Parameter dict - keys **must** use the ``param_`` prefix
+            (e.g. ``{"param_pid": "default"}``).
+        data: Optional body content appended after the SQL, separated by a
+            newline.  Used for ``INSERT ... FORMAT JSONEachRow`` where each
+            line in *data* is a JSON object.
+    """
     client = _get_client()
     query_params = {
         "database": CLICKHOUSE_DB,
@@ -33,49 +45,8 @@ async def _query(sql: str, params: dict | None = None):
     }
     if params:
         query_params.update(params)
-    return await client.post(CLICKHOUSE_HTTP, content=sql, params=query_params)
-
-
-def _escape(val: str) -> str:
-    """Escape single quotes for ClickHouse SQL strings."""
-    return str(val).replace("\\", "\\\\").replace("'", "\\'")
-
-
-def _nullable_str(val: str | None) -> str:
-    """Format a value as a ClickHouse Nullable(String) literal."""
-    if val is None:
-        return "NULL"
-    return f"'{_escape(val)}'"
-
-
-def _nullable_uint(val: int | None) -> str:
-    """Format a value as a ClickHouse Nullable(UInt*) literal."""
-    if val is None:
-        return "NULL"
-    return str(int(val))
-
-
-def _nullable_float(val: float | None) -> str:
-    """Format a value as a ClickHouse Nullable(Float*) literal."""
-    if val is None:
-        return "NULL"
-    return str(float(val))
-
-
-def _map_literal(m: dict) -> str:
-    """Format a dict as a ClickHouse Map literal."""
-    if not m:
-        return "map()"
-    pairs = ", ".join(f"'{_escape(k)}', '{_escape(v)}'" for k, v in m.items())
-    return f"map({pairs})"
-
-
-def _array_literal(arr: list) -> str:
-    """Format a list as a ClickHouse Array literal."""
-    if not arr:
-        return "[]"
-    items = ", ".join(f"'{_escape(v)}'" for v in arr)
-    return f"[{items}]"
+    body = f"{sql}\n{data}" if data else sql
+    return await client.post(CLICKHOUSE_HTTP, content=body, params=query_params)
 
 
 INIT_SQL = [
@@ -318,35 +289,48 @@ def _now_ms() -> str:
 
 
 async def insert_traces(traces: list[dict]):
-    """Batch insert traces into ClickHouse."""
+    """Batch insert traces into ClickHouse using JSONEachRow."""
     if not traces:
         return
     event_ts = _now_ms()
-    rows = []
+    lines = []
     for t in traces:
-        rows.append(
-            f"('{t['trace_id']}', {_nullable_str(t.get('parent_trace_id'))}, "
-            f"'{t['project_id']}', {_nullable_str(t.get('mcp_id'))}, "
-            f"{_nullable_str(t.get('agent_id'))}, '{t['user_id']}', "
-            f"{_nullable_str(t.get('session_id'))}, '{t.get('ide', '')}', "
-            f"'{t.get('environment', 'default')}', '{t['start_time']}', "
-            f"{_nullable_str(t.get('end_time'))}, '{t.get('trace_type', 'mcp')}', "
-            f"'{_escape(t.get('name', ''))}', {_map_literal(t.get('metadata', {}))}, "
-            f"{_array_literal(t.get('tags', []))}, "
-            f"{_nullable_str(t.get('input'))}, {_nullable_str(t.get('output'))}, "
-            f"now(), '{event_ts}', 0, "
-            f"{_nullable_str(t.get('tool_id'))}, {_nullable_str(t.get('sandbox_id'))}, "
-            f"{_nullable_str(t.get('graphrag_id'))}, {_nullable_str(t.get('hook_id'))}, "
-            f"{_nullable_str(t.get('skill_id'))}, {_nullable_str(t.get('prompt_id'))})"
-        )
+        row = {
+            "trace_id": t["trace_id"],
+            "parent_trace_id": t.get("parent_trace_id"),
+            "project_id": t["project_id"],
+            "mcp_id": t.get("mcp_id"),
+            "agent_id": t.get("agent_id"),
+            "user_id": t["user_id"],
+            "session_id": t.get("session_id"),
+            "ide": t.get("ide", ""),
+            "environment": t.get("environment", "default"),
+            "start_time": t["start_time"],
+            "end_time": t.get("end_time"),
+            "trace_type": t.get("trace_type", "mcp"),
+            "name": t.get("name", ""),
+            "metadata": t.get("metadata", {}),
+            "tags": t.get("tags", []),
+            "input": t.get("input"),
+            "output": t.get("output"),
+            "event_ts": event_ts,
+            "is_deleted": 0,
+            "tool_id": t.get("tool_id"),
+            "sandbox_id": t.get("sandbox_id"),
+            "graphrag_id": t.get("graphrag_id"),
+            "hook_id": t.get("hook_id"),
+            "skill_id": t.get("skill_id"),
+            "prompt_id": t.get("prompt_id"),
+        }
+        lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
         "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
-        "metadata, tags, input, output, created_at, event_ts, is_deleted, "
-        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id) VALUES " + ", ".join(rows)
+        "metadata, tags, input, output, event_ts, is_deleted, "
+        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id) FORMAT JSONEachRow"
     )
     try:
-        r = await _query(sql)
+        r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
     except Exception as e:
         logger.error(f"ClickHouse insert_traces failed: {e}")
@@ -354,70 +338,83 @@ async def insert_traces(traces: list[dict]):
 
 
 async def insert_spans(spans: list[dict]):
-    """Batch insert spans into ClickHouse."""
+    """Batch insert spans into ClickHouse using JSONEachRow."""
     if not spans:
         return
     event_ts = _now_ms()
-    rows = []
+    lines = []
     for s in spans:
-        rows.append(
-            f"('{s['span_id']}', '{s['trace_id']}', "
-            f"{_nullable_str(s.get('parent_span_id'))}, '{s['project_id']}', "
-            f"{_nullable_str(s.get('mcp_id'))}, {_nullable_str(s.get('agent_id'))}, "
-            f"'{s['user_id']}', '{s['type']}', '{_escape(s['name'])}', "
-            f"'{_escape(s.get('method', ''))}', "
-            f"{_nullable_str(s.get('input'))}, {_nullable_str(s.get('output'))}, "
-            f"{_nullable_str(s.get('error'))}, '{s['start_time']}', "
-            f"{_nullable_str(s.get('end_time'))}, {_nullable_uint(s.get('latency_ms'))}, "
-            f"'{s.get('status', 'success')}', '{s.get('level', 'DEFAULT')}', "
-            f"{_nullable_uint(s.get('token_count_input'))}, "
-            f"{_nullable_uint(s.get('token_count_output'))}, "
-            f"{_nullable_uint(s.get('token_count_total'))}, "
-            f"{_nullable_float(s.get('cost'))}, "
-            f"{_nullable_uint(s.get('cpu_ms'))}, "
-            f"{_nullable_float(s.get('memory_mb'))}, "
-            f"{_nullable_uint(s.get('hop_count'))}, "
-            f"{_nullable_uint(s.get('entities_retrieved'))}, "
-            f"{_nullable_uint(s.get('relationships_used'))}, "
-            f"{_nullable_uint(s.get('retry_count'))}, "
-            f"{_nullable_uint(s.get('tools_available'))}, "
-            f"{_nullable_uint(s.get('tool_schema_valid'))}, "
-            f"'{s.get('ide', '')}', '{s.get('environment', 'default')}', "
-            f"{_map_literal(s.get('metadata', {}))}, now(), '{event_ts}', 0, "
-            f"{_nullable_str(s.get('container_id'))}, "
-            f"{_nullable_uint(s.get('exit_code'))}, "
-            f"{_nullable_uint(s.get('network_bytes_in'))}, "
-            f"{_nullable_uint(s.get('network_bytes_out'))}, "
-            f"{_nullable_uint(s.get('disk_read_bytes'))}, "
-            f"{_nullable_uint(s.get('disk_write_bytes'))}, "
-            f"{_nullable_uint(s.get('oom_killed'))}, "
-            f"{_nullable_str(s.get('query_interface'))}, "
-            f"{_nullable_float(s.get('relevance_score'))}, "
-            f"{_nullable_uint(s.get('chunks_returned'))}, "
-            f"{_nullable_uint(s.get('embedding_latency_ms'))}, "
-            f"{_nullable_str(s.get('hook_event'))}, "
-            f"{_nullable_str(s.get('hook_scope'))}, "
-            f"{_nullable_str(s.get('hook_action'))}, "
-            f"{_nullable_uint(s.get('hook_blocked'))}, "
-            f"{_nullable_uint(s.get('variables_provided'))}, "
-            f"{_nullable_uint(s.get('template_tokens'))}, "
-            f"{_nullable_uint(s.get('rendered_tokens'))})"
-        )
+        row = {
+            "span_id": s["span_id"],
+            "trace_id": s["trace_id"],
+            "parent_span_id": s.get("parent_span_id"),
+            "project_id": s["project_id"],
+            "mcp_id": s.get("mcp_id"),
+            "agent_id": s.get("agent_id"),
+            "user_id": s["user_id"],
+            "type": s["type"],
+            "name": s["name"],
+            "method": s.get("method", ""),
+            "input": s.get("input"),
+            "output": s.get("output"),
+            "error": s.get("error"),
+            "start_time": s["start_time"],
+            "end_time": s.get("end_time"),
+            "latency_ms": s.get("latency_ms"),
+            "status": s.get("status", "success"),
+            "level": s.get("level", "DEFAULT"),
+            "token_count_input": s.get("token_count_input"),
+            "token_count_output": s.get("token_count_output"),
+            "token_count_total": s.get("token_count_total"),
+            "cost": s.get("cost"),
+            "cpu_ms": s.get("cpu_ms"),
+            "memory_mb": s.get("memory_mb"),
+            "hop_count": s.get("hop_count"),
+            "entities_retrieved": s.get("entities_retrieved"),
+            "relationships_used": s.get("relationships_used"),
+            "retry_count": s.get("retry_count"),
+            "tools_available": s.get("tools_available"),
+            "tool_schema_valid": s.get("tool_schema_valid"),
+            "ide": s.get("ide", ""),
+            "environment": s.get("environment", "default"),
+            "metadata": s.get("metadata", {}),
+            "event_ts": event_ts,
+            "is_deleted": 0,
+            "container_id": s.get("container_id"),
+            "exit_code": s.get("exit_code"),
+            "network_bytes_in": s.get("network_bytes_in"),
+            "network_bytes_out": s.get("network_bytes_out"),
+            "disk_read_bytes": s.get("disk_read_bytes"),
+            "disk_write_bytes": s.get("disk_write_bytes"),
+            "oom_killed": s.get("oom_killed"),
+            "query_interface": s.get("query_interface"),
+            "relevance_score": s.get("relevance_score"),
+            "chunks_returned": s.get("chunks_returned"),
+            "embedding_latency_ms": s.get("embedding_latency_ms"),
+            "hook_event": s.get("hook_event"),
+            "hook_scope": s.get("hook_scope"),
+            "hook_action": s.get("hook_action"),
+            "hook_blocked": s.get("hook_blocked"),
+            "variables_provided": s.get("variables_provided"),
+            "template_tokens": s.get("template_tokens"),
+            "rendered_tokens": s.get("rendered_tokens"),
+        }
+        lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO spans (span_id, trace_id, parent_span_id, project_id, mcp_id, "
         "agent_id, user_id, type, name, method, input, output, error, start_time, "
         "end_time, latency_ms, status, level, token_count_input, token_count_output, "
         "token_count_total, cost, cpu_ms, memory_mb, hop_count, entities_retrieved, "
         "relationships_used, retry_count, tools_available, tool_schema_valid, ide, "
-        "environment, metadata, created_at, event_ts, is_deleted, "
+        "environment, metadata, event_ts, is_deleted, "
         "container_id, exit_code, network_bytes_in, network_bytes_out, "
         "disk_read_bytes, disk_write_bytes, oom_killed, query_interface, "
         "relevance_score, chunks_returned, embedding_latency_ms, "
         "hook_event, hook_scope, hook_action, hook_blocked, "
-        "variables_provided, template_tokens, rendered_tokens) VALUES " + ", ".join(rows)
+        "variables_provided, template_tokens, rendered_tokens) FORMAT JSONEachRow"
     )
     try:
-        r = await _query(sql)
+        r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
     except Exception as e:
         logger.error(f"ClickHouse insert_spans failed: {e}")
@@ -425,35 +422,44 @@ async def insert_spans(spans: list[dict]):
 
 
 async def insert_scores(scores: list[dict]):
-    """Batch insert scores into ClickHouse."""
+    """Batch insert scores into ClickHouse using JSONEachRow."""
     if not scores:
         return
     event_ts = _now_ms()
-    rows = []
+    lines = []
     for sc in scores:
-        rows.append(
-            f"('{sc['score_id']}', {_nullable_str(sc.get('trace_id'))}, "
-            f"{_nullable_str(sc.get('span_id'))}, '{sc['project_id']}', "
-            f"{_nullable_str(sc.get('mcp_id'))}, {_nullable_str(sc.get('agent_id'))}, "
-            f"'{sc['user_id']}', '{_escape(sc['name'])}', "
-            f"'{sc.get('source', 'api')}', '{sc.get('data_type', 'numeric')}', "
-            f"{sc.get('value', 0)}, {_nullable_str(sc.get('string_value'))}, "
-            f"{_nullable_str(sc.get('comment'))}, "
-            f"{_nullable_str(sc.get('eval_template_id'))}, "
-            f"{_nullable_str(sc.get('eval_config_id'))}, "
-            f"{_nullable_str(sc.get('eval_run_id'))}, "
-            f"'{sc.get('environment', 'default')}', "
-            f"{_map_literal(sc.get('metadata', {}))}, "
-            f"'{sc['timestamp']}', now(), '{event_ts}', 0)"
-        )
+        row = {
+            "score_id": sc["score_id"],
+            "trace_id": sc.get("trace_id"),
+            "span_id": sc.get("span_id"),
+            "project_id": sc["project_id"],
+            "mcp_id": sc.get("mcp_id"),
+            "agent_id": sc.get("agent_id"),
+            "user_id": sc["user_id"],
+            "name": sc["name"],
+            "source": sc.get("source", "api"),
+            "data_type": sc.get("data_type", "numeric"),
+            "value": sc.get("value", 0),
+            "string_value": sc.get("string_value"),
+            "comment": sc.get("comment"),
+            "eval_template_id": sc.get("eval_template_id"),
+            "eval_config_id": sc.get("eval_config_id"),
+            "eval_run_id": sc.get("eval_run_id"),
+            "environment": sc.get("environment", "default"),
+            "metadata": sc.get("metadata", {}),
+            "timestamp": sc["timestamp"],
+            "event_ts": event_ts,
+            "is_deleted": 0,
+        }
+        lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO scores (score_id, trace_id, span_id, project_id, mcp_id, agent_id, "
         "user_id, name, source, data_type, value, string_value, comment, "
         "eval_template_id, eval_config_id, eval_run_id, environment, metadata, "
-        "timestamp, created_at, event_ts, is_deleted) VALUES " + ", ".join(rows)
+        "timestamp, event_ts, is_deleted) FORMAT JSONEachRow"
     )
     try:
-        r = await _query(sql)
+        r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
     except Exception as e:
         logger.error(f"ClickHouse insert_scores failed: {e}")
@@ -468,7 +474,8 @@ async def query_recent_events(minutes: int = 60) -> dict:
 
     try:
         r = await _query(
-            f"SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {minutes} MINUTE FORMAT JSON"
+            "SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {minutes:UInt32} MINUTE FORMAT JSON",
+            {"param_minutes": str(minutes)},
         )
         if r.status_code == 200:
             tool_count = int(r.json().get("data", [{}])[0].get("cnt", 0))
@@ -477,7 +484,8 @@ async def query_recent_events(minutes: int = 60) -> dict:
 
     try:
         r = await _query(
-            f"SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {minutes} MINUTE FORMAT JSON"
+            "SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {minutes:UInt32} MINUTE FORMAT JSON",
+            {"param_minutes": str(minutes)},
         )
         if r.status_code == 200:
             agent_count = int(r.json().get("data", [{}])[0].get("cnt", 0))
@@ -501,22 +509,27 @@ async def query_traces(
     offset: int = 0,
 ) -> list[dict]:
     """Query traces with optional filters."""
-    conditions = [f"project_id = '{_escape(project_id)}'", "is_deleted = 0"]
+    conditions = ["project_id = {pid:String}", "is_deleted = 0"]
+    params: dict[str, str] = {"param_pid": project_id}
     if trace_type:
-        conditions.append(f"trace_type = '{_escape(trace_type)}'")
+        conditions.append("trace_type = {tt:String}")
+        params["param_tt"] = trace_type
     if mcp_id:
-        conditions.append(f"mcp_id = '{_escape(mcp_id)}'")
+        conditions.append("mcp_id = {mid:String}")
+        params["param_mid"] = mcp_id
     if agent_id:
-        conditions.append(f"agent_id = '{_escape(agent_id)}'")
+        conditions.append("agent_id = {aid:String}")
+        params["param_aid"] = agent_id
     if user_id:
-        conditions.append(f"user_id = '{_escape(user_id)}'")
+        conditions.append("user_id = {uid:String}")
+        params["param_uid"] = user_id
     where = " AND ".join(conditions)
     sql = (
         f"SELECT * FROM traces FINAL WHERE {where} "
         f"ORDER BY start_time DESC LIMIT {int(limit)} OFFSET {int(offset)} FORMAT JSON"
     )
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         return r.json().get("data", [])
     except Exception as e:
@@ -527,11 +540,12 @@ async def query_traces(
 async def query_trace_by_id(project_id: str, trace_id: str) -> dict | None:
     """Get a single trace by ID."""
     sql = (
-        f"SELECT * FROM traces FINAL WHERE project_id = '{_escape(project_id)}' "
-        f"AND trace_id = '{_escape(trace_id)}' AND is_deleted = 0 LIMIT 1 FORMAT JSON"
+        "SELECT * FROM traces FINAL WHERE project_id = {pid:String} "
+        "AND trace_id = {tid:String} AND is_deleted = 0 LIMIT 1 FORMAT JSON"
     )
+    params = {"param_pid": project_id, "param_tid": trace_id}
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         data = r.json().get("data", [])
         return data[0] if data else None
@@ -550,18 +564,21 @@ async def query_spans(
 ) -> list[dict]:
     """Query spans for a trace with optional filters."""
     conditions = [
-        f"project_id = '{_escape(project_id)}'",
-        f"trace_id = '{_escape(trace_id)}'",
+        "project_id = {pid:String}",
+        "trace_id = {tid:String}",
         "is_deleted = 0",
     ]
+    params: dict[str, str] = {"param_pid": project_id, "param_tid": trace_id}
     if span_type:
-        conditions.append(f"type = '{_escape(span_type)}'")
+        conditions.append("type = {st:String}")
+        params["param_st"] = span_type
     if status:
-        conditions.append(f"status = '{_escape(status)}'")
+        conditions.append("status = {status:String}")
+        params["param_status"] = status
     where = " AND ".join(conditions)
     sql = f"SELECT * FROM spans FINAL WHERE {where} ORDER BY start_time ASC LIMIT {int(limit)} FORMAT JSON"
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         return r.json().get("data", [])
     except Exception as e:
@@ -572,11 +589,12 @@ async def query_spans(
 async def query_span_by_id(project_id: str, span_id: str) -> dict | None:
     """Get a single span by ID."""
     sql = (
-        f"SELECT * FROM spans FINAL WHERE project_id = '{_escape(project_id)}' "
-        f"AND span_id = '{_escape(span_id)}' AND is_deleted = 0 LIMIT 1 FORMAT JSON"
+        "SELECT * FROM spans FINAL WHERE project_id = {pid:String} "
+        "AND span_id = {sid:String} AND is_deleted = 0 LIMIT 1 FORMAT JSON"
     )
+    params = {"param_pid": project_id, "param_sid": span_id}
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         data = r.json().get("data", [])
         return data[0] if data else None
@@ -595,19 +613,24 @@ async def query_scores(
     limit: int = 100,
 ) -> list[dict]:
     """Query scores with optional filters."""
-    conditions = [f"project_id = '{_escape(project_id)}'", "is_deleted = 0"]
+    conditions = ["project_id = {pid:String}", "is_deleted = 0"]
+    params: dict[str, str] = {"param_pid": project_id}
     if trace_id:
-        conditions.append(f"trace_id = '{_escape(trace_id)}'")
+        conditions.append("trace_id = {tid:String}")
+        params["param_tid"] = trace_id
     if span_id:
-        conditions.append(f"span_id = '{_escape(span_id)}'")
+        conditions.append("span_id = {sid:String}")
+        params["param_sid"] = span_id
     if source:
-        conditions.append(f"source = '{_escape(source)}'")
+        conditions.append("source = {src:String}")
+        params["param_src"] = source
     if name:
-        conditions.append(f"name = '{_escape(name)}'")
+        conditions.append("name = {name:String}")
+        params["param_name"] = name
     where = " AND ".join(conditions)
     sql = f"SELECT * FROM scores FINAL WHERE {where} ORDER BY timestamp DESC LIMIT {int(limit)} FORMAT JSON"
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         return r.json().get("data", [])
     except Exception as e:

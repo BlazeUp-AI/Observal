@@ -2,9 +2,11 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
-from services.clickhouse import _escape, _map_literal, _query
+from api.deps import get_current_user
+from models.user import User
+from services.clickhouse import _query
 from services.secrets_redactor import redact_secrets
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,10 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
 
 
 @router.get("/sessions")
-async def list_sessions(status: str | None = Query(None)):
+async def list_sessions(
+    status: str | None = Query(None),
+    current_user: User = Depends(get_current_user),
+):
     rows = await _ch_json(
         "SELECT "
         # For Kiro sessions with a conversation_id, group by that instead of
@@ -65,11 +70,7 @@ async def list_sessions(status: str | None = Query(None)):
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
-    sid = _escape(session_id)
-    # Match either session.id or conversation_id so resumed Kiro sessions
-    # (which share a conversation_id) resolve correctly.
-    session_filter = f"(LogAttributes['session.id'] = '{sid}' OR LogAttributes['conversation_id'] = '{sid}')"
+async def get_session(session_id: str, current_user: User = Depends(get_current_user)):
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -77,9 +78,10 @@ async def get_session(session_id: str):
         "Body AS body, "
         "LogAttributes AS attributes, "
         "ServiceName AS service_name "
-        f"FROM otel_logs "
-        f"WHERE {session_filter} "
-        "ORDER BY Timestamp ASC"
+        "FROM otel_logs "
+        "WHERE (LogAttributes['session.id'] = {sid:String} OR LogAttributes['conversation_id'] = {sid:String}) "
+        "ORDER BY Timestamp ASC",
+        {"param_sid": session_id},
     )
     traces = await _ch_json(
         "SELECT "
@@ -91,16 +93,17 @@ async def get_session(session_id: str):
         "StatusCode AS status_code, "
         "SpanAttributes AS span_attributes, "
         "Timestamp AS timestamp "
-        f"FROM otel_traces "
-        f"WHERE SpanAttributes['session.id'] = '{sid}' "
-        "ORDER BY Timestamp ASC"
+        "FROM otel_traces "
+        "WHERE SpanAttributes['session.id'] = {sid:String} "
+        "ORDER BY Timestamp ASC",
+        {"param_sid": session_id},
     )
     svc = events[0]["service_name"] if events else ""
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
 
 
 @router.get("/traces")
-async def list_traces():
+async def list_traces(current_user: User = Depends(get_current_user)):
     rows = await _ch_json(
         "SELECT "
         "TraceId AS trace_id, "
@@ -119,8 +122,7 @@ async def list_traces():
 
 
 @router.get("/traces/{trace_id}")
-async def get_trace(trace_id: str):
-    tid = _escape(trace_id)
+async def get_trace(trace_id: str, current_user: User = Depends(get_current_user)):
     rows = await _ch_json(
         "SELECT "
         "SpanId AS span_id, "
@@ -132,9 +134,10 @@ async def get_trace(trace_id: str):
         "Events.Name AS event_names, "
         "Events.Timestamp AS event_timestamps, "
         "Events.Attributes AS event_attributes "
-        f"FROM otel_traces "
-        f"WHERE TraceId = '{tid}' "
-        "ORDER BY Timestamp ASC"
+        "FROM otel_traces "
+        "WHERE TraceId = {tid:String} "
+        "ORDER BY Timestamp ASC",
+        {"param_tid": trace_id},
     )
     spans = []
     for r in rows:
@@ -165,7 +168,7 @@ async def get_trace(trace_id: str):
 
 
 @router.get("/errors")
-async def list_errors():
+async def list_errors(current_user: User = Depends(get_current_user)):
     """List recent error events (tool failures, stop failures, API errors)."""
     rows = await _ch_json(
         "SELECT "
@@ -192,7 +195,7 @@ async def list_errors():
 
 
 @router.get("/stats")
-async def otel_stats():
+async def otel_stats(current_user: User = Depends(get_current_user)):
     log_rows = await _ch_json(
         "SELECT "
         "count(DISTINCT LogAttributes['session.id']) AS total_sessions, "
@@ -490,19 +493,20 @@ async def ingest_hook(request: Request):
             attrs[_redact_field] = redact_secrets(attrs[_redact_field])
     body_text = redact_secrets(body_text)
 
-    # INSERT into otel_logs
-    attr_map = _map_literal(attrs)
-    sql = (
-        "INSERT INTO otel_logs "
-        "(Timestamp, EventName, Body, LogAttributes, ServiceName, "
-        "SeverityText, SeverityNumber) VALUES "
-        f"('{_escape(now)}', '{_escape(event_name)}', "
-        f"'{_escape(body_text)}', {attr_map}, "
-        f"'{_escape(service_name)}', 'INFO', 9)"
-    )
+    # INSERT into otel_logs using JSONEachRow (safe against injection)
+    row = {
+        "Timestamp": now,
+        "EventName": event_name,
+        "Body": body_text,
+        "LogAttributes": attrs,
+        "ServiceName": service_name,
+        "SeverityText": "INFO",
+        "SeverityNumber": 9,
+    }
+    sql = "INSERT INTO otel_logs (Timestamp, EventName, Body, LogAttributes, ServiceName, SeverityText, SeverityNumber) FORMAT JSONEachRow"
 
     try:
-        r = await _query(sql)
+        r = await _query(sql, data=json.dumps(row, default=str))
         if r.status_code != 200:
             logger.warning(f"Hook insert failed: {r.status_code} {r.text[:200]}")
             return {"ingested": 0, "error": "insert failed"}

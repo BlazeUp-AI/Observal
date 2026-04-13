@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from services.clickhouse import _escape, _query
+from services.clickhouse import _query
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,6 @@ async def materialize_agent_eval(
 
 async def _fetch_session_events(session_id: str) -> list[dict]:
     """Fetch all otel_logs events for a session."""
-    sid = _escape(session_id)
     sql = (
         "SELECT "
         "Timestamp AS timestamp, "
@@ -86,14 +85,15 @@ async def _fetch_session_events(session_id: str) -> list[dict]:
         "LogAttributes AS attributes, "
         "ServiceName AS service_name "
         "FROM otel_logs "
-        f"WHERE LogAttributes['session.id'] = '{sid}' "
-        f"OR LogAttributes['conversation_id'] = '{sid}' "
+        "WHERE LogAttributes['session.id'] = {sid:String} "
+        "OR LogAttributes['conversation_id'] = {sid:String} "
         "ORDER BY Timestamp ASC "
         "FORMAT JSON"
     )
+    params = {"param_sid": session_id}
 
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         return r.json().get("data", [])
     except Exception as e:

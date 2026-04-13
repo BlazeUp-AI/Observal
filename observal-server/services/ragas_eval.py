@@ -192,21 +192,26 @@ async def run_ragas_on_graphrag(
     Returns:
         Dict with per-span scores and aggregate averages.
     """
-    from services.clickhouse import _escape, _query
+    from services.clickhouse import _query
 
     ground_truths = ground_truths or {}
 
     # Fetch retrieval spans for this graphrag
     sql = (
-        f"SELECT span_id, trace_id, input, output, metadata, start_time "
-        f"FROM spans FINAL "
-        f"WHERE project_id = '{_escape(project_id)}' "
-        f"AND is_deleted = 0 AND type = 'retrieval' "
-        f"AND metadata['graphrag_id'] = '{_escape(graphrag_id)}' "
-        f"ORDER BY start_time DESC LIMIT {int(limit)} FORMAT JSON"
+        "SELECT span_id, trace_id, input, output, metadata, start_time "
+        "FROM spans FINAL "
+        "WHERE project_id = {pid:String} "
+        "AND is_deleted = 0 AND type = 'retrieval' "
+        "AND metadata['graphrag_id'] = {gid:String} "
+        "ORDER BY start_time DESC LIMIT {lim:UInt32} FORMAT JSON"
     )
+    params = {
+        "param_pid": project_id,
+        "param_gid": graphrag_id,
+        "param_lim": str(int(limit)),
+    }
     try:
-        r = await _query(sql)
+        r = await _query(sql, params)
         r.raise_for_status()
         spans = r.json().get("data", [])
     except Exception as e:
@@ -277,22 +282,23 @@ async def get_ragas_scores(
     project_id: str = "default",
 ) -> dict:
     """Fetch previously computed RAGAS scores from ClickHouse."""
-    from services.clickhouse import _escape, _query
+    from services.clickhouse import _query
 
     averages = {}
     for dim in RAGAS_DIMENSIONS:
         sql = (
-            f"SELECT round(avg(value), 4) AS avg_score, count() AS cnt "
-            f"FROM scores FINAL "
-            f"WHERE project_id = '{_escape(project_id)}' "
-            f"AND is_deleted = 0 "
+            "SELECT round(avg(value), 4) AS avg_score, count() AS cnt "
+            "FROM scores FINAL "
+            "WHERE project_id = {pid:String} "
+            "AND is_deleted = 0 "
             f"AND name = 'ragas_{dim}' "
-            f"AND source = 'ragas_eval' "
-            f"AND metadata['graphrag_id'] = '{_escape(graphrag_id)}' "
-            f"FORMAT JSON"
+            "AND source = 'ragas_eval' "
+            "AND metadata['graphrag_id'] = {gid:String} "
+            "FORMAT JSON"
         )
+        params = {"param_pid": project_id, "param_gid": graphrag_id}
         try:
-            r = await _query(sql)
+            r = await _query(sql, params)
             r.raise_for_status()
             data = r.json().get("data", [])
             if data and data[0].get("avg_score"):
@@ -307,21 +313,22 @@ async def get_ragas_scores(
 
 async def get_ragas_aggregate(project_id: str = "default") -> dict:
     """Fetch aggregate RAGAS scores across all GraphRAGs."""
-    from services.clickhouse import _escape, _query
+    from services.clickhouse import _query
 
     averages = {}
     for dim in RAGAS_DIMENSIONS:
         sql = (
-            f"SELECT round(avg(value), 4) AS avg_score, count() AS cnt "
-            f"FROM scores FINAL "
-            f"WHERE project_id = '{_escape(project_id)}' "
-            f"AND is_deleted = 0 "
+            "SELECT round(avg(value), 4) AS avg_score, count() AS cnt "
+            "FROM scores FINAL "
+            "WHERE project_id = {pid:String} "
+            "AND is_deleted = 0 "
             f"AND name = 'ragas_{dim}' "
-            f"AND source = 'ragas_eval' "
-            f"FORMAT JSON"
+            "AND source = 'ragas_eval' "
+            "FORMAT JSON"
         )
+        params = {"param_pid": project_id}
         try:
-            r = await _query(sql)
+            r = await _query(sql, params)
             r.raise_for_status()
             data = r.json().get("data", [])
             if data and data[0].get("avg_score"):

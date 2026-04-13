@@ -1,17 +1,12 @@
 """Unit tests for ClickHouse service: Phase 1 (traces, spans, scores)."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from services.clickhouse import (
     INIT_SQL,
-    _array_literal,
-    _escape,
-    _map_literal,
-    _nullable_float,
-    _nullable_str,
-    _nullable_uint,
     init_clickhouse,
     insert_scores,
     insert_spans,
@@ -22,64 +17,6 @@ from services.clickhouse import (
     query_trace_by_id,
     query_traces,
 )
-
-# --- Helper function tests ---
-
-
-class TestEscape:
-    def test_plain(self):
-        assert _escape("hello") == "hello"
-
-    def test_single_quote(self):
-        assert _escape("it's") == "it\\'s"
-
-    def test_backslash(self):
-        assert _escape("a\\b") == "a\\\\b"
-
-
-class TestNullableStr:
-    def test_none(self):
-        assert _nullable_str(None) == "NULL"
-
-    def test_value(self):
-        assert _nullable_str("abc") == "'abc'"
-
-    def test_escapes(self):
-        assert _nullable_str("it's") == "'it\\'s'"
-
-
-class TestNullableUint:
-    def test_none(self):
-        assert _nullable_uint(None) == "NULL"
-
-    def test_value(self):
-        assert _nullable_uint(42) == "42"
-
-
-class TestNullableFloat:
-    def test_none(self):
-        assert _nullable_float(None) == "NULL"
-
-    def test_value(self):
-        assert _nullable_float(3.14) == "3.14"
-
-
-class TestMapLiteral:
-    def test_empty(self):
-        assert _map_literal({}) == "map()"
-
-    def test_values(self):
-        result = _map_literal({"a": "1", "b": "2"})
-        assert result == "map('a', '1', 'b', '2')"
-
-
-class TestArrayLiteral:
-    def test_empty(self):
-        assert _array_literal([]) == "[]"
-
-    def test_values(self):
-        assert _array_literal(["x", "y"]) == "['x', 'y']"
-
 
 # --- DDL tests ---
 
@@ -207,7 +144,7 @@ class TestInitClickhouse:
             assert mock_q.call_count == len(INIT_SQL)
 
 
-# --- Insert tests ---
+# --- Insert tests (JSONEachRow format) ---
 
 
 class TestInsertTraces:
@@ -230,10 +167,15 @@ class TestInsertTraces:
             mock_q.return_value = _mock_response()
             await insert_traces([trace])
             mock_q.assert_called_once()
-            sql = mock_q.call_args[0][0]
+            call_kwargs = mock_q.call_args
+            sql = call_kwargs[0][0]
             assert "INSERT INTO traces" in sql
-            assert "'t1'" in sql
-            assert "'proj1'" in sql
+            assert "FORMAT JSONEachRow" in sql
+            # Data is passed via the data keyword
+            data = call_kwargs[1].get("data", "")
+            row = json.loads(data)
+            assert row["trace_id"] == "t1"
+            assert row["project_id"] == "proj1"
 
     @pytest.mark.asyncio
     async def test_batch_traces(self):
@@ -244,10 +186,12 @@ class TestInsertTraces:
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
             await insert_traces(traces)
-            sql = mock_q.call_args[0][0]
-            assert sql.count("'t0'") == 1
-            assert sql.count("'t1'") == 1
-            assert sql.count("'t2'") == 1
+            data = mock_q.call_args[1].get("data", "")
+            lines = data.strip().split("\n")
+            assert len(lines) == 3
+            assert json.loads(lines[0])["trace_id"] == "t0"
+            assert json.loads(lines[1])["trace_id"] == "t1"
+            assert json.loads(lines[2])["trace_id"] == "t2"
 
     @pytest.mark.asyncio
     async def test_raises_on_error(self):
@@ -289,8 +233,11 @@ class TestInsertSpans:
             await insert_spans([span])
             sql = mock_q.call_args[0][0]
             assert "INSERT INTO spans" in sql
-            assert "'s1'" in sql
-            assert "'tool_call'" in sql
+            assert "FORMAT JSONEachRow" in sql
+            data = mock_q.call_args[1].get("data", "")
+            row = json.loads(data)
+            assert row["span_id"] == "s1"
+            assert row["type"] == "tool_call"
 
     @pytest.mark.asyncio
     async def test_domain_specific_fields(self):
@@ -310,10 +257,12 @@ class TestInsertSpans:
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
             await insert_spans([span])
-            sql = mock_q.call_args[0][0]
-            # Domain fields should appear as non-NULL values
-            assert "NULL" in sql  # other nullable fields
-            assert "'graph_traverse'" in sql
+            data = mock_q.call_args[1].get("data", "")
+            row = json.loads(data)
+            assert row["type"] == "graph_traverse"
+            assert row["hop_count"] == 3
+            assert row["entities_retrieved"] == 12
+            assert row["tool_schema_valid"] == 1
 
 
 class TestInsertScores:
@@ -340,12 +289,15 @@ class TestInsertScores:
             await insert_scores([score])
             sql = mock_q.call_args[0][0]
             assert "INSERT INTO scores" in sql
-            assert "'sc1'" in sql
-            assert "'eval'" in sql
-            assert "0.95" in sql
+            assert "FORMAT JSONEachRow" in sql
+            data = mock_q.call_args[1].get("data", "")
+            row = json.loads(data)
+            assert row["score_id"] == "sc1"
+            assert row["source"] == "eval"
+            assert row["value"] == 0.95
 
 
-# --- Query tests ---
+# --- Query tests (parameterized) ---
 
 
 class TestQueryTraces:
@@ -356,9 +308,12 @@ class TestQueryTraces:
             result = await query_traces("proj1")
             assert len(result) == 1
             sql = mock_q.call_args[0][0]
-            assert "project_id = 'proj1'" in sql
+            assert "project_id = {pid:String}" in sql
             assert "is_deleted = 0" in sql
             assert "FINAL" in sql
+            # Check params
+            params = mock_q.call_args[0][1]
+            assert params["param_pid"] == "proj1"
 
     @pytest.mark.asyncio
     async def test_with_filters(self):
@@ -366,9 +321,13 @@ class TestQueryTraces:
             mock_q.return_value = _mock_response(data=[])
             await query_traces("p1", trace_type="mcp", mcp_id="m1", user_id="u1")
             sql = mock_q.call_args[0][0]
-            assert "trace_type = 'mcp'" in sql
-            assert "mcp_id = 'm1'" in sql
-            assert "user_id = 'u1'" in sql
+            assert "trace_type = {tt:String}" in sql
+            assert "mcp_id = {mid:String}" in sql
+            assert "user_id = {uid:String}" in sql
+            params = mock_q.call_args[0][1]
+            assert params["param_tt"] == "mcp"
+            assert params["param_mid"] == "m1"
+            assert params["param_uid"] == "u1"
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_error(self):
@@ -385,6 +344,8 @@ class TestQueryTraceById:
             mock_q.return_value = _mock_response(data=[{"trace_id": "t1"}])
             result = await query_trace_by_id("p1", "t1")
             assert result == {"trace_id": "t1"}
+            params = mock_q.call_args[0][1]
+            assert params["param_tid"] == "t1"
 
     @pytest.mark.asyncio
     async def test_not_found(self):
@@ -402,7 +363,9 @@ class TestQuerySpans:
             result = await query_spans("p1", "t1")
             assert len(result) == 1
             sql = mock_q.call_args[0][0]
-            assert "trace_id = 't1'" in sql
+            assert "trace_id = {tid:String}" in sql
+            params = mock_q.call_args[0][1]
+            assert params["param_tid"] == "t1"
 
     @pytest.mark.asyncio
     async def test_with_type_filter(self):
@@ -410,8 +373,8 @@ class TestQuerySpans:
             mock_q.return_value = _mock_response(data=[])
             await query_spans("p1", "t1", span_type="tool_call", status="error")
             sql = mock_q.call_args[0][0]
-            assert "type = 'tool_call'" in sql
-            assert "status = 'error'" in sql
+            assert "type = {st:String}" in sql
+            assert "status = {status:String}" in sql
 
 
 class TestQuerySpanById:
@@ -437,6 +400,6 @@ class TestQueryScores:
             mock_q.return_value = _mock_response(data=[])
             await query_scores("p1", trace_id="t1", source="eval", name="accuracy")
             sql = mock_q.call_args[0][0]
-            assert "trace_id = 't1'" in sql
-            assert "source = 'eval'" in sql
-            assert "name = 'accuracy'" in sql
+            assert "trace_id = {tid:String}" in sql
+            assert "source = {src:String}" in sql
+            assert "name = {name:String}" in sql

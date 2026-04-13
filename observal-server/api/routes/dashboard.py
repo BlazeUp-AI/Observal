@@ -172,10 +172,12 @@ async def overview_stats(
 
     days = _range_days(range_)
     tool_rows = await _ch_json(
-        f"SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {days} DAY"
+        "SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {days:UInt32} DAY",
+        {"param_days": str(days)},
     )
     agent_rows = await _ch_json(
-        f"SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {days} DAY"
+        "SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {days:UInt32} DAY",
+        {"param_days": str(days)},
     )
 
     return OverviewStats(
@@ -375,14 +377,16 @@ async def token_stats(
     current_user: User = Depends(get_current_user),
 ):
     days = _range_days(range_)
-    time_filter = f"AND start_time >= now() - INTERVAL {days} DAY"
+    days_param = {"param_days": str(days)}
     # Totals
     totals = await _ch_json(
         "SELECT "
         "sumIf(token_count_input, token_count_input IS NOT NULL) AS total_input, "
         "sumIf(token_count_output, token_count_output IS NOT NULL) AS total_output, "
         "sumIf(token_count_total, token_count_total IS NOT NULL) AS total_tokens "
-        f"FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 {time_filter}"
+        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND start_time >= now() - INTERVAL {days:UInt32} DAY",
+        days_param,
     )
     t = totals[0] if totals else {}
     total_input = int(t.get("total_input", 0))
@@ -393,9 +397,11 @@ async def token_stats(
     avg_rows = await _ch_json(
         "SELECT round(avg(s), 2) AS avg_per_trace FROM ("
         "SELECT trace_id, sum(token_count_total) AS s "
-        f"FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 AND token_count_total IS NOT NULL {time_filter} "
+        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 AND token_count_total IS NOT NULL "
+        "AND start_time >= now() - INTERVAL {days:UInt32} DAY "
         "GROUP BY trace_id"
-        ")"
+        ")",
+        days_param,
     )
     avg_per_trace = float((avg_rows[0] if avg_rows else {}).get("avg_per_trace", 0))
 
@@ -408,8 +414,10 @@ async def token_stats(
         "count(DISTINCT t.trace_id) AS traces "
         "FROM spans AS s FINAL "
         "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.project_id = 'default' AND t.is_deleted = 0 "
-        f"WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.agent_id != '' {time_filter.replace('start_time', 's.start_time')} "
-        "GROUP BY t.agent_id ORDER BY total DESC LIMIT 20"
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.agent_id != '' "
+        "AND s.start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY t.agent_id ORDER BY total DESC LIMIT 20",
+        days_param,
     )
     agent_ids = [r["agent_id"] for r in by_agent_rows if r.get("agent_id")]
     agent_names: dict[str, str] = {}
@@ -439,8 +447,10 @@ async def token_stats(
         "count(DISTINCT t.trace_id) AS traces "
         "FROM spans AS s FINAL "
         "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.project_id = 'default' AND t.is_deleted = 0 "
-        f"WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.mcp_id != '' {time_filter.replace('start_time', 's.start_time')} "
-        "GROUP BY t.mcp_id ORDER BY total DESC LIMIT 20"
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.mcp_id != '' "
+        "AND s.start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY t.mcp_id ORDER BY total DESC LIMIT 20",
+        days_param,
     )
     mcp_ids = [r["mcp_id"] for r in by_mcp_rows if r.get("mcp_id")]
     mcp_names: dict[str, str] = {}
@@ -468,8 +478,10 @@ async def token_stats(
         "SELECT toDate(start_time) AS date, "
         "sumIf(token_count_input, token_count_input IS NOT NULL) AS input, "
         "sumIf(token_count_output, token_count_output IS NOT NULL) AS output "
-        f"FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 {time_filter} "
-        "GROUP BY date ORDER BY date"
+        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY date ORDER BY date",
+        days_param,
     )
     over_time = [
         TokenTimePoint(date=str(r["date"]), input=int(r["input"]), output=int(r["output"])) for r in over_time_rows

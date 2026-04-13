@@ -10,7 +10,6 @@ from strawberry.scalars import JSON
 from strawberry.types import Info
 
 from services.clickhouse import (
-    _escape,
     _query,
     query_span_by_id,
     query_trace_by_id,
@@ -26,9 +25,9 @@ DEFAULT_PROJECT = "default"
 # --- Helpers ---
 
 
-async def _ch_json(sql: str) -> list[dict]:
+async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
     try:
-        r = await _query(f"{sql} FORMAT JSON")
+        r = await _query(f"{sql} FORMAT JSON", params)
         if r.status_code == 200:
             return r.json().get("data", [])
     except Exception as e:
@@ -49,12 +48,15 @@ def _parse_json(val: str | None) -> JSON | None:
 
 
 async def _load_spans_by_trace_ids(keys: list[str]) -> list[list[dict]]:
-    ids = ", ".join(f"'{_escape(k)}'" for k in keys)
     sql = (
-        f"SELECT * FROM spans FINAL WHERE project_id = '{_escape(DEFAULT_PROJECT)}' "
-        f"AND trace_id IN ({ids}) AND is_deleted = 0 ORDER BY start_time ASC"
+        "SELECT * FROM spans FINAL WHERE project_id = {pid:String} "
+        "AND trace_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY start_time ASC"
     )
-    rows = await _ch_json(sql)
+    params = {
+        "param_pid": DEFAULT_PROJECT,
+        "param_ids": json.dumps(list(keys)),
+    }
+    rows = await _ch_json(sql, params)
     grouped: dict[str, list[dict]] = {k: [] for k in keys}
     for r in rows:
         tid = r.get("trace_id", "")
@@ -64,12 +66,15 @@ async def _load_spans_by_trace_ids(keys: list[str]) -> list[list[dict]]:
 
 
 async def _load_scores_by_trace_ids(keys: list[str]) -> list[list[dict]]:
-    ids = ", ".join(f"'{_escape(k)}'" for k in keys)
     sql = (
-        f"SELECT * FROM scores FINAL WHERE project_id = '{_escape(DEFAULT_PROJECT)}' "
-        f"AND trace_id IN ({ids}) AND is_deleted = 0 ORDER BY timestamp DESC"
+        "SELECT * FROM scores FINAL WHERE project_id = {pid:String} "
+        "AND trace_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY timestamp DESC"
     )
-    rows = await _ch_json(sql)
+    params = {
+        "param_pid": DEFAULT_PROJECT,
+        "param_ids": json.dumps(list(keys)),
+    }
+    rows = await _ch_json(sql, params)
     grouped: dict[str, list[dict]] = {k: [] for k in keys}
     for r in rows:
         tid = r.get("trace_id", "")
@@ -79,12 +84,15 @@ async def _load_scores_by_trace_ids(keys: list[str]) -> list[list[dict]]:
 
 
 async def _load_scores_by_span_ids(keys: list[str]) -> list[list[dict]]:
-    ids = ", ".join(f"'{_escape(k)}'" for k in keys)
     sql = (
-        f"SELECT * FROM scores FINAL WHERE project_id = '{_escape(DEFAULT_PROJECT)}' "
-        f"AND span_id IN ({ids}) AND is_deleted = 0 ORDER BY timestamp DESC"
+        "SELECT * FROM scores FINAL WHERE project_id = {pid:String} "
+        "AND span_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY timestamp DESC"
     )
-    rows = await _ch_json(sql)
+    params = {
+        "param_pid": DEFAULT_PROJECT,
+        "param_ids": json.dumps(list(keys)),
+    }
+    rows = await _ch_json(sql, params)
     grouped: dict[str, list[dict]] = {k: [] for k in keys}
     for r in rows:
         sid = r.get("span_id", "")
@@ -339,19 +347,25 @@ class Query:
     @strawberry.field
     async def mcp_metrics(self, mcp_id: str, start: str, end: str) -> McpMetrics:
         rows = await _ch_json(
-            f"SELECT count() as cnt, "
-            f"countIf(status='error') as errs, "
-            f"countIf(status='timeout') as timeouts, "
-            f"avg(latency_ms) as avg_lat, "
-            f"quantile(0.5)(latency_ms) as p50, "
-            f"quantile(0.9)(latency_ms) as p90, "
-            f"quantile(0.99)(latency_ms) as p99, "
-            f"countIf(tool_schema_valid=1) as schema_ok, "
-            f"countIf(tool_schema_valid IS NOT NULL) as schema_total "
-            f"FROM spans FINAL WHERE project_id='{_escape(DEFAULT_PROJECT)}' "
-            f"AND mcp_id='{_escape(mcp_id)}' AND type='tool_call' "
-            f"AND start_time >= '{_escape(start)}' AND start_time <= '{_escape(end)}' "
-            f"AND is_deleted=0"
+            "SELECT count() as cnt, "
+            "countIf(status='error') as errs, "
+            "countIf(status='timeout') as timeouts, "
+            "avg(latency_ms) as avg_lat, "
+            "quantile(0.5)(latency_ms) as p50, "
+            "quantile(0.9)(latency_ms) as p90, "
+            "quantile(0.99)(latency_ms) as p99, "
+            "countIf(tool_schema_valid=1) as schema_ok, "
+            "countIf(tool_schema_valid IS NOT NULL) as schema_total "
+            "FROM spans FINAL WHERE project_id={pid:String} "
+            "AND mcp_id={mid:String} AND type='tool_call' "
+            "AND start_time >= {start:String} AND start_time <= {end:String} "
+            "AND is_deleted=0",
+            {
+                "param_pid": DEFAULT_PROJECT,
+                "param_mid": mcp_id,
+                "param_start": start,
+                "param_end": end,
+            },
         )
         r = rows[0] if rows else {}
         cnt = int(r.get("cnt", 0))
@@ -373,16 +387,26 @@ class Query:
     @strawberry.field
     async def overview(self, start: str, end: str) -> OverviewStats:
         rows = await _ch_json(
-            f"SELECT count() as traces FROM traces FINAL "
-            f"WHERE project_id='{_escape(DEFAULT_PROJECT)}' AND is_deleted=0 "
-            f"AND start_time >= '{_escape(start)}' AND start_time <= '{_escape(end)}'"
+            "SELECT count() as traces FROM traces FINAL "
+            "WHERE project_id={pid:String} AND is_deleted=0 "
+            "AND start_time >= {start:String} AND start_time <= {end:String}",
+            {
+                "param_pid": DEFAULT_PROJECT,
+                "param_start": start,
+                "param_end": end,
+            },
         )
         span_rows = await _ch_json(
-            f"SELECT count() as spans, "
-            f"countIf(type='tool_call') as tools, "
-            f"countIf(status='error') as errs "
-            f"FROM spans FINAL WHERE project_id='{_escape(DEFAULT_PROJECT)}' AND is_deleted=0 "
-            f"AND start_time >= '{_escape(start)}' AND start_time <= '{_escape(end)}'"
+            "SELECT count() as spans, "
+            "countIf(type='tool_call') as tools, "
+            "countIf(status='error') as errs "
+            "FROM spans FINAL WHERE project_id={pid:String} AND is_deleted=0 "
+            "AND start_time >= {start:String} AND start_time <= {end:String}",
+            {
+                "param_pid": DEFAULT_PROJECT,
+                "param_start": start,
+                "param_end": end,
+            },
         )
         tr = rows[0] if rows else {}
         sr = span_rows[0] if span_rows else {}
@@ -395,20 +419,34 @@ class Query:
 
     @strawberry.field
     async def trends(self, start: str, end: str, granularity: str = "DAY") -> list[TrendPoint]:
-        trunc = {"HOUR": "toStartOfHour", "DAY": "toDate", "WEEK": "toStartOfWeek", "MONTH": "toStartOfMonth"}.get(
-            granularity, "toDate"
-        )
+        trunc_whitelist = {
+            "HOUR": "toStartOfHour",
+            "DAY": "toDate",
+            "WEEK": "toStartOfWeek",
+            "MONTH": "toStartOfMonth",
+        }
+        trunc = trunc_whitelist.get(granularity, "toDate")
         rows = await _ch_json(
             f"SELECT {trunc}(start_time) as d, count() as traces "
-            f"FROM traces FINAL WHERE project_id='{_escape(DEFAULT_PROJECT)}' AND is_deleted=0 "
-            f"AND start_time >= '{_escape(start)}' AND start_time <= '{_escape(end)}' "
-            f"GROUP BY d ORDER BY d"
+            "FROM traces FINAL WHERE project_id={pid:String} AND is_deleted=0 "
+            "AND start_time >= {start:String} AND start_time <= {end:String} "
+            "GROUP BY d ORDER BY d",
+            {
+                "param_pid": DEFAULT_PROJECT,
+                "param_start": start,
+                "param_end": end,
+            },
         )
         span_rows = await _ch_json(
             f"SELECT {trunc}(start_time) as d, count() as spans, countIf(status='error') as errs "
-            f"FROM spans FINAL WHERE project_id='{_escape(DEFAULT_PROJECT)}' AND is_deleted=0 "
-            f"AND start_time >= '{_escape(start)}' AND start_time <= '{_escape(end)}' "
-            f"GROUP BY d ORDER BY d"
+            "FROM spans FINAL WHERE project_id={pid:String} AND is_deleted=0 "
+            "AND start_time >= {start:String} AND start_time <= {end:String} "
+            "GROUP BY d ORDER BY d",
+            {
+                "param_pid": DEFAULT_PROJECT,
+                "param_start": start,
+                "param_end": end,
+            },
         )
         span_map = {r["d"]: r for r in span_rows}
         return [
