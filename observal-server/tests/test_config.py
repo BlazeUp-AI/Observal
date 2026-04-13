@@ -24,6 +24,21 @@ def test_deployment_mode_accepts_enterprise():
     assert s.DEPLOYMENT_MODE == "enterprise"
 
 
+def test_deployment_mode_rejects_invalid():
+    """DEPLOYMENT_MODE should reject values other than 'local' or 'enterprise'."""
+    import pytest
+    from pydantic import ValidationError
+
+    from config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(
+            DATABASE_URL="sqlite+aiosqlite:///",
+            SECRET_KEY="test",
+            DEPLOYMENT_MODE="staging",
+        )
+
+
 def test_demo_env_vars_default_to_none():
     """All DEMO_* vars should default to None."""
     from config import Settings

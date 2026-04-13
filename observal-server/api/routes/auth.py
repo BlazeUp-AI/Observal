@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_current_user, get_db, require_role
 from api.ratelimit import limiter
 from config import settings
 from models.invite import InviteCode
@@ -488,12 +488,9 @@ async def reset_password(request: Request, req: ResetPasswordRequest, db: AsyncS
 async def create_invite(
     req: InviteCreateRequest = InviteCreateRequest(),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Admin creates an invite code for a new user."""
-    if current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
     from datetime import timedelta
 
     invite = InviteCode(
@@ -560,11 +557,9 @@ async def redeem_invite(request: Request, req: InviteRedeemRequest, db: AsyncSes
 @router.get("/invites", response_model=list[InviteListResponse])
 async def list_invites(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Admin lists all invite codes."""
-    if current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
 
     result = await db.execute(select(InviteCode).order_by(InviteCode.created_at.desc()))
     return [InviteListResponse.model_validate(i) for i in result.scalars().all()]

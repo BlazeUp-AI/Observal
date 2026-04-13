@@ -31,7 +31,7 @@ DEFAULT_PROJECT = "default"
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest(
     batch: IngestBatch,
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
     x_observal_environment: str = Header("default"),
 ):
     """New ingestion endpoint for shim/proxy telemetry."""
@@ -180,7 +180,7 @@ async def ingest(
 @router.post("/events")
 async def ingest_events(
     batch: TelemetryBatch,
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     ingested = 0
@@ -253,7 +253,7 @@ _KIRO_EVENT_MAP = {
 
 
 @router.post("/hooks")
-async def ingest_hook(request: Request, current_user: User = Depends(require_role(UserRole.admin))):
+async def ingest_hook(request: Request, current_user: User = Depends(require_role(UserRole.user))):
     """Ingest raw hook JSON from Claude Code/Kiro."""
     body = await request.json()
 

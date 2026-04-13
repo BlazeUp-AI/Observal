@@ -82,10 +82,8 @@ async def get_source(
 async def trigger_sync(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    if current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -119,10 +117,8 @@ async def trigger_sync(
 async def delete_source(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    if current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")

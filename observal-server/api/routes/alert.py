@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db, require_role
+from api.deps import ROLE_HIERARCHY, get_db, require_role
 from models.alert import AlertRule
 from models.user import User, UserRole
 from schemas.alert import AlertRuleCreate, AlertRuleResponse, AlertRuleUpdate
@@ -17,9 +17,9 @@ async def list_alerts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    # Admins see all alerts; regular users only see their own
+    # Admins and above see all alerts; lower roles only see their own
     stmt = select(AlertRule).order_by(AlertRule.created_at.desc())
-    if current_user.role != UserRole.admin:
+    if ROLE_HIERARCHY.get(current_user.role, 999) > ROLE_HIERARCHY[UserRole.admin]:
         stmt = stmt.where(AlertRule.created_by == current_user.id)
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -57,7 +57,8 @@ async def update_alert(
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
-    if rule.created_by != current_user.id and current_user.role != UserRole.admin:
+    is_admin_or_above = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
+    if rule.created_by != current_user.id and not is_admin_or_above:
         raise HTTPException(403, "Not authorized to modify this alert rule")
     rule.status = body.status
     await db.commit()
@@ -74,7 +75,8 @@ async def delete_alert(
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
-    if rule.created_by != current_user.id and current_user.role != UserRole.admin:
+    is_admin_or_above = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
+    if rule.created_by != current_user.id and not is_admin_or_above:
         raise HTTPException(403, "Not authorized to delete this alert rule")
     await db.delete(rule)
     await db.commit()

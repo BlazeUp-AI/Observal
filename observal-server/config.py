@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings
 
 
@@ -33,7 +35,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_AUTH_STRICT: str = "5/minute"
 
     # Deployment mode
-    DEPLOYMENT_MODE: str = "local"  # "local" | "enterprise"
+    DEPLOYMENT_MODE: Literal["local", "enterprise"] = "local"
 
     # Demo accounts (seeded on first startup if set and no real users exist)
     DEMO_SUPER_ADMIN_EMAIL: str | None = None
