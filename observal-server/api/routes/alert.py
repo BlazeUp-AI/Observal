@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from models.alert import AlertRule
 from models.user import User, UserRole
 from schemas.alert import AlertRuleCreate, AlertRuleResponse, AlertRuleUpdate
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
 @router.get("", response_model=list[AlertRuleResponse])
 async def list_alerts(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     # Admins see all alerts; regular users only see their own
     stmt = select(AlertRule).order_by(AlertRule.created_at.desc())
@@ -29,7 +29,7 @@ async def list_alerts(
 async def create_alert(
     body: AlertRuleCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     rule = AlertRule(
         name=body.name,
@@ -52,7 +52,7 @@ async def update_alert(
     alert_id: uuid.UUID,
     body: AlertRuleUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     rule = await db.get(AlertRule, alert_id)
     if not rule:
@@ -69,7 +69,7 @@ async def update_alert(
 async def delete_alert(
     alert_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     rule = await db.get(AlertRule, alert_id)
     if not rule:

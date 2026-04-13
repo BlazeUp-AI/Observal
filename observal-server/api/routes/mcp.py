@@ -4,10 +4,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, resolve_listing
+from api.deps import get_db, require_role, resolve_listing
 from database import async_session
 from models.mcp import ListingStatus, McpDownload, McpListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.mcp import (
     McpAnalyzeRequest,
     McpAnalyzeResponse,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @router.post("/analyze", response_model=McpAnalyzeResponse)
 async def analyze_mcp(
     req: McpAnalyzeRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     result = await analyze_repo(req.git_url)
     return McpAnalyzeResponse(**result)
@@ -51,7 +51,7 @@ async def submit_mcp(
     req: McpSubmitRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     # Prevent duplicate names for the same user
     existing = await db.execute(
@@ -113,7 +113,7 @@ async def install_mcp(
     listing_id: str,
     req: McpInstallRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(McpListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
@@ -132,7 +132,7 @@ async def install_mcp(
 async def delete_mcp(
     listing_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     from models.feedback import Feedback
 

@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from models.agent import Agent
 from models.feedback import Feedback
 from models.mcp import McpListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.feedback import FeedbackCreateRequest, FeedbackResponse, FeedbackSummary
 from services.clickhouse import insert_scores
 
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
 async def create_feedback(
     req: FeedbackCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     # Validate listing exists
     if req.listing_type == "mcp":
@@ -93,7 +93,7 @@ async def get_agent_feedback(listing_id: uuid.UUID, db: AsyncSession = Depends(g
 @router.get("/me", response_model=list[FeedbackResponse])
 async def my_feedback_received(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Feedback received on listings submitted/created by the current user."""
     mcp_ids = list(

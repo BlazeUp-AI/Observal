@@ -5,12 +5,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from models.agent import Agent, AgentGoalSection, AgentGoalTemplate
 from models.hook import HookListing
 from models.mcp import ListingStatus, McpListing
 from models.skill import SkillListing
-from models.user import User
+from models.user import User, UserRole
 
 router = APIRouter(prefix="/api/v1/scan", tags=["scan"])
 
@@ -87,7 +87,7 @@ class ScanResponse(BaseModel):
 async def bulk_scan(
     req: ScanRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     registered = []
     counts: dict[str, int] = {"mcp": 0, "skill": 0, "hook": 0, "agent": 0}

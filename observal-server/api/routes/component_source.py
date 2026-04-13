@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from models.component_source import ComponentSource
 from models.user import User, UserRole
 from schemas.component_source import (
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/v1/component-sources", tags=["component-sources"
 async def add_source(
     req: ComponentSourceCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     # Detect provider from URL
     provider = "github"
@@ -57,7 +57,7 @@ async def add_source(
 async def list_sources(
     component_type: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     stmt = select(ComponentSource)
     if component_type:
@@ -70,7 +70,7 @@ async def list_sources(
 async def get_source(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     source = await db.get(ComponentSource, source_id)
     if not source:
@@ -82,7 +82,7 @@ async def get_source(
 async def trigger_sync(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -119,7 +119,7 @@ async def trigger_sync(
 async def delete_source(
     source_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     if current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admin access required")

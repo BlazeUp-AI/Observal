@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, resolve_listing
+from api.deps import get_db, require_role, resolve_listing
 from models.mcp import ListingStatus
 from models.sandbox import SandboxDownload, SandboxListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.sandbox import (
     SandboxInstallRequest,
     SandboxInstallResponse,
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/sandboxes", tags=["sandboxes"])
 async def submit_sandbox(
     req: SandboxSubmitRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     existing = await db.execute(
         select(SandboxListing).where(SandboxListing.name == req.name, SandboxListing.submitted_by == current_user.id)
@@ -80,7 +80,7 @@ async def install_sandbox(
     listing_id: str,
     req: SandboxInstallRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(SandboxListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
@@ -101,7 +101,7 @@ async def install_sandbox(
 async def delete_sandbox(
     listing_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:

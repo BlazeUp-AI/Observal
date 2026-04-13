@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, resolve_listing
+from api.deps import get_db, require_role, resolve_listing
 from models.mcp import ListingStatus
 from models.skill import SkillDownload, SkillListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.skill import (
     SkillInstallRequest,
     SkillInstallResponse,
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 async def submit_skill(
     req: SkillSubmitRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     existing = await db.execute(
         select(SkillListing).where(SkillListing.name == req.name, SkillListing.submitted_by == current_user.id)
@@ -87,7 +87,7 @@ async def install_skill(
     listing_id: str,
     req: SkillInstallRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(SkillListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
@@ -108,7 +108,7 @@ async def install_skill(
 async def delete_skill(
     listing_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:

@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, resolve_listing
+from api.deps import get_db, require_role, resolve_listing
 from models.mcp import ListingStatus
 from models.prompt import PromptDownload, PromptListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.prompt import (
     PromptListingResponse,
     PromptListingSummary,
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/v1/prompts", tags=["prompts"])
 async def submit_prompt(
     req: PromptSubmitRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     existing = await db.execute(
         select(PromptListing).where(PromptListing.name == req.name, PromptListing.submitted_by == current_user.id)
@@ -79,7 +79,7 @@ async def get_prompt(listing_id: str, db: AsyncSession = Depends(get_db)):
 async def install_prompt(
     listing_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(PromptListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
@@ -108,7 +108,7 @@ async def render_prompt(
     listing_id: str,
     req: PromptRenderRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(PromptListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
@@ -156,7 +156,7 @@ async def render_prompt(
 async def delete_prompt(
     listing_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(PromptListing, listing_id, db)
     if not listing:

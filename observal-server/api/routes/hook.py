@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, resolve_listing
+from api.deps import get_db, require_role, resolve_listing
 from models.hook import HookDownload, HookListing
 from models.mcp import ListingStatus
-from models.user import User
+from models.user import User, UserRole
 from schemas.hook import (
     HookInstallRequest,
     HookInstallResponse,
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/hooks", tags=["hooks"])
 async def submit_hook(
     req: HookSubmitRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     existing = await db.execute(
         select(HookListing).where(HookListing.name == req.name, HookListing.submitted_by == current_user.id)
@@ -85,7 +85,7 @@ async def install_hook(
     listing_id: str,
     req: HookInstallRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(HookListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
@@ -106,7 +106,7 @@ async def install_hook(
 async def delete_hook(
     listing_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:

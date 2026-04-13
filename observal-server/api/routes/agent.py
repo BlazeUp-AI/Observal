@@ -5,12 +5,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import get_current_user, get_db, resolve_prefix_id
+from api.deps import get_db, require_role, resolve_prefix_id
 from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
 from models.mcp import ListingStatus, McpListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.agent import (
     AgentCreateRequest,
     AgentInstallRequest,
@@ -134,7 +134,7 @@ async def _validate_mcp_ids(mcp_ids: list[uuid.UUID], db: AsyncSession) -> list[
 async def create_agent(
     req: AgentCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     # If `components` is provided, it supersedes legacy `mcp_server_ids`
     if req.components:
@@ -282,7 +282,7 @@ async def update_agent(
     agent_id: str,
     req: AgentUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     agent = await _load_agent(db, agent_id)
     if not agent:
@@ -409,7 +409,7 @@ async def install_agent(
     req: AgentInstallRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     agent = await _load_agent(db, agent_id, extra_conditions=[Agent.status == AgentStatus.active])
     if not agent:
@@ -488,7 +488,7 @@ async def get_agent_traces(
 async def resolve_agent_components(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Resolve all components for an agent — validates they exist and are approved."""
     agent = await _load_agent(db, agent_id)
@@ -506,7 +506,7 @@ async def resolve_agent_components(
 async def get_agent_manifest(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Generate a portable agent manifest with all resolved components."""
     agent = await _load_agent(db, agent_id)
@@ -535,7 +535,7 @@ async def get_agent_manifest(
 async def validate_agent_composition(
     req: AgentValidateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Validate a set of components for compatibility before publishing an agent."""
     if not req.components:
@@ -563,7 +563,7 @@ async def validate_agent_composition(
 async def delete_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     from models.eval import EvalRun, Scorecard
     from models.feedback import Feedback
