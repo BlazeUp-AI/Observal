@@ -231,7 +231,7 @@ class TestListPending:
 
     @pytest.mark.asyncio
     async def test_requires_admin(self):
-        user = _user(role=UserRole.developer)
+        user = _user(role=UserRole.user)
         app, _, _ = _app_with(user=user)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -284,7 +284,7 @@ class TestGetReview:
 
     @pytest.mark.asyncio
     async def test_requires_admin(self):
-        user = _user(role=UserRole.developer)
+        user = _user(role=UserRole.user)
         app, _, _ = _app_with(user=user)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -341,7 +341,7 @@ class TestApprove:
 
     @pytest.mark.asyncio
     async def test_requires_admin(self):
-        user = _user(role=UserRole.developer)
+        user = _user(role=UserRole.user)
         app, _, _ = _app_with(user=user)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -406,7 +406,7 @@ class TestReject:
 
     @pytest.mark.asyncio
     async def test_requires_admin(self):
-        user = _user(role=UserRole.developer)
+        user = _user(role=UserRole.user)
         app, _, _ = _app_with(user=user)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

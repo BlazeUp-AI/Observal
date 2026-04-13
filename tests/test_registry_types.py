@@ -549,7 +549,7 @@ class TestUnifiedReview:
     async def test_list_pending_requires_admin(self):
         from api.routes.review import router
 
-        user = _user(role=UserRole.developer)
+        user = _user(role=UserRole.user)
         app, db, _ = _app_with(router, user=user)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get("/api/v1/review")
