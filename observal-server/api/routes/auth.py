@@ -10,6 +10,7 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db
@@ -84,7 +85,11 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
     if req.password:
         user.set_password(req.password)
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="System already initialized or email already exists")
     await db.refresh(user)
 
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
@@ -111,7 +116,11 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
         api_key_hash=key_hash,
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="System already initialized")
     await db.refresh(user)
 
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
@@ -135,7 +144,11 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
     )
     user.set_password(req.password)
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
     await db.refresh(user)
 
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
@@ -220,7 +233,17 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         )
         db.add(user)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        # Race condition: user was created between our check and commit
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=500, detail="Failed to create or find user")
+        user.api_key_hash = key_hash
+        await db.commit()
     await db.refresh(user)
 
     # Generate a short-lived opaque code instead of exposing the API key in the URL.
@@ -441,7 +464,7 @@ async def reset_password(request: Request, req: ResetPasswordRequest, db: AsyncS
     if hashlib.sha256(req.token.strip().upper().encode()).hexdigest() != token_hash:
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
 
-    # Token is valid — consume it
+    # Token is valid -- consume it
     del _reset_tokens[req.email]
 
     result = await db.execute(select(User).where(User.email == req.email))
@@ -458,7 +481,7 @@ async def reset_password(request: Request, req: ResetPasswordRequest, db: AsyncS
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
 
 
-# ── Invite Codes ────────────────────────────────────────────
+# -- Invite Codes --
 
 
 @router.post("/invite", response_model=InviteResponse)
@@ -524,7 +547,11 @@ async def redeem_invite(request: Request, req: InviteRedeemRequest, db: AsyncSes
     invite.used_by = user.id
     invite.used_at = datetime.now(UTC)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Invite already redeemed or email already exists")
     await db.refresh(user)
 
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)

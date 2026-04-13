@@ -13,6 +13,7 @@ class Feedback(Base):
     __table_args__ = (
         CheckConstraint("rating >= 1 AND rating <= 5", name="ck_feedback_rating"),
         Index("ix_feedback_listing", "listing_id", "listing_type"),
+        Index("ix_feedback_user", "user_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

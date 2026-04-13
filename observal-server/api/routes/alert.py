@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db
 from models.alert import AlertRule
-from models.user import User
+from models.user import User, UserRole
 from schemas.alert import AlertRuleCreate, AlertRuleResponse, AlertRuleUpdate
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
@@ -17,7 +17,11 @@ async def list_alerts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(AlertRule).order_by(AlertRule.created_at.desc()))
+    # Admins see all alerts; regular users only see their own
+    stmt = select(AlertRule).order_by(AlertRule.created_at.desc())
+    if current_user.role != UserRole.admin:
+        stmt = stmt.where(AlertRule.created_by == current_user.id)
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 
@@ -53,6 +57,8 @@ async def update_alert(
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
+    if rule.created_by != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(403, "Not authorized to modify this alert rule")
     rule.status = body.status
     await db.commit()
     await db.refresh(rule)
@@ -68,5 +74,7 @@ async def delete_alert(
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
+    if rule.created_by != current_user.id and current_user.role != UserRole.admin:
+        raise HTTPException(403, "Not authorized to delete this alert rule")
     await db.delete(rule)
     await db.commit()
