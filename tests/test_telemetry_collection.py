@@ -225,6 +225,7 @@ class TestInstallRouteWiring:
         mock_db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = listing
+        mock_result.scalars.return_value.first.return_value = listing
         mock_db.execute.return_value = mock_result
 
         mock_user = MagicMock()
@@ -254,6 +255,7 @@ class TestInstallRouteWiring:
         mock_db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = listing
+        mock_result.scalars.return_value.first.return_value = listing
         mock_db.execute.return_value = mock_result
 
         mock_user = MagicMock()

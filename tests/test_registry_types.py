@@ -60,10 +60,11 @@ def _listing_mock(model_cls, status=ListingStatus.pending, **extra):
 
 
 def _scalar_result(val):
-    """Mock db.execute() returning a result whose .scalar_one_or_none() returns val."""
+    """Mock db.execute() returning a result whose .scalar_one_or_none() / .scalars().first() returns val."""
     r = MagicMock()
     r.scalar_one_or_none.return_value = val
     r.scalars.return_value.all.return_value = [val] if val else []
+    r.scalars.return_value.first.return_value = val
     return r
 
 
@@ -252,6 +253,7 @@ class TestSkillRoutes:
             obj.updated_at = datetime.now(UTC)
 
         db.refresh = AsyncMock(side_effect=_refresh)
+        db.execute = AsyncMock(return_value=_scalar_result(None))
 
         # The route passes archive_url to SkillListing but the model lacks that column.
         # Patch SkillListing.__init__ to accept and ignore unknown kwargs.
@@ -319,6 +321,7 @@ class TestHookRoutes:
             obj.updated_at = datetime.now(UTC)
 
         db.refresh = AsyncMock(side_effect=_refresh)
+        db.execute = AsyncMock(return_value=_scalar_result(None))
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(
@@ -382,6 +385,7 @@ class TestPromptRoutes:
             obj.updated_at = datetime.now(UTC)
 
         db.refresh = AsyncMock(side_effect=_refresh)
+        db.execute = AsyncMock(return_value=_scalar_result(None))
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(
@@ -472,6 +476,7 @@ class TestSandboxRoutes:
             obj.updated_at = datetime.now(UTC)
 
         db.refresh = AsyncMock(side_effect=_refresh)
+        db.execute = AsyncMock(return_value=_scalar_result(None))
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(
