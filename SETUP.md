@@ -1,18 +1,18 @@
 # Setup Guide
 
-This guide covers all the ways to get Observal running, from the quickstart Docker path to local development and optional services like the eval engine.
+Everything works out of the box with defaults. No configuration needed for local development.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - Python 3.11+
-- Node.js 20+ (for local web UI development)
+- Node.js 20+ and pnpm (for frontend development)
 - Git
 
 ## Quickstart (Docker)
 
-This is the fastest way to get everything running.
+Three commands to get everything running:
 
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git
@@ -20,16 +20,14 @@ cd Observal
 cp .env.example .env
 ```
 
-Edit `.env` with your values (see [Environment Variables](#environment-variables) below). The `.env` file must stay in the project root. All Docker services reference it from there via `env_file: ../.env`.
+The `.env.example` ships with working defaults for every setting. No editing needed for local development.
 
 ```bash
 cd docker
 docker compose up --build -d
 ```
 
-?/
-
-This starts four services:
+This starts seven services:
 
 | Service | URL | Description |
 |---------|-----|-------------|
@@ -37,8 +35,11 @@ This starts four services:
 | `observal-web` | http://localhost:3000 | Next.js web UI |
 | `observal-db` | localhost:5432 | PostgreSQL 16 |
 | `observal-clickhouse` | localhost:8123 | ClickHouse (telemetry) |
+| `observal-redis` | localhost:6379 | Redis (job queue, pub/sub) |
+| `observal-worker` | (internal) | Background job processor (arq) |
+| `observal-otel-collector` | localhost:4317 | OpenTelemetry Collector |
 
-Install the CLI and run first-time setup:
+Install the CLI and create your first admin account:
 
 ```bash
 cd ..
@@ -46,7 +47,7 @@ uv tool install --editable .
 observal auth login
 ```
 
-On a fresh server, `observal auth login` auto-detects that no users exist and bootstraps an admin account automatically — no prompts needed. Your credentials are saved to `~/.observal/config.json`.
+On a fresh server, `observal auth login` detects that no users exist and bootstraps an admin account automatically. No prompts needed. Your credentials are saved to `~/.observal/config.json`.
 
 To invite team members:
 
@@ -63,88 +64,80 @@ observal auth login --code OBS-A7X9B2
 For CI/scripts, use environment variables instead of interactive login:
 
 ```bash
-export OBSERVAL_SERVER_URL=http://your-server:8000
+export OBSERVAL_SERVER_URL=http://localhost:8000
 export OBSERVAL_API_KEY=<your-key>
 ```
 
-You're ready to go. See the [README](README.md) for usage.
+You are ready to go. See the [README](README.md) for usage.
 
 ## Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | | PostgreSQL connection string (e.g. `postgresql+asyncpg://postgres:secret@observal-db:5432/observal`) |
-| `CLICKHOUSE_URL` | Yes | | ClickHouse connection string (e.g. `clickhouse://default:clickhouse@observal-clickhouse:8123/observal`) |
-| `POSTGRES_USER` | Yes | `postgres` | PostgreSQL user |
-| `POSTGRES_PASSWORD` | Yes | `postgres` | PostgreSQL password |
-| `SECRET_KEY` | Yes | | Secret key for API key hashing. Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `CLICKHOUSE_USER` | No | `default` | ClickHouse user |
-| `CLICKHOUSE_PASSWORD` | No | `clickhouse` | ClickHouse password |
-| `EVAL_MODEL_URL` | No | | OpenAI-compatible endpoint for the eval engine |
-| `EVAL_MODEL_API_KEY` | No | | API key for the eval model. Leave empty for AWS credential chain |
-| `EVAL_MODEL_NAME` | No | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
-| `EVAL_MODEL_PROVIDER` | No | | `bedrock`, `openai`, or empty for auto-detect |
-| `AWS_ACCESS_KEY_ID` | No | | AWS credentials for Bedrock eval engine |
-| `AWS_SECRET_ACCESS_KEY` | No | | AWS credentials for Bedrock eval engine |
-| `AWS_SESSION_TOKEN` | No | | AWS session token (if using temporary credentials) |
-| `AWS_REGION` | No | `us-east-1` | AWS region for Bedrock |
+All settings have sensible defaults that work for local development. The server starts without any `.env` file at all (it will use built-in defaults). For Docker Compose, just copy the example file and you are set.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5432/observal` | PostgreSQL connection string |
+| `CLICKHOUSE_URL` | `clickhouse://localhost:8123/observal` | ClickHouse connection string |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
+| `SECRET_KEY` | `change-me-to-a-random-string` | Session signing key. For production, generate a real one: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `POSTGRES_USER` | `postgres` | PostgreSQL container user |
+| `POSTGRES_PASSWORD` | `postgres` | PostgreSQL container password |
+| `FRONTEND_URL` | `http://localhost:3000` | Frontend URL (used for OAuth redirects) |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated allowed CORS origins |
+| `CLICKHOUSE_USER` | `default` | ClickHouse user |
+| `CLICKHOUSE_PASSWORD` | `clickhouse` | ClickHouse password |
+| `OAUTH_CLIENT_ID` | disabled | OAuth/OIDC client ID (SSO is disabled when unset) |
+| `OAUTH_CLIENT_SECRET` | disabled | OAuth/OIDC client secret |
+| `OAUTH_SERVER_METADATA_URL` | disabled | OIDC discovery URL |
+| `EVAL_MODEL_URL` | | OpenAI-compatible endpoint for the eval engine |
+| `EVAL_MODEL_API_KEY` | | API key for the eval model. Leave empty for AWS credential chain |
+| `EVAL_MODEL_NAME` | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
+| `EVAL_MODEL_PROVIDER` | | `bedrock`, `openai`, or empty for auto-detect |
+| `AWS_ACCESS_KEY_ID` | | AWS credentials for Bedrock eval engine |
+| `AWS_SECRET_ACCESS_KEY` | | AWS credentials for Bedrock eval engine |
+| `AWS_SESSION_TOKEN` | | AWS session token (if using temporary credentials) |
+| `AWS_REGION` | `us-east-1` | AWS region for Bedrock |
+| `RATE_LIMIT_AUTH` | `10/minute` | Rate limit for general auth endpoints |
+| `RATE_LIMIT_AUTH_STRICT` | `5/minute` | Rate limit for login and password reset |
 
 ## Local Development
 
-For development you can run the backend, frontend, and CLI individually outside Docker while still using Docker for the databases.
+For development you can run the backend, frontend, and CLI individually outside Docker while keeping Docker for the databases.
 
 ### Databases only
 
-Start just PostgreSQL and ClickHouse:
+Start just PostgreSQL, ClickHouse, and Redis:
 
 ```bash
 cd docker
-docker compose up observal-db observal-clickhouse -d
+docker compose up observal-db observal-clickhouse observal-redis -d
 ```
 
 ### Backend (FastAPI)
 
 ```bash
 cd observal-server
-```
-
-Create a `.env` file in the server directory (or the project root) with connection strings pointing to localhost:
-
-```
-DATABASE_URL=postgresql+asyncpg://postgres:yourpassword@localhost:5432/observal
-CLICKHOUSE_URL=clickhouse://default:clickhouse@localhost:8123/observal
-SECRET_KEY=dev-secret-key
-```
-
-Install dependencies and run:
-
-```bash
 uv sync
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at http://localhost:8000. Database tables are created automatically on startup.
+The API will be available at http://localhost:8000. Database tables are created automatically on startup. All settings use built-in defaults pointing to localhost, so no `.env` file is strictly necessary. If you want to override anything, create a `.env` in the project root or the server directory:
+
+```
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/observal
+CLICKHOUSE_URL=clickhouse://default:clickhouse@localhost:8123/observal
+SECRET_KEY=dev-secret-key
+```
 
 ### Frontend (Next.js)
 
 ```bash
-cd observal-web
-npm install
+cd web
+pnpm install
+pnpm dev
 ```
 
-Set the API URL for the dev proxy. Create a `.env.local` file:
-
-```
-API_INTERNAL_URL=http://localhost:8000
-```
-
-Then run:
-
-```bash
-npm run dev
-```
-
-The web UI will be at http://localhost:3000. All `/api/*` requests are proxied to the backend through Next.js rewrites, so the browser talks directly to the frontend only.
+The web UI will be at http://localhost:3000. All `/api/*` requests are proxied to the backend through Next.js rewrites, so the browser talks directly to the frontend only. If the backend is on a different host, set `NEXT_PUBLIC_API_URL` in `web/.env.local`.
 
 ### CLI
 
@@ -229,7 +222,7 @@ Observal implements the four core [RAGAS](https://docs.ragas.io/) metrics for ev
 | Context Precision | Checks each retrieved chunk's relevance to the question. Score = relevant chunks / total chunks. |
 | Context Recall | Extracts statements from ground truth and checks if each is attributable to the context. Requires ground truth data. |
 
-All four metrics use LLM-as-judge under the hood — the same eval model configured via `EVAL_MODEL_NAME` / `EVAL_MODEL_URL`. No additional dependencies are needed.
+All four metrics use LLM-as-judge under the hood, the same eval model configured via `EVAL_MODEL_NAME` / `EVAL_MODEL_URL`. No additional dependencies are needed.
 
 ### Running a RAGAS evaluation
 
@@ -304,10 +297,13 @@ The schema includes tables for users, MCP listings, agents, reviews, feedback, e
 
 ### ClickHouse
 
-ClickHouse tables are also created automatically on startup. The API runs `CREATE TABLE IF NOT EXISTS` for two tables:
+ClickHouse tables are also created automatically on startup. The API runs `CREATE TABLE IF NOT EXISTS` for the telemetry tables:
 
-- `mcp_tool_calls` - tool call telemetry events, partitioned by month
-- `agent_interactions` - agent interaction events, partitioned by month
+- `traces` - distributed trace data (ReplacingMergeTree)
+- `spans` - individual operation spans (ReplacingMergeTree)
+- `scores` - evaluation scores (ReplacingMergeTree)
+- `mcp_tool_calls` - legacy tool call events (MergeTree)
+- `agent_interactions` - legacy agent interaction events (MergeTree)
 
 If ClickHouse is unavailable at startup, the API still starts. Telemetry ingestion and dashboard queries will fail silently until ClickHouse becomes available.
 
@@ -321,7 +317,7 @@ docker compose down -v
 docker compose up --build -d
 ```
 
-The `-v` flag removes the named volumes (`pgdata`, `chdata`), which deletes all data. After restarting, run `observal auth login` again — it will auto-create a new admin account.
+The `-v` flag removes the named volumes (`pgdata`, `chdata`), which deletes all data. After restarting, run `observal auth login` again. It will auto-create a new admin account.
 
 ## Docker Details
 
@@ -337,6 +333,12 @@ docker compose logs -f
 docker compose logs -f observal-api
 ```
 
+Or use the Makefile shortcuts:
+
+```bash
+make logs              # tail all service logs
+```
+
 ### Restarting a single service
 
 ```bash
@@ -347,6 +349,8 @@ docker compose restart observal-api
 ### Rebuilding after code changes
 
 ```bash
+make rebuild           # rebuild and restart everything
+# or target a single service:
 cd docker
 docker compose up --build -d observal-api
 ```
@@ -360,6 +364,18 @@ You can verify the API is healthy:
 ```bash
 curl http://localhost:8000/health
 ```
+
+## Production Notes
+
+For production deployments, you should at minimum:
+
+1. Generate a unique `SECRET_KEY` (the default is not secure for production)
+2. Set strong `POSTGRES_PASSWORD` credentials
+3. Configure `CORS_ALLOWED_ORIGINS` to your actual frontend domain
+4. Set up OAuth/SSO if you need single sign-on (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_SERVER_METADATA_URL`)
+5. Consider enabling rate limiting tuning via `RATE_LIMIT_AUTH` and `RATE_LIMIT_AUTH_STRICT`
+
+The `/auth/bootstrap` endpoint is restricted to localhost access only for security.
 
 ## Troubleshooting
 
@@ -379,4 +395,4 @@ Check that `CLICKHOUSE_URL` in `.env` matches the credentials in the docker-comp
 Make sure `EVAL_MODEL_NAME` is set. If using Bedrock, verify your AWS credentials have `bedrock:InvokeModel` permission. Check the API logs for error details: `docker compose logs -f observal-api`.
 
 **Web UI shows blank page**
-The frontend may still be building. Check `docker compose logs -f observal-web`. If running locally, make sure `API_INTERNAL_URL` is set in `.env.local` and the backend is running.
+The frontend may still be building. Check `docker compose logs -f observal-web`. If running locally, make sure `NEXT_PUBLIC_API_URL` is set in `web/.env.local` and the backend is running.

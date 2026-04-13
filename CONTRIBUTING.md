@@ -41,11 +41,12 @@ git remote add upstream https://github.com/BlazeUp-AI/Observal.git
 
 ### Running Locally
 
-**Backend:**
+No configuration needed for local development. All settings have working defaults.
+
+**Full stack (Docker):**
 
 ```bash
 cp .env.example .env
-# edit .env with your values
 
 cd docker
 docker compose up --build -d
@@ -55,9 +56,9 @@ uv tool install --editable .
 observal auth login
 ```
 
-The API starts at http://localhost:8000. On a fresh server, `auth login` auto-creates an admin account.
+The API starts at http://localhost:8000 and the web UI at http://localhost:3000. On a fresh server, `auth login` auto-creates an admin account.
 
-**Frontend:**
+**Frontend only (for UI work):**
 
 ```bash
 cd web
@@ -65,9 +66,9 @@ pnpm install
 pnpm dev
 ```
 
-The web UI starts at http://localhost:3000. Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `web/.env.local` if the backend is on a different host.
+Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `web/.env.local` if the backend is on a different host.
 
-See [SETUP.md](SETUP.md) for detailed configuration and troubleshooting.
+See [SETUP.md](SETUP.md) for detailed configuration, eval engine setup, and troubleshooting.
 
 ## Enterprise Directory (`ee/`)
 
@@ -108,7 +109,7 @@ docs/update-setup-guide
 
 ### Code Style
 
-Python is linted and formatted with `ruff`. Dockerfiles are linted with `hadolint`. Pre-commit hooks enforce both — install them early so issues are caught before you commit.
+Python is linted and formatted with `ruff`. Dockerfiles are linted with `hadolint`. Pre-commit hooks enforce both - install them early so issues are caught before you commit.
 
 ```bash
 make hooks     # install pre-commit hooks
