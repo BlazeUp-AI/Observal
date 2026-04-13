@@ -5,6 +5,7 @@ import secrets
 import string
 from datetime import UTC, datetime, timedelta
 
+import jwt as pyjwt
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -25,11 +26,16 @@ from schemas.auth import (
     InviteRedeemRequest,
     InviteResponse,
     LoginRequest,
+    RefreshRequest,
     RegisterRequest,
     RequestResetRequest,
     ResetPasswordRequest,
+    RevokeRequest,
+    TokenRequest,
+    TokenResponse,
     UserResponse,
 )
+from services.jwt_service import create_access_token, create_refresh_token, decode_refresh_token
 from services.redis import get_redis
 
 logger = logging.getLogger(__name__)
@@ -271,6 +277,105 @@ async def exchange_code(req: CodeExchangeRequest, db: AsyncSession = Depends(get
 @router.get("/whoami", response_model=UserResponse)
 async def whoami(current_user: User = Depends(get_current_user)):
     return UserResponse.model_validate(current_user)
+
+
+# ── JWT Token Endpoints ────────────────────────────────────
+
+
+@router.post("/token", response_model=TokenResponse)
+@limiter.limit(settings.RATE_LIMIT_AUTH)
+async def issue_token(request: Request, req: TokenRequest, db: AsyncSession = Depends(get_db)):
+    """Exchange API key or email+password for JWT access + refresh tokens."""
+    user: User | None = None
+
+    if req.api_key:
+        key_hash = hashlib.sha256(req.api_key.encode()).hexdigest()
+        result = await db.execute(select(User).where(User.api_key_hash == key_hash))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+    else:
+        result = await db.execute(select(User).where(User.email == req.email))
+        user = result.scalar_one_or_none()
+        if not user or not user.verify_password(req.password):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    access_token, expires_in = create_access_token(user.id, user.role)
+    refresh_token, jti = create_refresh_token(user.id, user.role)
+
+    # Store refresh token JTI in Redis so it can be revoked later.
+    # TTL matches the refresh token's lifetime.
+    redis = get_redis()
+    refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+    await redis.setex(f"refresh_jti:{jti}", refresh_ttl, str(user.id))
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
+    )
+
+
+@router.post("/token/refresh", response_model=TokenResponse)
+@limiter.limit(settings.RATE_LIMIT_AUTH)
+async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Exchange a valid refresh token for a new access token (and rotated refresh token)."""
+    try:
+        payload = decode_refresh_token(req.refresh_token)
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid refresh token: {exc}")
+
+    jti = payload.get("jti")
+    user_id = payload.get("sub")
+    if not jti or not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token claims")
+
+    # Check that the JTI has not been revoked
+    redis = get_redis()
+    stored = await redis.get(f"refresh_jti:{jti}")
+    if stored is None:
+        raise HTTPException(status_code=401, detail="Refresh token has been revoked or expired")
+
+    # Revoke the old refresh token (one-time use / rotation)
+    await redis.delete(f"refresh_jti:{jti}")
+
+    # Look up the user to ensure they still exist
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User no longer exists")
+
+    # Issue new token pair
+    access_token, expires_in = create_access_token(user.id, user.role)
+    new_refresh_token, new_jti = create_refresh_token(user.id, user.role)
+
+    refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+    await redis.setex(f"refresh_jti:{new_jti}", refresh_ttl, str(user.id))
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        expires_in=expires_in,
+    )
+
+
+@router.post("/token/revoke")
+@limiter.limit(settings.RATE_LIMIT_AUTH)
+async def revoke_token(request: Request, req: RevokeRequest):
+    """Revoke a refresh token so it can no longer be used."""
+    try:
+        payload = decode_refresh_token(req.refresh_token)
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid refresh token: {exc}")
+
+    jti = payload.get("jti")
+    if not jti:
+        raise HTTPException(status_code=401, detail="Invalid refresh token claims")
+
+    redis = get_redis()
+    await redis.delete(f"refresh_jti:{jti}")
+
+    return {"detail": "Token revoked"}
 
 
 # ── Password Reset ──────────────────────────────────────────

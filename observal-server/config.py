@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     OAUTH_SERVER_METADATA_URL: str | None = None
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # JWT Settings
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
     # Rate limiting
     RATE_LIMIT_AUTH: str = "10/minute"
     RATE_LIMIT_AUTH_STRICT: str = "5/minute"

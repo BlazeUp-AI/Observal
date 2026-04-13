@@ -3,12 +3,14 @@ import uuid as _uuid
 from collections.abc import AsyncGenerator
 from functools import wraps
 
+import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session
 from models.user import User, UserRole
+from services.jwt_service import decode_access_token
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -16,25 +18,60 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
+    """Try to authenticate using a JWT access token. Returns User or None."""
+    try:
+        payload = decode_access_token(token)
+    except jwt.InvalidTokenError:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    try:
+        uid = _uuid.UUID(user_id)
+    except ValueError:
+        return None
+
+    result = await db.execute(select(User).where(User.id == uid))
+    return result.scalar_one_or_none()
+
+
+async def _authenticate_via_api_key(api_key: str, db: AsyncSession) -> User | None:
+    """Try to authenticate using a raw API key. Returns User or None."""
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    result = await db.execute(select(User).where(User.api_key_hash == key_hash))
+    return result.scalar_one_or_none()
+
+
 async def get_current_user(
     x_api_key: str | None = Header(None),
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    # Try X-API-Key header first
-    api_key = x_api_key
-    # Fall back to Bearer token in Authorization header
-    if not api_key and authorization and authorization.startswith("Bearer "):
-        api_key = authorization.removeprefix("Bearer ").strip()
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key")
+    # Extract bearer token from Authorization header
+    bearer_token: str | None = None
+    if authorization and authorization.startswith("Bearer "):
+        bearer_token = authorization.removeprefix("Bearer ").strip()
 
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-    result = await db.execute(select(User).where(User.api_key_hash == key_hash))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return user
+    # 1. If we have a Bearer token, try JWT first
+    if bearer_token:
+        user = await _authenticate_via_jwt(bearer_token, db)
+        if user:
+            return user
+        # JWT decode failed -- fall back to treating it as a raw API key
+        user = await _authenticate_via_api_key(bearer_token, db)
+        if user:
+            return user
+
+    # 2. Try X-API-Key header (backward compat with existing CLI installs)
+    if x_api_key:
+        user = await _authenticate_via_api_key(x_api_key, db)
+        if user:
+            return user
+
+    raise HTTPException(status_code=401, detail="Invalid or missing credentials")
 
 
 def require_role(*roles: UserRole):

@@ -90,3 +90,32 @@ class ResetPasswordRequest(BaseModel):
     email: EmailStr
     token: str
     new_password: str
+
+
+class TokenRequest(BaseModel):
+    api_key: str | None = None
+    email: EmailStr | None = None
+    password: str | None = None
+
+    @model_validator(mode="after")
+    def _require_credentials(self):
+        has_key = bool(self.api_key)
+        has_password = bool(self.email and self.password)
+        if not has_key and not has_password:
+            raise ValueError("Provide api_key or email+password")
+        return self
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # seconds
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RevokeRequest(BaseModel):
+    refresh_token: str
