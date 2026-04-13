@@ -20,8 +20,9 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ROLE_LABELS, type Role } from "@/hooks/use-role-guard";
 
-const ROLES = ["admin", "developer", "viewer"] as const;
+const ROLES: Role[] = ["super_admin", "admin", "reviewer", "user"];
 
 function RoleSelect({ userId, currentRole }: { userId: string; currentRole: string }) {
   const mutation = useUpdateUserRole();
@@ -32,13 +33,15 @@ function RoleSelect({ userId, currentRole }: { userId: string; currentRole: stri
       onValueChange={(value) => mutation.mutate({ id: userId, role: value })}
       disabled={mutation.isPending}
     >
-      <SelectTrigger className="h-7 w-[120px] text-xs">
-        <SelectValue />
+      <SelectTrigger className="h-7 w-[140px] text-xs">
+        <SelectValue>
+          {ROLE_LABELS[currentRole as Role] ?? currentRole}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {ROLES.map((r) => (
           <SelectItem key={r} value={r} className="text-xs">
-            {r}
+            {ROLE_LABELS[r]}
           </SelectItem>
         ))}
       </SelectContent>
@@ -52,7 +55,7 @@ export default function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<string>("developer");
+  const [role, setRole] = useState<string>("user");
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -65,7 +68,7 @@ export default function UsersPage() {
           setCreatedApiKey(data.api_key);
           setName("");
           setEmail("");
-          setRole("developer");
+          setRole("user");
         },
       },
     );
@@ -84,7 +87,7 @@ export default function UsersPage() {
     setCreatedApiKey(null);
     setName("");
     setEmail("");
-    setRole("developer");
+    setRole("user");
   }, []);
 
   const userCount = (users ?? []).length;
@@ -210,11 +213,13 @@ export default function UsersPage() {
                 <label className="text-xs font-medium text-muted-foreground">Role</label>
                 <Select value={role} onValueChange={setRole}>
                   <SelectTrigger className="h-8 text-sm">
-                    <SelectValue />
+                    <SelectValue>
+                      {ROLE_LABELS[role as Role] ?? role}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ROLES.map((r) => (
-                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                      <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

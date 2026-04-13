@@ -24,6 +24,7 @@ import {
   useEvalAggregate,
 } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
+import { hasMinRole } from "@/hooks/use-role-guard";
 import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
 import { StatusBadge } from "@/components/registry/status-badge";
@@ -238,7 +239,7 @@ export default function AgentDetailPage({
 
   const isAdmin =
     typeof window !== "undefined" &&
-    getUserRole() === "admin";
+    hasMinRole(getUserRole(), "admin");
 
   const a = agent as unknown as AgentDetail | undefined;
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];

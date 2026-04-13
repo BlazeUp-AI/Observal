@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { auth, setApiKey, setUserRole, getUserRole } from "@/lib/api";
+import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,8 @@ type Mode = "login" | "register" | "api-key" | "reset-request" | "reset-confirm"
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { deploymentMode, ssoEnabled } = useDeploymentConfig();
+  const isEnterprise = deploymentMode === "enterprise";
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -209,8 +212,8 @@ function LoginContent() {
               }}
               className="space-y-4"
             >
-              {/* Email + Password mode (login & register) */}
-              {(mode === "login" || mode === "register") && (
+              {/* Email + Password mode (login & register) — hidden in enterprise login mode */}
+              {(mode === "login" || mode === "register") && !(isEnterprise && mode === "login") && (
                 <>
                   <div className="space-y-2 animate-in">
                     <Label htmlFor="email">Email</Label>
@@ -360,21 +363,24 @@ function LoginContent() {
 
               {/* Submit */}
               <div className="animate-in stagger-2 space-y-3">
-                <Button type="submit" disabled={loading || ssoLoading} className="w-full">
-                  {loading && !ssoLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      {mode === "register" ? "Create Account"
-                        : mode === "reset-request" ? "Send Reset Code"
-                        : mode === "reset-confirm" ? "Reset Password"
-                        : "Sign in"}
-                      <ArrowRight className="ml-1 h-4 w-4" />
-                    </>
-                  )}
-                </Button>
+                {/* In enterprise login mode, hide the password submit button */}
+                {!(isEnterprise && mode === "login") && (
+                  <Button type="submit" disabled={loading || ssoLoading} className="w-full">
+                    {loading && !ssoLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        {mode === "register" ? "Create Account"
+                          : mode === "reset-request" ? "Send Reset Code"
+                          : mode === "reset-confirm" ? "Reset Password"
+                          : "Sign in"}
+                        <ArrowRight className="ml-1 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                )}
 
-                {mode === "login" && (
+                {mode === "login" && !isEnterprise && (
                   <div className="relative py-2">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -384,12 +390,12 @@ function LoginContent() {
                     </div>
                   </div>
                 )}
-                
-                {mode === "login" && (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full" 
+
+                {mode === "login" && (isEnterprise || ssoEnabled) && (
+                  <Button
+                    type="button"
+                    variant={isEnterprise ? "default" : "outline"}
+                    className="w-full"
                     onClick={handleSsoLogin}
                     disabled={loading || ssoLoading}
                   >
@@ -405,7 +411,7 @@ function LoginContent() {
 
               {/* Mode switches */}
               <div className="animate-in stagger-3 space-y-2 text-center">
-                {mode === "login" && (
+                {mode === "login" && !isEnterprise && (
                   <>
                     <button
                       type="button"

@@ -32,8 +32,11 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { getUserRole } from "@/lib/api";
+import { hasMinRole, type Role } from "@/hooks/use-role-guard";
 
-const registryNav: { title: string; href: string; icon: typeof Home; requiresAuth?: boolean }[] = [
+type NavItem = { title: string; href: string; icon: typeof Home; requiresAuth?: boolean; minRole?: Role };
+
+const registryNav: NavItem[] = [
   { title: "Home", href: "/", icon: Home },
   { title: "Agents", href: "/agents", icon: Bot },
   { title: "Leaderboard", href: "/agents/leaderboard", icon: Trophy },
@@ -41,25 +44,28 @@ const registryNav: { title: string; href: string; icon: typeof Home; requiresAut
   { title: "Builder", href: "/agents/builder", icon: Hammer, requiresAuth: true },
 ];
 
-const adminNav = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Traces", href: "/traces", icon: Activity },
-  { title: "Errors", href: "/errors", icon: AlertTriangle },
-  { title: "Evals", href: "/eval", icon: FlaskConical },
-  { title: "Review", href: "/review", icon: ShieldCheck },
-  { title: "Users", href: "/users", icon: Users },
-  { title: "Settings", href: "/settings", icon: Settings },
+const reviewNav: NavItem[] = [
+  { title: "Review", href: "/review", icon: ShieldCheck, minRole: "reviewer" },
+];
+
+const adminNav: NavItem[] = [
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, minRole: "admin" },
+  { title: "Traces", href: "/traces", icon: Activity, minRole: "admin" },
+  { title: "Errors", href: "/errors", icon: AlertTriangle, minRole: "admin" },
+  { title: "Evals", href: "/eval", icon: FlaskConical, minRole: "admin" },
+  { title: "Users", href: "/users", icon: Users, minRole: "admin" },
+  { title: "Settings", href: "/settings", icon: Settings, minRole: "admin" },
 ];
 
 export const allNavItems = [
   { group: "Registry", items: registryNav },
+  { group: "Review", items: reviewNav },
   { group: "Admin", items: adminNav },
 ];
 
 export function RegistrySidebar() {
   const pathname = usePathname();
   const role = getUserRole();
-  const isAdmin = role === "admin";
   const isAuthenticated = typeof window !== "undefined" && !!localStorage.getItem("observal_api_key");
 
   function isActive(href: string) {
@@ -70,6 +76,14 @@ export function RegistrySidebar() {
   const visibleRegistryNav = registryNav.filter(
     (item) => !item.requiresAuth || isAuthenticated,
   );
+
+  const visibleReviewNav = isAuthenticated
+    ? reviewNav.filter((item) => !item.minRole || hasMinRole(role, item.minRole))
+    : [];
+
+  const visibleAdminNav = isAuthenticated
+    ? adminNav.filter((item) => !item.minRole || hasMinRole(role, item.minRole))
+    : [];
 
   return (
     <Sidebar collapsible="icon">
@@ -101,14 +115,36 @@ export function RegistrySidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {isAuthenticated && isAdmin && (
+        {visibleReviewNav.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              Review
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleReviewNav.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive(item.href)}>
+                      <Link href={item.href}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {visibleAdminNav.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
               Admin
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {adminNav.map((item) => (
+                {visibleAdminNav.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={isActive(item.href)}>
                       <Link href={item.href}>

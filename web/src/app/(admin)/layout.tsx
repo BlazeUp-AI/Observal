@@ -3,7 +3,7 @@ import { RegistrySidebar } from "@/components/nav/registry-sidebar";
 import { CommandMenu } from "@/components/nav/command-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthGuard } from "@/components/layouts/auth-guard";
-import { AdminGuard } from "@/components/layouts/admin-guard";
+import { RoleGuard } from "@/components/layouts/role-guard";
 
 export default function AdminLayout({
   children,
@@ -12,14 +12,14 @@ export default function AdminLayout({
 }) {
   return (
     <AuthGuard>
-      <AdminGuard>
+      <RoleGuard minRole="admin">
         <SidebarProvider>
           <RegistrySidebar />
           <SidebarInset>{children}</SidebarInset>
           <CommandMenu />
           <Toaster visibleToasts={1} />
         </SidebarProvider>
-      </AdminGuard>
+      </RoleGuard>
     </AuthGuard>
   );
 }
