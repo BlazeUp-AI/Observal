@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -85,6 +86,16 @@ async def lifespan(app: FastAPI):
 
     async with _session_factory() as db:
         await seed_demo_accounts(db)
+
+    # Load enterprise module when in enterprise mode
+    _logger = logging.getLogger("observal")
+    if settings.DEPLOYMENT_MODE == "enterprise":
+        try:
+            from ee import register_enterprise
+            register_enterprise(app, settings)
+        except ImportError:
+            _logger.error("DEPLOYMENT_MODE=enterprise but ee/ module not found")
+            app.state.enterprise_issues = ["ee/ module not installed"]
 
     yield
     await close_redis()
