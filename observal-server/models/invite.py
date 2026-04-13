@@ -25,7 +25,7 @@ class InviteCode(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, default=_generate_code)
-    role: Mapped[str] = mapped_column(String(20), nullable=False, default="developer")
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="reviewer")
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     expires_at: Mapped[datetime] = mapped_column(

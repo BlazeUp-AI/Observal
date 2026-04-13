@@ -30,7 +30,7 @@ class UserRoleUpdate(BaseModel):
 class UserCreateRequest(BaseModel):
     email: str
     name: str
-    role: str = "developer"
+    role: str = "reviewer"
 
 
 class UserCreateResponse(BaseModel):

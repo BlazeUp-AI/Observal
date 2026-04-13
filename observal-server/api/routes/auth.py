@@ -533,7 +533,7 @@ async def redeem_invite(request: Request, req: InviteRedeemRequest, db: AsyncSes
     try:
         role = UserRole(invite.role)
     except ValueError:
-        role = UserRole.developer
+        role = UserRole.reviewer
 
     user = User(
         email=email,
