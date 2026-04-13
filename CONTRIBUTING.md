@@ -4,6 +4,8 @@
 
 Contributions of all kinds are welcome: bug fixes, new features, documentation improvements.
 
+Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+
 ## Fork and Clone
 
 1. Fork the repository on GitHub.
