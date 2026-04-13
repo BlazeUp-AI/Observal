@@ -1,0 +1,65 @@
+Observal Enterprise License
+Version 1.0
+
+Copyright (c) 2024-present Observal (BlazeUp AI)
+
+TERMS AND CONDITIONS
+
+1. Grant of Rights
+
+   Subject to the terms of this License, Observal (BlazeUp AI) ("Licensor") grants you
+   a non-exclusive, non-transferable, non-sublicensable license to:
+
+   (a) View, read, and study the source code in this directory ("Enterprise
+       Code") for reference and evaluation purposes.
+
+   (b) Modify the Enterprise Code for your own internal evaluation and
+       development purposes.
+
+2. Commercial Use Requires a License Key
+
+   To use the Enterprise Code (or any derivative thereof) in production,
+   you must obtain a valid commercial license key from Observal (BlazeUp AI). Production
+   use is defined as any use that serves end users, processes real data, or
+   operates in a non-development environment.
+
+   Contact: contact@blazeup.app
+
+3. Restrictions
+
+   Without a valid commercial license key, you may NOT:
+
+   (a) Deploy the Enterprise Code in any production environment.
+   (b) Distribute, sublicense, or sell the Enterprise Code or any
+       derivative works.
+   (c) Remove or alter any copyright, license, or attribution notices.
+   (d) Use the Enterprise Code to provide a competing hosted service.
+
+4. Contributions
+
+   Community contributions are NOT accepted into this directory. All code
+   under this license is written exclusively by Observal (BlazeUp AI) or its authorized
+   contractors. Community contributions should be directed to the open-source
+   directories of the repository, which are licensed under Apache License 2.0.
+
+5. No Warranty
+
+   THE ENTERPRISE CODE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE ENTERPRISE CODE
+   OR THE USE OR OTHER DEALINGS IN THE ENTERPRISE CODE.
+
+6. Termination
+
+   This License is effective until terminated. It will terminate automatically
+   if you fail to comply with any term. Upon termination, you must cease all
+   use and destroy all copies of the Enterprise Code.
+
+7. Governing Law
+
+   This License shall be governed by and construed in accordance with the
+   laws of the State of Delaware, United States, without regard to its
+   conflict of law provisions.
