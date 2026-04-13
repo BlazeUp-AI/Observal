@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from services.clickhouse import _escape, _map_literal, _query
 from services.secrets_redactor import redact_secrets
@@ -22,7 +22,7 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
 
 
 @router.get("/sessions")
-async def list_sessions():
+async def list_sessions(status: str | None = Query(None)):
     rows = await _ch_json(
         "SELECT "
         # For Kiro sessions with a conversation_id, group by that instead of
@@ -32,6 +32,12 @@ async def list_sessions():
         "   LogAttributes['session.id']) AS session_id, "
         "min(Timestamp) AS first_event_time, "
         "max(Timestamp) AS last_event_time, "
+        "(max(Timestamp) > now('UTC') - INTERVAL 30 MINUTE "
+        " AND argMax("
+        "   if(LogAttributes['event.name'] != '', LogAttributes['event.name'], EventName),"
+        "   Timestamp"
+        " ) NOT IN ('hook_stop', 'hook_stopfailure')"
+        ") AS is_active, "
         "countIf(EventName = 'user_prompt' OR LogAttributes['event.name'] = 'user_prompt' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS prompt_count, "
         "countIf(LogAttributes['event.name'] = 'api_request') AS api_request_count, "
         "countIf(LogAttributes['event.name'] = 'tool_result') AS tool_result_count, "
@@ -51,6 +57,10 @@ async def list_sessions():
         "ORDER BY last_event_time DESC "
         "LIMIT 100"
     )
+    for row in rows:
+        row["is_active"] = bool(int(row.get("is_active", 0)))
+    if status == "active":
+        rows = [r for r in rows if r["is_active"]]
     return rows
 
 

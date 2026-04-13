@@ -18,6 +18,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -26,6 +28,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 interface SessionRow {
   session_id: string;
   service_name: string;
+  is_active?: boolean;
   first_event_time?: string;
   last_event_time?: string;
   prompt_count?: number;
@@ -65,12 +68,20 @@ const columns: ColumnDef<SessionRow>[] = [
     accessorKey: "session_id",
     header: "Session",
     cell: ({ row }) => (
-      <Link
-        href={`/traces/${row.original.session_id}`}
-        className="font-[family-name:var(--font-mono)] text-xs hover:text-primary-accent transition-colors"
-      >
-        {row.original.session_id.slice(0, 12)}...
-      </Link>
+      <div className="flex items-center gap-2">
+        {row.original.is_active && (
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+        )}
+        <Link
+          href={`/traces/${row.original.session_id}`}
+          className="font-[family-name:var(--font-mono)] text-xs hover:text-primary-accent transition-colors"
+        >
+          {row.original.session_id.slice(0, 12)}...
+        </Link>
+      </div>
     ),
   },
   {
@@ -182,13 +193,21 @@ function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
 }
 
 export default function TracesPage() {
-  const { data: sessions, isLoading, isError, error, refetch } = useOtelSessions();
+  const [tab, setTab] = useState<"all" | "active">("all");
+  const { data: sessions, isLoading, isError, error, refetch } = useOtelSessions({
+    refetchInterval: tab === "active" ? 10_000 : false,
+  });
   const router = useRouter();
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
 
-  const data = useMemo(() => (sessions ?? []) as SessionRow[], [sessions]);
+  const allSessions = useMemo(() => (sessions ?? []) as SessionRow[], [sessions]);
+  const activeCount = useMemo(() => allSessions.filter((s) => s.is_active).length, [allSessions]);
+  const data = useMemo(
+    () => (tab === "active" ? allSessions.filter((s) => s.is_active) : allSessions),
+    [allSessions, tab],
+  );
 
   const table = useReactTable({
     data,
@@ -227,7 +246,7 @@ export default function TracesPage() {
           <TableSkeleton rows={8} cols={7} />
         ) : isError ? (
           <ErrorState message={error?.message} onRetry={() => refetch()} />
-        ) : (sessions ?? []).length === 0 ? (
+        ) : allSessions.length === 0 ? (
           <EmptyState
             icon={Activity}
             title="No sessions yet"
@@ -235,15 +254,37 @@ export default function TracesPage() {
           />
         ) : (
           <div className="animate-in space-y-3">
-            {/* Search */}
-            <div className="relative max-w-sm">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search sessions, models..."
-                value={searchValue}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="pl-8 h-8 text-sm"
-              />
+            {/* Tabs + Search */}
+            <div className="flex items-center gap-4">
+              <Tabs value={tab} onValueChange={(v) => setTab(v as "all" | "active")}>
+                <TabsList>
+                  <TabsTrigger value="all">
+                    All
+                    <span className="ml-1.5 text-[10px] text-muted-foreground tabular-nums">{allSessions.length}</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="active" className="gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                    </span>
+                    Active
+                    {activeCount > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] font-medium">
+                        {activeCount}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="relative max-w-sm flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search sessions, models..."
+                  value={searchValue}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
             </div>
 
             {/* Table */}
@@ -295,6 +336,7 @@ export default function TracesPage() {
 
             <p className="text-xs text-muted-foreground">
               {table.getFilteredRowModel().rows.length} session{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
+              {tab === "active" && " \u00b7 auto-refreshing every 10s"}
             </p>
           </div>
         )}

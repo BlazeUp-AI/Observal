@@ -246,6 +246,7 @@ export interface OtelSession {
   session_id: string;
   first_event_time: string;
   last_event_time: string;
+  is_active?: boolean;
   prompt_count: number;
   api_request_count: number;
   tool_result_count: number;

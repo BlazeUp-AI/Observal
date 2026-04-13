@@ -259,8 +259,12 @@ export function useIdeUsage() {
 }
 // ── OTel ────────────────────────────────────────────────────────────
 
-export function useOtelSessions() {
-  return useQuery({ queryKey: ['otel', 'sessions'], queryFn: dashboard.otelSessions });
+export function useOtelSessions(options?: { refetchInterval?: number | false }) {
+  return useQuery({
+    queryKey: ['otel', 'sessions'],
+    queryFn: dashboard.otelSessions,
+    refetchInterval: options?.refetchInterval,
+  });
 }
 export function useOtelSession(id: string | undefined) {
   return useQuery({ queryKey: ['otel', 'session', id], queryFn: () => dashboard.otelSession(id!), enabled: !!id });
