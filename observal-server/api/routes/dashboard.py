@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from models.agent import Agent, AgentStatus
 from models.download import AgentDownloadRecord
 from models.mcp import ListingStatus, McpDownload, McpListing
-from models.user import User
+from models.user import User, UserRole
 from schemas.dashboard import (
     AgentMetrics,
     DateAvg,
@@ -66,7 +66,7 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
 async def mcp_metrics(
     listing_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     dl_count = await db.scalar(select(func.count(McpDownload.id)).where(McpDownload.listing_id == listing_id)) or 0
 
@@ -102,7 +102,7 @@ async def mcp_metrics(
 async def agent_metrics(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     from models.eval import Scorecard
     from services.score_aggregator import ScoreAggregator
@@ -336,7 +336,7 @@ async def agent_leaderboard(
 async def trends(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     days = _range_days(range_)
     now = dt.now(UTC)
@@ -374,7 +374,7 @@ async def trends(
 async def token_stats(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     days = _range_days(range_)
     days_param = {"param_days": str(days)}
@@ -506,7 +506,7 @@ async def token_stats(
 @router.get("/dashboard/ide-usage", response_model=IdeUsage)
 async def ide_usage(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     rows = await _ch_json(
         "SELECT t.ide AS ide, "
@@ -540,7 +540,7 @@ async def ide_usage(
 @router.get("/dashboard/sandbox-metrics", response_model=SandboxStats)
 async def sandbox_metrics(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     agg = await _ch_json(
         "SELECT count() AS total_runs, "
@@ -609,7 +609,7 @@ async def sandbox_metrics(
 @router.get("/dashboard/graphrag-metrics", response_model=GraphRagStats)
 async def graphrag_metrics(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     agg = await _ch_json(
         "SELECT count() AS total_queries, "
@@ -676,7 +676,7 @@ async def graphrag_metrics(
 async def run_graphrag_ragas_eval(
     req: RagasEvalRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Run RAGAS evaluation on recent retrieval spans for a GraphRAG."""
     from services.ragas_eval import run_ragas_on_graphrag
@@ -703,7 +703,7 @@ async def run_graphrag_ragas_eval(
 async def graphrag_ragas_scores(
     graphrag_id: str | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Get previously computed RAGAS scores. If graphrag_id is provided, scoped to that GraphRAG; otherwise aggregate."""
     if graphrag_id:
@@ -731,7 +731,7 @@ async def graphrag_ragas_scores(
 @router.get("/dashboard/latency-heatmap", response_model=list[LatencyCell])
 async def latency_heatmap(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     rows = await _ch_json(
         "SELECT name, toStartOfHour(start_time) AS hour, "
@@ -765,7 +765,7 @@ async def latency_heatmap(
 @router.get("/dashboard/unannotated-traces", response_model=list[UnannotatedTrace])
 async def unannotated_traces(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     rows = await _ch_json(
         "SELECT trace_id, name, session_id, ide, trace_type, start_time "

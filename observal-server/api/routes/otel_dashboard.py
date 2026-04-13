@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from api.deps import get_current_user
-from models.user import User
+from api.deps import require_role
+from models.user import User, UserRole
 from services.clickhouse import _query
 from services.secrets_redactor import redact_secrets
 
@@ -26,7 +26,7 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
 @router.get("/sessions")
 async def list_sessions(
     status: str | None = Query(None),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     rows = await _ch_json(
         "SELECT "
@@ -70,7 +70,7 @@ async def list_sessions(
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str, current_user: User = Depends(get_current_user)):
+async def get_session(session_id: str, current_user: User = Depends(require_role(UserRole.admin))):
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -103,7 +103,7 @@ async def get_session(session_id: str, current_user: User = Depends(get_current_
 
 
 @router.get("/traces")
-async def list_traces(current_user: User = Depends(get_current_user)):
+async def list_traces(current_user: User = Depends(require_role(UserRole.admin))):
     rows = await _ch_json(
         "SELECT "
         "TraceId AS trace_id, "
@@ -122,7 +122,7 @@ async def list_traces(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/traces/{trace_id}")
-async def get_trace(trace_id: str, current_user: User = Depends(get_current_user)):
+async def get_trace(trace_id: str, current_user: User = Depends(require_role(UserRole.admin))):
     rows = await _ch_json(
         "SELECT "
         "SpanId AS span_id, "
@@ -168,7 +168,7 @@ async def get_trace(trace_id: str, current_user: User = Depends(get_current_user
 
 
 @router.get("/errors")
-async def list_errors(current_user: User = Depends(get_current_user)):
+async def list_errors(current_user: User = Depends(require_role(UserRole.admin))):
     """List recent error events (tool failures, stop failures, API errors)."""
     rows = await _ch_json(
         "SELECT "
@@ -195,7 +195,7 @@ async def list_errors(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/stats")
-async def otel_stats(current_user: User = Depends(get_current_user)):
+async def otel_stats(current_user: User = Depends(require_role(UserRole.admin))):
     log_rows = await _ch_json(
         "SELECT "
         "count(DISTINCT LogAttributes['session.id']) AS total_sessions, "

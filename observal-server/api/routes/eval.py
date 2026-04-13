@@ -6,10 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import get_current_user, get_db, resolve_prefix_id
+from api.deps import get_db, require_role, resolve_prefix_id
 from models.agent import Agent, AgentGoalTemplate
 from models.eval import EvalRun, EvalRunStatus, Scorecard
-from models.user import User
+from models.user import User, UserRole
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
 from services.clickhouse import query_spans
 from services.eval_service import (
@@ -33,7 +33,7 @@ async def run_evaluation(
     agent_id: str,
     req: EvalRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     # Load agent with goal template
     agent = await resolve_prefix_id(
@@ -101,7 +101,7 @@ async def run_evaluation(
 async def list_eval_runs(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     agent = await resolve_prefix_id(Agent, agent_id, db)
     result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent.id).order_by(EvalRun.started_at.desc()))
@@ -113,7 +113,7 @@ async def list_scorecards(
     agent_id: str,
     version: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     agent = await resolve_prefix_id(Agent, agent_id, db)
     stmt = select(Scorecard).where(Scorecard.agent_id == agent.id).options(*_scorecard_load)
@@ -127,7 +127,7 @@ async def list_scorecards(
 async def get_scorecard(
     scorecard_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     sc = await resolve_prefix_id(Scorecard, scorecard_id, db, load_options=_scorecard_load, display_field="version")
     return ScorecardResponse.model_validate(sc)
@@ -139,7 +139,7 @@ async def compare_versions(
     version_a: str = Query(...),
     version_b: str = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Compare average scores between two agent versions."""
     from sqlalchemy import func
@@ -169,7 +169,7 @@ async def eval_session(
     session_id: str,
     agent_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Evaluate a hook-based session by materializing otel_logs into spans.
 
@@ -232,7 +232,7 @@ async def eval_agent_in_session(
     agent_id: str,
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Evaluate a specific agent's contribution within a session.
 
@@ -342,7 +342,7 @@ async def agent_aggregate(
     agent_id: str,
     window_size: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Get aggregate scoring stats for an agent (CI, drift, dimension breakdown)."""
     agent = await resolve_prefix_id(Agent, agent_id, db)
@@ -369,7 +369,7 @@ async def agent_aggregate(
 async def scorecard_penalties(
     scorecard_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Get the list of penalties applied to a scorecard with evidence."""
     sc = await resolve_prefix_id(Scorecard, scorecard_id, db, display_field="version")

@@ -4,8 +4,8 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, Request
 
-from api.deps import get_current_user
-from models.user import User
+from api.deps import require_role
+from models.user import User, UserRole
 from schemas.telemetry import (
     IngestBatch,
     IngestResponse,
@@ -31,7 +31,7 @@ DEFAULT_PROJECT = "default"
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest(
     batch: IngestBatch,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
     x_observal_environment: str = Header("default"),
 ):
     """New ingestion endpoint for shim/proxy telemetry."""
@@ -180,7 +180,7 @@ async def ingest(
 @router.post("/events")
 async def ingest_events(
     batch: TelemetryBatch,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     ingested = 0
@@ -231,7 +231,7 @@ async def ingest_events(
 
 
 @router.get("/status", response_model=TelemetryStatusResponse)
-async def telemetry_status(current_user: User = Depends(get_current_user)):
+async def telemetry_status(current_user: User = Depends(require_role(UserRole.admin))):
     counts = await query_recent_events(60)
     return TelemetryStatusResponse(
         tool_call_events=counts["tool_call_events"],
@@ -253,7 +253,7 @@ _KIRO_EVENT_MAP = {
 
 
 @router.post("/hooks")
-async def ingest_hook(request: Request, current_user: User = Depends(get_current_user)):
+async def ingest_hook(request: Request, current_user: User = Depends(require_role(UserRole.admin))):
     """Ingest raw hook JSON from Claude Code/Kiro."""
     body = await request.json()
 
