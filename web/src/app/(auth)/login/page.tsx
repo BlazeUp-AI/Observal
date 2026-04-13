@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 
 type Mode = "login" | "register" | "api-key" | "reset-request" | "reset-confirm";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
@@ -162,8 +162,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="rounded-lg border bg-card shadow-sm">
           {/* Brand header */}
-          <div className="flex flex-col items-center gap-2 border-b px-8 pb-6 pt-8 animate-in
-">
+          <div className="flex flex-col items-center gap-2 border-b px-8 pb-6 pt-8 animate-in">
             <h1 className="text-2xl font-semibold tracking-tight font-[family-name:var(--font
 -display)]">
               Observal
@@ -444,5 +443,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }
