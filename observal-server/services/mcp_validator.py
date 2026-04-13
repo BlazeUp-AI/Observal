@@ -1,5 +1,6 @@
 import ast
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -13,6 +14,9 @@ from models.mcp import McpListing, McpValidationResult
 
 ALLOWED_SCHEMES = {"https", "http"}
 BLOCKED_SCHEMES = {"file", "ftp", "ssh", "git"}
+
+# Self-hosted deployments set this to allow corporate GitLab/GitHub Enterprise URLs
+ALLOW_INTERNAL_URLS = os.environ.get("ALLOW_INTERNAL_URLS", "").lower() in ("1", "true", "yes")
 
 # Patterns that indicate an MCP server implementation (Python files)
 _PYTHON_MCP_PATTERN = re.compile(
@@ -39,15 +43,16 @@ def _validate_git_url(url: str) -> str | None:
         return f"URL scheme '{parsed.scheme}' not allowed. Use https://"
     if not parsed.hostname:
         return "URL has no hostname"
-    # Block internal/private IPs
-    hostname = parsed.hostname.lower()
-    if (
-        hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
-        or hostname.startswith("10.")
-        or hostname.startswith("192.168.")
-        or hostname.startswith("172.")
-    ):
-        return "Internal/private URLs not allowed"
+    # Block internal/private IPs unless self-hosted mode is enabled
+    if not ALLOW_INTERNAL_URLS:
+        hostname = parsed.hostname.lower()
+        if (
+            hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+            or hostname.startswith("10.")
+            or hostname.startswith("192.168.")
+            or hostname.startswith("172.")
+        ):
+            return "Internal/private URLs not allowed (set ALLOW_INTERNAL_URLS=true for self-hosted deployments)"
     return None
 
 

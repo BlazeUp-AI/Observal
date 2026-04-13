@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from models.mcp import ListingStatus
+from schemas.constants import VALID_PROMPT_CATEGORIES, make_ide_list_validator, make_option_validator
 
 
 class PromptSubmitRequest(BaseModel):
@@ -17,6 +18,9 @@ class PromptSubmitRequest(BaseModel):
     model_hints: dict | None = None
     tags: list[str] = []
     supported_ides: list[str] = []
+
+    _validate_category = field_validator("category")(make_option_validator("category", VALID_PROMPT_CATEGORIES))
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
 class PromptListingResponse(BaseModel):

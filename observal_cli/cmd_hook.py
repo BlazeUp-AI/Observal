@@ -9,6 +9,8 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
+from observal_cli.constants import VALID_HOOK_EVENTS, VALID_HOOK_HANDLER_TYPES
+from observal_cli.prompts import select_one
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
 hook_app = typer.Typer(help="Hook registry commands")
@@ -32,8 +34,8 @@ def hook_submit(
             "version": typer.prompt("Version", default="1.0.0"),
             "description": typer.prompt("Description"),
             "owner": typer.prompt("Owner"),
-            "event": typer.prompt("Event"),
-            "handler_type": typer.prompt("Handler type"),
+            "event": select_one("Event", VALID_HOOK_EVENTS),
+            "handler_type": select_one("Handler type", VALID_HOOK_HANDLER_TYPES),
             "handler_config": _json.loads(typer.prompt("Handler config (JSON)")),
         }
     with spinner("Submitting hook..."):

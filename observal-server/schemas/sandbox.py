@@ -1,9 +1,15 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from models.mcp import ListingStatus
+from schemas.constants import (
+    VALID_SANDBOX_NETWORK_POLICIES,
+    VALID_SANDBOX_RUNTIME_TYPES,
+    make_ide_list_validator,
+    make_option_validator,
+)
 
 
 class SandboxSubmitRequest(BaseModel):
@@ -20,6 +26,14 @@ class SandboxSubmitRequest(BaseModel):
     env_vars: dict = {}
     entrypoint: str | None = None
     supported_ides: list[str] = []
+
+    _validate_runtime_type = field_validator("runtime_type")(
+        make_option_validator("runtime_type", VALID_SANDBOX_RUNTIME_TYPES)
+    )
+    _validate_network_policy = field_validator("network_policy")(
+        make_option_validator("network_policy", VALID_SANDBOX_NETWORK_POLICIES)
+    )
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
 class SandboxListingResponse(BaseModel):

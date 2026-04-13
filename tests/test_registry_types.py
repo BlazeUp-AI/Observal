@@ -153,7 +153,7 @@ class TestSchemas:
         from schemas.hook import HookSubmitRequest
 
         r = HookSubmitRequest(
-            name="h", version="1.0", description="desc", owner="o", event="pre_tool_call", handler_type="script"
+            name="h", version="1.0", description="desc", owner="o", event="PreToolUse", handler_type="command"
         )
         assert r.execution_mode == "async"
         assert r.priority == 100
@@ -162,7 +162,7 @@ class TestSchemas:
         from schemas.prompt import PromptSubmitRequest
 
         r = PromptSubmitRequest(
-            name="p", version="1.0", description="desc", owner="o", category="c", template="Hello {{ name }}"
+            name="p", version="1.0", description="desc", owner="o", category="general", template="Hello {{ name }}"
         )
         assert r.variables == []
 
@@ -180,7 +180,7 @@ class TestSchemas:
         from schemas.hook import HookSubmitRequest
 
         with pytest.raises(ValueError):
-            HookSubmitRequest(name="h", version="1.0", description="d", owner="o", handler_type="script")
+            HookSubmitRequest(name="h", version="1.0", description="d", owner="o", handler_type="command")
 
     def test_sandbox_submit_missing_image(self):
         from schemas.sandbox import SandboxSubmitRequest
@@ -267,7 +267,7 @@ class TestSkillRoutes:
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                 r = await ac.post(
                     "/api/v1/skills/submit",
-                    json={"name": "s", "version": "1.0", "description": "d", "owner": "o", "task_type": "review"},
+                    json={"name": "s", "version": "1.0", "description": "d", "owner": "o", "task_type": "code-review"},
                 )
         assert r.status_code == 200
         db.add.assert_called_once()
@@ -328,8 +328,8 @@ class TestHookRoutes:
                     "version": "1.0",
                     "description": "d",
                     "owner": "o",
-                    "event": "pre_tool_call",
-                    "handler_type": "script",
+                    "event": "PreToolUse",
+                    "handler_type": "command",
                 },
             )
         assert r.status_code == 200
@@ -391,7 +391,7 @@ class TestPromptRoutes:
                     "version": "1.0",
                     "description": "d",
                     "owner": "o",
-                    "category": "c",
+                    "category": "general",
                     "template": "Hello {{ name }}",
                 },
             )

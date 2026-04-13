@@ -7,6 +7,8 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
+from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES
+from observal_cli.prompts import select_many, select_one
 from observal_cli.render import (
     console,
     ide_tags,
@@ -47,19 +49,13 @@ def _submit_impl(git_url, name, category, yes):
     _version = (
         prefill.get("version", "0.1.0") if yes else typer.prompt("Version", default=prefill.get("version", "0.1.0"))
     )
-    _category = category or ("general" if yes else typer.prompt("Category"))
+    _category = category or ("general" if yes else select_one("Category", VALID_MCP_CATEGORIES, default="general"))
     _desc = (
         prefill.get("description", "") if yes else typer.prompt("Description", default=prefill.get("description", ""))
     )
     _owner = typer.prompt("Owner / Team") if not yes else "default"
 
-    ide_choices = ["vscode", "cursor", "kiro", "claude_code", "gemini_cli"]
-    if not yes:
-        rprint(f"[dim]IDEs: {', '.join(ide_choices)}[/dim]")
-        ides_input = typer.prompt("Supported IDEs (comma-separated)", default=",".join(ide_choices))
-    else:
-        ides_input = ",".join(ide_choices)
-    supported_ides = [i.strip() for i in ides_input.split(",") if i.strip()]
+    supported_ides = select_many("Supported IDEs", VALID_IDES, defaults=VALID_IDES) if not yes else list(VALID_IDES)
 
     _setup = "" if yes else typer.prompt("Setup instructions", default="")
     _changelog = "Initial release" if yes else typer.prompt("Changelog", default="Initial release")
