@@ -77,7 +77,7 @@ const columns: ColumnDef<SessionRow>[] = [
         )}
         <Link
           href={`/traces/${row.original.session_id}`}
-          className="font-[family-name:var(--font-mono)] text-xs hover:text-primary-accent transition-colors"
+          className="font-[family-name:var(--font-mono)] text-sm hover:text-primary-accent transition-colors"
         >
           {row.original.session_id.slice(0, 12)}...
         </Link>
@@ -90,7 +90,7 @@ const columns: ColumnDef<SessionRow>[] = [
     cell: ({ row }) => {
       const m = row.original.model;
       return (
-        <span className="text-xs font-medium">
+        <span className="text-sm font-medium">
           {m ? m.replace("claude-", "").replace("-20251001", "") : "-"}
         </span>
       );
@@ -102,7 +102,7 @@ const columns: ColumnDef<SessionRow>[] = [
     cell: ({ row }) => {
       const uid = row.original.user_id;
       return (
-        <span className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground" title={uid}>
+        <span className="text-sm font-[family-name:var(--font-mono)] text-muted-foreground" title={uid}>
           {uid ? uid.slice(0, 8) + "…" : "-"}
         </span>
       );
@@ -114,7 +114,7 @@ const columns: ColumnDef<SessionRow>[] = [
     cell: ({ row }) => {
       const t = row.original.terminal_type;
       const label = t ? t.replace("wsl-", "WSL ") : "-";
-      return <span className="text-xs">{label}</span>;
+      return <span className="text-sm">{label}</span>;
     },
   },
   {
@@ -123,13 +123,13 @@ const columns: ColumnDef<SessionRow>[] = [
     cell: ({ row }) => {
       if (isKiroSession(row.original)) {
         return (
-          <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-orange-500" title="Kiro credits">
+          <span className="text-sm font-[family-name:var(--font-mono)] tabular-nums text-orange-500" title="Kiro credits">
             {formatCredits(row.original.credits)} cr
           </span>
         );
       }
       return (
-        <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
+        <span className="text-sm font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
           {formatTokens(row.original.total_input_tokens)}
         </span>
       );
@@ -139,7 +139,7 @@ const columns: ColumnDef<SessionRow>[] = [
     accessorKey: "api_request_count",
     header: "API Calls",
     cell: ({ row }) => (
-      <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
+      <span className="text-sm font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
         {row.original.api_request_count ?? "-"}
       </span>
     ),
@@ -148,7 +148,7 @@ const columns: ColumnDef<SessionRow>[] = [
     accessorKey: "tool_result_count",
     header: "Tools",
     cell: ({ row }) => (
-      <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
+      <span className="text-sm font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
         {row.original.tool_result_count ?? "-"}
       </span>
     ),
@@ -160,13 +160,13 @@ const columns: ColumnDef<SessionRow>[] = [
       if (isKiroSession(row.original)) {
         const tools = row.original.tools_used;
         return (
-          <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={tools}>
+          <span className="text-sm text-muted-foreground truncate max-w-[200px]" title={tools}>
             {tools || "-"}
           </span>
         );
       }
       return (
-        <span className="text-xs font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
+        <span className="text-sm font-[family-name:var(--font-mono)] tabular-nums text-muted-foreground">
           {formatTokens(row.original.total_output_tokens)}
         </span>
       );
@@ -178,7 +178,7 @@ const columns: ColumnDef<SessionRow>[] = [
     cell: ({ row }) => {
       const t = row.original.first_event_time;
       return (
-        <span className="text-xs text-muted-foreground tabular-nums">
+        <span className="text-sm text-muted-foreground tabular-nums">
           {t ? new Date(t).toLocaleString() : "-"}
         </span>
       );
@@ -187,9 +187,9 @@ const columns: ColumnDef<SessionRow>[] = [
 ];
 
 function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
-  if (sorted === "asc") return <ArrowUp className="h-3 w-3" />;
-  if (sorted === "desc") return <ArrowDown className="h-3 w-3" />;
-  return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+  if (sorted === "asc") return <ArrowUp className="h-4 w-4" />;
+  if (sorted === "desc") return <ArrowDown className="h-4 w-4" />;
+  return <ArrowUpDown className="h-4 w-4 opacity-40" />;
 }
 
 export default function TracesPage() {
@@ -241,7 +241,7 @@ export default function TracesPage() {
           { label: "Traces" },
         ]}
       />
-      <div className="p-6 max-w-6xl mx-auto space-y-4">
+      <div className="p-6 space-y-4">
         {isLoading ? (
           <TableSkeleton rows={8} cols={7} />
         ) : isError ? (
@@ -282,7 +282,7 @@ export default function TracesPage() {
                   placeholder="Search sessions, models..."
                   value={searchValue}
                   onChange={(e) => handleSearch(e.target.value)}
-                  className="pl-8 h-8 text-sm"
+                  className="pl-8 h-9 text-sm"
                 />
               </div>
             </div>
@@ -296,7 +296,7 @@ export default function TracesPage() {
                       {headerGroup.headers.map((header) => (
                         <TableHead
                           key={header.id}
-                          className="h-8 text-xs cursor-pointer select-none hover:text-foreground transition-colors"
+                          className="h-10 text-sm cursor-pointer select-none hover:text-foreground transition-colors"
                           onClick={header.column.getToggleSortingHandler()}
                         >
                           <span className="flex items-center gap-1">
@@ -323,7 +323,7 @@ export default function TracesPage() {
                         onClick={() => router.push(`/traces/${row.original.session_id}`)}
                       >
                         {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-1.5">
+                          <TableCell key={cell.id} className="py-2.5 px-4">
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}
@@ -334,7 +334,7 @@ export default function TracesPage() {
               </Table>
             </div>
 
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {table.getFilteredRowModel().rows.length} session{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
               {tab === "active" && " \u00b7 auto-refreshing every 10s"}
             </p>
