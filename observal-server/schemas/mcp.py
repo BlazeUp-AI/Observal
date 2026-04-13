@@ -7,6 +7,17 @@ from models.mcp import ListingStatus
 from schemas.constants import VALID_MCP_CATEGORIES, make_ide_list_validator, make_option_validator
 
 
+class McpEnvVar(BaseModel):
+    name: str
+    description: str = ""
+    required: bool = True
+
+
+def _coerce_env_vars(v):
+    """Coerce None → [] so DB NULLs don't break serialization."""
+    return v or []
+
+
 class McpSubmitRequest(BaseModel):
     git_url: str
     name: str
@@ -15,6 +26,7 @@ class McpSubmitRequest(BaseModel):
     category: str
     owner: str
     supported_ides: list[str] = []
+    environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None = None
     changelog: str | None = None
     custom_fields: dict[str, str] = {}
@@ -46,9 +58,12 @@ class McpListingResponse(BaseModel):
     category: str
     owner: str
     supported_ides: list[str]
+    environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None
     changelog: str | None
     mcp_validated: bool = False
+
+    _coerce_env = field_validator("environment_variables", mode="before")(_coerce_env_vars)
     status: ListingStatus
     rejection_reason: str | None = None
     submitted_by: uuid.UUID
@@ -75,6 +90,7 @@ class McpListingSummary(BaseModel):
 
 class McpInstallRequest(BaseModel):
     ide: str
+    env_values: dict[str, str] = {}
 
 
 class McpInstallResponse(BaseModel):
@@ -92,8 +108,11 @@ class McpAnalyzeResponse(BaseModel):
     description: str
     version: str
     tools: list[dict]
+    environment_variables: list[McpEnvVar] = []
     issues: list[str] = []
     error: str = ""
+
+    _coerce_env = field_validator("environment_variables", mode="before")(_coerce_env_vars)
 
 
 class ReviewActionRequest(BaseModel):

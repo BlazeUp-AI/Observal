@@ -81,6 +81,85 @@ async def _async_clone(clone_url: str, dest: str, depth: int = 1) -> None:
     )
 
 
+_ENV_VAR_PATTERN = re.compile(
+    r"""os\.environ\s*(?:\.get\s*\(\s*|\.?\[?\s*\[?\s*)["']([A-Z][A-Z0-9_]+)["']"""
+    r"""|os\.getenv\s*\(\s*["']([A-Z][A-Z0-9_]+)["']"""
+)
+
+# Env vars that are internal to the runtime / framework, not user-facing config
+_INTERNAL_ENV_VARS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "LANG",
+        "TERM",
+        "PWD",
+        "TMPDIR",
+        "PYTHONPATH",
+        "PYTHONDONTWRITEBYTECODE",
+        "VIRTUAL_ENV",
+        "NODE_ENV",
+        "PORT",
+        "HOST",
+        "DEBUG",
+        "LOG_LEVEL",
+        "LOGGING_LEVEL",
+    }
+)
+
+
+def _detect_env_vars(tmp_dir: str) -> list[dict]:
+    """Scan repo files for required environment variables (os.environ, os.getenv, .env, Dockerfile)."""
+    root = Path(tmp_dir)
+    found: dict[str, str] = {}  # name -> description hint
+
+    # Scan Python files for os.environ / os.getenv
+    for py_file in root.rglob("*.py"):
+        try:
+            content = py_file.read_text(errors="ignore")
+            for m in _ENV_VAR_PATTERN.finditer(content):
+                name = m.group(1) or m.group(2)
+                if name and name not in _INTERNAL_ENV_VARS:
+                    found.setdefault(name, "")
+        except Exception:
+            continue
+
+    # Scan .env.example / .env.sample for documented env vars
+    for env_file in root.glob(".env*"):
+        if env_file.name in (".env", ".env.local"):
+            continue  # skip actual secrets
+        try:
+            for line in env_file.read_text(errors="ignore").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                key = line.split("=", 1)[0].strip()
+                if key and key == key.upper() and key not in _INTERNAL_ENV_VARS:
+                    found.setdefault(key, "")
+        except Exception:
+            continue
+
+    # Scan Dockerfile for ENV / ARG directives
+    for dockerfile in (root / "Dockerfile", root / "dockerfile"):
+        if not dockerfile.exists():
+            continue
+        try:
+            for line in dockerfile.read_text(errors="ignore").splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("ENV ", "ARG ")):
+                    parts = stripped.split(None, 2)
+                    if len(parts) >= 2:
+                        key = parts[1].split("=", 1)[0]
+                        if key and key == key.upper() and key not in _INTERNAL_ENV_VARS:
+                            found.setdefault(key, "")
+        except Exception:
+            continue
+
+    return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
+
+
 def _detect_non_python_mcp(tmp_dir: str) -> str | None:
     """Check for non-Python MCP frameworks. Returns framework name or None."""
     root = Path(tmp_dir)
@@ -371,13 +450,16 @@ async def analyze_repo(git_url: str) -> dict:
             except Exception:
                 continue
 
+        env_vars = _detect_env_vars(tmp_dir)
+
         if not entry_point:
             # Try non-Python detection; return repo name as fallback
             non_python = _detect_non_python_mcp(tmp_dir)
             name = _extract_repo_name(git_url, tmp_dir)
+            base = {"name": name, "description": "", "version": "0.1.0", "tools": [], "environment_variables": env_vars}
             if non_python:
-                return {"name": name, "description": "", "version": "0.1.0", "tools": [], "framework": non_python}
-            return {"name": name, "description": "", "version": "0.1.0", "tools": []}
+                return {**base, "framework": non_python}
+            return base
 
         tree = ast.parse(entry_point.read_text(errors="ignore"))
 
@@ -439,6 +521,7 @@ async def analyze_repo(git_url: str) -> dict:
             "version": "0.1.0",
             "tools": tools,
             "issues": issues,
+            "environment_variables": env_vars,
         }
     except Exception:
         return {"name": "", "description": "", "version": "0.1.0", "tools": []}

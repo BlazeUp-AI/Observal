@@ -50,10 +50,15 @@ async def _ensure_columns(conn):
     """Add columns that may be missing on existing databases."""
     from sqlalchemy import text
 
-    try:
-        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)"))
-    except Exception:
-        pass  # column already exists or DB doesn't support IF NOT EXISTS
+    stmts = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)",
+        "ALTER TABLE mcp_listings ADD COLUMN IF NOT EXISTS environment_variables JSONB",
+    ]
+    for stmt in stmts:
+        try:
+            await conn.execute(text(stmt))
+        except Exception:
+            pass  # column already exists or DB doesn't support IF NOT EXISTS
 
 
 @asynccontextmanager

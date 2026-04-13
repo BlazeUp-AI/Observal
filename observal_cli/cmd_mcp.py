@@ -44,6 +44,7 @@ def _submit_impl(git_url, name, category, yes):
     detected_framework = prefill.get("framework", "")
     tools = prefill.get("tools", [])
 
+    detected_env_vars = prefill.get("environment_variables", [])
     issues = prefill.get("issues", [])
     error = prefill.get("error", "")
 
@@ -68,6 +69,11 @@ def _submit_impl(git_url, name, category, yes):
                 rprint(f"    [cyan]*[/cyan] {t.get('name', '?')}: {doc[:60] if doc else '[dim](no description)[/dim]'}")
             if len(tools) > 10:
                 rprint(f"    [dim]...and {len(tools) - 10} more[/dim]")
+        if detected_env_vars:
+            rprint(f"  Env vars:     [green]{len(detected_env_vars)}[/green]")
+            for ev in detected_env_vars:
+                ev_name = ev.get("name", ev) if isinstance(ev, dict) else ev
+                rprint(f"    [cyan]*[/cyan] {ev_name}")
         if not detected_name and not tools:
             rprint("  [dim]No MCP metadata detected. You will need to fill in all fields manually.[/dim]")
 
@@ -91,6 +97,7 @@ def _submit_impl(git_url, name, category, yes):
         supported_ides = list(VALID_IDES)
         _setup = ""
         _changelog = "Initial release"
+        env_vars = detected_env_vars
     else:
         # Name: auto-accept if detected, otherwise ask
         if name:
@@ -122,6 +129,26 @@ def _submit_impl(git_url, name, category, yes):
         _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
         _changelog = typer.prompt("Changelog", default="Initial release")
 
+        # ── Environment variables ──────────────────────────────
+        env_vars = list(detected_env_vars)
+        if env_vars:
+            rprint(f"\n[bold]Detected {len(env_vars)} environment variable(s):[/bold]")
+            for ev in env_vars:
+                ev_name = ev.get("name", "") if isinstance(ev, dict) else ev
+                req = ev.get("required", True) if isinstance(ev, dict) else True
+                tag = "[green]required[/green]" if req else "[dim]optional[/dim]"
+                rprint(f"  [cyan]*[/cyan] {ev_name} ({tag})")
+            if not typer.confirm("Accept detected env vars?", default=True):
+                env_vars = []
+        # Let publisher add extra env vars not detected by analysis
+        while True:
+            extra = typer.prompt("Add env var (NAME) or press Enter to continue", default="").strip()
+            if not extra:
+                break
+            desc = typer.prompt(f"  Description for {extra} (optional)", default="")
+            req = typer.confirm(f"  Is {extra} required?", default=True)
+            env_vars.append({"name": extra, "description": desc, "required": req})
+
     with spinner("Submitting..."):
         result = client.post(
             "/api/v1/mcps/submit",
@@ -133,6 +160,7 @@ def _submit_impl(git_url, name, category, yes):
                 "description": _desc,
                 "owner": _owner,
                 "supported_ides": supported_ides,
+                "environment_variables": env_vars,
                 "setup_instructions": _setup,
                 "changelog": _changelog,
             },
@@ -232,8 +260,38 @@ def _install_impl(mcp_id, ide, raw):
     import json as _json
 
     resolved = config.resolve_alias(mcp_id)
+
+    # Fetch listing details to check for required env vars
+    with spinner("Fetching server details..."):
+        listing = client.get(f"/api/v1/mcps/{resolved}")
+
+    env_values: dict[str, str] = {}
+    env_var_list = listing.get("environment_variables") or []
+    if env_var_list and not raw:
+        required = [ev for ev in env_var_list if ev.get("required", True)]
+        optional = [ev for ev in env_var_list if not ev.get("required", True)]
+
+        if required:
+            rprint(f"\n[bold]This server requires {len(required)} environment variable(s):[/bold]")
+            for ev in required:
+                desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
+                val = typer.prompt(f"  {ev['name']}{desc}")
+                env_values[ev["name"]] = val
+
+        if optional:
+            rprint(f"\n[dim]{len(optional)} optional env var(s) available:[/dim]")
+            for ev in optional:
+                desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
+                val = typer.prompt(f"  {ev['name']}{desc} (press Enter to skip)", default="")
+                if val:
+                    env_values[ev["name"]] = val
+    elif env_var_list and raw:
+        # In raw mode, include placeholders so the user knows what's needed
+        for ev in env_var_list:
+            env_values[ev["name"]] = f"<{ev['name']}>"
+
     with spinner(f"Generating {ide} config..."):
-        result = client.post(f"/api/v1/mcps/{resolved}/install", {"ide": ide})
+        result = client.post(f"/api/v1/mcps/{resolved}/install", {"ide": ide, "env_values": env_values})
 
     snippet = result.get("config_snippet", {})
     if raw:
@@ -256,6 +314,14 @@ def _install_impl(mcp_id, ide, raw):
     if config_path and not config_path.startswith("("):
         rprint(f"\n[dim]Add to:[/dim] [bold]{config_path}[/bold]")
         rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --ide {ide} --raw > {config_path}")
+
+    # Warn about any empty env vars the user skipped
+    missing = [k for k, v in env_values.items() if not v or v.startswith("<")]
+    if missing:
+        rprint(f"\n[yellow]Warning: {len(missing)} env var(s) still need values:[/yellow]")
+        for m in missing:
+            rprint(f"  [yellow]![/yellow] {m}")
+        rprint("[dim]Set these in your IDE config or shell environment before running the server.[/dim]")
 
 
 def _delete_impl(mcp_id, yes):

@@ -56,11 +56,25 @@ def _gemini_settings(observal_url: str) -> dict:
     }
 
 
+def _build_server_env(listing: McpListing, env_values: dict[str, str] | None = None) -> dict[str, str]:
+    """Build env dict from the listing's declared environment_variables and user-supplied values."""
+    env: dict[str, str] = {}
+    for var in listing.environment_variables or []:
+        name = var["name"] if isinstance(var, dict) else var.name
+        env[name] = (env_values or {}).get(name, "")
+    return env
+
+
 def generate_config(
-    listing: McpListing, ide: str, proxy_port: int | None = None, observal_url: str = "http://localhost:4318"
+    listing: McpListing,
+    ide: str,
+    proxy_port: int | None = None,
+    observal_url: str = "http://localhost:4318",
+    env_values: dict[str, str] | None = None,
 ) -> dict:
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
+    server_env = _build_server_env(listing, env_values)
 
     # HTTP transport: point IDE at the proxy URL
     if proxy_port is not None:
@@ -70,45 +84,46 @@ def generate_config(
                 "command": ["claude", "mcp", "add", name, "--url", proxy_url],
                 "type": "shell_command",
                 "otlp_env": _claude_otlp_env(observal_url),
-                "claude_settings_snippet": {"env": _claude_otlp_env(observal_url)},
+                "claude_settings_snippet": {"env": {**_claude_otlp_env(observal_url), **server_env}},
             }
         if ide == "gemini-cli":
             return {
-                "mcpServers": {name: {"url": proxy_url}},
+                "mcpServers": {name: {"url": proxy_url, "env": server_env}},
                 "otlp_env": _gemini_otlp_env(observal_url),
                 "gemini_settings_snippet": _gemini_settings(observal_url),
             }
         if ide == "codex":
             return {
-                "mcpServers": {name: {"url": proxy_url}},
+                "mcpServers": {name: {"url": proxy_url, "env": server_env}},
                 "codex_config": generate_codex_config(observal_url),
             }
-        return {"mcpServers": {name: {"url": proxy_url}}}
+        return {"mcpServers": {name: {"url": proxy_url, "env": server_env}}}
 
     # Stdio transport: shim wraps the original command
     shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", name]
 
     if ide == "claude-code":
         otlp = _claude_otlp_env(observal_url)
-        env_prefix = " ".join(f"{k}={v}" for k, v in otlp.items())
+        combined_env = {**otlp, **server_env}
+        env_prefix = " ".join(f"{k}={v}" for k, v in combined_env.items())
         return {
             "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
             "shell_env_prefix": env_prefix,
             "otlp_env": otlp,
-            "claude_settings_snippet": {"env": otlp},
+            "claude_settings_snippet": {"env": combined_env},
         }
     if ide == "gemini-cli":
         return {
-            "mcpServers": {name: {"command": "observal-shim", "args": shim_args}},
+            "mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": server_env}},
             "otlp_env": _gemini_otlp_env(observal_url),
             "gemini_settings_snippet": _gemini_settings(observal_url),
         }
     if ide == "codex":
         return {
-            "mcpServers": {name: {"command": "observal-shim", "args": shim_args}},
+            "mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": server_env}},
             "codex_config": generate_codex_config(observal_url),
         }
 
     # cursor, vscode, kiro, kiro-cli — no native OTel; telemetry collected via observal-shim
-    return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": {}}}}
+    return {"mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": server_env}}}

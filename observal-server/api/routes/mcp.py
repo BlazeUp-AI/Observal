@@ -53,6 +53,13 @@ async def submit_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Prevent duplicate names for the same user
+    existing = await db.execute(
+        select(McpListing).where(McpListing.name == req.name, McpListing.submitted_by == current_user.id)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail=f"You already have a listing named '{req.name}'")
+
     listing = McpListing(
         name=req.name,
         version=req.version,
@@ -61,6 +68,7 @@ async def submit_mcp(
         category=req.category,
         owner=req.owner,
         supported_ides=req.supported_ides,
+        environment_variables=[ev.model_dump() for ev in req.environment_variables],
         setup_instructions=req.setup_instructions,
         changelog=req.changelog,
         status=ListingStatus.pending,
@@ -116,7 +124,7 @@ async def install_mcp(
     db.add(McpDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
-    snippet = generate_config(listing, req.ide)
+    snippet = generate_config(listing, req.ide, env_values=req.env_values)
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
 
 

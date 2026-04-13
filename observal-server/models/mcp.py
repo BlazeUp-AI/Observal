@@ -33,6 +33,7 @@ class McpListing(Base):
     transport: Mapped[str | None] = mapped_column(String(20), nullable=True)
     mcp_validated: Mapped[bool] = mapped_column(Boolean, default=False)
     tools_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    environment_variables: Mapped[list | None] = mapped_column(JSON, nullable=True)
     supported_ides: Mapped[list] = mapped_column(JSON, default=list)
     setup_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
