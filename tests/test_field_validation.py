@@ -88,18 +88,14 @@ class TestSkillValidation:
     def test_valid_task_type_accepted(self):
         from schemas.skill import SkillSubmitRequest
 
-        r = SkillSubmitRequest(
-            name="test-skill", version="1.0", description="desc", owner="o", task_type="code-review"
-        )
+        r = SkillSubmitRequest(name="test-skill", version="1.0", description="desc", owner="o", task_type="code-review")
         assert r.task_type == "code-review"
 
     def test_invalid_task_type_rejected(self):
         from schemas.skill import SkillSubmitRequest
 
         with pytest.raises(ValueError, match="Valid options:"):
-            SkillSubmitRequest(
-                name="test-skill", version="1.0", description="desc", owner="o", task_type="invalid"
-            )
+            SkillSubmitRequest(name="test-skill", version="1.0", description="desc", owner="o", task_type="invalid")
 
     def test_all_valid_task_types(self):
         from schemas.constants import VALID_SKILL_TASK_TYPES
@@ -173,9 +169,7 @@ class TestHookValidation:
         from schemas.hook import HookSubmitRequest
 
         for ev in VALID_HOOK_EVENTS:
-            r = HookSubmitRequest(
-                name="h", version="1.0", description="d", owner="o", event=ev, handler_type="command"
-            )
+            r = HookSubmitRequest(name="h", version="1.0", description="d", owner="o", event=ev, handler_type="command")
             assert r.event == ev
 
 
@@ -197,9 +191,7 @@ class TestPromptValidation:
         from schemas.prompt import PromptSubmitRequest
 
         with pytest.raises(ValueError, match="Valid options:"):
-            PromptSubmitRequest(
-                name="p", version="1.0", description="d", owner="o", category="invalid", template="hi"
-            )
+            PromptSubmitRequest(name="p", version="1.0", description="d", owner="o", category="invalid", template="hi")
 
     def test_all_valid_categories(self):
         from schemas.constants import VALID_PROMPT_CATEGORIES
@@ -251,7 +243,5 @@ class TestSandboxValidation:
         from schemas.sandbox import SandboxSubmitRequest
 
         for rt in VALID_SANDBOX_RUNTIME_TYPES:
-            r = SandboxSubmitRequest(
-                name="sb", version="1.0", description="d", owner="o", runtime_type=rt, image="img"
-            )
+            r = SandboxSubmitRequest(name="sb", version="1.0", description="d", owner="o", runtime_type=rt, image="img")
             assert r.runtime_type == rt
