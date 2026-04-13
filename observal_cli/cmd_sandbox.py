@@ -9,6 +9,8 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
+from observal_cli.constants import VALID_SANDBOX_RUNTIME_TYPES
+from observal_cli.prompts import select_one
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
 sandbox_app = typer.Typer(help="Sandbox registry commands")
@@ -32,7 +34,7 @@ def sandbox_submit(
             "version": typer.prompt("Version", default="1.0.0"),
             "description": typer.prompt("Description"),
             "owner": typer.prompt("Owner"),
-            "runtime_type": typer.prompt("Runtime type (docker/lxc)"),
+            "runtime_type": select_one("Runtime type", VALID_SANDBOX_RUNTIME_TYPES),
             "image": typer.prompt("Image"),
             "resource_limits": _json.loads(typer.prompt("Resource limits (JSON)")),
         }

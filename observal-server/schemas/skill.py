@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from models.mcp import ListingStatus
+from schemas.constants import VALID_SKILL_TASK_TYPES, make_ide_list_validator, make_option_validator
 
 
 class SkillSubmitRequest(BaseModel):
@@ -25,6 +26,9 @@ class SkillSubmitRequest(BaseModel):
     power_md: str | None = None
     mcp_server_config: dict | None = None
     activation_keywords: list[str] | None = None
+
+    _validate_task_type = field_validator("task_type")(make_option_validator("task_type", VALID_SKILL_TASK_TYPES))
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
 class SkillListingResponse(BaseModel):

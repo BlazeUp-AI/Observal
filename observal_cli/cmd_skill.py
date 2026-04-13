@@ -9,6 +9,8 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
+from observal_cli.constants import VALID_SKILL_TASK_TYPES
+from observal_cli.prompts import select_one
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
 skill_app = typer.Typer(help="Skill registry commands")
@@ -34,7 +36,7 @@ def skill_submit(
             "description": typer.prompt("Description"),
             "owner": typer.prompt("Owner"),
             "git_url": typer.prompt("Git URL"),
-            "task_type": typer.prompt("Task type"),
+            "task_type": select_one("Task type", VALID_SKILL_TASK_TYPES),
             "target_agents": [a.strip() for a in agents_input.split(",") if a.strip()],
         }
     with spinner("Submitting skill..."):
