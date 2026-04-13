@@ -108,7 +108,9 @@ def _submit_impl(git_url, name, category, yes):
         # Description: auto-accept if detected, otherwise ask
         if detected_desc:
             _desc = detected_desc
-            rprint(f"  Description: [cyan]{_desc[:60]}{'...' if len(_desc) > 60 else ''}[/cyan] [dim](from analysis)[/dim]")
+            rprint(
+                f"  Description: [cyan]{_desc[:60]}{'...' if len(_desc) > 60 else ''}[/cyan] [dim](from analysis)[/dim]"
+            )
         else:
             _desc = typer.prompt("Description (what does this server do?)")
 

@@ -137,8 +137,7 @@ async def get_review(
     if listing_type == "mcp" and hasattr(listing, "validation_results"):
         result["mcp_validated"] = getattr(listing, "mcp_validated", False)
         result["validation_results"] = [
-            {"stage": vr.stage, "passed": vr.passed, "details": vr.details}
-            for vr in listing.validation_results
+            {"stage": vr.stage, "passed": vr.passed, "details": vr.details} for vr in listing.validation_results
         ]
     return result
 
