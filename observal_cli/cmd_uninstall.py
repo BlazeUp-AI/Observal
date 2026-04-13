@@ -159,4 +159,6 @@ def register_uninstall(app: typer.Typer):
 
         rprint("\n[green]Observal has been uninstalled. Goodbye.[/green]")
         if not keep_repo:
-            rprint(f"\n[cyan]Run [bold]cd {repo_root.parent}[/bold] or [bold]cd ..[/bold] to leave the deleted directory.[/cyan]")
+            rprint(
+                f"\n[cyan]Run [bold]cd {repo_root.parent}[/bold] or [bold]cd ..[/bold] to leave the deleted directory.[/cyan]"
+            )
