@@ -27,6 +27,7 @@ from api.routes.dashboard import router as dashboard_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.hook import router as hook_router
+from api.routes.jwks import router as jwks_router
 from api.routes.mcp import router as mcp_router
 from api.routes.otel_dashboard import router as otel_dashboard_router
 from api.routes.otlp import router as otlp_router
@@ -41,6 +42,7 @@ from database import engine
 from models import Base
 from models.user import User
 from services.clickhouse import init_clickhouse
+from services.crypto import init_key_manager
 from services.redis import close as close_redis
 
 
@@ -60,6 +62,11 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_columns(conn)
     await init_clickhouse()
+    # Initialize asymmetric key manager for JWT signing
+    init_key_manager(
+        key_dir=settings.JWT_KEY_DIR,
+        key_password=settings.JWT_KEY_PASSWORD,
+    )
     yield
     await close_redis()
 
@@ -151,6 +158,7 @@ app.include_router(otlp_router)
 
 # REST (CLI operations, auth, telemetry ingestion)
 app.include_router(auth_router)
+app.include_router(jwks_router)
 app.include_router(mcp_router)
 app.include_router(review_router)
 app.include_router(agent_router)

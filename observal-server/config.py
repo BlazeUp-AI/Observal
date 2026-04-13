@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # JWT / Asymmetric key signing
+    JWT_SIGNING_ALGORITHM: str = "ES256"  # ES256 (ECDSA) or RS256 (RSA)
+    JWT_KEY_DIR: str = "~/.observal/keys"
+    JWT_KEY_PASSWORD: str | None = None  # Optional password for private key encryption at rest
+
     # Rate limiting
     RATE_LIMIT_AUTH: str = "10/minute"
     RATE_LIMIT_AUTH_STRICT: str = "5/minute"
