@@ -432,7 +432,7 @@ def _do_config_only_init(server_url: str | None = None):
         cfg_data["api_key"] = api_key
 
     config.save(cfg_data)
-    rprint(f"[green]Config initialized.[/green]")
+    rprint("[green]Config initialized.[/green]")
     rprint(f"[dim]Saved to {config.CONFIG_FILE}[/dim]")
     rprint("\n[yellow]Note:[/yellow] Server connection not validated.")
     rprint("[dim]Run 'observal auth login' to authenticate when the server is running.[/dim]")

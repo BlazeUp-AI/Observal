@@ -265,7 +265,7 @@ def test_explicit_repo_dir_option(mock_rmtree: MagicMock, mock_run: MagicMock, t
 
 
 def test_repo_not_found_continues(tmp_path: Path):
-    """When repo dir cannot be detected, command still proceeds with config/cli cleanup."""
+    """When repo dir cannot be detected, command exits with error (Docker teardown is required)."""
     with (
         patch("observal_cli.cmd_uninstall.subprocess.run") as mock_run,
         patch("observal_cli.cmd_uninstall.shutil.rmtree"),
@@ -279,10 +279,10 @@ def test_repo_not_found_continues(tmp_path: Path):
             ["uninstall", "--keep-config"],
             input=f"{CONFIRMATION_PHRASE}\n",
         )
-    assert result.exit_code == 0
+    assert result.exit_code == 1
     output = _plain(result.output)
-    assert "not detected" in output.lower()
-    assert "uninstalled" in output.lower()
+    assert "repo not found" in output.lower()
+    assert "docker teardown" in output.lower()
 
 
 # ── Help text test ─────────────────────────────────────────
