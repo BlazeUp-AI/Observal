@@ -78,6 +78,14 @@ async def lifespan(app: FastAPI):
         key_dir=settings.JWT_KEY_DIR,
         key_password=settings.JWT_KEY_PASSWORD,
     )
+
+    # Seed demo accounts when no real users exist and DEMO_* env vars are set
+    from database import async_session as _session_factory
+    from services.demo_accounts import seed_demo_accounts
+
+    async with _session_factory() as db:
+        await seed_demo_accounts(db)
+
     yield
     await close_redis()
 
