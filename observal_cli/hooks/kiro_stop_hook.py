@@ -68,7 +68,6 @@ def _enrich(payload: dict) -> dict:
     # --- Extract model info ---
     model_info = conv.get("model_info", {})
     model_id = model_info.get("model_id", "")
-    context_window = model_info.get("context_window_tokens", 0)
 
     # --- Aggregate per-turn metadata ---
     history = conv.get("history", [])

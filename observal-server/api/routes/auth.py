@@ -156,7 +156,7 @@ async def oauth_login(request: Request):
     """Initiates the OAuth SSO flow"""
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
-    
+
     # Needs absolute URL so reverse handles schemes correctly for proxy deployments
     redirect_uri = str(request.base_url).rstrip("/") + "/api/v1/auth/oauth/callback"
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
@@ -172,24 +172,24 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         token = await oauth.oidc.authorize_access_token(request)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"OAuth authorization failed: {e}")
-        
+
     userinfo = token.get("userinfo")
     if not userinfo:
         raise HTTPException(status_code=400, detail="Missing userinfo in token")
-        
+
     email = userinfo.get("email")
     name = userinfo.get("name") or userinfo.get("preferred_username") or "SSO User"
-    
+
     # Handle Okta / Entry specific formatting
     if not email:
         raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
-        
+
     # Check if user exists
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    
+
     api_key, key_hash = _generate_api_key()
-    
+
     if user:
         # Existing user, just update their API key
         user.api_key_hash = key_hash
@@ -202,11 +202,11 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             api_key_hash=key_hash,
         )
         db.add(user)
-        
+
     await db.commit()
     await db.refresh(user)
-    
-    # Normally we'd use a more secure form of handoff (like Secure cookies for sessions), 
+
+    # Normally we'd use a more secure form of handoff (like Secure cookies for sessions),
     # but since the system primarily relies on X-API-Key exchange dynamically:
     frontend_redirect = f"{settings.FRONTEND_URL}/login?apiKey={api_key}&role={user.role.value}"
     return RedirectResponse(url=frontend_redirect)
