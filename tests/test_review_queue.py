@@ -17,7 +17,6 @@ from api.routes.review import LISTING_MODELS, router
 from models.mcp import ListingStatus
 from models.user import User, UserRole
 
-
 # ── Helpers ──────────────────────────────────────────────
 
 
@@ -97,7 +96,7 @@ class TestListPending:
             owner="acme-corp",
         )
         # 5 listing types queried; put our listing in the first result, empty for rest
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -116,7 +115,7 @@ class TestListPending:
         """Verify the full shape of each item in the list_pending response."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -133,7 +132,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.description = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -147,7 +146,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.version = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -161,7 +160,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.owner = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)]
+        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -174,14 +173,14 @@ class TestListPending:
         """The ?type= query param should only query that one listing type."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        db.execute = AsyncMock(side_effect=[_result_with(listing), _empty_result()])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get("/api/v1/review?type=mcp")
 
         assert r.status_code == 200
-        # Only one call to db.execute (for the single type)
-        assert db.execute.call_count == 1
+        # One call for the single type + one for user lookup
+        assert db.execute.call_count == 2
         assert r.json()[0]["type"] == "mcp"
 
     @pytest.mark.asyncio
@@ -208,6 +207,7 @@ class TestListPending:
             _empty_result(),
             _empty_result(),
             _empty_result(),
+            _empty_result(),  # user lookup
         ]
         db.execute = AsyncMock(side_effect=results)
 
@@ -250,7 +250,7 @@ class TestGetReview:
     async def test_returns_listing_detail(self):
         app, db, _ = _app_with()
         listing = _listing_mock(name="my-mcp")
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(4)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get(f"/api/v1/review/{listing.id}")
@@ -293,7 +293,7 @@ class TestApprove:
     async def test_sets_status_to_approved(self):
         app, db, _ = _app_with()
         listing = _listing_mock(status=ListingStatus.pending)
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(4)])
         db.refresh = AsyncMock(side_effect=lambda obj: None)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -308,7 +308,7 @@ class TestApprove:
     async def test_response_includes_type_and_name(self):
         app, db, _ = _app_with()
         listing = _listing_mock(name="cool-server")
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(4)])
         db.refresh = AsyncMock(side_effect=lambda obj: None)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -350,7 +350,7 @@ class TestReject:
     async def test_sets_status_and_reason(self):
         app, db, _ = _app_with()
         listing = _listing_mock(status=ListingStatus.pending)
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(4)])
         db.refresh = AsyncMock(side_effect=lambda obj: None)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -369,7 +369,7 @@ class TestReject:
     async def test_reject_with_no_reason(self):
         app, db, _ = _app_with()
         listing = _listing_mock(status=ListingStatus.pending)
-        db.execute = AsyncMock(return_value=_result_with(listing))
+        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(4)])
         db.refresh = AsyncMock(side_effect=lambda obj: None)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

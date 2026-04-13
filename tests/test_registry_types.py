@@ -576,7 +576,7 @@ class TestUnifiedReview:
 
         app, db, _ = _app_with(router)
         listing = _listing_mock(None, status=ListingStatus.pending)
-        db.execute = AsyncMock(return_value=_scalar_result(listing))
+        db.execute = AsyncMock(side_effect=[_scalar_result(listing)] + [_scalar_result(None) for _ in range(4)])
         db.refresh = AsyncMock(side_effect=lambda obj: None)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(f"/api/v1/review/{listing.id}/approve")
@@ -589,7 +589,7 @@ class TestUnifiedReview:
 
         app, db, _ = _app_with(router)
         listing = _listing_mock(None, status=ListingStatus.pending)
-        db.execute = AsyncMock(return_value=_scalar_result(listing))
+        db.execute = AsyncMock(side_effect=[_scalar_result(listing)] + [_scalar_result(None) for _ in range(4)])
         db.refresh = AsyncMock(side_effect=lambda obj: None)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(f"/api/v1/review/{listing.id}/reject", json={"reason": "incomplete"})

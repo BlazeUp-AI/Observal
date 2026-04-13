@@ -56,8 +56,8 @@ from observal_cli.cmd_prompt import prompt_app
 from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import sandbox_app
 from observal_cli.cmd_scan import register_scan
-from observal_cli.cmd_uninstall import register_uninstall
 from observal_cli.cmd_skill import skill_app
+from observal_cli.cmd_uninstall import register_uninstall
 
 # ═══════════════════════════════════════════════════════════
 # registry_app — Component registry parent group

@@ -1,11 +1,10 @@
 from contextlib import asynccontextmanager
 
-from arq import create_pool
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.sessions import SessionMiddleware
 from strawberry.fastapi import GraphQLRouter
 
 from api.deps import get_db

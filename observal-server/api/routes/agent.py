@@ -1,5 +1,4 @@
 import uuid
-import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select

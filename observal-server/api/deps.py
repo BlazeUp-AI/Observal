@@ -3,9 +3,8 @@ import uuid as _uuid
 from collections.abc import AsyncGenerator
 from functools import wraps
 
-
 from fastapi import Depends, Header, HTTPException
-from sqlalchemy import select, cast, String
+from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session

@@ -20,4 +20,8 @@ dependencies = [
     "redis[hiredis]",
     "arq",
     "strawberry-graphql[fastapi]",
+    "authlib",
+    "itsdangerous",
+    "cryptography",
+    "cffi",
 ]
