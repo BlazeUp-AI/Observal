@@ -32,6 +32,19 @@ class Settings(BaseSettings):
     RATE_LIMIT_AUTH: str = "10/minute"
     RATE_LIMIT_AUTH_STRICT: str = "5/minute"
 
+    # Deployment mode
+    DEPLOYMENT_MODE: str = "local"  # "local" | "enterprise"
+
+    # Demo accounts (seeded on first startup if set and no real users exist)
+    DEMO_SUPER_ADMIN_EMAIL: str | None = None
+    DEMO_SUPER_ADMIN_PASSWORD: str | None = None
+    DEMO_ADMIN_EMAIL: str | None = None
+    DEMO_ADMIN_PASSWORD: str | None = None
+    DEMO_REVIEWER_EMAIL: str | None = None
+    DEMO_REVIEWER_PASSWORD: str | None = None
+    DEMO_USER_EMAIL: str | None = None
+    DEMO_USER_PASSWORD: str | None = None
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
