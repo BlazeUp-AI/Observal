@@ -1,4 +1,5 @@
 import ast
+import asyncio
 import json
 import os
 import re
@@ -17,6 +18,9 @@ BLOCKED_SCHEMES = {"file", "ftp", "ssh", "git"}
 
 # Self-hosted deployments set this to allow corporate GitLab/GitHub Enterprise URLs
 ALLOW_INTERNAL_URLS = os.environ.get("ALLOW_INTERNAL_URLS", "").lower() in ("1", "true", "yes")
+
+# Clone timeout in seconds (default 120s; internal GitLab may need more)
+CLONE_TIMEOUT = int(os.environ.get("GIT_CLONE_TIMEOUT", "120"))
 
 # Patterns that indicate an MCP server implementation (Python files)
 _PYTHON_MCP_PATTERN = re.compile(
@@ -54,6 +58,27 @@ def _validate_git_url(url: str) -> str | None:
         ):
             return "Internal/private URLs not allowed (set ALLOW_INTERNAL_URLS=true for self-hosted deployments)"
     return None
+
+
+def _build_clone_url(git_url: str) -> str:
+    """Inject auth token into git URL if configured. Supports GitHub and GitLab token formats."""
+    git_token = os.environ.get("GIT_CLONE_TOKEN", "")
+    if not git_token:
+        return git_url
+    parsed = urlparse(git_url)
+    # GIT_CLONE_TOKEN_USER controls the auth username:
+    #   GitHub:  "x-access-token" (default)
+    #   GitLab:  "oauth2" for OAuth tokens, or "private-token" for PATs
+    token_user = os.environ.get("GIT_CLONE_TOKEN_USER", "x-access-token")
+    return f"{parsed.scheme}://{token_user}:{git_token}@{parsed.hostname}{parsed.path}"
+
+
+async def _async_clone(clone_url: str, dest: str, depth: int = 1) -> None:
+    """Clone a repo in a thread with a timeout so we don't block the event loop."""
+    await asyncio.wait_for(
+        asyncio.to_thread(Repo.clone_from, clone_url, dest, depth=depth),
+        timeout=CLONE_TIMEOUT,
+    )
 
 
 def _detect_non_python_mcp(tmp_dir: str) -> str | None:
@@ -120,13 +145,20 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
         db.add(McpValidationResult(listing_id=listing.id, stage="clone_and_inspect", passed=False, details=url_err))
         await db.commit()
         return None
-    clone_url = listing.git_url
-    git_token = os.environ.get("GIT_CLONE_TOKEN", "")
-    if git_token:
-        parsed = urlparse(listing.git_url)
-        clone_url = f"{parsed.scheme}://x-access-token:{git_token}@{parsed.hostname}{parsed.path}"
+    clone_url = _build_clone_url(listing.git_url)
     try:
-        Repo.clone_from(clone_url, tmp_dir, depth=1)
+        await _async_clone(clone_url, tmp_dir)
+    except TimeoutError:
+        db.add(
+            McpValidationResult(
+                listing_id=listing.id,
+                stage="clone_and_inspect",
+                passed=False,
+                details=f"Clone timed out after {CLONE_TIMEOUT}s. For slow repos, increase GIT_CLONE_TIMEOUT.",
+            )
+        )
+        await db.commit()
+        return None
     except Exception as e:
         db.add(
             McpValidationResult(
@@ -307,17 +339,17 @@ async def analyze_repo(git_url: str) -> dict:
     if url_err:
         return {**_empty, "error": url_err}
 
-    # Support cloning private repos when a GitHub token is configured
-    clone_url = git_url
-    git_token = os.environ.get("GIT_CLONE_TOKEN", "")
-    if git_token:
-        parsed = urlparse(git_url)
-        clone_url = f"{parsed.scheme}://x-access-token:{git_token}@{parsed.hostname}{parsed.path}"
+    clone_url = _build_clone_url(git_url)
 
     tmp_dir = tempfile.mkdtemp(prefix="observal_analyze_")
     try:
         try:
-            Repo.clone_from(clone_url, tmp_dir, depth=1)
+            await _async_clone(clone_url, tmp_dir)
+        except TimeoutError:
+            return {
+                **_empty,
+                "error": f"Clone timed out after {CLONE_TIMEOUT}s. For slow repos, increase GIT_CLONE_TIMEOUT.",
+            }
         except Exception as e:
             err_msg = str(e).lower()
             auth_hints = ("authentication", "403", "404", "could not read username", "terminal prompts disabled")

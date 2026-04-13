@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_current_user, get_db, resolve_listing
+from database import async_session
 from models.mcp import ListingStatus, McpDownload, McpListing
 from models.user import User
 from schemas.mcp import (
@@ -18,6 +21,7 @@ from services.config_generator import generate_config
 from services.mcp_validator import analyze_repo, run_validation
 
 router = APIRouter(prefix="/api/v1/mcps", tags=["mcp"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/analyze", response_model=McpAnalyzeResponse)
@@ -29,9 +33,23 @@ async def analyze_mcp(
     return McpAnalyzeResponse(**result)
 
 
+async def _run_validation_background(listing_id: str) -> None:
+    """Run validation in the background with its own DB session."""
+    async with async_session() as db:
+        result = await db.execute(select(McpListing).where(McpListing.id == listing_id))
+        listing = result.scalar_one_or_none()
+        if not listing:
+            return
+        try:
+            await run_validation(listing, db)
+        except Exception:
+            logger.exception("Background validation failed for listing %s", listing_id)
+
+
 @router.post("/submit", response_model=McpListingResponse)
 async def submit_mcp(
     req: McpSubmitRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -52,12 +70,10 @@ async def submit_mcp(
     await db.commit()
     await db.refresh(listing)
 
-    try:
-        await run_validation(listing, db)
-    except Exception:
-        pass
+    # Run validation asynchronously so the submit response returns immediately.
+    # This prevents slow clones (e.g. internal GitLab) from timing out the request.
+    background_tasks.add_task(_run_validation_background, str(listing.id))
 
-    await db.refresh(listing)
     return McpListingResponse.model_validate(listing)
 
 
