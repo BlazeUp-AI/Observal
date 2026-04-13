@@ -1,7 +1,6 @@
 import hashlib
 import uuid as _uuid
 from collections.abc import AsyncGenerator
-from functools import wraps
 
 import jwt
 from fastapi import Depends, Header, HTTPException
@@ -74,17 +73,33 @@ async def get_current_user(
     raise HTTPException(status_code=401, detail="Invalid or missing credentials")
 
 
-def require_role(*roles: UserRole):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, current_user: User = Depends(get_current_user), **kwargs):
-            if current_user.role not in roles:
-                raise HTTPException(status_code=403, detail="Insufficient permissions")
-            return await func(*args, current_user=current_user, **kwargs)
+# Role hierarchy: lower number = higher privilege
+ROLE_HIERARCHY: dict[UserRole, int] = {
+    UserRole.super_admin: 0,
+    UserRole.admin: 1,
+    UserRole.reviewer: 2,
+    UserRole.user: 3,
+}
 
-        return wrapper
 
-    return decorator
+def require_role(min_role: UserRole):
+    """FastAPI dependency that requires the user to have at least the given role level.
+
+    Usage: current_user: User = Depends(require_role(UserRole.admin))
+    """
+
+    async def _check(current_user: User = Depends(get_current_user)) -> User:
+        user_level = ROLE_HIERARCHY.get(current_user.role, 999)
+        required_level = ROLE_HIERARCHY[min_role]
+        if user_level > required_level:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
+
+    return _check
+
+
+# Convenience shorthand for super_admin-only endpoints
+require_super_admin = require_role(UserRole.super_admin)
 
 
 async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_status=None):
