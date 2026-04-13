@@ -35,4 +35,5 @@ docker/data/
 
 # Local config
 .kiro/
+CLAUDE.md
 observal-web/tsconfig.tsbuildinfo
