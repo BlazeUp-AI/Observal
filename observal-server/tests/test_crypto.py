@@ -231,11 +231,11 @@ class TestTokenRoundTrip:
     """Test the public sign_token / verify_token API (uses PyJWT if available)."""
 
     def test_sign_and_verify(self, km):
-        payload = {"sub": "user-456", "role": "developer"}
+        payload = {"sub": "user-456", "role": "reviewer"}
         token = km.sign_token(payload)
         decoded = km.verify_token(token)
         assert decoded["sub"] == "user-456"
-        assert decoded["role"] == "developer"
+        assert decoded["role"] == "reviewer"
 
     def test_roundtrip_with_nested_payload(self, km):
         payload = {"data": {"items": [1, 2, 3]}, "count": 3}

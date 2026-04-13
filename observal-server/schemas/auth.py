@@ -39,7 +39,7 @@ class InviteRedeemRequest(BaseModel):
 
 
 class InviteCreateRequest(BaseModel):
-    role: str = "developer"
+    role: str = "reviewer"
     expires_days: int = 7
 
 

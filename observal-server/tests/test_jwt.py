@@ -64,11 +64,11 @@ class TestTokenGeneration:
 
     def test_create_refresh_token_returns_valid_jwt_with_jti(self):
         uid = uuid.uuid4()
-        token, jti = create_refresh_token(uid, UserRole.developer)
+        token, jti = create_refresh_token(uid, UserRole.reviewer)
 
         payload = pyjwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         assert payload["sub"] == str(uid)
-        assert payload["role"] == "developer"
+        assert payload["role"] == "reviewer"
         assert payload["type"] == "refresh"
         assert payload["jti"] == jti
 
