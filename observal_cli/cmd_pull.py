@@ -150,7 +150,11 @@ def register_pull(app: typer.Typer):
         if setup_cmds and not dry_run:
             rprint("\n[bold]Registering MCP servers...[/bold]")
             for cmd in setup_cmds:
-                proc = subprocess.run(cmd, capture_output=True, text=True)
+                try:
+                    proc = subprocess.run(cmd, capture_output=True, text=True)
+                except FileNotFoundError:
+                    rprint(f"  [yellow]⚠[/yellow]  {cmd[0]} not found — run manually: [cyan]{' '.join(cmd)}[/cyan]")
+                    continue
                 if proc.returncode == 0:
                     rprint(f"  [green]✓[/green]  {' '.join(cmd[:4])}...")
                 else:
