@@ -60,6 +60,11 @@ async def _ensure_columns(conn):
         except Exception:
             pass  # column already exists or DB doesn't support IF NOT EXISTS
 
+    try:
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT false"))
+    except Exception:
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
