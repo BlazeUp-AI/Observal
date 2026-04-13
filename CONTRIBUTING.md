@@ -1,7 +1,5 @@
 # Contributing to Observal
 
-<a href="https://github.com/BlazeUp-AI/Observal/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/BlazeUp-AI/Observal/ci.yml?branch=main&style=flat-square&label=CI" alt="CI"></a>
-
 Thank you for considering contributing to Observal! Contributions of all kinds are welcome: bug reports, bug fixes, new features, documentation improvements, and tests. This guide walks you through the process from setting up your environment to getting your pull request merged.
 
 Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
