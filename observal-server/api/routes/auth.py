@@ -187,8 +187,10 @@ async def oauth_login(request: Request):
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
 
-    # Needs absolute URL so reverse handles schemes correctly for proxy deployments
-    redirect_uri = str(request.base_url).rstrip("/") + "/api/v1/auth/oauth/callback"
+    # Use FRONTEND_URL as the base so the redirect works through the Next.js proxy.
+    # This avoids Docker-internal hostnames (e.g. observal-api:8000) leaking into
+    # the redirect URI, which would fail Azure AD's redirect URI validation.
+    redirect_uri = settings.FRONTEND_URL.rstrip("/") + "/api/v1/auth/oauth/callback"
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
