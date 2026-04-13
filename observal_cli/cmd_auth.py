@@ -323,6 +323,23 @@ def status():
     else:
         rprint("  Health:  [red]unreachable[/red]")
 
+    # Show local telemetry buffer summary
+    try:
+        from observal_cli.telemetry_buffer import stats as buffer_stats
+
+        buf = buffer_stats()
+        if buf["total"] > 0:
+            rprint()
+            pending = buf["pending"]
+            label = f"[yellow]{pending} pending[/yellow]" if pending else "[green]0 pending[/green]"
+            rprint(f"  Buffer:  {label}, {buf['failed']} failed, {buf['sent']} sent")
+            if buf["oldest_pending"]:
+                rprint(f"  Oldest:  {buf['oldest_pending']} UTC")
+            if pending and not ok:
+                rprint("  [dim]Run `observal ops sync` when the server is back online.[/dim]")
+    except Exception:
+        pass
+
 
 def version_callback():
     """Show CLI version."""
