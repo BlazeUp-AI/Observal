@@ -189,7 +189,27 @@ app.include_router(component_source_router)
 app.include_router(config_router)
 
 
+@app.get("/healthz", include_in_schema=False)
+async def liveness():
+    """K8s liveness probe. Returns 200 if the process is alive. No I/O."""
+    return {"status": "alive"}
+
+
 @app.get("/health")
-async def health(db: AsyncSession = Depends(get_db)):
-    count = await db.scalar(select(func.count()).select_from(User))
-    return {"status": "ok", "initialized": (count or 0) > 0}
+async def readiness(db: AsyncSession = Depends(get_db)):
+    """K8s readiness probe. Checks DB connectivity and enterprise config."""
+    checks: dict[str, object] = {"status": "ok"}
+
+    try:
+        count = await db.scalar(select(func.count()).select_from(User))
+        checks["initialized"] = (count or 0) > 0
+    except Exception:
+        checks["status"] = "unhealthy"
+        return JSONResponse(content=checks, status_code=503)
+
+    if settings.DEPLOYMENT_MODE == "enterprise":
+        issues = getattr(app.state, "enterprise_issues", [])
+        if issues:
+            checks["status"] = "degraded"
+
+    return checks

@@ -3,7 +3,7 @@ import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,72 @@ from schemas.admin import (
 )
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+
+
+# ── Diagnostics ─────────────────────────────────────────
+
+
+@router.get("/diagnostics")
+async def diagnostics(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Authenticated system health — full status for ops dashboards."""
+    from services.crypto import get_key_manager
+
+    diag: dict[str, object] = {
+        "status": "ok",
+        "deployment_mode": settings.DEPLOYMENT_MODE,
+        "checks": {},
+    }
+
+    # Database
+    try:
+        await db.execute(text("SELECT 1"))
+        user_count = await db.scalar(select(func.count()).select_from(User))
+        demo_count = await db.scalar(
+            select(func.count()).select_from(User).where(User.is_demo.is_(True))
+        )
+        diag["checks"]["database"] = {
+            "status": "ok",
+            "users": user_count or 0,
+            "demo_accounts": demo_count or 0,
+        }
+    except Exception as e:
+        diag["checks"]["database"] = {"status": "error", "detail": str(e)}
+        diag["status"] = "unhealthy"
+
+    # JWT keys
+    try:
+        km = get_key_manager()
+        diag["checks"]["jwt_keys"] = {
+            "status": "ok",
+            "algorithm": settings.JWT_SIGNING_ALGORITHM,
+        }
+    except RuntimeError:
+        diag["checks"]["jwt_keys"] = {
+            "status": "missing",
+            "algorithm": settings.JWT_SIGNING_ALGORITHM,
+        }
+
+    # Enterprise config
+    if settings.DEPLOYMENT_MODE == "enterprise":
+        issues: list[str] = []
+        # Check for common misconfigurations
+        if settings.SECRET_KEY == "change-me-to-a-random-string":
+            issues.append("SECRET_KEY is using default value")
+        if not settings.OAUTH_CLIENT_ID:
+            issues.append("OAUTH_CLIENT_ID is not set")
+        if settings.FRONTEND_URL in ("http://localhost:3000", ""):
+            issues.append("FRONTEND_URL is localhost")
+        diag["checks"]["enterprise"] = {
+            "status": "ok" if not issues else "misconfigured",
+            "issues": issues,
+        }
+        if issues:
+            diag["status"] = "degraded"
+
+    return diag
 
 
 # ── Enterprise Settings ──────────────────────────────────
