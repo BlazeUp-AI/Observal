@@ -15,6 +15,8 @@ from strawberry.fastapi import GraphQLRouter
 
 from api.deps import get_db
 from api.graphql import get_context_dep, schema
+from api.middleware.content_type import ContentTypeMiddleware
+from api.middleware.request_id import RequestIDMiddleware
 from api.ratelimit import limiter
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
@@ -133,6 +135,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# --- Content-Type validation & JSON depth protection ---
+app.add_middleware(ContentTypeMiddleware)
+
+# --- Request ID ---
+app.add_middleware(RequestIDMiddleware)
 
 # GraphQL (replaces REST dashboard endpoints)
 graphql_app = GraphQLRouter(schema, context_getter=get_context_dep)

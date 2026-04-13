@@ -1,0 +1,133 @@
+"""Content-Type validation and JSON depth protection middleware.
+
+Rejects POST/PUT/PATCH requests that do not carry an acceptable Content-Type
+header and guards against deeply-nested JSON payloads (JSON bomb mitigation).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import TYPE_CHECKING
+
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
+
+logger = logging.getLogger(__name__)
+
+# Methods that carry a request body and therefore require Content-Type validation.
+_BODY_METHODS = {"POST", "PUT", "PATCH"}
+
+# Paths that are exempt from strict Content-Type enforcement.
+# OTLP endpoints may receive application/x-protobuf in addition to JSON.
+# GraphQL may receive multipart for file variables.
+_SKIP_PATHS: set[str] = {
+    "/health",
+    "/v1/traces",
+    "/v1/logs",
+    "/v1/metrics",
+}
+
+_SKIP_PREFIXES: tuple[str, ...] = ("/api/v1/graphql",)
+
+# Accepted content types for normal endpoints.
+_ALLOWED_TYPES = {
+    "application/json",
+    "multipart/form-data",
+}
+
+# OTLP endpoints additionally accept protobuf.
+_OTLP_EXTRA_TYPES = {
+    "application/x-protobuf",
+}
+
+# Maximum allowed nesting depth for JSON payloads.
+MAX_JSON_DEPTH = 20
+
+
+def _check_depth(obj: object, current: int = 0) -> bool:
+    """Return True if *obj* exceeds MAX_JSON_DEPTH levels of nesting.
+
+    Only dicts and lists count as nesting levels.  Scalar values do not
+    increment the depth counter.
+    """
+    if isinstance(obj, dict):
+        if current + 1 > MAX_JSON_DEPTH:
+            return True
+        return any(_check_depth(v, current + 1) for v in obj.values())
+    if isinstance(obj, list):
+        if current + 1 > MAX_JSON_DEPTH:
+            return True
+        return any(_check_depth(item, current + 1) for item in obj)
+    return False
+
+
+def _content_type_base(header: str | None) -> str:
+    """Extract the media type portion (before any parameters like charset)."""
+    if not header:
+        return ""
+    return header.split(";")[0].strip().lower()
+
+
+class ContentTypeMiddleware(BaseHTTPMiddleware):
+    """Validate Content-Type and JSON payload depth."""
+
+    async def dispatch(self, request: Request, call_next):
+        method = request.method.upper()
+
+        # Only validate body-bearing methods.
+        if method not in _BODY_METHODS:
+            return await call_next(request)
+
+        path = request.url.path.rstrip("/")
+
+        # Skip exempt paths.
+        if path in _SKIP_PATHS or any(path.startswith(p) for p in _SKIP_PREFIXES):
+            return await call_next(request)
+
+        # If there is no Content-Length or it is 0, there is no body to validate.
+        content_length = request.headers.get("content-length")
+        if content_length is not None and int(content_length) == 0:
+            return await call_next(request)
+
+        ct = _content_type_base(request.headers.get("content-type"))
+
+        # Determine allowed set based on path.
+        allowed = _ALLOWED_TYPES
+        if path in ("/v1/traces", "/v1/logs", "/v1/metrics"):
+            allowed = allowed | _OTLP_EXTRA_TYPES
+
+        if ct not in allowed:
+            logger.warning(
+                "Rejected %s %s with Content-Type: %s",
+                method,
+                path,
+                request.headers.get("content-type"),
+            )
+            return JSONResponse(
+                status_code=415,
+                content={"detail": f"Unsupported media type: {ct or '(none)'}. Expected application/json."},
+            )
+
+        # JSON depth check — only for application/json bodies.
+        if ct == "application/json":
+            try:
+                body = await request.body()
+                if body:
+                    parsed = json.loads(body)
+                    if _check_depth(parsed):
+                        logger.warning("Rejected %s %s: JSON nesting exceeds %d levels", method, path, MAX_JSON_DEPTH)
+                        return JSONResponse(
+                            status_code=400,
+                            content={"detail": f"JSON payload exceeds maximum nesting depth of {MAX_JSON_DEPTH}"},
+                        )
+            except json.JSONDecodeError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Malformed JSON in request body"},
+                )
+
+        return await call_next(request)
