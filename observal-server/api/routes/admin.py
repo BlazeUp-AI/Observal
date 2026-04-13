@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from config import settings
 from models.enterprise_config import EnterpriseConfig
 from models.user import User, UserRole
@@ -24,20 +24,14 @@ from schemas.admin import (
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
-def _require_admin(user: User):
-    if user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-
 # ── Enterprise Settings ──────────────────────────────────
 
 
 @router.get("/settings", response_model=list[EnterpriseConfigResponse])
 async def list_settings(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    _require_admin(current_user)
     result = await db.execute(select(EnterpriseConfig).order_by(EnterpriseConfig.key))
     return [EnterpriseConfigResponse.model_validate(c) for c in result.scalars().all()]
 
@@ -46,9 +40,8 @@ async def list_settings(
 async def get_setting(
     key: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    _require_admin(current_user)
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
     if not cfg:
@@ -61,9 +54,8 @@ async def upsert_setting(
     key: str,
     req: EnterpriseConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    _require_admin(current_user)
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
     if cfg:
@@ -80,9 +72,8 @@ async def upsert_setting(
 async def delete_setting(
     key: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    _require_admin(current_user)
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
     if not cfg:
@@ -98,9 +89,8 @@ async def delete_setting(
 @router.get("/users", response_model=list[UserAdminResponse])
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    _require_admin(current_user)
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     return [UserAdminResponse.model_validate(u) for u in result.scalars().all()]
 
@@ -109,11 +99,9 @@ async def list_users(
 async def create_user(
     req: UserCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Admin creates a new user and gets back their API key."""
-    _require_admin(current_user)
-
     existing = await db.execute(select(User).where(User.email == req.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -149,9 +137,8 @@ async def update_user_role(
     user_id: uuid.UUID,
     req: UserRoleUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    _require_admin(current_user)
     try:
         new_role = UserRole(req.role)
     except ValueError:
@@ -175,11 +162,9 @@ async def reset_user_password(
     user_id: uuid.UUID,
     req: AdminResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Admin resets a user's password."""
-    _require_admin(current_user)
-
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -196,10 +181,9 @@ async def reset_user_password(
 @router.get("/penalties", response_model=list[dict])
 async def list_penalties(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """List all penalty definitions."""
-    _require_admin(current_user)
     from models.scoring import PenaltyDefinition
 
     result = await db.execute(
@@ -225,10 +209,9 @@ async def update_penalty(
     penalty_id: uuid.UUID,
     req: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Enable/disable or modify a penalty definition."""
-    _require_admin(current_user)
     from models.scoring import PenaltyDefinition
 
     result = await db.execute(select(PenaltyDefinition).where(PenaltyDefinition.id == penalty_id))
@@ -256,10 +239,9 @@ async def update_penalty(
 @router.get("/weights", response_model=list[dict])
 async def list_weights(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """List global dimension weights."""
-    _require_admin(current_user)
     from models.scoring import DEFAULT_DIMENSION_WEIGHTS, DimensionWeight
 
     result = await db.execute(select(DimensionWeight).where(DimensionWeight.agent_id.is_(None)))
@@ -282,10 +264,9 @@ async def list_weights(
 async def set_global_weights(
     req: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Set global dimension weights. Body: {dimension: weight, ...}"""
-    _require_admin(current_user)
     from models.scoring import DimensionWeight, ScoringDimension
 
     updated = {}
@@ -317,10 +298,9 @@ async def set_agent_weights(
     agent_id: uuid.UUID,
     req: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Set per-agent dimension weights. Body: {dimension: weight, ...}"""
-    _require_admin(current_user)
     from models.scoring import DimensionWeight, ScoringDimension
 
     updated = {}
@@ -357,10 +337,9 @@ _canary_reports: dict[str, list[dict]] = {}  # agent_id -> list of reports
 @router.post("/canaries", response_model=dict)
 async def create_canary(
     req: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Create a canary configuration for an agent."""
-    _require_admin(current_user)
     from services.canary import CanaryConfig
 
     agent_id = req.get("agent_id")
@@ -386,30 +365,27 @@ async def create_canary(
 @router.get("/canaries/{agent_id}", response_model=list[dict])
 async def list_canaries(
     agent_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """List canary configs for an agent."""
-    _require_admin(current_user)
     return _canary_configs.get(agent_id, [])
 
 
 @router.get("/canaries/{agent_id}/reports", response_model=list[dict])
 async def list_canary_reports(
     agent_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """List canary reports with pass/fail stats."""
-    _require_admin(current_user)
     return _canary_reports.get(agent_id, [])
 
 
 @router.delete("/canaries/{canary_id}")
 async def delete_canary(
     canary_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Remove a canary config."""
-    _require_admin(current_user)
     for _agent_id, configs in _canary_configs.items():
         for i, config in enumerate(configs):
             if config.get("id") == canary_id:
