@@ -29,15 +29,19 @@ See the [Changelog](CHANGELOG.md) for recent updates.
 
 ## Quick Start
 
+Everything works out of the box with defaults. No configuration needed for local development.
+
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git
 cd Observal
-cp .env.example .env          # edit with your values
+cp .env.example .env
 
 cd docker && docker compose up --build -d && cd ..
 uv tool install --editable .
 observal auth login            # auto-creates admin on fresh server
 ```
+
+That's it. The `.env.example` ships with working defaults for every setting. The server starts 7 services (API, web UI, PostgreSQL, ClickHouse, Redis, background worker, OpenTelemetry collector) and creates all database tables on first boot.
 
 Already have MCP servers in your IDE? Instrument them in one command:
 
@@ -101,7 +105,7 @@ observal profile                     # show active profile and backup info
 ```
 
 <details>
-<summary><strong>Authentication</strong> &mdash; <code>observal auth</code></summary>
+<summary><strong>Authentication</strong> - <code>observal auth</code></summary>
 
 ```bash
 observal auth login            # auto-creates admin on fresh server, or login with key
@@ -134,7 +138,7 @@ export OBSERVAL_API_KEY=<your-key>
 </details>
 
 <details>
-<summary><strong>Component Registry</strong> &mdash; <code>observal registry &lt;type&gt;</code></summary>
+<summary><strong>Component Registry</strong> - <code>observal registry &lt;type&gt;</code></summary>
 
 All 5 component types (mcp, skill, hook, prompt, sandbox) support the same core commands:
 
@@ -151,7 +155,7 @@ Prompts also have `observal registry prompt render <id> --var key=value`.
 </details>
 
 <details>
-<summary><strong>Agent Authoring</strong> &mdash; <code>observal agent</code></summary>
+<summary><strong>Agent Authoring</strong> - <code>observal agent</code></summary>
 
 ```bash
 # Browse and manage
@@ -171,7 +175,7 @@ observal agent publish             # submit to registry
 </details>
 
 <details>
-<summary><strong>Observability</strong> &mdash; <code>observal ops</code></summary>
+<summary><strong>Observability</strong> - <code>observal ops</code></summary>
 
 ```bash
 observal ops overview              # dashboard stats
@@ -188,7 +192,7 @@ observal ops telemetry test
 </details>
 
 <details>
-<summary><strong>Admin</strong> &mdash; <code>observal admin</code></summary>
+<summary><strong>Admin</strong> - <code>observal admin</code></summary>
 
 ```bash
 # Invite team members
@@ -223,7 +227,7 @@ observal admin weight-set <dimension> <weight>
 </details>
 
 <details>
-<summary><strong>Configuration</strong> &mdash; <code>observal config</code></summary>
+<summary><strong>Configuration</strong> - <code>observal config</code></summary>
 
 ```bash
 observal config show               # show current config
@@ -264,7 +268,7 @@ observal doctor [--ide <ide>] [--fix]  # diagnose IDE settings compatibility
 
 ## Setup & Configuration
 
-For detailed setup, eval engine configuration, environment variables, and troubleshooting, see [SETUP.md](SETUP.md).
+See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting.
 
 <details>
 <summary><strong>API Endpoints</strong></summary>
@@ -275,6 +279,7 @@ For detailed setup, eval engine configuration, environment variables, and troubl
 |--------|----------|-------------|
 | `POST` | `/api/v1/auth/bootstrap` | Auto-create admin on fresh server |
 | `POST` | `/api/v1/auth/login` | Login with API key or email+password |
+| `POST` | `/api/v1/auth/exchange` | Exchange one-time OAuth code for credentials |
 | `GET` | `/api/v1/auth/whoami` | Current user info |
 | `POST` | `/api/v1/auth/request-reset` | Request password reset (code logged to server console) |
 | `POST` | `/api/v1/auth/reset-password` | Reset password with code + new password |
@@ -369,23 +374,26 @@ All `{id}` parameters accept either a UUID or a name.
 <details>
 <summary><strong>Environment Variables</strong></summary>
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | | PostgreSQL connection string (asyncpg) |
-| `CLICKHOUSE_URL` | Yes | | ClickHouse connection string |
-| `POSTGRES_USER` | Yes | `postgres` | PostgreSQL user |
-| `POSTGRES_PASSWORD` | Yes | `postgres` | PostgreSQL password |
-| `SECRET_KEY` | Yes | | Secret key for API key hashing. Generate with: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `CLICKHOUSE_USER` | No | `default` | ClickHouse user |
-| `CLICKHOUSE_PASSWORD` | No | `clickhouse` | ClickHouse password |
-| `EVAL_MODEL_URL` | No | | OpenAI-compatible endpoint for the eval engine |
-| `EVAL_MODEL_API_KEY` | No | | API key for the eval model |
-| `EVAL_MODEL_NAME` | No | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
-| `EVAL_MODEL_PROVIDER` | No | | `bedrock`, `openai`, or empty for auto-detect |
-| `AWS_ACCESS_KEY_ID` | No | | AWS credentials for Bedrock |
-| `AWS_SECRET_ACCESS_KEY` | No | | AWS credentials for Bedrock |
-| `AWS_SESSION_TOKEN` | No | | AWS session token (temporary credentials) |
-| `AWS_REGION` | No | `us-east-1` | AWS region for Bedrock |
+All settings have sensible defaults that work for local development. Just `cp .env.example .env` and you are good to go. Override what you need for production.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5432/observal` | PostgreSQL connection string |
+| `CLICKHOUSE_URL` | `clickhouse://localhost:8123/observal` | ClickHouse connection string |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
+| `SECRET_KEY` | `change-me-to-a-random-string` | Session signing key. Generate a real one for production: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `POSTGRES_USER` | `postgres` | PostgreSQL container user |
+| `POSTGRES_PASSWORD` | `postgres` | PostgreSQL container password |
+| `FRONTEND_URL` | `http://localhost:3000` | Frontend URL (used for OAuth redirects and CORS) |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated allowed CORS origins |
+| `OAUTH_CLIENT_ID` | disabled | OAuth/OIDC client ID (SSO is disabled when unset) |
+| `OAUTH_CLIENT_SECRET` | disabled | OAuth/OIDC client secret |
+| `OAUTH_SERVER_METADATA_URL` | disabled | OIDC discovery URL |
+| `EVAL_MODEL_URL` | | OpenAI-compatible endpoint for the eval engine |
+| `EVAL_MODEL_API_KEY` | | API key for the eval model |
+| `EVAL_MODEL_NAME` | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
+| `EVAL_MODEL_PROVIDER` | | `bedrock`, `openai`, or empty for auto-detect |
+| `AWS_REGION` | `us-east-1` | AWS region for Bedrock |
 
 </details>
 
