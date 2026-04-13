@@ -406,6 +406,7 @@ export default function AgentDetailPage({
                 </TabsContent>
 
                 <TabsContent value="components" className="mt-6">
+                  <div className="min-h-[300px]">
                   {components.length === 0 ? (
                     a.prompt ? (
                       <div className="space-y-3">
@@ -476,6 +477,7 @@ export default function AgentDetailPage({
                       })}
                     </div>
                   )}
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="reviews" className="mt-6 space-y-6">

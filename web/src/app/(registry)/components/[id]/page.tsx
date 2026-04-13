@@ -64,7 +64,7 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
           </Button>
         }
       />
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="p-6 w-full max-w-6xl mx-auto space-y-6">
         {isLoading ? (
           <DetailSkeleton />
         ) : isError ? (
@@ -113,12 +113,15 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
                 <TabsTrigger value="install">Add to Agent</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="overview" forceMount className="mt-6 space-y-6 data-[state=inactive]:hidden">
-                <ComponentMetadata item={item} />
-                <MetricsSection entries={metricsEntries} />
+              <TabsContent value="overview" forceMount className="mt-6 data-[state=inactive]:hidden">
+                <div className="space-y-6 w-full min-h-[400px]">
+                  <ComponentMetadata item={item} />
+                  <MetricsSection entries={metricsEntries} />
+                </div>
               </TabsContent>
 
-              <TabsContent value="reviews" forceMount className="mt-6 space-y-6 data-[state=inactive]:hidden">
+              <TabsContent value="reviews" forceMount className="mt-6 data-[state=inactive]:hidden">
+                <div className="space-y-6 w-full min-h-[400px]">
                 {isAuthenticated && (
                   <>
                     <ReviewForm
@@ -172,9 +175,11 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
                     ))}
                   </div>
                 )}
+                </div>
               </TabsContent>
 
-              <TabsContent value="install" forceMount className="mt-6 space-y-6 data-[state=inactive]:hidden">
+              <TabsContent value="install" forceMount className="mt-6 data-[state=inactive]:hidden">
+                <div className="space-y-6 w-full min-h-[400px]">
                 <div className="space-y-2">
                   <h3 className="text-sm font-semibold font-display">Add to Agent</h3>
                   <p className="text-xs text-muted-foreground">
@@ -197,6 +202,7 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
                     </div>
                   </>
                 ) : null}
+                </div>
               </TabsContent>
             </Tabs>
           </div>
