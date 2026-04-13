@@ -1,20 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getUserRole } from "@/lib/api";
 
+import { useRoleGuard } from "@/hooks/use-role-guard";
+
+/**
+ * @deprecated Use `useRoleGuard("admin")` instead.
+ * Kept for backward compatibility.
+ */
 export function useAdminGuard() {
-  const router = useRouter();
-  const [ready] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return getUserRole() === "admin";
-  });
-
-  useEffect(() => {
-    if (!ready) {
-      router.replace("/");
-    }
-  }, [ready, router]);
-
+  const { ready } = useRoleGuard("admin");
   return ready;
 }

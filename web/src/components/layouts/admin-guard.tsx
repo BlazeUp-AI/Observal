@@ -1,8 +1,11 @@
 "use client";
-import { useAdminGuard } from "@/hooks/use-admin-guard";
 
+import { RoleGuard } from "@/components/layouts/role-guard";
+
+/**
+ * @deprecated Use `<RoleGuard minRole="admin">` instead.
+ * Kept for backward compatibility.
+ */
 export function AdminGuard({ children }: { children: React.ReactNode }) {
-  const ready = useAdminGuard();
-  if (!ready) return null;
-  return <>{children}</>;
+  return <RoleGuard minRole="admin">{children}</RoleGuard>;
 }

@@ -246,6 +246,17 @@ export const admin = {
     put<{ message: string }>(`/admin/users/${id}/password`, body),
 };
 
+// ── Config ─────────────────────────────────────────────────────────
+export type PublicConfig = {
+  deployment_mode: "local" | "enterprise";
+  sso_enabled: boolean;
+  saml_enabled: boolean;
+};
+
+export const config = {
+  public: () => get<PublicConfig>("/config/public"),
+};
+
 // ── Health ──────────────────────────────────────────────────────────
 export const health = () =>
   fetch("/health").then((r) => r.json());
