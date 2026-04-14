@@ -251,7 +251,7 @@ def _check_observal_config(issues: list, warnings: list):
     """Check Observal's own config."""
     config_path = Path.home() / ".observal" / "config.json"
     if not config_path.exists():
-        issues.append("~/.observal/config.json not found. Run `observal init` first.")
+        issues.append("~/.observal/config.json not found. Run `observal auth login` first.")
         return
 
     data = _load_json(config_path)
@@ -263,7 +263,7 @@ def _check_observal_config(issues: list, warnings: list):
         issues.append("No API key in ~/.observal/config.json. Run `observal login`.")
 
     if not data.get("server_url"):
-        issues.append("No server_url in ~/.observal/config.json. Run `observal init`.")
+        issues.append("No server_url in ~/.observal/config.json. Run `observal auth login`.")
 
     # Check server is reachable
     server_url = data.get("server_url", "")
@@ -391,8 +391,8 @@ def doctor(
                 rprint('  Add `"OBSERVAL_API_KEY"` to `httpHookAllowedEnvVars`')
             elif "allowManagedHooksOnly" in issue:
                 rprint("  Set `allowManagedHooksOnly: false` or add Observal hooks to managed config")
-            elif "observal init" in issue:
-                rprint("  Run: observal init")
+            elif "observal auth login" in issue:
+                rprint("  Run: observal auth login")
             elif "observal login" in issue:
                 rprint("  Run: observal login")
             elif "Cannot reach" in issue:

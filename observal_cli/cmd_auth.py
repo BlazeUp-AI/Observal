@@ -262,15 +262,14 @@ def reset_password(
 
 
 @auth_app.command()
-def init(
-    server: str = typer.Option(None, "--server", "-s", help="Server URL"),
-    config_only: bool = typer.Option(False, "--config-only", help="Initialize config without server validation"),
-):
-    """First-run setup (alias for login)."""
-    if config_only:
-        _do_config_only_init(server)
-    else:
-        login(server=server, key=None, email=None, password=None, code=None, name=None)
+def init():
+    """[Removed] Use 'observal auth login' + 'observal pull' instead."""
+    rprint("[yellow]'observal auth init' has been removed.[/yellow]")
+    rprint()
+    rprint("Use these commands instead:")
+    rprint("  [bold]observal auth login[/bold]   — connect to your server")
+    rprint("  [bold]observal pull[/bold]          — pull your configuration")
+    raise typer.Exit(1)
 
 
 @auth_app.command()
@@ -372,16 +371,14 @@ def register_deprecated_auth(app: typer.Typer):
     """Register deprecated root-level aliases."""
 
     @app.command(name="init", hidden=True)
-    def deprecated_init(
-        server: str = typer.Option(None, "--server", "-s", help="Server URL"),
-        config_only: bool = typer.Option(False, "--config-only", help="Initialize config without server validation"),
-    ):
-        """[Deprecated] Use 'observal auth login' instead."""
-        _deprecation_notice("login")
-        if config_only:
-            _do_config_only_init(server)
-        else:
-            login(server=server, key=None, email=None, password=None, code=None, name=None)
+    def deprecated_init():
+        """[Removed] Use 'observal auth login' + 'observal pull' instead."""
+        rprint("[yellow]'observal init' has been removed.[/yellow]")
+        rprint()
+        rprint("Use these commands instead:")
+        rprint("  [bold]observal auth login[/bold]   — connect to your server")
+        rprint("  [bold]observal pull[/bold]          — pull your configuration")
+        raise typer.Exit(1)
 
     @app.command(name="login", hidden=True)
     def deprecated_login(

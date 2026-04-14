@@ -50,7 +50,7 @@ def get_or_exit() -> dict:
         from rich import print as rprint
 
         rprint(
-            "[red]Not configured.[/red] Run [bold]observal init[/bold], [bold]observal login[/bold], or set the [bold]OBSERVAL_API_KEY[/bold] environment variable."
+            "[red]Not configured.[/red] Run [bold]observal auth login[/bold] or set the [bold]OBSERVAL_API_KEY[/bold] environment variable."
         )
         raise typer.Exit(1)
     return cfg
