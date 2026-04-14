@@ -125,7 +125,7 @@ export OBSERVAL_SERVER_URL=http://localhost:8000
 export OBSERVAL_API_KEY=<your-key>
 ```
 
-See the [README](README.md) for full CLI and API reference.
+See the [README](README.md) for an overview or [docs/cli.md](docs/cli.md) for the complete CLI command reference.
 
 ## Environment Variables
 
