@@ -29,13 +29,13 @@ class TestSeedDemoAccounts:
         db.commit = AsyncMock()
 
         with patch("services.demo_accounts.settings") as mock_settings:
-            mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.local"
+            mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.example"
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = "super-pass"
-            mock_settings.DEMO_ADMIN_EMAIL = "admin@demo.local"
+            mock_settings.DEMO_ADMIN_EMAIL = "admin@demo.example"
             mock_settings.DEMO_ADMIN_PASSWORD = "admin-pass"
-            mock_settings.DEMO_REVIEWER_EMAIL = "reviewer@demo.local"
+            mock_settings.DEMO_REVIEWER_EMAIL = "reviewer@demo.example"
             mock_settings.DEMO_REVIEWER_PASSWORD = "reviewer-pass"
-            mock_settings.DEMO_USER_EMAIL = "user@demo.local"
+            mock_settings.DEMO_USER_EMAIL = "user@demo.example"
             mock_settings.DEMO_USER_PASSWORD = "user-pass"
 
             count = await seed_demo_accounts(db)
@@ -52,7 +52,7 @@ class TestSeedDemoAccounts:
         db.scalar = AsyncMock(return_value=1)  # real_count=1
 
         with patch("services.demo_accounts.settings") as mock_settings:
-            mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.local"
+            mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.example"
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = "pass"
 
             count = await seed_demo_accounts(db)
@@ -91,9 +91,9 @@ class TestSeedDemoAccounts:
         db.commit = AsyncMock()
 
         with patch("services.demo_accounts.settings") as mock_settings:
-            mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.local"
+            mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.example"
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = "pass"
-            mock_settings.DEMO_ADMIN_EMAIL = "admin@demo.local"
+            mock_settings.DEMO_ADMIN_EMAIL = "admin@demo.example"
             mock_settings.DEMO_ADMIN_PASSWORD = "pass"
             mock_settings.DEMO_REVIEWER_EMAIL = None
             mock_settings.DEMO_REVIEWER_PASSWORD = None
@@ -180,7 +180,7 @@ class TestEventDrivenCleanup:
             await bus.emit(
                 UserCreated(
                     user_id="abc",
-                    email="demo@demo.local",
+                    email="demo@demo.example",
                     role="user",
                     is_demo=True,
                 )
