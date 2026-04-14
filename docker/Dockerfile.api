@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -10,6 +10,12 @@ COPY observal-server/pyproject.toml observal-server/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY observal-server/ .
+
+RUN groupadd --system --gid 1001 appgroup && \
+    useradd --system --uid 1001 --gid appgroup appuser && \
+    chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 8000
 

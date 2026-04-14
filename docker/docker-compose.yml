@@ -19,6 +19,22 @@ services:
         condition: service_healthy
       observal-redis:
         condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - observal-net
 
@@ -37,11 +53,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - observal-net
 
   observal-clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:24.8
     ports:
       - "8123:8123"
     env_file:
@@ -55,6 +75,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     networks:
       - observal-net
 
@@ -69,6 +93,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     networks:
       - observal-net
 
@@ -91,6 +119,16 @@ services:
         condition: service_healthy
       observal-clickhouse:
         condition: service_started
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - observal-net
 
@@ -104,11 +142,21 @@ services:
       - NEXT_PUBLIC_API_URL=http://observal-api:8000
     depends_on:
       - observal-api
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     networks:
       - observal-net
 
   observal-otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.115.0
     command: ["--config", "/etc/otelcol/config.yaml"]
     restart: on-failure
     ports:
@@ -119,6 +167,12 @@ services:
     depends_on:
       observal-clickhouse:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     networks:
       - observal-net
 
