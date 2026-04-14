@@ -154,6 +154,8 @@ const FILTER_CATEGORIES: FilterCategory[] = [
   { key: "tasks", label: "Tasks", match: (e) => e === "hook_taskcreated" || e === "hook_taskcompleted", color: "bg-lime-500/10 text-lime-600 dark:text-lime-400 border-lime-500/20" },
   { key: "mcp", label: "MCP", match: (e) => e === "hook_elicitation" || e === "hook_elicitationresult", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20" },
   { key: "errors", label: "Errors", match: (e) => e === "hook_posttoolusefailure" || e === "hook_stopfailure", color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
+  { key: "notifications", label: "Notifications", match: (e) => e === "hook_notification", color: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20" },
+  { key: "worktree", label: "Worktrees", match: (e) => e === "hook_worktreecreate" || e === "hook_worktreeremove", color: "bg-amber-400/10 text-amber-600 dark:text-amber-300 border-amber-400/20" },
 ];
 
 /* ── Tree data structures ────────────────────────────────── */
@@ -845,6 +847,12 @@ function eventLabel(evt: RawOtelEvent): string {
   if (eName === "hook_elicitationresult") return "MCP reply";
   if (eName === "hook_notification") return "notify";
   if (eName === "hook_sessionstart") return "session";
+  if (eName === "hook_userpromptsubmit") return "prompt";
+  if (eName === "hook_assistant_response") return "response";
+  if (eName === "hook_assistant_thinking") return "thinking";
+  if (eName === "hook_subagentstart") return attrs.agent_type || "agent+";
+  if (eName === "hook_subagentstop") return attrs.agent_type || "agent-";
+  if (eName === "hook_stop") return attrs.stop_reason || "end_turn";
   if (isHookEvent(eName)) return attrs.tool_name || eName.replace("hook_", "");
   return eName;
 }
