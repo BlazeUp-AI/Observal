@@ -3,8 +3,12 @@
 
 Called by the shell hook when the server is unreachable.
 No dependencies beyond Python stdlib (sqlite3, json, sys, os).
+
+When the ``cryptography`` library is installed and the server's public key
+is cached locally, payloads are encrypted with ECIES before storage.
 """
 
+import importlib.util
 import json
 import sqlite3
 import sys
@@ -12,6 +16,28 @@ from pathlib import Path
 
 DB_PATH = Path.home() / ".observal" / "telemetry_buffer.db"
 MAX_EVENTS = 10_000
+
+
+def _try_encrypt(payload: str) -> tuple[str | bytes, int]:
+    """Attempt to encrypt *payload*; return (data, encrypted_flag).
+
+    Falls back to plaintext (encrypted=0) if the crypto module or
+    server public key is unavailable.
+    """
+    try:
+        crypto_path = Path(__file__).parent / "payload_crypto.py"
+        if not crypto_path.exists():
+            return payload, 0
+        spec = importlib.util.spec_from_file_location("payload_crypto", crypto_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if mod.can_encrypt():
+            payload_bytes, was_encrypted = mod.encrypt_payload(payload)
+            if was_encrypted:
+                return payload_bytes, 1
+    except Exception:
+        pass
+    return payload, 0
 
 
 def main() -> None:
@@ -25,6 +51,9 @@ def main() -> None:
     except json.JSONDecodeError:
         return
 
+    # Optionally encrypt before storage
+    store_data, encrypted = _try_encrypt(payload)
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), timeout=5)
     try:
@@ -36,17 +65,18 @@ def main() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 event_type TEXT NOT NULL,
-                payload TEXT NOT NULL,
+                payload BLOB NOT NULL,
                 attempts INTEGER NOT NULL DEFAULT 0,
                 last_attempt TEXT,
-                status TEXT NOT NULL DEFAULT 'pending'
+                status TEXT NOT NULL DEFAULT 'pending',
+                encrypted INTEGER NOT NULL DEFAULT 0
             )
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON pending_events(status)")
         conn.execute(
-            "INSERT INTO pending_events (event_type, payload) VALUES (?, ?)",
-            ("hook", payload),
+            "INSERT INTO pending_events (event_type, payload, encrypted) VALUES (?, ?, ?)",
+            ("hook", store_data, encrypted),
         )
         conn.commit()
 

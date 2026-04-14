@@ -3,6 +3,10 @@
 
 Called in the background by the shell hook after a successful curl.
 No dependencies beyond Python stdlib (sqlite3, json, os, urllib).
+
+Encrypted payloads (encrypted=1) are sent with
+``X-Observal-Encrypted: ecies-p256`` and ``Content-Type: application/octet-stream``
+so the server can decrypt before ingestion.
 """
 
 import os
@@ -28,10 +32,25 @@ def main() -> None:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=3000")
 
-        rows = conn.execute(
-            "SELECT id, payload FROM pending_events WHERE status = 'pending' AND attempts < ? ORDER BY id ASC LIMIT ?",
-            (MAX_RETRIES, FLUSH_LIMIT),
-        ).fetchall()
+        # Gracefully handle databases created before the encrypted column existed
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(pending_events)").fetchall()}
+        has_encrypted_col = "encrypted" in columns
+
+        if has_encrypted_col:
+            rows = conn.execute(
+                "SELECT id, payload, encrypted FROM pending_events "
+                "WHERE status = 'pending' AND attempts < ? ORDER BY id ASC LIMIT ?",
+                (MAX_RETRIES, FLUSH_LIMIT),
+            ).fetchall()
+        else:
+            rows = [
+                (r[0], r[1], 0)
+                for r in conn.execute(
+                    "SELECT id, payload FROM pending_events "
+                    "WHERE status = 'pending' AND attempts < ? ORDER BY id ASC LIMIT ?",
+                    (MAX_RETRIES, FLUSH_LIMIT),
+                ).fetchall()
+            ]
 
         if not rows:
             # Also clean up old sent events while we're here
@@ -44,14 +63,27 @@ def main() -> None:
         sent_ids = []
         failed_ids = []
 
-        for row_id, payload in rows:
+        for row_id, payload, encrypted in rows:
             try:
-                req = urllib.request.Request(
-                    hooks_url,
-                    data=payload.encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
+                if encrypted:
+                    # Encrypted payload — send as raw bytes
+                    data = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+                    req = urllib.request.Request(
+                        hooks_url,
+                        data=data,
+                        headers={"Content-Type": "application/octet-stream"},
+                        method="POST",
+                    )
+                    req.add_header("X-Observal-Encrypted", "ecies-p256")
+                else:
+                    # Plaintext JSON payload
+                    data = payload.encode("utf-8") if isinstance(payload, str) else payload
+                    req = urllib.request.Request(
+                        hooks_url,
+                        data=data,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
                 if user_id:
                     req.add_header("X-Observal-User-Id", user_id)
 
