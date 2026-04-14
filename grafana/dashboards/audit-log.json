@@ -1,10 +1,9 @@
 {
   "uid": "observal-audit-log",
   "title": "Observal \u2014 Audit Log",
-  "description": "Enterprise audit trail: actions, actors, and resource access",
+  "description": "Audit trail: actions, actors, and resource access",
   "tags": [
-    "observal",
-    "enterprise"
+    "observal"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
