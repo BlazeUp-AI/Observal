@@ -234,9 +234,10 @@ def register_pull(app: typer.Typer):
             for cmd in setup_cmds:
                 rprint(f"  [cyan]$ {' '.join(cmd)}[/cyan]")
 
-        # ── OTLP env vars (Claude Code) ─────────────────────
+        # ── OTLP env vars (Observal telemetry — optional) ──
         otlp_env = snippet.get("otlp_env")
         if otlp_env:
-            rprint("\n[bold]Set these environment variables:[/bold]")
+            rprint("\n[bold dim]Observal telemetry (optional):[/bold dim]")
+            rprint("[dim]These enable usage tracking via Observal — not required by the MCP server itself.[/dim]")
             for k, v in otlp_env.items():
-                rprint(f"  [cyan]{k}[/cyan]={v}")
+                rprint(f"  [dim]{k}={v}[/dim]")
