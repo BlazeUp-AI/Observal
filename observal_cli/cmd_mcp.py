@@ -20,10 +20,6 @@ from observal_cli.render import (
     status_badge,
 )
 
-_DEPRECATION_TPL = (
-    "[yellow]Warning:[/yellow] [dim]`observal {old}` is deprecated. Use `observal {new}` instead.[/dim]\n"
-)
-
 mcp_app = typer.Typer(help="MCP server registry commands")
 
 
@@ -409,61 +405,3 @@ def delete_mcp(
 ):
     """Delete an MCP server."""
     _delete_impl(mcp_id, yes)
-
-
-# ── Deprecated root-level aliases ────────────────────────────
-
-
-def register_deprecated_mcp(app: typer.Typer):
-    """Register deprecated bare root-level MCP commands (submit, list, show, install, delete)."""
-
-    @app.command(name="submit", hidden=True)
-    def deprecated_submit(
-        git_url: str = typer.Argument(..., help="Git repository URL"),
-        name: str = typer.Option(None, "--name", "-n", help="Skip name prompt"),
-        category: str = typer.Option(None, "--category", "-c", help="Skip category prompt"),
-        yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults from repo analysis"),
-    ):
-        """(Deprecated) Use `observal registry mcp submit` instead."""
-        rprint(_DEPRECATION_TPL.format(old="submit", new="registry mcp submit"))
-        _submit_impl(git_url, name, category, yes)
-
-    @app.command(name="list", hidden=True)
-    def deprecated_list(
-        category: str | None = typer.Option(None, "--category", "-c", help="Filter by category"),
-        search: str | None = typer.Option(None, "--search", "-s", help="Search by name/description"),
-        limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
-        sort: str = typer.Option("name", "--sort", help="Sort by: name, category, version"),
-        output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
-    ):
-        """(Deprecated) Use `observal registry mcp list` instead."""
-        rprint(_DEPRECATION_TPL.format(old="list", new="registry mcp list"))
-        _list_impl(category, search, limit, sort, output)
-
-    @app.command(name="show", hidden=True)
-    def deprecated_show(
-        mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-        output: str = typer.Option("table", "--output", "-o", help="Output: table, json"),
-    ):
-        """(Deprecated) Use `observal registry mcp show` instead."""
-        rprint(_DEPRECATION_TPL.format(old="show", new="registry mcp show"))
-        _show_impl(mcp_id, output)
-
-    @app.command(name="install", hidden=True)
-    def deprecated_install(
-        mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-        ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
-        raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
-    ):
-        """(Deprecated) Use `observal registry mcp install` instead."""
-        rprint(_DEPRECATION_TPL.format(old="install", new="registry mcp install"))
-        _install_impl(mcp_id, ide, raw)
-
-    @app.command(name="delete", hidden=True)
-    def deprecated_delete(
-        mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-    ):
-        """(Deprecated) Use `observal registry mcp delete` instead."""
-        rprint(_DEPRECATION_TPL.format(old="delete", new="registry mcp delete"))
-        _delete_impl(mcp_id, yes)

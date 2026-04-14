@@ -343,64 +343,6 @@ def version_callback():
     rprint(f"observal [bold]{v}[/bold]")
 
 
-# ── Deprecated root-level wrappers ──────────────────────────
-
-_DEPRECATION_MSG = "Deprecated: use 'observal auth {cmd}' instead"
-
-
-def _deprecation_notice(cmd_name: str):
-    rprint(f"[yellow]{_DEPRECATION_MSG.format(cmd=cmd_name)}[/yellow]\n")
-
-
-def register_deprecated_auth(app: typer.Typer):
-    """Register deprecated root-level aliases."""
-
-    @app.command(name="init", hidden=True)
-    def deprecated_init():
-        """[Removed] Use 'observal auth login' + 'observal pull' instead."""
-        rprint("[yellow]'observal init' has been removed.[/yellow]")
-        rprint()
-        rprint("Use these commands instead:")
-        rprint("  [bold]observal auth login[/bold]   — connect to your server")
-        rprint("  [bold]observal pull[/bold]          — pull your configuration")
-        raise typer.Exit(1)
-
-    @app.command(name="login", hidden=True)
-    def deprecated_login(
-        server: str = typer.Option(None, "--server", "-s", help="Server URL"),
-        key: str = typer.Option(None, "--key", "-k", help="API key"),
-    ):
-        """[Deprecated] Use 'observal auth login' instead."""
-        _deprecation_notice("login")
-        login(server=server, key=key, email=None, password=None, name=None)
-
-    @app.command(name="logout", hidden=True)
-    def deprecated_logout():
-        """[Deprecated] Use 'observal auth logout' instead."""
-        _deprecation_notice("logout")
-        logout()
-
-    @app.command(name="whoami", hidden=True)
-    def deprecated_whoami(
-        output: str = typer.Option("table", "--output", "-o", help="Output format: table, json"),
-    ):
-        """[Deprecated] Use 'observal auth whoami' instead."""
-        _deprecation_notice("whoami")
-        whoami(output=output)
-
-    @app.command(name="status", hidden=True)
-    def deprecated_status():
-        """[Deprecated] Use 'observal auth status' instead."""
-        _deprecation_notice("status")
-        status()
-
-    @app.command(name="version", hidden=True)
-    def deprecated_version():
-        """[Deprecated] Use 'observal --version' instead."""
-        rprint("[yellow]Deprecated: use 'observal --version' instead[/yellow]\n")
-        version_callback()
-
-
 # ── Helper functions ────────────────────────────────────────
 
 
