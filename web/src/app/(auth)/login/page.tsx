@@ -76,6 +76,22 @@ function LoginContent() {
     }
   }, [searchParams, router]);
 
+  // Show toast when redirected due to session expiry
+  useEffect(() => {
+    const reason = searchParams.get("reason");
+    if (reason === "session_expired") {
+      toast.info("Your session has expired. Please sign in again.");
+      window.history.replaceState({}, "", "/login");
+    }
+  }, [searchParams]);
+
+  // In enterprise mode, force login mode (SSO only)
+  useEffect(() => {
+    if (isEnterprise && mode !== "login") {
+      setMode("login");
+    }
+  }, [isEnterprise, mode]);
+
   function switchMode(next: Mode) {
     setMode(next);
     setError("");
@@ -222,8 +238,8 @@ function LoginContent() {
               }}
               className="space-y-4"
             >
-              {/* Email + Password mode (login & register) — hidden in enterprise login mode */}
-              {(mode === "login" || mode === "register") && !(isEnterprise && mode === "login") && (
+              {/* Email + Password mode (login & register) — hidden in enterprise mode */}
+              {(mode === "login" || mode === "register") && !isEnterprise && (
                 <>
                   <div className="space-y-2 animate-in">
                     <Label htmlFor="email">Email</Label>
@@ -274,8 +290,8 @@ function LoginContent() {
                 </>
               )}
 
-              {/* API Key mode */}
-              {mode === "api-key" && (
+              {/* API Key mode — hidden in enterprise mode */}
+              {mode === "api-key" && !isEnterprise && (
                 <div className="space-y-2 animate-in">
                   <Label htmlFor="api-key">API Key</Label>
                   <div className="relative">
@@ -301,8 +317,8 @@ function LoginContent() {
                 </div>
               )}
 
-              {/* Reset request mode — enter email */}
-              {mode === "reset-request" && (
+              {/* Reset request mode — hidden in enterprise mode */}
+              {mode === "reset-request" && !isEnterprise && (
                 <div className="space-y-2 animate-in">
                   <Label htmlFor="reset-email">Email</Label>
                   <Input
@@ -320,8 +336,8 @@ function LoginContent() {
                 </div>
               )}
 
-              {/* Reset confirm mode — enter code + new password */}
-              {mode === "reset-confirm" && (
+              {/* Reset confirm mode — hidden in enterprise mode */}
+              {mode === "reset-confirm" && !isEnterprise && (
                 <>
                   <div className="space-y-2 animate-in">
                     <Label htmlFor="reset-token">Reset Code</Label>
@@ -373,8 +389,8 @@ function LoginContent() {
 
               {/* Submit */}
               <div className="animate-in stagger-2 space-y-3">
-                {/* In enterprise login mode, hide the password submit button */}
-                {!(isEnterprise && mode === "login") && (
+                {/* In enterprise mode, hide all non-SSO submit buttons */}
+                {!isEnterprise && (
                   <Button type="submit" disabled={loading || ssoLoading} className="w-full">
                     {loading && !ssoLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -446,7 +462,7 @@ function LoginContent() {
                     </button>
                   </>
                 )}
-                {mode === "register" && (
+                {mode === "register" && !isEnterprise && (
                   <button
                     type="button"
                     className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -455,7 +471,7 @@ function LoginContent() {
                     Already have an account? Sign in
                   </button>
                 )}
-                {mode === "api-key" && (
+                {mode === "api-key" && !isEnterprise && (
                   <button
                     type="button"
                     className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -464,7 +480,7 @@ function LoginContent() {
                     Sign in with email instead
                   </button>
                 )}
-                {(mode === "reset-request" || mode === "reset-confirm") && (
+                {(mode === "reset-request" || mode === "reset-confirm") && !isEnterprise && (
                   <button
                     type="button"
                     className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"

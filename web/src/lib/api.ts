@@ -95,6 +95,16 @@ async function request<T = unknown>(
   });
 
   if (!res.ok) {
+    // Auto-clear session and redirect on 401 (except for auth endpoints
+    // where 401 means "bad credentials", not session expiry)
+    if (res.status === 401 && !path.startsWith("/auth/")) {
+      clearSession();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login?reason=session_expired";
+      }
+      throw new Error("Session expired");
+    }
+
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`${res.status}: ${text}`);
   }

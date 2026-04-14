@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { getUserRole } from "@/lib/api";
 
 /** Canonical role type matching the backend 4-tier RBAC. */
@@ -41,6 +42,7 @@ export function useRoleGuard(minRole: Role) {
 
   useEffect(() => {
     if (!ready) {
+      toast.error("You do not have permission to access this page.");
       router.replace("/");
     }
   }, [ready, router]);
