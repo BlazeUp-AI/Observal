@@ -16,6 +16,7 @@ services:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       # ClickHouse data retention
       - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
+      - JWT_KEY_DIR=/data/keys
       # Demo accounts (seeded on first startup when no real users exist)
       - DEMO_SUPER_ADMIN_EMAIL=${DEMO_SUPER_ADMIN_EMAIL:-super@demo.local}
       - DEMO_SUPER_ADMIN_PASSWORD=${DEMO_SUPER_ADMIN_PASSWORD:-super-changeme}
@@ -25,6 +26,8 @@ services:
       - DEMO_REVIEWER_PASSWORD=${DEMO_REVIEWER_PASSWORD:-reviewer-changeme}
       - DEMO_USER_EMAIL=${DEMO_USER_EMAIL:-user@demo.local}
       - DEMO_USER_PASSWORD=${DEMO_USER_PASSWORD:-user-changeme}
+    volumes:
+      - apidata:/data
     depends_on:
       observal-db:
         condition: service_healthy
@@ -117,7 +120,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    command: ["uv", "run", "arq", "worker.WorkerSettings"]
+    command: ["/app/.venv/bin/python", "-m", "arq", "worker.WorkerSettings"]
     env_file:
       - ../.env
     environment:
@@ -170,7 +173,7 @@ services:
       - observal-net
 
   observal-otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.115.0
+    image: otel/opentelemetry-collector-contrib:0.117.0
     command: ["--config", "/etc/otelcol/config.yaml"]
     restart: on-failure
     ports:
@@ -219,6 +222,7 @@ volumes:
   chdata:
   redisdata:
   grafanadata:
+  apidata:
 
 networks:
   observal-net:

@@ -13,10 +13,11 @@ COPY observal-server/ .
 
 RUN groupadd --system --gid 1001 appgroup && \
     useradd --system --uid 1001 --gid appgroup appuser && \
-    chown -R appuser:appgroup /app
+    chown -R appuser:appgroup /app && \
+    mkdir -p /data && chown appuser:appgroup /data
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/.venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
