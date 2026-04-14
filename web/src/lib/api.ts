@@ -39,6 +39,8 @@ export function setApiKey(key: string) {
 export function clearApiKey() {
   localStorage.removeItem("observal_api_key");
   localStorage.removeItem("observal_user_role");
+  localStorage.removeItem("observal_user_name");
+  localStorage.removeItem("observal_user_email");
 }
 
 export function setUserRole(role: string) {
@@ -50,9 +52,29 @@ export function getUserRole(): string | null {
   return localStorage.getItem("observal_user_role");
 }
 
+export function setUserName(name: string) {
+  localStorage.setItem("observal_user_name", name);
+}
+
+export function getUserName(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("observal_user_name");
+}
+
+export function setUserEmail(email: string) {
+  localStorage.setItem("observal_user_email", email);
+}
+
+export function getUserEmail(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("observal_user_email");
+}
+
 export function clearSession() {
   localStorage.removeItem("observal_api_key");
   localStorage.removeItem("observal_user_role");
+  localStorage.removeItem("observal_user_name");
+  localStorage.removeItem("observal_user_email");
 }
 
 async function request<T = unknown>(
