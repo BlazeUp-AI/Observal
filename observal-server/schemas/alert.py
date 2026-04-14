@@ -15,7 +15,8 @@ class AlertRuleCreate(BaseModel):
 
 
 class AlertRuleUpdate(BaseModel):
-    status: str  # active | paused
+    status: str | None = None
+    webhook_url: str | None = None
 
 
 class AlertRuleResponse(BaseModel):
@@ -29,6 +30,21 @@ class AlertRuleResponse(BaseModel):
     webhook_url: str
     status: str
     last_triggered: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AlertHistoryResponse(BaseModel):
+    id: UUID
+    alert_rule_id: UUID
+    metric_value: float
+    threshold: float
+    condition: str
+    fired_at: datetime
+    delivery_status: str
+    response_code: int | None
+    error: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

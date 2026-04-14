@@ -1,6 +1,7 @@
 from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
 from models.agent_component import AgentComponent
 from models.alert import AlertRule
+from models.alert_history import AlertHistory
 from models.base import Base
 from models.component_source import ComponentSource
 from models.download import AgentDownloadRecord, ComponentDownloadRecord
@@ -38,6 +39,7 @@ __all__ = [
     "AgentGoalSection",
     "AgentGoalTemplate",
     "AgentStatus",
+    "AlertHistory",
     "AlertRule",
     "Base",
     "ComponentDownloadRecord",

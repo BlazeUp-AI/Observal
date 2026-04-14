@@ -6,6 +6,7 @@ from arq.connections import RedisSettings
 from arq.cron import cron
 
 from config import settings
+from services.alert_evaluator import evaluate_alerts
 from services.redis import publish
 
 logger = logging.getLogger(__name__)
@@ -111,8 +112,11 @@ async def shutdown(ctx: dict):
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [run_eval, sync_component_sources]
-    cron_jobs = [cron(sync_component_sources, hour={0, 6, 12, 18})]  # Every 6 hours
+    functions = [run_eval, sync_component_sources, evaluate_alerts]
+    cron_jobs = [
+        cron(sync_component_sources, hour={0, 6, 12, 18}),  # Every 6 hours
+        cron(evaluate_alerts, second={0}, timeout=55),  # Every minute
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = _redis_settings()
