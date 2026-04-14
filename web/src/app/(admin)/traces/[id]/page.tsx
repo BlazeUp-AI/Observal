@@ -207,13 +207,14 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
   for (const evt of events) {
     const eName = getEventName(evt);
 
-    // Drop OTEL user_prompt when hooks have the richer version.
-    // But keep hook-sourced user_prompt events (they have hook_event attr
-    // or prompt_length — these were stored before the event name fix).
+    // Drop ALL user_prompt events when hooks are present.
+    // hook_userpromptsubmit carries the same (or richer) data.
+    // Legacy hook events stored before the event-name fix also resolved
+    // as "user_prompt" with prompt_length/tool_name set — keeping those
+    // caused duplicate turn boundaries alongside the properly-named
+    // hook_userpromptsubmit event for the same prompt.
     if (eName === "user_prompt" && hasHooks) {
-      const a = evt.attributes ?? {};
-      const isFromHook = a.hook_event || a.prompt_length || a.tool_name === "user_prompt";
-      if (!isFromHook) continue;
+      continue;
     }
 
     // Drop OTEL tool_decision / tool_result — their metadata gets merged into hooks below
