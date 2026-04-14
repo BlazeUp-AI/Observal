@@ -37,6 +37,26 @@
         "multi": true,
         "refresh": 2,
         "sort": 1
+      },
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "observal-clickhouse"
+        },
+        "query": "SELECT DISTINCT environment FROM spans FINAL WHERE is_deleted = 0 ORDER BY environment",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "allValue": "1",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
       }
     ]
   },
@@ -88,7 +108,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  time,\n  sum(daily_cost) OVER (ORDER BY time) AS cumulative_cost\nFROM (\n  SELECT\n    $__timeInterval(start_time) AS time,\n    sum(cost) AS daily_cost\n  FROM spans FINAL\n  WHERE is_deleted = 0\n    AND $__timeFilter(start_time)\n    AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n    AND cost IS NOT NULL AND cost > 0\n  GROUP BY time\n  ORDER BY time\n)\nORDER BY time",
+          "rawSql": "SELECT\n  time,\n  sum(daily_cost) OVER (ORDER BY time) AS cumulative_cost\nFROM (\n  SELECT\n    $__timeInterval(start_time) AS time,\n    sum(cost) AS daily_cost\n  FROM spans FINAL\n  WHERE is_deleted = 0\n    AND $__timeFilter(start_time)\n    AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n    AND cost IS NOT NULL AND cost > 0\n  GROUP BY time\n  ORDER BY time\n)\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -144,7 +164,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT sum(cost) AS total_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND cost IS NOT NULL AND cost > 0",
+          "rawSql": "SELECT sum(cost) AS total_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND cost IS NOT NULL AND cost > 0",
           "refId": "A",
           "format": 1
         }
@@ -201,7 +221,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT avg(cost) AS avg_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND cost IS NOT NULL AND cost > 0",
+          "rawSql": "SELECT avg(cost) AS avg_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND cost IS NOT NULL AND cost > 0",
           "refId": "A",
           "format": 1
         }
@@ -247,7 +267,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  t.agent_id AS agent,\n  round(sum(s.cost), 4) AS total_cost\nFROM spans AS s FINAL\nINNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.is_deleted = 0\nWHERE s.is_deleted = 0\n  AND $__timeFilter(s.start_time)\n  AND ('${project_id}' = '1' OR s.project_id IN (${project_id:singlequote}))\n  AND s.cost IS NOT NULL AND s.cost > 0\n  AND t.agent_id IS NOT NULL\nGROUP BY agent\nORDER BY total_cost DESC\nLIMIT 15",
+          "rawSql": "SELECT\n  t.agent_id AS agent,\n  round(sum(s.cost), 4) AS total_cost\nFROM spans AS s FINAL\nINNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND s.project_id = t.project_id AND t.is_deleted = 0\nWHERE s.is_deleted = 0\n  AND $__timeFilter(s.start_time)\n  AND ('${project_id}' = '1' OR s.project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR s.environment IN (${environment:singlequote}))\n  AND s.cost IS NOT NULL AND s.cost > 0\n  AND t.agent_id IS NOT NULL\nGROUP BY agent\nORDER BY total_cost DESC\nLIMIT 15",
           "refId": "A",
           "format": 1
         }
@@ -293,7 +313,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  project_id,\n  round(sum(cost), 4) AS total_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND cost IS NOT NULL AND cost > 0\nGROUP BY project_id\nORDER BY total_cost DESC\nLIMIT 15",
+          "rawSql": "SELECT\n  project_id,\n  round(sum(cost), 4) AS total_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND cost IS NOT NULL AND cost > 0\nGROUP BY project_id\nORDER BY total_cost DESC\nLIMIT 15",
           "refId": "A",
           "format": 1
         }
@@ -346,7 +366,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  toStartOfDay(start_time) AS time,\n  round(sum(cost), 4) AS daily_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND cost IS NOT NULL AND cost > 0\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  toStartOfDay(start_time) AS time,\n  round(sum(cost), 4) AS daily_cost\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND cost IS NOT NULL AND cost > 0\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -415,7 +435,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  toDate(start_time) AS date,\n  count() AS spans,\n  round(sum(cost), 4) AS total_cost,\n  round(avg(cost), 6) AS avg_cost,\n  sum(token_count_total) AS total_tokens\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND cost IS NOT NULL AND cost > 0\nGROUP BY date\nORDER BY date DESC",
+          "rawSql": "SELECT\n  toDate(start_time) AS date,\n  count() AS spans,\n  round(sum(cost), 4) AS total_cost,\n  round(avg(cost), 6) AS avg_cost,\n  sum(token_count_total) AS total_tokens\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND cost IS NOT NULL AND cost > 0\nGROUP BY date\nORDER BY date DESC",
           "refId": "A",
           "format": 2
         }

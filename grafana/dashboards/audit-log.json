@@ -1,9 +1,10 @@
 {
-  "uid": "observal-token-usage",
-  "title": "Observal \u2014 Token Usage",
-  "description": "Input, output, and total token consumption over time",
+  "uid": "observal-audit-log",
+  "title": "Observal \u2014 Audit Log",
+  "description": "Enterprise audit trail: actions, actors, and resource access",
   "tags": [
-    "observal"
+    "observal",
+    "enterprise"
   ],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -12,21 +13,21 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "time": {
-    "from": "now-24h",
+    "from": "now-7d",
     "to": "now"
   },
-  "refresh": "30s",
+  "refresh": "1m",
   "templating": {
     "list": [
       {
-        "name": "project_id",
-        "label": "Project",
+        "name": "action",
+        "label": "Action",
         "type": "query",
         "datasource": {
           "type": "grafana-clickhouse-datasource",
           "uid": "observal-clickhouse"
         },
-        "query": "SELECT DISTINCT project_id FROM spans FINAL WHERE is_deleted = 0 ORDER BY project_id",
+        "query": "SELECT DISTINCT action FROM audit_log ORDER BY action",
         "current": {
           "selected": true,
           "text": "All",
@@ -39,14 +40,14 @@
         "sort": 1
       },
       {
-        "name": "environment",
-        "label": "Environment",
+        "name": "resource_type",
+        "label": "Resource Type",
         "type": "query",
         "datasource": {
           "type": "grafana-clickhouse-datasource",
           "uid": "observal-clickhouse"
         },
-        "query": "SELECT DISTINCT environment FROM spans FINAL WHERE is_deleted = 0 ORDER BY environment",
+        "query": "SELECT DISTINCT resource_type FROM audit_log ORDER BY resource_type",
         "current": {
           "selected": true,
           "text": "All",
@@ -63,10 +64,10 @@
   "panels": [
     {
       "id": 1,
-      "title": "Input vs Output Tokens Over Time",
+      "title": "Audit Events Over Time",
       "type": "timeseries",
       "gridPos": {
-        "h": 10,
+        "h": 8,
         "w": 16,
         "x": 0,
         "y": 0
@@ -78,51 +79,18 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "blue"
           },
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "spanNulls": false,
-            "stacking": {
-              "mode": "normal"
-            },
             "axisBorderShow": false
           },
           "unit": "short"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "input_tokens"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "blue",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "output_tokens"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "tooltip": {
@@ -141,7 +109,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  sum(token_count_input) AS input_tokens,\n  sum(token_count_output) AS output_tokens\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND token_count_total > 0\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  $__timeInterval(timestamp) AS time,\n  count() AS events\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -149,10 +117,10 @@
     },
     {
       "id": 2,
-      "title": "Total Input Tokens",
+      "title": "Total Events",
       "type": "stat",
       "gridPos": {
-        "h": 5,
+        "h": 4,
         "w": 4,
         "x": 16,
         "y": 0
@@ -197,7 +165,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT sum(token_count_input) AS total_input\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
+          "rawSql": "SELECT count() AS total\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))",
           "refId": "A",
           "format": 1
         }
@@ -205,10 +173,10 @@
     },
     {
       "id": 3,
-      "title": "Total Output Tokens",
+      "title": "Unique Actors",
       "type": "stat",
       "gridPos": {
-        "h": 5,
+        "h": 4,
         "w": 4,
         "x": 20,
         "y": 0
@@ -221,70 +189,14 @@
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "orange"
+            "fixedColor": "purple"
           },
           "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "orange",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "observal-clickhouse"
-          },
-          "queryType": "sql",
-          "rawSql": "SELECT sum(token_count_output) AS total_output\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
-          "refId": "A",
-          "format": 1
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "title": "Total Tokens (All)",
-      "type": "stat",
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 5
-      },
-      "datasource": {
-        "type": "grafana-clickhouse-datasource",
-        "uid": "observal-clickhouse"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "green"
-          },
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
+                "color": "purple",
                 "value": null
               }
             ]
@@ -309,7 +221,62 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT sum(token_count_total) AS total_tokens\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
+          "rawSql": "SELECT count(DISTINCT actor_id) AS unique_actors\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Events by Action",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "observal-clickhouse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "observal-clickhouse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT\n  action,\n  count() AS count\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))\nGROUP BY action\nORDER BY count DESC",
           "refId": "A",
           "format": 1
         }
@@ -317,13 +284,13 @@
     },
     {
       "id": 5,
-      "title": "Token Usage by Span Type",
+      "title": "Events by Resource Type",
       "type": "barchart",
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
-        "y": 10
+        "y": 8
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -346,8 +313,7 @@
         },
         "tooltip": {
           "mode": "single"
-        },
-        "stacking": "normal"
+        }
       },
       "targets": [
         {
@@ -356,7 +322,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  type,\n  sum(token_count_input) AS input_tokens,\n  sum(token_count_output) AS output_tokens\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND token_count_total > 0\nGROUP BY type\nORDER BY input_tokens + output_tokens DESC\nLIMIT 10",
+          "rawSql": "SELECT\n  resource_type,\n  count() AS count\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\nGROUP BY resource_type\nORDER BY count DESC\nLIMIT 15",
           "refId": "A",
           "format": 1
         }
@@ -364,13 +330,114 @@
     },
     {
       "id": 6,
-      "title": "Top Token Consumers",
-      "type": "table",
+      "title": "Top Actors",
+      "type": "barchart",
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 10
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "observal-clickhouse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "observal-clickhouse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT\n  actor_email,\n  actor_role,\n  count() AS events\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))\nGROUP BY actor_email, actor_role\nORDER BY events DESC\nLIMIT 15",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Events by HTTP Method",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 12
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "observal-clickhouse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "observal-clickhouse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT\n  http_method,\n  count() AS count\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND http_method != ''\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))\nGROUP BY http_method\nORDER BY count DESC",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Recent Audit Events",
+      "type": "table",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
       },
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -384,7 +451,7 @@
         "showHeader": true,
         "sortBy": [
           {
-            "displayName": "total_tokens",
+            "displayName": "timestamp",
             "desc": true
           }
         ]
@@ -396,7 +463,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  name,\n  type,\n  sum(token_count_input) AS input_tokens,\n  sum(token_count_output) AS output_tokens,\n  sum(token_count_total) AS total_tokens,\n  count() AS invocations\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND token_count_total > 0\nGROUP BY name, type\nORDER BY total_tokens DESC\nLIMIT 20",
+          "rawSql": "SELECT\n  timestamp,\n  actor_email,\n  actor_role,\n  action,\n  resource_type,\n  resource_name,\n  http_method,\n  http_path,\n  status_code,\n  ip_address,\n  detail\nFROM audit_log\nWHERE $__timeFilter(timestamp)\n  AND ('${action}' = '1' OR action IN (${action:singlequote}))\n  AND ('${resource_type}' = '1' OR resource_type IN (${resource_type:singlequote}))\nORDER BY timestamp DESC\nLIMIT 100",
           "refId": "A",
           "format": 2
         }

@@ -1,7 +1,7 @@
 {
-  "uid": "observal-tool-call-frequency",
-  "title": "Observal \u2014 Tool Call Frequency",
-  "description": "Tool call volume by name and MCP server",
+  "uid": "observal-agent-activity",
+  "title": "Observal \u2014 Agent Activity",
+  "description": "Agent usage, performance, and interaction metrics",
   "tags": [
     "observal"
   ],
@@ -26,7 +26,7 @@
           "type": "grafana-clickhouse-datasource",
           "uid": "observal-clickhouse"
         },
-        "query": "SELECT DISTINCT project_id FROM spans FINAL WHERE is_deleted = 0 ORDER BY project_id",
+        "query": "SELECT DISTINCT project_id FROM traces FINAL WHERE is_deleted = 0 AND agent_id IS NOT NULL ORDER BY project_id",
         "current": {
           "selected": true,
           "text": "All",
@@ -46,7 +46,7 @@
           "type": "grafana-clickhouse-datasource",
           "uid": "observal-clickhouse"
         },
-        "query": "SELECT DISTINCT environment FROM spans FINAL WHERE is_deleted = 0 ORDER BY environment",
+        "query": "SELECT DISTINCT environment FROM traces FINAL WHERE is_deleted = 0 ORDER BY environment",
         "current": {
           "selected": true,
           "text": "All",
@@ -63,7 +63,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Tool Call Volume Over Time",
+      "title": "Agent Traces Over Time",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -107,7 +107,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  count() AS tool_calls\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND type = 'tool_call'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  count() AS agent_traces\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -115,7 +115,7 @@
     },
     {
       "id": 2,
-      "title": "Total Tool Calls",
+      "title": "Active Agents",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -163,7 +163,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT count() AS total\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND type = 'tool_call'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
+          "rawSql": "SELECT count(DISTINCT agent_id) AS active_agents\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
           "refId": "A",
           "format": 1
         }
@@ -171,7 +171,7 @@
     },
     {
       "id": 3,
-      "title": "Avg Latency (ms)",
+      "title": "Avg Spans per Agent Trace",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -187,14 +187,15 @@
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "yellow"
+            "fixedColor": "blue"
           },
-          "unit": "ms",
+          "unit": "short",
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "yellow",
+                "color": "blue",
                 "value": null
               }
             ]
@@ -219,7 +220,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT avg(latency_ms) AS avg_latency\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND type = 'tool_call'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND latency_ms IS NOT NULL",
+          "rawSql": "SELECT round(avg(span_count), 1) AS avg_spans\nFROM (\n  SELECT\n    s.trace_id,\n    count() AS span_count\n  FROM spans AS s FINAL\n  INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND s.project_id = t.project_id AND t.is_deleted = 0\n  WHERE s.is_deleted = 0\n    AND t.agent_id IS NOT NULL AND t.agent_id != ''\n    AND $__timeFilter(s.start_time)\n    AND ('${project_id}' = '1' OR s.project_id IN (${project_id:singlequote}))\n    AND ('${environment}' = '1' OR s.environment IN (${environment:singlequote}))\n  GROUP BY s.trace_id\n)",
           "refId": "A",
           "format": 1
         }
@@ -227,7 +228,7 @@
     },
     {
       "id": 4,
-      "title": "Tool Calls by Name",
+      "title": "Top Agents by Trace Count",
       "type": "barchart",
       "gridPos": {
         "h": 8,
@@ -265,7 +266,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  name AS tool_name,\n  count() AS calls\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND type = 'tool_call'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY tool_name\nORDER BY calls DESC\nLIMIT 15",
+          "rawSql": "SELECT\n  agent_id,\n  count() AS traces\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY agent_id\nORDER BY traces DESC\nLIMIT 15",
           "refId": "A",
           "format": 1
         }
@@ -273,8 +274,8 @@
     },
     {
       "id": 5,
-      "title": "Tool Calls by MCP Server",
-      "type": "piechart",
+      "title": "Agent Error Rate",
+      "type": "barchart",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -290,27 +291,18 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short"
+          "unit": "percent"
         },
         "overrides": []
       },
       "options": {
+        "orientation": "horizontal",
         "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "values": [
-            "value",
-            "percent"
-          ]
+          "displayMode": "list",
+          "placement": "bottom"
         },
         "tooltip": {
           "mode": "single"
-        },
-        "pieType": "donut",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
         }
       },
       "targets": [
@@ -320,7 +312,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  t.mcp_id AS mcp_server,\n  count() AS calls\nFROM spans AS s FINAL\nINNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND s.project_id = t.project_id AND t.is_deleted = 0\nWHERE s.is_deleted = 0\n  AND s.type = 'tool_call'\n  AND $__timeFilter(s.start_time)\n  AND ('${project_id}' = '1' OR s.project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR s.environment IN (${environment:singlequote}))\n  AND t.mcp_id IS NOT NULL AND t.mcp_id != ''\nGROUP BY mcp_server\nORDER BY calls DESC\nLIMIT 15",
+          "rawSql": "SELECT\n  s.agent_id,\n  round(countIf(s.status = 'error') / nullIf(count(), 0) * 100, 2) AS error_rate,\n  count() AS total_spans\nFROM spans AS s FINAL\nWHERE s.is_deleted = 0\n  AND s.agent_id IS NOT NULL AND s.agent_id != ''\n  AND $__timeFilter(s.start_time)\n  AND ('${project_id}' = '1' OR s.project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR s.environment IN (${environment:singlequote}))\nGROUP BY s.agent_id\nHAVING total_spans >= 5\nORDER BY error_rate DESC\nLIMIT 15",
           "refId": "A",
           "format": 1
         }
@@ -328,7 +320,7 @@
     },
     {
       "id": 6,
-      "title": "Tool Call Latency Percentiles",
+      "title": "Agent Latency Percentiles",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
@@ -418,7 +410,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  quantile(0.50)(latency_ms) AS p50,\n  quantile(0.95)(latency_ms) AS p95,\n  quantile(0.99)(latency_ms) AS p99\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND type = 'tool_call'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND latency_ms IS NOT NULL\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  $__timeInterval(s.start_time) AS time,\n  quantile(0.50)(s.latency_ms) AS p50,\n  quantile(0.95)(s.latency_ms) AS p95,\n  quantile(0.99)(s.latency_ms) AS p99\nFROM spans AS s FINAL\nWHERE s.is_deleted = 0\n  AND s.agent_id IS NOT NULL AND s.agent_id != ''\n  AND s.latency_ms IS NOT NULL\n  AND $__timeFilter(s.start_time)\n  AND ('${project_id}' = '1' OR s.project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR s.environment IN (${environment:singlequote}))\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -426,7 +418,7 @@
     },
     {
       "id": 7,
-      "title": "Top Tools by Latency",
+      "title": "Top Agents by Latency",
       "type": "table",
       "gridPos": {
         "h": 8,
@@ -458,7 +450,47 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  name AS tool_name,\n  count() AS calls,\n  round(avg(latency_ms)) AS avg_ms,\n  round(quantile(0.95)(latency_ms)) AS p95_ms,\n  round(max(latency_ms)) AS max_ms\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND type = 'tool_call'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND latency_ms IS NOT NULL\nGROUP BY tool_name\nORDER BY p95_ms DESC\nLIMIT 15",
+          "rawSql": "SELECT\n  agent_id,\n  count() AS spans,\n  round(avg(latency_ms)) AS avg_ms,\n  round(quantile(0.95)(latency_ms)) AS p95_ms,\n  round(max(latency_ms)) AS max_ms\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND latency_ms IS NOT NULL\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY agent_id\nORDER BY p95_ms DESC\nLIMIT 15",
+          "refId": "A",
+          "format": 2
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Recent Agent Traces",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "observal-clickhouse"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "start_time",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "observal-clickhouse"
+          },
+          "queryType": "sql",
+          "rawSql": "SELECT\n  trace_id,\n  agent_id,\n  session_id,\n  name,\n  trace_type,\n  ide,\n  environment,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
           "refId": "A",
           "format": 2
         }

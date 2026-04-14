@@ -191,20 +191,26 @@ services:
       - observal-net
 
   observal-grafana:
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana-oss:11.6.0
     ports:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
     volumes:
-      - ../grafana/provisioning:/etc/grafana/provisioning
-      - ../grafana/dashboards:/var/lib/grafana/dashboards
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafanadata:/var/lib/grafana
     depends_on:
       observal-clickhouse:
         condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     networks:
       - observal-net
 
