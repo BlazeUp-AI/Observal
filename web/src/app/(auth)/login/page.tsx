@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { auth, setApiKey, setUserRole, getUserRole } from "@/lib/api";
+import { auth, setApiKey, setUserRole, getUserRole, setUserName, setUserEmail } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,9 +57,11 @@ function LoginContent() {
           }
           return res.json();
         })
-        .then((data: { api_key: string; user: { role: string } }) => {
+        .then((data: { api_key: string; user: { role: string; name: string; email: string } }) => {
           setApiKey(data.api_key);
           setUserRole(data.user.role);
+          setUserName(data.user.name);
+          setUserEmail(data.user.email);
           toast.success("Signed in successfully via SSO");
           router.push("/");
         })
@@ -86,6 +88,8 @@ function LoginContent() {
       const res = await auth.login({ email, password });
       setApiKey(res.api_key);
       setUserRole(res.user.role);
+      setUserName(res.user.name);
+      setUserEmail(res.user.email);
       toast.success("Signed in successfully");
       router.push("/");
     } catch (e) {
@@ -104,6 +108,8 @@ function LoginContent() {
       const res = await auth.register({ email, name, password });
       setApiKey(res.api_key);
       setUserRole(res.user.role);
+      setUserName(res.user.name);
+      setUserEmail(res.user.email);
       toast.success("Account created");
       router.push("/");
     } catch (e) {
@@ -122,6 +128,8 @@ function LoginContent() {
       const res = await auth.login({ api_key: apiKey });
       setApiKey(res.api_key);
       setUserRole(res.user.role);
+      setUserName(res.user.name);
+      setUserEmail(res.user.email);
       toast.success("Signed in successfully");
       router.push("/");
     } catch (e) {
@@ -156,6 +164,8 @@ function LoginContent() {
       const res = await auth.resetPassword({ email, token: resetToken, new_password: newPassword });
       setApiKey(res.api_key);
       setUserRole(res.user.role);
+      setUserName(res.user.name);
+      setUserEmail(res.user.email);
       toast.success("Password reset successfully");
       router.push("/");
     } catch (e) {

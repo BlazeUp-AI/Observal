@@ -31,7 +31,7 @@ import {
   Settings,
   AlertTriangle,
 } from "lucide-react";
-import { getUserRole } from "@/lib/api";
+import { getUserRole, getUserName, getUserEmail } from "@/lib/api";
 import { hasMinRole, type Role } from "@/hooks/use-role-guard";
 
 type NavItem = { title: string; href: string; icon: typeof Home; requiresAuth?: boolean; minRole?: Role };
@@ -66,6 +66,8 @@ export const allNavItems = [
 export function RegistrySidebar() {
   const pathname = usePathname();
   const role = getUserRole();
+  const userName = getUserName();
+  const userEmail = getUserEmail();
   const isAuthenticated = typeof window !== "undefined" && !!localStorage.getItem("observal_api_key");
 
   function isActive(href: string) {
@@ -161,7 +163,7 @@ export function RegistrySidebar() {
       </SidebarContent>
       <SidebarFooter>
         <ThemeSwitcher />
-        <NavUser user={{ name: "User", email: "" }} />
+        <NavUser user={{ name: userName || "User", email: userEmail || "" }} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
