@@ -376,13 +376,13 @@ On mount, fetches `GET /api/v1/config/public`:
 Add to API service:
 ```yaml
 DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-local}
-DEMO_SUPER_ADMIN_EMAIL: ${DEMO_SUPER_ADMIN_EMAIL:-super@demo.local}
+DEMO_SUPER_ADMIN_EMAIL: ${DEMO_SUPER_ADMIN_EMAIL:-super@demo.example}
 DEMO_SUPER_ADMIN_PASSWORD: ${DEMO_SUPER_ADMIN_PASSWORD:-super-changeme}
-DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-admin@demo.local}
+DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-admin@demo.example}
 DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-admin-changeme}
-DEMO_REVIEWER_EMAIL: ${DEMO_REVIEWER_EMAIL:-reviewer@demo.local}
+DEMO_REVIEWER_EMAIL: ${DEMO_REVIEWER_EMAIL:-reviewer@demo.example}
 DEMO_REVIEWER_PASSWORD: ${DEMO_REVIEWER_PASSWORD:-reviewer-changeme}
-DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-user@demo.local}
+DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-user@demo.example}
 DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-user-changeme}
 ```
 
