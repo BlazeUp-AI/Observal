@@ -40,9 +40,7 @@ def is_private_url(url: str) -> bool:
         addr = ipaddress.ip_address(hostname)
     except ValueError:
         try:
-            resolved = socket.getaddrinfo(
-                hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM
-            )
+            resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
             if not resolved:
                 return True
             addr = ipaddress.ip_address(resolved[0][4][0])
@@ -51,9 +49,7 @@ def is_private_url(url: str) -> bool:
     return any(addr in cidr for cidr in _PRIVATE_CIDRS)
 
 
-async def _query_error_rate(
-    target_type: str, target_id: str, lookback_minutes: int
-) -> float | None:
+async def _query_error_rate(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query the error rate from ClickHouse spans table."""
     sql = (
         "SELECT countIf(status='error') / count(*) AS error_rate "
@@ -79,9 +75,7 @@ async def _query_error_rate(
         return None
 
 
-async def _query_latency_p99(
-    target_type: str, target_id: str, lookback_minutes: int
-) -> float | None:
+async def _query_latency_p99(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query the p99 latency from ClickHouse spans table."""
     sql = (
         "SELECT quantile(0.99)(latency_ms) AS latency_p99 "
@@ -107,9 +101,7 @@ async def _query_latency_p99(
         return None
 
 
-async def _query_token_usage(
-    target_type: str, target_id: str, lookback_minutes: int
-) -> float | None:
+async def _query_token_usage(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query total token usage from ClickHouse spans table."""
     sql = (
         "SELECT sum(token_count_total) AS token_usage "
@@ -135,9 +127,7 @@ async def _query_token_usage(
         return None
 
 
-async def _query_metric(
-    metric: str, target_type: str, target_id: str, lookback_minutes: int
-) -> float | None:
+async def _query_metric(metric: str, target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Dispatch to the appropriate metric query helper."""
     if metric == "error_rate":
         return await _query_error_rate(target_type, target_id, lookback_minutes)
@@ -150,9 +140,7 @@ async def _query_metric(
         return None
 
 
-async def _deliver_webhook(
-    url: str, payload: dict
-) -> tuple[int | None, str | None]:
+async def _deliver_webhook(url: str, payload: dict) -> tuple[int | None, str | None]:
     """POST JSON payload to a webhook URL with SSRF protection and retry."""
     if not url:
         return None, "empty webhook URL"
@@ -166,9 +154,7 @@ async def _deliver_webhook(
                 return resp.status_code, None
             except Exception as e:
                 last_error = f"attempt {attempt + 1}: {e}"
-                logger.warning(
-                    "Webhook delivery to %s failed (%s)", url, last_error
-                )
+                logger.warning("Webhook delivery to %s failed (%s)", url, last_error)
     return None, last_error
 
 
@@ -219,9 +205,7 @@ async def evaluate_alerts(ctx: dict) -> None:
                         "target_id": rule.target_id,
                         "fired_at": now.isoformat(),
                     }
-                    status_code, error = await _deliver_webhook(
-                        rule.webhook_url, payload
-                    )
+                    status_code, error = await _deliver_webhook(rule.webhook_url, payload)
                     delivery_status = "delivered" if error is None else "failed"
                 else:
                     delivery_status = "delivered"
@@ -251,7 +235,5 @@ async def evaluate_alerts(ctx: dict) -> None:
                     delivery_status,
                 )
             except Exception as e:
-                logger.exception(
-                    "Error evaluating alert rule %s: %s", rule.id, e
-                )
+                logger.exception("Error evaluating alert rule %s: %s", rule.id, e)
     logger.info("Alert evaluation cycle complete")

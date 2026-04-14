@@ -182,9 +182,7 @@ class TestDeliverWebhook:
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
-            code, err = await _deliver_webhook(
-                "https://example.com/hook", {"test": True}
-            )
+            code, err = await _deliver_webhook("https://example.com/hook", {"test": True})
         assert code == 200
         assert err is None
 
@@ -193,9 +191,7 @@ class TestDeliverWebhook:
         from services.alert_evaluator import _deliver_webhook
 
         with patch("services.alert_evaluator.is_private_url", return_value=True):
-            code, err = await _deliver_webhook(
-                "http://127.0.0.1/hook", {"test": True}
-            )
+            code, err = await _deliver_webhook("http://127.0.0.1/hook", {"test": True})
         assert code is None
         assert "SSRF" in err
 
@@ -434,8 +430,6 @@ class TestAlertRuleUpdateSchema:
     def test_both_fields(self):
         from schemas.alert import AlertRuleUpdate
 
-        update = AlertRuleUpdate(
-            status="active", webhook_url="https://example.com/hook"
-        )
+        update = AlertRuleUpdate(status="active", webhook_url="https://example.com/hook")
         assert update.status == "active"
         assert update.webhook_url == "https://example.com/hook"
