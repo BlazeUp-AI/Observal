@@ -165,13 +165,18 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
     if not user or not user.verify_password(req.password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Return the user's current API key (regenerate so they always have a fresh one)
-    api_key, key_hash = _generate_api_key()
-    user.api_key_hash = key_hash
-    await db.commit()
-    await db.refresh(user)
-
-    return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
+    # DEPRECATED: No longer regenerate API keys on login (use /api/v1/keys to manage keys)
+    # For backward compatibility, return a placeholder. Users should use JWT tokens
+    # or explicitly create API keys via POST /api/v1/keys
+    logger.warning(
+        "Deprecated: /auth/login no longer returns API keys. "
+        "User %s should use POST /api/v1/keys to create keys or use JWT tokens via /auth/token",
+        user.email,
+    )
+    return InitResponse(
+        user=UserResponse.model_validate(user),
+        api_key="",  # Empty string for backward compatibility
+    )
 
 
 @router.get("/oauth/login")
@@ -215,13 +220,14 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
-    api_key, key_hash = _generate_api_key()
-
+    api_key = ""  # Default for existing users
     if user:
-        # Existing user, just update their API key
-        user.api_key_hash = key_hash
+        # Existing user - DON'T regenerate their API key
+        # They should use /api/v1/keys to manage keys or JWT tokens
+        logger.info("OAuth login for existing user %s - not regenerating API key", email)
     else:
-        # Auto-create new user via SSO
+        # Auto-create new user via SSO - generate initial legacy key
+        api_key, key_hash = _generate_api_key()
         user = User(
             email=email,
             name=name,
@@ -230,18 +236,18 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         )
         db.add(user)
 
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        # Race condition: user was created between our check and commit
-        result = await db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
-        if not user:
-            raise HTTPException(status_code=500, detail="Failed to create or find user")
-        user.api_key_hash = key_hash
-        await db.commit()
-    await db.refresh(user)
+        try:
+            await db.commit()
+            await db.refresh(user)
+        except IntegrityError:
+            await db.rollback()
+            # Race condition: user was created between our check and commit
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            if not user:
+                raise HTTPException(status_code=500, detail="Failed to create or find user")
+            # User already exists from race condition, don't regenerate key
+            api_key = ""
 
     # Generate a short-lived opaque code instead of exposing the API key in the URL.
     # The frontend will exchange this code for credentials via a POST request.
@@ -473,9 +479,101 @@ async def reset_password(request: Request, req: ResetPasswordRequest, db: AsyncS
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
 
     user.set_password(req.new_password)
-    api_key, key_hash = _generate_api_key()
-    user.api_key_hash = key_hash
+    # SECURITY: Password reset no longer regenerates API keys
+    # Users should explicitly revoke/rotate keys via /api/v1/keys if needed
     await db.commit()
     await db.refresh(user)
 
+    logger.warning(
+        "Password reset for %s - user should review and rotate API keys via /api/v1/keys",
+        user.email,
+    )
+
+    return InitResponse(
+        user=UserResponse.model_validate(user),
+        api_key="",  # Empty for security - users should create new keys via /api/v1/keys
+    )
+
+
+# -- Invite Codes --
+
+
+@router.post("/invite", response_model=InviteResponse, dependencies=[Depends(require_local_mode)])
+async def create_invite(
+    req: InviteCreateRequest = InviteCreateRequest(),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Admin creates an invite code for a new user."""
+    from datetime import timedelta
+
+    invite = InviteCode(
+        role=req.role,
+        created_by=current_user.id,
+        expires_at=datetime.now(UTC) + timedelta(days=req.expires_days),
+    )
+    db.add(invite)
+    await db.commit()
+    await db.refresh(invite)
+
+    return InviteResponse.model_validate(invite)
+
+
+@router.post("/redeem", response_model=InitResponse, dependencies=[Depends(require_local_mode)])
+@limiter.limit("5/minute")
+async def redeem_invite(request: Request, req: InviteRedeemRequest, db: AsyncSession = Depends(get_db)):
+    """Redeem an invite code to create an account and get an API key."""
+    code = req.code.strip().upper()
+
+    result = await db.execute(select(InviteCode).where(InviteCode.code == code))
+    invite = result.scalar_one_or_none()
+
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+    if invite.used_by is not None:
+        raise HTTPException(status_code=400, detail="Invite code already used")
+    if invite.expires_at < datetime.now(UTC):
+        raise HTTPException(status_code=400, detail="Invite code expired")
+
+    # Generate user credentials
+    api_key, key_hash = _generate_api_key()
+
+    name = req.name or f"user-{code[-4:]}"
+    email = req.email or f"{name.lower().replace(' ', '-')}@localhost"
+
+    try:
+        role = UserRole(invite.role)
+    except ValueError:
+        role = UserRole.reviewer
+
+    user = User(
+        email=email,
+        name=name,
+        role=role,
+        api_key_hash=key_hash,
+    )
+    db.add(user)
+
+    # Mark invite as used
+    invite.used_by = user.id
+    invite.used_at = datetime.now(UTC)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Invite already redeemed or email already exists")
+    await db.refresh(user)
+
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
+
+
+@router.get("/invites", response_model=list[InviteListResponse])
+async def list_invites(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Admin lists all invite codes."""
+
+    result = await db.execute(select(InviteCode).order_by(InviteCode.created_at.desc()))
+    return [InviteListResponse.model_validate(i) for i in result.scalars().all()]
