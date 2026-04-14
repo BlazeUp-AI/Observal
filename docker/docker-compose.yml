@@ -12,6 +12,17 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      # Enterprise deployment mode
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
+      # Demo accounts (seeded on first startup when no real users exist)
+      - DEMO_SUPER_ADMIN_EMAIL=${DEMO_SUPER_ADMIN_EMAIL:-super@demo.local}
+      - DEMO_SUPER_ADMIN_PASSWORD=${DEMO_SUPER_ADMIN_PASSWORD:-super-changeme}
+      - DEMO_ADMIN_EMAIL=${DEMO_ADMIN_EMAIL:-admin@demo.local}
+      - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD:-admin-changeme}
+      - DEMO_REVIEWER_EMAIL=${DEMO_REVIEWER_EMAIL:-reviewer@demo.local}
+      - DEMO_REVIEWER_PASSWORD=${DEMO_REVIEWER_PASSWORD:-reviewer-changeme}
+      - DEMO_USER_EMAIL=${DEMO_USER_EMAIL:-user@demo.local}
+      - DEMO_USER_PASSWORD=${DEMO_USER_PASSWORD:-user-changeme}
     depends_on:
       observal-db:
         condition: service_healthy
@@ -84,6 +95,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
     depends_on:
       observal-db:
         condition: service_healthy
