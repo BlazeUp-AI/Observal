@@ -113,7 +113,7 @@ class TestCLICommands:
         from observal_cli.main import app as cli_app
 
         runner = CliRunner()
-        result = runner.invoke(cli_app, ["downgrade"])
+        result = runner.invoke(cli_app, ["self", "downgrade"])
         assert result.exit_code == 0
         assert "WIP" in result.output
 
@@ -123,7 +123,7 @@ class TestCLICommands:
         from observal_cli.main import app as cli_app
 
         runner = CliRunner()
-        result = runner.invoke(cli_app, ["upgrade", "--help"])
+        result = runner.invoke(cli_app, ["self", "upgrade", "--help"])
         assert result.exit_code == 0
         assert "Upgrade" in result.output or "upgrade" in result.output
 
@@ -133,7 +133,7 @@ class TestCLICommands:
         from observal_cli.main import app as cli_app
 
         runner = CliRunner()
-        result = runner.invoke(cli_app, ["traces", "--help"])
+        result = runner.invoke(cli_app, ["ops", "traces", "--help"])
         assert result.exit_code == 0
         assert "trace" in result.output.lower()
 
@@ -143,6 +143,6 @@ class TestCLICommands:
         from observal_cli.main import app as cli_app
 
         runner = CliRunner()
-        result = runner.invoke(cli_app, ["spans", "--help"])
+        result = runner.invoke(cli_app, ["ops", "spans", "--help"])
         assert result.exit_code == 0
         assert "span" in result.output.lower() or "trace" in result.output.lower()
