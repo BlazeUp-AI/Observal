@@ -264,7 +264,7 @@ INIT_SQL = [
 
 
 async def init_clickhouse():
-    """Create ClickHouse tables if they don't exist.
+    """Create ClickHouse tables if they don't exist and configure retention.
 
     Raises on unreachable server so startup fails fast.
     """
@@ -277,6 +277,30 @@ async def init_clickhouse():
             await _query(stmt)
         except Exception as e:
             logger.warning(f"ClickHouse init statement failed: {e}")
+
+    # Apply data retention TTL if configured
+    retention_days = settings.DATA_RETENTION_DAYS
+    if retention_days > 0:
+        ttl_stmts = [
+            f"ALTER TABLE traces MODIFY TTL toDate(start_time) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE spans MODIFY TTL toDate(start_time) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE scores MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE mcp_tool_calls MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE agent_interactions MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
+        ]
+        applied = 0
+        for stmt in ttl_stmts:
+            try:
+                await _query(stmt)
+                applied += 1
+            except Exception as e:
+                logger.warning(f"ClickHouse TTL configuration failed: {e}")
+        if applied == len(ttl_stmts):
+            logger.info("ClickHouse retention set to %d days", retention_days)
+        else:
+            logger.warning("ClickHouse retention partially applied: %d/%d tables", applied, len(ttl_stmts))
+    else:
+        logger.info("ClickHouse data retention disabled (DATA_RETENTION_DAYS=0)")
 
 
 async def insert_tool_call(event: dict):

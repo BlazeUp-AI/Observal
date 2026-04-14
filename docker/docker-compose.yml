@@ -14,6 +14,8 @@ services:
       - AWS_REGION=${AWS_REGION:-us-east-1}
       # Enterprise deployment mode
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
+      # ClickHouse data retention
+      - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
       # Demo accounts (seeded on first startup when no real users exist)
       - DEMO_SUPER_ADMIN_EMAIL=${DEMO_SUPER_ADMIN_EMAIL:-super@demo.local}
       - DEMO_SUPER_ADMIN_PASSWORD=${DEMO_SUPER_ADMIN_PASSWORD:-super-changeme}

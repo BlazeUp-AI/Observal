@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -33,6 +34,18 @@ class Settings(BaseSettings):
     # Rate limiting
     RATE_LIMIT_AUTH: str = "10/minute"
     RATE_LIMIT_AUTH_STRICT: str = "5/minute"
+
+    # ClickHouse data retention
+    DATA_RETENTION_DAYS: int = 90
+
+    @field_validator("DATA_RETENTION_DAYS")
+    @classmethod
+    def validate_retention_days(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("DATA_RETENTION_DAYS must be >= 0 (0 disables retention)")
+        if 0 < v < 7:
+            raise ValueError("DATA_RETENTION_DAYS must be >= 7 to prevent accidental data loss")
+        return v
 
     # Deployment mode
     DEPLOYMENT_MODE: Literal["local", "enterprise"] = "local"
