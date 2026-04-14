@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db, require_role, resolve_listing
 from database import async_session
-from models.mcp import ListingStatus, McpDownload, McpListing
+from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
 from models.user import User, UserRole
 from schemas.mcp import (
+    ClientAnalysis,
     McpAnalyzeRequest,
     McpAnalyzeResponse,
     McpInstallRequest,
@@ -31,6 +32,39 @@ async def analyze_mcp(
 ):
     result = await analyze_repo(req.git_url)
     return McpAnalyzeResponse(**result)
+
+
+async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, db: AsyncSession) -> None:
+    """Store validation results from client-side (CLI) analysis."""
+    has_entry = bool(analysis.entry_point or analysis.framework)
+    tool_count = len(analysis.tools)
+    issue_count = len(analysis.issues)
+
+    if has_entry:
+        detail = "Client-side analysis: found entry point"
+        if analysis.framework:
+            detail += f" ({analysis.framework})"
+        listing.mcp_validated = True
+    else:
+        detail = "Client-side analysis: no recognized MCP framework detected"
+        listing.mcp_validated = True
+
+    db.add(McpValidationResult(listing_id=listing.id, stage="clone_and_inspect", passed=has_entry, details=detail))
+
+    if tool_count or issue_count:
+        manifest_detail = f"Client-side analysis: {tool_count} tool(s) found"
+        if analysis.issues:
+            manifest_detail += "\nIssues:\n- " + "\n- ".join(analysis.issues)
+        db.add(
+            McpValidationResult(
+                listing_id=listing.id,
+                stage="manifest_validation",
+                passed=issue_count == 0,
+                details=manifest_detail,
+            )
+        )
+
+    await db.commit()
 
 
 async def _run_validation_background(listing_id: str) -> None:
@@ -78,9 +112,12 @@ async def submit_mcp(
     await db.commit()
     await db.refresh(listing)
 
-    # Run validation asynchronously so the submit response returns immediately.
-    # This prevents slow clones (e.g. internal GitLab) from timing out the request.
-    background_tasks.add_task(_run_validation_background, str(listing.id))
+    if req.client_analysis:
+        # CLI already cloned and analyzed locally — store results directly
+        await _store_client_analysis(listing, req.client_analysis, db)
+    else:
+        # No client-side analysis; fall back to server-side background validation
+        background_tasks.add_task(_run_validation_background, str(listing.id))
 
     return McpListingResponse.model_validate(listing)
 

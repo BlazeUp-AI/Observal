@@ -31,6 +31,7 @@ mcp_app = typer.Typer(help="MCP server registry commands")
 
 
 def _submit_impl(git_url, name, category, yes):
+    analyzed_locally = False
     with spinner("Analyzing repository..."):
         try:
             prefill = analyze_local(git_url)
@@ -42,6 +43,8 @@ def _submit_impl(git_url, name, category, yes):
                 except (Exception, SystemExit):
                     rprint("[yellow]Server analysis also failed. Fill in details manually.[/yellow]")
                     prefill = {}
+            else:
+                analyzed_locally = True
         except Exception:
             try:
                 prefill = client.post("/api/v1/mcps/analyze", {"git_url": git_url})
@@ -161,22 +164,28 @@ def _submit_impl(git_url, name, category, yes):
             req = typer.confirm(f"  Is {extra} required?", default=True)
             env_vars.append({"name": extra, "description": desc, "required": req})
 
+    submit_payload = {
+        "git_url": git_url,
+        "name": _name,
+        "version": _version,
+        "category": _category,
+        "description": _desc,
+        "owner": _owner,
+        "supported_ides": supported_ides,
+        "environment_variables": env_vars,
+        "setup_instructions": _setup,
+        "changelog": _changelog,
+    }
+    if analyzed_locally:
+        submit_payload["client_analysis"] = {
+            "tools": prefill.get("tools", []),
+            "issues": prefill.get("issues", []),
+            "framework": prefill.get("framework", ""),
+            "entry_point": prefill.get("entry_point", ""),
+        }
+
     with spinner("Submitting..."):
-        result = client.post(
-            "/api/v1/mcps/submit",
-            {
-                "git_url": git_url,
-                "name": _name,
-                "version": _version,
-                "category": _category,
-                "description": _desc,
-                "owner": _owner,
-                "supported_ides": supported_ides,
-                "environment_variables": env_vars,
-                "setup_instructions": _setup,
-                "changelog": _changelog,
-            },
-        )
+        result = client.post("/api/v1/mcps/submit", submit_payload)
     rprint(f"\n[green]✓ Submitted![/green] ID: [bold]{result['id']}[/bold]")
     rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
 

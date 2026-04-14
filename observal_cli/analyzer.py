@@ -279,6 +279,7 @@ def analyze_local(git_url: str) -> dict:
 
         tree = ast.parse(entry_point.read_text(errors="ignore"))
         server_name, server_desc, tools, issues = _analyze_python_entry(tree, git_url, tmp_dir)
+        relative_entry = str(entry_point.relative_to(tmp_dir))
 
         return {
             "name": server_name,
@@ -287,6 +288,7 @@ def analyze_local(git_url: str) -> dict:
             "tools": tools,
             "issues": issues,
             "environment_variables": env_vars,
+            "entry_point": relative_entry,
         }
     except Exception:
         return {**_empty, "error": "Local analysis failed unexpectedly."}

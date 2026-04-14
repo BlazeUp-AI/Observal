@@ -18,6 +18,15 @@ def _coerce_env_vars(v):
     return v or []
 
 
+class ClientAnalysis(BaseModel):
+    """Analysis results produced client-side (CLI local clone)."""
+
+    tools: list[dict] = []
+    issues: list[str] = []
+    framework: str = ""
+    entry_point: str = ""
+
+
 class McpSubmitRequest(BaseModel):
     git_url: str
     name: str
@@ -30,6 +39,7 @@ class McpSubmitRequest(BaseModel):
     setup_instructions: str | None = None
     changelog: str | None = None
     custom_fields: dict[str, str] = {}
+    client_analysis: ClientAnalysis | None = None
 
     _validate_category = field_validator("category")(make_option_validator("category", VALID_MCP_CATEGORIES))
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
