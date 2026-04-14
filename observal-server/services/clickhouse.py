@@ -220,6 +220,30 @@ INIT_SQL = [
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS hook_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS skill_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS prompt_id Nullable(String)""",
+    # Audit log table (enterprise compliance — SOC 2 / ISO 27001)
+    """CREATE TABLE IF NOT EXISTS audit_log (
+        event_id    UUID,
+        timestamp   DateTime64(3, 'UTC'),
+        actor_id    String,
+        actor_email String,
+        actor_role  LowCardinality(String),
+        action      LowCardinality(String),
+        resource_type LowCardinality(String),
+        resource_id String DEFAULT '',
+        resource_name String DEFAULT '',
+        http_method LowCardinality(String) DEFAULT '',
+        http_path   String DEFAULT '',
+        status_code UInt16 DEFAULT 0,
+        ip_address  String DEFAULT '',
+        user_agent  String DEFAULT '',
+        detail      String DEFAULT '',
+        INDEX idx_actor_id actor_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_action action TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_resource_type resource_type TYPE bloom_filter(0.01) GRANULARITY 1
+    ) ENGINE = MergeTree()
+    TTL timestamp + INTERVAL 730 DAY
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (action, resource_type, timestamp)""",
 ]
 
 

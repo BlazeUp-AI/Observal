@@ -22,9 +22,10 @@ def register_enterprise(app: FastAPI, settings: Settings) -> list[str]:
 
     Called once during app startup from main.py.  Responsibilities:
     1. Validate enterprise config
-    2. Mount EE routes (SAML, SCIM — placeholders for now)
+    2. Mount EE routes (SAML, SCIM, audit log)
     3. Add EnterpriseGuardMiddleware (503 on misconfigured EE routes)
-    4. Register event bus handlers for audit logging
+    4. Register audit logging event bus handlers
+    5. Store issues for diagnostics endpoint
     """
     from ee.observal_server.middleware.enterprise_guard import EnterpriseGuardMiddleware
     from ee.observal_server.routes import mount_ee_routes
@@ -43,7 +44,12 @@ def register_enterprise(app: FastAPI, settings: Settings) -> list[str]:
     else:
         logger.info("Enterprise mode initialized successfully")
 
-    # 4. Store issues for diagnostics endpoint
+    # 4. Register audit logging handlers
+    from ee.observal_server.services.audit import register_audit_handlers
+
+    register_audit_handlers()
+
+    # 5. Store issues for diagnostics endpoint
     app.state.enterprise_issues = issues
 
     return issues

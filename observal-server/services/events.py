@@ -69,6 +69,22 @@ class SettingsChanged(Event):
     value: str
 
 
+@dataclass(frozen=True, slots=True)
+class AlertRuleChanged(Event):
+    alert_id: str
+    action: str  # "created", "updated", "deleted"
+    actor_id: str
+    actor_email: str
+
+
+@dataclass(frozen=True, slots=True)
+class AgentLifecycleEvent(Event):
+    agent_id: str
+    action: str  # "registered", "updated", "deleted"
+    actor_id: str
+    actor_email: str
+
+
 # ── Event bus ────────────────────────────────────────────────
 
 
