@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path.home() / ".observal"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -12,6 +15,7 @@ DEFAULTS = {
     "color": True,
     "server_url": "",
     "api_key": "",
+    "timeout": 30,
 }
 
 
@@ -40,7 +44,25 @@ def save(data: dict):
         existing = json.loads(CONFIG_FILE.read_text())
 
     existing.update(data)
-    CONFIG_FILE.write_text(json.dumps(existing, indent=2))
+
+    # Write with restrictive permissions from the start (contains API key)
+    old_umask = os.umask(0o077)
+    try:
+        CONFIG_FILE.write_text(json.dumps(existing, indent=2))
+    finally:
+        os.umask(old_umask)
+
+
+def get_timeout() -> int:
+    """Get request timeout in seconds. Env var > config > default."""
+    env_timeout = os.environ.get("OBSERVAL_TIMEOUT")
+    if env_timeout:
+        try:
+            return int(env_timeout)
+        except ValueError:
+            logger.warning("Invalid OBSERVAL_TIMEOUT=%r, falling back to config/default", env_timeout)
+    cfg = load()
+    return int(cfg.get("timeout", 30))
 
 
 def get_or_exit() -> dict:
@@ -54,13 +76,6 @@ def get_or_exit() -> dict:
         )
         raise typer.Exit(1)
     return cfg
-
-
-def get_timeout() -> int:
-    """Return the request timeout in seconds. Configurable via OBSERVAL_TIMEOUT env var."""
-    import os
-
-    return int(os.environ.get("OBSERVAL_TIMEOUT", "30"))
 
 
 # ── Aliases ──────────────────────────────────────────────

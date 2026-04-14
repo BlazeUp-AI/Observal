@@ -1,5 +1,7 @@
 """Observal CLI: MCP Server & Agent Registry."""
 
+import logging
+
 import typer
 
 from observal_cli.cmd_auth import version_callback
@@ -32,8 +34,14 @@ def main(
         callback=_version_option,
         is_eager=True,
     ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    debug: bool = typer.Option(False, "--debug", help="Debug logging"),
 ):
     """Observal: MCP Server & Agent Registry CLI"""
+    if debug:
+        logging.basicConfig(level=logging.DEBUG, format="%(levelname)s %(name)s: %(message)s")
+    elif verbose:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
 # ── Register command groups ──────────────────────────────

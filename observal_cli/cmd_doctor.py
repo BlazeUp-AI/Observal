@@ -261,7 +261,7 @@ def _check_observal_config(issues: list, warnings: list):
         return
 
     if not data.get("api_key"):
-        issues.append("No API key in ~/.observal/config.json. Run `observal login`.")
+        issues.append("No API key in ~/.observal/config.json. Run `observal auth login`.")
 
     if not data.get("server_url"):
         issues.append("No server_url in ~/.observal/config.json. Run `observal auth login`.")
@@ -394,8 +394,6 @@ def doctor(
                 rprint("  Set `allowManagedHooksOnly: false` or add Observal hooks to managed config")
             elif "observal auth login" in issue:
                 rprint("  Run: observal auth login")
-            elif "observal login" in issue:
-                rprint("  Run: observal login")
             elif "Cannot reach" in issue:
                 rprint("  Start the server: cd docker && docker compose up -d")
             elif "kiro-cli" in issue and "not found" in issue:

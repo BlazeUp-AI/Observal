@@ -117,3 +117,23 @@ def ide_tags(ides: list[str]) -> str:
 
 def spinner(msg: str = "Loading..."):
     return console.status(f"[dim]{msg}[/dim]", spinner="dots")
+
+
+# ── Message helpers ─────────────────────────────────────────
+
+
+def error(msg: str, *, hint: str | None = None):
+    """Print an error message with optional hint."""
+    rprint(f"[bold red]Error:[/bold red] {msg}")
+    if hint:
+        rprint(f"[dim]  Hint: {hint}[/dim]")
+
+
+def warning(msg: str):
+    """Print a warning message."""
+    rprint(f"[yellow]Warning:[/yellow] {msg}")
+
+
+def success(msg: str):
+    """Print a success message."""
+    rprint(f"[green]Success:[/green] {msg}")
