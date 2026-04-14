@@ -25,16 +25,21 @@ def _inject_agent_id(mcp_config: dict, agent_id: str):
             cfg["env"]["OBSERVAL_AGENT_ID"] = agent_id
 
 
-def _build_mcp_configs(agent: Agent, ide: str, observal_url: str, mcp_listings: dict | None = None) -> dict:
+def _build_mcp_configs(
+    agent: Agent, ide: str, observal_url: str, mcp_listings: dict | None = None, env_values: dict | None = None,
+) -> dict:
     """Build MCP server configs from registry components + external MCPs.
 
     Args:
         mcp_listings: optional {component_id: McpListing} map. When provided,
             used to look up MCP listings for each component. The install route
             pre-loads these to avoid N+1 queries in a sync context.
+        env_values: optional {mcp_listing_id_str: {VAR: value}} map of user-supplied
+            environment variable values for each MCP.
     """
     mcp_configs = {}
     mcp_listings = mcp_listings or {}
+    env_values = env_values or {}
 
     for comp in agent.components:
         if comp.component_type != "mcp":
@@ -42,7 +47,8 @@ def _build_mcp_configs(agent: Agent, ide: str, observal_url: str, mcp_listings: 
         listing = mcp_listings.get(comp.component_id)
         if not listing:
             continue
-        cfg = generate_config(listing, ide, observal_url=observal_url)
+        mcp_env = env_values.get(str(listing.id), {})
+        cfg = generate_config(listing, ide, observal_url=observal_url, env_values=mcp_env)
         if "mcpServers" in cfg:
             mcp_configs.update(cfg["mcpServers"])
         elif ide in ("claude-code", "claude_code"):
@@ -117,15 +123,17 @@ def generate_agent_config(
     observal_url: str = "http://localhost:8000",
     mcp_listings: dict | None = None,
     component_names: dict | None = None,
+    env_values: dict | None = None,
 ) -> dict:
     """Generate IDE-specific config for an agent.
 
     Args:
         mcp_listings: optional {component_id: McpListing} map pre-loaded by caller.
         component_names: optional {component_id_str: name} map for all component types.
+        env_values: optional {mcp_listing_id_str: {VAR: value}} map of user-supplied env var values.
     """
     safe_name = _sanitize_name(agent.name)
-    mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings)
+    mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings, env_values=env_values)
     rules_content = _build_rules_content(agent, component_names)
 
     if ide == "kiro":

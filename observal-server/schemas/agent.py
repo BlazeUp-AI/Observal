@@ -159,6 +159,7 @@ class ValidationResult(BaseModel):
 
 class AgentInstallRequest(BaseModel):
     ide: str
+    env_values: dict[str, dict[str, str]] = {}  # {mcp_listing_id: {VAR: value}}
 
 
 class AgentInstallResponse(BaseModel):

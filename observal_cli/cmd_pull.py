@@ -13,6 +13,65 @@ from observal_cli import client, config
 from observal_cli.render import spinner
 
 
+def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
+    """Discover MCP env vars from agent components and prompt the user for values.
+
+    Returns {mcp_listing_id: {VAR_NAME: value}} for all MCPs that have env vars.
+    """
+    env_values: dict[str, dict[str, str]] = {}
+
+    # Collect MCP component IDs from both mcp_links and component_links
+    mcp_ids: list[tuple[str, str]] = []  # (listing_id, display_name)
+    for link in agent_detail.get("mcp_links", []):
+        mcp_ids.append((str(link["mcp_listing_id"]), link.get("mcp_name", "")))
+    for link in agent_detail.get("component_links", []):
+        if link.get("component_type") == "mcp":
+            cid = str(link["component_id"])
+            # Avoid duplicates if already in mcp_links
+            if not any(mid == cid for mid, _ in mcp_ids):
+                mcp_ids.append((cid, link.get("component_name", "")))
+
+    if not mcp_ids:
+        return env_values
+
+    # Fetch each MCP listing to get its environment_variables
+    for listing_id, display_name in mcp_ids:
+        try:
+            listing = client.get(f"/api/v1/mcps/{listing_id}")
+        except (Exception, SystemExit):
+            continue
+
+        ev_list = listing.get("environment_variables") or []
+        if not ev_list:
+            continue
+
+        required = [ev for ev in ev_list if ev.get("required", True)]
+        optional = [ev for ev in ev_list if not ev.get("required", True)]
+        mcp_name = display_name or listing.get("name", listing_id[:8])
+        mcp_env: dict[str, str] = {}
+
+        if required:
+            rprint(f"\n[bold]{mcp_name}[/bold] requires {len(required)} environment variable(s):")
+            for ev in required:
+                desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
+                val = typer.prompt(f"  {ev['name']}{desc}")
+                mcp_env[ev["name"]] = val
+
+        if optional:
+            rprint(f"\n[dim]{mcp_name}: {len(optional)} optional env var(s):[/dim]")
+            for ev in optional:
+                desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
+                val = typer.prompt(f"  {ev['name']}{desc} (press Enter to skip)", default="")
+                if val:
+                    mcp_env[ev["name"]] = val
+
+        if mcp_env:
+            env_values[listing_id] = mcp_env
+
+    # Warn about MCPs that had env vars but user skipped all of them
+    return env_values
+
+
 def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> str:
     """Write content to a file path, creating parent dirs as needed.
 
@@ -79,8 +138,16 @@ def register_pull(app: typer.Typer):
         resolved = config.resolve_alias(agent_id)
         target_dir = Path(directory).resolve()
 
+        # Fetch agent details to discover MCP env vars
+        with spinner("Fetching agent details..."):
+            agent_detail = client.get(f"/api/v1/agents/{resolved}")
+
+        env_values = _collect_mcp_env_vars(agent_detail)
+
         with spinner(f"Pulling {ide} config for agent {resolved[:8]}..."):
-            result = client.post(f"/api/v1/agents/{resolved}/install", {"ide": ide})
+            result = client.post(
+                f"/api/v1/agents/{resolved}/install", {"ide": ide, "env_values": env_values},
+            )
 
         snippet = result.get("config_snippet", {})
         if not snippet:
