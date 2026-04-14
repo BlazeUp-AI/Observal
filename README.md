@@ -266,7 +266,7 @@ observal doctor [--ide <ide>] [--fix]  # diagnose IDE settings compatibility
 
 ## Setup & Configuration
 
-See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting. For enterprise deployment (SSO, SCIM, audit logging), see [ee/docs/cli.md](ee/docs/cli.md).
+See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting. For the web UI reference (pages, auth flows, RBAC), see [docs/frontend.md](docs/frontend.md). For enterprise deployment (SSO, SCIM, audit logging), see [ee/docs/cli.md](ee/docs/cli.md).
 
 <details>
 <summary><strong>API Endpoints</strong></summary>
