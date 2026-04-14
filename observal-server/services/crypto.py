@@ -181,6 +181,42 @@ class KeyManager:
             return self._public_key
         return self._retired_keys.get(kid)
 
+    # -- payload encryption/decryption ---------------------------------------
+
+    def decrypt_payload(self, encrypted_blob: bytes) -> str:
+        """Decrypt an ECIES-encrypted payload from the CLI buffer.
+
+        Format: ephemeral_pubkey (65 bytes) || nonce (12 bytes) || ciphertext+tag
+        """
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+        # Parse components
+        ephemeral_pub_bytes = encrypted_blob[:65]
+        nonce = encrypted_blob[65:77]
+        ciphertext_with_tag = encrypted_blob[77:]
+
+        # Reconstruct ephemeral public key
+        ephemeral_pub = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), ephemeral_pub_bytes
+        )
+
+        # ECDH shared secret using server's private key
+        shared_secret = self.get_private_key().exchange(ec.ECDH(), ephemeral_pub)
+
+        # Derive same AES key
+        aes_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b"observal-buffer-v1",
+        ).derive(shared_secret)
+
+        # Decrypt
+        aesgcm = AESGCM(aes_key)
+        plaintext = aesgcm.decrypt(nonce, ciphertext_with_tag, None)
+        return plaintext.decode("utf-8")
+
     # -- token helpers -------------------------------------------------------
 
     def sign_token(self, payload: dict) -> str:

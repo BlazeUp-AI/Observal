@@ -13,6 +13,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
 
 
+@router.get("/crypto/public-key")
+async def get_public_key():
+    """Return the server's public key for client-side ECIES encryption.
+
+    This endpoint is intentionally unauthenticated so CLI clients can
+    fetch the key during login without a pre-existing session.
+    """
+    from services.crypto import get_key_manager
+
+    km = get_key_manager()
+    pub_pem = km.get_public_key_pem()
+    return {"public_key_pem": pub_pem}
+
+
 async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
     try:
         r = await _query(f"{sql} FORMAT JSON", params)
@@ -276,8 +290,19 @@ async def ingest_hook(request: Request):
     This is intentionally unauthenticated because CLI hooks fire
     from the terminal and can't easily carry auth tokens.  The endpoint only
     writes to ClickHouse — no destructive operations.
+
+    Supports ECIES-encrypted payloads via the ``X-Observal-Encrypted`` header.
     """
-    body = await request.json()
+    encrypted_header = request.headers.get("X-Observal-Encrypted")
+    if encrypted_header == "ecies-p256":
+        raw_body = await request.body()
+        from services.crypto import get_key_manager
+
+        km = get_key_manager()
+        decrypted_json = km.decrypt_payload(raw_body)
+        body = json.loads(decrypted_json)
+    else:
+        body = await request.json()
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     # ── Normalize Kiro camelCase fields to snake_case ──

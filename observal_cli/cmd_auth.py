@@ -97,6 +97,7 @@ def login(
             rprint("  observal admin invite")
             rprint("  [dim]Share the code — they run: observal auth login --code OBS-XXXX[/dim]")
 
+            _fetch_server_public_key(server_url)
             _configure_claude_code(server_url, api_key)
 
         except httpx.HTTPStatusError as e:
@@ -172,6 +173,7 @@ def register(
         )
         rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
 
+        _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, api_key)
 
     except httpx.HTTPStatusError as e:
@@ -439,6 +441,25 @@ def _do_config_only_init(server_url: str | None = None):
     rprint("[dim]Run 'observal auth login' to authenticate when the server is running.[/dim]")
 
 
+def _fetch_server_public_key(server_url: str):
+    """Fetch and cache the server's ECIES public key for payload encryption.
+
+    Best-effort: silently ignored if the server doesn't expose the endpoint
+    yet (older server versions) or if connectivity fails.
+    """
+    try:
+        r = httpx.get(f"{server_url.rstrip('/')}/api/v1/otel/crypto/public-key", timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            pub_pem = data.get("public_key_pem")
+            if pub_pem:
+                key_dir = Path.home() / ".observal" / "keys"
+                key_dir.mkdir(parents=True, exist_ok=True)
+                (key_dir / "server_public.pem").write_text(pub_pem)
+    except Exception:
+        pass  # Server may not support encryption yet
+
+
 def _do_key_login(server_url: str, api_key: str | None = None):
     """Authenticate with an API key."""
     api_key = api_key or typer.prompt("API Key", hide_input=True)
@@ -455,6 +476,7 @@ def _do_key_login(server_url: str, api_key: str | None = None):
         user = data.get("user", data)
         config.save({"server_url": server_url, "api_key": data.get("api_key", api_key), "user_id": user.get("id", "")})
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
+        _fetch_server_public_key(server_url)
     except httpx.ConnectError:
         rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
         raise typer.Exit(1)
@@ -481,6 +503,7 @@ def _do_password_login(server_url: str, email: str, password: str):
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
         rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
 
+        _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, api_key)
 
     except httpx.ConnectError:
@@ -518,6 +541,7 @@ def _do_invite_login(server_url: str, code: str, name: str | None = None):
             f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]"
         )
 
+        _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, api_key)
 
     except httpx.HTTPStatusError as e:
