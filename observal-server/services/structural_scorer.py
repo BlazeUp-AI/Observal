@@ -237,7 +237,7 @@ def _span_dedup_key(span: dict) -> str:
     input_data = span.get("input") or ""
     if isinstance(input_data, dict):
         input_data = json.dumps(input_data, sort_keys=True)
-    input_hash = hashlib.md5(str(input_data).encode()).hexdigest()
+    input_hash = hashlib.md5(str(input_data).encode(), usedforsecurity=False).hexdigest()
     return f"{name}:{input_hash}"
 
 

@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import typer
@@ -294,7 +295,7 @@ def _check_environment(issues: list, warnings: list):
 
     # Check entry points
     for ep in ["observal-shim", "observal-proxy", "observal-sandbox-run", "observal-graphrag-proxy"]:
-        if os.system(f"which {ep} > /dev/null 2>&1") != 0:
+        if not shutil.which(ep):
             warnings.append(f"`{ep}` not found in PATH. Run `uv tool install --editable .` from the Observal repo.")
 
 
