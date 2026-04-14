@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] - 2026-04-12
 
+### Added — Kiro CLI Setup Guide
+
+- Add `docs/kiro-setup.md`: beginner-friendly guide for connecting Kiro CLI to Observal, covering installation, `observal-shim` setup, agent pulls, hook configuration, diagnostics, limitations, and troubleshooting
+- Link `docs/kiro-setup.md` from `README.md` supported tools line
+
 ### Added — Kiro CLI Telemetry Support
 
 Adds Kiro CLI as a supported telemetry source. Kiro sessions now appear in the dashboard with user prompts, tool I/O, model responses, credit tracking, and agent attribution. Not at full parity with Claude Code — see status table below.

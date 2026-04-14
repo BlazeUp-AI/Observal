@@ -23,7 +23,7 @@ Browse agents created by others, publish your own, and pull complete agent confi
 
 Every interaction generates traces, spans, and sessions that flow into a telemetry pipeline, giving you full observability, traceability, and real-time metrics for your agents in production. The built-in eval engine (WIP) scores agent sessions so you can measure performance and make your agents better over time.
 
-**Supported tools:** Claude Code, Codex CLI, Gemini CLI, and Kiro CLI are fully supported. Cursor and VS Code have MCP/rules file support.
+**Supported tools:** Claude Code, Codex CLI, Gemini CLI, and [Kiro CLI](docs/kiro-setup.md) are fully supported. Cursor and VS Code have MCP/rules file support.
 
 See the [Changelog](CHANGELOG.md) for recent updates.
 
