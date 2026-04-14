@@ -52,14 +52,45 @@ _INTERNAL_ENV_VARS = frozenset(
         "TMPDIR",
         "PYTHONPATH",
         "PYTHONDONTWRITEBYTECODE",
+        "PYTHONUSERBASE",
+        "PYTHONHOME",
+        "PYTHONUNBUFFERED",
         "VIRTUAL_ENV",
         "NODE_ENV",
+        "NODE_PATH",
+        "NODE_OPTIONS",
         "PORT",
         "HOST",
         "DEBUG",
         "LOG_LEVEL",
         "LOGGING_LEVEL",
+        "HOSTNAME",
+        "DISPLAY",
+        "EDITOR",
+        "PAGER",
+        "TZ",
+        "LC_ALL",
+        "LC_CTYPE",
     }
+)
+
+# Prefix patterns for build/CI/infrastructure env vars that are never user-facing
+_FILTERED_PREFIXES = (
+    "CI_",
+    "GITHUB_",
+    "GITLAB_",
+    "CIRCLECI_",
+    "TRAVIS_",
+    "JENKINS_",
+    "BUILDKITE_",
+    "DOCKER_",
+    "BUILDKIT_",
+    "COMPOSE_",
+    "NPM_",
+    "PIP_",
+    "UV_",
+    "OTEL_",
+    "MCP_LOG_",
 )
 
 # ---------------------------------------------------------------------------
@@ -92,47 +123,46 @@ def _clone_repo(git_url: str, dest: str) -> str | None:
     return None
 
 
+def _is_filtered_env_var(name: str) -> bool:
+    """Return True if the env var is internal/infrastructure and should not be prompted."""
+    if name in _INTERNAL_ENV_VARS:
+        return True
+    return any(name.startswith(prefix) for prefix in _FILTERED_PREFIXES)
+
+
 def _detect_env_vars(tmp_dir: str) -> list[dict]:
-    """Scan repo files for required environment variables."""
+    """Scan repo files for required environment variables.
+
+    Scans Python source (os.environ/os.getenv) and .env.example files.
+    Dockerfile ENV/ARG directives are intentionally skipped — they contain
+    build-time variables that are not user-facing configuration.
+    """
     root = Path(tmp_dir)
     found: dict[str, str] = {}
 
+    # Scan Python files for os.environ / os.getenv
     for py_file in root.rglob("*.py"):
         try:
             content = py_file.read_text(errors="ignore")
             for m in _ENV_VAR_PATTERN.finditer(content):
                 name = m.group(1) or m.group(2)
-                if name and name not in _INTERNAL_ENV_VARS:
+                if name and not _is_filtered_env_var(name):
                     found.setdefault(name, "")
         except Exception:
             continue
 
+    # Scan .env.example / .env.sample for documented env vars
     for env_file in root.glob(".env*"):
         if env_file.name in (".env", ".env.local"):
-            continue
+            continue  # skip actual secrets
         try:
             for line in env_file.read_text(errors="ignore").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
                 key = line.split("=", 1)[0].strip()
-                if key and key == key.upper() and key not in _INTERNAL_ENV_VARS:
+                if key and key == key.upper() and not _is_filtered_env_var(key):
                     found.setdefault(key, "")
-        except Exception:
-            continue
-
-    for dockerfile in (root / "Dockerfile", root / "dockerfile"):
-        if not dockerfile.exists():
-            continue
-        try:
-            for line in dockerfile.read_text(errors="ignore").splitlines():
-                stripped = line.strip()
-                if stripped.startswith(("ENV ", "ARG ")):
-                    parts = stripped.split(None, 2)
-                    if len(parts) >= 2:
-                        key = parts[1].split("=", 1)[0]
-                        if key and key == key.upper() and key not in _INTERNAL_ENV_VARS:
-                            found.setdefault(key, "")
         except Exception:
             continue
 

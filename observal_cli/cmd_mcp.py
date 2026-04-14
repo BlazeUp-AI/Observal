@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import typer
 from rich import print as rprint
 from rich.table import Table
@@ -21,6 +24,145 @@ from observal_cli.render import (
 )
 
 mcp_app = typer.Typer(help="MCP server registry commands")
+
+
+# ── Env var configuration helpers ────────────────────────────
+
+
+def _parse_env_file(file_path: str) -> list[dict]:
+    """Parse a .env-style file and return env var dicts."""
+    path = Path(file_path).expanduser().resolve()
+    if not path.exists():
+        rprint(f"[red]File not found:[/red] {path}")
+        return []
+
+    env_vars: list[dict] = []
+    for line in path.read_text(errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key = line.split("=", 1)[0].strip()
+        if key and key == key.upper():
+            env_vars.append({"name": key, "description": "", "required": True})
+    return env_vars
+
+
+def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
+    """Interactive env var configuration at submit time.
+
+    Offers three paths:
+      1. Review and edit auto-detected vars
+      2. Load from an env file path
+      3. Enter manually
+    """
+    is_tty = sys.stdin.isatty()
+
+    if detected:
+        rprint(f"\n[bold]Auto-detected {len(detected)} env var(s):[/bold]")
+        for ev in detected:
+            rprint(f"  [cyan]*[/cyan] {ev['name']}")
+
+    rprint("\n[bold]How would you like to configure environment variables?[/bold]")
+
+    if is_tty:
+        choices = []
+        if detected:
+            choices.append("Review auto-detected vars")
+        choices.extend(["Load from .env file", "Enter manually", "Skip (no env vars)"])
+        choice = select_one("Env var configuration", choices)
+    else:
+        if detected:
+            rprint("  1. Review auto-detected vars")
+            rprint("  2. Load from .env file")
+            rprint("  3. Enter manually")
+            rprint("  4. Skip (no env vars)")
+            raw = typer.prompt("Choose", default="1")
+        else:
+            rprint("  1. Load from .env file")
+            rprint("  2. Enter manually")
+            rprint("  3. Skip (no env vars)")
+            raw = typer.prompt("Choose", default="3")
+        choice_map = {
+            "1": "Review auto-detected vars" if detected else "Load from .env file",
+            "2": "Load from .env file" if detected else "Enter manually",
+            "3": "Enter manually" if detected else "Skip (no env vars)",
+            "4": "Skip (no env vars)",
+        }
+        choice = choice_map.get(raw, "Skip (no env vars)")
+
+    if choice == "Skip (no env vars)":
+        return []
+
+    if choice == "Load from .env file":
+        file_path = typer.prompt("Path to .env file (e.g. .env.example)")
+        env_vars = _parse_env_file(file_path)
+        if not env_vars:
+            rprint("[yellow]No variables found in file.[/yellow]")
+            return []
+        rprint(f"\n[green]Loaded {len(env_vars)} var(s) from file.[/green]")
+        return _review_env_vars(env_vars)
+
+    if choice == "Enter manually":
+        return _enter_env_vars_manually()
+
+    # Review auto-detected
+    return _review_env_vars(detected)
+
+
+def _review_env_vars(env_vars: list[dict]) -> list[dict]:
+    """Let the developer review, remove, and annotate each env var."""
+    reviewed: list[dict] = []
+
+    rprint("\n[bold]Review each variable[/bold] [dim](enter to keep, 'r' to remove, 'o' for optional)[/dim]\n")
+
+    for ev in env_vars:
+        action = typer.prompt(
+            f"  {ev['name']} [required]",
+            default="",
+            show_default=False,
+        )
+        action = action.strip().lower()
+
+        if action == "r":
+            rprint("    [dim]removed[/dim]")
+            continue
+
+        required = action != "o"
+        desc = ev.get("description", "")
+        if not desc:
+            desc = typer.prompt(f"    Description for {ev['name']} (optional)", default="")
+
+        reviewed.append({"name": ev["name"], "description": desc, "required": required})
+        status = "[green]required[/green]" if required else "[yellow]optional[/yellow]"
+        rprint(f"    {status}")
+
+    # Offer to add more
+    while True:
+        add_more = typer.prompt("\n  Add another env var? (name or Enter to finish)", default="")
+        if not add_more:
+            break
+        desc = typer.prompt(f"    Description for {add_more} (optional)", default="")
+        req = typer.confirm("    Required?", default=True)
+        reviewed.append({"name": add_more.strip().upper(), "description": desc, "required": req})
+
+    return reviewed
+
+
+def _enter_env_vars_manually() -> list[dict]:
+    """Prompt the developer to enter env vars one by one."""
+    env_vars: list[dict] = []
+    rprint("\n[bold]Enter env vars one at a time[/bold] [dim](empty name to finish)[/dim]\n")
+
+    while True:
+        name = typer.prompt("  Variable name (or Enter to finish)", default="")
+        if not name:
+            break
+        name = name.strip().upper()
+        desc = typer.prompt(f"    Description for {name} (optional)", default="")
+        req = typer.confirm("    Required?", default=True)
+        env_vars.append({"name": name, "description": desc, "required": req})
+
+    return env_vars
 
 
 # ── Implementation functions (shared by canonical + deprecated) ──
@@ -140,9 +282,9 @@ def _submit_impl(git_url, name, category, yes):
         _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
         _changelog = typer.prompt("Changelog", default="Initial release")
 
-        # Env vars are auto-included from analysis — users are prompted
-        # for actual values during `install`, not here.
-        env_vars = list(detected_env_vars)
+        # Interactive env var configuration — developer reviews, edits,
+        # or provides env vars instead of blindly including auto-detected ones.
+        env_vars = _configure_env_vars_interactive(detected_env_vars)
 
     submit_payload = {
         "git_url": git_url,
