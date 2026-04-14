@@ -12,7 +12,7 @@ from rich.table import Table
 from observal_cli import client, config
 from observal_cli.analyzer import analyze_local
 from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES
-from observal_cli.prompts import select_many, select_one
+from observal_cli.prompts import select_one
 from observal_cli.render import (
     console,
     ide_tags,
@@ -241,13 +241,15 @@ def _submit_impl(git_url, name, category, yes):
     rprint("[bold]------------------------[/bold]\n")
 
     # ── Auto-accept detected fields, only prompt for missing/required ──
+    # MCP servers are IDE-agnostic — config generation handles all IDEs.
+    supported_ides = list(VALID_IDES)
+
     if yes:
         _name = name or detected_name
         _version = detected_ver
         _desc = detected_desc
         _owner = "default"
         _category = category or "general"
-        supported_ides = list(VALID_IDES)
         _setup = ""
         _changelog = "Initial release"
         env_vars = detected_env_vars
@@ -278,7 +280,6 @@ def _submit_impl(git_url, name, category, yes):
         rprint()
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
-        supported_ides = select_many("Supported IDEs", VALID_IDES, defaults=VALID_IDES)
         _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
         _changelog = typer.prompt("Changelog", default="Initial release")
 
