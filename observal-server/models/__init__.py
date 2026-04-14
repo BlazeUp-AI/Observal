@@ -12,6 +12,7 @@ from models.hook import HookDownload, HookListing
 from models.invite import InviteCode
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
 from models.organization import Organization
+from models.password_reset_token import PasswordResetToken
 from models.prompt import PromptDownload, PromptListing
 from models.sandbox import SandboxDownload, SandboxListing
 from models.scoring import (
@@ -55,6 +56,7 @@ __all__ = [
     "McpListing",
     "McpValidationResult",
     "Organization",
+    "PasswordResetToken",
     "PenaltyDefinition",
     "PenaltySeverity",
     "PenaltyTriggerType",

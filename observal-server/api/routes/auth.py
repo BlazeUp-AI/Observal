@@ -9,7 +9,7 @@ import jwt as pyjwt
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ from api.deps import get_current_user, get_db, require_local_mode, require_role
 from api.ratelimit import limiter
 from config import settings
 from models.invite import InviteCode
+from models.password_reset_token import PasswordResetToken
 from models.user import User, UserRole
 from schemas.auth import (
     CodeExchangeRequest,
@@ -40,9 +41,6 @@ from services.jwt_service import create_access_token, create_refresh_token, deco
 from services.redis import get_redis
 
 logger = logging.getLogger(__name__)
-
-# In-memory store for password reset tokens: email -> (token_hash, expires_at)
-_reset_tokens: dict[str, tuple[str, datetime]] = {}
 
 RESET_TOKEN_TTL_MINUTES = 15
 
@@ -411,14 +409,6 @@ def _generate_reset_token() -> str:
     return "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
-def _purge_expired_tokens() -> None:
-    """Remove expired tokens from the in-memory store."""
-    now = datetime.now(UTC)
-    expired = [email for email, (_, exp) in _reset_tokens.items() if exp < now]
-    for email in expired:
-        del _reset_tokens[email]
-
-
 @router.post("/request-reset")
 @limiter.limit("3/minute")
 async def request_password_reset(request: Request, req: RequestResetRequest, db: AsyncSession = Depends(get_db)):
@@ -427,16 +417,27 @@ async def request_password_reset(request: Request, req: RequestResetRequest, db:
     Since Observal is self-hosted, the admin has access to server logs.
     Always returns 200 to avoid leaking whether the email exists.
     """
-    _purge_expired_tokens()
+    # Purge expired tokens
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.expires_at < datetime.now(UTC)))
 
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
 
     if user:
+        # Delete any existing token for this email
+        await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == req.email))
+
         token = _generate_reset_token()
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         expires = datetime.now(UTC) + timedelta(minutes=RESET_TOKEN_TTL_MINUTES)
-        _reset_tokens[req.email] = (token_hash, expires)
+
+        reset_token = PasswordResetToken(
+            email=req.email,
+            token_hash=token_hash,
+            expires_at=expires,
+        )
+        db.add(reset_token)
+        await db.commit()
 
         logger.warning(
             "PASSWORD RESET CODE for %s: %s (expires in %d minutes)",
@@ -452,22 +453,22 @@ async def request_password_reset(request: Request, req: RequestResetRequest, db:
 @limiter.limit("5/minute")
 async def reset_password(request: Request, req: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Reset password using a code from the server logs. Returns new API key."""
-    _purge_expired_tokens()
+    result = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.email == req.email,
+            PasswordResetToken.expires_at >= datetime.now(UTC),
+        )
+    )
+    stored = result.scalar_one_or_none()
 
-    stored = _reset_tokens.get(req.email)
     if not stored:
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
 
-    token_hash, expires = stored
-    if datetime.now(UTC) > expires:
-        del _reset_tokens[req.email]
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
-
-    if hashlib.sha256(req.token.strip().upper().encode()).hexdigest() != token_hash:
+    if hashlib.sha256(req.token.strip().upper().encode()).hexdigest() != stored.token_hash:
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
 
     # Token is valid -- consume it
-    del _reset_tokens[req.email]
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.email == req.email))
 
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()

@@ -14,14 +14,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add new enum values (idempotent — safe on fresh databases)
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'super_admin'")
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'reviewer'")
-
-    # Rename developer -> reviewer in existing rows
     op.execute("UPDATE users SET role = 'reviewer' WHERE role = 'developer'")
-
-    # Add is_demo column (idempotent via IF NOT EXISTS pattern)
     op.execute("""
         DO $$
         BEGIN
@@ -37,7 +32,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop is_demo column
     op.execute("""
         DO $$
         BEGIN
@@ -50,6 +44,4 @@ def downgrade() -> None:
         END
         $$;
     """)
-
-    # Rename reviewer back to developer in rows
     op.execute("UPDATE users SET role = 'developer' WHERE role = 'reviewer'")
