@@ -13,5 +13,5 @@ datasources:
       defaultDatabase: observal
       username: default
     secureJsonData:
-      password: clickhouse
+      password: $CLICKHOUSE_PASSWORD
     editable: true

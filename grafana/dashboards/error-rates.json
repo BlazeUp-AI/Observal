@@ -37,6 +37,26 @@
         "multi": true,
         "refresh": 2,
         "sort": 1
+      },
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "observal-clickhouse"
+        },
+        "query": "SELECT DISTINCT environment FROM spans FINAL WHERE is_deleted = 0 ORDER BY environment",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "allValue": "1",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
       }
     ]
   },
@@ -90,7 +110,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  round(countIf(status = 'error') / count() * 100, 2) AS error_rate\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  round(countIf(status = 'error') / count() * 100, 2) AS error_rate\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -146,7 +166,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT countIf(status = 'error') AS total_errors\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))",
+          "rawSql": "SELECT countIf(status = 'error') AS total_errors\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
           "refId": "A",
           "format": 1
         }
@@ -209,7 +229,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  round(countIf(status = 'error') / count() * 100, 2) AS error_rate\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))",
+          "rawSql": "SELECT\n  round(countIf(status = 'error') / count() * 100, 2) AS error_rate\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
           "refId": "A",
           "format": 1
         }
@@ -310,7 +330,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  status,\n  count() AS count\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nGROUP BY status\nORDER BY count DESC",
+          "rawSql": "SELECT\n  status,\n  count() AS count\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY status\nORDER BY count DESC",
           "refId": "A",
           "format": 1
         }
@@ -356,7 +376,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  type,\n  round(countIf(status = 'error') / count() * 100, 2) AS error_rate,\n  count() AS total_spans\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nGROUP BY type\nHAVING total_spans > 0\nORDER BY error_rate DESC\nLIMIT 15",
+          "rawSql": "SELECT\n  type,\n  round(countIf(status = 'error') / count() * 100, 2) AS error_rate,\n  count() AS total_spans\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY type\nHAVING total_spans > 0\nORDER BY error_rate DESC\nLIMIT 15",
           "refId": "A",
           "format": 1
         }
@@ -410,7 +430,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  round(countIf(status = 'timeout') / count() * 100, 2) AS timeout_rate\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  round(countIf(status = 'timeout') / count() * 100, 2) AS timeout_rate\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -450,7 +470,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  span_id,\n  trace_id,\n  type,\n  name,\n  status,\n  error,\n  latency_ms,\n  start_time\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND status != 'success'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
+          "rawSql": "SELECT\n  span_id,\n  trace_id,\n  type,\n  name,\n  status,\n  error,\n  latency_ms,\n  start_time\nFROM spans FINAL\nWHERE is_deleted = 0\n  AND status != 'success'\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
           "refId": "A",
           "format": 2
         }

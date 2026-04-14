@@ -37,6 +37,26 @@
         "multi": true,
         "refresh": 2,
         "sort": 1
+      },
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "observal-clickhouse"
+        },
+        "query": "SELECT DISTINCT environment FROM traces FINAL WHERE is_deleted = 0 ORDER BY environment",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "includeAll": true,
+        "allValue": "1",
+        "multi": true,
+        "refresh": 2,
+        "sort": 1
       }
     ]
   },
@@ -87,7 +107,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  count() AS traces\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nGROUP BY time\nORDER BY time",
+          "rawSql": "SELECT\n  $__timeInterval(start_time) AS time,\n  count() AS traces\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY time\nORDER BY time",
           "refId": "A",
           "format": 1
         }
@@ -150,7 +170,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  count(DISTINCT session_id) AS active_sessions\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND session_id IS NOT NULL",
+          "rawSql": "SELECT\n  count(DISTINCT session_id) AS active_sessions\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND session_id IS NOT NULL",
           "refId": "A",
           "format": 1
         }
@@ -205,7 +225,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  count() AS total_traces\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))",
+          "rawSql": "SELECT\n  count() AS total_traces\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))",
           "refId": "A",
           "format": 1
         }
@@ -260,7 +280,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  trace_type,\n  count() AS count\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nGROUP BY trace_type\nORDER BY count DESC",
+          "rawSql": "SELECT\n  trace_type,\n  count() AS count\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nGROUP BY trace_type\nORDER BY count DESC",
           "refId": "A",
           "format": 1
         }
@@ -306,7 +326,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  ide,\n  count() AS count\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ide != ''\nGROUP BY ide\nORDER BY count DESC\nLIMIT 10",
+          "rawSql": "SELECT\n  ide,\n  count() AS count\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND ide != ''\nGROUP BY ide\nORDER BY count DESC\nLIMIT 10",
           "refId": "A",
           "format": 1
         }
@@ -346,7 +366,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  trace_id,\n  project_id,\n  session_id,\n  trace_type,\n  name,\n  ide,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
+          "rawSql": "SELECT\n  trace_id,\n  project_id,\n  session_id,\n  trace_type,\n  name,\n  ide,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
           "refId": "A",
           "format": 2
         }
