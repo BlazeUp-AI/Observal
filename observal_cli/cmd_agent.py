@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from observal_cli import client, config
+from observal_cli.constants import VALID_IDES
 from observal_cli.render import (
     console,
     ide_tags,
@@ -75,7 +76,7 @@ def agent_create(
     temperature = typer.prompt("Temperature", default="0.2")
     model_cfg = {"max_tokens": int(max_tokens), "temperature": float(temperature)}
 
-    ide_choices = ["cursor", "kiro", "claude-code", "gemini-cli", "codex", "copilot"]
+    ide_choices = list(VALID_IDES)
     rprint(f"[dim]IDEs: {', '.join(ide_choices)}[/dim]")
     ides_input = typer.prompt("Supported IDEs (comma-separated)", default=",".join(ide_choices))
     supported_ides = [i.strip() for i in ides_input.split(",") if i.strip()]
@@ -142,6 +143,7 @@ def agent_create(
 def agent_list(
     search: str | None = typer.Option(None, "--search", "-s"),
     limit: int = typer.Option(50, "--limit", "-n"),
+    full_id: bool = typer.Option(False, "--full-id", help="Show full UUID instead of short form"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
     """List active agents."""
@@ -164,7 +166,7 @@ def agent_list(
 
     if output == "plain":
         for item in data:
-            rprint(f"{item['id']}  {item['name']}  v{item.get('version', '?')}  {item.get('model_name', '')}")
+            rprint(f"{item['id']}  {item['name']}  v{item.get('version', '?')}  {item.get('model_name', '')}  {', '.join(item.get('supported_ides', []))}")
         return
 
     table = Table(title=f"Agents ({len(data)})", show_lines=False, padding=(0, 1))
@@ -174,8 +176,9 @@ def agent_list(
     table.add_column("Model")
     table.add_column("Owner", style="dim")
     table.add_column("IDEs")
-    table.add_column("ID", style="dim", max_width=12)
+    table.add_column("ID", style="dim", no_wrap=full_id)
     for i, item in enumerate(data, 1):
+        id_display = str(item["id"]) if full_id else str(item["id"])[:8] + "…"
         table.add_row(
             str(i),
             item["name"],
@@ -183,7 +186,7 @@ def agent_list(
             item.get("model_name", ""),
             item.get("owner", ""),
             ide_tags(item.get("supported_ides", [])),
-            str(item["id"])[:8] + "…",
+            id_display,
         )
     console.print(table)
 
@@ -338,6 +341,7 @@ def agent_init(
         "owner": owner,
         "model_name": model_name,
         "prompt": prompt_text,
+        "supported_ides": list(VALID_IDES),
         "components": [],
         "goal_template": {
             "description": f"Goals for {name}",
@@ -444,6 +448,7 @@ def agent_publish(
         "owner": data.get("owner", ""),
         "model_name": data.get("model_name", "claude-sonnet-4"),
         "prompt": data.get("prompt", ""),
+        "supported_ides": data.get("supported_ides", []),
         "components": data.get("components", []),
         "goal_template": data.get("goal_template", {}),
     }
