@@ -13,7 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, require_local_mode, require_role
+from api.deps import get_current_user, get_db, require_local_mode
 from api.ratelimit import limiter
 from config import settings
 from models.password_reset_token import PasswordResetToken
