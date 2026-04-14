@@ -414,7 +414,10 @@ function EventSummary({ event }: { event: RawOtelEvent }) {
         {attrs.input_tokens && parseInt(attrs.input_tokens) > 1 && <Stat label="in" value={formatTokens(attrs.input_tokens)} />}
         {attrs.output_tokens && <Stat label="out" value={formatTokens(attrs.output_tokens)} />}
         {attrs.cache_read_tokens && parseInt(attrs.cache_read_tokens) > 0 && (
-          <Stat label="cache" value={formatTokens(attrs.cache_read_tokens)} />
+          <Stat label="cache read" value={formatTokens(attrs.cache_read_tokens)} />
+        )}
+        {attrs.cache_creation_tokens && parseInt(attrs.cache_creation_tokens) > 0 && (
+          <Stat label="cache write" value={formatTokens(attrs.cache_creation_tokens)} />
         )}
       </div>
     );
@@ -1133,6 +1136,7 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     let totalCacheRead = 0;
+    let totalCacheWrite = 0;
     let apiCalls = 0;
     let toolCalls = 0;
     let hookEvents = 0;
@@ -1153,6 +1157,7 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
         if (attrs.input_tokens) totalInputTokens += parseInt(attrs.input_tokens, 10);
         if (attrs.output_tokens) totalOutputTokens += parseInt(attrs.output_tokens, 10);
         if (attrs.cache_read_tokens) totalCacheRead += parseInt(attrs.cache_read_tokens, 10);
+        if (attrs.cache_creation_tokens) totalCacheWrite += parseInt(attrs.cache_creation_tokens, 10);
         if (attrs.model) models.add(attrs.model);
       }
 
@@ -1175,13 +1180,13 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
       }
     }
 
-    return { totalInputTokens, totalOutputTokens, totalCacheRead, apiCalls, toolCalls, hookEvents, credits, isKiro, models, tools };
+    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, models, tools };
   }, [events]);
 
   const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
       {stats.isKiro && stats.credits > 0 ? (
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Credits</p>
@@ -1200,6 +1205,10 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
           <div className="space-y-1">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Read</p>
             <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheRead)}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Write</p>
+            <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheWrite)}</p>
           </div>
         </>
       )}
