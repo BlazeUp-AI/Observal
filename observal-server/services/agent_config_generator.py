@@ -2,6 +2,7 @@ import re
 
 from models.agent import Agent
 from services.config_generator import (
+    _build_run_command,
     _claude_otlp_env,
     _gemini_otlp_env,
     _gemini_settings,
@@ -57,7 +58,8 @@ def _build_mcp_configs(
             # agent file gets proper mcpServers frontmatter.
             safe = _sanitize_name(listing.name)
             mcp_id = str(listing.id)
-            shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", safe]
+            run_cmd = _build_run_command(safe, listing.framework)
+            shim_args = ["--mcp-id", mcp_id, "--", *run_cmd]
             mcp_configs[safe] = {"command": "observal-shim", "args": shim_args, "env": {}}
 
     for ext in agent.external_mcps or []:

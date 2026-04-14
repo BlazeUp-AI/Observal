@@ -56,6 +56,21 @@ def _gemini_settings(observal_url: str) -> dict:
     }
 
 
+def _build_run_command(name: str, framework: str | None) -> list[str]:
+    """Return the appropriate run command based on the MCP framework.
+
+    - TypeScript: npx -y <name>
+    - Go: <name> (assumes binary on PATH)
+    - Python / unknown: python -m <name>
+    """
+    fw = (framework or "").lower()
+    if "typescript" in fw or "ts" in fw:
+        return ["npx", "-y", name]
+    if "go" in fw:
+        return [name]
+    return ["python", "-m", name]
+
+
 def _build_server_env(listing: McpListing, env_values: dict[str, str] | None = None) -> dict[str, str]:
     """Build env dict from the listing's declared environment_variables and user-supplied values."""
     env: dict[str, str] = {}
@@ -100,7 +115,8 @@ def generate_config(
         return {"mcpServers": {name: {"url": proxy_url, "env": server_env}}}
 
     # Stdio transport: shim wraps the original command
-    shim_args = ["--mcp-id", mcp_id, "--", "python", "-m", name]
+    run_cmd = _build_run_command(name, listing.framework)
+    shim_args = ["--mcp-id", mcp_id, "--", *run_cmd]
 
     if ide == "claude-code":
         otlp = _claude_otlp_env(observal_url)

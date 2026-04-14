@@ -290,6 +290,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
 
     if entry_point:
         listing.mcp_validated = True
+        listing.framework = "python-mcp"
         db.add(
             McpValidationResult(
                 listing_id=listing.id,
@@ -305,6 +306,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
     non_python_framework = _detect_non_python_mcp(tmp_dir)
     if non_python_framework:
         listing.mcp_validated = True
+        listing.framework = non_python_framework
         db.add(
             McpValidationResult(
                 listing_id=listing.id,

@@ -71,6 +71,7 @@ class McpListingResponse(BaseModel):
     environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None
     changelog: str | None
+    framework: str | None = None
     mcp_validated: bool = False
 
     _coerce_env = field_validator("environment_variables", mode="before")(_coerce_env_vars)

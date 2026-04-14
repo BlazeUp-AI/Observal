@@ -40,6 +40,9 @@ async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, 
     tool_count = len(analysis.tools)
     issue_count = len(analysis.issues)
 
+    if analysis.framework:
+        listing.framework = analysis.framework
+
     if has_entry:
         detail = "Client-side analysis: found entry point"
         if analysis.framework:
