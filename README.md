@@ -93,7 +93,7 @@ Anyone can publish components to the registry. Admin review controls visibility 
 
 ## CLI Reference
 
-The CLI is organized into command groups. Run `observal --help` or `observal <group> --help` for full details.
+The CLI is organized into command groups. Run `observal --help` or `observal <group> --help` for full details. See [docs/cli.md](docs/cli.md) for the complete command reference.
 
 ### Primary Workflows
 
@@ -266,7 +266,7 @@ observal doctor [--ide <ide>] [--fix]  # diagnose IDE settings compatibility
 
 ## Setup & Configuration
 
-See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting.
+See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting. For enterprise deployment (SSO, SCIM, audit logging), see [ee/docs/cli.md](ee/docs/cli.md).
 
 <details>
 <summary><strong>API Endpoints</strong></summary>
