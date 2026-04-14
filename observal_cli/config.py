@@ -56,6 +56,13 @@ def get_or_exit() -> dict:
     return cfg
 
 
+def get_timeout() -> int:
+    """Return the request timeout in seconds. Configurable via OBSERVAL_TIMEOUT env var."""
+    import os
+
+    return int(os.environ.get("OBSERVAL_TIMEOUT", "30"))
+
+
 # ── Aliases ──────────────────────────────────────────────
 
 

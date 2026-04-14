@@ -69,12 +69,48 @@ def _handle_timeout(path: str = ""):
     raise typer.Exit(code=1)
 
 
+_MAX_RETRIES = 3
+_RETRY_STATUSES = {429, 503, 504}
+
+
+def _request_with_retry(
+    method: str,
+    url: str,
+    headers: dict,
+    *,
+    params: dict | None = None,
+    json: dict | None = None,
+) -> httpx.Response:
+    """Execute an HTTP request with retries on 429/503/504 and Retry-After support."""
+    timeout = config.get_timeout()
+    func = getattr(httpx, method)
+
+    kwargs: dict = {"headers": headers, "timeout": timeout}
+    if params is not None:
+        kwargs["params"] = params
+    if json is not None:
+        kwargs["json"] = json
+
+    for attempt in range(_MAX_RETRIES):
+        r = func(url, **kwargs)
+        if r.status_code not in _RETRY_STATUSES or attempt == _MAX_RETRIES - 1:
+            r.raise_for_status()
+            return r
+        # Honor Retry-After header if present
+        retry_after = r.headers.get("Retry-After")
+        if retry_after:
+            delay = float(retry_after)
+        else:
+            delay = 0.5 * (2**attempt)
+        logger.debug(f"Retrying {method.upper()} {url} (attempt {attempt + 1}, delay {delay:.1f}s)")
+        time.sleep(delay)
+    return r  # unreachable but satisfies type checker
+
+
 def get(path: str, params: dict | None = None) -> dict:
     base, headers = _client()
-    timeout = config.get_timeout()
     try:
-        r = httpx.get(f"{base}{path}", headers=headers, params=params, timeout=timeout)
-        r.raise_for_status()
+        r = _request_with_retry("get", f"{base}{path}", headers, params=params)
         return r.json()
     except httpx.HTTPStatusError as e:
         _handle_error(e, path)
@@ -86,10 +122,8 @@ def get(path: str, params: dict | None = None) -> dict:
 
 def post(path: str, json_data: dict | None = None) -> dict:
     base, headers = _client()
-    timeout = config.get_timeout()
     try:
-        r = httpx.post(f"{base}{path}", headers=headers, json=json_data, timeout=timeout)
-        r.raise_for_status()
+        r = _request_with_retry("post", f"{base}{path}", headers, json=json_data)
         return r.json()
     except httpx.HTTPStatusError as e:
         _handle_error(e, path)
@@ -101,10 +135,8 @@ def post(path: str, json_data: dict | None = None) -> dict:
 
 def put(path: str, json_data: dict | None = None) -> dict:
     base, headers = _client()
-    timeout = config.get_timeout()
     try:
-        r = httpx.put(f"{base}{path}", headers=headers, json=json_data, timeout=timeout)
-        r.raise_for_status()
+        r = _request_with_retry("put", f"{base}{path}", headers, json=json_data)
         return r.json()
     except httpx.HTTPStatusError as e:
         _handle_error(e, path)
@@ -116,10 +148,8 @@ def put(path: str, json_data: dict | None = None) -> dict:
 
 def delete(path: str) -> dict:
     base, headers = _client()
-    timeout = config.get_timeout()
     try:
-        r = httpx.delete(f"{base}{path}", headers=headers, timeout=timeout)
-        r.raise_for_status()
+        r = _request_with_retry("delete", f"{base}{path}", headers)
         return r.json()
     except httpx.HTTPStatusError as e:
         _handle_error(e, path)
