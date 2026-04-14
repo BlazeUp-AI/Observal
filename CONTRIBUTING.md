@@ -4,6 +4,8 @@ Thank you for considering contributing to Observal! Contributions of all kinds a
 
 Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
 
+If you have questions about contributing or want to discuss your ideas before opening a PR, join the [Observal Discord](https://discord.observal.io) to chat with the maintainers.
+
 ## Table of Contents
 
 - [Getting Started](#getting-started)
