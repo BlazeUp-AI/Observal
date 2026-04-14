@@ -44,13 +44,11 @@ class TestRequireLocalMode:
 
 
 class TestAuthRouteGuards:
-    """Verify that bootstrap, register, invite, and redeem are guarded."""
+    """Verify that bootstrap and register are guarded."""
 
     GUARDED_ROUTES = [
         ("POST", "/api/v1/auth/bootstrap"),
         ("POST", "/api/v1/auth/register"),
-        ("POST", "/api/v1/auth/invite"),
-        ("POST", "/api/v1/auth/redeem"),
     ]
 
     @pytest.mark.asyncio

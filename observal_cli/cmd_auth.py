@@ -34,14 +34,12 @@ def login(
     key: str = typer.Option(None, "--key", "-k", help="API key (skip prompt)"),
     email: str = typer.Option(None, "--email", "-e", help="Email (for password login)"),
     password: str = typer.Option(None, "--password", "-p", help="Password (for password login)"),
-    code: str = typer.Option(None, "--code", "-c", help="Invite code (e.g. OBS-A7X9B2)"),
-    name: str = typer.Option(None, "--name", "-n", help="Your name (used with invite/register)"),
+    name: str = typer.Option(None, "--name", "-n", help="Your name (used with register)"),
 ):
     """Connect to Observal.
 
     On a fresh server: prompts for email, name, and password to create admin.
     With email+password: logs in with credentials.
-    With an invite code: redeems it and creates your account.
     With --key: logs in with an API key.
     """
     server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
@@ -93,10 +91,6 @@ def login(
 
             rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [admin]")
             rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
-            rprint("[bold]To invite team members:[/bold]")
-            rprint("  observal admin invite")
-            rprint("  [dim]Share the code — they run: observal auth login --code OBS-XXXX[/dim]")
-
             _fetch_server_public_key(server_url)
             _configure_claude_code(server_url, api_key)
 
@@ -121,19 +115,10 @@ def login(
         _do_key_login(server_url, key)
         return
 
-    # 5. Invite code → redeem
-    if code:
-        _do_invite_login(server_url, code, name)
-        return
-
-    # 6. Interactive: choose method
-    choice = typer.prompt("Login with [E]mail, [K]ey, or [I]nvite code?", default="E")
+    # 5. Interactive: choose method
+    choice = typer.prompt("Login with [E]mail or [K]ey?", default="E")
     ch = choice.strip().upper()
-    if ch.startswith("I"):
-        invite_code = typer.prompt("Invite code")
-        invite_name = typer.prompt("Your name", default="")
-        _do_invite_login(server_url, invite_code, invite_name or None)
-    elif ch.startswith("K"):
+    if ch.startswith("K"):
         _do_key_login(server_url, None)
     else:
         login_email = email or typer.prompt("Email")
@@ -384,11 +369,10 @@ def register_deprecated_auth(app: typer.Typer):
     def deprecated_login(
         server: str = typer.Option(None, "--server", "-s", help="Server URL"),
         key: str = typer.Option(None, "--key", "-k", help="API key"),
-        code: str = typer.Option(None, "--code", "-c", help="Invite code"),
     ):
         """[Deprecated] Use 'observal auth login' instead."""
         _deprecation_notice("login")
-        login(server=server, key=key, email=None, password=None, code=code, name=None)
+        login(server=server, key=key, email=None, password=None, name=None)
 
     @app.command(name="logout", hidden=True)
     def deprecated_logout():
@@ -513,41 +497,6 @@ def _do_password_login(server_url: str, email: str, password: str):
         except Exception:
             detail = e.response.text
         rprint(f"[red]Login failed:[/red] {detail}")
-        raise typer.Exit(1)
-
-
-def _do_invite_login(server_url: str, code: str, name: str | None = None):
-    """Redeem an invite code to create account and log in."""
-    payload: dict = {"code": code.strip()}
-    if name:
-        payload["name"] = name
-    try:
-        with spinner("Redeeming invite code..."):
-            r = httpx.post(
-                f"{server_url}/api/v1/auth/redeem",
-                json=payload,
-                timeout=30,
-            )
-            r.raise_for_status()
-            data = r.json()
-
-        api_key = data["api_key"]
-        user = data["user"]
-        config.save({"server_url": server_url, "api_key": api_key, "user_id": user.get("id", "")})
-        rprint(
-            f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]"
-        )
-
-        _fetch_server_public_key(server_url)
-        _configure_claude_code(server_url, api_key)
-
-    except httpx.HTTPStatusError as e:
-        detail = ""
-        try:
-            detail = e.response.json().get("detail", e.response.text)
-        except Exception:
-            detail = e.response.text
-        rprint(f"[red]Failed:[/red] {detail}")
         raise typer.Exit(1)
 
 

@@ -862,52 +862,6 @@ def admin_users(output: str = typer.Option("table", "--output", "-o")):
     console.print(table)
 
 
-@admin_app.command(name="invite")
-def admin_invite(
-    role: str = typer.Option("developer", "--role", "-r", help="Role: developer, user, admin"),
-    expires: int = typer.Option(7, "--expires", "-e", help="Days until expiry"),
-):
-    """Generate an invite code for a new team member."""
-    with spinner("Creating invite code..."):
-        data = client.post("/api/v1/auth/invite", {"role": role, "expires_days": expires})
-    rprint(f"\n[bold green]Invite code:[/bold green]  [bold]{data['code']}[/bold]")
-    rprint(f"[dim]Role: {data['role']} | Expires: {data['expires_at'][:10]}[/dim]\n")
-    rprint("[dim]Share this code. They run:[/dim]")
-    rprint(f"  [bold]observal auth login --code {data['code']}[/bold]")
-
-
-@admin_app.command(name="invites")
-def admin_invites(output: str = typer.Option("table", "--output", "-o")):
-    """List all invite codes."""
-    with spinner():
-        data = client.get("/api/v1/auth/invites")
-    if output == "json":
-        output_json(data)
-        return
-    if not data:
-        rprint("[dim]No invite codes.[/dim]")
-        return
-    table = Table(title=f"Invite Codes ({len(data)})", show_lines=False, padding=(0, 1))
-    table.add_column("Code", style="bold cyan")
-    table.add_column("Role")
-    table.add_column("Created")
-    table.add_column("Expires")
-    table.add_column("Status")
-    for inv in data:
-        if inv.get("used_by"):
-            status_str = f"[green]used[/green] {inv.get('used_at', '')[:10]}"
-        else:
-            status_str = "[yellow]pending[/yellow]"
-        table.add_row(
-            inv["code"],
-            inv["role"],
-            inv["created_at"][:10],
-            inv["expires_at"][:10],
-            status_str,
-        )
-    console.print(table)
-
-
 @admin_app.command(name="canaries")
 def admin_canaries(
     agent_id: str = typer.Argument(..., help="Agent ID to list canaries for"),

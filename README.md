@@ -195,10 +195,6 @@ observal ops telemetry test
 <summary><strong>Admin</strong> - <code>observal admin</code></summary>
 
 ```bash
-# Invite team members
-observal admin invite              # generate invite code (e.g. OBS-A7X9B2)
-observal admin invites             # list all invite codes
-
 # Settings and users
 observal admin settings
 observal admin set <key> <value>
@@ -283,9 +279,6 @@ See [SETUP.md](SETUP.md) for local development setup, eval engine configuration,
 | `GET` | `/api/v1/auth/whoami` | Current user info |
 | `POST` | `/api/v1/auth/request-reset` | Request password reset (code logged to server console) |
 | `POST` | `/api/v1/auth/reset-password` | Reset password with code + new password |
-| `POST` | `/api/v1/auth/invite` | Create invite code (admin) |
-| `POST` | `/api/v1/auth/redeem` | Redeem invite code → get API key |
-| `GET` | `/api/v1/auth/invites` | List invite codes (admin) |
 
 ### Registry (per type: mcps, agents, skills, hooks, prompts, sandboxes)
 

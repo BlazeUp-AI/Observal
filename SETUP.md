@@ -49,16 +49,10 @@ observal auth login
 
 On a fresh server, `observal auth login` detects that no users exist and bootstraps an admin account automatically. No prompts needed. Your credentials are saved to `~/.observal/config.json`.
 
-To invite team members:
+To add team members, they can self-register:
 
 ```bash
-observal admin invite              # prints a short code like OBS-A7X9B2
-```
-
-Share the code. They run:
-
-```bash
-observal auth login --code OBS-A7X9B2
+observal auth register
 ```
 
 For CI/scripts, use environment variables instead of interactive login:
@@ -154,10 +148,9 @@ observal auth login
 # Server URL: http://localhost:8000
 ```
 
-On a fresh server this auto-creates an admin account. On an existing server, log in with an API key or invite code:
+On a fresh server this auto-creates an admin account. On an existing server, log in with an API key:
 
 ```bash
-observal auth login --code OBS-XXXX    # invite code
 observal auth login --key <api-key>    # API key
 ```
 
@@ -386,7 +379,7 @@ The CLI cannot reach the API. Check that the Docker stack is up (`docker compose
 Another process is using port 8000, 3000, 5432, or 8123. Either stop the conflicting process or change the port mappings in `docker/docker-compose.yml`.
 
 **"System already initialized"**
-The server already has users. Use `observal auth login` with an API key or invite code, or reset the database (see above).
+The server already has users. Use `observal auth login` with an API key, or reset the database (see above).
 
 **ClickHouse not receiving data**
 Check that `CLICKHOUSE_URL` in `.env` matches the credentials in the docker-compose ClickHouse environment. The default is `clickhouse://default:clickhouse@observal-clickhouse:8123/observal`.

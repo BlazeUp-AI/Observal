@@ -16,17 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_current_user, get_db, require_local_mode, require_role
 from api.ratelimit import limiter
 from config import settings
-from models.invite import InviteCode
 from models.password_reset_token import PasswordResetToken
 from models.user import User, UserRole
 from schemas.auth import (
     CodeExchangeRequest,
     InitRequest,
     InitResponse,
-    InviteCreateRequest,
-    InviteListResponse,
-    InviteRedeemRequest,
-    InviteResponse,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -482,87 +477,3 @@ async def reset_password(request: Request, req: ResetPasswordRequest, db: AsyncS
     await db.refresh(user)
 
     return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
-
-
-# -- Invite Codes --
-
-
-@router.post("/invite", response_model=InviteResponse, dependencies=[Depends(require_local_mode)])
-async def create_invite(
-    req: InviteCreateRequest = InviteCreateRequest(),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
-):
-    """Admin creates an invite code for a new user."""
-    from datetime import timedelta
-
-    invite = InviteCode(
-        role=req.role,
-        created_by=current_user.id,
-        expires_at=datetime.now(UTC) + timedelta(days=req.expires_days),
-    )
-    db.add(invite)
-    await db.commit()
-    await db.refresh(invite)
-
-    return InviteResponse.model_validate(invite)
-
-
-@router.post("/redeem", response_model=InitResponse, dependencies=[Depends(require_local_mode)])
-@limiter.limit("5/minute")
-async def redeem_invite(request: Request, req: InviteRedeemRequest, db: AsyncSession = Depends(get_db)):
-    """Redeem an invite code to create an account and get an API key."""
-    code = req.code.strip().upper()
-
-    result = await db.execute(select(InviteCode).where(InviteCode.code == code))
-    invite = result.scalar_one_or_none()
-
-    if not invite:
-        raise HTTPException(status_code=404, detail="Invalid invite code")
-    if invite.used_by is not None:
-        raise HTTPException(status_code=400, detail="Invite code already used")
-    if invite.expires_at < datetime.now(UTC):
-        raise HTTPException(status_code=400, detail="Invite code expired")
-
-    # Generate user credentials
-    api_key, key_hash = _generate_api_key()
-
-    name = req.name or f"user-{code[-4:]}"
-    email = req.email or f"{name.lower().replace(' ', '-')}@localhost"
-
-    try:
-        role = UserRole(invite.role)
-    except ValueError:
-        role = UserRole.reviewer
-
-    user = User(
-        email=email,
-        name=name,
-        role=role,
-        api_key_hash=key_hash,
-    )
-    db.add(user)
-
-    # Mark invite as used
-    invite.used_by = user.id
-    invite.used_at = datetime.now(UTC)
-
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        raise HTTPException(status_code=409, detail="Invite already redeemed or email already exists")
-    await db.refresh(user)
-
-    return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
-
-
-@router.get("/invites", response_model=list[InviteListResponse])
-async def list_invites(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
-):
-    """Admin lists all invite codes."""
-
-    result = await db.execute(select(InviteCode).order_by(InviteCode.created_at.desc()))
-    return [InviteListResponse.model_validate(i) for i in result.scalars().all()]

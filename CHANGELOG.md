@@ -66,7 +66,7 @@ Bridge layer that converts `otel_logs` hook events into eval-compatible spans so
 
 User identity for both Claude Code and Kiro now comes from `observal login`, not from IDE-specific identity.
 
-- All login paths (bootstrap, key, password, invite, register) save `user_id` to `~/.observal/config.json`
+- All login paths (bootstrap, key, password, register) save `user_id` to `~/.observal/config.json`
 - **Claude Code**: `X-Observal-User-Id` header injected into HTTP hooks
 - **Kiro**: `user_id` field injected into hook payload via sed prefix
 - **Server**: extracts from body (`user_id` field) or header (`X-Observal-User-Id`), stores as `user.id` in ClickHouse

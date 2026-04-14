@@ -10,7 +10,6 @@ from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
 from models.exporter_config import ExporterConfig
 from models.feedback import Feedback
 from models.hook import HookDownload, HookListing
-from models.invite import InviteCode
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
 from models.organization import Organization
 from models.password_reset_token import PasswordResetToken
@@ -52,7 +51,6 @@ __all__ = [
     "Feedback",
     "HookDownload",
     "HookListing",
-    "InviteCode",
     "ListingStatus",
     "McpDownload",
     "McpListing",

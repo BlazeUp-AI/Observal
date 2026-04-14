@@ -344,8 +344,6 @@ Requires admin role.
 | `admin settings` | View server settings |
 | `admin set <key> <value>` | Update a server setting |
 | `admin users` | List users |
-| `admin invite` | Create an invite link |
-| `admin invites` | List pending invites |
 | `admin penalties` | View scoring penalties |
 | `admin penalty-set` | Set a scoring penalty |
 | `admin weights` | View scoring weights |
