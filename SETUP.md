@@ -27,7 +27,7 @@ cd docker
 docker compose up --build -d
 ```
 
-This starts seven services:
+This starts eight services:
 
 | Service | URL | Description |
 |---------|-----|-------------|
@@ -38,6 +38,7 @@ This starts seven services:
 | `observal-redis` | localhost:6379 | Redis (job queue, pub/sub) |
 | `observal-worker` | (internal) | Background job processor (arq) |
 | `observal-otel-collector` | localhost:4317 | OpenTelemetry Collector |
+| `observal-grafana` | http://localhost:3001 | Grafana dashboards (optional) |
 
 Install the CLI and create your first admin account:
 
@@ -293,10 +294,13 @@ The schema includes tables for users, MCP listings, agents, reviews, feedback, e
 ClickHouse tables are also created automatically on startup. The API runs `CREATE TABLE IF NOT EXISTS` for the telemetry tables:
 
 - `traces` - distributed trace data (ReplacingMergeTree)
-- `spans` - individual operation spans (ReplacingMergeTree)
+- `spans` - individual operation spans with resource metrics (ReplacingMergeTree)
 - `scores` - evaluation scores (ReplacingMergeTree)
+- `audit_log` - enterprise audit events for compliance (ReplacingMergeTree)
 - `mcp_tool_calls` - legacy tool call events (MergeTree)
 - `agent_interactions` - legacy agent interaction events (MergeTree)
+
+All ReplacingMergeTree tables use `is_deleted` + `event_ts` for soft deletes and deduplication. Use the `FINAL` modifier in queries to get deduplicated results. Data retention is controlled by `DATA_RETENTION_DAYS` (default: 90 days).
 
 If ClickHouse is unavailable at startup, the API still starts. Telemetry ingestion and dashboard queries will fail silently until ClickHouse becomes available.
 
@@ -310,7 +314,7 @@ docker compose down -v
 docker compose up --build -d
 ```
 
-The `-v` flag removes the named volumes (`pgdata`, `chdata`), which deletes all data. After restarting, run `observal auth login` again. It will auto-create a new admin account.
+The `-v` flag removes the named volumes (`pgdata`, `chdata`, `redisdata`, `grafanadata`, `apidata`), which deletes all data. After restarting, run `observal auth login` again. It will auto-create a new admin account.
 
 ## Docker Details
 

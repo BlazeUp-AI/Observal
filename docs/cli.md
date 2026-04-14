@@ -6,11 +6,31 @@ Complete command reference for the Observal CLI. All commands use the `observal`
 
 ---
 
+## Command Structure
+
+```
+observal
+├── auth          Authentication and account management
+├── registry      Component registry (mcp, skill, hook, prompt, sandbox)
+├── agent         Agent authoring and management
+├── ops           Observability and operational commands
+├── admin         Admin commands (settings, review, eval, canaries)
+├── config        CLI configuration
+├── self          CLI self-management (upgrade, downgrade)
+├── doctor        IDE diagnostics
+├── pull          Install an agent (shorthand)
+├── scan          Detect and instrument existing IDE configs
+├── uninstall     Remove an installed agent
+└── use/profile   Switch between server profiles
+```
+
 ## Global Options
 
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--version` | `-V` | Show CLI version and exit |
+| `--verbose` | `-v` | Verbose output |
+| `--debug` | | Debug logging |
 | `--help` | | Show help for any command |
 
 ---
@@ -19,28 +39,36 @@ Complete command reference for the Observal CLI. All commands use the `observal`
 
 | Command | Description |
 |---------|-------------|
-| `auth init` | First-time setup: create admin account and configure server |
-| `auth login` | Log in to an Observal server |
-| `auth signup` | Create a new account |
-| `auth reset-password` | Reset your password |
-| `auth logout` | Log out and clear local credentials |
+| `auth login` | Log in to an Observal server (auto-creates admin on fresh server) |
+| `auth register` | Create a new account with email + password |
+| `auth reset-password` | Reset a forgotten password (uses server-logged code) |
+| `auth logout` | Clear saved credentials |
 | `auth whoami` | Show current authenticated user |
-| `auth status` | Show server connection status |
-| `auth version` | Show CLI and server versions |
+| `auth status` | Check server connectivity, health, and local telemetry buffer |
 
 ### `observal auth login`
 
 ```bash
-observal auth login [--server URL] [--email EMAIL] [--password PASSWORD]
+observal auth login [--server URL] [--key KEY] [--email EMAIL] [--password PASSWORD] [--name NAME]
 ```
 
-### `observal auth init`
+On a fresh server, detects no users exist and bootstraps an admin account with email + password prompts. On an existing server, choose between email+password or API key login interactively, or pass flags directly.
+
+### `observal auth register`
 
 ```bash
-observal auth init [--server URL]
+observal auth register [--server URL] [--email EMAIL] [--password PASSWORD] [--name NAME]
 ```
 
-First-time server setup. Creates the admin user and configures the CLI to talk to the server.
+Self-registration for new users. Creates an account and logs in. Only available in local deployment mode.
+
+### `observal auth reset-password`
+
+```bash
+observal auth reset-password [--server URL] [--email EMAIL]
+```
+
+Requests a 6-character reset code logged to the server console. Check server logs for the code, then enter it with a new password to regain access.
 
 ---
 
@@ -48,35 +76,32 @@ First-time server setup. Creates the admin user and configures the CLI to talk t
 
 | Command | Description |
 |---------|-------------|
-| `config show` | Show current config |
-| `config set` | Set a config key |
+| `config show` | Show current config (API key masked) |
+| `config set <key> <value>` | Set a config key |
 | `config path` | Show config file path |
-| `config alias` | Create a shorthand alias for a listing ID |
+| `config alias <name> <id>` | Create a shorthand @alias for a listing ID |
 | `config aliases` | List all aliases |
 
-### `observal config set`
-
-```bash
-observal config set <key> <value>
-```
+Config is stored in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`.
 
 ### `observal config alias`
 
 ```bash
-observal config alias <name> <listing_id>
+observal config alias my-mcp 498c17ac-...
+observal registry mcp show @my-mcp      # use the alias anywhere
 ```
 
 ---
 
 ## Registry (`observal registry`)
 
-The registry contains five component types, each with the same command structure.
+The registry manages five component types, each with the same command structure.
 
 ### MCP Servers (`observal registry mcp`)
 
 #### `observal registry mcp submit`
 
-Submit an MCP server for review. Clones the repo, analyzes for tools and required environment variables, then prompts for metadata.
+Submit an MCP server for review. The CLI clones the repo locally using your git credentials, analyzes it for MCP tools and environment variables via AST parsing, then sends the analysis to the server.
 
 ```bash
 observal registry mcp submit <git_url> [OPTIONS]
@@ -90,14 +115,16 @@ observal registry mcp submit <git_url> [OPTIONS]
 
 **What happens:**
 
-1. Clones the repo and analyzes it:
+1. Clones the repo locally (shallow clone) and analyzes it:
    - Detects MCP framework (FastMCP, MCP SDK, TypeScript SDK, Go SDK)
-   - Extracts server name, description, and tools via AST
+   - Extracts server name, description, and tools via AST parsing
    - Scans for required environment variables (`os.environ`, `os.getenv`, `.env.example`, Dockerfile `ENV`/`ARG`)
 2. Shows analysis results (name, tools, env vars, warnings)
 3. Prompts for metadata (name, description, owner, category, IDEs, setup instructions)
 4. Shows detected env vars and lets you confirm, reject, or add extras
-5. Submits with status `pending`. Validation runs as a background task.
+5. Submits with `client_analysis` attached — server stores validation results directly without re-cloning
+
+If local analysis fails (e.g. git not available), falls back to server-side analysis.
 
 ```bash
 # Interactive
@@ -105,102 +132,38 @@ observal registry mcp submit https://github.com/MarkusPfundstein/mcp-obsidian
 
 # Non-interactive
 observal registry mcp submit https://github.com/sooperset/mcp-atlassian -y
-
-# Pre-fill name and category
-observal registry mcp submit https://github.com/example/server -n my-server -c productivity
 ```
 
 #### `observal registry mcp list`
 
-List approved MCP servers.
-
 ```bash
-observal registry mcp list [OPTIONS]
-```
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--category` | `-c` | Filter by category |
-| `--search` | `-s` | Search by name or description |
-| `--limit` | `-n` | Max results (default: 50) |
-| `--sort` | | Sort by: `name`, `category`, `version` |
-| `--output` | `-o` | Output format: `table`, `json`, `plain` |
-
-```bash
-observal registry mcp list
-observal registry mcp list -c productivity
-observal registry mcp list -s "jira" -o json
+observal registry mcp list [--category CAT] [--search TERM] [--limit N] [--sort name|category|version] [--output table|json|plain]
 ```
 
 #### `observal registry mcp show`
 
-Show full details of an MCP server including validation results.
-
 ```bash
-observal registry mcp show <mcp_id> [OPTIONS]
+observal registry mcp show <id-or-name> [--output table|json]
 ```
 
-`mcp_id` can be a UUID, server name, row number from the last `list`, or `@alias`.
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--output` | `-o` | Output format: `table`, `json` |
-
-```bash
-observal registry mcp show mcp-obsidian
-observal registry mcp show 498c17ac
-observal registry mcp show mcp-obsidian -o json
-```
+`id-or-name` accepts a UUID, server name, row number from last `list`, or `@alias`.
 
 #### `observal registry mcp install`
 
-Generate an IDE config snippet for an MCP server. Prompts for required environment variable values.
+Generate an IDE config snippet. Prompts for required environment variable values.
 
 ```bash
-observal registry mcp install <mcp_id> --ide <ide> [OPTIONS]
+observal registry mcp install <id-or-name> --ide <ide> [--raw]
 ```
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--ide` | `-i` | **Required.** Target IDE |
-| `--raw` | | Output raw JSON only (for piping to a file) |
 
 Supported IDEs: `cursor`, `kiro`, `claude-code`, `gemini-cli`, `vscode`, `codex`, `copilot`
 
-**What happens:**
-
-1. Fetches the server listing and its declared environment variables
-2. Prompts for each required env var value (e.g. `JIRA_URL`, `JIRA_API_TOKEN`)
-3. Prompts for optional env vars (Enter to skip)
-4. Generates IDE-specific config with env values merged into the `env` block
-5. Warns about any env vars still missing values
-
-```bash
-# Interactive
-observal registry mcp install mcp-atlassian --ide cursor
-
-# Raw JSON for piping
-observal registry mcp install mcp-atlassian --ide cursor --raw > .cursor/mcp.json
-
-# Claude Code
-observal registry mcp install mcp-obsidian --ide claude-code
-```
+Use `--raw` to output JSON only (for piping to a file).
 
 #### `observal registry mcp delete`
 
-Delete an MCP server listing you own.
-
 ```bash
-observal registry mcp delete <mcp_id> [OPTIONS]
-```
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--yes` | `-y` | Skip confirmation prompt |
-
-```bash
-observal registry mcp delete mcp-obsidian
-observal registry mcp delete mcp-obsidian -y
+observal registry mcp delete <id-or-name> [--yes]
 ```
 
 ### Skills (`observal registry skill`)
@@ -230,7 +193,7 @@ observal registry mcp delete mcp-obsidian -y
 | `prompt submit` | Submit a prompt template for review |
 | `prompt list` | List approved prompts |
 | `prompt show <id>` | Show prompt details |
-| `prompt render <id>` | Render a prompt with variables |
+| `prompt render <id> --var key=value` | Render a prompt with variables |
 | `prompt install <id>` | Generate install config |
 | `prompt delete <id>` | Delete a prompt |
 
@@ -255,22 +218,10 @@ observal registry mcp delete mcp-obsidian -y
 | `agent show <id>` | Show agent details and components |
 | `agent install <id> --ide <ide>` | Install an agent into an IDE |
 | `agent delete <id>` | Delete an agent |
-| `agent init` | Initialize an agent project in current directory |
-| `agent add` | Add a component to an agent |
-| `agent build` | Build and validate an agent |
-| `agent publish` | Publish an agent to the registry |
-
-### `observal agent install`
-
-```bash
-observal agent install <agent_id> --ide <ide>
-```
-
-### `observal agent create`
-
-```bash
-observal agent create [--name NAME] [--description DESC]
-```
+| `agent init` | Scaffold `observal-agent.yaml` in current directory |
+| `agent add <type> <id>` | Add a component to an agent |
+| `agent build` | Validate an agent against the server (dry-run) |
+| `agent publish` | Submit an agent to the registry |
 
 ---
 
@@ -278,7 +229,7 @@ observal agent create [--name NAME] [--description DESC]
 
 ### `observal pull`
 
-Install an agent into an IDE. Shorthand for `agent install`.
+Install an agent into an IDE with all its dependencies.
 
 ```bash
 observal pull <agent_id> --ide <ide>
@@ -289,8 +240,10 @@ observal pull <agent_id> --ide <ide>
 Scan and wrap existing MCP servers in an IDE for telemetry.
 
 ```bash
-observal scan --ide <ide>
+observal scan [--ide <ide>]
 ```
+
+Detects MCP servers from IDE config files, registers them with Observal, and wraps them with `observal-shim` for telemetry. Creates a timestamped backup automatically.
 
 ### `observal uninstall`
 
@@ -302,15 +255,15 @@ observal uninstall <agent_id> --ide <ide>
 
 ### `observal use`
 
-Switch between Observal profiles (server/account pairs).
+Switch IDE configs to a git-hosted or local profile.
 
 ```bash
-observal use [profile_name]
+observal use <git-url|path>
 ```
 
 ### `observal profile`
 
-Manage profiles.
+Show active profile and backup info.
 
 ```bash
 observal profile
@@ -322,16 +275,20 @@ observal profile
 
 | Command | Description |
 |---------|-------------|
-| `ops overview` | Dashboard summary |
-| `ops metrics` | Telemetry metrics |
-| `ops top` | Top agents/servers by usage |
-| `ops rate` | Rate limiting status |
-| `ops feedback` | User feedback |
-| `ops traces` | View OpenTelemetry traces |
-| `ops spans` | View individual spans |
-| `ops sync` | Sync component sources |
-| `ops telemetry status` | Telemetry pipeline status |
+| `ops overview` | Dashboard summary stats |
+| `ops metrics <id> [--type mcp\|agent] [--watch]` | Metrics for an MCP server or agent |
+| `ops top [--type mcp\|agent]` | Top items by usage |
+| `ops traces [--type TYPE] [--mcp ID] [--agent ID]` | List recent traces |
+| `ops spans <trace-id>` | List spans for a trace |
+| `ops rate <id> --stars N [--type mcp\|agent]` | Rate an item (1-5 stars) |
+| `ops feedback <id> [--type mcp\|agent]` | Show feedback for an item |
+| `ops sync` | Flush locally buffered telemetry events to server |
+| `ops telemetry status` | Telemetry pipeline status + local buffer stats |
 | `ops telemetry test` | Send a test telemetry event |
+
+### `observal ops sync`
+
+When the server is unreachable, hook events are stored in a local SQLite buffer (`~/.observal/telemetry_buffer.db`). This command sends pending events in batches.
 
 ---
 
@@ -339,28 +296,52 @@ observal profile
 
 Requires admin role.
 
+### Settings and Users
+
 | Command | Description |
 |---------|-------------|
 | `admin settings` | View server settings |
 | `admin set <key> <value>` | Update a server setting |
-| `admin users` | List users |
-| `admin penalties` | View scoring penalties |
-| `admin penalty-set` | Set a scoring penalty |
-| `admin weights` | View scoring weights |
-| `admin weight-set` | Set a scoring weight |
-| `admin canaries` | List canary configs |
-| `admin canary-add` | Add a canary config |
-| `admin canary-reports` | View canary reports |
-| `admin canary-delete` | Delete a canary config |
+| `admin users` | List all users |
+
+### Review Workflow
+
+| Command | Description |
+|---------|-------------|
 | `admin review list` | List pending submissions |
 | `admin review show <id>` | Show submission details |
 | `admin review approve <id>` | Approve a submission |
-| `admin review reject <id>` | Reject a submission |
-| `admin eval run` | Run an evaluation |
-| `admin eval scorecards` | View eval scorecards |
-| `admin eval show <id>` | Show eval run details |
-| `admin eval compare` | Compare eval runs |
-| `admin eval aggregate` | Aggregate eval results |
+| `admin review reject <id> --reason "..."` | Reject a submission |
+
+### Evaluation Engine
+
+| Command | Description |
+|---------|-------------|
+| `admin eval run <agent-id> [--trace ID]` | Run evaluation on agent traces |
+| `admin eval scorecards <agent-id> [--version V]` | List scorecards |
+| `admin eval show <scorecard-id>` | Show scorecard with dimension breakdown |
+| `admin eval compare <agent-id> --a V1 --b V2` | Compare two versions |
+| `admin eval aggregate <agent-id> [--window N]` | Aggregate scoring stats with drift detection |
+
+### Penalty and Weight Tuning
+
+| Command | Description |
+|---------|-------------|
+| `admin penalties` | View scoring penalty catalog |
+| `admin penalty-set <name> [--amount N] [--active]` | Modify a penalty definition |
+| `admin weights` | View global dimension weights |
+| `admin weight-set <dimension> <weight>` | Set a dimension weight (0.0-1.0) |
+
+### Canary Injection (Eval Integrity)
+
+| Command | Description |
+|---------|-------------|
+| `admin canaries <agent-id>` | List canary configs for an agent |
+| `admin canary-add <agent-id> [--type TYPE] [--point POINT]` | Add a canary config |
+| `admin canary-reports <agent-id>` | Show canary detection reports |
+| `admin canary-delete <canary-id>` | Delete a canary config |
+
+Canary types: `numeric`, `entity`, `instruction`. Injection points: `tool_output`, `context`.
 
 ---
 
@@ -369,23 +350,23 @@ Requires admin role.
 | Command | Description |
 |---------|-------------|
 | `self upgrade` | Upgrade the CLI to the latest version |
-| `self downgrade` | Downgrade the CLI |
+| `self downgrade` | Downgrade the CLI (WIP) |
 
 ---
 
 ## Doctor (`observal doctor`)
 
 ```bash
-observal doctor --ide <ide>
+observal doctor [--ide <ide>] [--fix]
 ```
 
-Verify that your IDE integration is correctly configured.
+Diagnose IDE settings compatibility. Use `--fix` to auto-repair common issues.
 
 ---
 
 ## Server Environment Variables
 
-For self-hosted Observal deployments:
+For self-hosted Observal deployments, these affect server-side behavior for git operations:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -393,36 +374,3 @@ For self-hosted Observal deployments:
 | `GIT_CLONE_TOKEN` | Auth token for cloning private repos | (none) |
 | `GIT_CLONE_TOKEN_USER` | Token username: `x-access-token` (GitHub), `oauth2` or `private-token` (GitLab) | `x-access-token` |
 | `GIT_CLONE_TIMEOUT` | Clone timeout in seconds | `120` |
-
----
-
-## Deprecated Commands
-
-These still work but print a deprecation warning. Use the canonical versions.
-
-| Deprecated | Use instead |
-|------------|-------------|
-| `observal submit` | `observal registry mcp submit` |
-| `observal list` | `observal registry mcp list` |
-| `observal show` | `observal registry mcp show` |
-| `observal install` | `observal registry mcp install` |
-| `observal delete` | `observal registry mcp delete` |
-| `observal login` | `observal auth login` |
-| `observal logout` | `observal auth logout` |
-| `observal init` | `observal auth init` |
-| `observal whoami` | `observal auth whoami` |
-| `observal status` | `observal auth status` |
-| `observal version` | `observal auth version` |
-| `observal upgrade` | `observal self upgrade` |
-| `observal downgrade` | `observal self downgrade` |
-| `observal overview` | `observal ops overview` |
-| `observal metrics` | `observal ops metrics` |
-| `observal top` | `observal ops top` |
-| `observal rate` | `observal ops rate` |
-| `observal feedback` | `observal ops feedback` |
-| `observal traces` | `observal ops traces` |
-| `observal spans` | `observal ops spans` |
-| `observal skill` | `observal registry skill` |
-| `observal hook` | `observal registry hook` |
-| `observal prompt` | `observal registry prompt` |
-| `observal sandbox` | `observal registry sandbox` |

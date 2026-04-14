@@ -139,9 +139,9 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### CLI (`observal_cli/`)
 
-- `main.py` : Typer app wiring; creates `registry_app` parent group (mcp, skill, hook, prompt, sandbox), registers all command modules, adds deprecated backward-compat aliases
-- `cmd_auth.py` : `auth_app` subgroup: login (smart - auto-bootstrap on fresh server, supports --key for API keys, email+password), register, reset-password, init (removed alias), logout, whoami, status. Also `config_app` subgroup: show, set, path, alias, aliases
-- `cmd_mcp.py` : `mcp_app` subgroup: submit (with --yes for non-interactive), list (--sort, --limit, --output), show, install (--raw), delete. `register_deprecated_mcp()` adds hidden root-level bare aliases (submit, list, show, install, delete)
+- `main.py` : Typer app wiring; creates `registry_app` parent group (mcp, skill, hook, prompt, sandbox), registers all command modules
+- `cmd_auth.py` : `auth_app` subgroup: login (smart - auto-bootstrap on fresh server, supports --key for API keys, email+password), register, reset-password, init (removed stub), logout, whoami, status. Also `config_app` subgroup: show, set, path, alias, aliases
+- `cmd_mcp.py` : `mcp_app` subgroup: submit (with --yes for non-interactive, client-side repo analysis), list (--sort, --limit, --output), show, install (--raw), delete
 - `cmd_agent.py` : `agent_app` subgroup: create (--from-file), list, show, install, delete; authoring: init, add, build, publish
 - `cmd_skill.py` : `skill_app` subgroup: submit, list, show, install, delete
 - `cmd_hook.py` : `hook_app` subgroup: submit, list, show, install, delete
@@ -150,7 +150,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `cmd_scan.py` : `observal scan`: auto-detect IDE configs (Cursor, Kiro, VS Code, Claude Code, Gemini CLI), bulk-register MCPs, wrap with observal-shim; `--dry-run`, `--ide`, `--yes` flags
 - `cmd_pull.py` : `observal pull`: fetch agent config from server, write IDE files (rules, MCP config, agent files) to disk; `--dry-run`, `--dir` flags; merges MCP configs with existing files
 - `cmd_profile.py` : `observal use` + `observal profile`: swap IDE configs from git-hosted profiles; clones/caches profiles, backs up current config, restores via `observal use default`
-- `cmd_ops.py` : `ops_app` subgroup: overview, metrics (--watch), top, traces, spans, rate, feedback. Contains `telemetry_app` (status, test). Also `admin_app` subgroup: settings, set, users, penalties, penalty-set, weights, weight-set. Contains `review_app` (list, show, approve, reject) and `eval_app` (run, scorecards, show, compare, aggregate). Also `self_app` subgroup: upgrade, downgrade. `register_deprecated_ops/admin/lifecycle()` add hidden root-level aliases
+- `cmd_ops.py` : `ops_app` subgroup: overview, metrics (--watch), top, traces, spans, rate, feedback, sync. Contains `telemetry_app` (status, test). Also `admin_app` subgroup: settings, set, users, penalties, penalty-set, weights, weight-set, canaries, canary-add, canary-reports, canary-delete. Contains `review_app` (list, show, approve, reject) and `eval_app` (run, scorecards, show, compare, aggregate). Also `self_app` subgroup: upgrade, downgrade
 - `cmd_doctor.py` : `doctor_app`: diagnose IDE settings for Observal compatibility; checks Observal config, server connectivity, IDE configs (Claude Code, Kiro, Cursor, Gemini CLI), env vars, Docker availability, entry points; `--ide` to target specific IDE, `--fix` to show suggested fixes
 - `client.py` : httpx wrapper with get/post/put/delete/health; contextual error messages per status code
 - `config.py` : ~/.observal/config.json management; alias system (@name -> UUID resolution)
@@ -161,7 +161,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Docker (`docker/`)
 
-- `docker-compose.yml` : 7 services: api (8000), db (PostgreSQL 16), clickhouse (8123/9000), redis (6379), worker (arq), web (3000), otel-collector (4317/4318)
+- `docker-compose.yml` : 8 services: api (8000), db (PostgreSQL 16), clickhouse (8123), redis (6379), worker (arq), web (3000), otel-collector (4317/4318), grafana (3001)
 - `Dockerfile.api` : uv-based Python build
 - `Dockerfile.web` : Node 24-alpine, multi-stage build with standalone output
 
@@ -263,7 +263,7 @@ The `ee/` directory contains proprietary enterprise features licensed under the 
 - Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. This lets `observal scan` work. Items are auto-registered as pending and immediately usable by the submitter.
 - The CLI stores config in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`. Both are plain JSON. All API path parameters accept UUID or name; the server resolves names via `resolve_listing()` in `deps.py`.
 - All CLI list/show commands support `--output table|json|plain`. Use `--output json` for scripting. Use `--raw` on install commands to pipe config directly to files.
-- The CLI uses nested Typer subgroups. Deprecated root-level aliases are registered as hidden commands that print deprecation warnings and delegate to the canonical implementation functions (`_impl` pattern). The `register_deprecated_*` functions in each module handle this.
+- The CLI uses nested Typer subgroups: `auth`, `registry` (mcp/skill/hook/prompt/sandbox), `agent`, `ops` (telemetry), `admin` (review/eval), `self`, `config`, `doctor`. Root-level convenience commands: `pull`, `scan`, `uninstall`, `use`, `profile`.
 - Ruff is the Python linter and formatter. Line length is 120. Pre-commit hooks enforce it.
 - The `B008` ruff rule is suppressed because Typer requires function calls in argument defaults (`typer.Option(...)`, `typer.Argument(...)`).
 - The data model is agent-centric. Agents bundle components (MCPs, skills, hooks, prompts, sandboxes) via `agent_components`, a polymorphic junction table with NO foreign key on `component_id` (allows cross-type references). Agent downloads are deduplicated by `(user_id)` and `(fingerprint)` unique constraints; component downloads are not deduplicated. All components support organization ownership via `is_private` + `owner_org_id` fields. Git-based versioning: components require `git_url` + `git_ref` for reproducible installs.

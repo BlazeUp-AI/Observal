@@ -41,7 +41,7 @@ uv tool install --editable .
 observal auth login            # auto-creates admin on fresh server
 ```
 
-That's it. The `.env.example` ships with working defaults for every setting. The server starts 7 services (API, web UI, PostgreSQL, ClickHouse, Redis, background worker, OpenTelemetry collector) and creates all database tables on first boot.
+That's it. The `.env.example` ships with working defaults for every setting. The server starts 8 services (API, web UI, PostgreSQL, ClickHouse, Redis, background worker, OpenTelemetry collector, Grafana) and creates all database tables on first boot.
 
 Already have MCP servers in your IDE? Instrument them in one command:
 
@@ -108,7 +108,8 @@ observal profile                     # show active profile and backup info
 <summary><strong>Authentication</strong> - <code>observal auth</code></summary>
 
 ```bash
-observal auth login            # auto-creates admin on fresh server, or login with key
+observal auth login            # auto-creates admin on fresh server, or login with key/password
+observal auth register         # self-register a new account with email + password
 observal auth logout           # clear saved credentials
 observal auth whoami           # show current user
 observal auth status           # check server connectivity and health
@@ -260,7 +261,8 @@ observal doctor [--ide <ide>] [--fix]  # diagnose IDE settings compatibility
 | Real-time | GraphQL subscriptions (Strawberry + WebSocket) |
 | Dependency Management | uv |
 | Telemetry Pipeline | OpenTelemetry Collector |
-| Deployment | Docker Compose (7 services) |
+| Monitoring | Grafana + ClickHouse dashboards |
+| Deployment | Docker Compose (8 services) |
 
 ## Setup & Configuration
 
@@ -273,12 +275,18 @@ See [SETUP.md](SETUP.md) for local development setup, eval engine configuration,
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/auth/bootstrap` | Auto-create admin on fresh server |
+| `POST` | `/api/v1/auth/bootstrap` | Auto-create admin on fresh server (localhost only) |
+| `POST` | `/api/v1/auth/register` | Self-registration with email + password |
 | `POST` | `/api/v1/auth/login` | Login with API key or email+password |
 | `POST` | `/api/v1/auth/exchange` | Exchange one-time OAuth code for credentials |
 | `GET` | `/api/v1/auth/whoami` | Current user info |
+| `POST` | `/api/v1/auth/token` | Exchange credentials for JWT access + refresh tokens |
+| `POST` | `/api/v1/auth/token/refresh` | Rotate refresh token for new access token |
+| `POST` | `/api/v1/auth/token/revoke` | Revoke a refresh token |
 | `POST` | `/api/v1/auth/request-reset` | Request password reset (code logged to server console) |
 | `POST` | `/api/v1/auth/reset-password` | Reset password with code + new password |
+| `GET` | `/api/v1/auth/oauth/login` | Initiate OAuth SSO flow |
+| `GET` | `/api/v1/auth/oauth/callback` | OAuth callback handler |
 
 ### Registry (per type: mcps, agents, skills, hooks, prompts, sandboxes)
 
@@ -316,6 +324,18 @@ All `{id}` parameters accept either a UUID or a name.
 | `POST` | `/api/v1/telemetry/ingest` | Batch ingest traces, spans, scores |
 | `POST` | `/api/v1/telemetry/events` | Legacy event ingestion |
 | `GET` | `/api/v1/telemetry/status` | Data flow status |
+| `POST` | `/api/v1/otel/hooks` | Hook-based telemetry ingestion (Claude Code, Kiro) |
+| `GET` | `/api/v1/otel/crypto/public-key` | Server public key for payload encryption |
+
+### Alerts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/alerts` | List alert rules |
+| `POST` | `/api/v1/alerts` | Create alert rule |
+| `PATCH` | `/api/v1/alerts/{id}` | Update alert rule |
+| `DELETE` | `/api/v1/alerts/{id}` | Delete alert rule |
+| `GET` | `/api/v1/alerts/{id}/history` | Alert firing history |
 
 ### Evaluation
 
@@ -349,6 +369,10 @@ All `{id}` parameters accept either a UUID or a name.
 | `PUT` | `/api/v1/admin/penalties/{id}` | Modify penalty |
 | `GET` | `/api/v1/admin/weights` | Get dimension weights |
 | `PUT` | `/api/v1/admin/weights` | Set dimension weights |
+| `GET` | `/api/v1/admin/canaries/{agent_id}` | List canary configs |
+| `POST` | `/api/v1/admin/canaries` | Create canary config |
+| `DELETE` | `/api/v1/admin/canaries/{id}` | Delete canary config |
+| `GET` | `/api/v1/admin/canaries/{agent_id}/reports` | Canary detection reports |
 
 ### GraphQL
 
@@ -387,6 +411,9 @@ All settings have sensible defaults that work for local development. Just `cp .e
 | `EVAL_MODEL_NAME` | | Model name (e.g. `us.anthropic.claude-3-5-haiku-20241022-v1:0`) |
 | `EVAL_MODEL_PROVIDER` | | `bedrock`, `openai`, or empty for auto-detect |
 | `AWS_REGION` | `us-east-1` | AWS region for Bedrock |
+| `DEPLOYMENT_MODE` | `local` | `local` (self-registration, bootstrap) or `enterprise` (SSO-only, SCIM) |
+| `DATA_RETENTION_DAYS` | `90` | ClickHouse data retention TTL in days (0 to disable) |
+| `RATE_LIMIT_AUTH` | `10/minute` | Rate limit for auth endpoints |
 
 </details>
 
