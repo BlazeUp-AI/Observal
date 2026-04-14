@@ -98,10 +98,7 @@ def _request_with_retry(
             return r
         # Honor Retry-After header if present
         retry_after = r.headers.get("Retry-After")
-        if retry_after:
-            delay = float(retry_after)
-        else:
-            delay = 0.5 * (2**attempt)
+        delay = float(retry_after) if retry_after else 0.5 * (2**attempt)
         logger.debug(f"Retrying {method.upper()} {url} (attempt {attempt + 1}, delay {delay:.1f}s)")
         time.sleep(delay)
     return r  # unreachable but satisfies type checker
