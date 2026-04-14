@@ -33,7 +33,7 @@ class TestPublish:
     @pytest.mark.asyncio
     async def test_silent_on_error(self):
         mock_redis = AsyncMock()
-        mock_redis.publish.side_effect = Exception("connection refused")
+        mock_redis.publish.side_effect = ConnectionError("connection refused")
         with patch("services.redis.get_redis", return_value=mock_redis):
             await publish("ch", {})  # should not raise
 

@@ -39,11 +39,13 @@ class TestReadiness:
 
         app.dependency_overrides[get_db] = _mock_get_db
         try:
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.get("/health")
+            with patch("services.clickhouse.clickhouse_health", new_callable=AsyncMock, return_value=True):
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                    r = await ac.get("/health")
             assert r.status_code == 200
             data = r.json()
             assert data["status"] == "ok"
+            assert data["clickhouse"] == "ok"
             assert data["initialized"] is True
         finally:
             app.dependency_overrides.clear()
