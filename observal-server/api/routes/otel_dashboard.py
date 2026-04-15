@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from api.deps import require_role
 from models.user import User, UserRole
 from services.clickhouse import _query
+from services.redis import publish
 from services.secrets_redactor import redact_secrets
 
 logger = logging.getLogger(__name__)
@@ -607,5 +609,11 @@ async def ingest_hook(request: Request):
     except Exception as e:
         logger.warning(f"Hook insert failed: {e}")
         return {"ingested": 0, "error": str(e)}
+
+    # Notify subscribers (fire-and-forget — don't block the response)
+    if session_id:
+        asyncio.create_task(
+            publish("sessions:updated", {"session_id": session_id, "event_name": hook_event})
+        )
 
     return {"ingested": 1, "session_id": session_id, "event": hook_event}

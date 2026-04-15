@@ -464,6 +464,12 @@ class Query:
 
 
 @strawberry.type
+class SessionEvent:
+    session_id: str
+    event_name: str
+
+
+@strawberry.type
 class Subscription:
     @strawberry.subscription
     async def trace_created(
@@ -482,6 +488,20 @@ class Subscription:
         channel = f"spans:{trace_id}"
         async for data in subscribe(channel):
             yield _row_to_span(data)
+
+    @strawberry.subscription
+    async def session_updated(
+        self, session_id: str | None = None
+    ) -> AsyncGenerator[SessionEvent, None]:
+        channel = "sessions:updated"
+        async for data in subscribe(channel):
+            sid = data.get("session_id", "")
+            if session_id and sid != session_id:
+                continue
+            yield SessionEvent(
+                session_id=sid,
+                event_name=data.get("event_name", ""),
+            )
 
 
 # --- Schema ---

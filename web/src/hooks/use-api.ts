@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
   useQuery,
   useMutation,
@@ -294,6 +295,30 @@ export function useOtelStats() {
 }
 export function useOtelErrors() {
   return useQuery({ queryKey: ['otel', 'errors'], queryFn: dashboard.otelErrors });
+}
+
+export function useSessionSubscription() {
+  const qc = useQueryClient();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    import("@/lib/graphql-ws").then(({ subscribeToSessionUpdates }) => {
+      unsubscribe = subscribeToSessionUpdates((sessionId) => {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["otel", "sessions"] });
+          qc.invalidateQueries({ queryKey: ["otel", "session", sessionId] });
+        }, 300);
+      });
+    });
+
+    return () => {
+      clearTimeout(debounceRef.current);
+      unsubscribe?.();
+    };
+  }, [qc]);
 }
 
 // ── Agent-specific ──────────────────────────────────────────────────

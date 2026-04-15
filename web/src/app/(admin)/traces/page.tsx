@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { useOtelSessions } from "@/hooks/use-api";
+import { useOtelSessions, useSessionSubscription } from "@/hooks/use-api";
 import {
   useReactTable,
   getCoreRowModel,
@@ -195,8 +195,9 @@ function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
 export default function TracesPage() {
   const [tab, setTab] = useState<"all" | "active">("all");
   const { data: sessions, isLoading, isError, error, refetch } = useOtelSessions({
-    refetchInterval: tab === "active" ? 10_000 : false,
+    refetchInterval: 30_000,
   });
+  useSessionSubscription();
   const router = useRouter();
 
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -336,7 +337,7 @@ export default function TracesPage() {
 
             <p className="text-sm text-muted-foreground">
               {table.getFilteredRowModel().rows.length} session{table.getFilteredRowModel().rows.length !== 1 ? "s" : ""}
-              {tab === "active" && " \u00b7 auto-refreshing every 10s"}
+              {" \u00b7 live updates"}
             </p>
           </div>
         )}

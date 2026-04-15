@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useCallback, useMemo, createElement } from "react";
-import { useOtelSession } from "@/hooks/use-api";
+import { useOtelSession, useSessionSubscription } from "@/hooks/use-api";
 import type { OtelSessionData, RawOtelEvent } from "@/lib/types";
 import {
   FileText,
@@ -1452,6 +1452,7 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEve
 export default function TraceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, isLoading, isError, error, refetch } = useOtelSession(id);
+  useSessionSubscription();
 
   const session = data as OtelSessionData;
   const events: RawOtelEvent[] = useMemo(() => session?.events ?? [], [session]);
