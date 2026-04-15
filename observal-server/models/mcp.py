@@ -32,6 +32,7 @@ class McpListing(Base):
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
     transport: Mapped[str | None] = mapped_column(String(20), nullable=True)
     framework: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    docker_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     mcp_validated: Mapped[bool] = mapped_column(Boolean, default=False)
     tools_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     environment_variables: Mapped[list | None] = mapped_column(JSON, nullable=True)

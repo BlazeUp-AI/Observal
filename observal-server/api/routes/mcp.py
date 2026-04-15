@@ -104,6 +104,8 @@ async def submit_mcp(
         description=req.description,
         category=req.category,
         owner=req.owner,
+        framework=req.framework,
+        docker_image=req.docker_image,
         supported_ides=req.supported_ides,
         environment_variables=[ev.model_dump() for ev in req.environment_variables],
         setup_instructions=req.setup_instructions,

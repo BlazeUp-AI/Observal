@@ -47,6 +47,13 @@ VALID_MCP_TRANSPORTS: list[str] = [
     "streamable-http",
 ]
 
+VALID_MCP_FRAMEWORKS: list[str] = [
+    "python",
+    "docker",
+    "typescript",
+    "go",
+]
+
 # ── Skills ──────────────────────────────────────────────────
 VALID_SKILL_TASK_TYPES: list[str] = [
     "code-review",

@@ -56,14 +56,26 @@ def _gemini_settings(observal_url: str) -> dict:
     }
 
 
-def _build_run_command(name: str, framework: str | None) -> list[str]:
+def _build_run_command(
+    name: str,
+    framework: str | None,
+    docker_image: str | None = None,
+    server_env: dict[str, str] | None = None,
+) -> list[str]:
     """Return the appropriate run command based on the MCP framework.
 
+    - Docker: docker run -i --rm [-e KEY=VAL ...] <image>
     - TypeScript: npx -y <name>
     - Go: <name> (assumes binary on PATH)
     - Python / unknown: python -m <name>
     """
     fw = (framework or "").lower()
+    if "docker" in fw and docker_image:
+        cmd = ["docker", "run", "-i", "--rm"]
+        for k, v in (server_env or {}).items():
+            cmd.extend(["-e", f"{k}={v}"])
+        cmd.append(docker_image)
+        return cmd
     if "typescript" in fw or "ts" in fw:
         return ["npx", "-y", name]
     if "go" in fw:
@@ -115,7 +127,7 @@ def generate_config(
         return {"mcpServers": {name: {"url": proxy_url, "env": server_env}}}
 
     # Stdio transport: shim wraps the original command
-    run_cmd = _build_run_command(name, listing.framework)
+    run_cmd = _build_run_command(name, listing.framework, listing.docker_image, server_env)
     shim_args = ["--mcp-id", mcp_id, "--", *run_cmd]
 
     if ide == "claude-code":

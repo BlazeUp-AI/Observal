@@ -11,7 +11,7 @@ from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.analyzer import analyze_local
-from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES
+from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS
 from observal_cli.prompts import select_one
 from observal_cli.render import (
     console,
@@ -244,12 +244,29 @@ def _submit_impl(git_url, name, category, yes):
     # MCP servers are IDE-agnostic — config generation handles all IDEs.
     supported_ides = list(VALID_IDES)
 
+    # Normalize detected framework to a valid option
+    _detected_fw = ""
+    if detected_framework:
+        fw_lower = detected_framework.lower()
+        if "typescript" in fw_lower or "ts" in fw_lower:
+            _detected_fw = "typescript"
+        elif "go" in fw_lower:
+            _detected_fw = "go"
+        elif "docker" in fw_lower:
+            _detected_fw = "docker"
+        else:
+            _detected_fw = "python"
+    elif prefill.get("entry_point"):
+        _detected_fw = "python"
+
     if yes:
         _name = name or detected_name
         _version = detected_ver
         _desc = detected_desc
         _owner = "default"
         _category = category or "general"
+        _framework = _detected_fw or "python"
+        _docker_image = None
         _setup = ""
         _changelog = "Initial release"
         env_vars = detected_env_vars
@@ -280,6 +297,18 @@ def _submit_impl(git_url, name, category, yes):
         rprint()
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
+
+        # Framework: how should this MCP server be executed?
+        if _detected_fw:
+            rprint(f"  Framework:   [cyan]{_detected_fw}[/cyan] [dim](from analysis)[/dim]")
+            _framework = _detected_fw
+        else:
+            _framework = select_one("Execution framework", VALID_MCP_FRAMEWORKS, default="python")
+
+        _docker_image = None
+        if _framework == "docker":
+            _docker_image = typer.prompt("Docker image (e.g. registry.example.com/org/mcp-server:latest)")
+
         _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
         _changelog = typer.prompt("Changelog", default="Initial release")
 
@@ -294,11 +323,14 @@ def _submit_impl(git_url, name, category, yes):
         "category": _category,
         "description": _desc,
         "owner": _owner,
+        "framework": _framework,
         "supported_ides": supported_ides,
         "environment_variables": env_vars,
         "setup_instructions": _setup,
         "changelog": _changelog,
     }
+    if _docker_image:
+        submit_payload["docker_image"] = _docker_image
     if analyzed_locally:
         submit_payload["client_analysis"] = {
             "tools": prefill.get("tools", []),

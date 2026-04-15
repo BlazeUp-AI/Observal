@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 from models.mcp import ListingStatus
-from schemas.constants import VALID_MCP_CATEGORIES, make_ide_list_validator, make_option_validator
+from schemas.constants import VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS, make_ide_list_validator, make_option_validator
 
 
 class McpEnvVar(BaseModel):
@@ -34,6 +34,8 @@ class McpSubmitRequest(BaseModel):
     description: str = ""
     category: str
     owner: str
+    framework: str | None = None
+    docker_image: str | None = None
     supported_ides: list[str] = []
     environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None = None
@@ -42,6 +44,14 @@ class McpSubmitRequest(BaseModel):
     client_analysis: ClientAnalysis | None = None
 
     _validate_category = field_validator("category")(make_option_validator("category", VALID_MCP_CATEGORIES))
+
+    @field_validator("framework")
+    @classmethod
+    def _validate_framework(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_MCP_FRAMEWORKS:
+            raise ValueError(f"Invalid framework '{v}'. Valid options: {', '.join(VALID_MCP_FRAMEWORKS)}")
+        return v
+
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
@@ -72,6 +82,7 @@ class McpListingResponse(BaseModel):
     setup_instructions: str | None
     changelog: str | None
     framework: str | None = None
+    docker_image: str | None = None
     mcp_validated: bool = False
 
     _coerce_env = field_validator("environment_variables", mode="before")(_coerce_env_vars)
