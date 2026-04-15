@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Internal context for contributors and AI coding agents. Use `README.md` as the public source of truth for API endpoints and CLI usage. Use `SETUP.md` for environment setup. Use `docs/superpowers/specs/2026-04-10-product-vision.md` for the product vision.
+Internal context for contributors and AI coding agents. Use `README.md` as the public source of truth for API endpoints and CLI usage. Use `SETUP.md` for environment setup.
 
 ## Current state
 
