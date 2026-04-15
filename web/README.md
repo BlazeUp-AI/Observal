@@ -16,7 +16,7 @@ Complete reference for the Observal web frontend. The UI is a Next.js 16 app loc
 /agents/:id               Agent detail -- overview, components, reviews, install, analytics
 /agents/leaderboard       Full leaderboard with time-window tabs
 /agents/builder           Agent composer form (auth required)
-/components               Component list -- MCPs, Skills, Prompts, Sandboxes
+/components               Component list -- MCPs, Skills, Hooks, Prompts, Sandboxes
 /components/:id           Component detail -- overview, reviews, add-to-agent
 /login                    Multi-mode auth (login, register, API key, SSO, password reset)
 /dashboard                Admin dashboard -- stats, recent agents, latest traces, top downloads
@@ -137,7 +137,7 @@ Comprehensive agent page with five tabs.
 | Tab | Content |
 |-----|---------|
 | **Overview** | About section, model name, goal template (structured sections with title + description) |
-| **Components** | Linked MCPs/skills with type badges. Shows system prompt inline if no components linked. |
+| **Components** | Linked MCPs/skills/hooks with type badges. Shows system prompt inline if no components linked. |
 | **Reviews** | Star rating form (1-5) + text comment for authenticated users. Review list with user, date, rating. |
 | **Install** | CLI quick install (`observal pull <name>`), manual IDE config JSON snippet with copy button. |
 | **Analytics** | Admin-only tab. Composite score, standard deviation, 95% CI, drift alert. Dimension averages bar chart, score trend, link to traces. |
@@ -148,7 +148,7 @@ Comprehensive agent page with five tabs.
 
 Tabbed list of all component types.
 
-- **Type tabs**: MCPs, Skills, Prompts, Sandboxes (click to switch)
+- **Type tabs**: MCPs, Skills, Hooks, Prompts, Sandboxes (click to switch)
 - **View modes**: Table and grid toggle (same pattern as agents)
 - **Table columns**: Name (with description), Version, Status, Updated
 - **Search**: Debounced text search filtered to active type
@@ -157,7 +157,7 @@ Tabbed list of all component types.
 
 ### Component Detail (`/components/:id`)
 
-Individual MCP/skill/prompt/sandbox page.
+Individual MCP/skill/hook/prompt/sandbox page.
 
 **Header**: Component name, type badge, status badge, star rating, review count.
 
@@ -165,7 +165,7 @@ Individual MCP/skill/prompt/sandbox page.
 
 | Tab | Content |
 |-----|---------|
-| **Overview** | Dynamic metadata grid (version, git URL, transport, created date, owner, runtime, Docker image, prompt text). Usage metrics. |
+| **Overview** | Dynamic metadata grid (version, git URL, transport, created date, owner, hook type, trigger event, runtime, Docker image, prompt text). Usage metrics. |
 | **Reviews** | Same review form and list as agent detail. |
 | **Add to Agent** | CLI command (`observal agent add [type] [name]`), git clone source if available. |
 
@@ -188,7 +188,7 @@ Authenticated form to compose and publish new agents. Requires login.
 **Left column (2/3):**
 
 1. **Basic Metadata** -- Name (required), description, version (default 1.0.0), model (with Claude model suggestions)
-2. **Components** -- Tabbed picker for component types (MCPs, Skills, Prompts, Sandboxes). Searchable list, drag-to-reorder selected items, real-time validation.
+2. **Components** -- Tabbed picker for 5 types (MCPs, Skills, Hooks, Prompts, Sandboxes). Searchable list, drag-to-reorder selected items, real-time validation.
 3. **Goal Template** -- Add/remove structured sections (title + content pairs). Validated against selected components.
 4. **Publish** -- Creates agent via API, redirects to detail page on success.
 
@@ -234,7 +234,7 @@ Session explorer for debugging agent interactions.
 
 Forensic event viewer for a single agent session. The most complex page in the UI.
 
-**Header**: Session ID, service name, timestamp, duration, turn count. Stats row showing token counts, API calls, tool calls, models used.
+**Header**: Session ID, service name, timestamp, duration, turn count. Stats row showing token counts, API calls, tool calls, hook events, models used.
 
 **Traces Tab:**
 
@@ -251,6 +251,7 @@ Forensic event viewer for a single agent session. The most complex page in the U
 **Session Info Tab:**
 
 - Metadata grid (session ID, service, source, CWD, permission mode, timestamps, duration, event count)
+- Active hooks checklist showing which hook types fired with event counts
 
 <!-- Screenshot: Trace detail -- event tree with expanded tool call (WIP -- needs active session) -->
 
@@ -336,6 +337,7 @@ System configuration. **Super admin only** -- not visible to admin or lower role
    - `registry.auto_approve` -- Auto-approve new submissions
    - `registry.max_agents_per_user` -- Maximum agents per user
    - `eval.default_window_size` -- Default eval window size
+   - `hooks.auth_required` -- Require auth for hook endpoints
 
 4. **Add Setting** -- Form to add custom key-value settings.
 

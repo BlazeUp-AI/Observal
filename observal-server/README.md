@@ -40,7 +40,7 @@ observal-server/
 |------|--------|---------|
 | Auth | `/api/v1/auth/*` | Login, OAuth/OIDC, token refresh, bootstrap |
 | Agents | `/api/v1/agents/*` | CRUD, validation, config generation, install |
-| Components | `/api/v1/mcps/*`, `skills/*`, `prompts/*`, `sandboxes/*` | Registry for each component type |
+| Components | `/api/v1/mcps/*`, `skills/*`, `hooks/*`, `prompts/*`, `sandboxes/*` | Registry for each component type |
 | Evals | `/api/v1/eval/*` | Trigger evaluations, fetch scorecards |
 | Telemetry | `/api/v1/telemetry/*` | Telemetry data ingestion |
 | OTLP | `/v1/traces`, `/v1/logs`, `/v1/metrics` | OpenTelemetry receiver (unauthenticated) |

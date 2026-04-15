@@ -19,17 +19,11 @@
 
 Observal is a **self-hosted AI agent registry with built-in observability**. Think Docker Hub, but for AI coding agents.
 
-Browse agents created by others, publish your own, and pull complete agent configurations, all defined in a portable YAML format that templates out to **Claude Code**, **Kiro CLI**, and more. Every agent bundles its MCP servers, skills, prompts, and sandboxes into a single installable package. One command to install, zero manual config.
+Browse agents created by others, publish your own, and pull complete agent configurations, all defined in a portable YAML format that templates out to **Claude Code**, **Codex CLI**, **Gemini CLI**, and more. Every agent bundles its MCP servers, skills, hooks, prompts, and sandboxes into a single installable package. One command to install, zero manual config.
 
 Every interaction generates traces, spans, and sessions that flow into a telemetry pipeline, giving you full observability, traceability, and real-time metrics for your agents in production. The built-in eval engine (WIP) scores agent sessions so you can measure performance and make your agents better over time.
 
-**Supported tools:**
-
-| IDE / Tool | Support Level |
-|------------|--------------|
-| Claude Code | Fully supported |
-| Kiro CLI | Supported (next most tested) |
-| Codex CLI, Gemini CLI, Cursor, VS Code | Untested |
+**Supported tools:** Claude Code, Codex CLI, Gemini CLI, and [Kiro CLI](docs/kiro-setup.md) are fully supported. Cursor and VS Code have MCP/rules file support.
 
 See the [Changelog](CHANGELOG.md) for recent updates.
 
@@ -60,13 +54,13 @@ This detects MCP servers from your IDE config files, registers them with Observa
 
 ## The Problem
 
-AI coding agents today are hard to share and impossible to measure. Components (MCP servers, skills, prompts) are scattered across repos with no standard way to package them together. There's no visibility into what's actually working, and no way to compare one version of an agent against another on real workflows.
+AI coding agents today are hard to share and impossible to measure. Components (MCP servers, skills, hooks, prompts) are scattered across repos with no standard way to package them together. There's no visibility into what's actually working, and no way to compare one version of an agent against another on real workflows.
 
 Observal solves this by giving you a registry to package and distribute complete agents, and a telemetry pipeline to measure them.
 
 ## How It Works
 
-Agents in the registry are defined in YAML. Each agent bundles its components (MCP servers, skills, prompts, sandboxes) into a single configuration. When you run `observal pull <agent>`, it installs everything and generates the right config files for your tool.
+Agents in the registry are defined in YAML. Each agent bundles its components (MCP servers, skills, hooks, prompts, sandboxes) into a single configuration. When you run `observal pull <agent>`, it installs everything and generates the right config files for your tool.
 
 A transparent shim (`observal-shim` for stdio, `observal-proxy` for HTTP) sits between your tool and the MCP server. It never modifies traffic, it only observes. Every request/response pair becomes a span, spans group into traces, and traces form sessions. All of this streams into ClickHouse for analysis.
 
@@ -84,13 +78,14 @@ The eval engine runs on collected traces after the fact. It scores agent session
 
 ## The Registry
 
-Observal manages 5 component types that agents bundle together:
+Observal manages 6 component types that agents bundle together:
 
 | Component | Description |
 |-----------|-------------|
 | **Agents** | Complete configurations that bundle all the components below |
 | **MCP Servers** | Model Context Protocol servers that expose tools to agents |
 | **Skills** | Portable instruction packages that agents load on demand |
+| **Hooks** | Lifecycle callbacks that fire during agent sessions |
 | **Prompts** | Managed templates with variable substitution |
 | **Sandboxes** | Docker execution environments for code running and testing |
 
@@ -146,7 +141,7 @@ export OBSERVAL_API_KEY=<your-key>
 <details>
 <summary><strong>Component Registry</strong> - <code>observal registry &lt;type&gt;</code></summary>
 
-All component types (mcp, skill, prompt, sandbox) support the same core commands:
+All 5 component types (mcp, skill, hook, prompt, sandbox) support the same core commands:
 
 ```bash
 observal registry <type> submit [<git-url> | --from-file <path>]
@@ -173,7 +168,7 @@ observal agent delete <id>
 
 # Local YAML workflow
 observal agent init                # scaffold observal-agent.yaml
-observal agent add <type> <id>     # add component (mcp, skill, prompt, sandbox)
+observal agent add <type> <id>     # add component (mcp, skill, hook, prompt, sandbox)
 observal agent build               # validate against server (dry-run)
 observal agent publish             # submit to registry
 ```
@@ -271,7 +266,7 @@ observal doctor [--ide <ide>] [--fix]  # diagnose IDE settings compatibility
 
 ## Setup & Configuration
 
-See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting. For the web UI reference (pages, auth flows, RBAC), see [web/README.md](web/README.md). For enterprise deployment (SSO, SCIM, audit logging), see [ee/docs/cli.md](ee/docs/cli.md).
+See [SETUP.md](SETUP.md) for local development setup, eval engine configuration, and troubleshooting. For the web UI reference (pages, auth flows, RBAC), see [docs/frontend.md](docs/frontend.md). For enterprise deployment (SSO, SCIM, audit logging), see [ee/docs/cli.md](ee/docs/cli.md).
 
 <details>
 <summary><strong>API Endpoints</strong></summary>
@@ -293,7 +288,7 @@ See [SETUP.md](SETUP.md) for local development setup, eval engine configuration,
 | `GET` | `/api/v1/auth/oauth/login` | Initiate OAuth SSO flow |
 | `GET` | `/api/v1/auth/oauth/callback` | OAuth callback handler |
 
-### Registry (per type: mcps, agents, skills, prompts, sandboxes)
+### Registry (per type: mcps, agents, skills, hooks, prompts, sandboxes)
 
 All `{id}` parameters accept either a UUID or a name.
 
@@ -329,6 +324,7 @@ All `{id}` parameters accept either a UUID or a name.
 | `POST` | `/api/v1/telemetry/ingest` | Batch ingest traces, spans, scores |
 | `POST` | `/api/v1/telemetry/events` | Legacy event ingestion |
 | `GET` | `/api/v1/telemetry/status` | Data flow status |
+| `POST` | `/api/v1/otel/hooks` | Hook-based telemetry ingestion (Claude Code, Kiro) |
 | `GET` | `/api/v1/otel/crypto/public-key` | Server public key for payload encryption |
 
 ### Alerts
