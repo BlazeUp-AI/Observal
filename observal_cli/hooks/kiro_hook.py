@@ -61,6 +61,10 @@ def main():
     except (json.JSONDecodeError, ValueError):
         sys.exit(0)
 
+    # Ensure service_name is set (sed prefix may be overwritten by Kiro's
+    # native fields due to JSON duplicate-key semantics — last key wins).
+    payload.setdefault("service_name", "kiro-cli")
+
     payload = _add_conversation_id(payload)
 
     data = json.dumps(payload).encode("utf-8")

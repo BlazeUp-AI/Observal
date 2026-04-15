@@ -143,6 +143,8 @@ def main():
     except (json.JSONDecodeError, ValueError):
         sys.exit(0)
 
+    payload.setdefault("service_name", "kiro-cli")
+
     # Enrich with SQLite data
     payload = _enrich(payload)
 
