@@ -101,7 +101,9 @@ class TestRunEvalOnTrace:
     @pytest.mark.asyncio
     async def test_no_spans_returns_empty(self):
         with (
-            patch("services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value={"trace_id": "t1"}),
+            patch(
+                "services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value={"trace_id": "t1"}
+            ),
             patch("services.eval.eval_engine.query_spans", new_callable=AsyncMock, return_value=[]),
         ):
             result = await run_eval_on_trace("agent-1", "t1")
