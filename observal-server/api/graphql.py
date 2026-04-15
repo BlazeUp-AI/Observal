@@ -490,9 +490,7 @@ class Subscription:
             yield _row_to_span(data)
 
     @strawberry.subscription
-    async def session_updated(
-        self, session_id: str | None = None
-    ) -> AsyncGenerator[SessionEvent, None]:
+    async def session_updated(self, session_id: str | None = None) -> AsyncGenerator[SessionEvent, None]:
         channel = "sessions:updated"
         async for data in subscribe(channel):
             sid = data.get("session_id", "")

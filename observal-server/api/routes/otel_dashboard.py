@@ -615,9 +615,7 @@ async def ingest_hook(request: Request):
 
     # Notify subscribers (fire-and-forget — don't block the response)
     if session_id:
-        task = asyncio.create_task(
-            publish("sessions:updated", {"session_id": session_id, "event_name": hook_event})
-        )
+        task = asyncio.create_task(publish("sessions:updated", {"session_id": session_id, "event_name": hook_event}))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
