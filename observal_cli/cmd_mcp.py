@@ -211,8 +211,6 @@ def _submit_impl(git_url, name, category, yes):
     else:
         if detected_name:
             rprint(f"  Server name:  [cyan]{detected_name}[/cyan]")
-        if detected_framework:
-            rprint(f"  Framework:    [cyan]{detected_framework}[/cyan]")
         if detected_desc:
             rprint(f"  Description:  [dim]{detected_desc[:80]}{'...' if len(detected_desc) > 80 else ''}[/dim]")
         if tools:
@@ -298,12 +296,12 @@ def _submit_impl(git_url, name, category, yes):
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
 
-        # Framework: how should this MCP server be executed?
-        if _detected_fw:
-            rprint(f"  Framework:   [cyan]{_detected_fw}[/cyan] [dim](from analysis)[/dim]")
-            _framework = _detected_fw
-        else:
-            _framework = select_one("Execution framework", VALID_MCP_FRAMEWORKS, default="python")
+        # Framework: always prompt — analysis can misdetect
+        _framework = select_one(
+            "Execution framework",
+            VALID_MCP_FRAMEWORKS,
+            default=_detected_fw or "python",
+        )
 
         _docker_image = None
         if _framework == "docker":
@@ -342,6 +340,7 @@ def _submit_impl(git_url, name, category, yes):
     with spinner("Submitting..."):
         result = client.post("/api/v1/mcps/submit", submit_payload)
     rprint(f"\n[green]✓ Submitted![/green] ID: [bold]{result['id']}[/bold]")
+    rprint(f"  Framework: [cyan]{_framework}[/cyan]")
     rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
 
 
