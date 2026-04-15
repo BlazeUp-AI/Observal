@@ -1,7 +1,9 @@
 import hashlib
+import hmac
 import json
 import logging
 import secrets
+from datetime import UTC, datetime
 
 import jwt as pyjwt
 from authlib.integrations.starlette_client import OAuth
@@ -14,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_current_user, get_db, require_local_mode
 from api.ratelimit import limiter
 from config import settings
+from models.api_key import ApiKey, ApiKeyEnvironment
 from models.user import User, UserRole
 from schemas.auth import (
     CodeExchangeRequest,
@@ -49,9 +52,32 @@ if settings.OAUTH_CLIENT_ID and settings.OAUTH_CLIENT_SECRET and settings.OAUTH_
 
 
 def _generate_api_key() -> tuple[str, str]:
-    """Return (raw_key, sha256_hash)."""
+    """Return (raw_key, sha256_hash) for legacy User.api_key_hash storage."""
     raw = secrets.token_hex(settings.API_KEY_LENGTH)
     return raw, hashlib.sha256(raw.encode()).hexdigest()
+
+
+async def _create_login_api_key(user: User, db: AsyncSession, source: str = "login") -> str:
+    """Create a new API key via the ApiKey table for a login session.
+
+    Returns the raw key (shown once). Uses HMAC-SHA256 consistent with
+    the key management endpoints in api/routes/keys.py.
+    """
+    random_part = secrets.token_urlsafe(43)
+    prefix = f"obs_{ApiKeyEnvironment.live.value}_"
+    full_key = f"{prefix}{random_part}"
+    key_hash = hmac.new(settings.SECRET_KEY.encode(), full_key.encode(), "sha256").hexdigest()
+
+    api_key = ApiKey(
+        user_id=user.id,
+        name=f"{source}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}",
+        key_hash=key_hash,
+        prefix=full_key[:10],
+        environment=ApiKeyEnvironment.live,
+    )
+    db.add(api_key)
+    await db.flush()
+    return full_key
 
 
 @router.post("/init", response_model=InitResponse)
@@ -158,18 +184,11 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
     if not user or not user.verify_password(req.password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # DEPRECATED: No longer regenerate API keys on login (use /api/v1/keys to manage keys)
-    # For backward compatibility, return a placeholder. Users should use JWT tokens
-    # or explicitly create API keys via POST /api/v1/keys
-    logger.warning(
-        "Deprecated: /auth/login no longer returns API keys. "
-        "User %s should use POST /api/v1/keys to create keys or use JWT tokens via /auth/token",
-        user.email,
-    )
-    return InitResponse(
-        user=UserResponse.model_validate(user),
-        api_key="",  # Empty string for backward compatibility
-    )
+    # Create a new API key in the ApiKey table (doesn't invalidate existing keys)
+    api_key = await _create_login_api_key(user, db, source="login")
+    await db.commit()
+
+    return InitResponse(user=UserResponse.model_validate(user), api_key=api_key)
 
 
 @router.get("/oauth/login")
@@ -213,25 +232,17 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
-    api_key = ""  # Default for existing users
-    if user:
-        # Existing user - DON'T regenerate their API key
-        # They should use /api/v1/keys to manage keys or JWT tokens
-        logger.info("OAuth login for existing user %s - not regenerating API key", email)
-    else:
-        # Auto-create new user via SSO - generate initial legacy key
-        api_key, key_hash = _generate_api_key()
+    if not user:
+        # Auto-create new user via SSO
         user = User(
             email=email,
             name=name,
             role=UserRole.user,
-            api_key_hash=key_hash,
         )
         db.add(user)
 
         try:
-            await db.commit()
-            await db.refresh(user)
+            await db.flush()
         except IntegrityError:
             await db.rollback()
             # Race condition: user was created between our check and commit
@@ -239,8 +250,10 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user = result.scalar_one_or_none()
             if not user:
                 raise HTTPException(status_code=500, detail="Failed to create or find user")
-            # User already exists from race condition, don't regenerate key
-            api_key = ""
+
+    # Create a session API key for the OAuth login
+    api_key = await _create_login_api_key(user, db, source="sso")
+    await db.commit()
 
     # Generate a short-lived opaque code instead of exposing the API key in the URL.
     # The frontend will exchange this code for credentials via a POST request.
