@@ -35,6 +35,7 @@ docker/data/
 
 # Local config
 .kiro/
+.claude/
 CLAUDE.md
 graphify-out/
 observal-web/tsconfig.tsbuildinfo

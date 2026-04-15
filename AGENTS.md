@@ -282,18 +282,3 @@ NEVER guess or hallucinate library APIs. Lookup docs first to ensure code matche
 - The web frontend uses OKLCH color space for perceptually uniform theming. 5 themes are defined in `globals.css` using CSS custom properties. Theme switching is handled by `theme-switcher.tsx`. The design system uses a 4pt spacing scale, semantic color tokens (background, foreground, card, border, primary, secondary, accent, destructive, success, warning, info), and motion tokens for animations.
 - The web frontend proxies all API calls through Next.js rewrites (`/api/v1/*` -> backend). The backend URL is configured via `NEXT_PUBLIC_API_URL` env var (defaults to `http://localhost:8000`). Auth state (API key, user role) is stored in localStorage. Role-based access is enforced client-side via AuthGuard and AdminGuard components, not Next.js middleware.
 
-
-# lean-ctx — Context Engineering Layer
-
-PREFER lean-ctx MCP tools over native equivalents for token savings:
-
-| PREFER | OVER | Why |
-|--------|------|-----|
-| `ctx_read(path)` | Read / cat / head / tail | Cached, 8 compression modes, re-reads ~13 tokens |
-| `ctx_shell(command)` | Shell / bash / terminal | Pattern compression for git/npm/cargo output |
-| `ctx_search(pattern, path)` | Grep / rg / search | Compact, token-efficient results |
-| `ctx_tree(path, depth)` | ls / find / tree | Compact directory maps |
-| `ctx_edit(path, old_string, new_string)` | Edit (when Read unavailable) | Search-and-replace without native Read |
-
-Edit files: use native Edit/StrReplace if available. If Edit requires Read and Read is unavailable, use ctx_edit.
-Write, Delete, Glob — use normally. NEVER loop on Edit failures — switch to ctx_edit immediately.
