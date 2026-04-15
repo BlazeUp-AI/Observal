@@ -35,7 +35,7 @@ tests/
 web/e2e/
 ├── helpers.ts            # Shared utilities (login, API calls, data builders)
 ├── sso-login.spec.ts     # Real Microsoft Entra ID SSO flow
-├── kiro-*.spec.ts        # Kiro agent, CLI, hooks, lifecycle, OTLP tests
+├── kiro-*.spec.ts        # Kiro agent, CLI, lifecycle, OTLP tests
 └── ...                   # 10 spec files total
 ```
 

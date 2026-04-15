@@ -55,7 +55,7 @@ observal agent install <id> --ide <ide>  # get IDE config snippet
 
 ### Component Registry
 
-Each component type (mcp, skill, hook, prompt, sandbox) shares the same subcommand pattern:
+Each component type (mcp, skill, prompt, sandbox) shares the same subcommand pattern:
 
 ```
 observal registry <type> submit      # submit for review
@@ -65,7 +65,7 @@ observal registry <type> install <id> --ide <ide>  # get IDE config
 observal registry <type> delete <id> # delete
 ```
 
-Hooks have an extra `sync` subcommand. Prompts have an extra `render` subcommand for variable substitution.
+Prompts have an extra `render` subcommand for variable substitution.
 
 ### Operations
 
@@ -87,18 +87,17 @@ observal pull <agent> --ide <ide>  # write agent config to IDE files
 observal scan [--shim] [--all-ides]  # discover components, optionally wrap with shim
 observal use <profile>             # swap IDE config from a profile
 observal doctor                    # diagnose IDE/Observal issues
-observal doctor sli                # reinstall telemetry hooks
 observal config show               # show current config
 observal uninstall                 # tear down Docker, remove config
 ```
 
 ## Supported IDEs
 
-- Claude Code
-- Kiro
-- Cursor
-- VS Code
-- Gemini CLI
+| IDE / Tool | Support Level |
+|------------|--------------|
+| Claude Code | Fully supported |
+| Kiro CLI | Supported (next most tested) |
+| Cursor, VS Code, Gemini CLI | Untested |
 
 The `--ide` flag controls which config format is generated. Each IDE has its own config paths and JSON structure.
 
@@ -118,8 +117,6 @@ All CLI state lives in `~/.observal/`:
 
 When `observal scan --shim` wraps an MCP server, tool calls flow through `observal-shim` which records usage events. If the server is unreachable, events are buffered locally in `telemetry_buffer.db` and flushed on the next `observal ops sync`.
 
-Hook scripts in `observal_cli/hooks/` capture IDE-level events (prompts, tool use, subagent spawning) and forward them to the server.
-
 ## Directory Layout
 
 ```
@@ -135,7 +132,6 @@ observal_cli/
 ├── cmd_agent.py             # Agent commands
 ├── cmd_mcp.py               # MCP commands
 ├── cmd_skill.py             # Skill commands
-├── cmd_hook.py              # Hook commands
 ├── cmd_prompt.py            # Prompt commands
 ├── cmd_sandbox.py           # Sandbox commands
 ├── cmd_pull.py              # Pull command
@@ -147,6 +143,5 @@ observal_cli/
 ├── shim.py                  # observal-shim entrypoint
 ├── proxy.py                 # observal-proxy entrypoint
 ├── sandbox_runner.py        # observal-sandbox-run entrypoint
-├── graphrag_proxy.py        # observal-graphrag-proxy entrypoint
-└── hooks/                   # Telemetry hook scripts
+└── graphrag_proxy.py        # observal-graphrag-proxy entrypoint
 ```
