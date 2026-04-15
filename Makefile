@@ -1,4 +1,4 @@
-.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean
+.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate
 
 # ── Linting ──────────────────────────────────────────────
 
@@ -44,8 +44,14 @@ up:  ## Start Docker stack
 down:  ## Stop Docker stack
 	cd docker && docker compose down
 
-rebuild:  ## Rebuild and restart Docker stack
+migrate:  ## Run database migrations
+	cd docker && docker compose exec observal-api /app/.venv/bin/python -m alembic upgrade head
+
+rebuild:  ## Rebuild and restart Docker stack (runs migrations automatically)
 	cd docker && docker compose up --build -d
+	@echo "Waiting for API to be healthy..."
+	@cd docker && until docker compose exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; do sleep 1; done
+	@$(MAKE) migrate
 
 logs:  ## Tail Docker logs
 	cd docker && docker compose logs -f --tail=50
