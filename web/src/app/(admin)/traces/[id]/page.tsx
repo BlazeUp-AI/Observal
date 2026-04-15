@@ -84,6 +84,10 @@ function isHookEvent(eventName: string): boolean {
   return eventName.startsWith("hook_");
 }
 
+function isShimEvent(eventName: string): boolean {
+  return eventName.startsWith("shim_");
+}
+
 function getEventName(evt: RawOtelEvent): string {
   return evt.attributes?.["event.name"] || evt.event_name;
 }
@@ -108,6 +112,7 @@ function eventIcon(eventName: string) {
   if (eventName === "hook_precompact" || eventName === "hook_postcompact") return Minimize2;
   if (eventName === "hook_worktreecreate" || eventName === "hook_worktreeremove") return GitBranch;
   if (eventName === "hook_elicitation" || eventName === "hook_elicitationresult") return Globe;
+  if (isShimEvent(eventName)) return Globe;
   if (isHookEvent(eventName)) return Zap;
   return FileText;
 }
@@ -130,6 +135,7 @@ function eventColor(eventName: string): string {
   if (eventName === "hook_precompact" || eventName === "hook_postcompact") return "text-slate-400";
   if (eventName === "hook_worktreecreate" || eventName === "hook_worktreeremove") return "text-amber-400";
   if (eventName === "hook_elicitation" || eventName === "hook_elicitationresult") return "text-teal-500";
+  if (isShimEvent(eventName)) return "text-teal-500";
   if (isHookEvent(eventName)) return "text-orange-500";
   return "text-muted-foreground";
 }
@@ -147,7 +153,7 @@ const FILTER_CATEGORIES: FilterCategory[] = [
   { key: "prompts", label: "Prompts", match: (e) => e === "user_prompt" || e === "hook_userpromptsubmit", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
   { key: "responses", label: "Responses", match: (e) => e === "hook_assistant_response", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20" },
   { key: "thinking", label: "Thinking", match: (e) => e === "hook_assistant_thinking", color: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20" },
-  { key: "tools", label: "Tools", match: (e) => ["tool_result", "tool_decision", "hook_posttooluse", "hook_pretooluse", "hook_posttoolusefailure"].includes(e), color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20" },
+  { key: "tools", label: "Tools", match: (e) => ["tool_result", "tool_decision", "hook_posttooluse", "hook_pretooluse", "hook_posttoolusefailure", "shim_tool_call"].includes(e), color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20" },
   { key: "api", label: "API", match: (e) => e === "api_request", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
   { key: "agents", label: "Agents", match: (e) => e === "hook_subagentstart" || e === "hook_subagentstop", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" },
   { key: "lifecycle", label: "Lifecycle", match: (e) => ["hook_sessionstart", "hook_stop", "hook_stopfailure", "hook_precompact", "hook_postcompact"].includes(e), color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
@@ -452,10 +458,25 @@ function EventSummary({ event }: { event: RawOtelEvent }) {
 
   if (eName === "hook_posttooluse" || eName === "hook_pretooluse") {
     const success = attrs.success !== undefined ? attrs.success === "true" : undefined;
+    const hasMcp = !!attrs.mcp_id;
+    const schemaValid = attrs.tool_schema_valid === "1";
     return (
       <div className="flex items-center gap-3 flex-wrap">
         <Badge variant={success === false ? "warning" : eName === "hook_posttooluse" ? "success" : "muted"}>{attrs.tool_name || "?"}</Badge>
+        {hasMcp && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <Globe className="h-3 w-3" />
+            {attrs.mcp_id}
+          </span>
+        )}
         {attrs.duration_ms && <Stat label="" value={formatDuration(attrs.duration_ms)} icon={Clock} />}
+        {attrs.mcp_latency_ms && <Stat label="MCP" value={formatDuration(attrs.mcp_latency_ms)} icon={Clock} />}
+        {hasMcp && (
+          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${schemaValid ? "text-emerald-500" : "text-red-400"}`}>
+            {schemaValid ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+            schema
+          </span>
+        )}
         {attrs.tool_result_size_bytes && <Stat label="size" value={`${formatTokens(attrs.tool_result_size_bytes)}B`} />}
         {success === false && <Badge variant="warning">failed</Badge>}
       </div>
@@ -522,6 +543,29 @@ function EventSummary({ event }: { event: RawOtelEvent }) {
       <div className="flex items-center gap-3 flex-wrap">
         <Badge>{attrs.mcp_server_name || "MCP"}</Badge>
         <span className="text-xs text-muted-foreground">{eName === "hook_elicitation" ? "ask" : "reply"}</span>
+      </div>
+    );
+  }
+
+  if (isShimEvent(eName)) {
+    const schemaValid = attrs.tool_schema_valid === "1";
+    return (
+      <div className="flex items-center gap-3 flex-wrap">
+        <Badge variant={attrs.mcp_status === "error" ? "warning" : "success"}>{attrs.tool_name || eName.replace("shim_", "")}</Badge>
+        {attrs.mcp_id && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <Globe className="h-3 w-3" />
+            {attrs.mcp_id}
+          </span>
+        )}
+        {attrs.mcp_latency_ms && <Stat label="MCP" value={formatDuration(attrs.mcp_latency_ms)} icon={Clock} />}
+        {attrs.tool_schema_valid && (
+          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${schemaValid ? "text-emerald-500" : "text-red-400"}`}>
+            {schemaValid ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+            schema
+          </span>
+        )}
+        {attrs.mcp_status === "error" && <Badge variant="warning">error</Badge>}
       </div>
     );
   }
@@ -693,6 +737,18 @@ function EventDetail({ event }: { event: RawOtelEvent }) {
   const attrs = event.attributes ?? {};
   const eName = getEventName(event);
 
+  // Shim event detail: show MCP input/output
+  if (isShimEvent(eName) && (attrs.mcp_input || attrs.mcp_output)) {
+    return (
+      <div className="ml-6 mr-3 mb-2 mt-1 space-y-3">
+        {attrs.mcp_input && <ContentBlock label="MCP Input" content={attrs.mcp_input} />}
+        {attrs.mcp_output && <ContentBlock label="MCP Output" content={attrs.mcp_output} />}
+        {attrs.mcp_error && <ContentBlock label="MCP Error" content={attrs.mcp_error} />}
+        <HookMetaGrid attrs={attrs} />
+      </div>
+    );
+  }
+
   if (isHookEvent(eName) && (attrs.tool_input || attrs.tool_response)) {
     // Try to render a diff view for Edit tool events
     const toolName = attrs.tool_name ?? "";
@@ -740,18 +796,38 @@ function EventDetail({ event }: { event: RawOtelEvent }) {
   );
 }
 
+const MCP_FIELD_LABELS: Record<string, string> = {
+  mcp_id: "MCP Server",
+  mcp_method: "Method",
+  mcp_latency_ms: "MCP Latency",
+  tool_schema_valid: "Schema Valid",
+  tools_available: "Tools Available",
+  mcp_status: "MCP Status",
+  mcp_span_id: "MCP Span ID",
+  mcp_trace_id: "MCP Trace ID",
+  _sources: "Data Sources",
+  source: "Source",
+};
+
 function HookMetaGrid({ attrs }: { attrs: Record<string, string> }) {
-  const skip = new Set(["event.name", "session.id", "tool_input", "tool_response", "hook_event", "tool_name"]);
+  const skip = new Set(["event.name", "session.id", "tool_input", "tool_response", "hook_event", "tool_name", "mcp_input", "mcp_output", "mcp_error"]);
   const entries = Object.entries(attrs).filter(([k]) => !skip.has(k)).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) return null;
   return (
     <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs font-[family-name:var(--font-mono)] bg-surface-sunken rounded-md p-2">
-      {entries.map(([key, value]) => (
-        <div key={key} className="contents">
-          <span className="text-muted-foreground">{key}</span>
-          <span className="text-foreground truncate">{value}</span>
-        </div>
-      ))}
+      {entries.map(([key, value]) => {
+        const label = MCP_FIELD_LABELS[key] || key;
+        const isMcpField = key.startsWith("mcp_") || key === "tool_schema_valid" || key === "tools_available" || key === "_sources";
+        return (
+          <div key={key} className="contents">
+            <span className={isMcpField ? "text-teal-600 dark:text-teal-400" : "text-muted-foreground"}>{label}</span>
+            <span className="text-foreground truncate">
+              {key === "tool_schema_valid" ? (value === "1" ? "yes" : "no") : value}
+              {key === "mcp_latency_ms" ? "ms" : ""}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -863,6 +939,7 @@ function eventLabel(evt: RawOtelEvent): string {
   if (eName === "hook_subagentstart") return attrs.agent_type || "agent+";
   if (eName === "hook_subagentstop") return attrs.agent_type || "agent-";
   if (eName === "hook_stop") return attrs.stop_reason || "end_turn";
+  if (isShimEvent(eName)) return attrs.tool_name || eName.replace("shim_", "");
   if (isHookEvent(eName)) return attrs.tool_name || eName.replace("hook_", "");
   return eName;
 }

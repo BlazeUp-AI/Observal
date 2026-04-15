@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from api.deps import require_role
 from models.user import User, UserRole
-from services.clickhouse import _query
+from services.clickhouse import _query, query_shim_spans_for_window
 from services.redis import publish
 from services.secrets_redactor import redact_secrets
 
@@ -84,6 +84,273 @@ async def list_sessions(
     return rows
 
 
+def _merge_session_events(events: list[dict]) -> list[dict]:
+    """Merge events from multiple sources (hook, shim, otlp, collector).
+
+    Strategy:
+    1. Partition events by source.
+    2. For each shim tool_call, find the matching hook PostToolUse by
+       tool_name + timestamp within 500ms.  Merge: hook fields (tool_input,
+       tool_response, agent_id) + shim fields (mcp_id, tool_schema_valid,
+       mcp_latency_ms) → single event with source='merged'.
+    3. Unmatched shim events pass through (shim-only sessions).
+    4. All other events pass through unchanged.
+
+    Zero data loss: every unique field from every source survives.
+    """
+    from datetime import datetime
+
+    def _parse_ts(ts_str: str) -> float:
+        """Parse timestamp string to epoch seconds for proximity matching."""
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%S.%f"):
+            try:
+                return datetime.strptime(ts_str[:26], fmt).timestamp()
+            except (ValueError, TypeError):
+                continue
+        return 0.0
+
+    hooks: list[dict] = []
+    shims: list[dict] = []
+    rest: list[dict] = []
+
+    for e in events:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        source = attrs.get("source", "")
+        event_name = attrs.get("event.name", e.get("event_name", ""))
+
+        if source == "shim" and event_name == "shim_tool_call":
+            shims.append(e)
+        elif source == "hook" and event_name in ("hook_posttooluse", "hook_posttoolusefailure"):
+            hooks.append(e)
+        else:
+            rest.append(e)
+
+    # Index hooks by (tool_name, timestamp) for matching
+    matched_hook_indices: set[int] = set()
+    merged: list[dict] = []
+
+    for shim_event in shims:
+        shim_attrs = shim_event.get("attributes", {})
+        if isinstance(shim_attrs, str):
+            try:
+                shim_attrs = json.loads(shim_attrs)
+            except Exception:
+                shim_attrs = {}
+        shim_tool = shim_attrs.get("tool_name", "")
+        shim_ts = _parse_ts(shim_event.get("timestamp", ""))
+
+        best_idx = -1
+        best_delta = 0.5  # 500ms max window
+
+        for i, hook in enumerate(hooks):
+            if i in matched_hook_indices:
+                continue
+            hook_attrs = hook.get("attributes", {})
+            if isinstance(hook_attrs, str):
+                try:
+                    hook_attrs = json.loads(hook_attrs)
+                except Exception:
+                    hook_attrs = {}
+            if hook_attrs.get("tool_name", "") != shim_tool:
+                continue
+            hook_ts = _parse_ts(hook.get("timestamp", ""))
+            delta = abs(shim_ts - hook_ts)
+            if delta < best_delta:
+                best_delta = delta
+                best_idx = i
+
+        if best_idx >= 0:
+            # Merge: hook is the base, shim enriches
+            matched_hook_indices.add(best_idx)
+            hook_event = hooks[best_idx]
+            hook_attrs = hook_event.get("attributes", {})
+            if isinstance(hook_attrs, str):
+                try:
+                    hook_attrs = json.loads(hook_attrs)
+                except Exception:
+                    hook_attrs = {}
+
+            # Merge attributes: hook fields are base, shim fields overlay
+            merged_attrs = dict(hook_attrs)
+            # Shim-unique fields that enrich hook data
+            for key in (
+                "mcp_id",
+                "mcp_method",
+                "mcp_latency_ms",
+                "tool_schema_valid",
+                "tools_available",
+                "mcp_input",
+                "mcp_output",
+                "mcp_error",
+                "mcp_span_id",
+                "mcp_trace_id",
+                "mcp_status",
+            ):
+                if shim_attrs.get(key):
+                    merged_attrs[key] = shim_attrs[key]
+
+            merged_attrs["source"] = "merged"
+            merged_attrs["_sources"] = "hook,shim"
+
+            merged.append(
+                {
+                    "timestamp": hook_event.get("timestamp", shim_event.get("timestamp", "")),
+                    "event_name": hook_event.get("event_name", hook_attrs.get("event.name", "")),
+                    "body": hook_event.get("body", ""),
+                    "attributes": merged_attrs,
+                    "service_name": hook_event.get("service_name", ""),
+                }
+            )
+        else:
+            # Unmatched shim event — keep as-is (shim-only session)
+            rest.append(shim_event)
+
+    # Unmatched hooks pass through
+    for i, hook in enumerate(hooks):
+        if i not in matched_hook_indices:
+            rest.append(hook)
+
+    # Combine merged + rest, sort by timestamp
+    all_events = merged + rest
+    all_events.sort(key=lambda e: e.get("timestamp", ""))
+    return all_events
+
+
+# Shim span type → otel_logs event.name (matches telemetry.py _SHIM_EVENT_NAMES)
+_SHIM_TYPE_TO_EVENT: dict[str, str] = {
+    "tool_call": "shim_tool_call",
+    "tool_list": "shim_tool_list",
+    "initialize": "shim_initialize",
+    "resource_read": "shim_resource_read",
+    "resource_list": "shim_resource_list",
+    "resource_subscribe": "shim_resource_subscribe",
+    "prompt_get": "shim_prompt_get",
+    "prompt_list": "shim_prompt_list",
+    "ping": "shim_ping",
+    "completion": "shim_completion",
+    "config": "shim_config",
+    "other": "shim_other",
+}
+
+
+def _synthesize_shim_events(
+    shim_spans: list[dict],
+    existing_shim_span_ids: set[str],
+) -> list[dict]:
+    """Convert shim span rows into otel_logs-shaped event dicts.
+
+    Skips spans whose span_id is already present in otel_logs (dedup
+    against write-time mirroring when session_id was available).
+    """
+    events: list[dict] = []
+    for s in shim_spans:
+        span_id = s.get("span_id", "")
+        if span_id in existing_shim_span_ids:
+            continue
+
+        span_type = s.get("type", "other")
+        event_name = _SHIM_TYPE_TO_EVENT.get(span_type, "shim_other")
+        tool_name = s.get("name", "")
+        latency_ms = s.get("latency_ms")
+        mcp_id = s.get("mcp_id", "")
+
+        latency_label = f" ({latency_ms}ms)" if latency_ms else ""
+        body_text = f"shim: {span_type} {tool_name}{latency_label}"
+
+        attrs: dict[str, str] = {
+            "event.name": event_name,
+            "source": "shim",
+            "tool_name": tool_name,
+            "mcp_id": mcp_id or "",
+            "mcp_method": s.get("method", ""),
+            "mcp_span_id": span_id,
+            "mcp_trace_id": s.get("trace_id", ""),
+        }
+        if latency_ms is not None:
+            attrs["mcp_latency_ms"] = str(latency_ms)
+        if s.get("tool_schema_valid") is not None:
+            attrs["tool_schema_valid"] = str(s["tool_schema_valid"])
+        if s.get("tools_available") is not None:
+            attrs["tools_available"] = str(s["tools_available"])
+        if s.get("input"):
+            attrs["mcp_input"] = str(s["input"])[:2000]
+        if s.get("output"):
+            attrs["mcp_output"] = str(s["output"])[:2000]
+        if s.get("error"):
+            attrs["mcp_error"] = str(s["error"])[:2000]
+        if s.get("status"):
+            attrs["mcp_status"] = s["status"]
+
+        events.append(
+            {
+                "timestamp": s.get("start_time", ""),
+                "event_name": event_name,
+                "body": body_text,
+                "attributes": attrs,
+                "service_name": "observal-shim",
+            }
+        )
+    return events
+
+
+async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
+    """Side-load shim spans from the spans table for sessions missing shim data.
+
+    When shim processes don't have OBSERVAL_SESSION_ID set, their spans
+    land in the spans table but not in otel_logs.  This function queries
+    spans by user_id + time window overlap and synthesizes otel_logs-shaped
+    events for the merge logic.
+
+    Works for both Claude Code and Kiro sessions — matches by user_id
+    and timestamp, not session_id format.
+    """
+    if not events:
+        return events
+
+    # Extract user_id and time bounds from existing events
+    user_id = ""
+    min_ts = ""
+    max_ts = ""
+    existing_shim_span_ids: set[str] = set()
+
+    for e in events:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        if not user_id and attrs.get("user.id"):
+            user_id = attrs["user.id"]
+        ts = e.get("timestamp", "")
+        if ts:
+            if not min_ts or ts < min_ts:
+                min_ts = ts
+            if not max_ts or ts > max_ts:
+                max_ts = ts
+        # Track shim spans already in otel_logs (from write-time mirroring)
+        if attrs.get("source") == "shim" and attrs.get("mcp_span_id"):
+            existing_shim_span_ids.add(attrs["mcp_span_id"])
+
+    if not user_id or not min_ts or not max_ts:
+        return events
+
+    shim_spans = await query_shim_spans_for_window(user_id, min_ts, max_ts)
+    if not shim_spans:
+        return events
+
+    synthetic = _synthesize_shim_events(shim_spans, existing_shim_span_ids)
+    if not synthetic:
+        return events
+
+    return events + synthetic
+
+
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str, current_user: User = Depends(require_role(UserRole.admin))):
     events = await _ch_json(
@@ -113,6 +380,10 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         "ORDER BY Timestamp ASC",
         {"param_sid": session_id},
     )
+    # Side-load shim spans that lack session_id (query-time resolution)
+    events = await _sideload_shim_spans(events)
+    # Merge events from multiple sources (hook + shim + collector)
+    events = _merge_session_events(events)
     svc = events[0]["service_name"] if events else ""
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
 
@@ -498,6 +769,7 @@ async def ingest_hook(request: Request):
         "event.name": f"hook_{hook_event.lower()}",
         "hook_event": hook_event,
         "tool_name": tool_name,
+        "source": "hook",
     }
 
     # ── Agent attribution ──

@@ -537,6 +537,39 @@ async def insert_scores(scores: list[dict]):
         raise
 
 
+async def insert_otel_logs(rows: list[dict]):
+    """Batch insert rows into the otel_logs table (OTEL Collector schema).
+
+    Each row must have: Timestamp, Body, LogAttributes (dict), ServiceName,
+    SeverityText, SeverityNumber.  Optional: TraceId, SpanId.
+    """
+    if not rows:
+        return
+    lines = []
+    for r in rows:
+        line = {
+            "Timestamp": r["Timestamp"],
+            "Body": r.get("Body", ""),
+            "LogAttributes": r.get("LogAttributes", {}),
+            "ServiceName": r.get("ServiceName", ""),
+            "SeverityText": r.get("SeverityText", "INFO"),
+            "SeverityNumber": r.get("SeverityNumber", 9),
+            "TraceId": r.get("TraceId", ""),
+            "SpanId": r.get("SpanId", ""),
+        }
+        lines.append(json.dumps(line, default=str))
+    sql = (
+        "INSERT INTO otel_logs (Timestamp, Body, LogAttributes, ServiceName, "
+        "SeverityText, SeverityNumber, TraceId, SpanId) FORMAT JSONEachRow"
+    )
+    try:
+        r = await _query(sql, data="\n".join(lines))
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"ClickHouse insert_otel_logs failed: {e}")
+        raise
+
+
 async def query_recent_events(minutes: int = 60) -> dict:
     """Get event counts from the last N minutes."""
     minutes = int(minutes)
@@ -672,6 +705,55 @@ async def query_span_by_id(project_id: str, span_id: str) -> dict | None:
     except Exception as e:
         logger.error(f"ClickHouse query_span_by_id failed: {e}")
         return None
+
+
+async def query_shim_spans_for_window(
+    user_id: str,
+    start_time: str,
+    end_time: str,
+) -> list[dict]:
+    """Fetch shim spans from the spans table that overlap a time window.
+
+    Used for query-time side-load: when shim data has no session_id
+    (because OBSERVAL_SESSION_ID wasn't set in the MCP server env),
+    we fetch spans by user_id + time overlap and feed them into the
+    merge logic alongside otel_logs events.
+
+    Returns span rows with the columns needed to synthesize otel_logs-shaped events.
+    """
+    sql = (
+        "SELECT "
+        "span_id, trace_id, name, type, method, "
+        "input, output, error, "
+        "start_time, latency_ms, status, "
+        "tools_available, tool_schema_valid, "
+        "mcp_id "
+        "FROM spans FINAL "
+        "WHERE user_id = {uid:String} "
+        "AND is_deleted = 0 "
+        "AND type IN ("
+        "  'tool_call', 'tool_list', 'initialize', "
+        "  'resource_read', 'resource_list', 'resource_subscribe', "
+        "  'prompt_get', 'prompt_list', 'ping', 'completion', 'config', 'other'"
+        ") "
+        "AND start_time >= parseDateTimeBestEffort({t_start:String}) - INTERVAL 2 SECOND "
+        "AND start_time <= parseDateTimeBestEffort({t_end:String}) + INTERVAL 2 SECOND "
+        "ORDER BY start_time ASC "
+        "LIMIT 500 "
+        "FORMAT JSON"
+    )
+    params = {
+        "param_uid": user_id,
+        "param_t_start": start_time,
+        "param_t_end": end_time,
+    }
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception as e:
+        logger.error(f"ClickHouse query_shim_spans_for_window failed: {e}")
+        return []
 
 
 async def query_scores(

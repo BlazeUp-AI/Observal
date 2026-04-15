@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from services.clickhouse import _query
+from services.clickhouse import _query, query_shim_spans_for_window
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ async def materialize_agent_eval(
 
 
 async def _fetch_session_events(session_id: str) -> list[dict]:
-    """Fetch all otel_logs events for a session."""
+    """Fetch all otel_logs events for a session, with shim span side-load."""
     sql = (
         "SELECT "
         "Timestamp AS timestamp, "
@@ -94,10 +94,130 @@ async def _fetch_session_events(session_id: str) -> list[dict]:
     try:
         r = await _query(sql, params)
         r.raise_for_status()
-        return r.json().get("data", [])
+        events = r.json().get("data", [])
     except Exception as e:
         logger.error(f"Failed to fetch hook events for session {session_id}: {e}")
         return []
+
+    if not events:
+        return events
+
+    # Side-load shim spans from the spans table (for when OBSERVAL_SESSION_ID
+    # is not set — the common case for both Claude Code and Kiro).
+    events = await _sideload_shim_for_eval(events)
+    return events
+
+
+# Shim span type → otel_logs event.name
+_SHIM_TYPE_TO_EVENT: dict[str, str] = {
+    "tool_call": "shim_tool_call",
+    "tool_list": "shim_tool_list",
+    "initialize": "shim_initialize",
+    "resource_read": "shim_resource_read",
+    "resource_list": "shim_resource_list",
+    "resource_subscribe": "shim_resource_subscribe",
+    "prompt_get": "shim_prompt_get",
+    "prompt_list": "shim_prompt_list",
+    "ping": "shim_ping",
+    "completion": "shim_completion",
+    "config": "shim_config",
+    "other": "shim_other",
+}
+
+
+async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
+    """Side-load shim spans from spans table into otel_logs event list.
+
+    Same strategy as otel_dashboard._sideload_shim_spans() but for the
+    eval pipeline.  Extracts user_id + time bounds from events, queries
+    the spans table, and synthesizes otel_logs-shaped events.
+    """
+    import json as _json
+
+    user_id = ""
+    min_ts = ""
+    max_ts = ""
+    existing_shim_span_ids: set[str] = set()
+
+    for e in events:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = _json.loads(attrs)
+            except Exception:
+                attrs = {}
+        if not user_id and attrs.get("user.id"):
+            user_id = attrs["user.id"]
+        ts = e.get("timestamp", "")
+        if ts:
+            if not min_ts or ts < min_ts:
+                min_ts = ts
+            if not max_ts or ts > max_ts:
+                max_ts = ts
+        if attrs.get("source") == "shim" and attrs.get("mcp_span_id"):
+            existing_shim_span_ids.add(attrs["mcp_span_id"])
+
+    if not user_id or not min_ts or not max_ts:
+        return events
+
+    shim_spans = await query_shim_spans_for_window(user_id, min_ts, max_ts)
+    if not shim_spans:
+        return events
+
+    synthetic: list[dict] = []
+    for s in shim_spans:
+        span_id = s.get("span_id", "")
+        if span_id in existing_shim_span_ids:
+            continue
+
+        span_type = s.get("type", "other")
+        event_name = _SHIM_TYPE_TO_EVENT.get(span_type, "shim_other")
+        tool_name = s.get("name", "")
+        latency_ms = s.get("latency_ms")
+
+        latency_label = f" ({latency_ms}ms)" if latency_ms else ""
+        body_text = f"shim: {span_type} {tool_name}{latency_label}"
+
+        attrs: dict[str, str] = {
+            "event.name": event_name,
+            "source": "shim",
+            "tool_name": tool_name,
+            "mcp_id": s.get("mcp_id", "") or "",
+            "mcp_method": s.get("method", ""),
+            "mcp_span_id": span_id,
+            "mcp_trace_id": s.get("trace_id", ""),
+        }
+        if latency_ms is not None:
+            attrs["mcp_latency_ms"] = str(latency_ms)
+        if s.get("tool_schema_valid") is not None:
+            attrs["tool_schema_valid"] = str(s["tool_schema_valid"])
+        if s.get("tools_available") is not None:
+            attrs["tools_available"] = str(s["tools_available"])
+        if s.get("input"):
+            attrs["mcp_input"] = str(s["input"])[:2000]
+        if s.get("output"):
+            attrs["mcp_output"] = str(s["output"])[:2000]
+        if s.get("error"):
+            attrs["mcp_error"] = str(s["error"])[:2000]
+        if s.get("status"):
+            attrs["mcp_status"] = s["status"]
+
+        synthetic.append(
+            {
+                "timestamp": s.get("start_time", ""),
+                "event_name": event_name,
+                "body": body_text,
+                "attributes": attrs,
+                "service_name": "observal-shim",
+            }
+        )
+
+    if not synthetic:
+        return events
+
+    combined = events + synthetic
+    combined.sort(key=lambda e: e.get("timestamp", ""))
+    return combined
 
 
 def _parse_attrs(event: dict) -> dict:
@@ -169,21 +289,50 @@ def _build_trace_and_spans(session_id: str, events: list[dict]) -> tuple[dict, l
 
             latency_ms = _compute_latency(start_ts, event.get("timestamp", ""))
 
-            spans.append(
-                {
-                    "span_id": str(uuid.uuid4())[:16],
-                    "type": "tool_call",
-                    "name": tool_name,
-                    "input": _truncate(tool_input, 2000),
-                    "output": _truncate(tool_output, 2000),
-                    "status": "error" if is_error else "success",
-                    "error": attrs.get("error", "") if is_error else None,
-                    "latency_ms": latency_ms,
-                    "start_time": start_ts,
-                    "agent_id": span_agent_id,
-                    "agent_type": span_agent_type,
-                }
-            )
+            span = {
+                "span_id": str(uuid.uuid4())[:16],
+                "type": "tool_call",
+                "name": tool_name,
+                "input": _truncate(tool_input, 2000),
+                "output": _truncate(tool_output, 2000),
+                "status": "error" if is_error else "success",
+                "error": attrs.get("error", "") if is_error else None,
+                "latency_ms": latency_ms,
+                "start_time": start_ts,
+                "agent_id": span_agent_id,
+                "agent_type": span_agent_type,
+            }
+
+            # MCP enrichment from merged shim data
+            if attrs.get("mcp_id"):
+                span["mcp_id"] = attrs["mcp_id"]
+            if attrs.get("tool_schema_valid"):
+                span["tool_schema_valid"] = int(attrs["tool_schema_valid"])
+            if attrs.get("mcp_latency_ms"):
+                span["mcp_latency_ms"] = int(attrs["mcp_latency_ms"])
+
+            spans.append(span)
+
+        elif event_name in ("shim_tool_call",):
+            # Shim-only tool call (no matching hook event)
+            tool_name = attrs.get("tool_name", "")
+            span = {
+                "span_id": str(uuid.uuid4())[:16],
+                "type": "tool_call",
+                "name": tool_name,
+                "input": _truncate(attrs.get("mcp_input", ""), 2000),
+                "output": _truncate(attrs.get("mcp_output", ""), 2000),
+                "status": "error" if attrs.get("mcp_status") == "error" else "success",
+                "error": attrs.get("mcp_error") if attrs.get("mcp_status") == "error" else None,
+                "latency_ms": int(attrs["mcp_latency_ms"]) if attrs.get("mcp_latency_ms") else 0,
+                "start_time": event.get("timestamp", ""),
+                "agent_id": span_agent_id,
+                "agent_type": span_agent_type,
+                "mcp_id": attrs.get("mcp_id", ""),
+                "tool_schema_valid": int(attrs["tool_schema_valid"]) if attrs.get("tool_schema_valid") else None,
+                "mcp_latency_ms": int(attrs["mcp_latency_ms"]) if attrs.get("mcp_latency_ms") else None,
+            }
+            spans.append(span)
 
         elif event_name in ("hook_UserPromptSubmit", "UserPromptSubmit", "user_prompt"):
             prompt_text = attrs.get("tool_input", "") or attrs.get("prompt", "") or event.get("body", "")

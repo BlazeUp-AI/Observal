@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -14,18 +15,40 @@ from schemas.telemetry import (
 )
 from services.clickhouse import (
     insert_agent_interaction,
+    insert_otel_logs,
     insert_scores,
     insert_spans,
     insert_tool_call,
     insert_traces,
     query_recent_events,
 )
+from services.redis import publish
 from services.secrets_redactor import redact_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
 
 DEFAULT_PROJECT = "default"
+
+# Background tasks that must survive until completion (prevent GC)
+_background_tasks: set[asyncio.Task] = set()
+
+
+# Shim span type → otel_logs event.name mapping
+_SHIM_EVENT_NAMES: dict[str, str] = {
+    "tool_call": "shim_tool_call",
+    "tool_list": "shim_tool_list",
+    "initialize": "shim_initialize",
+    "resource_read": "shim_resource_read",
+    "resource_list": "shim_resource_list",
+    "resource_subscribe": "shim_resource_subscribe",
+    "prompt_get": "shim_prompt_get",
+    "prompt_list": "shim_prompt_list",
+    "ping": "shim_ping",
+    "completion": "shim_completion",
+    "config": "shim_config",
+    "other": "shim_other",
+}
 
 
 @router.post("/ingest", response_model=IngestResponse)
@@ -143,6 +166,93 @@ async def ingest(
         except Exception:
             logger.exception("Failed to insert spans")
             errors += len(batch.spans)
+
+    # --- Mirror shim spans into otel_logs for unified session view ---
+    if batch.spans and batch.traces:
+        try:
+            # Build a lookup of trace metadata for session_id / mcp_id
+            trace_meta: dict[str, dict] = {}
+            for t in batch.traces:
+                trace_meta[t.trace_id] = {
+                    "session_id": t.session_id or "",
+                    "mcp_id": t.mcp_id or "",
+                    "agent_id": t.agent_id or "",
+                    "ide": t.ide or "",
+                }
+
+            otel_rows = []
+            for s in batch.spans:
+                meta = trace_meta.get(s.trace_id, {})
+                session_id = meta.get("session_id", "")
+                if not session_id:
+                    continue  # Can't place in a session — skip
+
+                event_name = _SHIM_EVENT_NAMES.get(s.type or "", "shim_other")
+                mcp_id = meta.get("mcp_id", "")
+                tool_name = s.name or ""
+
+                # Build a human-readable body
+                latency_label = f" ({s.latency_ms}ms)" if s.latency_ms else ""
+                body_text = f"shim: {s.type} {tool_name}{latency_label}"
+
+                attrs: dict[str, str] = {
+                    "session.id": session_id,
+                    "event.name": event_name,
+                    "source": "shim",
+                    "tool_name": tool_name,
+                    "mcp_id": mcp_id,
+                    "mcp_method": s.method or "",
+                    "mcp_span_id": s.span_id or "",
+                    "mcp_trace_id": s.trace_id or "",
+                }
+                if s.latency_ms is not None:
+                    attrs["mcp_latency_ms"] = str(s.latency_ms)
+                if s.tool_schema_valid is not None:
+                    attrs["tool_schema_valid"] = str(int(s.tool_schema_valid))
+                if s.tools_available is not None:
+                    attrs["tools_available"] = str(s.tools_available)
+                if s.input:
+                    attrs["mcp_input"] = redact_secrets(s.input)
+                if s.output:
+                    attrs["mcp_output"] = redact_secrets(s.output)
+                if s.error:
+                    attrs["mcp_error"] = redact_secrets(s.error)
+                if s.status:
+                    attrs["mcp_status"] = s.status
+                if meta.get("agent_id"):
+                    attrs["agent_id"] = meta["agent_id"]
+                if meta.get("ide"):
+                    attrs["terminal.type"] = meta["ide"]
+
+                otel_rows.append(
+                    {
+                        "Timestamp": s.start_time or now,
+                        "Body": body_text,
+                        "LogAttributes": attrs,
+                        "ServiceName": "observal-shim",
+                        "SeverityText": "ERROR" if s.status == "error" else "INFO",
+                        "SeverityNumber": 17 if s.status == "error" else 9,
+                        "TraceId": s.trace_id or "",
+                        "SpanId": s.span_id or "",
+                    }
+                )
+
+            if otel_rows:
+                await insert_otel_logs(otel_rows)
+
+                # Notify subscribers so session detail updates live
+                session_ids_seen: set[str] = set()
+                for row in otel_rows:
+                    sid = row["LogAttributes"].get("session.id", "")
+                    if sid and sid not in session_ids_seen:
+                        session_ids_seen.add(sid)
+                        task = asyncio.create_task(
+                            publish("sessions:updated", {"session_id": sid, "event_name": "shim_ingest"})
+                        )
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
+        except Exception:
+            logger.exception("Failed to mirror shim spans to otel_logs")
 
     # --- Scores ---
     if batch.scores:
