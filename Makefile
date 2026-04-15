@@ -51,7 +51,7 @@ rebuild:  ## Rebuild and restart Docker stack (runs migrations automatically)
 	cd docker && docker compose up --build -d
 	@echo "Waiting for API to be healthy..."
 	@cd docker && until docker compose exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
-	@$(MAKE) migrate
+	@echo "API is healthy."
 
 logs:  ## Tail Docker logs
 	cd docker && docker compose logs -f --tail=50
