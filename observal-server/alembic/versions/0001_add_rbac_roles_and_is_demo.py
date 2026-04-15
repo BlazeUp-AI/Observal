@@ -16,7 +16,20 @@ depends_on = None
 def upgrade() -> None:
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'super_admin'")
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'reviewer'")
-    op.execute("UPDATE users SET role = 'reviewer' WHERE role = 'developer'")
+    # Only rename developer→reviewer if the enum still has the old value
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_enum
+                WHERE enumlabel = 'developer'
+                  AND enumtypid = 'userrole'::regtype
+            ) THEN
+                UPDATE users SET role = 'reviewer' WHERE role = 'developer';
+            END IF;
+        END
+        $$;
+    """)
     op.execute("""
         DO $$
         BEGIN
@@ -44,4 +57,16 @@ def downgrade() -> None:
         END
         $$;
     """)
-    op.execute("UPDATE users SET role = 'developer' WHERE role = 'reviewer'")
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_enum
+                WHERE enumlabel = 'developer'
+                  AND enumtypid = 'userrole'::regtype
+            ) THEN
+                UPDATE users SET role = 'developer' WHERE role = 'reviewer';
+            END IF;
+        END
+        $$;
+    """)

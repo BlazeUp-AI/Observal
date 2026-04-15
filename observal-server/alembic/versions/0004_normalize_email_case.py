@@ -14,16 +14,50 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Lowercase all existing emails
+    # Drop the case-sensitive constraint first to avoid conflicts during lowercasing
+    op.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'users_email_key' AND table_name = 'users'
+            ) THEN
+                ALTER TABLE users DROP CONSTRAINT users_email_key;
+            END IF;
+        END
+        $$;
+    """)
     op.execute("UPDATE users SET email = LOWER(TRIM(email))")
-
-    # Drop the existing case-sensitive unique constraint and replace with
-    # a functional unique index on LOWER(email) so that 'User@Example.com'
-    # and 'user@example.com' are treated as the same address.
-    op.drop_constraint("users_email_key", "users", type_="unique")
-    op.execute("CREATE UNIQUE INDEX ix_users_email_lower ON users (LOWER(email))")
+    # Remove duplicate emails, keeping the oldest account
+    op.execute("""
+        DELETE FROM users a USING users b
+        WHERE a.created_at > b.created_at
+          AND LOWER(a.email) = LOWER(b.email)
+    """)
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'ix_users_email_lower'
+            ) THEN
+                CREATE UNIQUE INDEX ix_users_email_lower ON users (LOWER(email));
+            END IF;
+        END
+        $$;
+    """)
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX ix_users_email_lower")
-    op.create_unique_constraint("users_email_key", "users", ["email"])
+    op.execute("DROP INDEX IF EXISTS ix_users_email_lower")
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.table_constraints
+                WHERE constraint_name = 'users_email_key' AND table_name = 'users'
+            ) THEN
+                ALTER TABLE users ADD CONSTRAINT users_email_key UNIQUE (email);
+            END IF;
+        END
+        $$;
+    """)

@@ -10,6 +10,7 @@ COPY observal-server/pyproject.toml observal-server/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY observal-server/ .
+COPY docker/entrypoint.sh /app/entrypoint.sh
 
 RUN groupadd --system --gid 1001 appgroup && \
     useradd --system --uid 1001 --gid appgroup appuser && \
@@ -20,4 +21,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["/app/.venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/entrypoint.sh"]
