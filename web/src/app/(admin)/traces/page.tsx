@@ -250,7 +250,7 @@ export default function TracesPage() {
           <EmptyState
             icon={Activity}
             title="No sessions yet"
-            description="Sessions will appear here once telemetry data is collected from Claude Code."
+            description="Sessions will appear here once telemetry data is collected from your IDE."
           />
         ) : (
           <div className="animate-in space-y-3">

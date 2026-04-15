@@ -339,6 +339,12 @@ function buildEventTree(events: RawOtelEvent[]): { turns: Turn[]; preSessionEven
     // Stop events: mark turn end
     if (eName === "hook_stop" || eName === "hook_stopfailure") {
       currentTurn.stopEvent = evt;
+      // Kiro sends assistant_response inside the stop event (no separate
+      // hook_assistant_response). Promote it to responseEvent so the UI
+      // renders the response text.
+      if (!currentTurn.responseEvent && attrs.tool_response) {
+        currentTurn.responseEvent = evt;
+      }
       continue;
     }
 
@@ -1248,14 +1254,16 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
 
 /* ── Session Info tab ─────────────────────────────────────── */
 
-/** All hook event types we know about, grouped by category. */
-const HOOK_CAPABILITIES: { category: string; hooks: { event: string; label: string; description: string }[] }[] = [
+/** Hook capability definitions per IDE. Kiro only supports 5 native events. */
+type HookCapGroup = { category: string; hooks: { event: string; label: string; description: string }[] };
+
+const CLAUDE_CODE_HOOK_CAPABILITIES: HookCapGroup[] = [
   {
     category: "Capture",
     hooks: [
-      { event: "hook_userpromptsubmit", label: "User Prompts", description: "Captures what the user sends to Claude" },
-      { event: "hook_assistant_response", label: "Assistant Responses", description: "Captures Claude's text replies" },
-      { event: "hook_assistant_thinking", label: "Assistant Thinking", description: "Captures Claude's chain-of-thought reasoning" },
+      { event: "hook_userpromptsubmit", label: "User Prompts", description: "Captures what the user sends to the assistant" },
+      { event: "hook_assistant_response", label: "Assistant Responses", description: "Captures the assistant's text replies" },
+      { event: "hook_assistant_thinking", label: "Assistant Thinking", description: "Captures chain-of-thought reasoning" },
     ],
   },
   {
@@ -1278,7 +1286,7 @@ const HOOK_CAPABILITIES: { category: string; hooks: { event: string; label: stri
     hooks: [
       { event: "hook_sessionstart", label: "Session Start", description: "Session initialization and resumption" },
       { event: "hook_stop", label: "Stop", description: "Turn/session end events" },
-      { event: "hook_notification", label: "Notifications", description: "System notifications from Claude" },
+      { event: "hook_notification", label: "Notifications", description: "System notifications" },
       { event: "hook_taskcreated", label: "Task Created", description: "Task tracking events" },
       { event: "hook_taskcompleted", label: "Task Completed", description: "Task completion events" },
       { event: "hook_precompact", label: "Pre Compact", description: "Before context compaction" },
@@ -1287,7 +1295,40 @@ const HOOK_CAPABILITIES: { category: string; hooks: { event: string; label: stri
   },
 ];
 
+const KIRO_HOOK_CAPABILITIES: HookCapGroup[] = [
+  {
+    category: "Capture",
+    hooks: [
+      { event: "hook_userpromptsubmit", label: "User Prompts", description: "Captures prompts submitted by the user" },
+      { event: "hook_assistant_response", label: "Response Capture", description: "Extracted from stop-hook enrichment" },
+    ],
+  },
+  {
+    category: "Tool Use",
+    hooks: [
+      { event: "hook_pretooluse", label: "Pre Tool Use", description: "Fires before each tool call — can validate and block" },
+      { event: "hook_posttooluse", label: "Post Tool Use", description: "Captures tool results after execution" },
+      { event: "hook_posttoolusefailure", label: "Tool Failures", description: "Auto-detected from failed tool responses" },
+    ],
+  },
+  {
+    category: "Lifecycle",
+    hooks: [
+      { event: "hook_sessionstart", label: "Agent Spawn", description: "Fires when the agent is activated" },
+      { event: "hook_stop", label: "Stop", description: "Fires when the assistant finishes responding" },
+    ],
+  },
+];
+
+function getHookCapabilities(serviceName: string): HookCapGroup[] {
+  if (serviceName === "kiro-cli" || serviceName === "kiro") return KIRO_HOOK_CAPABILITIES;
+  return CLAUDE_CODE_HOOK_CAPABILITIES;
+}
+
 function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEvent[]; sessionId: string; serviceName: string }) {
+  const isKiro = serviceName === "kiro-cli" || serviceName === "kiro";
+  const hookCapabilities = useMemo(() => getHookCapabilities(serviceName), [serviceName]);
+
   // Derive active hooks from events actually present in this session
   const activeHookEvents = useMemo(() => {
     const seen = new Set<string>();
@@ -1363,10 +1404,13 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEve
           Active Hooks
         </h3>
         <p className="text-xs text-muted-foreground">
-          Hook types detected in this session. Missing hooks mean those event types were not captured — check your hook configuration.
+          Hook types detected in this session.{" "}
+          {isKiro
+            ? "Kiro supports 5 native hook events. Missing hooks mean those event types were not captured."
+            : "Missing hooks mean those event types were not captured — check your hook configuration."}
         </p>
         <div className="space-y-4">
-          {HOOK_CAPABILITIES.map((group) => (
+          {hookCapabilities.map((group) => (
             <div key={group.category} className="space-y-2">
               <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{group.category}</h4>
               <div className="grid gap-1.5">
