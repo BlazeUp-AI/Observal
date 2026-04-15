@@ -19,8 +19,8 @@ from schemas.judge_output import (
     ThoughtFinding,
     ThoughtProcessJudgment,
 )
-from services.sanitizer import TraceSanitizer
-from services.slm_scorer import (
+from services.eval.sanitizer import TraceSanitizer
+from services.eval.slm_scorer import (
     FACTUAL_GROUNDING_PROMPT,
     GOAL_COMPLETION_PROMPT,
     THOUGHT_PROCESS_PROMPT,

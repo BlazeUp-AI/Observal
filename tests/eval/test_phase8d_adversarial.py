@@ -11,8 +11,8 @@ from models.scoring import (
     DEFAULT_PENALTIES,
     ScoringDimension,
 )
-from services.adversarial_scorer import AdversarialScorer
-from services.score_aggregator import ScoreAggregator
+from services.eval.adversarial_scorer import AdversarialScorer
+from services.eval.score_aggregator import ScoreAggregator
 
 # --- Helpers ---
 

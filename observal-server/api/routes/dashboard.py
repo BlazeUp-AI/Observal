@@ -105,7 +105,7 @@ async def agent_metrics(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     from models.eval import Scorecard
-    from services.score_aggregator import ScoreAggregator
+    from services.eval.score_aggregator import ScoreAggregator
 
     dl_count = (
         await db.scalar(select(func.count(AgentDownloadRecord.id)).where(AgentDownloadRecord.agent_id == agent_id)) or 0
@@ -679,7 +679,7 @@ async def run_graphrag_ragas_eval(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Run RAGAS evaluation on recent retrieval spans for a GraphRAG."""
-    from services.ragas_eval import run_ragas_on_graphrag
+    from services.eval.ragas_eval import run_ragas_on_graphrag
 
     result = await run_ragas_on_graphrag(
         graphrag_id=req.graphrag_id,
@@ -707,11 +707,11 @@ async def graphrag_ragas_scores(
 ):
     """Get previously computed RAGAS scores. If graphrag_id is provided, scoped to that GraphRAG; otherwise aggregate."""
     if graphrag_id:
-        from services.ragas_eval import get_ragas_scores
+        from services.eval.ragas_eval import get_ragas_scores
 
         avgs = await get_ragas_scores(graphrag_id)
     else:
-        from services.ragas_eval import get_ragas_aggregate
+        from services.eval.ragas_eval import get_ragas_aggregate
 
         avgs = await get_ragas_aggregate()
 

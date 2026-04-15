@@ -107,8 +107,8 @@ class TestRunEval:
         mock_result = {"score": 0.9}
 
         with (
-            patch("services.eval_service.fetch_traces", new_callable=AsyncMock, return_value=mock_traces),
-            patch("services.eval_service.evaluate_trace", new_callable=AsyncMock, return_value=mock_result),
+            patch("services.eval.eval_service.fetch_traces", new_callable=AsyncMock, return_value=mock_traces),
+            patch("services.eval.eval_service.evaluate_trace", new_callable=AsyncMock, return_value=mock_result),
             patch("worker.publish", new_callable=AsyncMock) as mock_pub,
         ):
             await run_eval({}, "agent-1", "t1")
@@ -120,7 +120,7 @@ class TestRunEval:
     async def test_handles_eval_error(self):
         from worker import run_eval
 
-        with patch("services.eval_service.fetch_traces", new_callable=AsyncMock, side_effect=Exception("db down")):
+        with patch("services.eval.eval_service.fetch_traces", new_callable=AsyncMock, side_effect=Exception("db down")):
             await run_eval({}, "agent-1")  # should not raise
 
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.ragas_eval import (
+from services.eval.ragas_eval import (
     RAGAS_DIMENSIONS,
     _eval_answer_relevancy,
     _eval_context_precision,
@@ -43,7 +43,7 @@ class TestDimensions:
 
 class TestFaithfulness:
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_returns_score(self, mock_call):
         mock_call.return_value = {"claims_total": 3, "claims_supported": 2, "score": 0.67, "reason": "1 unsupported"}
         result = await _eval_faithfulness("answer text", "context text")
@@ -51,7 +51,7 @@ class TestFaithfulness:
         assert "unsupported" in result["reason"]
 
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_invalid_response(self, mock_call):
         mock_call.return_value = {}
         result = await _eval_faithfulness("answer", "context")
@@ -60,14 +60,14 @@ class TestFaithfulness:
 
 class TestAnswerRelevancy:
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_returns_score(self, mock_call):
         mock_call.return_value = {"score": 0.9, "reason": "directly addresses question"}
         result = await _eval_answer_relevancy("what is X?", "X is a thing")
         assert result["score"] == 0.9
 
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_invalid_response(self, mock_call):
         mock_call.return_value = {"error": "bad"}
         result = await _eval_answer_relevancy("q", "a")
@@ -76,7 +76,7 @@ class TestAnswerRelevancy:
 
 class TestContextPrecision:
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_returns_score(self, mock_call):
         mock_call.return_value = {"chunks_total": 5, "chunks_relevant": 4, "score": 0.8, "reason": "1 noisy chunk"}
         result = await _eval_context_precision("question", "chunks")
@@ -85,7 +85,7 @@ class TestContextPrecision:
 
 class TestContextRecall:
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_returns_score(self, mock_call):
         mock_call.return_value = {
             "statements_total": 4,
@@ -99,7 +99,7 @@ class TestContextRecall:
 
 class TestRunRagasOnSpan:
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_all_dimensions(self, mock_call):
         mock_call.return_value = {"score": 0.8, "reason": "good"}
         span = {"input": "what is X?", "output": "X is a thing that does Y"}
@@ -112,7 +112,7 @@ class TestRunRagasOnSpan:
             assert result[dim]["score"] == 0.8
 
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_no_question(self, mock_call):
         mock_call.return_value = {"score": 0.8, "reason": "good"}
         span = {"input": "", "output": "some output"}
@@ -121,7 +121,7 @@ class TestRunRagasOnSpan:
         assert result["context_precision"]["score"] == 0.0
 
     @pytest.mark.asyncio
-    @patch("services.ragas_eval._call_model", new_callable=AsyncMock)
+    @patch("services.eval.ragas_eval._call_model", new_callable=AsyncMock)
     async def test_no_ground_truth(self, mock_call):
         mock_call.return_value = {"score": 0.8, "reason": "good"}
         span = {"input": "question", "output": "answer"}

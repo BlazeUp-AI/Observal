@@ -13,9 +13,9 @@ from models.scoring import (
     DEFAULT_PENALTIES,
     ScoringDimension,
 )
-from services.eval_watchdog import EvalWatchdog
-from services.score_aggregator import ScoreAggregator, _score_to_grade
-from services.structural_scorer import StructuralScorer
+from services.eval.eval_watchdog import EvalWatchdog
+from services.eval.score_aggregator import ScoreAggregator, _score_to_grade
+from services.eval.structural_scorer import StructuralScorer
 
 # --- Helpers ---
 

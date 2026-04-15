@@ -473,7 +473,7 @@ async def create_canary(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Create a canary configuration for an agent."""
-    from services.canary import CanaryConfig
+    from services.eval.canary import CanaryConfig
 
     agent_id = req.get("agent_id")
     if not agent_id:

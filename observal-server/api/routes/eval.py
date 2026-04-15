@@ -12,15 +12,15 @@ from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User, UserRole
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
 from services.clickhouse import query_spans
-from services.eval_service import (
+from services.eval.eval_service import (
     evaluate_trace,
     fetch_traces,
     parse_scorecard,
     run_agent_scoped_eval,
     run_structured_eval,
 )
+from services.eval.score_aggregator import ScoreAggregator
 from services.hook_materializer import build_agent_eval_context, materialize_agent_eval, materialize_session_spans
-from services.score_aggregator import ScoreAggregator
 
 router = APIRouter(prefix="/api/v1/eval", tags=["eval"])
 

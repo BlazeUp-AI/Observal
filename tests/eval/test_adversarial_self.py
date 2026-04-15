@@ -9,11 +9,11 @@ Phase 8F of the BenchJack-Hardened pipeline.
 import uuid
 
 from models.scoring import ScoringDimension
-from services.adversarial_scorer import AdversarialScorer
-from services.canary import CanaryConfig, CanaryDetector
-from services.sanitizer import TraceSanitizer
-from services.score_aggregator import ScoreAggregator
-from services.structural_scorer import MatchingEngine
+from services.eval.adversarial_scorer import AdversarialScorer
+from services.eval.canary import CanaryConfig, CanaryDetector
+from services.eval.sanitizer import TraceSanitizer
+from services.eval.score_aggregator import ScoreAggregator
+from services.eval.structural_scorer import MatchingEngine
 
 # --- Helpers ---
 

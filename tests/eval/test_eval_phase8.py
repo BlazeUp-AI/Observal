@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.eval_engine import (
+from services.eval.eval_engine import (
     EVAL_TEMPLATES,
     FallbackBackend,
     LLMJudgeBackend,
@@ -81,12 +81,12 @@ class TestFallbackBackend:
 
 class TestGetBackend:
     def test_returns_fallback_when_no_model(self):
-        with patch("services.eval_engine.settings") as mock_settings:
+        with patch("services.eval.eval_engine.settings") as mock_settings:
             mock_settings.EVAL_MODEL_NAME = ""
             assert isinstance(get_backend(), FallbackBackend)
 
     def test_returns_llm_when_model_set(self):
-        with patch("services.eval_engine.settings") as mock_settings:
+        with patch("services.eval.eval_engine.settings") as mock_settings:
             mock_settings.EVAL_MODEL_NAME = "gpt-4"
             assert isinstance(get_backend(), LLMJudgeBackend)
 
@@ -94,15 +94,15 @@ class TestGetBackend:
 class TestRunEvalOnTrace:
     @pytest.mark.asyncio
     async def test_no_trace_returns_empty(self):
-        with patch("services.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=None):
+        with patch("services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=None):
             result = await run_eval_on_trace("agent-1", "missing-trace")
             assert result == []
 
     @pytest.mark.asyncio
     async def test_no_spans_returns_empty(self):
         with (
-            patch("services.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value={"trace_id": "t1"}),
-            patch("services.eval_engine.query_spans", new_callable=AsyncMock, return_value=[]),
+            patch("services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value={"trace_id": "t1"}),
+            patch("services.eval.eval_engine.query_spans", new_callable=AsyncMock, return_value=[]),
         ):
             result = await run_eval_on_trace("agent-1", "t1")
             assert result == []
@@ -115,10 +115,10 @@ class TestRunEvalOnTrace:
             {"span_id": "s2", "type": "initialize", "status": "success"},  # no template
         ]
         with (
-            patch("services.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=trace),
-            patch("services.eval_engine.query_spans", new_callable=AsyncMock, return_value=spans),
-            patch("services.eval_engine.get_backend") as mock_get,
-            patch("services.eval_engine.insert_scores", new_callable=AsyncMock) as mock_insert,
+            patch("services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=trace),
+            patch("services.eval.eval_engine.query_spans", new_callable=AsyncMock, return_value=spans),
+            patch("services.eval.eval_engine.get_backend") as mock_get,
+            patch("services.eval.eval_engine.insert_scores", new_callable=AsyncMock) as mock_insert,
         ):
             mock_backend = AsyncMock()
             mock_backend.score.return_value = {"score": 0.9, "reason": "good"}
@@ -137,10 +137,10 @@ class TestRunEvalOnTrace:
         trace = {"trace_id": "t1", "user_id": "u1"}
         spans = [{"span_id": "s1", "type": "tool_call", "status": "success"}]
         with (
-            patch("services.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=trace),
-            patch("services.eval_engine.query_spans", new_callable=AsyncMock, return_value=spans),
-            patch("services.eval_engine.get_backend") as mock_get,
-            patch("services.eval_engine.insert_scores", new_callable=AsyncMock) as mock_insert,
+            patch("services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=trace),
+            patch("services.eval.eval_engine.query_spans", new_callable=AsyncMock, return_value=spans),
+            patch("services.eval.eval_engine.get_backend") as mock_get,
+            patch("services.eval.eval_engine.insert_scores", new_callable=AsyncMock) as mock_insert,
         ):
             mock_backend = AsyncMock()
             mock_backend.score.return_value = {"score": 0.85, "reason": "test"}
@@ -157,10 +157,10 @@ class TestRunEvalOnTrace:
         trace = {"trace_id": "t1", "user_id": "u1"}
         spans = [{"span_id": "s1", "type": "tool_call", "status": "success"}]
         with (
-            patch("services.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=trace),
-            patch("services.eval_engine.query_spans", new_callable=AsyncMock, return_value=spans),
-            patch("services.eval_engine.get_backend") as mock_get,
-            patch("services.eval_engine.insert_scores", new_callable=AsyncMock),
+            patch("services.eval.eval_engine.query_trace_by_id", new_callable=AsyncMock, return_value=trace),
+            patch("services.eval.eval_engine.query_spans", new_callable=AsyncMock, return_value=spans),
+            patch("services.eval.eval_engine.get_backend") as mock_get,
+            patch("services.eval.eval_engine.insert_scores", new_callable=AsyncMock),
         ):
             mock_backend = AsyncMock()
             mock_backend.score.side_effect = Exception("model down")

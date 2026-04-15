@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from services.slm_scorer import SLMScorer, _extract_reasoning_trace, _extract_tool_results
+from services.eval.slm_scorer import SLMScorer, _extract_reasoning_trace, _extract_tool_results
 
 
 def _make_backend(response: dict):

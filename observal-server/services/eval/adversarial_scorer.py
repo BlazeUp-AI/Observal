@@ -8,7 +8,7 @@ import logging
 import re
 
 from models.scoring import ScoringDimension
-from services.sanitizer import TraceSanitizer
+from services.eval.sanitizer import TraceSanitizer
 
 logger = logging.getLogger(__name__)
 

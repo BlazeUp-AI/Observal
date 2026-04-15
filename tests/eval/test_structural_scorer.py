@@ -1,6 +1,6 @@
 """Unit tests for the structural scorer (rule-based, no LLM)."""
 
-from services.structural_scorer import StructuralScorer, _span_dedup_key
+from services.eval.structural_scorer import StructuralScorer, _span_dedup_key
 
 
 def _tool_span(

@@ -16,7 +16,7 @@ from schemas.judge_output import (
     GoalCompletionJudgment,
     ThoughtProcessJudgment,
 )
-from services.eval_engine import EvalBackend
+from services.eval.eval_engine import EvalBackend
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ class SLMScorer:
 
     async def _call_model_direct(self, prompt: str) -> dict:
         """Direct model call for structured JSON responses."""
-        from services.eval_service import call_eval_model
+        from services.eval.eval_service import call_eval_model
 
         try:
             result = await call_eval_model(prompt)

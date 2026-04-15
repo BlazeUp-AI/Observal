@@ -9,7 +9,7 @@ import copy
 import pytest
 from pydantic import ValidationError
 
-from services.canary import CanaryConfig, CanaryDetector, CanaryReport
+from services.eval.canary import CanaryConfig, CanaryDetector, CanaryReport
 
 # --- Helpers ---
 

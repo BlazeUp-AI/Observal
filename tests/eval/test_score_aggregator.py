@@ -3,7 +3,7 @@
 import uuid
 
 from models.scoring import ScoringDimension
-from services.score_aggregator import ScoreAggregator, _score_to_grade
+from services.eval.score_aggregator import ScoreAggregator, _score_to_grade
 
 
 class TestScoreToGrade:

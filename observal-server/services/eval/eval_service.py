@@ -8,15 +8,15 @@ from config import settings
 from models.agent import Agent
 from models.eval import Scorecard, ScorecardDimension
 from models.scoring import DEFAULT_PENALTIES
-from services.adversarial_scorer import AdversarialScorer
-from services.canary import CanaryConfig, CanaryDetector
 from services.clickhouse import _query
-from services.eval_engine import FallbackBackend, get_backend
-from services.eval_watchdog import EvalWatchdog
-from services.sanitizer import TraceSanitizer
-from services.score_aggregator import ScoreAggregator
-from services.slm_scorer import SLMScorer
-from services.structural_scorer import StructuralScorer
+from services.eval.adversarial_scorer import AdversarialScorer
+from services.eval.canary import CanaryConfig, CanaryDetector
+from services.eval.eval_engine import FallbackBackend, get_backend
+from services.eval.eval_watchdog import EvalWatchdog
+from services.eval.sanitizer import TraceSanitizer
+from services.eval.score_aggregator import ScoreAggregator
+from services.eval.slm_scorer import SLMScorer
+from services.eval.structural_scorer import StructuralScorer
 
 logger = logging.getLogger(__name__)
 

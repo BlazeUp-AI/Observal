@@ -30,7 +30,7 @@ async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None):
     logger.info(f"Running eval for agent={agent_id} trace={trace_id}")
     try:
         from services.clickhouse import query_traces
-        from services.eval_engine import run_eval_on_trace
+        from services.eval.eval_engine import run_eval_on_trace
 
         if trace_id:
             scores = await run_eval_on_trace(agent_id, trace_id)

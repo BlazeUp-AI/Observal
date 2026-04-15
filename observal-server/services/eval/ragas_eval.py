@@ -23,7 +23,7 @@ import uuid
 from datetime import UTC, datetime
 
 from services.clickhouse import insert_scores
-from services.eval_engine import _call_model
+from services.eval.eval_engine import _call_model
 
 logger = logging.getLogger(__name__)
 

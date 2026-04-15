@@ -3,7 +3,7 @@
 Tests MatchingEngine and NumericComparator for robust structural comparisons.
 """
 
-from services.structural_scorer import MatchingEngine, NumericComparator
+from services.eval.structural_scorer import MatchingEngine, NumericComparator
 
 # =========================================================================
 # MatchingEngine — normalize_for_comparison
