@@ -14,6 +14,9 @@ from services.secrets_redactor import redact_secrets
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
 
+# Background tasks that must survive until completion (prevent GC)
+_background_tasks: set[asyncio.Task] = set()
+
 
 @router.get("/crypto/public-key")
 async def get_public_key():
@@ -612,8 +615,10 @@ async def ingest_hook(request: Request):
 
     # Notify subscribers (fire-and-forget — don't block the response)
     if session_id:
-        asyncio.create_task(
+        task = asyncio.create_task(
             publish("sessions:updated", {"session_id": session_id, "event_name": hook_event})
         )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     return {"ingested": 1, "session_id": session_id, "event": hook_event}
