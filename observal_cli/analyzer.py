@@ -35,9 +35,23 @@ _PYTHON_MCP_PATTERN = re.compile(
     r"|Server\(\s*name\s*="
 )
 
-_ENV_VAR_PATTERN = re.compile(
+_ENV_VAR_PATTERN_PYTHON = re.compile(
     r"""os\.environ\s*(?:\.get\s*\(\s*|\.?\[?\s*\[?\s*)["']([A-Z][A-Z0-9_]+)["']"""
     r"""|os\.getenv\s*\(\s*["']([A-Z][A-Z0-9_]+)["']"""
+)
+
+_ENV_VAR_PATTERN_GO = re.compile(r"""os\.Getenv\(\s*"([A-Z][A-Z0-9_]+)"\s*\)""")
+
+# README patterns: docker -e flags, export statements, JSON config keys
+_README_PATTERNS = [
+    re.compile(r"""-e\s+([A-Z][A-Z0-9_]+)"""),
+    re.compile(r"""export\s+([A-Z][A-Z0-9_]+)="""),
+    re.compile(r""""([A-Z][A-Z0-9_]+)"\s*:\s*\""""),
+]
+
+_ENV_VAR_PATTERN_TS = re.compile(
+    r"""process\.env\.([A-Z][A-Z0-9_]+)"""
+    r"""|process\.env\[\s*["']([A-Z][A-Z0-9_]+)["']\s*\]"""
 )
 
 _INTERNAL_ENV_VARS = frozenset(
@@ -62,6 +76,7 @@ _INTERNAL_ENV_VARS = frozenset(
         "PORT",
         "HOST",
         "DEBUG",
+        "APP",
         "LOG_LEVEL",
         "LOGGING_LEVEL",
         "HOSTNAME",
@@ -71,6 +86,15 @@ _INTERNAL_ENV_VARS = frozenset(
         "TZ",
         "LC_ALL",
         "LC_CTYPE",
+    }
+)
+
+# User-facing env vars that match a filtered prefix but should still be detected
+_ALLOWED_ENV_VARS = frozenset(
+    {
+        "GITHUB_TOKEN",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
+        "DOCKER_HOST",
     }
 )
 
@@ -125,33 +149,107 @@ def _clone_repo(git_url: str, dest: str) -> str | None:
 
 def _is_filtered_env_var(name: str) -> bool:
     """Return True if the env var is internal/infrastructure and should not be prompted."""
+    if name in _ALLOWED_ENV_VARS:
+        return False
     if name in _INTERNAL_ENV_VARS:
         return True
     return any(name.startswith(prefix) for prefix in _FILTERED_PREFIXES)
 
 
-def _detect_env_vars(tmp_dir: str) -> list[dict]:
-    """Scan repo files for required environment variables.
+# Directories that contain test / internal / build code — not user-facing config
+_SKIP_DIRS = frozenset(
+    {
+        "test",
+        "tests",
+        "e2e",
+        "internal",
+        "testdata",
+        "vendor",
+        "node_modules",
+        "__pycache__",
+        ".git",
+    }
+)
 
-    Scans Python source (os.environ/os.getenv) and .env.example files.
-    Dockerfile ENV/ARG directives are intentionally skipped — they contain
-    build-time variables that are not user-facing configuration.
-    """
-    root = Path(tmp_dir)
-    found: dict[str, str] = {}
 
-    # Scan Python files for os.environ / os.getenv
-    for py_file in root.rglob("*.py"):
+def _is_test_file(path: Path) -> bool:
+    """Return True if the file is in a test/internal directory or is a test file."""
+    if any(part in _SKIP_DIRS for part in path.parts):
+        return True
+    name = path.name
+    return name.endswith("_test.go") or name.startswith("test_") or name.endswith("_test.py")
+
+
+def _scan_files_for_env_vars(root: Path, glob: str, pattern: re.Pattern, found: dict[str, str]) -> None:
+    """Scan files matching *glob* for env var references using *pattern*."""
+    for path in root.rglob(glob):
+        if _is_test_file(path.relative_to(root)):
+            continue
         try:
-            content = py_file.read_text(errors="ignore")
-            for m in _ENV_VAR_PATTERN.finditer(content):
-                name = m.group(1) or m.group(2)
+            content = path.read_text(errors="ignore")
+            for m in pattern.finditer(content):
+                name = next((g for g in m.groups() if g), None)
                 if name and not _is_filtered_env_var(name):
                     found.setdefault(name, "")
         except Exception:
             continue
 
-    # Scan .env.example / .env.sample for documented env vars
+
+def _scan_readme_for_env_vars(root: Path, found: dict[str, str]) -> None:
+    """Extract env vars from README files (docker -e, export, JSON config)."""
+    for name in ("README.md", "README.rst", "README.txt", "README"):
+        readme = root / name
+        if not readme.exists():
+            continue
+        try:
+            content = readme.read_text(errors="ignore")
+        except Exception:
+            continue
+        for pattern in _README_PATTERNS:
+            for m in pattern.finditer(content):
+                var = m.group(1)
+                if var and not _is_filtered_env_var(var):
+                    found.setdefault(var, "")
+        break  # only scan the first README found
+
+
+def _extract_manifest_env_vars(root: Path, found: dict[str, str]) -> bool:
+    """Extract env vars from a server.json MCP manifest (authoritative source).
+
+    The manifest is the standard MCP server descriptor. Env vars declared here
+    are always included — they bypass the prefix filter since the author
+    explicitly listed them as required.
+
+    Returns True if a valid server.json was found (even if it declares no env vars).
+    """
+    manifest = root / "server.json"
+    if not manifest.exists():
+        return False
+    try:
+        data = json.loads(manifest.read_text(errors="ignore"))
+    except Exception:
+        return False
+    # packages[].runtimeArguments — Docker -e flags (e.g. GitHub MCP server)
+    for pkg in data.get("packages", []):
+        for arg in pkg.get("runtimeArguments", []):
+            value = arg.get("value", "")
+            # Pattern: "ENV_VAR={placeholder}" — extract the var name before '='
+            if "=" in value:
+                var_name = value.split("=", 1)[0]
+                if var_name and var_name == var_name.upper():
+                    desc = arg.get("description", "")
+                    found.setdefault(var_name, desc)
+
+    # remotes[].variables — URL-interpolated secrets (e.g. ?api_key={key})
+    for remote in data.get("remotes", []):
+        for var_key, var_meta in (remote.get("variables") or {}).items():
+            desc = var_meta.get("description", "") if isinstance(var_meta, dict) else ""
+            found.setdefault(var_key, desc)
+    return True
+
+
+def _scan_env_example(root: Path, found: dict[str, str]) -> None:
+    """Scan .env.example / .env.sample files for documented env vars."""
     for env_file in root.glob(".env*"):
         if env_file.name in (".env", ".env.local"):
             continue  # skip actual secrets
@@ -165,6 +263,38 @@ def _detect_env_vars(tmp_dir: str) -> list[dict]:
                     found.setdefault(key, "")
         except Exception:
             continue
+
+
+def _detect_env_vars(tmp_dir: str) -> list[dict]:
+    """Scan repo files for required environment variables.
+
+    Tiered detection (stops at first tier that finds results):
+      1. server.json manifest (authoritative — author's explicit declaration)
+      2. README + .env.example (author's documentation)
+      3. Source code scanning (last resort — catches os.Getenv / process.env / etc.)
+    """
+    root = Path(tmp_dir)
+    found: dict[str, str] = {}
+
+    # Tier 1: MCP server manifest — authoritative, skip everything else
+    if _extract_manifest_env_vars(root, found):
+        return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
+
+    # Tier 2: README — author's documented config (export, docker -e, JSON examples)
+    _scan_readme_for_env_vars(root, found)
+    if found:
+        return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
+
+    # Tier 3: .env.example — explicit config template
+    _scan_env_example(root, found)
+    if found:
+        return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
+
+    # Tier 4: Source code scanning — last resort
+    _scan_files_for_env_vars(root, "*.py", _ENV_VAR_PATTERN_PYTHON, found)
+    _scan_files_for_env_vars(root, "*.go", _ENV_VAR_PATTERN_GO, found)
+    for ext in ("*.ts", "*.js", "*.mts", "*.mjs"):
+        _scan_files_for_env_vars(root, ext, _ENV_VAR_PATTERN_TS, found)
 
     return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
 

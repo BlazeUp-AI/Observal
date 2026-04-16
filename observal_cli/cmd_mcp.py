@@ -306,6 +306,14 @@ def _submit_impl(git_url, name, category, yes):
         _docker_image = None
         if _framework == "docker":
             _docker_image = typer.prompt("Docker image (e.g. registry.example.com/org/mcp-server:latest)")
+        elif _framework == "go":
+            _docker_image = (
+                typer.prompt(
+                    "Docker image (e.g. ghcr.io/org/server:latest — press Enter to skip if the binary is on PATH)",
+                    default="",
+                )
+                or None
+            )
 
         _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
         _changelog = typer.prompt("Changelog", default="Initial release")

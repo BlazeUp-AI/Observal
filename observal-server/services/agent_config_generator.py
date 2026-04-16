@@ -62,9 +62,9 @@ def _build_mcp_configs(
             # agent file gets proper mcpServers frontmatter.
             safe = _sanitize_name(listing.name)
             mcp_id = str(listing.id)
-            run_cmd = _build_run_command(safe, listing.framework)
+            run_cmd = _build_run_command(safe, listing.framework, listing.docker_image, mcp_env)
             shim_args = ["--mcp-id", mcp_id, "--", *run_cmd]
-            mcp_configs[safe] = {"command": "observal-shim", "args": shim_args, "env": {}}
+            mcp_configs[safe] = {"command": "observal-shim", "args": shim_args, "env": mcp_env}
 
     for ext in agent.external_mcps or []:
         name = _sanitize_name(ext.get("name", ""))

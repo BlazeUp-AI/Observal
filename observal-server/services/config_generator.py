@@ -70,7 +70,7 @@ def _build_run_command(
     - Python / unknown: python -m <name>
     """
     fw = (framework or "").lower()
-    if "docker" in fw and docker_image:
+    if docker_image:
         cmd = ["docker", "run", "-i", "--rm"]
         for k, v in (server_env or {}).items():
             cmd.extend(["-e", f"{k}={v}"])
