@@ -7,6 +7,12 @@ The CLI mirrors these in ``observal_cli/constants.py`` -- a sync test
 
 from __future__ import annotations
 
+import re
+
+# ── Name validation ───────────────────────────────────────────
+
+AGENT_NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
 # ── IDE / client names (hyphen-canonical) ───────────────────
 VALID_IDES: list[str] = [
     "cursor",
@@ -137,6 +143,24 @@ def make_option_validator(field_name: str, valid_options: list[str]):
     def _check(cls, v: str) -> str:
         if v not in valid_options:
             raise ValueError(f"Invalid {field_name} '{v}'. Valid options: {', '.join(valid_options)}")
+        return v
+
+    return classmethod(_check)
+
+
+def make_name_validator(field_name: str = "name", max_length: int = 64):
+    """Return a classmethod that validates slug-style names (no spaces)."""
+
+    def _check(cls, v: str) -> str:
+        if not v:
+            raise ValueError(f"{field_name} is required")
+        if len(v) > max_length:
+            raise ValueError(f"{field_name} must be at most {max_length} characters")
+        if not AGENT_NAME_REGEX.match(v):
+            raise ValueError(
+                f"Invalid {field_name} '{v}'. "
+                "Must start with a letter or digit and contain only lowercase letters, digits, hyphens, and underscores."
+            )
         return v
 
     return classmethod(_check)

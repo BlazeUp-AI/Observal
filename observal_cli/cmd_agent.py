@@ -5,14 +5,18 @@ from __future__ import annotations
 import json as _json
 from pathlib import Path
 
+import re
+
 import typer
 import yaml
 from rich import print as rprint
+from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 
 from observal_cli import client, config
-from observal_cli.constants import VALID_IDES
+from observal_cli.constants import AGENT_NAME_REGEX, VALID_IDES
+from observal_cli.prompts import select_many, select_one
 from observal_cli.render import (
     console,
     ide_tags,
@@ -26,6 +30,44 @@ from observal_cli.render import (
 # ── Agent authoring constants ──────────────────────────────
 YAML_FILE = "observal-agent.yaml"
 VALID_COMPONENT_TYPES = {"mcp", "skill", "hook", "prompt", "sandbox"}
+
+# Common model choices for the interactive wizard
+_MODEL_CHOICES = [
+    "claude-sonnet-4",
+    "claude-opus-4",
+    "claude-haiku-4-5",
+    "gemini-2.5-pro",
+    "gpt-4o",
+    "gpt-4.1",
+]
+
+
+def _slugify(raw: str) -> str:
+    """Convert a raw name to a valid agent slug."""
+    s = raw.strip().lower()
+    s = re.sub(r"[^a-z0-9_-]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s)
+    return s.strip("-")
+
+
+def _validate_name(name: str) -> str | None:
+    """Return error message if name is invalid, else None."""
+    if not name:
+        return "Agent name is required."
+    if len(name) > 64:
+        return "Agent name must be at most 64 characters."
+    if not AGENT_NAME_REGEX.match(name):
+        return "Must start with a letter/digit and contain only lowercase letters, digits, hyphens, underscores."
+    return None
+
+
+def _fetch_registry_items(component_type: str) -> list[dict]:
+    """Fetch approved items from a registry endpoint. Returns [] on failure."""
+    plural = {"mcp": "mcps", "skill": "skills", "hook": "hooks", "prompt": "prompts", "sandbox": "sandboxes"}
+    try:
+        return client.get(f"/api/v1/{plural[component_type]}")
+    except (Exception, SystemExit):
+        return []
 
 
 # ── Agent authoring helpers ────────────────────────────────
@@ -54,7 +96,7 @@ agent_app = typer.Typer(help="Agent registry commands")
 def agent_create(
     from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
 ):
-    """Create a new agent (interactive or from file)."""
+    """Create a new agent (interactive wizard or from file)."""
     if from_file:
         import json
 
@@ -65,60 +107,100 @@ def agent_create(
         rprint(f"[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
         return
 
-    name = typer.prompt("Agent name")
-    version = typer.prompt("Version", default="1.0.0")
-    description = typer.prompt("Description")
-    owner = typer.prompt("Owner / Team")
-    prompt_text = typer.prompt("System prompt")
-    model_name = typer.prompt("Model name", default="claude-sonnet-4")
+    rprint("\n[bold cyan]Agent Builder[/bold cyan]\n")
 
-    max_tokens = typer.prompt("Max tokens", default="4096")
-    temperature = typer.prompt("Temperature", default="0.2")
-    model_cfg = {"max_tokens": int(max_tokens), "temperature": float(temperature)}
+    # ── Phase 1: Basics ─────────────────────────────────────
+    rprint("[bold]1. Basics[/bold]")
+    raw_name = typer.prompt("  Agent name")
+    name = _slugify(raw_name)
+    if name != raw_name:
+        rprint(f"  [dim]→ Slugified to:[/dim] [bold]{name}[/bold]")
+    err = _validate_name(name)
+    if err:
+        rprint(f"  [red]Error:[/red] {err}")
+        raise typer.Exit(1)
 
-    ide_choices = list(VALID_IDES)
-    rprint(f"[dim]IDEs: {', '.join(ide_choices)}[/dim]")
-    ides_input = typer.prompt("Supported IDEs (comma-separated)", default=",".join(ide_choices))
-    supported_ides = [i.strip() for i in ides_input.split(",") if i.strip()]
+    description = typer.prompt("  Description")
+    version = typer.prompt("  Version", default="1.0.0")
+    model_name = select_one("  Model", _MODEL_CHOICES, default="claude-sonnet-4")
 
-    # MCP server selection
-    rprint()
-    with spinner("Fetching MCP servers..."):
-        try:
-            mcps = client.get("/api/v1/mcps")
-        except (Exception, SystemExit):
-            mcps = []
+    # ── Phase 2: Components ──────────────────────────────────
+    rprint("\n[bold]2. Components[/bold]")
+    components: list[dict] = []
 
-    if mcps:
-        table = Table(title="Available MCP Servers", show_lines=False)
-        table.add_column("#", style="dim", width=3)
-        table.add_column("Name", style="bold")
-        table.add_column("ID", style="dim")
-        for i, m in enumerate(mcps, 1):
-            table.add_row(str(i), m["name"], str(m["id"])[:12] + "…")
-        console.print(table)
-        rprint()
-    else:
-        rprint("[dim]No approved MCP servers available.[/dim]")
+    with spinner("Fetching registry..."):
+        registry_data: dict[str, list[dict]] = {}
+        for ctype in ("mcp", "skill", "hook", "prompt", "sandbox"):
+            registry_data[ctype] = _fetch_registry_items(ctype)
 
-    mcp_input = typer.prompt("MCP server IDs (comma-separated, or empty)", default="")
-    mcp_ids = [i.strip() for i in mcp_input.split(",") if i.strip()]
+    for ctype in ("mcp", "skill", "hook", "prompt", "sandbox"):
+        items = registry_data[ctype]
+        if not items:
+            rprint(f"  [dim]No {ctype}s available — skipping.[/dim]")
+            continue
 
-    # Goal template
-    rprint("\n[bold]Goal Template[/bold]")
-    goal_desc = typer.prompt("Goal description")
+        choices = [f"{item['name']}  [dim]({str(item['id'])[:8]})[/dim]" for item in items]
+        selected = select_many(f"  Select {ctype}s", choices, defaults=[])
+
+        for sel in selected:
+            # Match back to item by prefix (name part before the dim ID)
+            sel_name = sel.split("  [dim]")[0].strip()
+            match = next((item for item in items if item["name"] == sel_name), None)
+            if match:
+                components.append({"component_type": ctype, "component_id": str(match["id"])})
+
+    # ── Phase 3: IDEs ────────────────────────────────────────
+    rprint("\n[bold]3. Supported IDEs[/bold]")
+    supported_ides = select_many("  IDEs", list(VALID_IDES), defaults=list(VALID_IDES))
+
+    # ── Phase 4: Goal Template ───────────────────────────────
+    rprint("\n[bold]4. Goal Template[/bold]")
+    goal_desc = typer.prompt("  Goal description", default=description)
     sections = []
     while True:
-        sec_name = typer.prompt("Section name (or 'done')")
+        sec_name = typer.prompt("  Section name (or 'done' to finish)")
         if sec_name.lower() == "done":
             break
-        sec_desc = typer.prompt(f"  Description for '{sec_name}'", default="")
-        grounding = typer.confirm("  Grounding required?", default=False)
-        sections.append({"name": sec_name, "description": sec_desc, "grounding_required": grounding})
+        sec_desc = typer.prompt(f"    Description for '{sec_name}'", default="")
+        sections.append({"name": sec_name, "description": sec_desc})
 
     if not sections:
-        rprint("[red]At least one goal section is required.[/red]")
-        raise typer.Exit(1)
+        sections = [{"name": "default", "description": goal_desc}]
+        rprint("  [dim]Using default section.[/dim]")
+
+    # ── Phase 5: Optional Details ────────────────────────────
+    rprint("\n[bold]5. Optional Details[/bold]")
+    # Try to get owner from whoami
+    default_owner = ""
+    try:
+        whoami = client.get("/api/v1/auth/whoami")
+        default_owner = whoami.get("name") or whoami.get("email", "")
+    except (Exception, SystemExit):
+        pass
+    owner = typer.prompt("  Owner / Team", default=default_owner or "")
+    prompt_text = typer.prompt("  System prompt (optional)", default="")
+    max_tokens = typer.prompt("  Max tokens", default="4096")
+    temperature = typer.prompt("  Temperature", default="0.2")
+    model_cfg = {"max_tokens": int(max_tokens), "temperature": float(temperature)}
+
+    # ── Phase 6: Review & Confirm ────────────────────────────
+    component_summary = ", ".join(
+        f"{sum(1 for c in components if c['component_type'] == t)} {t}s"
+        for t in ("mcp", "skill", "hook", "prompt", "sandbox")
+        if any(c["component_type"] == t for c in components)
+    ) or "none"
+
+    review = (
+        f"[bold]{name}[/bold] v{version}  |  Model: [cyan]{model_name}[/cyan]\n"
+        f"Components: {component_summary}\n"
+        f"IDEs: {', '.join(supported_ides)}\n"
+        f"Goal: {len(sections)} section(s)"
+    )
+    console.print(Panel(review, title="Review", border_style="green"))
+
+    if not typer.confirm("\nPublish this agent?", default=True):
+        rprint("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
 
     with spinner("Creating agent..."):
         result = client.post(
@@ -132,30 +214,40 @@ def agent_create(
                 "model_name": model_name,
                 "model_config_json": model_cfg,
                 "supported_ides": supported_ides,
-                "mcp_server_ids": mcp_ids,
+                "components": components,
                 "goal_template": {"description": goal_desc, "sections": sections},
             },
         )
     rprint(f"\n[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
+    rprint(f"[dim]Install with:[/dim] observal pull {name} --ide <ide>")
 
 
 @agent_app.command(name="list")
 def agent_list(
     search: str | None = typer.Option(None, "--search", "-s"),
-    limit: int = typer.Option(50, "--limit", "-n"),
-    full_id: bool = typer.Option(False, "--full-id", help="Show full UUID instead of short form"),
+    limit: int = typer.Option(50, "--limit", "-n", min=1, max=200, help="Page size (1-200)"),
+    page: int = typer.Option(1, "--page", "-p", min=1, help="Page number (1-indexed)"),
+    show_id: bool = typer.Option(False, "--id", help="Include the agent ID column"),
+    full_id: bool = typer.Option(False, "--full-id", help="Show full UUID (implies --id)"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List active agents."""
-    params = {"search": search} if search else {}
+    """List active agents (paginated)."""
+    params: dict = {"limit": limit, "offset": (page - 1) * limit}
+    if search:
+        params["search"] = search
+
     with spinner("Fetching agents..."):
-        data = client.get("/api/v1/agents", params=params)
+        data, headers = client.get_with_headers("/api/v1/agents", params=params)
+
+    total = int(headers.get("x-total-count", str(len(data))))
+    total_pages = max(1, (total + limit - 1) // limit)
 
     if not data:
-        rprint("[dim]No agents found.[/dim]")
+        if total == 0:
+            rprint("[dim]No agents found.[/dim]")
+        else:
+            rprint(f"[yellow]Page {page} is empty. Total agents: {total} (last page: {total_pages})[/yellow]")
         return
-
-    data = data[:limit]
 
     # Cache IDs for numeric shorthand
     config.save_last_results(data)
@@ -166,31 +258,34 @@ def agent_list(
 
     if output == "plain":
         for item in data:
-            rprint(
-                f"{item['id']}  {item['name']}  v{item.get('version', '?')}  {item.get('model_name', '')}  {', '.join(item.get('supported_ides', []))}"
-            )
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('model_name', '')}")
         return
 
-    table = Table(title=f"Agents ({len(data)})", show_lines=False, padding=(0, 1))
+    include_id = show_id or full_id
+    table = Table(
+        title=f"Agents (page {page} of {total_pages} · {len(data)} of {total})",
+        show_lines=False,
+        padding=(0, 1),
+    )
     table.add_column("#", style="dim", width=3)
     table.add_column("Name", style="bold cyan", no_wrap=True)
     table.add_column("Version", style="green")
     table.add_column("Model")
-    table.add_column("Owner", style="dim")
-    table.add_column("IDEs")
-    table.add_column("ID", style="dim", no_wrap=full_id)
+    if include_id:
+        table.add_column("ID", style="dim", no_wrap=full_id)
     for i, item in enumerate(data, 1):
-        id_display = str(item["id"]) if full_id else str(item["id"])[:8] + "…"
-        table.add_row(
-            str(i),
-            item["name"],
-            item.get("version", ""),
-            item.get("model_name", ""),
-            item.get("owner", ""),
-            ide_tags(item.get("supported_ides", [])),
-            id_display,
-        )
+        row = [str(i), item["name"], item.get("version", ""), item.get("model_name", "")]
+        if include_id:
+            row.append(str(item["id"]) if full_id else str(item["id"])[:8] + "…")
+        table.add_row(*row)
     console.print(table)
+
+    # Pagination footer
+    if total_pages > 1:
+        if page < total_pages:
+            rprint(f"[dim]Next:[/dim] [bold]observal agent list --page {page + 1}[/bold]" + (f" --limit {limit}" if limit != 50 else ""))
+        else:
+            rprint("[dim]End of results.[/dim]")
 
 
 @agent_app.command(name="show")
@@ -329,7 +424,15 @@ def agent_init(
         rprint("[yellow]Aborted.[/yellow]")
         raise typer.Exit(code=1)
 
-    name = typer.prompt("Agent name")
+    raw_name = typer.prompt("Agent name")
+    name = _slugify(raw_name)
+    if name != raw_name:
+        rprint(f"  [dim]→ Slugified to:[/dim] [bold]{name}[/bold]")
+    err = _validate_name(name)
+    if err:
+        rprint(f"[red]Error:[/red] {err}")
+        raise typer.Exit(1)
+
     version = typer.prompt("Version", default="1.0.0")
     description = typer.prompt("Description")
     owner = typer.prompt("Owner / Team")

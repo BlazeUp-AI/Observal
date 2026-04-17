@@ -257,7 +257,7 @@ INIT_SQL = [
         INDEX idx_action action TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_resource_type resource_type TYPE bloom_filter(0.01) GRANULARITY 1
     ) ENGINE = MergeTree()
-    TTL timestamp + INTERVAL 730 DAY
+    TTL toDateTime(timestamp) + INTERVAL 730 DAY
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (action, resource_type, timestamp)""",
 ]
@@ -789,3 +789,31 @@ async def query_scores(
     except Exception as e:
         logger.error(f"ClickHouse query_scores failed: {e}")
         return []
+
+
+async def insert_audit_log(events: list[dict]):
+    """Batch insert audit log events into ClickHouse."""
+    if not events:
+        return
+    lines = []
+    for e in events:
+        row = {
+            "event_id": e["event_id"],
+            "timestamp": e["timestamp"],
+            "actor_id": e.get("actor_id", ""),
+            "actor_email": e.get("actor_email", ""),
+            "actor_role": e.get("actor_role", ""),
+            "action": e["action"],
+            "resource_type": e.get("resource_type", ""),
+            "resource_id": e.get("resource_id", ""),
+            "resource_name": e.get("resource_name", ""),
+            "detail": e.get("detail", ""),
+        }
+        lines.append(json.dumps(row, default=str))
+    body = "\n".join(lines)
+    sql = "INSERT INTO audit_log FORMAT JSONEachRow"
+    try:
+        r = await _query(sql, data=body)
+        r.raise_for_status()
+    except Exception as exc:
+        logger.error(f"ClickHouse insert_audit_log failed: {exc}")

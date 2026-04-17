@@ -142,6 +142,17 @@ const TYPE_MAP: Record<string, string> = {
   sandboxes: "sandbox",
 };
 
+const AGENT_NAME_REGEX = /^[a-z0-9][a-z0-9_-]*$/;
+
+function slugifyName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export default function AgentBuilderPage() {
   // Require auth for builder
   const { ready } = useAuthGuard();
@@ -149,6 +160,7 @@ export default function AgentBuilderPage() {
   const router = useRouter();
   const { data: whoami } = useWhoami();
   const [name, setName] = useState("");
+  const [nameError, setNameError] = useState("");
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1.0.0");
   const [modelName, setModelName] = useState("");
@@ -281,6 +293,12 @@ export default function AgentBuilderPage() {
       toast.error("Agent name is required");
       return;
     }
+    if (!AGENT_NAME_REGEX.test(name)) {
+      toast.error(
+        "Invalid agent name. Must start with a letter/digit, only lowercase letters, digits, hyphens, underscores.",
+      );
+      return;
+    }
 
     setPublishing(true);
     try {
@@ -354,10 +372,23 @@ export default function AgentBuilderPage() {
                   id="agent-name"
                   placeholder="my-agent"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const slugged = slugifyName(e.target.value);
+                    setName(slugged);
+                    if (slugged && !AGENT_NAME_REGEX.test(slugged)) {
+                      setNameError(
+                        "Must start with a letter/digit, only lowercase letters, digits, hyphens, underscores.",
+                      );
+                    } else {
+                      setNameError("");
+                    }
+                  }}
                   className="max-w-md"
                   required
                 />
+                {nameError && (
+                  <p className="text-sm text-destructive">{nameError}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label

@@ -100,14 +100,20 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
     return "updated" if existed else "created"
 
 
-def _resolve_path(raw_path: str, target_dir: Path) -> Path:
+def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) -> Path:
     """Resolve a path from the config snippet relative to *target_dir*.
 
-    Handles ``~/`` prefixes by mapping them under *target_dir* (not the real
+    By default, ``~/`` prefixes are mapped under *target_dir* (not the real
     home directory) so that the pull command always writes inside the project.
-    Raises typer.Exit if the resolved path escapes *target_dir*.
+    When *allow_home* is True (e.g. user explicitly chose --scope user), real
+    ``$HOME`` expansion is allowed.
+
+    Raises typer.Exit if the resolved path escapes *target_dir* (and home
+    expansion is not permitted).
     """
     if raw_path.startswith("~/") or raw_path.startswith("~\\"):
+        if allow_home:
+            return Path(raw_path).expanduser().resolve()
         resolved = (target_dir / raw_path[2:]).resolve()
     else:
         resolved = (target_dir / raw_path).resolve()
@@ -119,6 +125,64 @@ def _resolve_path(raw_path: str, target_dir: Path) -> Path:
     return resolved
 
 
+# IDEs that support a project vs user install scope
+_SCOPE_AWARE_IDES = {
+    "claude-code": ("project (.claude/agents/)", "user (~/.claude/agents/)"),
+    "kiro": ("project (.kiro/agents/)", "user (~/.kiro/agents/)"),
+    "gemini-cli": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
+    "cursor": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
+}
+
+
+def _collect_install_options(
+    ide: str,
+    *,
+    scope: str | None,
+    model: str | None,
+    tools: str | None,
+    no_prompt: bool,
+) -> dict:
+    """Interactively collect IDE-specific install options.
+
+    Honors explicit --scope/--model/--tools flags; only prompts for what's
+    missing when running in an interactive terminal and --no-prompt isn't set.
+    """
+    import sys
+
+    from observal_cli.prompts import select_one
+
+    opts: dict = {}
+    interactive = sys.stdin.isatty() and not no_prompt
+
+    # Scope (Claude Code, Kiro, Gemini CLI, Cursor)
+    if ide in _SCOPE_AWARE_IDES:
+        if scope:
+            opts["scope"] = scope
+        elif interactive:
+            project_label, user_label = _SCOPE_AWARE_IDES[ide]
+            choice = select_one("  Scope", [project_label, user_label], default=project_label)
+            opts["scope"] = "user" if choice.startswith("user") else "project"
+        else:
+            opts["scope"] = "project"
+
+    # Claude Code only: model and tools
+    if ide in ("claude-code", "claude_code"):
+        if model:
+            opts["model"] = model
+        elif interactive:
+            choice = select_one(
+                "  Model",
+                ["inherit (use main session model)", "sonnet", "opus", "haiku"],
+                default="inherit (use main session model)",
+            )
+            opts["model"] = "inherit" if choice.startswith("inherit") else choice
+
+        if tools:
+            opts["tools"] = tools
+
+    return opts
+
+
 def register_pull(app: typer.Typer):
     @app.command("pull")
     def pull(
@@ -128,6 +192,16 @@ def register_pull(app: typer.Typer):
         ),
         directory: str = typer.Option(".", "--dir", "-d", help="Target directory for written files"),
         dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview files without writing"),
+        scope: str | None = typer.Option(
+            None, "--scope", help="Install scope: 'project' or 'user' (Claude Code/Kiro/Gemini only)"
+        ),
+        model: str | None = typer.Option(
+            None, "--model", help="Sub-agent model: inherit, sonnet, opus, haiku (Claude Code only)"
+        ),
+        tools: str | None = typer.Option(
+            None, "--tools", help="Comma-separated tool whitelist (Claude Code only)"
+        ),
+        no_prompt: bool = typer.Option(False, "--no-prompt", "-y", help="Skip interactive prompts"),
     ):
         """Fetch agent config and write IDE files to disk.
 
@@ -144,10 +218,19 @@ def register_pull(app: typer.Typer):
 
         env_values = _collect_mcp_env_vars(agent_detail)
 
+        # Collect IDE-specific install options (scope, model, tools)
+        rprint(f"\n[bold]Install options for [cyan]{ide}[/cyan]:[/bold]")
+        options = _collect_install_options(
+            ide, scope=scope, model=model, tools=tools, no_prompt=no_prompt
+        )
+        is_user_scope = options.get("scope") == "user"
+        if is_user_scope:
+            rprint("  [dim]Files will be written to your home directory (user scope).[/dim]")
+
         with spinner(f"Pulling {ide} config for agent {resolved[:8]}..."):
             result = client.post(
                 f"/api/v1/agents/{resolved}/install",
-                {"ide": ide, "env_values": env_values},
+                {"ide": ide, "env_values": env_values, "options": options},
             )
 
         snippet = result.get("config_snippet", {})
@@ -160,7 +243,7 @@ def register_pull(app: typer.Typer):
         # ── rules_file ──────────────────────────────────────
         rules = snippet.get("rules_file")
         if rules:
-            p = _resolve_path(rules["path"], target_dir)
+            p = _resolve_path(rules["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
@@ -170,7 +253,7 @@ def register_pull(app: typer.Typer):
         # ── mcp_config with path key (Cursor/VSCode/Gemini) ─
         mcp_cfg = snippet.get("mcp_config")
         if mcp_cfg and isinstance(mcp_cfg, dict) and "path" in mcp_cfg:
-            p = _resolve_path(mcp_cfg["path"], target_dir)
+            p = _resolve_path(mcp_cfg["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
@@ -180,7 +263,7 @@ def register_pull(app: typer.Typer):
         # ── agent_file (Kiro) ───────────────────────────────
         agent_file = snippet.get("agent_file")
         if agent_file:
-            p = _resolve_path(agent_file["path"], target_dir)
+            p = _resolve_path(agent_file["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
@@ -190,7 +273,7 @@ def register_pull(app: typer.Typer):
         # ── steering_file (Kiro) ───────────────────────────
         steering_file = snippet.get("steering_file")
         if steering_file:
-            p = _resolve_path(steering_file["path"], target_dir)
+            p = _resolve_path(steering_file["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
                 written.append((str(p), "would write"))
             else:

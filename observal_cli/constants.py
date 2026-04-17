@@ -6,6 +6,11 @@ A sync test (``tests/test_constants_sync.py``) ensures these stay in lockstep.
 
 from __future__ import annotations
 
+import re
+
+# ── Name validation ───────────────────────────────────────────
+AGENT_NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
 # ── IDE / client names (hyphen-canonical) ───────────────────
 VALID_IDES: list[str] = [
     "cursor",

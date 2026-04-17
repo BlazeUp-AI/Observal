@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from models.agent import AgentStatus
+from schemas.constants import AGENT_NAME_REGEX, make_name_validator
 
 VALID_COMPONENT_TYPES = {"mcp", "skill", "hook", "prompt", "sandbox"}
 
@@ -53,6 +54,8 @@ class AgentCreateRequest(BaseModel):
     external_mcps: list[ExternalMcp] = []
     goal_template: GoalTemplateRequest
 
+    _validate_name = field_validator("name")(make_name_validator("name"))
+
 
 class AgentUpdateRequest(BaseModel):
     name: str | None = None
@@ -67,6 +70,20 @@ class AgentUpdateRequest(BaseModel):
     components: list[ComponentRef] | None = None  # new: all component types
     external_mcps: list[ExternalMcp] | None = None
     goal_template: GoalTemplateRequest | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _validate_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if len(v) > 64:
+            raise ValueError("name must be at most 64 characters")
+        if not AGENT_NAME_REGEX.match(v):
+            raise ValueError(
+                f"Invalid name '{v}'. "
+                "Must start with a letter or digit and contain only lowercase letters, digits, hyphens, and underscores."
+            )
+        return v
 
 
 class GoalSectionResponse(BaseModel):
@@ -160,6 +177,8 @@ class ValidationResult(BaseModel):
 class AgentInstallRequest(BaseModel):
     ide: str
     env_values: dict[str, dict[str, str]] = {}  # {mcp_listing_id: {VAR: value}}
+    # IDE-specific install options (e.g. scope, model, tools, color for Claude Code)
+    options: dict = {}
 
 
 class AgentInstallResponse(BaseModel):

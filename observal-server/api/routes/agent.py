@@ -1,7 +1,8 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,6 +28,7 @@ from schemas.agent import (
     ValidationResult,
 )
 from services.agent_config_generator import generate_agent_config
+from services.registry_telemetry import emit_registry_event
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
@@ -37,8 +39,19 @@ _agent_load_options = [
 ]
 
 
-async def _load_agent(db: AsyncSession, agent_id: str, extra_conditions=None) -> Agent | None:
-    """Load an agent by UUID, prefix, or name with eager loading."""
+async def _load_agent(
+    db: AsyncSession,
+    agent_id: str,
+    extra_conditions=None,
+    *,
+    prefer_user_id: uuid.UUID | None = None,
+) -> Agent | None:
+    """Load an agent by UUID, prefix, or name with eager loading.
+
+    When *prefer_user_id* is provided and resolution is by name, prefer the
+    caller's own agent over agents created by other users with the same name.
+    Falls back to the most recent matching agent if the user has none.
+    """
     try:
         return await resolve_prefix_id(
             Agent, agent_id, db, load_options=_agent_load_options, extra_conditions=extra_conditions
@@ -46,6 +59,21 @@ async def _load_agent(db: AsyncSession, agent_id: str, extra_conditions=None) ->
     except HTTPException as e:
         if e.status_code == 400:
             raise e
+
+        # Try the caller's own agent first
+        if prefer_user_id is not None:
+            stmt = (
+                select(Agent)
+                .where(Agent.name == agent_id, Agent.created_by == prefer_user_id)
+                .options(*_agent_load_options)
+            )
+            if extra_conditions:
+                stmt = stmt.where(*extra_conditions)
+            mine = (await db.execute(stmt)).scalar_one_or_none()
+            if mine:
+                return mine
+
+        # Fall back to most recent matching agent across all users
         stmt = select(Agent).where(Agent.name == agent_id).options(*_agent_load_options)
         if extra_conditions:
             stmt = stmt.where(*extra_conditions)
@@ -160,6 +188,18 @@ async def create_agent(
                 ],
             )
 
+    # Pre-check uniqueness before insert for a clean 409 (the DB constraint
+    # remains the source of truth, but checking first avoids triggering an
+    # IntegrityError mid-flush which would corrupt the savepoint state).
+    existing = await db.execute(
+        select(Agent.id).where(Agent.name == req.name, Agent.created_by == current_user.id)
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have an agent named '{req.name}'. Pick a different name or delete the existing one.",
+        )
+
     agent = Agent(
         name=req.name,
         version=req.version,
@@ -218,23 +258,59 @@ async def create_agent(
             )
         )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if "uq_agents_name_created_by" in str(exc.orig):
+            raise HTTPException(
+                status_code=409,
+                detail=f"You already have an agent named '{req.name}'. Pick a different name or delete the existing one.",
+            )
+        raise
+
     agent = await _load_agent(db, str(agent.id))
     name_map = await _resolve_component_names(agent.components, db)
+
+    emit_registry_event(
+        action="agent.create",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        agent_id=str(agent.id),
+        resource_name=req.name,
+        metadata={"agent_name": req.name, "version": req.version, "component_count": str(len(req.components))},
+    )
+
     return _agent_to_response(agent, name_map)
 
 
 @router.get("", response_model=list[AgentSummary])
 async def list_agents(
+    response: Response,
     search: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200, description="Page size (1-200)"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
     db: AsyncSession = Depends(get_db),
 ):
     from models.feedback import Feedback
 
-    stmt = select(Agent).where(Agent.status == AgentStatus.active).options(selectinload(Agent.components))
+    base_filter = Agent.status == AgentStatus.active
+    search_filter = None
     if search:
-        stmt = stmt.where(Agent.name.ilike(f"%{search}%") | Agent.description.ilike(f"%{search}%"))
-    result = await db.execute(stmt.order_by(Agent.created_at.desc()))
+        search_filter = Agent.name.ilike(f"%{search}%") | Agent.description.ilike(f"%{search}%")
+
+    # Total count for pagination header (cheap: no joins, no eager loads)
+    count_stmt = select(func.count(Agent.id)).where(base_filter)
+    if search_filter is not None:
+        count_stmt = count_stmt.where(search_filter)
+    total = (await db.execute(count_stmt)).scalar_one()
+    response.headers["X-Total-Count"] = str(total)
+
+    stmt = select(Agent).where(base_filter).options(selectinload(Agent.components))
+    if search_filter is not None:
+        stmt = stmt.where(search_filter)
+    result = await db.execute(stmt.order_by(Agent.created_at.desc()).offset(offset).limit(limit))
     agents = result.scalars().all()
 
     # Batch-fetch average ratings
@@ -400,6 +476,16 @@ async def update_agent(
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
     name_map = await _resolve_component_names(agent.components, db)
+
+    emit_registry_event(
+        action="agent.update",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        agent_id=str(agent.id),
+        resource_name=agent.name,
+    )
+
     return _agent_to_response(agent, name_map)
 
 
@@ -411,9 +497,14 @@ async def install_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    agent = await _load_agent(db, agent_id, extra_conditions=[Agent.status == AgentStatus.active])
+    agent = await _load_agent(
+        db,
+        agent_id,
+        extra_conditions=[Agent.status == AgentStatus.active],
+        prefer_user_id=current_user.id,
+    )
     if not agent:
-        agent = await _load_agent(db, agent_id)
+        agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
         if not agent or agent.created_by != current_user.id:
             raise HTTPException(status_code=404, detail="Agent not found or not active")
 
@@ -433,6 +524,7 @@ async def install_agent(
         mcp_listings=mcp_listings_map,
         component_names=name_map,
         env_values=req.env_values,
+        options=req.options,
     )
 
     # Capture agent.id before any DB operations that might expire the ORM
@@ -450,6 +542,16 @@ async def install_agent(
         db=db,
     )
     await db.commit()
+
+    emit_registry_event(
+        action="agent.install",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        agent_id=str(resolved_agent_id),
+        resource_name=agent.name,
+        metadata={"ide": req.ide},
+    )
 
     return AgentInstallResponse(agent_id=resolved_agent_id, ide=req.ide, config_snippet=snippet)
 
@@ -597,6 +699,18 @@ async def delete_agent(
         await db.delete(r)
     # AgentComponent, AgentGoalTemplate, AgentGoalSection handled by cascade="all, delete-orphan"
 
+    agent_id_str = str(agent.id)
+    agent_name = agent.name
     await db.delete(agent)
     await db.commit()
-    return {"deleted": str(agent.id)}
+
+    emit_registry_event(
+        action="agent.delete",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        agent_id=agent_id_str,
+        resource_name=agent_name,
+    )
+
+    return {"deleted": agent_id_str}

@@ -16,6 +16,8 @@ depends_on = None
 def upgrade() -> None:
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'super_admin'")
     op.execute("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'reviewer'")
+    # New enum values must be committed before they can be used in DML
+    op.execute("COMMIT")
     # Only rename developer→reviewer if the enum still has the old value
     op.execute("""
         DO $$

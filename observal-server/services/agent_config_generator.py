@@ -130,6 +130,7 @@ def generate_agent_config(
     mcp_listings: dict | None = None,
     component_names: dict | None = None,
     env_values: dict | None = None,
+    options: dict | None = None,
 ) -> dict:
     """Generate IDE-specific config for an agent.
 
@@ -141,6 +142,7 @@ def generate_agent_config(
     safe_name = _sanitize_name(agent.name)
     mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings, env_values=env_values)
     rules_content = _build_rules_content(agent, component_names)
+    options = options or {}
 
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
@@ -169,9 +171,13 @@ def generate_agent_config(
             "postToolUse": [{"matcher": "*", "command": curl_cmd}],
             "stop": [{"command": stop_cmd}],
         }
+        kiro_scope = options.get("scope", "user")  # Kiro historically defaults to user-level
+        agent_path = (
+            f"~/.kiro/agents/{safe_name}.json" if kiro_scope == "user" else f".kiro/agents/{safe_name}.json"
+        )
         result: dict = {
             "agent_file": {
-                "path": f"~/.kiro/agents/{safe_name}.json",
+                "path": agent_path,
                 "content": {
                     "name": safe_name,
                     "description": agent.description[:200] if agent.description else "",
@@ -183,6 +189,7 @@ def generate_agent_config(
                     "model": agent.model_name,
                 },
             },
+            "scope": kiro_scope,
         }
         # Also generate a Steering file for richer instruction support
         if agent.prompt:
@@ -206,6 +213,12 @@ def generate_agent_config(
             setup_commands.append(["claude", "mcp", "add", name, "--", cmd, *args])
             claude_mcps[name] = {"command": cmd, "args": args, "env": cfg.get("env", {})}
 
+        # IDE-specific options
+        scope = options.get("scope", "project")  # "project" or "user"
+        model_choice = options.get("model", "")  # "", "inherit", "sonnet", "opus", "haiku"
+        tools = options.get("tools", "")  # comma-separated whitelist
+        color = options.get("color", "")
+
         # Build Claude Code agent file with YAML frontmatter
         desc_line = (agent.description or safe_name).replace("\n", " ").strip()
         frontmatter_lines = [
@@ -213,6 +226,12 @@ def generate_agent_config(
             f"name: {safe_name}",
             f'description: "{desc_line}"',
         ]
+        if model_choice and model_choice != "inherit":
+            frontmatter_lines.append(f"model: {model_choice}")
+        if tools:
+            frontmatter_lines.append(f"tools: {tools}")
+        if color:
+            frontmatter_lines.append(f"color: {color}")
         if claude_mcps:
             frontmatter_lines.append("mcpServers:")
             for mcp_name in claude_mcps:
@@ -220,20 +239,30 @@ def generate_agent_config(
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
+        # Path: project-level (.claude/agents/) or user-level (~/.claude/agents/)
+        agent_path = (
+            f"~/.claude/agents/{safe_name}.md" if scope == "user" else f".claude/agents/{safe_name}.md"
+        )
+
         return {
-            "rules_file": {"path": f".claude/agents/{safe_name}.md", "content": agent_content},
+            "rules_file": {"path": agent_path, "content": agent_content},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
             "otlp_env": otlp,
             "claude_settings_snippet": {"env": otlp},
+            "scope": scope,
         }
 
     if ide in ("gemini-cli", "gemini_cli"):
+        gemini_scope = options.get("scope", "project")
+        rules_path = "~/.gemini/GEMINI.md" if gemini_scope == "user" else "GEMINI.md"
+        mcp_path = "~/.gemini/mcp.json" if gemini_scope == "user" else ".gemini/mcp.json"
         return {
-            "rules_file": {"path": "GEMINI.md", "content": rules_content},
-            "mcp_config": {"path": ".gemini/mcp.json", "content": {"mcpServers": mcp_configs}},
+            "rules_file": {"path": rules_path, "content": rules_content},
+            "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
             "otlp_env": _gemini_otlp_env(observal_url),
             "gemini_settings_snippet": _gemini_settings(observal_url),
+            "scope": gemini_scope,
         }
 
     if ide == "codex":
@@ -247,12 +276,17 @@ def generate_agent_config(
         }
 
     # cursor, vscode: rules file + mcp.json — telemetry via observal-shim
+    ide_scope = options.get("scope", "project")
     ide_paths = {
-        "cursor": (".cursor/rules/{name}.md", ".cursor/mcp.json"),
+        "cursor": (
+            "~/.cursor/rules/{name}.md" if ide_scope == "user" else ".cursor/rules/{name}.md",
+            "~/.cursor/mcp.json" if ide_scope == "user" else ".cursor/mcp.json",
+        ),
         "vscode": (".vscode/rules/{name}.md", ".vscode/mcp.json"),
     }
     rules_path, mcp_path = ide_paths.get(ide, (f".rules/{safe_name}.md", ".mcp.json"))
     return {
         "rules_file": {"path": rules_path.format(name=safe_name), "content": rules_content},
         "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
+        "scope": ide_scope,
     }
