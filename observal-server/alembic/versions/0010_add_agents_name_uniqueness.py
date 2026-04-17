@@ -22,6 +22,7 @@ def upgrade() -> None:
         DO $$
         DECLARE
             dup_row RECORD;
+            inner_row RECORD;
             counter INT;
         BEGIN
             FOR dup_row IN
@@ -29,7 +30,7 @@ def upgrade() -> None:
                 GROUP BY name, created_by HAVING COUNT(*) > 1
             LOOP
                 counter := 0;
-                FOR dup_row IN
+                FOR inner_row IN
                     SELECT id FROM agents
                     WHERE name = dup_row.name AND created_by = dup_row.created_by
                     ORDER BY created_at DESC OFFSET 1
@@ -37,7 +38,7 @@ def upgrade() -> None:
                     counter := counter + 1;
                     UPDATE agents
                     SET name = name || '-dup' || counter
-                    WHERE id = dup_row.id;
+                    WHERE id = inner_row.id;
                 END LOOP;
             END LOOP;
         END

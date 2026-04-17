@@ -14,6 +14,7 @@ from models.mcp import ListingStatus, McpDownload, McpListing
 from models.user import User, UserRole
 from schemas.dashboard import (
     AgentMetrics,
+    ComponentLeaderboardItem,
     DateAvg,
     GraphRagQuery,
     GraphRagStats,
@@ -254,6 +255,7 @@ async def top_agents(
 async def agent_leaderboard(
     window: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
     limit: int = Query(20, le=50),
+    user: str | None = Query(None, description="Filter by creator email"),
     db: AsyncSession = Depends(get_db),
 ):
     """Public leaderboard of agents ranked by downloads within a time window."""
@@ -267,23 +269,31 @@ async def agent_leaderboard(
             Agent.description,
             Agent.owner,
             Agent.version,
+            Agent.created_by,
         )
         .join(Agent, AgentDownloadRecord.agent_id == Agent.id)
         .where(Agent.status == AgentStatus.active)
     )
+    if user:
+        stmt = stmt.join(User, Agent.created_by == User.id).where(User.email.ilike(f"%{user}%"))
     if window != "all":
         days = _RANGE_MAP.get(window, 7)
         stmt = stmt.where(AgentDownloadRecord.installed_at >= dt.now(UTC) - timedelta(days=days))
-    stmt = (
-        stmt.group_by(AgentDownloadRecord.agent_id, Agent.name, Agent.description, Agent.owner, Agent.version)
-        .order_by(func.count(AgentDownloadRecord.id).desc())
-        .limit(limit)
-    )
+    group_cols = [
+        AgentDownloadRecord.agent_id,
+        Agent.name,
+        Agent.description,
+        Agent.owner,
+        Agent.version,
+        Agent.created_by,
+    ]
+    stmt = stmt.group_by(*group_cols).order_by(func.count(AgentDownloadRecord.id).desc()).limit(limit)
     result = await db.execute(stmt)
     rows = result.all()
 
-    # Batch-fetch average ratings
+    # Batch-fetch average ratings + creator emails
     agent_ids = [r.agent_id for r in rows]
+    user_ids = {r.created_by for r in rows}
     rating_map: dict[uuid.UUID, float] = {}
     if agent_ids:
         rating_rows = await db.execute(
@@ -292,17 +302,26 @@ async def agent_leaderboard(
             .group_by(Feedback.listing_id)
         )
         rating_map = {r[0]: round(float(r[1]), 2) for r in rating_rows.all()}
+    email_map: dict[uuid.UUID, str] = {}
+    if user_ids:
+        email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+        email_map = {r[0]: r[1] for r in email_rows.all()}
 
     # Also include agents with no downloads if window=all and we have fewer than limit
     if window == "all" and len(rows) < limit:
         existing_ids = {r.agent_id for r in rows}
-        extra_stmt = (
-            select(Agent)
-            .where(Agent.status == AgentStatus.active, Agent.id.notin_(existing_ids))
-            .order_by(Agent.created_at.desc())
-            .limit(limit - len(rows))
-        )
+        extra_stmt = select(Agent).where(Agent.status == AgentStatus.active, Agent.id.notin_(existing_ids))
+        if user:
+            extra_stmt = extra_stmt.join(User, Agent.created_by == User.id).where(User.email.ilike(f"%{user}%"))
+        extra_stmt = extra_stmt.order_by(Agent.created_at.desc()).limit(limit - len(rows))
         extra = (await db.execute(extra_stmt)).scalars().all()
+        for a in extra:
+            if a.created_by not in email_map:
+                user_ids.add(a.created_by)
+        if user_ids - set(email_map.keys()):
+            missing = user_ids - set(email_map.keys())
+            extra_emails = await db.execute(select(User.id, User.email).where(User.id.in_(missing)))
+            email_map.update({r[0]: r[1] for r in extra_emails.all()})
         extra_items = [
             LeaderboardItem(
                 id=a.id,
@@ -312,6 +331,7 @@ async def agent_leaderboard(
                 version=a.version or "",
                 download_count=0,
                 average_rating=rating_map.get(a.id),
+                created_by_email=email_map.get(a.created_by, ""),
             )
             for a in extra
         ]
@@ -327,9 +347,61 @@ async def agent_leaderboard(
             version=row.version or "",
             download_count=row.cnt,
             average_rating=rating_map.get(row.agent_id),
+            created_by_email=email_map.get(row.created_by, ""),
         )
         for row in rows
     ] + extra_items
+
+
+@router.get("/overview/component-leaderboard", response_model=list[ComponentLeaderboardItem])
+async def component_leaderboard(
+    window: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
+    limit: int = Query(20, le=50),
+    user: str | None = Query(None, description="Filter by creator email"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public leaderboard of components ranked by downloads within a time window."""
+    stmt = (
+        select(
+            McpDownload.listing_id,
+            func.count(McpDownload.id).label("cnt"),
+            McpListing.name,
+            McpListing.description,
+            McpListing.submitted_by,
+        )
+        .join(McpListing, McpDownload.listing_id == McpListing.id)
+        .where(McpListing.status == ListingStatus.approved)
+    )
+    if user:
+        stmt = stmt.join(User, McpListing.submitted_by == User.id).where(User.email.ilike(f"%{user}%"))
+    if window != "all":
+        days = _RANGE_MAP.get(window, 7)
+        stmt = stmt.where(McpDownload.downloaded_at >= dt.now(UTC) - timedelta(days=days))
+    stmt = (
+        stmt.group_by(McpDownload.listing_id, McpListing.name, McpListing.description, McpListing.submitted_by)
+        .order_by(func.count(McpDownload.id).desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    user_ids = {r.submitted_by for r in rows}
+    email_map: dict[uuid.UUID, str] = {}
+    if user_ids:
+        email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+        email_map = {r[0]: r[1] for r in email_rows.all()}
+
+    return [
+        ComponentLeaderboardItem(
+            id=row.listing_id,
+            name=row.name,
+            component_type="mcp",
+            description=row.description or "",
+            download_count=row.cnt,
+            created_by_email=email_map.get(row.submitted_by, ""),
+        )
+        for row in rows
+    ]
 
 
 @router.get("/overview/trends", response_model=list[TrendPoint])

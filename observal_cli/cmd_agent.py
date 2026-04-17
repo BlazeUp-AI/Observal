@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json as _json
-from pathlib import Path
-
 import re
+from pathlib import Path
 
 import typer
 import yaml
@@ -16,7 +15,7 @@ from rich.tree import Tree
 
 from observal_cli import client, config
 from observal_cli.constants import AGENT_NAME_REGEX, VALID_IDES
-from observal_cli.prompts import select_many, select_one
+from observal_cli.prompts import fuzzy_select, select_many, select_one
 from observal_cli.render import (
     console,
     ide_tags,
@@ -184,11 +183,14 @@ def agent_create(
     model_cfg = {"max_tokens": int(max_tokens), "temperature": float(temperature)}
 
     # ── Phase 6: Review & Confirm ────────────────────────────
-    component_summary = ", ".join(
-        f"{sum(1 for c in components if c['component_type'] == t)} {t}s"
-        for t in ("mcp", "skill", "hook", "prompt", "sandbox")
-        if any(c["component_type"] == t for c in components)
-    ) or "none"
+    component_summary = (
+        ", ".join(
+            f"{sum(1 for c in components if c['component_type'] == t)} {t}s"
+            for t in ("mcp", "skill", "hook", "prompt", "sandbox")
+            if any(c["component_type"] == t for c in components)
+        )
+        or "none"
+    )
 
     review = (
         f"[bold]{name}[/bold] v{version}  |  Model: [cyan]{model_name}[/cyan]\n"
@@ -225,6 +227,7 @@ def agent_create(
 @agent_app.command(name="list")
 def agent_list(
     search: str | None = typer.Option(None, "--search", "-s"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive search mode"),
     limit: int = typer.Option(50, "--limit", "-n", min=1, max=200, help="Page size (1-200)"),
     page: int = typer.Option(1, "--page", "-p", min=1, help="Page number (1-indexed)"),
     show_id: bool = typer.Option(False, "--id", help="Include the agent ID column"),
@@ -238,6 +241,18 @@ def agent_list(
 
     with spinner("Fetching agents..."):
         data, headers = client.get_with_headers("/api/v1/agents", params=params)
+
+    if interactive and data:
+
+        def _display(item: dict) -> str:
+            email = item.get("created_by_email", "")
+            suffix = f"  by {email}" if email else ""
+            return f"{item['name']}  v{item.get('version', '?')}  {item.get('model_name', '')}{suffix}"
+
+        selected = fuzzy_select(data, _display, label="Select agent")
+        if selected:
+            agent_show(selected["id"])
+        return
 
     total = int(headers.get("x-total-count", str(len(data))))
     total_pages = max(1, (total + limit - 1) // limit)
@@ -271,10 +286,12 @@ def agent_list(
     table.add_column("Name", style="bold cyan", no_wrap=True)
     table.add_column("Version", style="green")
     table.add_column("Model")
+    table.add_column("Created By", style="dim")
     if include_id:
         table.add_column("ID", style="dim", no_wrap=full_id)
     for i, item in enumerate(data, 1):
-        row = [str(i), item["name"], item.get("version", ""), item.get("model_name", "")]
+        email = item.get("created_by_email", "")
+        row = [str(i), item["name"], item.get("version", ""), item.get("model_name", ""), email]
         if include_id:
             row.append(str(item["id"]) if full_id else str(item["id"])[:8] + "…")
         table.add_row(*row)
@@ -283,7 +300,10 @@ def agent_list(
     # Pagination footer
     if total_pages > 1:
         if page < total_pages:
-            rprint(f"[dim]Next:[/dim] [bold]observal agent list --page {page + 1}[/bold]" + (f" --limit {limit}" if limit != 50 else ""))
+            rprint(
+                f"[dim]Next:[/dim] [bold]observal agent list --page {page + 1}[/bold]"
+                + (f" --limit {limit}" if limit != 50 else "")
+            )
         else:
             rprint("[dim]End of results.[/dim]")
 
@@ -309,6 +329,7 @@ def agent_show(
                 ("Status", status_badge(item.get("status", ""))),
                 ("Model", f"[bold]{item.get('model_name', 'N/A')}[/bold]"),
                 ("Owner", item.get("owner", "N/A")),
+                ("Created By", item.get("created_by_email", "")),
                 ("Description", item.get("description", "")),
                 ("IDEs", ide_tags(item.get("supported_ides", []))),
                 ("Created", relative_time(item.get("created_at"))),
@@ -395,16 +416,16 @@ def agent_delete(
     agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete an agent."""
+    """Archive an agent (soft delete)."""
     resolved = config.resolve_alias(agent_id)
     if not yes:
         with spinner():
             item = client.get(f"/api/v1/agents/{resolved}")
-        if not typer.confirm(f"Delete [bold]{item['name']}[/bold] ({resolved})?"):
+        if not typer.confirm(f"Archive [bold]{item['name']}[/bold] ({resolved})?"):
             raise typer.Abort()
-    with spinner("Deleting..."):
-        client.delete(f"/api/v1/agents/{resolved}")
-    rprint(f"[green]✓ Deleted {resolved}[/green]")
+    with spinner("Archiving..."):
+        client.patch(f"/api/v1/agents/{resolved}/archive")
+    rprint("[green]✓ Agent archived[/green]")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -415,6 +436,7 @@ def agent_delete(
 @agent_app.command(name="init")
 def agent_init(
     directory: str = typer.Option(".", "--dir", "-d", help="Directory to scaffold in"),
+    beta: bool = typer.Option(False, "--beta", help="Start at version 0.1.0 (beta)"),
 ):
     """Scaffold an observal-agent.yaml definition file."""
     dir_path = Path(directory)
@@ -433,7 +455,8 @@ def agent_init(
         rprint(f"[red]Error:[/red] {err}")
         raise typer.Exit(1)
 
-    version = typer.prompt("Version", default="1.0.0")
+    default_version = "0.1.0" if beta else "1.0.0"
+    version = typer.prompt("Version", default=default_version)
     description = typer.prompt("Description")
     owner = typer.prompt("Owner / Team")
     model_name = typer.prompt("Model name", default="claude-sonnet-4")
@@ -541,8 +564,17 @@ def agent_build(
 def agent_publish(
     directory: str = typer.Option(".", "--dir", "-d", help="Directory containing observal-agent.yaml"),
     update: bool = typer.Option(False, "--update", "-u", help="Update existing agent instead of creating"),
+    draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
+    submit: str | None = typer.Option(None, "--submit", help="Submit a draft agent for review (agent ID)"),
 ):
     """Publish the agent definition to the server."""
+    if submit:
+        resolved = config.resolve_alias(submit)
+        with spinner("Submitting draft for review..."):
+            result = client.post(f"/api/v1/agents/{resolved}/submit")
+        rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        return
+
     dir_path = Path(directory)
     data = _load_agent_yaml(dir_path)
 
@@ -558,6 +590,12 @@ def agent_publish(
         "goal_template": data.get("goal_template", {}),
     }
 
+    if draft:
+        with spinner("Saving draft..."):
+            result = client.post("/api/v1/agents/draft", payload)
+        rprint(f"[green]✓ Draft saved![/green] ID: [bold]{result['id']}[/bold]")
+        return
+
     if update:
         # Find existing agent by name
         with spinner("Looking up existing agent..."):
@@ -567,9 +605,32 @@ def agent_publish(
             rprint(f"[red]Error:[/red] No existing agent found with name '{data['name']}'")
             raise typer.Exit(code=1)
         agent_id = match["id"]
+
+        # Version bump selection (interactive only)
+        import sys
+
+        if sys.stdin.isatty():
+            current_version = match.get("version", "1.0.0")
+            try:
+                suggestions = client.get(f"/api/v1/agents/{agent_id}/version-suggestions")
+                sug = suggestions.get("suggestions", {})
+                bump_choices = [
+                    f"patch  {current_version} → {sug.get('patch', '?')}  (bug fix)",
+                    f"minor  {current_version} → {sug.get('minor', '?')}  (improvement)",
+                    f"major  {current_version} → {sug.get('major', '?')}  (revamp)",
+                    "keep   (use version from YAML)",
+                ]
+                choice = select_one("Version bump type", bump_choices, default=bump_choices[0])
+                bump_type = choice.split()[0]
+                if bump_type != "keep":
+                    payload["version_bump_type"] = bump_type
+                    payload.pop("version", None)
+            except (Exception, SystemExit):
+                pass
+
         with spinner("Updating agent..."):
             result = client.put(f"/api/v1/agents/{agent_id}", payload)
-        rprint(f"[green]✓ Agent updated![/green] ID: [bold]{result['id']}[/bold]")
+        rprint(f"[green]✓ Agent updated![/green] ID: [bold]{result['id']}[/bold]  v{result.get('version', '?')}")
     else:
         with spinner("Creating agent..."):
             result = client.post("/api/v1/agents", payload)

@@ -11,7 +11,9 @@ from models.base import Base
 
 class AgentStatus(str, enum.Enum):
     draft = "draft"
+    pending = "pending"
     active = "active"
+    rejected = "rejected"
     archived = "archived"
 
 
@@ -34,7 +36,8 @@ class Agent(Base):
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
-    status: Mapped[AgentStatus] = mapped_column(Enum(AgentStatus), default=AgentStatus.active)
+    status: Mapped[AgentStatus] = mapped_column(Enum(AgentStatus), default=AgentStatus.pending)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     download_count: Mapped[int] = mapped_column(Integer, default=0)
     unique_users: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

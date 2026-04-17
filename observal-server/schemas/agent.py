@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from models.agent import AgentStatus
 from schemas.constants import AGENT_NAME_REGEX, make_name_validator
+from services.versioning import validate_semver
 
 VALID_COMPONENT_TYPES = {"mcp", "skill", "hook", "prompt", "sandbox"}
 
@@ -56,10 +57,18 @@ class AgentCreateRequest(BaseModel):
 
     _validate_name = field_validator("name")(make_name_validator("name"))
 
+    @field_validator("version")
+    @classmethod
+    def _validate_version(cls, v: str) -> str:
+        if not validate_semver(v):
+            raise ValueError(f"Invalid version '{v}'. Must be semver format: x.y.z (e.g. 1.0.0)")
+        return v
+
 
 class AgentUpdateRequest(BaseModel):
     name: str | None = None
     version: str | None = None
+    version_bump_type: Literal["patch", "minor", "major"] | None = None
     description: str | None = None
     owner: str | None = None
     prompt: str | None = None
@@ -83,6 +92,13 @@ class AgentUpdateRequest(BaseModel):
                 f"Invalid name '{v}'. "
                 "Must start with a letter or digit and contain only lowercase letters, digits, hyphens, and underscores."
             )
+        return v
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def _validate_version(cls, v: str | None) -> str | None:
+        if v is not None and not validate_semver(v):
+            raise ValueError(f"Invalid version '{v}'. Must be semver format: x.y.z (e.g. 1.0.0)")
         return v
 
 
@@ -131,7 +147,9 @@ class AgentResponse(BaseModel):
     external_mcps: list = []
     supported_ides: list[str]
     status: AgentStatus
+    rejection_reason: str | None = None
     created_by: uuid.UUID
+    created_by_email: str = ""
     created_at: datetime
     updated_at: datetime
     mcp_links: list[McpLinkResponse] = []
@@ -153,8 +171,11 @@ class AgentSummary(BaseModel):
     download_count: int = 0
     average_rating: float | None = None
     component_count: int = 0
+    created_by_email: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    components_ready: bool = True
+    blocking_components: list = []
     model_config = {"from_attributes": True}
 
 

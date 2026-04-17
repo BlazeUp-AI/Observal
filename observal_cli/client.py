@@ -214,6 +214,19 @@ def put(path: str, json_data: dict | None = None) -> dict:
         _handle_connect()
 
 
+def patch(path: str, json_data: dict | None = None) -> dict:
+    base, headers = _client()
+    try:
+        r = _request_with_retry("patch", f"{base}{path}", headers, json=json_data)
+        return r.json()
+    except httpx.HTTPStatusError as e:
+        _handle_error(e, path)
+    except httpx.ReadTimeout:
+        _handle_timeout(path)
+    except httpx.ConnectError:
+        _handle_connect()
+
+
 def delete(path: str) -> dict:
     base, headers = _client()
     try:

@@ -13,6 +13,7 @@ class ListingStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"
     rejected = "rejected"
+    archived = "archived"
 
 
 class McpListing(Base):
@@ -42,6 +43,9 @@ class McpListing(Base):
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
+    )
+    bundle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("component_bundles.id"), nullable=True
     )
     status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.pending)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

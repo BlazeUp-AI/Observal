@@ -82,7 +82,9 @@ async def _load_agent(
         return result.scalar_one_or_none()
 
 
-def _agent_to_response(agent: Agent, name_map: dict[str, str] | None = None) -> AgentResponse:
+def _agent_to_response(
+    agent: Agent, name_map: dict[str, str] | None = None, *, created_by_email: str = ""
+) -> AgentResponse:
     name_map = name_map or {}
     # Build mcp_links from components with component_type='mcp' (backwards compat)
     mcp_components = [c for c in agent.components if c.component_type == "mcp"]
@@ -120,6 +122,7 @@ def _agent_to_response(agent: Agent, name_map: dict[str, str] | None = None) -> 
     agent_dict["mcp_links"] = mcp_links
     agent_dict["component_links"] = component_links
     agent_dict["goal_template"] = goal_template
+    agent_dict["created_by_email"] = created_by_email
     return AgentResponse(**agent_dict)
 
 
@@ -191,9 +194,7 @@ async def create_agent(
     # Pre-check uniqueness before insert for a clean 409 (the DB constraint
     # remains the source of truth, but checking first avoids triggering an
     # IntegrityError mid-flush which would corrupt the savepoint state).
-    existing = await db.execute(
-        select(Agent.id).where(Agent.name == req.name, Agent.created_by == current_user.id)
-    )
+    existing = await db.execute(select(Agent.id).where(Agent.name == req.name, Agent.created_by == current_user.id))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=409,
@@ -282,7 +283,7 @@ async def create_agent(
         metadata={"agent_name": req.name, "version": req.version, "component_count": str(len(req.components))},
     )
 
-    return _agent_to_response(agent, name_map)
+    return _agent_to_response(agent, name_map, created_by_email=current_user.email)
 
 
 @router.get("", response_model=list[AgentSummary])
@@ -324,6 +325,13 @@ async def list_agents(
         )
         rating_map = {r[0]: round(float(r[1]), 2) for r in rows.all()}
 
+    # Batch-fetch creator emails
+    user_ids = {a.created_by for a in agents}
+    email_map: dict[uuid.UUID, str] = {}
+    if user_ids:
+        rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+        email_map = {r[0]: r[1] for r in rows.all()}
+
     return [
         AgentSummary(
             id=a.id,
@@ -337,6 +345,7 @@ async def list_agents(
             download_count=a.download_count,
             average_rating=rating_map.get(a.id),
             component_count=len(a.components),
+            created_by_email=email_map.get(a.created_by, ""),
             created_at=a.created_at,
             updated_at=a.updated_at,
         )
@@ -350,7 +359,18 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     name_map = await _resolve_component_names(agent.components, db)
-    return _agent_to_response(agent, name_map)
+    email_row = (await db.execute(select(User.email).where(User.id == agent.created_by))).scalar_one_or_none()
+    return _agent_to_response(agent, name_map, created_by_email=email_row or "")
+
+
+@router.get("/{agent_id}/version-suggestions")
+async def version_suggestions(agent_id: str, db: AsyncSession = Depends(get_db)):
+    agent = await _load_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    from services.versioning import suggest_versions
+
+    return {"current": agent.version, "suggestions": suggest_versions(agent.version)}
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
@@ -365,6 +385,11 @@ async def update_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the agent owner")
+
+    if req.version_bump_type and req.version is None:
+        from services.versioning import bump_version
+
+        req.version = bump_version(agent.version, req.version_bump_type)
 
     for field in (
         "name",
@@ -486,7 +511,7 @@ async def update_agent(
         resource_name=agent.name,
     )
 
-    return _agent_to_response(agent, name_map)
+    return _agent_to_response(agent, name_map, created_by_email=current_user.email)
 
 
 @router.post("/{agent_id}/install", response_model=AgentInstallResponse)
@@ -714,3 +739,191 @@ async def delete_agent(
     )
 
     return {"deleted": agent_id_str}
+
+
+@router.patch("/{agent_id}/archive")
+async def archive_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    agent = await _load_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    agent.status = AgentStatus.archived
+    await db.commit()
+
+    emit_registry_event(
+        action="agent.archive",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        agent_id=str(agent.id),
+        resource_name=agent.name,
+    )
+
+    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+
+
+# ---------------------------------------------------------------------------
+# Draft workflow
+# ---------------------------------------------------------------------------
+
+
+@router.post("/draft", response_model=AgentResponse)
+async def save_draft(
+    req: AgentCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Create an agent as a draft (relaxed validation, not submitted for review)."""
+    agent = Agent(
+        name=req.name,
+        version=req.version,
+        description=req.description,
+        owner=req.owner,
+        prompt=req.prompt,
+        model_name=req.model_name,
+        model_config_json=req.model_config_json,
+        external_mcps=[m.model_dump() for m in req.external_mcps],
+        supported_ides=req.supported_ides,
+        created_by=current_user.id,
+        status=AgentStatus.draft,
+    )
+    db.add(agent)
+    await db.flush()
+
+    for i, cref in enumerate(req.components):
+        db.add(
+            AgentComponent(
+                agent_id=agent.id,
+                component_type=cref.component_type,
+                component_id=cref.component_id,
+                version_ref="latest",
+                order_index=i,
+                config_override=cref.config_override,
+            )
+        )
+
+    goal = AgentGoalTemplate(agent_id=agent.id, description=req.goal_template.description)
+    db.add(goal)
+    await db.flush()
+    for i, sec in enumerate(req.goal_template.sections):
+        db.add(
+            AgentGoalSection(
+                goal_template_id=goal.id,
+                name=sec.name,
+                description=sec.description,
+                grounding_required=sec.grounding_required,
+                order=i,
+            )
+        )
+
+    await db.commit()
+    agent = await _load_agent(db, str(agent.id))
+    return _agent_to_response(agent, created_by_email=current_user.email)
+
+
+@router.put("/{agent_id}/draft", response_model=AgentResponse)
+async def update_draft(
+    agent_id: str,
+    req: AgentUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Update a draft agent."""
+    agent = await _load_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the agent owner")
+    if agent.status != AgentStatus.draft:
+        raise HTTPException(status_code=400, detail="Agent is not a draft")
+
+    for field in (
+        "name",
+        "version",
+        "description",
+        "owner",
+        "prompt",
+        "model_name",
+        "model_config_json",
+        "supported_ides",
+    ):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(agent, field, val)
+
+    if req.external_mcps is not None:
+        agent.external_mcps = [m.model_dump() for m in req.external_mcps]
+
+    if req.components is not None:
+        old_comps = (
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
+        )
+        for comp in old_comps:
+            await db.delete(comp)
+        for i, cref in enumerate(req.components):
+            db.add(
+                AgentComponent(
+                    agent_id=agent.id,
+                    component_type=cref.component_type,
+                    component_id=cref.component_id,
+                    version_ref="latest",
+                    order_index=i,
+                    config_override=cref.config_override,
+                )
+            )
+
+    await db.commit()
+    agent = await _load_agent(db, str(agent.id))
+    return _agent_to_response(agent, created_by_email=current_user.email)
+
+
+@router.post("/{agent_id}/submit", response_model=AgentResponse)
+async def submit_draft(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Submit a draft agent for review (transitions draft -> pending)."""
+    agent = await _load_agent(db, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the agent owner")
+    if agent.status != AgentStatus.draft:
+        raise HTTPException(status_code=400, detail="Agent is not a draft")
+
+    # Validate components exist
+    if agent.components:
+        from services.agent_resolver import validate_component_ids
+
+        errors = await validate_component_ids(
+            [{"component_type": c.component_type, "component_id": c.component_id} for c in agent.components],
+            db,
+        )
+        if errors:
+            raise HTTPException(
+                status_code=400,
+                detail=[
+                    {"component_type": e.component_type, "component_id": str(e.component_id), "reason": e.reason}
+                    for e in errors
+                ],
+            )
+
+    agent.status = AgentStatus.pending
+    await db.commit()
+    agent = await _load_agent(db, str(agent.id))
+    name_map = await _resolve_component_names(agent.components, db)
+
+    emit_registry_event(
+        action="agent.submit",
+        user_id=str(current_user.id),
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        agent_id=str(agent.id),
+        resource_name=agent.name,
+    )
+
+    return _agent_to_response(agent, name_map, created_by_email=current_user.email)

@@ -12,7 +12,7 @@ from rich.table import Table
 from observal_cli import client, config
 from observal_cli.analyzer import analyze_local
 from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS
-from observal_cli.prompts import select_one
+from observal_cli.prompts import fuzzy_select, select_one
 from observal_cli.render import (
     console,
     ide_tags,
@@ -352,7 +352,7 @@ def _submit_impl(git_url, name, category, yes):
     rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
 
 
-def _list_impl(category, search, limit, sort, output):
+def _list_impl(category, search, limit, sort, output, interactive=False):
     params = {}
     if category:
         params["category"] = category
@@ -364,6 +364,16 @@ def _list_impl(category, search, limit, sort, output):
 
     if not data:
         rprint("[dim]No MCP servers found.[/dim]")
+        return
+
+    if interactive:
+
+        def _display(item: dict) -> str:
+            return f"{item['name']}  v{item.get('version', '?')}  [{item.get('category', '')}]  {item.get('owner', '')}"
+
+        selected = fuzzy_select(data, _display, label="Select MCP server")
+        if selected:
+            _show_impl(str(selected["id"]), "table")
         return
 
     # Sort
@@ -537,12 +547,13 @@ def submit(
 def list_mcps(
     category: str | None = typer.Option(None, "--category", "-c", help="Filter by category"),
     search: str | None = typer.Option(None, "--search", "-s", help="Search by name/description"),
+    interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive search mode"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
     sort: str = typer.Option("name", "--sort", help="Sort by: name, category, version"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
     """List approved MCP servers."""
-    _list_impl(category, search, limit, sort, output)
+    _list_impl(category, search, limit, sort, output, interactive=interactive)
 
 
 @mcp_app.command()

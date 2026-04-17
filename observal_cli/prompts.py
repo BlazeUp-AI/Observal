@@ -67,3 +67,26 @@ def select_many(message: str, choices: list[str], defaults: list[str] | None = N
     if result is None:
         raise KeyboardInterrupt
     return result
+
+
+def fuzzy_select(
+    items: list[dict],
+    display_fn,
+    label: str = "Search",
+) -> dict | None:
+    """Fuzzy interactive selection using questionary select with type-to-filter."""
+    if not sys.stdin.isatty():
+        return None
+
+    import questionary
+
+    choices = [questionary.Choice(title=display_fn(item), value=item) for item in items]
+    result = questionary.select(
+        f"{label}:",
+        choices=choices,
+        style=_qstyle(),
+        instruction="(type to filter, arrow keys, enter to select)",
+    ).ask()
+    if result is None:
+        raise KeyboardInterrupt
+    return result

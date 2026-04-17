@@ -60,7 +60,16 @@ class TopAgentItem(BaseModel):
 class LeaderboardItem(TopAgentItem):
     """Same as TopAgentItem — used by the leaderboard endpoint."""
 
-    pass
+    created_by_email: str = ""
+
+
+class ComponentLeaderboardItem(BaseModel):
+    id: uuid.UUID
+    name: str
+    component_type: str
+    description: str = ""
+    download_count: int = 0
+    created_by_email: str = ""
 
 
 class TrendPoint(BaseModel):
