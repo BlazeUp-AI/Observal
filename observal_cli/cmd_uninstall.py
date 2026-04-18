@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import typer
@@ -79,6 +81,116 @@ def _delete_directory(path: Path, label: str) -> bool:
         return False
 
 
+def _create_windows_cleanup_script(
+    repo_root: Path | None,
+    config_dir: Path | None,
+    uninstall_cli: bool,
+    uv_path: str | None,
+) -> Path:
+    """Create a PowerShell cleanup script for Windows post-exit cleanup."""
+    script_lines = [
+        "# Observal post-exit cleanup script (auto-generated)",
+        "Start-Sleep -Seconds 3",
+        "",
+    ]
+
+    if repo_root:
+        script_lines.extend([
+            "# Delete repo directory (retry to handle terminal CWD / OneDrive locks)",
+            "$repoPath = @'",
+            str(repo_root),
+            "'@",
+            "for ($i = 0; $i -lt 5; $i++) {",
+            "    if (Test-Path $repoPath) {",
+            "        try {",
+            "            Remove-Item -Path $repoPath -Recurse -Force -ErrorAction Stop",
+            "            Write-Host 'Deleted repo directory.'",
+            "            break",
+            "        } catch {",
+            "            Start-Sleep -Seconds 3",
+            "        }",
+            "    } else { break }",
+            "}",
+            "",
+        ])
+
+    if config_dir:
+        script_lines.extend([
+            "# Delete config directory",
+            "$configPath = @'",
+            str(config_dir),
+            "'@",
+            "for ($i = 0; $i -lt 3; $i++) {",
+            "    if (Test-Path $configPath) {",
+            "        try {",
+            "            Remove-Item -Path $configPath -Recurse -Force -ErrorAction Stop",
+            "            Write-Host 'Deleted config directory.'",
+            "            break",
+            "        } catch {",
+            "            Start-Sleep -Seconds 2",
+            "        }",
+            "    } else { break }",
+            "}",
+            "",
+        ])
+
+    if uninstall_cli and uv_path:
+        script_lines.extend([
+            "# Uninstall CLI tool",
+            "$uvPath = @'",
+            uv_path,
+            "'@",
+            "try {",
+            "    & $uvPath tool uninstall observal-cli 2>&1 | Out-Null",
+            "    Write-Host 'CLI tool uninstalled.'",
+            "} catch {",
+            "    Write-Host 'Failed to uninstall CLI tool.'",
+            "}",
+            "",
+        ])
+
+    script_lines.extend([
+        "# Self-delete",
+        "Start-Sleep -Seconds 1",
+        "Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue",
+    ])
+
+    fd, script_path = tempfile.mkstemp(suffix=".ps1", prefix="observal_cleanup_")
+    os.close(fd)
+    Path(script_path).write_text("\n".join(script_lines), encoding="utf-8")
+    return Path(script_path)
+
+
+def _spawn_windows_cleanup(script_path: Path) -> bool:
+    """Spawn a detached PowerShell process to run the cleanup script."""
+    try:
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        CREATE_NO_WINDOW = 0x08000000
+
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-WindowStyle", "Hidden",
+                "-File", str(script_path),
+            ],
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
+        return True
+    except FileNotFoundError:
+        rprint("[red]PowerShell not found. Cannot run cleanup script.[/red]")
+        rprint(f"[yellow]Run manually:[/yellow] [dim]powershell -ExecutionPolicy Bypass -File {script_path}[/dim]")
+        return False
+    except OSError as exc:
+        rprint(f"[red]Failed to spawn cleanup process:[/red] {exc}")
+        return False
+
+
 def _uninstall_cli() -> bool:
     """Uninstall the CLI tool via uv."""
     try:
@@ -143,22 +255,72 @@ def register_uninstall(app: typer.Typer):
         # ── Phase 1: Docker teardown ──────────────────────
         _docker_teardown(repo_root)
 
-        # ── Phase 2: Delete repo directory ────────────────
-        if not keep_repo:
-            # Move to parent of repo dir before deleting it
-            os.chdir(repo_root.parent)
-            _delete_directory(repo_root, "Observal repo")
+        # ── Phase 2-4: Cleanup (platform-aware) ────────────
+        if sys.platform == "win32":
+            # Windows: defer repo/config deletion and CLI uninstall to a
+            # detached PowerShell process so file-locks are released first.
+            rprint("[bold yellow]Windows detected — using deferred cleanup.[/bold yellow]")
+            rprint("[dim]Cleanup will complete after this process exits.[/dim]\n")
 
-        # ── Phase 3: Delete config directory ──────────────
-        if not keep_config:
-            _delete_directory(CONFIG_DIR, "config directory (~/.observal)")
+            cleanup_repo = repo_root if not keep_repo else None
+            cleanup_config = CONFIG_DIR if not keep_config else None
+            cleanup_cli = not keep_cli
 
-        # ── Phase 4: Uninstall CLI ────────────────────────
-        if not keep_cli:
-            _uninstall_cli()
+            # Release *our* CWD lock on the repo dir immediately.
+            if cleanup_repo:
+                os.chdir(repo_root.parent)
+
+            # Resolve uv to an absolute path for the detached process.
+            uv_path: str | None = None
+            if cleanup_cli:
+                uv_path = shutil.which("uv")
+                if not uv_path:
+                    rprint("[yellow]uv not found in PATH — CLI uninstall will be skipped.[/yellow]")
+                    rprint("[dim]You can manually run: uv tool uninstall observal-cli[/dim]")
+                    cleanup_cli = False
+
+            if cleanup_repo or cleanup_config or cleanup_cli:
+                try:
+                    script_path = _create_windows_cleanup_script(
+                        cleanup_repo, cleanup_config, cleanup_cli, uv_path,
+                    )
+                    if _spawn_windows_cleanup(script_path):
+                        if cleanup_repo:
+                            rprint("[yellow]⏳ Repo directory deletion scheduled.[/yellow]")
+                        if cleanup_config:
+                            rprint("[yellow]⏳ Config directory deletion scheduled.[/yellow]")
+                        if cleanup_cli:
+                            rprint("[yellow]⏳ CLI uninstall scheduled.[/yellow]")
+                    else:
+                        rprint(f"\n[yellow]Cleanup script created but could not be started:[/yellow] {script_path}")
+                        rprint(f"[dim]Run manually: powershell -ExecutionPolicy Bypass -File {script_path}[/dim]")
+                except Exception as exc:
+                    rprint(f"[red]Failed to create cleanup script:[/red] {exc}")
+                    rprint("[yellow]Manual cleanup required:[/yellow]")
+                    if cleanup_repo:
+                        rprint(f"  - Delete repo: [dim]{repo_root}[/dim]")
+                    if cleanup_config:
+                        rprint(f"  - Delete config: [dim]{CONFIG_DIR}[/dim]")
+                    if cleanup_cli:
+                        rprint("  - Run: [dim]uv tool uninstall observal-cli[/dim]")
+        else:
+            # Unix / macOS: synchronous cleanup.
+            if not keep_repo:
+                os.chdir(repo_root.parent)
+                _delete_directory(repo_root, "Observal repo")
+
+            if not keep_config:
+                _delete_directory(CONFIG_DIR, "config directory (~/.observal)")
+
+            if not keep_cli:
+                _uninstall_cli()
 
         rprint("\n[green]Observal has been uninstalled. Goodbye.[/green]")
-        if not keep_repo:
+
+        if sys.platform == "win32":
+            rprint("\n[cyan]Cleanup operations will complete in the background.[/cyan]")
+            rprint("[dim]Close this terminal window to release any remaining directory locks.[/dim]")
+        elif not keep_repo:
             rprint(
                 f"\n[cyan]Run [bold]cd {repo_root.parent}[/bold] or [bold]cd ..[/bold] to leave the deleted directory.[/cyan]"
             )
