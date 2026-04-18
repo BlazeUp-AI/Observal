@@ -19,7 +19,7 @@ dependencies = [
     "boto3",
     "redis[hiredis]",
     "arq",
-    "strawberry-graphql[fastapi]",
+    "strawberry-graphql[fastapi]>=0.314.0",
     "authlib>=1.6.11",
     "itsdangerous",
     "cryptography>=43.0.0",
