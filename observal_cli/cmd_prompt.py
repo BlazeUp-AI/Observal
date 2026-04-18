@@ -52,7 +52,7 @@ def prompt_submit(
             "template": typer.prompt("Template"),
         }
     with spinner("Submitting prompt..."):
-        result = client.post("/api/v1/prompts", payload)
+        result = client.post("/api/v1/prompts/submit", payload)
     rprint(f"[green]✓ Prompt submitted![/green] ID: [bold]{result['id']}[/bold]")
 
 
