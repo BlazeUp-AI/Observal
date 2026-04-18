@@ -12,6 +12,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
+import { GitHubStarBanner } from "@/components/nav/github-star-banner";
 
 export interface BreadcrumbEntry {
   label: string;
@@ -69,6 +70,9 @@ export function PageHeader({
               </BreadcrumbList>
             </Breadcrumb>
           )}
+          <div className="ml-auto">
+            <GitHubStarBanner />
+          </div>
         </div>
       </div>
 
