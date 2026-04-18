@@ -166,7 +166,7 @@ jobs:
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: needs.changes.outputs.web == 'true'
         with:
           node-version: 20
