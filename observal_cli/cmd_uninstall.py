@@ -95,65 +95,73 @@ def _create_windows_cleanup_script(
     ]
 
     if repo_root:
-        script_lines.extend([
-            "# Delete repo directory (retry to handle terminal CWD / OneDrive locks)",
-            "$repoPath = @'",
-            str(repo_root),
-            "'@",
-            "for ($i = 0; $i -lt 5; $i++) {",
-            "    if (Test-Path $repoPath) {",
-            "        try {",
-            "            Remove-Item -Path $repoPath -Recurse -Force -ErrorAction Stop",
-            "            Write-Host 'Deleted repo directory.'",
-            "            break",
-            "        } catch {",
-            "            Start-Sleep -Seconds 3",
-            "        }",
-            "    } else { break }",
-            "}",
-            "",
-        ])
+        script_lines.extend(
+            [
+                "# Delete repo directory (retry to handle terminal CWD / OneDrive locks)",
+                "$repoPath = @'",
+                str(repo_root),
+                "'@",
+                "for ($i = 0; $i -lt 5; $i++) {",
+                "    if (Test-Path $repoPath) {",
+                "        try {",
+                "            Remove-Item -Path $repoPath -Recurse -Force -ErrorAction Stop",
+                "            Write-Host 'Deleted repo directory.'",
+                "            break",
+                "        } catch {",
+                "            Start-Sleep -Seconds 3",
+                "        }",
+                "    } else { break }",
+                "}",
+                "",
+            ]
+        )
 
     if config_dir:
-        script_lines.extend([
-            "# Delete config directory",
-            "$configPath = @'",
-            str(config_dir),
-            "'@",
-            "for ($i = 0; $i -lt 3; $i++) {",
-            "    if (Test-Path $configPath) {",
-            "        try {",
-            "            Remove-Item -Path $configPath -Recurse -Force -ErrorAction Stop",
-            "            Write-Host 'Deleted config directory.'",
-            "            break",
-            "        } catch {",
-            "            Start-Sleep -Seconds 2",
-            "        }",
-            "    } else { break }",
-            "}",
-            "",
-        ])
+        script_lines.extend(
+            [
+                "# Delete config directory",
+                "$configPath = @'",
+                str(config_dir),
+                "'@",
+                "for ($i = 0; $i -lt 3; $i++) {",
+                "    if (Test-Path $configPath) {",
+                "        try {",
+                "            Remove-Item -Path $configPath -Recurse -Force -ErrorAction Stop",
+                "            Write-Host 'Deleted config directory.'",
+                "            break",
+                "        } catch {",
+                "            Start-Sleep -Seconds 2",
+                "        }",
+                "    } else { break }",
+                "}",
+                "",
+            ]
+        )
 
     if uninstall_cli and uv_path:
-        script_lines.extend([
-            "# Uninstall CLI tool",
-            "$uvPath = @'",
-            uv_path,
-            "'@",
-            "try {",
-            "    & $uvPath tool uninstall observal-cli 2>&1 | Out-Null",
-            "    Write-Host 'CLI tool uninstalled.'",
-            "} catch {",
-            "    Write-Host 'Failed to uninstall CLI tool.'",
-            "}",
-            "",
-        ])
+        script_lines.extend(
+            [
+                "# Uninstall CLI tool",
+                "$uvPath = @'",
+                uv_path,
+                "'@",
+                "try {",
+                "    & $uvPath tool uninstall observal-cli 2>&1 | Out-Null",
+                "    Write-Host 'CLI tool uninstalled.'",
+                "} catch {",
+                "    Write-Host 'Failed to uninstall CLI tool.'",
+                "}",
+                "",
+            ]
+        )
 
-    script_lines.extend([
-        "# Self-delete",
-        "Start-Sleep -Seconds 1",
-        "Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue",
-    ])
+    script_lines.extend(
+        [
+            "# Self-delete",
+            "Start-Sleep -Seconds 1",
+            "Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue",
+        ]
+    )
 
     fd, script_path = tempfile.mkstemp(suffix=".ps1", prefix="observal_cleanup_")
     os.close(fd)
@@ -172,9 +180,12 @@ def _spawn_windows_cleanup(script_path: Path) -> bool:
             [
                 "powershell.exe",
                 "-NoProfile",
-                "-ExecutionPolicy", "Bypass",
-                "-WindowStyle", "Hidden",
-                "-File", str(script_path),
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-File",
+                str(script_path),
             ],
             creationflags=detached_process | create_new_process_group | create_no_window,
             stdout=subprocess.DEVNULL,
@@ -282,7 +293,10 @@ def register_uninstall(app: typer.Typer):
             if cleanup_repo or cleanup_config or cleanup_cli:
                 try:
                     script_path = _create_windows_cleanup_script(
-                        cleanup_repo, cleanup_config, cleanup_cli, uv_path,
+                        cleanup_repo,
+                        cleanup_config,
+                        cleanup_cli,
+                        uv_path,
                     )
                     if _spawn_windows_cleanup(script_path):
                         if cleanup_repo:

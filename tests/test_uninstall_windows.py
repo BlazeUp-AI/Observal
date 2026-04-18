@@ -198,12 +198,15 @@ def test_windows_uv_not_found_skips_cli(
     mock_shutil.which.return_value = None
 
     repo = _make_repo(tmp_path)
-    with patch(
-        "observal_cli.cmd_uninstall._create_windows_cleanup_script",
-        return_value=Path("/tmp/fake.ps1"),
-    ) as mock_create, patch(
-        "observal_cli.cmd_uninstall._spawn_windows_cleanup",
-        return_value=True,
+    with (
+        patch(
+            "observal_cli.cmd_uninstall._create_windows_cleanup_script",
+            return_value=Path("/tmp/fake.ps1"),
+        ) as mock_create,
+        patch(
+            "observal_cli.cmd_uninstall._spawn_windows_cleanup",
+            return_value=True,
+        ),
     ):
         result = runner.invoke(
             cli_app,
