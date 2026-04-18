@@ -164,9 +164,9 @@ def _create_windows_cleanup_script(
 def _spawn_windows_cleanup(script_path: Path) -> bool:
     """Spawn a detached PowerShell process to run the cleanup script."""
     try:
-        DETACHED_PROCESS = 0x00000008
-        CREATE_NEW_PROCESS_GROUP = 0x00000200
-        CREATE_NO_WINDOW = 0x08000000
+        detached_process = 0x00000008
+        create_new_process_group = 0x00000200
+        create_no_window = 0x08000000
 
         subprocess.Popen(
             [
@@ -176,7 +176,7 @@ def _spawn_windows_cleanup(script_path: Path) -> bool:
                 "-WindowStyle", "Hidden",
                 "-File", str(script_path),
             ],
-            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+            creationflags=detached_process | create_new_process_group | create_no_window,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
