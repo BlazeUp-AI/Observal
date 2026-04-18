@@ -99,6 +99,7 @@ const SidebarProvider = React.forwardRef<
           data-sidebar-state={state}
           style={{ "--sidebar-width": SIDEBAR_WIDTH, "--sidebar-width-icon": SIDEBAR_WIDTH_ICON, ...style } as React.CSSProperties}
           className={cn("flex h-dvh w-full", className)}
+          suppressHydrationWarning
           {...props}
         >
           {children}

@@ -298,16 +298,6 @@ export default function AgentDetailPage({
 
   const a = agent as unknown as AgentDetail | undefined;
   const canDelete = isAdmin || (whoami?.id && a?.created_by && whoami.id === String(a.created_by));
-
-  // Debug logging
-  if (typeof window !== "undefined" && a) {
-    console.log("[Delete Debug]", {
-      isAdmin,
-      whoamiId: whoami?.id,
-      createdBy: a?.created_by,
-      canDelete
-    });
-  }
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
   const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);

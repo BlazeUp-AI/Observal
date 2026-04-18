@@ -2,8 +2,9 @@
 import { useAuthGuard, useOptionalAuth } from "@/hooks/use-auth";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { ready } = useAuthGuard();
-  if (!ready) return null;
+  useAuthGuard();
+  // Render children immediately to prevent hydration mismatch
+  // The useAuthGuard hook handles redirects via side effects
   return <>{children}</>;
 }
 
@@ -12,7 +13,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
  * Resolves role for authenticated users so sidebar can show/hide admin items.
  */
 export function OptionalAuthGuard({ children }: { children: React.ReactNode }) {
-  const { ready } = useOptionalAuth();
-  if (!ready) return null;
+  useOptionalAuth();
+  // Render children immediately to prevent hydration mismatch
   return <>{children}</>;
 }
