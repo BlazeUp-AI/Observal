@@ -38,7 +38,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docker: ${{ steps.filter.outputs.docker }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -79,7 +79,7 @@ jobs:
           echo "::notice::No Python changes detected, skipping lint"
           echo "This job reports success to satisfy branch protection"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: needs.changes.outputs.python == 'true'
 
       - uses: astral-sh/setup-uv@v4
@@ -116,7 +116,7 @@ jobs:
           echo "::notice::No Python changes detected, skipping test"
           echo "This job reports success to satisfy branch protection"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: needs.changes.outputs.python == 'true'
 
       - uses: astral-sh/setup-uv@v4
@@ -158,7 +158,7 @@ jobs:
           echo "::notice::No web changes detected, skipping web-lint"
           echo "This job reports success to satisfy branch protection"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: needs.changes.outputs.web == 'true'
 
       - uses: pnpm/action-setup@v4
@@ -192,7 +192,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check ee/ import boundary
         run: |
@@ -222,7 +222,7 @@ jobs:
           echo "::notice::No Docker changes detected, skipping docker-build"
           echo "This job reports success to satisfy branch protection"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: needs.changes.outputs.docker == 'true'
 
       - name: Create stub .env
@@ -238,7 +238,7 @@ jobs:
     name: security-scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
@@ -254,7 +254,7 @@ jobs:
     name: dependency-audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Python dependency audit
         uses: astral-sh/setup-uv@v4
