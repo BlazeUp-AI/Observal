@@ -1,13 +1,19 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from models.mcp import ListingStatus
 from schemas.constants import VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS, make_ide_list_validator, make_option_validator
 
 
 class McpEnvVar(BaseModel):
+    name: str
+    description: str = ""
+    required: bool = True
+
+
+class McpHeader(BaseModel):
     name: str
     description: str = ""
     required: bool = True
@@ -25,10 +31,13 @@ class ClientAnalysis(BaseModel):
     issues: list[str] = []
     framework: str = ""
     entry_point: str = ""
+    command: str | None = None
+    args: list[str] | None = None
+    docker_image: str | None = None
 
 
 class McpSubmitRequest(BaseModel):
-    git_url: str
+    git_url: str | None = None
     name: str
     version: str
     description: str = ""
@@ -36,6 +45,12 @@ class McpSubmitRequest(BaseModel):
     owner: str
     framework: str | None = None
     docker_image: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    headers: list[McpHeader] | None = None
+    auto_approve: list[str] | None = None
+    transport: str | None = None
     supported_ides: list[str] = []
     environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None = None
@@ -53,6 +68,12 @@ class McpSubmitRequest(BaseModel):
         return v
 
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+
+    @model_validator(mode="after")
+    def _require_source(self):
+        if not self.git_url and not self.command and not self.url:
+            raise ValueError("At least one of git_url, command, or url must be provided")
+        return self
 
 
 class McpCustomFieldResponse(BaseModel):
@@ -73,7 +94,7 @@ class McpListingResponse(BaseModel):
     id: uuid.UUID
     name: str
     version: str
-    git_url: str
+    git_url: str | None = None
     description: str
     category: str
     owner: str
@@ -83,6 +104,11 @@ class McpListingResponse(BaseModel):
     changelog: str | None
     framework: str | None = None
     docker_image: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    headers: list[McpHeader] | None = None
+    auto_approve: list[str] | None = None
     mcp_validated: bool = False
 
     _coerce_env = field_validator("environment_variables", mode="before")(_coerce_env_vars)
@@ -113,6 +139,7 @@ class McpListingSummary(BaseModel):
 class McpInstallRequest(BaseModel):
     ide: str
     env_values: dict[str, str] = {}
+    header_values: dict[str, str] = {}
 
 
 class McpInstallResponse(BaseModel):
@@ -133,6 +160,10 @@ class McpAnalyzeResponse(BaseModel):
     environment_variables: list[McpEnvVar] = []
     issues: list[str] = []
     error: str = ""
+    command: str | None = None
+    args: list[str] | None = None
+    framework: str | None = None
+    docker_image: str | None = None
 
     _coerce_env = field_validator("environment_variables", mode="before")(_coerce_env_vars)
 
