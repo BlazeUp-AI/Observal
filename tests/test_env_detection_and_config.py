@@ -478,6 +478,11 @@ class TestGenerateConfigDocker:
         listing.id = kw.get("listing_id", "abc-123")
         listing.docker_image = kw.get("docker_image", "ghcr.io/github/github-mcp-server")
         listing.framework = kw.get("framework", "go")
+        listing.command = kw.get("command")
+        listing.args = kw.get("args")
+        listing.url = kw.get("url")
+        listing.transport = kw.get("transport")
+        listing.auto_approve = kw.get("auto_approve")
         listing.environment_variables = kw.get(
             "environment_variables",
             [{"name": "GITHUB_PERSONAL_ACCESS_TOKEN", "description": "", "required": True}],
@@ -536,6 +541,11 @@ class TestAgentConfigDockerMcp:
         listing.id = uuid.uuid4()
         listing.docker_image = "ghcr.io/github/github-mcp-server"
         listing.framework = "go"
+        listing.command = None
+        listing.args = None
+        listing.url = None
+        listing.transport = None
+        listing.auto_approve = None
         listing.environment_variables = [{"name": "GITHUB_PERSONAL_ACCESS_TOKEN", "description": "", "required": True}]
         return listing
 
@@ -711,3 +721,103 @@ class TestMcpSubmitAutoReplace:
         assert r.status_code == 200
         # No delete should have been called
         db.delete.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════
+# 9. _build_run_command with stored command/args
+# ═══════════════════════════════════════════════════════════
+
+
+class TestBuildRunCommandWithStoredArgs:
+    def test_stored_command_args_used_directly(self):
+        from services.config_generator import _build_run_command
+
+        cmd = _build_run_command("my-mcp", "python", stored_command="docker", stored_args=["run", "img"])
+        assert cmd == ["docker", "run", "img"]
+
+    def test_stored_command_without_args(self):
+        from services.config_generator import _build_run_command
+
+        cmd = _build_run_command("my-mcp", "python", stored_command="my-binary")
+        assert cmd == ["my-binary"]
+
+    def test_stored_command_overrides_framework(self):
+        from services.config_generator import _build_run_command
+
+        cmd = _build_run_command("my-mcp", "python", stored_command="npx", stored_args=["-y", "pkg"])
+        assert cmd[0] == "npx"
+        assert cmd == ["npx", "-y", "pkg"]
+
+    def test_no_stored_falls_back_to_framework(self):
+        from services.config_generator import _build_run_command
+
+        cmd = _build_run_command("my-mcp", "python-mcp")
+        assert cmd == ["python", "-m", "my-mcp"]
+
+    def test_no_stored_falls_back_to_docker(self):
+        from services.config_generator import _build_run_command
+
+        cmd = _build_run_command("my-mcp", None, docker_image="ghcr.io/org/img:latest")
+        assert cmd[0] == "docker"
+        assert "ghcr.io/org/img:latest" in cmd
+
+
+# ═══════════════════════════════════════════════════════════
+# 10. Config Generation: SSE transport
+# ═══════════════════════════════════════════════════════════
+
+
+class TestGenerateConfigSSE:
+    def _make_listing(self, **kw):
+        listing = MagicMock()
+        listing.name = kw.get("name", "my-sse-server")
+        listing.id = kw.get("listing_id", "sse-123")
+        listing.url = kw.get("url", "https://example.com/mcp")
+        listing.transport = kw.get("transport", "sse")
+        listing.command = kw.get("command")
+        listing.args = kw.get("args")
+        listing.docker_image = kw.get("docker_image")
+        listing.framework = kw.get("framework")
+        listing.auto_approve = kw.get("auto_approve", ["tool_name"])
+        listing.headers = kw.get(
+            "headers",
+            [{"name": "Authorization", "description": "Bearer token", "required": True}],
+        )
+        listing.environment_variables = kw.get("environment_variables", [])
+        return listing
+
+    def test_cursor_sse_config(self):
+        from services.config_generator import generate_config
+
+        listing = self._make_listing()
+        cfg = generate_config(
+            listing,
+            "cursor",
+            header_values={"Authorization": "Bearer tok123"},
+        )
+        server = cfg["mcpServers"]["my-sse-server"]
+        assert server["type"] == "sse"
+        assert server["url"] == "https://example.com/mcp"
+        assert server["headers"] == {"Authorization": "Bearer tok123"}
+        assert server["autoApprove"] == ["tool_name"]
+        assert server["disabled"] is False
+
+    def test_claude_code_sse_config(self):
+        from services.config_generator import generate_config
+
+        listing = self._make_listing()
+        cfg = generate_config(listing, "claude-code")
+        assert cfg["type"] == "shell_command"
+        # Should have a command to add the MCP with --url
+        assert "--url" in cfg["command"]
+        # mcpServers should also be present
+        server = cfg["mcpServers"]["my-sse-server"]
+        assert server["type"] == "sse"
+
+    def test_sse_without_headers(self):
+        from services.config_generator import generate_config
+
+        listing = self._make_listing(headers=[])
+        cfg = generate_config(listing, "cursor")
+        server = cfg["mcpServers"]["my-sse-server"]
+        assert "headers" not in server
