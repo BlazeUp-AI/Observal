@@ -15,7 +15,7 @@ import {
   Activity,
   Trash2,
 } from "lucide-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -288,13 +288,20 @@ export default function AgentDetailPage({
 
   const { data: whoami } = useWhoami();
 
-  const isAuthenticated =
-    typeof window !== "undefined" &&
-    !!localStorage.getItem("observal_access_token");
-
-  const isAdmin =
-    typeof window !== "undefined" &&
-    hasMinRole(getUserRole(), "admin");
+  const storeSub = useCallback((cb: () => void) => {
+    window.addEventListener("storage", cb);
+    return () => window.removeEventListener("storage", cb);
+  }, []);
+  const isAuthenticated = useSyncExternalStore(
+    storeSub,
+    () => !!localStorage.getItem("observal_access_token"),
+    () => false,
+  );
+  const isAdmin = useSyncExternalStore(
+    storeSub,
+    () => hasMinRole(getUserRole(), "admin"),
+    () => false,
+  );
 
   const a = agent as unknown as AgentDetail | undefined;
   const canDelete = isAdmin || (whoami?.id && a?.created_by && whoami.id === String(a.created_by));

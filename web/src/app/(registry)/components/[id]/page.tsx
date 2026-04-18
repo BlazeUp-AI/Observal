@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import { useSearchParams } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useSyncExternalStore } from "react";
 import { Star, Check, Copy, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useRegistryItem, useFeedback, useFeedbackSummary, useRegistryMetrics } from "@/hooks/use-api";
@@ -35,9 +35,15 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
   const { data: feedbackSummary, refetch: refetchSummary } = useFeedbackSummary(id);
   const { data: rawMetrics } = useRegistryMetrics(type, id);
 
-  const isAuthenticated =
-    typeof window !== "undefined" &&
-    !!localStorage.getItem("observal_access_token");
+  const storeSub = useCallback((cb: () => void) => {
+    window.addEventListener("storage", cb);
+    return () => window.removeEventListener("storage", cb);
+  }, []);
+  const isAuthenticated = useSyncExternalStore(
+    storeSub,
+    () => !!localStorage.getItem("observal_access_token"),
+    () => false,
+  );
 
   const componentName = item?.name ?? id.slice(0, 8);
   const avgRating = feedbackSummary?.average_rating;

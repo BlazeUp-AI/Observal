@@ -1,47 +1,49 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { auth, setUserRole, getUserRole, clearSession } from "@/lib/api";
 
-function initGuardState(): { ready: boolean; role: string | null } {
-  if (typeof window === "undefined") return { ready: false, role: null };
+function subscribe(cb: () => void) {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+
+function getAuthSnapshot() {
   const key = localStorage.getItem("observal_access_token");
-  if (!key) {
-    clearSession();
-    return { ready: false, role: null };
-  }
   const role = getUserRole();
-  return { ready: !!role, role };
+  return key ? (role || "pending") : "";
+}
+
+function getServerSnapshot() {
+  return "";
 }
 
 export function useAuthGuard() {
   const router = useRouter();
   const pathname = usePathname();
-  const [{ ready, role }, setState] = useState(initGuardState);
+  const snapshot = useSyncExternalStore(subscribe, getAuthSnapshot, getServerSnapshot);
+  const hasToken = snapshot !== "";
+  const ready = hasToken && snapshot !== "pending";
+  const role = ready ? snapshot : null;
 
   useEffect(() => {
-    const key = localStorage.getItem("observal_access_token");
-    if (!key) {
-      if (pathname !== "/login") {
-        router.replace("/login");
-      }
+    if (!hasToken && pathname !== "/login") {
+      router.replace("/login");
       return;
     }
+    if (!hasToken) return;
 
-    if (getUserRole()) return;
-
-    auth
-      .whoami()
-      .then((user) => {
+    if (snapshot === "pending") {
+      auth.whoami().then((user) => {
         setUserRole(user.role);
-        setState({ ready: true, role: user.role });
-      })
-      .catch(() => {
+        window.dispatchEvent(new Event("storage"));
+      }).catch(() => {
         clearSession();
-        setState({ ready: false, role: null });
+        window.dispatchEvent(new Event("storage"));
         router.replace("/login");
       });
-  }, [pathname, router]);
+    }
+  }, [hasToken, snapshot, pathname, router]);
 
   return { ready, role };
 }
@@ -52,39 +54,23 @@ export function useAuthGuard() {
  * Does NOT redirect to login.
  */
 export function useOptionalAuth() {
-  const [ready, setReady] = useState(() => {
-    if (typeof window === "undefined") return false;
-    const key = localStorage.getItem("observal_access_token");
-    if (!key) return true;
-    return !!getUserRole();
-  });
-  const [role, setRole] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return getUserRole();
-  });
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return !!getUserRole();
-  });
+  const snapshot = useSyncExternalStore(subscribe, getAuthSnapshot, getServerSnapshot);
+  const hasToken = snapshot !== "";
+  const ready = !hasToken || snapshot !== "pending";
+  const role = (hasToken && snapshot !== "pending") ? snapshot : null;
+  const isAuthenticated = hasToken && snapshot !== "pending";
 
   useEffect(() => {
-    const key = localStorage.getItem("observal_access_token");
-    if (!key) return;
-    if (getUserRole()) return;
-
-    auth
-      .whoami()
-      .then((user) => {
+    if (hasToken && snapshot === "pending") {
+      auth.whoami().then((user) => {
         setUserRole(user.role);
-        setRole(user.role);
-        setIsAuthenticated(true);
-        setReady(true);
-      })
-      .catch(() => {
+        window.dispatchEvent(new Event("storage"));
+      }).catch(() => {
         clearSession();
-        setReady(true);
+        window.dispatchEvent(new Event("storage"));
       });
-  }, []);
+    }
+  }, [hasToken, snapshot]);
 
   return { ready, role, isAuthenticated };
 }

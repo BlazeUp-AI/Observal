@@ -31,6 +31,7 @@ import {
   Settings,
   AlertTriangle,
 } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { getUserRole, getUserName, getUserEmail } from "@/lib/api";
 import { hasMinRole, type Role } from "@/hooks/use-role-guard";
 
@@ -63,12 +64,19 @@ export const allNavItems = [
   { group: "Admin", items: adminNav },
 ];
 
+const storeSub = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+};
+const getAuthSnap = () =>
+  `${localStorage.getItem("observal_access_token") ?? ""}|${getUserRole() ?? ""}|${getUserName() ?? ""}|${getUserEmail() ?? ""}`;
+const getServerSnap = () => "|||";
+
 export function RegistrySidebar() {
   const pathname = usePathname();
-  const role = getUserRole();
-  const userName = getUserName();
-  const userEmail = getUserEmail();
-  const isAuthenticated = typeof window !== "undefined" && !!localStorage.getItem("observal_access_token");
+  const snap = useSyncExternalStore(storeSub, getAuthSnap, getServerSnap);
+  const [token, role, userName, userEmail] = snap.split("|");
+  const isAuthenticated = !!token;
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";

@@ -38,6 +38,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${archivo.variable} ${albertSans.variable} ${jetbrainsMono.variable} min-h-svh antialiased`}
+        suppressHydrationWarning
       >
         <Providers>{children}</Providers>
       </body>

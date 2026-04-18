@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -49,12 +49,17 @@ import type { RegistryItem } from "@/lib/types";
 
 type ViewMode = "table" | "grid";
 
+const roleSub = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+};
+
 function DeleteAgentButton({ agent }: { agent: RegistryItem }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const qc = useQueryClient();
   const { data: whoami } = useWhoami();
-  const isAdmin = hasMinRole(getUserRole(), "admin");
+  const isAdmin = useSyncExternalStore(roleSub, () => hasMinRole(getUserRole(), "admin"), () => false);
   const canDelete = isAdmin || (whoami?.id && agent.created_by && whoami.id === String(agent.created_by));
 
   async function handleDelete(e: React.MouseEvent) {
@@ -226,6 +231,14 @@ const columns: ColumnDef<RegistryItem>[] = [
 ];
 
 export default function AgentListPage() {
+  return (
+    <Suspense>
+      <AgentListContent />
+    </Suspense>
+  );
+}
+
+function AgentListContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialSearch = searchParams.get("search") ?? "";

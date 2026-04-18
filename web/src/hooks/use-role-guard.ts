@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getUserRole } from "@/lib/api";
@@ -24,9 +24,21 @@ export function hasMinRole(userRole: string | null, minRole: Role): boolean {
   if (!userRole) return false;
   const userIdx = ROLE_HIERARCHY.indexOf(userRole as Role);
   const minIdx = ROLE_HIERARCHY.indexOf(minRole);
-  // Lower index = higher privilege. Unknown roles fail closed.
   if (userIdx === -1) return false;
   return userIdx <= minIdx;
+}
+
+function subscribe(cb: () => void) {
+  window.addEventListener("storage", cb);
+  return () => window.removeEventListener("storage", cb);
+}
+
+function getRoleSnapshot() {
+  return getUserRole() || "";
+}
+
+function getServerSnapshot() {
+  return "";
 }
 
 /**
@@ -35,17 +47,15 @@ export function hasMinRole(userRole: string | null, minRole: Role): boolean {
  */
 export function useRoleGuard(minRole: Role) {
   const router = useRouter();
-  const [ready] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return hasMinRole(getUserRole(), minRole);
-  });
+  const role = useSyncExternalStore(subscribe, getRoleSnapshot, getServerSnapshot);
+  const ready = role !== "" && hasMinRole(role, minRole);
 
   useEffect(() => {
-    if (!ready) {
+    if (role !== "" && !hasMinRole(role, minRole)) {
       toast.error("You do not have permission to access this page.");
       router.replace("/");
     }
-  }, [ready, router]);
+  }, [role, minRole, router]);
 
   return { ready };
 }
