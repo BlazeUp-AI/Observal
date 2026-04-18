@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.analyzer import analyze_local
-from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS
+from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES
 from observal_cli.prompts import fuzzy_select, select_one
 from observal_cli.render import (
     console,
@@ -165,10 +166,207 @@ def _enter_env_vars_manually() -> list[dict]:
     return env_vars
 
 
+# ── Direct config helpers ────────────────────────────────────
+
+
+def _parse_direct_config(cfg: dict) -> dict:
+    """Normalize a JSON config dict (mcp.json style) into submit-ready fields.
+
+    Handles two shapes:
+    - stdio: {command, args, env}
+    - SSE/HTTP: {url, type, headers, autoApprove}
+    """
+    parsed: dict = {}
+
+    if cfg.get("url") and not cfg.get("command"):
+        # SSE / streamable-http transport
+        transport = cfg.get("type", "sse")
+        parsed["transport"] = transport
+        parsed["url"] = cfg["url"]
+
+        # Convert headers dict {name: value} → list of {name, description, required}
+        raw_headers = cfg.get("headers") or {}
+        if isinstance(raw_headers, dict):
+            parsed["headers"] = [{"name": k, "description": "", "required": True} for k in raw_headers]
+        elif isinstance(raw_headers, list):
+            parsed["headers"] = raw_headers
+
+        if cfg.get("autoApprove"):
+            parsed["auto_approve"] = cfg["autoApprove"]
+
+        # env as environment_variables
+        raw_env = cfg.get("env") or {}
+        if isinstance(raw_env, dict):
+            parsed["environment_variables"] = [{"name": k, "description": "", "required": True} for k in raw_env]
+
+    elif cfg.get("command"):
+        # stdio transport
+        parsed["transport"] = "stdio"
+        parsed["command"] = cfg["command"]
+        parsed["args"] = cfg.get("args") or []
+
+        # Derive framework from command
+        cmd = cfg["command"]
+        if cmd == "docker":
+            parsed["framework"] = "docker"
+            # Extract docker_image: last non-flag arg
+            args = parsed["args"]
+            for arg in reversed(args):
+                if not arg.startswith("-"):
+                    parsed["docker_image"] = arg
+                    break
+        elif cmd == "python" or cmd == "python3":
+            parsed["framework"] = "python"
+        elif cmd == "npx" or cmd == "node":
+            parsed["framework"] = "typescript"
+        else:
+            parsed["framework"] = None
+
+        # env as environment_variables
+        raw_env = cfg.get("env") or {}
+        if isinstance(raw_env, dict):
+            parsed["environment_variables"] = [{"name": k, "description": "", "required": True} for k in raw_env]
+
+        if cfg.get("autoApprove"):
+            parsed["auto_approve"] = cfg["autoApprove"]
+
+    return parsed
+
+
+def _build_config_preview(server_name: str, parsed: dict) -> dict:
+    """Build a mcp.json-style preview dict for display during submit."""
+    preview: dict = {}
+
+    if parsed.get("url"):
+        # SSE / streamable-http preview
+        preview["type"] = parsed.get("transport", "sse")
+        preview["url"] = parsed["url"]
+        if parsed.get("headers"):
+            preview["headers"] = {h["name"]: f"<{h['name']}>" for h in parsed["headers"]}
+        env_vars = parsed.get("environment_variables") or []
+        if env_vars:
+            preview["env"] = {ev["name"]: f"<{ev['name']}>" for ev in env_vars}
+        if parsed.get("auto_approve"):
+            preview["autoApprove"] = parsed["auto_approve"]
+        preview["disabled"] = False
+    else:
+        # stdio preview
+        command = parsed.get("command", "")
+        args = list(parsed.get("args") or [])
+
+        # Inject -e flags for docker env vars
+        env_vars = parsed.get("environment_variables") or []
+        if command == "docker" and env_vars:
+            # Find the image position (last non-flag arg) and inject -e before it
+            insert_idx = len(args)
+            for i in range(len(args) - 1, -1, -1):
+                if not args[i].startswith("-"):
+                    insert_idx = i
+                    break
+            for ev in reversed(env_vars):
+                args.insert(insert_idx, f"{ev['name']}=<{ev['name']}>")
+                args.insert(insert_idx, "-e")
+
+        preview["command"] = command
+        preview["args"] = args
+        if env_vars:
+            preview["env"] = {ev["name"]: f"<{ev['name']}>" for ev in env_vars}
+
+    return {server_name: preview}
+
+
 # ── Implementation functions (shared by canonical + deprecated) ──
 
 
-def _submit_impl(git_url, name, category, yes):
+def _submit_impl(git_url, name, category, yes, direct_config=False, config_file_path=None):
+    # ── Path B/C: Direct JSON config (no git URL needed) ─────
+    if direct_config or config_file_path:
+        if config_file_path:
+            cfg_path = Path(config_file_path).expanduser().resolve()
+            if not cfg_path.exists():
+                rprint(f"[red]File not found:[/red] {cfg_path}")
+                raise typer.Exit(1)
+            cfg = json.loads(cfg_path.read_text())
+        else:
+            rprint("[bold]Paste your MCP server JSON config below.[/bold]")
+            rprint("[dim]Press Enter twice when done.[/dim]\n")
+            lines: list[str] = []
+            empty_count = 0
+            while True:
+                try:
+                    line = input()
+                except EOFError:
+                    break
+                if line.strip() == "":
+                    empty_count += 1
+                    if empty_count >= 2:
+                        break
+                    lines.append(line)
+                else:
+                    empty_count = 0
+                    lines.append(line)
+            raw_text = "\n".join(lines).strip()
+            if not raw_text:
+                rprint("[red]No input received.[/red]")
+                raise typer.Exit(1)
+            try:
+                cfg = json.loads(raw_text)
+            except json.JSONDecodeError as e:
+                rprint(f"[red]Invalid JSON:[/red] {e}")
+                raise typer.Exit(1)
+
+        parsed = _parse_direct_config(cfg)
+        _name = name or "my-mcp-server"
+
+        rprint("\n[bold]Config preview:[/bold]")
+        console.print_json(json.dumps(_build_config_preview(_name, parsed), indent=2))
+
+        if not yes:
+            if not typer.confirm("\nSubmit this config?", default=True):
+                raise typer.Abort()
+            _name = name or typer.prompt("Server name", default=_name)
+            _desc = typer.prompt("Description (what does this server do?)", default="")
+            _owner = typer.prompt("Owner / Team (e.g. your GitHub username)", default="default")
+            _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
+        else:
+            _desc = ""
+            _owner = "default"
+            _category = category or "general"
+
+        supported_ides = list(VALID_IDES)
+        submit_payload: dict = {
+            "name": _name,
+            "version": "0.1.0",
+            "category": _category,
+            "description": _desc,
+            "owner": _owner,
+            "supported_ides": supported_ides,
+            "environment_variables": parsed.get("environment_variables", []),
+        }
+        if parsed.get("command"):
+            submit_payload["command"] = parsed["command"]
+        if parsed.get("args") is not None:
+            submit_payload["args"] = parsed["args"]
+        if parsed.get("url"):
+            submit_payload["url"] = parsed["url"]
+        if parsed.get("headers"):
+            submit_payload["headers"] = parsed["headers"]
+        if parsed.get("auto_approve"):
+            submit_payload["auto_approve"] = parsed["auto_approve"]
+        if parsed.get("transport"):
+            submit_payload["transport"] = parsed["transport"]
+        if parsed.get("framework"):
+            submit_payload["framework"] = parsed["framework"]
+        if parsed.get("docker_image"):
+            submit_payload["docker_image"] = parsed["docker_image"]
+
+        with spinner("Submitting..."):
+            result = client.post("/api/v1/mcps/submit", submit_payload)
+        rprint(f"\n[green]Submitted![/green] ID: [bold]{result['id']}[/bold]")
+        rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
+        return
+
+    # ── Path A: Git URL analysis ─────────────────────────────
     analyzed_locally = False
     with spinner("Analyzing repository..."):
         try:
@@ -200,6 +398,12 @@ def _submit_impl(git_url, name, category, yes):
     detected_env_vars = prefill.get("environment_variables", [])
     issues = prefill.get("issues", [])
     error = prefill.get("error", "")
+
+    # Extract command/args/docker fields from analysis
+    detected_command = prefill.get("command")
+    detected_args = prefill.get("args")
+    detected_docker_image = prefill.get("docker_image")
+    detected_docker_suggested = prefill.get("docker_image_suggested", False)
 
     rprint("\n[bold]--- Analysis Results ---[/bold]")
 
@@ -242,20 +446,52 @@ def _submit_impl(git_url, name, category, yes):
     # MCP servers are IDE-agnostic — config generation handles all IDEs.
     supported_ides = list(VALID_IDES)
 
-    # Normalize detected framework to a valid option
-    _detected_fw = ""
-    if detected_framework:
+    # Build parsed dict from analysis for config preview
+    parsed: dict = {}
+    if detected_command:
+        parsed["command"] = detected_command
+        parsed["args"] = detected_args or []
+        parsed["transport"] = "stdio"
+        parsed["environment_variables"] = detected_env_vars
+        if detected_docker_image:
+            parsed["docker_image"] = detected_docker_image
+
+    # Derive framework from command
+    _framework: str | None = None
+    if detected_command:
+        if detected_command == "docker":
+            _framework = "docker"
+        elif detected_command in ("python", "python3"):
+            _framework = "python"
+        elif detected_command in ("npx", "node"):
+            _framework = "typescript"
+        elif detected_framework:
+            fw_lower = detected_framework.lower()
+            if "typescript" in fw_lower or "ts" in fw_lower:
+                _framework = "typescript"
+            elif "go" in fw_lower:
+                _framework = "go"
+            elif "docker" in fw_lower:
+                _framework = "docker"
+            else:
+                _framework = "python"
+    elif detected_framework:
         fw_lower = detected_framework.lower()
         if "typescript" in fw_lower or "ts" in fw_lower:
-            _detected_fw = "typescript"
+            _framework = "typescript"
         elif "go" in fw_lower:
-            _detected_fw = "go"
+            _framework = "go"
         elif "docker" in fw_lower:
-            _detected_fw = "docker"
+            _framework = "docker"
         else:
-            _detected_fw = "python"
+            _framework = "python"
     elif prefill.get("entry_point"):
-        _detected_fw = "python"
+        _framework = "python"
+
+    # Command/args confirmation
+    _command = detected_command
+    _args = detected_args
+    _docker_image = detected_docker_image
 
     if yes:
         _name = name or detected_name
@@ -263,12 +499,69 @@ def _submit_impl(git_url, name, category, yes):
         _desc = detected_desc
         _owner = "default"
         _category = category or "general"
-        _framework = _detected_fw or "python"
-        _docker_image = None
+        if not _framework:
+            _framework = "python"
         _setup = ""
         _changelog = "Initial release"
         env_vars = detected_env_vars
     else:
+        # Show config preview if command was detected
+        if detected_command:
+            preview_name = name or detected_name or "my-server"
+            rprint("[bold]Startup config:[/bold]")
+            console.print_json(json.dumps(_build_config_preview(preview_name, parsed), indent=2))
+            if detected_docker_suggested:
+                rprint(
+                    f"  [dim](Docker image [cyan]{detected_docker_image}[/cyan]"
+                    " was inferred from the GitHub URL — verify it exists)[/dim]"
+                )
+            choice = (
+                typer.prompt(
+                    "Startup config looks correct? [Y/n/edit]",
+                    default="Y",
+                    show_default=False,
+                )
+                .strip()
+                .lower()
+            )
+            if choice == "n":
+                raise typer.Abort()
+            elif choice == "edit":
+                _command = typer.prompt("Command", default=detected_command or "")
+                raw_args = typer.prompt(
+                    "Args (space-separated)",
+                    default=" ".join(detected_args) if detected_args else "",
+                )
+                _args = raw_args.split() if raw_args.strip() else []
+                # Re-derive framework
+                if _command == "docker":
+                    _framework = "docker"
+                    for arg in reversed(_args):
+                        if not arg.startswith("-"):
+                            _docker_image = arg
+                            break
+                elif _command in ("python", "python3"):
+                    _framework = "python"
+                elif _command in ("npx", "node"):
+                    _framework = "typescript"
+        elif not detected_command:
+            rprint("[dim]No startup command was detected.[/dim]")
+            custom_cmd = typer.prompt("Command (e.g. docker, python, npx — Enter to skip)", default="")
+            if custom_cmd:
+                _command = custom_cmd
+                raw_args = typer.prompt("Args (space-separated)", default="")
+                _args = raw_args.split() if raw_args.strip() else []
+                if _command == "docker":
+                    _framework = "docker"
+                    for arg in reversed(_args):
+                        if not arg.startswith("-"):
+                            _docker_image = arg
+                            break
+                elif _command in ("python", "python3"):
+                    _framework = "python"
+                elif _command in ("npx", "node"):
+                    _framework = "typescript"
+
         # Name: auto-accept if detected, otherwise ask
         if name:
             _name = name
@@ -296,25 +589,6 @@ def _submit_impl(git_url, name, category, yes):
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
 
-        # Framework: always prompt — analysis can misdetect
-        _framework = select_one(
-            "Execution framework",
-            VALID_MCP_FRAMEWORKS,
-            default=_detected_fw or "python",
-        )
-
-        _docker_image = None
-        if _framework == "docker":
-            _docker_image = typer.prompt("Docker image (e.g. registry.example.com/org/mcp-server:latest)")
-        elif _framework == "go":
-            _docker_image = (
-                typer.prompt(
-                    "Docker image (e.g. ghcr.io/org/server:latest — press Enter to skip if the binary is on PATH)",
-                    default="",
-                )
-                or None
-            )
-
         _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
         _changelog = typer.prompt("Changelog", default="Initial release")
 
@@ -329,26 +603,36 @@ def _submit_impl(git_url, name, category, yes):
         "category": _category,
         "description": _desc,
         "owner": _owner,
-        "framework": _framework,
         "supported_ides": supported_ides,
         "environment_variables": env_vars,
         "setup_instructions": _setup,
         "changelog": _changelog,
     }
+    if _framework:
+        submit_payload["framework"] = _framework
     if _docker_image:
         submit_payload["docker_image"] = _docker_image
+    if _command:
+        submit_payload["command"] = _command
+    if _args is not None:
+        submit_payload["args"] = _args
+
     if analyzed_locally:
         submit_payload["client_analysis"] = {
             "tools": prefill.get("tools", []),
             "issues": prefill.get("issues", []),
             "framework": prefill.get("framework", ""),
             "entry_point": prefill.get("entry_point", ""),
+            "command": prefill.get("command"),
+            "args": prefill.get("args"),
+            "docker_image": prefill.get("docker_image"),
         }
 
     with spinner("Submitting..."):
         result = client.post("/api/v1/mcps/submit", submit_payload)
-    rprint(f"\n[green]✓ Submitted![/green] ID: [bold]{result['id']}[/bold]")
-    rprint(f"  Framework: [cyan]{_framework}[/cyan]")
+    rprint(f"\n[green]Submitted![/green] ID: [bold]{result['id']}[/bold]")
+    if _framework:
+        rprint(f"  Framework: [cyan]{_framework}[/cyan]")
     rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
 
 
@@ -534,13 +818,18 @@ def _delete_impl(mcp_id, yes):
 
 @mcp_app.command()
 def submit(
-    git_url: str = typer.Argument(..., help="Git repository URL"),
+    git_url: str = typer.Argument(None, help="Git repository URL (optional if --config used)"),
     name: str = typer.Option(None, "--name", "-n", help="Skip name prompt"),
     category: str = typer.Option(None, "--category", "-c", help="Skip category prompt"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults from repo analysis"),
+    config: bool = typer.Option(False, "--config", help="Submit via direct JSON config (paste mode)"),
+    config_file: str = typer.Option(None, "--config-file", help="Path to JSON config file"),
 ):
     """Submit an MCP server for review."""
-    _submit_impl(git_url, name, category, yes)
+    if not git_url and not config and not config_file:
+        rprint("[red]Provide a git URL or use --config / --config-file[/red]")
+        raise typer.Exit(1)
+    _submit_impl(git_url, name, category, yes, config, config_file)
 
 
 @mcp_app.command(name="list")
