@@ -299,6 +299,91 @@ def _detect_env_vars(tmp_dir: str) -> list[dict]:
     return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
 
 
+# Regex for Docker registry image references in README
+_DOCKER_IMAGE_PATTERN = re.compile(
+    r"((?:ghcr\.io|docker\.io|registry\.[a-z0-9.-]+\.[a-z]{2,}|[a-z0-9.-]+\.azurecr\.io|[a-z0-9.-]+\.gcr\.io)"
+    r"/[a-z0-9_./-]+"
+    r"(?::[a-z0-9._-]+)?)"
+)
+
+
+def _detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
+    """Detect Docker image from repo artifacts.
+
+    Returns (image, is_suggested). is_suggested=True for GHCR inference from git URL.
+
+    Priority: compose image > README reference > GHCR inference from git URL.
+    Dockerfile FROM is not returned (it's the build base, not the published image).
+    """
+    # 1. docker-compose / compose files — most authoritative for pre-built images
+    for compose_name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
+        compose_file = root / compose_name
+        if compose_file.exists():
+            try:
+                import yaml
+
+                data = yaml.safe_load(compose_file.read_text(errors="ignore"))
+                for svc in (data.get("services") or {}).values():
+                    img = svc.get("image")
+                    if img and isinstance(img, str):
+                        return (img, False)
+            except Exception:
+                pass
+
+    # 2. README — look for registry image references
+    for readme_name in ("README.md", "README.rst", "README.txt", "README"):
+        readme = root / readme_name
+        if not readme.exists():
+            continue
+        try:
+            content = readme.read_text(errors="ignore")
+            m = _DOCKER_IMAGE_PATTERN.search(content)
+            if m:
+                return (m.group(1), False)
+        except Exception:
+            pass
+        break
+
+    # 3. Infer GHCR from GitHub URL
+    try:
+        parsed = urlparse(git_url)
+        if parsed.hostname and "github.com" in parsed.hostname:
+            path = parsed.path.strip("/")
+            if path.endswith(".git"):
+                path = path[:-4]
+            parts = path.split("/")
+            if len(parts) >= 2:
+                return (f"ghcr.io/{parts[0]}/{parts[1]}", True)
+    except Exception:
+        pass
+
+    return (None, False)
+
+
+def _infer_command_args(
+    framework: str | None,
+    docker_image: str | None,
+    name: str,
+    entry_point: str | None = None,
+) -> tuple[str | None, list[str] | None]:
+    """Infer the startup command and args from framework + docker image.
+
+    Returns (command, args) or (None, None) if nothing can be inferred.
+    """
+    if docker_image:
+        return ("docker", ["run", "-i", "--rm", docker_image])
+
+    fw = (framework or "").lower()
+    if "typescript" in fw or "ts" in fw:
+        return ("npx", ["-y", name])
+    if "go" in fw:
+        return (name, [])
+    if "python" in fw or entry_point:
+        return ("python", ["-m", name])
+
+    return (None, None)
+
+
 def _detect_non_python_mcp(tmp_dir: str) -> str | None:
     """Check for non-Python MCP frameworks. Returns framework name or None."""
     root = Path(tmp_dir)
@@ -432,16 +517,32 @@ def analyze_local(git_url: str) -> dict:
         if not entry_point:
             non_python = _detect_non_python_mcp(tmp_dir)
             name = _extract_repo_name(git_url, tmp_dir)
-            base = {"name": name, "description": "", "version": "0.1.0", "tools": [], "environment_variables": env_vars}
+            docker_image, docker_suggested = _detect_docker_image(Path(tmp_dir), git_url)
+            cmd, cmd_args = _infer_command_args(non_python, docker_image, name)
+            base: dict = {
+                "name": name,
+                "description": "",
+                "version": "0.1.0",
+                "tools": [],
+                "environment_variables": env_vars,
+            }
             if non_python:
-                return {**base, "framework": non_python}
+                base["framework"] = non_python
+            if docker_image:
+                base["docker_image"] = docker_image
+                base["docker_image_suggested"] = docker_suggested
+            if cmd:
+                base["command"] = cmd
+                base["args"] = cmd_args
             return base
 
         tree = ast.parse(entry_point.read_text(errors="ignore"))
         server_name, server_desc, tools, issues = _analyze_python_entry(tree, git_url, tmp_dir)
         relative_entry = str(entry_point.relative_to(tmp_dir))
 
-        return {
+        docker_image, docker_suggested = _detect_docker_image(Path(tmp_dir), git_url)
+        cmd, cmd_args = _infer_command_args("python", docker_image, server_name, relative_entry)
+        result: dict = {
             "name": server_name,
             "description": server_desc,
             "version": "0.1.0",
@@ -450,6 +551,13 @@ def analyze_local(git_url: str) -> dict:
             "environment_variables": env_vars,
             "entry_point": relative_entry,
         }
+        if docker_image:
+            result["docker_image"] = docker_image
+            result["docker_image_suggested"] = docker_suggested
+        if cmd:
+            result["command"] = cmd
+            result["args"] = cmd_args
+        return result
     except Exception:
         return {**_empty, "error": "Local analysis failed unexpectedly."}
     finally:
