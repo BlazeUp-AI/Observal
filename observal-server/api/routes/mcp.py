@@ -42,6 +42,12 @@ async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, 
 
     if analysis.framework:
         listing.framework = analysis.framework
+    if analysis.command and not listing.command:
+        listing.command = analysis.command
+    if analysis.args and not listing.args:
+        listing.args = analysis.args
+    if analysis.docker_image and not listing.docker_image:
+        listing.docker_image = analysis.docker_image
 
     if has_entry:
         detail = "Client-side analysis: found entry point"
@@ -119,6 +125,12 @@ async def submit_mcp(
         owner=req.owner,
         framework=req.framework,
         docker_image=req.docker_image,
+        command=req.command,
+        args=req.args,
+        url=req.url,
+        headers=[h.model_dump() for h in req.headers] if req.headers else None,
+        auto_approve=req.auto_approve,
+        transport=req.transport or ("sse" if req.url and not req.command else "stdio" if req.command else None),
         supported_ides=req.supported_ides,
         environment_variables=[ev.model_dump() for ev in req.environment_variables],
         setup_instructions=req.setup_instructions,
@@ -133,9 +145,10 @@ async def submit_mcp(
     if req.client_analysis:
         # CLI already cloned and analyzed locally — store results directly
         await _store_client_analysis(listing, req.client_analysis, db)
-    else:
-        # No client-side analysis; fall back to server-side background validation
+    elif req.git_url:
+        # Only run background validation if we have a git URL to clone
         background_tasks.add_task(_run_validation_background, str(listing.id))
+    # Direct config submissions (no git_url) skip validation — config is user-provided
 
     return McpListingResponse.model_validate(listing)
 
@@ -179,7 +192,7 @@ async def install_mcp(
     db.add(McpDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
-    snippet = generate_config(listing, req.ide, env_values=req.env_values)
+    snippet = generate_config(listing, req.ide, env_values=req.env_values, header_values=req.header_values)
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
 
 
