@@ -198,9 +198,7 @@ def register_pull(app: typer.Typer):
         model: str | None = typer.Option(
             None, "--model", help="Sub-agent model: inherit, sonnet, opus, haiku (Claude Code only)"
         ),
-        tools: str | None = typer.Option(
-            None, "--tools", help="Comma-separated tool whitelist (Claude Code only)"
-        ),
+        tools: str | None = typer.Option(None, "--tools", help="Comma-separated tool whitelist (Claude Code only)"),
         no_prompt: bool = typer.Option(False, "--no-prompt", "-y", help="Skip interactive prompts"),
     ):
         """Fetch agent config and write IDE files to disk.
@@ -220,9 +218,7 @@ def register_pull(app: typer.Typer):
 
         # Collect IDE-specific install options (scope, model, tools)
         rprint(f"\n[bold]Install options for [cyan]{ide}[/cyan]:[/bold]")
-        options = _collect_install_options(
-            ide, scope=scope, model=model, tools=tools, no_prompt=no_prompt
-        )
+        options = _collect_install_options(ide, scope=scope, model=model, tools=tools, no_prompt=no_prompt)
         is_user_scope = options.get("scope") == "user"
         if is_user_scope:
             rprint("  [dim]Files will be written to your home directory (user scope).[/dim]")

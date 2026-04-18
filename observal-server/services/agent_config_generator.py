@@ -172,9 +172,7 @@ def generate_agent_config(
             "stop": [{"command": stop_cmd}],
         }
         kiro_scope = options.get("scope", "user")  # Kiro historically defaults to user-level
-        agent_path = (
-            f"~/.kiro/agents/{safe_name}.json" if kiro_scope == "user" else f".kiro/agents/{safe_name}.json"
-        )
+        agent_path = f"~/.kiro/agents/{safe_name}.json" if kiro_scope == "user" else f".kiro/agents/{safe_name}.json"
         result: dict = {
             "agent_file": {
                 "path": agent_path,
@@ -240,9 +238,7 @@ def generate_agent_config(
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
         # Path: project-level (.claude/agents/) or user-level (~/.claude/agents/)
-        agent_path = (
-            f"~/.claude/agents/{safe_name}.md" if scope == "user" else f".claude/agents/{safe_name}.md"
-        )
+        agent_path = f"~/.claude/agents/{safe_name}.md" if scope == "user" else f".claude/agents/{safe_name}.md"
 
         return {
             "rules_file": {"path": agent_path, "content": agent_content},
