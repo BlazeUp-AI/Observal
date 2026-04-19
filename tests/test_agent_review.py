@@ -133,9 +133,7 @@ class TestAgentApprove:
         component_result = MagicMock()
         component_result.all.return_value = [blocking_row]
 
-        db.execute = AsyncMock(
-            side_effect=[_result_with_agent(agent), component_result]
-        )
+        db.execute = AsyncMock(side_effect=[_result_with_agent(agent), component_result])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(f"/api/v1/review/agents/{agent.id}/approve")

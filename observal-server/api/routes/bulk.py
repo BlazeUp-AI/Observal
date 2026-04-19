@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,9 +18,7 @@ router = APIRouter(prefix="/api/v1/bulk", tags=["bulk"])
 
 async def _agent_name_exists(name: str, user_id, db: AsyncSession) -> bool:
     """Check whether the authenticated user already owns an agent with the given name."""
-    result = await db.execute(
-        select(Agent.id).where(Agent.name == name, Agent.created_by == user_id)
-    )
+    result = await db.execute(select(Agent.id).where(Agent.name == name, Agent.created_by == user_id))
     return result.scalar_one_or_none() is not None
 
 

@@ -254,7 +254,7 @@ def agent_bulk_create(
     elif isinstance(raw, dict) and "agents" in raw:
         agents = raw["agents"]
     else:
-        rprint("[red]Error:[/red] JSON must be {\"agents\": [...]} or a bare array.")
+        rprint('[red]Error:[/red] JSON must be {"agents": [...]} or a bare array.')
         raise typer.Exit(code=1)
 
     if not agents:
@@ -291,8 +291,10 @@ def agent_bulk_create(
         results_table.add_column("Error", style="red")
         for i, item in enumerate(result.get("results", []), 1):
             status = item.get("status", "")
-            badge = "[green]created[/green]" if status == "created" else (
-                "[yellow]skipped[/yellow]" if status == "skipped" else f"[red]{status}[/red]"
+            badge = (
+                "[green]created[/green]"
+                if status == "created"
+                else ("[yellow]skipped[/yellow]" if status == "skipped" else f"[red]{status}[/red]")
             )
             results_table.add_row(str(i), item.get("name", ""), badge, item.get("error", "") or "")
         console.print(results_table)
@@ -304,10 +306,9 @@ def agent_bulk_create(
         return
 
     # ── Confirmation ─────────────────────────────────────────
-    if not yes:
-        if not typer.confirm(f"\nCreate {len(agents)} agents?", default=False):
-            rprint("[yellow]Aborted.[/yellow]")
-            raise typer.Exit(0)
+    if not yes and not typer.confirm(f"\nCreate {len(agents)} agents?", default=False):
+        rprint("[yellow]Aborted.[/yellow]")
+        raise typer.Exit(0)
 
     # ── Create ───────────────────────────────────────────────
     with spinner("Creating agents..."):
@@ -321,8 +322,10 @@ def agent_bulk_create(
     results_table.add_column("Error", style="red")
     for i, item in enumerate(result.get("results", []), 1):
         status = item.get("status", "")
-        badge = "[green]created[/green]" if status == "created" else (
-            "[yellow]skipped[/yellow]" if status == "skipped" else f"[red]{status}[/red]"
+        badge = (
+            "[green]created[/green]"
+            if status == "created"
+            else ("[yellow]skipped[/yellow]" if status == "skipped" else f"[red]{status}[/red]")
         )
         agent_id = str(item["agent_id"])[:8] + "…" if item.get("agent_id") else ""
         results_table.add_row(str(i), item.get("name", ""), badge, agent_id, item.get("error", "") or "")

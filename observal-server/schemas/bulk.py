@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import uuid
+import uuid  # noqa: TC003 — needed at runtime by Pydantic
 
 from pydantic import BaseModel, Field
 

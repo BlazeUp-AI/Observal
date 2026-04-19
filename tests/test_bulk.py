@@ -7,7 +7,7 @@ and validation of empty requests.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -191,9 +191,7 @@ class TestBulkDedup:
         app, db, _ = _app_with()
 
         # First agent name exists, second does not
-        db.execute = AsyncMock(
-            side_effect=[_exists_result(), _empty_result()]
-        )
+        db.execute = AsyncMock(side_effect=[_exists_result(), _empty_result()])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(
