@@ -314,7 +314,7 @@ def _build_config_preview(server_name: str, parsed: dict) -> dict:
 # ── Implementation functions (shared by canonical + deprecated) ──
 
 
-def _submit_impl(git_url, name, category, yes, direct_config=False):
+def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False):
     # ── Path B/C: Direct JSON config (no git URL needed) ─────
     if direct_config:
         rprint("[bold]Paste your MCP server JSON config below.[/bold]")
@@ -391,9 +391,12 @@ def _submit_impl(git_url, name, category, yes, direct_config=False):
         if parsed.get("docker_image"):
             submit_payload["docker_image"] = parsed["docker_image"]
 
-        with spinner("Submitting..."):
-            result = client.post("/api/v1/mcps/submit", submit_payload)
-        rprint(f"\n[green]Submitted![/green] ID: [bold]{result['id']}[/bold]")
+        endpoint = "/api/v1/mcps/draft" if draft else "/api/v1/mcps/submit"
+        label = "Saving draft..." if draft else "Submitting..."
+        with spinner(label):
+            result = client.post(endpoint, submit_payload)
+        msg = "Draft saved!" if draft else "Submitted!"
+        rprint(f"\n[green]{msg}[/green] ID: [bold]{result['id']}[/bold]")
         rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
         return
 
@@ -659,9 +662,12 @@ def _submit_impl(git_url, name, category, yes, direct_config=False):
             "docker_image": prefill.get("docker_image"),
         }
 
-    with spinner("Submitting..."):
-        result = client.post("/api/v1/mcps/submit", submit_payload)
-    rprint(f"\n[green]Submitted![/green] ID: [bold]{result['id']}[/bold]")
+    endpoint = "/api/v1/mcps/draft" if draft else "/api/v1/mcps/submit"
+    label = "Saving draft..." if draft else "Submitting..."
+    with spinner(label):
+        result = client.post(endpoint, submit_payload)
+    msg = "Draft saved!" if draft else "Submitted!"
+    rprint(f"\n[green]{msg}[/green] ID: [bold]{result['id']}[/bold]")
     if _framework:
         rprint(f"  Framework: [cyan]{_framework}[/cyan]")
     rprint(f"  Status: {status_badge(result.get('status', 'pending'))}")
@@ -880,12 +886,21 @@ def submit(
     category: str = typer.Option(None, "--category", "-c", help="Skip category prompt"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults from repo analysis"),
     config: bool = typer.Option(False, "--config", help="Submit via direct JSON config (paste mode)"),
+    draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
+    submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (MCP ID)"),
 ):
     """Submit an MCP server for review."""
+    if submit_draft:
+        from observal_cli import config as cfg
+        resolved = cfg.resolve_alias(submit_draft)
+        with spinner("Submitting draft for review..."):
+            result = client.post(f"/api/v1/mcps/{resolved}/submit")
+        rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        return
     if not git_url and not config:
         rprint("[red]Provide a git URL or use --config[/red]")
         raise typer.Exit(1)
-    _submit_impl(git_url, name, category, yes, config)
+    _submit_impl(git_url, name, category, yes, config, draft=draft)
 
 
 @mcp_app.command(name="list")

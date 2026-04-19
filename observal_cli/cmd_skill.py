@@ -23,8 +23,17 @@ def register_skill(app: typer.Typer):
 @skill_app.command(name="submit")
 def skill_submit(
     from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
+    draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
+    submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (skill ID)"),
 ):
     """Submit a new skill for review."""
+    if submit_draft:
+        resolved = config.resolve_alias(submit_draft)
+        with spinner("Submitting draft for review..."):
+            result = client.post(f"/api/v1/skills/{resolved}/submit")
+        rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        return
+
     if from_file:
         with open(from_file) as f:
             payload = _json.load(f)
@@ -39,9 +48,15 @@ def skill_submit(
             "task_type": select_one("Task type", VALID_SKILL_TASK_TYPES),
             "target_agents": [a.strip() for a in agents_input.split(",") if a.strip()],
         }
-    with spinner("Submitting skill..."):
-        result = client.post("/api/v1/skills", payload)
-    rprint(f"[green]✓ Skill submitted![/green] ID: [bold]{result['id']}[/bold]")
+
+    if draft:
+        with spinner("Saving draft..."):
+            result = client.post("/api/v1/skills/draft", payload)
+        rprint(f"[green]✓ Draft saved![/green] ID: [bold]{result['id']}[/bold]")
+    else:
+        with spinner("Submitting skill..."):
+            result = client.post("/api/v1/skills/submit", payload)
+        rprint(f"[green]✓ Skill submitted![/green] ID: [bold]{result['id']}[/bold]")
 
 
 @skill_app.command(name="list")

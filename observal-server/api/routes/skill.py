@@ -7,11 +7,13 @@ from models.mcp import ListingStatus
 from models.skill import SkillDownload, SkillListing
 from models.user import User, UserRole
 from schemas.skill import (
+    SkillDraftRequest,
     SkillInstallRequest,
     SkillInstallResponse,
     SkillListingResponse,
     SkillListingSummary,
     SkillSubmitRequest,
+    SkillUpdateRequest,
 )
 
 router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
@@ -103,6 +105,107 @@ async def install_skill(
 
     config = generate_skill_config(listing, req.ide)
     return SkillInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
+
+
+@router.get("/my", response_model=list[SkillListingSummary])
+async def my_skills(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(SkillListing)
+        .where(SkillListing.submitted_by == current_user.id)
+        .order_by(SkillListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
+@router.post("/draft", response_model=SkillListingResponse)
+async def save_skill_draft(
+    req: SkillDraftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = SkillListing(
+        name=req.name,
+        version=req.version,
+        description=req.description,
+        owner=req.owner or current_user.username or current_user.email,
+        git_url=req.git_url,
+        skill_path=req.skill_path,
+        target_agents=req.target_agents,
+        task_type=req.task_type,
+        triggers=req.triggers,
+        slash_command=req.slash_command,
+        has_scripts=req.has_scripts,
+        has_templates=req.has_templates,
+        supported_ides=req.supported_ides,
+        is_power=req.is_power,
+        power_md=req.power_md,
+        mcp_server_config=req.mcp_server_config,
+        activation_keywords=req.activation_keywords,
+        status=ListingStatus.draft,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.commit()
+    await db.refresh(listing)
+    return SkillListingResponse.model_validate(listing)
+
+
+@router.put("/{listing_id}/draft", response_model=SkillListingResponse)
+async def update_skill_draft(
+    listing_id: str,
+    req: SkillUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(SkillListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    for field in (
+        "name", "version", "description", "owner", "git_url", "skill_path",
+        "target_agents", "task_type", "triggers", "slash_command",
+        "has_scripts", "has_templates", "supported_ides", "is_power",
+        "power_md", "mcp_server_config", "activation_keywords",
+    ):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(listing, field, val)
+
+    await db.commit()
+    await db.refresh(listing)
+    return SkillListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/submit", response_model=SkillListingResponse)
+async def submit_skill_draft(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(SkillListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    if not listing.description:
+        raise HTTPException(status_code=400, detail="Description is required before submitting")
+
+    listing.status = ListingStatus.pending
+    await db.commit()
+    await db.refresh(listing)
+    return SkillListingResponse.model_validate(listing)
 
 
 @router.delete("/{listing_id}")

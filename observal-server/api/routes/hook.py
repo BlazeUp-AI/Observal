@@ -7,11 +7,13 @@ from models.hook import HookDownload, HookListing
 from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.hook import (
+    HookDraftRequest,
     HookInstallRequest,
     HookInstallResponse,
     HookListingResponse,
     HookListingSummary,
     HookSubmitRequest,
+    HookUpdateRequest,
 )
 
 router = APIRouter(prefix="/api/v1/hooks", tags=["hooks"])
@@ -101,6 +103,104 @@ async def install_hook(
 
     config = generate_hook_telemetry_config(listing, req.ide, platform=req.platform)
     return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
+
+
+@router.get("/my", response_model=list[HookListingSummary])
+async def my_hooks(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(HookListing)
+        .where(HookListing.submitted_by == current_user.id)
+        .order_by(HookListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [HookListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
+@router.post("/draft", response_model=HookListingResponse)
+async def save_hook_draft(
+    req: HookDraftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = HookListing(
+        name=req.name,
+        version=req.version,
+        description=req.description,
+        owner=req.owner or current_user.username or current_user.email,
+        event=req.event,
+        execution_mode=req.execution_mode,
+        priority=req.priority,
+        handler_type=req.handler_type,
+        handler_config=req.handler_config,
+        input_schema=req.input_schema,
+        output_schema=req.output_schema,
+        scope=req.scope,
+        tool_filter=req.tool_filter,
+        file_pattern=req.file_pattern,
+        supported_ides=req.supported_ides,
+        status=ListingStatus.draft,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.commit()
+    await db.refresh(listing)
+    return HookListingResponse.model_validate(listing)
+
+
+@router.put("/{listing_id}/draft", response_model=HookListingResponse)
+async def update_hook_draft(
+    listing_id: str,
+    req: HookUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(HookListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    for field in (
+        "name", "version", "description", "owner", "event", "execution_mode",
+        "priority", "handler_type", "handler_config", "input_schema",
+        "output_schema", "scope", "tool_filter", "file_pattern", "supported_ides",
+    ):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(listing, field, val)
+
+    await db.commit()
+    await db.refresh(listing)
+    return HookListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/submit", response_model=HookListingResponse)
+async def submit_hook_draft(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(HookListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    if not listing.description:
+        raise HTTPException(status_code=400, detail="Description is required before submitting")
+
+    listing.status = ListingStatus.pending
+    await db.commit()
+    await db.refresh(listing)
+    return HookListingResponse.model_validate(listing)
 
 
 @router.delete("/{listing_id}")

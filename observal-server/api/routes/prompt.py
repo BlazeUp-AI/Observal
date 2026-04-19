@@ -10,11 +10,13 @@ from models.mcp import ListingStatus
 from models.prompt import PromptDownload, PromptListing
 from models.user import User, UserRole
 from schemas.prompt import (
+    PromptDraftRequest,
     PromptListingResponse,
     PromptListingSummary,
     PromptRenderRequest,
     PromptRenderResponse,
     PromptSubmitRequest,
+    PromptUpdateRequest,
 )
 
 router = APIRouter(prefix="/api/v1/prompts", tags=["prompts"])
@@ -151,6 +153,100 @@ async def render_prompt(
         pass
 
     return PromptRenderResponse(listing_id=listing.id, rendered=rendered)
+
+
+@router.get("/my", response_model=list[PromptListingSummary])
+async def my_prompts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(PromptListing)
+        .where(PromptListing.submitted_by == current_user.id)
+        .order_by(PromptListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [PromptListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
+@router.post("/draft", response_model=PromptListingResponse)
+async def save_prompt_draft(
+    req: PromptDraftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = PromptListing(
+        name=req.name,
+        version=req.version,
+        description=req.description,
+        owner=req.owner or current_user.username or current_user.email,
+        category=req.category,
+        template=req.template,
+        variables=req.variables,
+        model_hints=req.model_hints,
+        tags=req.tags,
+        supported_ides=req.supported_ides,
+        status=ListingStatus.draft,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.commit()
+    await db.refresh(listing)
+    return PromptListingResponse.model_validate(listing)
+
+
+@router.put("/{listing_id}/draft", response_model=PromptListingResponse)
+async def update_prompt_draft(
+    listing_id: str,
+    req: PromptUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(PromptListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    for field in (
+        "name", "version", "description", "owner", "category",
+        "template", "variables", "model_hints", "tags", "supported_ides",
+    ):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(listing, field, val)
+
+    await db.commit()
+    await db.refresh(listing)
+    return PromptListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/submit", response_model=PromptListingResponse)
+async def submit_prompt_draft(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(PromptListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    if not listing.description:
+        raise HTTPException(status_code=400, detail="Description is required before submitting")
+    if not listing.template:
+        raise HTTPException(status_code=400, detail="Template is required before submitting")
+
+    listing.status = ListingStatus.pending
+    await db.commit()
+    await db.refresh(listing)
+    return PromptListingResponse.model_validate(listing)
 
 
 @router.delete("/{listing_id}")

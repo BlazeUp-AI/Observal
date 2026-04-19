@@ -23,6 +23,34 @@ class PromptSubmitRequest(BaseModel):
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
+class PromptDraftRequest(BaseModel):
+    name: str
+    version: str = "0.1.0"
+    description: str = ""
+    owner: str = ""
+    category: str = "general"
+    template: str = ""
+    variables: list[dict] = []
+    model_hints: dict | None = None
+    tags: list[str] = []
+    supported_ides: list[str] = []
+
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+
+
+class PromptUpdateRequest(BaseModel):
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    category: str | None = None
+    template: str | None = None
+    variables: list[dict] | None = None
+    model_hints: dict | None = None
+    tags: list[str] | None = None
+    supported_ides: list[str] | None = None
+
+
 class PromptListingResponse(BaseModel):
     id: uuid.UUID
     name: str

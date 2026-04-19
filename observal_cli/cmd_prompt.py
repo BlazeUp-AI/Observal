@@ -25,12 +25,20 @@ def prompt_submit(
     from_file: str | None = typer.Option(
         None, "--from-file", "-f", help="Create from JSON file or read template from file"
     ),
+    draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
+    submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (prompt ID)"),
 ):
     """Submit a new prompt for review."""
+    if submit_draft:
+        resolved = config.resolve_alias(submit_draft)
+        with spinner("Submitting draft for review..."):
+            result = client.post(f"/api/v1/prompts/{resolved}/submit")
+        rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        return
+
     if from_file:
         with open(from_file) as f:
             content = f.read()
-        # Try JSON first, fall back to treating file as template text
         try:
             payload = _json.loads(content)
         except _json.JSONDecodeError:
@@ -51,9 +59,15 @@ def prompt_submit(
             "category": select_one("Category", VALID_PROMPT_CATEGORIES),
             "template": typer.prompt("Template"),
         }
-    with spinner("Submitting prompt..."):
-        result = client.post("/api/v1/prompts/submit", payload)
-    rprint(f"[green]✓ Prompt submitted![/green] ID: [bold]{result['id']}[/bold]")
+
+    if draft:
+        with spinner("Saving draft..."):
+            result = client.post("/api/v1/prompts/draft", payload)
+        rprint(f"[green]✓ Draft saved![/green] ID: [bold]{result['id']}[/bold]")
+    else:
+        with spinner("Submitting prompt..."):
+            result = client.post("/api/v1/prompts/submit", payload)
+        rprint(f"[green]✓ Prompt submitted![/green] ID: [bold]{result['id']}[/bold]")
 
 
 @prompt_app.command(name="list")

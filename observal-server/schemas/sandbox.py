@@ -36,6 +36,40 @@ class SandboxSubmitRequest(BaseModel):
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
+class SandboxDraftRequest(BaseModel):
+    name: str
+    version: str = "0.1.0"
+    description: str = ""
+    owner: str = ""
+    runtime_type: str = "docker"
+    image: str = ""
+    dockerfile_url: str | None = None
+    resource_limits: dict = {}
+    network_policy: str = "none"
+    allowed_mounts: list[str] = []
+    env_vars: dict = {}
+    entrypoint: str | None = None
+    supported_ides: list[str] = []
+
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+
+
+class SandboxUpdateRequest(BaseModel):
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    runtime_type: str | None = None
+    image: str | None = None
+    dockerfile_url: str | None = None
+    resource_limits: dict | None = None
+    network_policy: str | None = None
+    allowed_mounts: list[str] | None = None
+    env_vars: dict | None = None
+    entrypoint: str | None = None
+    supported_ides: list[str] | None = None
+
+
 class SandboxListingResponse(BaseModel):
     id: uuid.UUID
     name: str

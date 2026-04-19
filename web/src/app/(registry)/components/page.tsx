@@ -11,12 +11,24 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Plus,
+  Send,
+  Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useRegistryList } from "@/hooks/use-api";
+import {
+  useRegistryList,
+  useMyComponents,
+  useComponentSubmit,
+  useComponentSaveDraft,
+  useComponentSubmitDraft,
+  useComponentDelete,
+} from "@/hooks/use-api";
+import { useAuthGuard } from "@/hooks/use-auth";
 import type { RegistryType } from "@/lib/api";
 import type { RegistryItem } from "@/lib/types";
+import { SubmitComponentDialog } from "@/components/registry/submit-component-dialog";
 import {
   Table,
   TableBody,
@@ -142,11 +154,13 @@ function makeColumns(activeType: RegistryType): ColumnDef<RegistryItem>[] {
 
 export default function ComponentsPage() {
   const router = useRouter();
+  const { ready: authReady, role } = useAuthGuard();
   const [activeType, setActiveType] = useState<RegistryType>("mcps");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [view, setView] = useState<ViewMode>("table");
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [submitOpen, setSubmitOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
@@ -162,6 +176,17 @@ export default function ComponentsPage() {
     activeType,
     debouncedSearch ? { search: debouncedSearch } : undefined,
   );
+
+  const { data: myItems } = useMyComponents(activeType);
+  const myDrafts = useMemo(
+    () => (myItems ?? []).filter((i) => i.status === "draft" || i.status === "pending" || i.status === "rejected"),
+    [myItems],
+  );
+
+  const submitMutation = useComponentSubmit(activeType);
+  const saveDraftMutation = useComponentSaveDraft(activeType);
+  const submitDraftMutation = useComponentSubmitDraft(activeType);
+  const deleteMutation = useComponentDelete(activeType);
 
   const items = useMemo(() => data ?? [], [data]);
 
@@ -205,6 +230,12 @@ export default function ComponentsPage() {
               className="pl-9 h-9"
             />
           </div>
+          {authReady && role && (
+            <Button size="sm" className="h-9" onClick={() => setSubmitOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Create
+            </Button>
+          )}
           <div className="flex items-center border border-border rounded-md overflow-hidden ml-auto">
             <Button
               variant={view === "table" ? "secondary" : "ghost"}
@@ -334,7 +365,79 @@ export default function ComponentsPage() {
             ))}
           </div>
         )}
+
+        {/* My Drafts / Submissions */}
+        {authReady && role && myDrafts.length > 0 && (
+          <div className="space-y-3 pt-4 border-t border-border">
+            <h3 className="text-sm font-medium text-muted-foreground">
+              My Submissions
+            </h3>
+            <div className="space-y-2">
+              {myDrafts.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between rounded-lg border border-border px-4 py-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <StatusBadge status={item.status ?? "draft"} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {item.name}
+                      </p>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground truncate max-w-xs">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.status === "draft" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => submitDraftMutation.mutate(item.id)}
+                        disabled={submitDraftMutation.isPending}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        Submit
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteMutation.mutate(item.id)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      <SubmitComponentDialog
+        open={submitOpen}
+        onOpenChange={setSubmitOpen}
+        type={activeType}
+        onSubmit={(body) => {
+          submitMutation.mutate(body, {
+            onSuccess: () => setSubmitOpen(false),
+          });
+        }}
+        onSaveDraft={(body) => {
+          saveDraftMutation.mutate(body, {
+            onSuccess: () => setSubmitOpen(false),
+          });
+        }}
+        isSubmitting={submitMutation.isPending}
+        isSavingDraft={saveDraftMutation.isPending}
+      />
     </>
   );
 }

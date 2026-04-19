@@ -474,6 +474,88 @@ export function useSubmitDraft() {
   });
 }
 
+// ── Component Draft/Submit (generic) ──────────────────────────────
+
+export function useMyComponents(type: RegistryType) {
+  return useQuery({
+    queryKey: ["registry", type, "my"],
+    queryFn: () => registry.my(type),
+  });
+}
+
+export function useComponentSubmit(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: unknown) => registry.submit(type, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", type] });
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success("Submitted for review");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to submit");
+    },
+  });
+}
+
+export function useComponentSaveDraft(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: unknown) => registry.draft(body, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", type] });
+      toast.success("Draft saved");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to save draft");
+    },
+  });
+}
+
+export function useComponentUpdateDraft(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; body: unknown }) =>
+      registry.updateDraft(vars.id, vars.body, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", type] });
+      toast.success("Draft updated");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update draft");
+    },
+  });
+}
+
+export function useComponentSubmitDraft(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.submitDraft(id, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", type] });
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success("Submitted for review");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to submit");
+    },
+  });
+}
+
+export function useComponentDelete(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.delete(type, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", type] });
+      toast.success("Deleted");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to delete");
+    },
+  });
+}
+
 // ── Version ────────────────────────────────────────────────────────
 
 export function useVersionSuggestions(id: string | undefined) {

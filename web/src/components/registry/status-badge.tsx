@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 
 const statusConfig: Record<string, { bg: string; text: string; dot?: string; ping?: boolean }> = {
+  draft:     { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-400", dot: "bg-zinc-400" },
   pending:   { bg: "bg-light-yellow", text: "text-dark-yellow", dot: "bg-dark-yellow", ping: true },
   approved:  { bg: "bg-light-green",  text: "text-dark-green",  dot: "bg-dark-green",  ping: true },
   active:    { bg: "bg-light-green",  text: "text-dark-green",  dot: "bg-dark-green",  ping: true },

@@ -31,6 +31,48 @@ class SkillSubmitRequest(BaseModel):
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
+class SkillDraftRequest(BaseModel):
+    name: str
+    version: str = "0.1.0"
+    description: str = ""
+    owner: str = ""
+    git_url: str | None = None
+    skill_path: str = "/"
+    target_agents: list[str] = []
+    task_type: str = "general"
+    triggers: dict | None = None
+    slash_command: str | None = None
+    has_scripts: bool = False
+    has_templates: bool = False
+    supported_ides: list[str] = []
+    is_power: bool = False
+    power_md: str | None = None
+    mcp_server_config: dict | None = None
+    activation_keywords: list[str] | None = None
+
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+
+
+class SkillUpdateRequest(BaseModel):
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    git_url: str | None = None
+    skill_path: str | None = None
+    target_agents: list[str] | None = None
+    task_type: str | None = None
+    triggers: dict | None = None
+    slash_command: str | None = None
+    has_scripts: bool | None = None
+    has_templates: bool | None = None
+    supported_ides: list[str] | None = None
+    is_power: bool | None = None
+    power_md: str | None = None
+    mcp_server_config: dict | None = None
+    activation_keywords: list[str] | None = None
+
+
 class SkillListingResponse(BaseModel):
     id: uuid.UUID
     name: str

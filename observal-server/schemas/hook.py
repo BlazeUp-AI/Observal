@@ -42,6 +42,44 @@ class HookSubmitRequest(BaseModel):
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
 
+class HookDraftRequest(BaseModel):
+    name: str
+    version: str = "0.1.0"
+    description: str = ""
+    owner: str = ""
+    event: str = "on_tool_call"
+    execution_mode: str = "async"
+    priority: int = 100
+    handler_type: str = "command"
+    handler_config: dict = {}
+    input_schema: dict | None = None
+    output_schema: dict | None = None
+    scope: str = "agent"
+    tool_filter: list[str] | None = None
+    file_pattern: list[str] | None = None
+    supported_ides: list[str] = []
+
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+
+
+class HookUpdateRequest(BaseModel):
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    event: str | None = None
+    execution_mode: str | None = None
+    priority: int | None = None
+    handler_type: str | None = None
+    handler_config: dict | None = None
+    input_schema: dict | None = None
+    output_schema: dict | None = None
+    scope: str | None = None
+    tool_filter: list[str] | None = None
+    file_pattern: list[str] | None = None
+    supported_ides: list[str] | None = None
+
+
 class HookListingResponse(BaseModel):
     id: uuid.UUID
     name: str

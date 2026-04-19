@@ -76,6 +76,51 @@ class McpSubmitRequest(BaseModel):
         return self
 
 
+class McpDraftRequest(BaseModel):
+    name: str
+    version: str = "0.1.0"
+    description: str = ""
+    category: str = "other"
+    owner: str = ""
+    git_url: str | None = None
+    framework: str | None = None
+    docker_image: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    headers: list[McpHeader] | None = None
+    auto_approve: list[str] | None = None
+    transport: str | None = None
+    supported_ides: list[str] = []
+    environment_variables: list[McpEnvVar] = []
+    setup_instructions: str | None = None
+    changelog: str | None = None
+    client_analysis: ClientAnalysis | None = None
+
+    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+
+
+class McpUpdateRequest(BaseModel):
+    name: str | None = None
+    version: str | None = None
+    description: str | None = None
+    category: str | None = None
+    owner: str | None = None
+    git_url: str | None = None
+    framework: str | None = None
+    docker_image: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+    headers: list[McpHeader] | None = None
+    auto_approve: list[str] | None = None
+    transport: str | None = None
+    supported_ides: list[str] | None = None
+    environment_variables: list[McpEnvVar] | None = None
+    setup_instructions: str | None = None
+    changelog: str | None = None
+
+
 class McpCustomFieldResponse(BaseModel):
     field_name: str
     field_value: str

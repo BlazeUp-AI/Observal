@@ -12,11 +12,13 @@ from schemas.mcp import (
     ClientAnalysis,
     McpAnalyzeRequest,
     McpAnalyzeResponse,
+    McpDraftRequest,
     McpInstallRequest,
     McpInstallResponse,
     McpListingResponse,
     McpListingSummary,
     McpSubmitRequest,
+    McpUpdateRequest,
 )
 from services.config_generator import generate_config
 from services.mcp_validator import analyze_repo, run_validation
@@ -195,6 +197,114 @@ async def install_mcp(
 
     snippet = generate_config(listing, req.ide, env_values=req.env_values, header_values=req.header_values)
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
+
+
+@router.get("/my", response_model=list[McpListingSummary])
+async def my_mcps(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(McpListing)
+        .where(McpListing.submitted_by == current_user.id)
+        .order_by(McpListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [McpListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
+@router.post("/draft", response_model=McpListingResponse)
+async def save_mcp_draft(
+    req: McpDraftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = McpListing(
+        name=req.name,
+        version=req.version,
+        git_url=req.git_url,
+        description=req.description,
+        category=req.category,
+        owner=req.owner or current_user.username or current_user.email,
+        framework=req.framework,
+        docker_image=req.docker_image,
+        command=req.command,
+        args=req.args,
+        url=req.url,
+        headers=[h.model_dump() for h in req.headers] if req.headers else None,
+        auto_approve=req.auto_approve,
+        transport=req.transport or ("sse" if req.url and not req.command else "stdio" if req.command else None),
+        supported_ides=req.supported_ides,
+        environment_variables=[ev.model_dump() for ev in req.environment_variables],
+        setup_instructions=req.setup_instructions,
+        changelog=req.changelog,
+        status=ListingStatus.draft,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.commit()
+    await db.refresh(listing)
+    return McpListingResponse.model_validate(listing)
+
+
+@router.put("/{listing_id}/draft", response_model=McpListingResponse)
+async def update_mcp_draft(
+    listing_id: str,
+    req: McpUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(McpListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    for field in (
+        "name", "version", "description", "category", "owner", "git_url",
+        "framework", "docker_image", "command", "args", "url", "auto_approve",
+        "transport", "supported_ides", "setup_instructions", "changelog",
+    ):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(listing, field, val)
+
+    if req.headers is not None:
+        listing.headers = [h.model_dump() for h in req.headers]
+    if req.environment_variables is not None:
+        listing.environment_variables = [ev.model_dump() for ev in req.environment_variables]
+
+    await db.commit()
+    await db.refresh(listing)
+    return McpListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/submit", response_model=McpListingResponse)
+async def submit_mcp_draft(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(McpListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    if listing.status != ListingStatus.draft:
+        raise HTTPException(status_code=400, detail="Listing is not a draft")
+
+    if not listing.description:
+        raise HTTPException(status_code=400, detail="Description is required before submitting")
+    if not listing.git_url and not listing.command and not listing.url:
+        raise HTTPException(status_code=400, detail="At least one of git_url, command, or url is required")
+
+    listing.status = ListingStatus.pending
+    await db.commit()
+    await db.refresh(listing)
+    return McpListingResponse.model_validate(listing)
 
 
 @router.delete("/{listing_id}")

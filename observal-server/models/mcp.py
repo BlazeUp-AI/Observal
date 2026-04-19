@@ -10,6 +10,7 @@ from models.base import Base
 
 
 class ListingStatus(str, enum.Enum):
+    draft = "draft"
     pending = "pending"
     approved = "approved"
     rejected = "rejected"

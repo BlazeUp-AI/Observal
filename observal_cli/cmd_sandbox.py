@@ -23,8 +23,17 @@ def register_sandbox(app: typer.Typer):
 @sandbox_app.command(name="submit")
 def sandbox_submit(
     from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
+    draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
+    submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (sandbox ID)"),
 ):
     """Submit a new sandbox for review."""
+    if submit_draft:
+        resolved = config.resolve_alias(submit_draft)
+        with spinner("Submitting draft for review..."):
+            result = client.post(f"/api/v1/sandboxes/{resolved}/submit")
+        rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        return
+
     if from_file:
         with open(from_file) as f:
             payload = _json.load(f)
@@ -38,9 +47,15 @@ def sandbox_submit(
             "image": typer.prompt("Image"),
             "resource_limits": _json.loads(typer.prompt("Resource limits (JSON)")),
         }
-    with spinner("Submitting sandbox..."):
-        result = client.post("/api/v1/sandboxes", payload)
-    rprint(f"[green]✓ Sandbox submitted![/green] ID: [bold]{result['id']}[/bold]")
+
+    if draft:
+        with spinner("Saving draft..."):
+            result = client.post("/api/v1/sandboxes/draft", payload)
+        rprint(f"[green]✓ Draft saved![/green] ID: [bold]{result['id']}[/bold]")
+    else:
+        with spinner("Submitting sandbox..."):
+            result = client.post("/api/v1/sandboxes/submit", payload)
+        rprint(f"[green]✓ Sandbox submitted![/green] ID: [bold]{result['id']}[/bold]")
 
 
 @sandbox_app.command(name="list")

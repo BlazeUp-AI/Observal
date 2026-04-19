@@ -25,8 +25,17 @@ def register_hook(app: typer.Typer):
 @hook_app.command(name="submit")
 def hook_submit(
     from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
+    draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
+    submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (hook ID)"),
 ):
     """Submit a new hook for review."""
+    if submit_draft:
+        resolved = config.resolve_alias(submit_draft)
+        with spinner("Submitting draft for review..."):
+            result = client.post(f"/api/v1/hooks/{resolved}/submit")
+        rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        return
+
     if from_file:
         with open(from_file) as f:
             payload = _json.load(f)
@@ -40,9 +49,15 @@ def hook_submit(
             "handler_type": select_one("Handler type", VALID_HOOK_HANDLER_TYPES),
             "handler_config": _json.loads(typer.prompt("Handler config (JSON)")),
         }
-    with spinner("Submitting hook..."):
-        result = client.post("/api/v1/hooks", payload)
-    rprint(f"[green]✓ Hook submitted![/green] ID: [bold]{result['id']}[/bold]")
+
+    if draft:
+        with spinner("Saving draft..."):
+            result = client.post("/api/v1/hooks/draft", payload)
+        rprint(f"[green]✓ Draft saved![/green] ID: [bold]{result['id']}[/bold]")
+    else:
+        with spinner("Submitting hook..."):
+            result = client.post("/api/v1/hooks/submit", payload)
+        rprint(f"[green]✓ Hook submitted![/green] ID: [bold]{result['id']}[/bold]")
 
 
 @hook_app.command(name="list")

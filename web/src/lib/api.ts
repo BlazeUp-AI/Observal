@@ -238,11 +238,16 @@ export const registry = {
     get<{ total: number; unique_users: number; recent_7d: number }>(`/agents/${id}/downloads`),
   validate: (body: { components: { component_type: string; component_id: string }[] }) =>
     post<ValidationResult>("/agents/validate", body),
-  my: () => get<RegistryItem[]>("/agents/my"),
+  my: (type?: RegistryType) => get<RegistryItem[]>(`/${type ?? "agents"}/my`),
   archive: (id: string) => patch(`/agents/${id}/archive`),
-  draft: (body: unknown) => post<RegistryItem>("/agents/draft", body),
-  updateDraft: (id: string, body: unknown) => put<RegistryItem>(`/agents/${id}/draft`, body),
-  submitDraft: (id: string) => post(`/agents/${id}/submit`),
+  draft: (body: unknown, type?: RegistryType) =>
+    post<RegistryItem>(`/${type ?? "agents"}/draft`, body),
+  updateDraft: (id: string, body: unknown, type?: RegistryType) =>
+    put<RegistryItem>(`/${type ?? "agents"}/${id}/draft`, body),
+  submitDraft: (id: string, type?: RegistryType) =>
+    post(`/${type ?? "agents"}/${id}/submit`),
+  submit: (type: RegistryType, body: unknown) =>
+    post<RegistryItem>(`/${type}/submit`, body),
   versionSuggestions: (id: string) =>
     get<VersionSuggestions>(`/agents/${id}/version-suggestions`),
 };
