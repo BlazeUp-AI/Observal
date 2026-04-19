@@ -1,11 +1,14 @@
 import asyncio
 import json
 import logging
+import uuid as _uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import require_role
+from api.deps import get_db, require_role
 from models.user import User, UserRole
 from services.clickhouse import _query, query_shim_spans_for_window
 from services.redis import publish
@@ -42,11 +45,73 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
     return []
 
 
+_PLATFORM_MAP: dict[str, str] = {
+    "claude-code": "Claude Code",
+    "observal-hooks": "Claude Code",
+    "observal-shim": "Claude Code",
+    "kiro-cli": "Kiro",
+}
+
+_IDE_LABEL_MAP: dict[str, str] = {
+    "vscode": "VS Code",
+    "cursor": "Cursor",
+    "windsurf": "Windsurf",
+    "antigravity": "Antigravity",
+}
+
+
+def _derive_platform(service_name: str) -> str:
+    sn = (service_name or "").strip().lower()
+    return _PLATFORM_MAP.get(sn, sn.replace("-", " ").title() if sn else "Unknown")
+
+
+_IGNORE_TERMINAL_TYPES = {"terminal", "non-interactive", "cli", "unknown", ""}
+
+
+def _derive_ide(terminal_type: str, service_name: str) -> str:
+    t = (terminal_type or "").strip().lower()
+    sn = (service_name or "").strip().lower()
+    if t and t not in _IGNORE_TERMINAL_TYPES:
+        if t in _IDE_LABEL_MAP:
+            return _IDE_LABEL_MAP[t]
+        prefix = ""
+        raw = t
+        if t.startswith("wsl-"):
+            prefix = "WSL "
+            raw = t[4:]
+        if raw in _IDE_LABEL_MAP:
+            return f"{prefix}{_IDE_LABEL_MAP[raw]}"
+        for key, label in _IDE_LABEL_MAP.items():
+            if key in raw:
+                return f"{prefix}{label}"
+        if raw not in _IGNORE_TERMINAL_TYPES:
+            return f"{prefix}{raw.title()}"
+    if "kiro" in sn:
+        return "Kiro"
+    return ""
+
+
 @router.get("/sessions")
 async def list_sessions(
     status: str | None = Query(None),
+    platform: str | None = Query(None),
+    days: int | None = Query(None),
     current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = Depends(get_db),
 ):
+    where_clauses = ["LogAttributes['session.id'] != ''"]
+
+    if platform:
+        sn_values = [k for k, v in _PLATFORM_MAP.items() if v.lower() == platform.lower()]
+        if sn_values:
+            placeholders = ", ".join(f"'{s}'" for s in sn_values)
+            where_clauses.append(f"ServiceName IN ({placeholders})")
+
+    if days and days > 0:
+        where_clauses.append(f"Timestamp >= now('UTC') - INTERVAL {int(days)} DAY")
+
+    where_sql = " AND ".join(where_clauses)
+
     rows = await _ch_json(
         "SELECT "
         "LogAttributes['session.id'] AS session_id, "
@@ -67,21 +132,108 @@ async def list_sessions(
         "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
         "anyIf(LogAttributes['model'], LogAttributes['model'] != '') AS model, "
         "anyIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_id, "
+        "anyIf(LogAttributes['user.uuid'], LogAttributes['user.uuid'] != '') AS user_uuid, "
+        "anyIf(LogAttributes['user.username'], LogAttributes['user.username'] != '') AS user_username, "
         "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
         "anyIf(LogAttributes['credits'], LogAttributes['credits'] != '') AS credits, "
         "anyIf(LogAttributes['tools_used'], LogAttributes['tools_used'] != '') AS tools_used, "
-        "any(ServiceName) AS service_name "
-        "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] != '' "
+        "any(ServiceName) AS service_name, "
+        "groupUniqArrayIf(LogAttributes['model'], LogAttributes['model'] != '') AS models_used "
+        f"FROM otel_logs "
+        f"WHERE {where_sql} "
         "GROUP BY session_id "
         "ORDER BY last_event_time DESC "
         "LIMIT 100"
     )
+
+    # Build user display map from PostgreSQL
+    all_uuids: list[_uuid.UUID] = []
+    uuid_str_set: set[str] = set()
+    hash_to_uuid: dict[str, str] = {}
+    for r in rows:
+        # Collect UUIDs from both user.uuid and user.id fields
+        for field in ("user_uuid", "user_id"):
+            val = r.get(field, "")
+            if val and val not in uuid_str_set:
+                try:
+                    all_uuids.append(_uuid.UUID(val))
+                    uuid_str_set.add(val)
+                except ValueError:
+                    pass
+        # Map non-UUID user.id → user.uuid for fallback
+        u = r.get("user_uuid", "")
+        h = r.get("user_id", "")
+        if u and h and h != u:
+            hash_to_uuid[h] = u
+
+    # Load all users for small teams, or filter by collected UUIDs
+    user_display_map: dict[str, str] = {}
+    if all_uuids:
+        result = await db.execute(select(User).where(User.id.in_(all_uuids)))
+        for u in result.scalars().all():
+            user_display_map[str(u.id)] = u.name or u.username or u.email or ""
+    if not user_display_map and any(r.get("user_id") for r in rows):
+        result = await db.execute(select(User))
+        all_users = result.scalars().all()
+        for u in all_users:
+            user_display_map[str(u.id)] = u.name or u.username or u.email or ""
+        if len(all_users) == 1:
+            u = all_users[0]
+            user_display_map["_single"] = u.name or u.username or u.email or ""
+    # Fallback: map unresolvable hash user IDs to the requesting user when
+    # there is only one distinct hash (typical single-developer setup).
+    unresolved_hashes = set()
+    for r in rows:
+        uid = r.get("user_id", "")
+        if uid and uid not in user_display_map and uid not in uuid_str_set:
+            unresolved_hashes.add(uid)
+    if unresolved_hashes and len(unresolved_hashes) == 1:
+        h = next(iter(unresolved_hashes))
+        display = current_user.name or current_user.username or current_user.email or ""
+        if display:
+            user_display_map[h] = display
+
     for row in rows:
         row["is_active"] = bool(int(row.get("is_active", 0)))
+        row["platform"] = _derive_platform(row.get("service_name", ""))
+        row["ide"] = _derive_ide(row.get("terminal_type", ""), row.get("service_name", ""))
+        uid = row.get("user_id", "")
+        row["user_display"] = (
+            row.get("user_username", "")
+            or user_display_map.get(row.get("user_uuid", ""), "")
+            or user_display_map.get(uid, "")
+            or user_display_map.get(hash_to_uuid.get(uid, ""), "")
+            or (user_display_map.get("_single", "") if uid else "")
+        )
+        mu = row.get("models_used")
+        if isinstance(mu, str):
+            row["models_used"] = [m.strip().strip("'\"") for m in mu.strip("[]").split(",") if m.strip()]
+        elif not isinstance(mu, list):
+            row["models_used"] = []
     if status == "active":
         rows = [r for r in rows if r["is_active"]]
     return rows
+
+
+@router.get("/sessions/summary")
+async def sessions_summary(
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    rows = await _ch_json(
+        "SELECT "
+        "uniqExact(LogAttributes['session.id']) AS sessions_today, "
+        "sum(toUInt64OrZero(LogAttributes['input_tokens'])) "
+        "+ sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS tokens_today "
+        "FROM otel_logs "
+        "WHERE Timestamp >= today() "
+        "AND LogAttributes['session.id'] != ''"
+    )
+    if rows:
+        return {
+            "sessions_today": int(rows[0].get("sessions_today", 0)),
+            "tokens_today": int(rows[0].get("tokens_today", 0)),
+        }
+    return {"sessions_today": 0, "tokens_today": 0}
 
 
 def _merge_session_events(events: list[dict]) -> list[dict]:
@@ -789,6 +941,13 @@ async def ingest_hook(request: Request):
     user_id = body.get("user_id") or request.headers.get("x-observal-user-id") or ""
     if user_id:
         attrs["user.id"] = user_id
+    # Also store the Observal UUID separately so the session query can resolve it
+    observal_uuid = request.headers.get("x-observal-user-id") or ""
+    if observal_uuid:
+        attrs["user.uuid"] = observal_uuid
+    username = request.headers.get("x-observal-username") or ""
+    if username:
+        attrs["user.username"] = username
 
     # ── IDE-specific extraction ──
     # Detect IDE from service_name, then delegate to the right handler.
