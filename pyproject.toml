@@ -13,6 +13,8 @@ dependencies = [
     "pyyaml>=6.0.3",
     "questionary>=2.0.0",
     "docker>=7.0.0",
+    "asyncpg>=0.29.0",
+    "hypothesis",
 ]
 
 

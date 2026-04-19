@@ -51,6 +51,7 @@ from observal_cli.cmd_auth import auth_app, register_config
 from observal_cli.cmd_doctor import doctor_app
 from observal_cli.cmd_hook import hook_app
 from observal_cli.cmd_mcp import mcp_app
+from observal_cli.cmd_migrate import migrate_app
 from observal_cli.cmd_ops import (
     admin_app,
     ops_app,
@@ -97,6 +98,7 @@ app.add_typer(ops_app, name="ops")
 app.add_typer(admin_app, name="admin")
 app.add_typer(self_app, name="self")
 app.add_typer(doctor_app, name="doctor")
+app.add_typer(migrate_app, name="migrate")
 
 
 if __name__ == "__main__":
