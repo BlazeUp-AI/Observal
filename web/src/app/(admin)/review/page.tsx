@@ -74,8 +74,8 @@ function ValidationDetails({ results }: { results?: McpValidationResult[] }) {
 
 function ReviewCard({ item, onApprove, onReject }: {
   item: ReviewItem;
-  onApprove: (id: string) => void;
-  onReject: (id: string, reason: string) => void;
+  onApprove: (id: string, type?: string) => void;
+  onReject: (id: string, reason: string, type?: string) => void;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -85,10 +85,10 @@ function ReviewCard({ item, onApprove, onReject }: {
       setShowRejectInput(true);
       return;
     }
-    onReject(item.id, rejectReason);
+    onReject(item.id, rejectReason, item.type);
     setShowRejectInput(false);
     setRejectReason("");
-  }, [showRejectInput, rejectReason, item.id, onReject]);
+  }, [showRejectInput, rejectReason, item.id, item.type, onReject]);
 
   const cancelReject = useCallback(() => {
     setShowRejectInput(false);
@@ -150,7 +150,7 @@ function ReviewCard({ item, onApprove, onReject }: {
         <Button
           size="sm"
           className="h-7 text-xs flex-1 bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
-          onClick={() => onApprove(item.id)}
+          onClick={() => onApprove(item.id, item.type)}
         >
           Approve
         </Button>
@@ -168,8 +168,8 @@ function ReviewCard({ item, onApprove, onReject }: {
 
 function ReviewRow({ item, onApprove, onReject }: {
   item: ReviewItem;
-  onApprove: (id: string) => void;
-  onReject: (id: string, reason: string) => void;
+  onApprove: (id: string, type?: string) => void;
+  onReject: (id: string, reason: string, type?: string) => void;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -179,10 +179,10 @@ function ReviewRow({ item, onApprove, onReject }: {
       setShowRejectInput(true);
       return;
     }
-    onReject(item.id, rejectReason);
+    onReject(item.id, rejectReason, item.type);
     setShowRejectInput(false);
     setRejectReason("");
-  }, [showRejectInput, rejectReason, item.id, onReject]);
+  }, [showRejectInput, rejectReason, item.id, item.type, onReject]);
 
   const cancelReject = useCallback(() => {
     setShowRejectInput(false);
@@ -250,7 +250,7 @@ function ReviewRow({ item, onApprove, onReject }: {
             <Button
               size="sm"
               className="h-8 text-xs bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
-              onClick={() => onApprove(item.id)}
+              onClick={() => onApprove(item.id, item.type)}
             >
               Approve
             </Button>
@@ -276,12 +276,12 @@ export default function ReviewPage() {
   const pendingCount = (items ?? []).length;
 
   const handleApprove = useCallback(
-    (id: string) => reviewAction.mutate({ id, action: "approve" }),
+    (id: string, type?: string) => reviewAction.mutate({ id, type, action: "approve" }),
     [reviewAction],
   );
 
   const handleReject = useCallback(
-    (id: string, reason: string) => reviewAction.mutate({ id, action: "reject", reason }),
+    (id: string, reason: string, type?: string) => reviewAction.mutate({ id, type, action: "reject", reason }),
     [reviewAction],
   );
 

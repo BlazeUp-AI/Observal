@@ -108,17 +108,29 @@ export function useReviewList(typeFilter?: string) {
   const params = typeFilter ? { type: typeFilter } : undefined;
   return useQuery({
     queryKey: ["review", params],
-    queryFn: () => review.list(params),
+    queryFn: async () => {
+      const [components, agents] = await Promise.all([
+        review.list(params),
+        review.listAgents(),
+      ]);
+      return [...agents, ...components];
+    },
   });
 }
 
 export function useReviewAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string; action: "approve" | "reject"; reason?: string }) =>
-      vars.action === "approve"
+    mutationFn: (vars: { id: string; type?: string; action: "approve" | "reject"; reason?: string }) => {
+      if (vars.type === "agent") {
+        return vars.action === "approve"
+          ? review.approveAgent(vars.id)
+          : review.rejectAgent(vars.id, { reason: vars.reason ?? "" });
+      }
+      return vars.action === "approve"
         ? review.approve(vars.id)
-        : review.reject(vars.id, { reason: vars.reason ?? "" }),
+        : review.reject(vars.id, { reason: vars.reason ?? "" });
+    },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["review"] });
       toast.success(vars.action === "approve" ? "Submission approved" : "Submission rejected");

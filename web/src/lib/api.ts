@@ -241,10 +241,14 @@ export const review = {
     const qs = params ? `?${new URLSearchParams(params)}` : "";
     return get<ReviewItem[]>(`/review${qs}`);
   },
+  listAgents: () => get<ReviewItem[]>("/review?tab=agents"),
   get: (id: string) => get<ReviewItem>(`/review/${id}`),
   approve: (id: string) => post(`/review/${id}/approve`),
   reject: (id: string, body: { reason: string }) =>
     post(`/review/${id}/reject`, body),
+  approveAgent: (id: string) => post(`/review/agents/${id}/approve`),
+  rejectAgent: (id: string, body: { reason: string }) =>
+    post(`/review/agents/${id}/reject`, body),
 };
 
 // ── Telemetry ───────────────────────────────────────────────────────
