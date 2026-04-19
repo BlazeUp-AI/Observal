@@ -287,11 +287,19 @@ export function useIdeUsage() {
 }
 // ── OTel ────────────────────────────────────────────────────────────
 
-export function useOtelSessions(options?: { refetchInterval?: number | false }) {
+export function useOtelSessions(options?: { refetchInterval?: number | false; filters?: { platform?: string; days?: number } }) {
   return useQuery({
-    queryKey: ['otel', 'sessions'],
-    queryFn: dashboard.otelSessions,
+    queryKey: ['otel', 'sessions', options?.filters],
+    queryFn: () => dashboard.otelSessions(options?.filters),
     refetchInterval: options?.refetchInterval,
+  });
+}
+
+export function useSessionsSummary() {
+  return useQuery({
+    queryKey: ['otel', 'sessions', 'summary'],
+    queryFn: dashboard.otelSessionsSummary,
+    refetchInterval: 60_000,
   });
 }
 export function useOtelSession(id: string | undefined) {

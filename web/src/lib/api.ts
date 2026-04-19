@@ -16,6 +16,7 @@ import type {
   AdminUser,
   AdminSetting,
   OtelSession,
+  SessionsSummary,
   OtelErrorEvent,
   TelemetryStatus,
   ReviewItem,
@@ -292,7 +293,14 @@ export const dashboard = {
   agentMetrics: (id: string) => get<unknown>(`/agents/${id}/metrics`),
   tokenStats: (range?: string) => get<TokenStats>(`/dashboard/tokens${range ? `?range=${range}` : ''}`),
   ideUsage: () => get<IdeUsageData>('/dashboard/ide-usage'),
-  otelSessions: () => get<OtelSession[]>('/otel/sessions'),
+  otelSessions: (filters?: { platform?: string; days?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.platform) params.set('platform', filters.platform);
+    if (filters?.days) params.set('days', String(filters.days));
+    const qs = params.toString();
+    return get<OtelSession[]>(`/otel/sessions${qs ? `?${qs}` : ''}`);
+  },
+  otelSessionsSummary: () => get<SessionsSummary>('/otel/sessions/summary'),
   otelSession: (id: string) => get<OtelSessionData>(`/otel/sessions/${encodeURIComponent(id)}`),
   otelTraces: () => get<OtelTrace[]>('/otel/traces'),
   otelTrace: (id: string) => get<unknown>(`/otel/traces/${encodeURIComponent(id)}`),

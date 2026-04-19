@@ -124,6 +124,7 @@ def get_desired_env(
         env["OBSERVAL_USER_ID"] = user_id
 
     from observal_cli import config as _cfg
+
     _loaded = _cfg.load()
     _username = _loaded.get("username", "")
     if _username:

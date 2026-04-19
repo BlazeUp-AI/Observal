@@ -296,8 +296,22 @@ export interface OtelSession {
   tool_result_count: number;
   total_input_tokens: number;
   total_output_tokens: number;
+  total_cache_read_tokens?: number;
   model: string;
   service_name: string;
+  platform?: string;
+  ide?: string;
+  models_used?: string[];
+  user_id?: string;
+  user_display?: string;
+  terminal_type?: string;
+  credits?: string;
+  tools_used?: string;
+}
+
+export interface SessionsSummary {
+  sessions_today: number;
+  tokens_today: number;
 }
 
 export interface OtelErrorEvent {
