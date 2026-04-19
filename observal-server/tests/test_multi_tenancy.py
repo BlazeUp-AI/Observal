@@ -230,9 +230,7 @@ class TestEvalOrgIsolation:
         self.org_a = _make_org("Org A", "org-a")
         self.org_b = _make_org("Org B", "org-b")
         self.admin_a = _make_user(org=self.org_a, role=UserRole.admin)
-        self.agent_b = _make_agent(
-            _make_user(org=self.org_b), name="foreign-agent", org=self.org_b
-        )
+        self.agent_b = _make_agent(_make_user(org=self.org_b), name="foreign-agent", org=self.org_b)
 
     def test_cross_org_eval_is_blocked(self):
         user = self.admin_a

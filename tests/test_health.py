@@ -87,6 +87,7 @@ class TestDiagnostics:
         user = MagicMock(spec=User)
         user.id = uuid.uuid4()
         user.role = UserRole.admin
+        user.org_id = None
         return user
 
     def _make_user(self):
@@ -95,6 +96,7 @@ class TestDiagnostics:
         user = MagicMock(spec=User)
         user.id = uuid.uuid4()
         user.role = UserRole.user
+        user.org_id = None
         return user
 
     @pytest.mark.asyncio

@@ -18,6 +18,7 @@ def _make_user():
     u = MagicMock(spec=User)
     u.id = uuid.uuid4()
     u.role = "admin"
+    u.org_id = None
     return u
 
 

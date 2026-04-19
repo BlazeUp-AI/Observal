@@ -15,6 +15,7 @@ def _make_user(role=UserRole.user, is_demo=False, email="test@test.com"):
     user.email = email
     user.role = role
     user.is_demo = is_demo
+    user.org_id = None
     return user
 
 

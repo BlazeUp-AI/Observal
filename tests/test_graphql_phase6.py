@@ -1,15 +1,15 @@
 """Unit tests for GraphQL layer: Phase 6."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from api.graphql import (
     Query,
     TraceConnection,
-    _load_scores_by_span_ids,
-    _load_scores_by_trace_ids,
-    _load_spans_by_trace_ids,
+    _make_score_by_span_loader,
+    _make_score_by_trace_loader,
+    _make_span_loader,
     _parse_json,
     _row_to_score,
     _row_to_span,
@@ -19,6 +19,13 @@ from api.graphql import (
 )
 
 # --- Helpers ---
+
+
+def _mock_info():
+    """Create a mock Strawberry Info object with a default project_id context."""
+    info = MagicMock()
+    info.context = {"project_id": "default"}
+    return info
 
 
 class TestParseJson:
@@ -128,8 +135,9 @@ class TestDataLoaders:
             {"trace_id": "t1", "span_id": "s1", "type": "tool_call", "name": "x", "start_time": "2026-01-01"},
             {"trace_id": "t2", "span_id": "s2", "type": "tool_call", "name": "y", "start_time": "2026-01-01"},
         ]
+        loader = _make_span_loader("default")
         with patch("api.graphql._ch_json", new_callable=AsyncMock, return_value=mock_rows):
-            result = await _load_spans_by_trace_ids(["t1", "t2", "t3"])
+            result = await loader(["t1", "t2", "t3"])
         assert len(result) == 3
         assert len(result[0]) == 1  # t1
         assert len(result[1]) == 1  # t2
@@ -138,15 +146,17 @@ class TestDataLoaders:
     @pytest.mark.asyncio
     async def test_load_scores_by_trace_ids(self):
         mock_rows = [{"trace_id": "t1", "score_id": "sc1", "name": "acc", "value": "1"}]
+        loader = _make_score_by_trace_loader("default")
         with patch("api.graphql._ch_json", new_callable=AsyncMock, return_value=mock_rows):
-            result = await _load_scores_by_trace_ids(["t1"])
+            result = await loader(["t1"])
         assert len(result[0]) == 1
 
     @pytest.mark.asyncio
     async def test_load_scores_by_span_ids(self):
         mock_rows = [{"span_id": "s1", "score_id": "sc1", "name": "acc", "value": "1"}]
+        loader = _make_score_by_span_loader("default")
         with patch("api.graphql._ch_json", new_callable=AsyncMock, return_value=mock_rows):
-            result = await _load_scores_by_span_ids(["s1"])
+            result = await loader(["s1"])
         assert len(result[0]) == 1
 
 
@@ -179,7 +189,7 @@ class TestQueryResolvers:
         mock_rows = [{"trace_id": "t1", "user_id": "u1", "start_time": "2026-01-01"}]
         with patch("api.graphql.query_traces", new_callable=AsyncMock, return_value=mock_rows):
             q = Query()
-            result = await q.traces(info=None)
+            result = await q.traces(info=_mock_info())
             assert isinstance(result, TraceConnection)
             assert len(result.items) == 1
             assert result.has_more is False
@@ -190,7 +200,7 @@ class TestQueryResolvers:
         mock_rows = [{"trace_id": f"t{i}", "user_id": "u1", "start_time": "2026-01-01"} for i in range(51)]
         with patch("api.graphql.query_traces", new_callable=AsyncMock, return_value=mock_rows):
             q = Query()
-            result = await q.traces(info=None, limit=50)
+            result = await q.traces(info=_mock_info(), limit=50)
             assert result.has_more is True
             assert len(result.items) == 50
 
@@ -202,14 +212,14 @@ class TestQueryResolvers:
             return_value={"trace_id": "t1", "user_id": "u1", "start_time": "2026-01-01"},
         ):
             q = Query()
-            result = await q.trace(info=None, trace_id="t1")
+            result = await q.trace(info=_mock_info(), trace_id="t1")
             assert result.trace_id == "t1"
 
     @pytest.mark.asyncio
     async def test_trace_not_found(self):
         with patch("api.graphql.query_trace_by_id", new_callable=AsyncMock, return_value=None):
             q = Query()
-            result = await q.trace(info=None, trace_id="missing")
+            result = await q.trace(info=_mock_info(), trace_id="missing")
             assert result is None
 
     @pytest.mark.asyncio
@@ -226,7 +236,7 @@ class TestQueryResolvers:
             },
         ):
             q = Query()
-            result = await q.span(info=None, span_id="s1")
+            result = await q.span(info=_mock_info(), span_id="s1")
             assert result.span_id == "s1"
 
     @pytest.mark.asyncio
@@ -246,7 +256,7 @@ class TestQueryResolvers:
         ]
         with patch("api.graphql._ch_json", new_callable=AsyncMock, return_value=mock_rows):
             q = Query()
-            result = await q.mcp_metrics(mcp_id="m1", start="2026-01-01", end="2026-02-01")
+            result = await q.mcp_metrics(info=_mock_info(), mcp_id="m1", start="2026-01-01", end="2026-02-01")
             assert result.tool_call_count == 100
             assert result.error_rate == 0.05
 
@@ -261,7 +271,7 @@ class TestQueryResolvers:
             ],
         ):
             q = Query()
-            result = await q.overview(start="2026-01-01", end="2026-02-01")
+            result = await q.overview(info=_mock_info(), start="2026-01-01", end="2026-02-01")
             assert result.total_traces == 500
             assert result.total_spans == 2000
 

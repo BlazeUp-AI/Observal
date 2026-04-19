@@ -18,6 +18,7 @@ def _make_user(**kwargs):
     u = MagicMock(spec=User)
     u.id = kwargs.get("id", uuid.uuid4())
     u.role = kwargs.get("role", "admin")
+    u.org_id = kwargs.get("org_id")
     return u
 
 
