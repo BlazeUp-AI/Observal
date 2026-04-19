@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import get_db, optional_current_user, require_role, resolve_prefix_id
+from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_prefix_id
 from api.sanitize import escape_like
 from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
 from models.agent_component import AgentComponent
@@ -808,7 +808,7 @@ async def delete_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
-    is_admin = current_user.role.value == "admin"
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
     if agent.created_by != current_user.id and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
     if agent.status == AgentStatus.active and not is_admin:
