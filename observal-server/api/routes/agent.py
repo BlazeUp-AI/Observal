@@ -166,6 +166,9 @@ async def create_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    if not req.description:
+        raise HTTPException(status_code=422, detail="Description must not be empty")
+
     # If `components` is provided, it supersedes legacy `mcp_server_ids`
     if req.components:
         req.mcp_server_ids = []
