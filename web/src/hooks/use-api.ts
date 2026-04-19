@@ -43,13 +43,25 @@ export function useTrends(range?: string) {
 // ── Traces (GraphQL) ────────────────────────────────────────────────
 
 export function useTraces(filters?: Record<string, unknown>) {
+  const traceType = filters?.trace_type as string | undefined;
+  const mcpId = filters?.mcp_id as string | undefined;
+  const agentId = filters?.agent_id as string | undefined;
+  const ide = filters?.ide as string | undefined;
   return useQuery({
     queryKey: ["traces", filters],
     queryFn: () =>
-      graphql<{ traces: unknown[] }>(
-        `query Traces($filters: TraceFilters) { traces(filters: $filters) { id traceId startTime endTime status spanCount } }`,
-        { filters },
-      ).then((d) => d.traces),
+      graphql<{ traces: { items: Record<string, unknown>[]; totalCount: number; hasMore: boolean } }>(
+        `query Traces($traceType: String, $mcpId: String, $agentId: String) {
+          traces(traceType: $traceType, mcpId: $mcpId, agentId: $agentId) {
+            items { traceId traceType name ide startTime endTime metrics { totalSpans errorCount } }
+            totalCount hasMore
+          }
+        }`,
+        { traceType, mcpId, agentId },
+      ).then((d) => {
+        const items = d.traces.items;
+        return ide ? items.filter((t) => t.ide === ide) : items;
+      }),
   });
 }
 
@@ -59,8 +71,14 @@ export function useTrace(id: string | undefined) {
     enabled: !!id,
     queryFn: () =>
       graphql<{ trace: unknown }>(
-        `query Trace($id: String!) { trace(id: $id) { id traceId startTime endTime status spans { spanId name startTime endTime attributes } } }`,
-        { id },
+        `query Trace($traceId: String!) {
+          trace(traceId: $traceId) {
+            traceId traceType name ide startTime endTime input output tags metadata
+            spans { spanId name type startTime endTime status latencyMs }
+            metrics { totalSpans errorCount totalLatencyMs toolCallCount tokenCountTotal }
+          }
+        }`,
+        { traceId: id },
       ).then((d) => d.trace),
   });
 }
@@ -69,13 +87,13 @@ export function useSessions() {
   return useQuery({
     queryKey: ["sessions"],
     queryFn: () =>
-      graphql<{ traces: unknown[] }>(
-        `query Sessions { traces { id traceId startTime endTime status spanCount } }`,
-      ).then((d) => d.traces),
+      graphql<{ traces: { items: unknown[]; totalCount: number; hasMore: boolean } }>(
+        `query Sessions {
+          traces { items { traceId traceType name ide sessionId startTime endTime } totalCount hasMore }
+        }`,
+      ).then((d) => d.traces.items),
   });
 }
-
-// ── Registry ────────────────────────────────────────────────────────
 
 export function useRegistryList(
   type: RegistryType,

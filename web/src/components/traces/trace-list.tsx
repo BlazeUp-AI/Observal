@@ -166,7 +166,8 @@ export function TraceList() {
             <TableBody>
               {filtered.map((t) => {
                 const traceId = (t.traceId ?? t.trace_id ?? t.id) as string;
-                const status = (t.status as string) ?? "success";
+                const metrics = t.metrics as Record<string, unknown> | undefined;
+                const status = (t.status as string) ?? (metrics?.errorCount ? "error" : "success");
                 return (
                   <TableRow
                     key={traceId}
