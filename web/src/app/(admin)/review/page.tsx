@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { CheckCircle2, X, LayoutGrid, TableProperties, AlertTriangle, ShieldCheck, ShieldX } from "lucide-react";
-import { useReviewList, useReviewAction } from "@/hooks/use-api";
+import { useState, useCallback, useMemo } from "react";
+import { CheckCircle2, X, LayoutGrid, TableProperties, AlertTriangle, ShieldCheck, ShieldX, AlertCircle } from "lucide-react";
+import { useReviewAgents, useReviewComponents, useReviewAction } from "@/hooks/use-api";
 import type { ReviewItem, McpValidationResult } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageHeader } from "@/components/layouts/page-header";
 import { CardSkeleton, TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -72,10 +74,35 @@ function ValidationDetails({ results }: { results?: McpValidationResult[] }) {
   );
 }
 
-function ReviewCard({ item, onApprove, onReject }: {
+function ComponentReadinessBadge({ item }: { item: ReviewItem }) {
+  if (item.components_ready !== false) return null;
+
+  return (
+    <div className="space-y-1.5">
+      <span className="inline-flex items-center gap-1 text-[10px] text-destructive bg-destructive/10 border border-destructive/25 rounded px-1.5 py-0.5">
+        <AlertCircle className="h-3 w-3" /> Components Not Ready
+      </span>
+      {item.component_blockers && item.component_blockers.length > 0 && (
+        <div className="p-2 rounded bg-destructive/5 border border-destructive/15 space-y-1">
+          <p className="text-[10px] font-medium text-destructive flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" /> Blocking components ({item.component_blockers.length})
+          </p>
+          {item.component_blockers.map((b, i) => (
+            <p key={i} className="text-[10px] text-muted-foreground pl-4">
+              {b.name} ({b.component_type}) — {b.status}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewCard({ item, onApprove, onReject, disableApprove }: {
   item: ReviewItem;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
+  disableApprove?: boolean;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -125,6 +152,7 @@ function ReviewCard({ item, onApprove, onReject }: {
       </div>
 
       <ValidationDetails results={item.validation_results} />
+      <ComponentReadinessBadge item={item} />
 
       {/* Reject reason input */}
       {showRejectInput && (
@@ -147,13 +175,34 @@ function ReviewCard({ item, onApprove, onReject }: {
       )}
 
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          className="h-7 text-xs flex-1 bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
-          onClick={() => onApprove(item.id, item.type)}
-        >
-          Approve
-        </Button>
+        {disableApprove ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="flex-1">
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs w-full bg-success/10 text-success border border-success/25 shadow-none opacity-50 cursor-not-allowed"
+                    disabled
+                  >
+                    Approve
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Cannot approve until all required components are ready</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <Button
+            size="sm"
+            className="h-7 text-xs flex-1 bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
+            onClick={() => onApprove(item.id, item.type)}
+          >
+            Approve
+          </Button>
+        )}
         <Button
           size="sm"
           className="h-7 text-xs flex-1 bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
@@ -166,10 +215,11 @@ function ReviewCard({ item, onApprove, onReject }: {
   );
 }
 
-function ReviewRow({ item, onApprove, onReject }: {
+function ReviewRow({ item, onApprove, onReject, disableApprove }: {
   item: ReviewItem;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
+  disableApprove?: boolean;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -213,6 +263,7 @@ function ReviewRow({ item, onApprove, onReject }: {
             </p>
           )}
           <ValidationDetails results={item.validation_results} />
+          <ComponentReadinessBadge item={item} />
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {item.submitted_by && <span>by {item.submitted_by}</span>}
             {(item.submitted_at || item.created_at) && (
@@ -247,13 +298,34 @@ function ReviewRow({ item, onApprove, onReject }: {
           </div>
         ) : (
           <div className="flex items-center gap-2 shrink-0">
-            <Button
-              size="sm"
-              className="h-8 text-xs bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
-              onClick={() => onApprove(item.id, item.type)}
-            >
-              Approve
-            </Button>
+            {disableApprove ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs bg-success/10 text-success border border-success/25 shadow-none opacity-50 cursor-not-allowed"
+                        disabled
+                      >
+                        Approve
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Cannot approve until all required components are ready</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                size="sm"
+                className="h-8 text-xs bg-success/10 hover:bg-success/20 text-success border border-success/25 shadow-none"
+                onClick={() => onApprove(item.id, item.type)}
+              >
+                Approve
+              </Button>
+            )}
             <Button
               size="sm"
               className="h-8 text-xs bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/25 shadow-none"
@@ -268,12 +340,134 @@ function ReviewRow({ item, onApprove, onReject }: {
   );
 }
 
+function AgentItemList({
+  items,
+  view,
+  onApprove,
+  onReject,
+}: {
+  items: ReviewItem[];
+  view: ViewMode;
+  onApprove: (id: string, type?: string) => void;
+  onReject: (id: string, reason: string, type?: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const bundles = new Map<string, { name: string; items: ReviewItem[] }>();
+    const ungrouped: ReviewItem[] = [];
+    for (const item of items) {
+      if (item.bundle_id && item.bundle_name) {
+        const existing = bundles.get(item.bundle_id);
+        if (existing) {
+          existing.items.push(item);
+        } else {
+          bundles.set(item.bundle_id, { name: item.bundle_name, items: [item] });
+        }
+      } else {
+        ungrouped.push(item);
+      }
+    }
+    return { bundles: Array.from(bundles.values()), ungrouped };
+  }, [items]);
+
+  const renderItems = (list: ReviewItem[]) =>
+    view === "list" ? (
+      <div className="animate-in rounded-md border border-border overflow-hidden">
+        {list.map((item) => (
+          <ReviewRow
+            key={item.id}
+            item={item}
+            onApprove={onApprove}
+            onReject={onReject}
+            disableApprove={item.components_ready === false}
+          />
+        ))}
+      </div>
+    ) : (
+      <div className="animate-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {list.map((item) => (
+          <ReviewCard
+            key={item.id}
+            item={item}
+            onApprove={onApprove}
+            onReject={onReject}
+            disableApprove={item.components_ready === false}
+          />
+        ))}
+      </div>
+    );
+
+  if (grouped.bundles.length === 0) return renderItems(items);
+
+  return (
+    <div className="space-y-6">
+      {grouped.bundles.map((bundle) => (
+        <div key={bundle.name} className="space-y-3">
+          <h3 className="text-sm font-[family-name:var(--font-display)] font-semibold text-muted-foreground border-b border-border pb-2">
+            Bundle: {bundle.name}
+          </h3>
+          {renderItems(bundle.items)}
+        </div>
+      ))}
+      {grouped.ungrouped.length > 0 && (
+        <div className="space-y-3">
+          {grouped.bundles.length > 0 && (
+            <h3 className="text-sm font-[family-name:var(--font-display)] font-semibold text-muted-foreground border-b border-border pb-2">
+              Standalone Agents
+            </h3>
+          )}
+          {renderItems(grouped.ungrouped)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewItemList({
+  items,
+  view,
+  onApprove,
+  onReject,
+}: {
+  items: ReviewItem[];
+  view: ViewMode;
+  onApprove: (id: string, type?: string) => void;
+  onReject: (id: string, reason: string, type?: string) => void;
+}) {
+  return view === "list" ? (
+    <div className="animate-in rounded-md border border-border overflow-hidden">
+      {items.map((item) => (
+        <ReviewRow
+          key={item.id}
+          item={item}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      ))}
+    </div>
+  ) : (
+    <div className="animate-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {items.map((item) => (
+        <ReviewCard
+          key={item.id}
+          item={item}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function ReviewPage() {
-  const { data: items, isLoading, isError, error, refetch } = useReviewList();
+  const { data: agents, isLoading: agentsLoading, isError: agentsError, error: agentsErr, refetch: refetchAgents } = useReviewAgents();
+  const { data: components, isLoading: componentsLoading, isError: componentsError, error: componentsErr, refetch: refetchComponents } = useReviewComponents();
   const reviewAction = useReviewAction();
   const [view, setView] = useState<ViewMode>("grid");
+  const [activeTab, setActiveTab] = useState("agents");
 
-  const pendingCount = (items ?? []).length;
+  const agentCount = (agents ?? []).length;
+  const componentCount = (components ?? []).length;
+  const totalPending = agentCount + componentCount;
 
   const handleApprove = useCallback(
     (id: string, type?: string) => reviewAction.mutate({ id, type, action: "approve" }),
@@ -295,9 +489,9 @@ export default function ReviewPage() {
         ]}
         actionButtonsRight={
           <div className="flex items-center gap-2">
-            {!isLoading && pendingCount > 0 && (
+            {!agentsLoading && !componentsLoading && totalPending > 0 && (
               <Badge variant="secondary" className="text-xs">
-                {pendingCount} pending
+                {totalPending} pending
               </Badge>
             )}
             <div className="flex items-center border border-border rounded-md overflow-hidden">
@@ -324,43 +518,66 @@ export default function ReviewPage() {
         }
       />
       <div className="p-6 w-full max-w-6xl mx-auto space-y-4">
-        {isLoading ? (
-          view === "list" ? (
-            <TableSkeleton rows={6} cols={4} />
-          ) : (
-            <CardSkeleton count={3} columns={3} />
-          )
-        ) : isError ? (
-          <ErrorState message={error?.message} onRetry={() => refetch()} />
-        ) : pendingCount === 0 ? (
-          <EmptyState
-            icon={CheckCircle2}
-            title="All clear"
-            description="All submissions have been reviewed. New items will appear here when agents or components are submitted."
-          />
-        ) : view === "list" ? (
-          <div className="animate-in rounded-md border border-border overflow-hidden">
-            {(items ?? []).map((item: ReviewItem) => (
-              <ReviewRow
-                key={item.id}
-                item={item}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="agents">
+              Agents{!agentsLoading ? ` (${agentCount})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="components">
+              Components{!componentsLoading ? ` (${componentCount})` : ""}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="agents">
+            {agentsLoading ? (
+              view === "list" ? (
+                <TableSkeleton rows={6} cols={4} />
+              ) : (
+                <CardSkeleton count={3} columns={3} />
+              )
+            ) : agentsError ? (
+              <ErrorState message={agentsErr?.message} onRetry={() => refetchAgents()} />
+            ) : agentCount === 0 ? (
+              <EmptyState
+                icon={CheckCircle2}
+                title="No agents to review"
+                description="All agent submissions have been reviewed. New items will appear here when agents are submitted."
+              />
+            ) : (
+              <AgentItemList
+                items={agents!}
+                view={view}
                 onApprove={handleApprove}
                 onReject={handleReject}
               />
-            ))}
-          </div>
-        ) : (
-          <div className="animate-in grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(items ?? []).map((item: ReviewItem) => (
-              <ReviewCard
-                key={item.id}
-                item={item}
+            )}
+          </TabsContent>
+
+          <TabsContent value="components">
+            {componentsLoading ? (
+              view === "list" ? (
+                <TableSkeleton rows={6} cols={4} />
+              ) : (
+                <CardSkeleton count={3} columns={3} />
+              )
+            ) : componentsError ? (
+              <ErrorState message={componentsErr?.message} onRetry={() => refetchComponents()} />
+            ) : componentCount === 0 ? (
+              <EmptyState
+                icon={CheckCircle2}
+                title="No components to review"
+                description="All component submissions have been reviewed. New items will appear here when components are submitted."
+              />
+            ) : (
+              <ReviewItemList
+                items={components!}
+                view={view}
                 onApprove={handleApprove}
                 onReject={handleReject}
               />
-            ))}
-          </div>
-        )}
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   );
