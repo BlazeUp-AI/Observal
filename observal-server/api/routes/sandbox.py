@@ -45,6 +45,7 @@ async def submit_sandbox(
         supported_ides=req.supported_ides,
         status=ListingStatus.pending,
         submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
     )
     db.add(listing)
     await db.commit()

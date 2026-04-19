@@ -125,6 +125,7 @@ async def submit_mcp(
         changelog=req.changelog,
         status=ListingStatus.pending,
         submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
     )
     db.add(listing)
     await db.commit()

@@ -51,6 +51,17 @@ async def get_current_user(
     return user
 
 
+async def optional_current_user(
+    authorization: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Return the authenticated user when a valid token is present, else None."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.removeprefix("Bearer ").strip()
+    return await _authenticate_via_jwt(token, db)
+
+
 # Role hierarchy: lower number = higher privilege
 ROLE_HIERARCHY: dict[UserRole, int] = {
     UserRole.super_admin: 0,

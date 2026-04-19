@@ -49,6 +49,7 @@ async def submit_skill(
         activation_keywords=req.activation_keywords,
         status=ListingStatus.pending,
         submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
     )
     db.add(listing)
     await db.commit()
