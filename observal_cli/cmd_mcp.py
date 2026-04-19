@@ -318,21 +318,19 @@ def _submit_impl(git_url, name, category, yes, direct_config=False):
     # ── Path B/C: Direct JSON config (no git URL needed) ─────
     if direct_config:
         rprint("[bold]Paste your MCP server JSON config below.[/bold]")
-        rprint("[dim]Press Enter twice when done.[/dim]\n")
+        rprint("[dim]Press Enter on an empty line when done.[/dim]\n")
         lines: list[str] = []
-        empty_count = 0
+        has_content = False
         while True:
             try:
                 line = input()
             except EOFError:
                 break
             if line.strip() == "":
-                empty_count += 1
-                if empty_count >= 2:
+                if has_content:
                     break
-                lines.append(line)
             else:
-                empty_count = 0
+                has_content = True
                 lines.append(line)
         raw_text = "\n".join(lines).strip()
         if not raw_text:
