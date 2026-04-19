@@ -571,9 +571,21 @@ function EventSummary({ event }: { event: RawOtelEvent }) {
   }
 
   if (isHookEvent(eName)) {
+    const hasShim = attrs._sources?.includes("shim");
     return (
       <div className="flex items-center gap-3 flex-wrap">
         <Badge>{attrs.tool_name || attrs.agent_type || eName.replace("hook_", "")}</Badge>
+        {hasShim && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+            shim
+          </span>
+        )}
+        {hasShim && attrs.mcp_id && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <Globe className="h-3 w-3" />
+            {attrs.mcp_id}
+          </span>
+        )}
       </div>
     );
   }
