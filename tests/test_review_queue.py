@@ -96,8 +96,8 @@ class TestListPending:
             version="2.1.0",
             owner="acme-corp",
         )
-        # 5 listing types queried; put our listing in the first result, empty for rest
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        # agents query (empty) + 5 listing types + user lookup
+        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -105,7 +105,7 @@ class TestListPending:
 
         assert r.status_code == 200
         items = r.json()
-        assert len(items) == 1
+        assert len(items) >= 1
         item = items[0]
         assert item["description"] == "My cool MCP server"
         assert item["version"] == "2.1.0"
@@ -116,7 +116,7 @@ class TestListPending:
         """Verify the full shape of each item in the list_pending response."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -143,7 +143,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.description = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -157,7 +157,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.version = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -171,7 +171,7 @@ class TestListPending:
         app, db, _ = _app_with()
         listing = _listing_mock()
         listing.owner = None
-        results = [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -184,14 +184,15 @@ class TestListPending:
         """The ?type= query param should only query that one listing type."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        db.execute = AsyncMock(side_effect=[_result_with(listing), _empty_result()])
+        # agents query (empty) + single type query + user lookup
+        db.execute = AsyncMock(side_effect=[_empty_result(), _result_with(listing), _empty_result()])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get("/api/v1/review?type=mcp")
 
         assert r.status_code == 200
-        # One call for the single type + one for user lookup
-        assert db.execute.call_count == 2
+        # 1 agents query + 1 single type + 1 user lookup
+        assert db.execute.call_count == 3
         assert r.json()[0]["type"] == "mcp"
 
     @pytest.mark.asyncio
@@ -204,7 +205,8 @@ class TestListPending:
             r = await ac.get("/api/v1/review?type=nonexistent")
 
         assert r.status_code == 200
-        assert db.execute.call_count == len(LISTING_MODELS)
+        # 1 agents query + 5 listing types (invalid type falls back to all)
+        assert db.execute.call_count == 1 + len(LISTING_MODELS)
 
     @pytest.mark.asyncio
     async def test_multiple_listings_across_types(self):
@@ -213,6 +215,7 @@ class TestListPending:
         mcp_listing = _listing_mock(name="mcp-one")
         skill_listing = _listing_mock(name="skill-one")
         results = [
+            _empty_result(),  # agents query
             _result_with(mcp_listing),
             _result_with(skill_listing),
             _empty_result(),

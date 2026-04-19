@@ -87,50 +87,51 @@ async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple
     return len(blocking) == 0, blocking
 
 
-@router.get("")
-async def list_pending(
-    type: str | None = Query(None),
-    tab: str | None = Query(None, description="'agents' to list pending agents, default lists components"),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.reviewer)),
-):
-    if tab == "agents":
-        result = await db.execute(
-            select(Agent)
-            .where(Agent.status == AgentStatus.pending)
-            .options(selectinload(Agent.components))
-            .order_by(Agent.created_at.desc())
+async def _query_pending_agents(db: AsyncSession) -> list[dict]:
+    result = await db.execute(
+        select(Agent)
+        .where(Agent.status == AgentStatus.pending)
+        .options(selectinload(Agent.components))
+        .order_by(Agent.created_at.desc())
+    )
+    agents = result.scalars().all()
+
+    user_ids = {a.created_by for a in agents}
+    user_map: dict[uuid.UUID, str] = {}
+    if user_ids:
+        rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+        user_map = {r[0]: r[1] for r in rows.all()}
+
+    items = []
+    for a in agents:
+        components_ready, blocking = await _check_agent_components_ready(a, db)
+        items.append(
+            {
+                "type": "agent",
+                "id": str(a.id),
+                "name": a.name,
+                "description": a.description or "",
+                "version": a.version or "",
+                "owner": a.owner or "",
+                "status": a.status.value,
+                "submitted_by": user_map.get(a.created_by, str(a.created_by)),
+                "created_at": a.created_at.isoformat() if a.created_at else "",
+                "component_count": len(a.components),
+                "components_ready": components_ready,
+                "blocking_components": blocking,
+            }
         )
-        agents = result.scalars().all()
+    return items
 
-        user_ids = {a.created_by for a in agents}
-        user_map: dict[uuid.UUID, str] = {}
-        if user_ids:
-            rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
-            user_map = {r[0]: r[1] for r in rows.all()}
 
-        items = []
-        for a in agents:
-            components_ready, blocking = await _check_agent_components_ready(a, db)
-            items.append(
-                {
-                    "type": "agent",
-                    "id": str(a.id),
-                    "name": a.name,
-                    "description": a.description or "",
-                    "version": a.version or "",
-                    "owner": a.owner or "",
-                    "status": a.status.value,
-                    "submitted_by": user_map.get(a.created_by, str(a.created_by)),
-                    "created_at": a.created_at.isoformat() if a.created_at else "",
-                    "component_count": len(a.components),
-                    "components_ready": components_ready,
-                    "blocking_components": blocking,
-                }
-            )
-        return items
-
-    models_to_query = {type: LISTING_MODELS[type]} if type and type in LISTING_MODELS else LISTING_MODELS
+async def _query_pending_components(
+    db: AsyncSession, type_filter: str | None = None
+) -> list[dict]:
+    models_to_query = (
+        {type_filter: LISTING_MODELS[type_filter]}
+        if type_filter and type_filter in LISTING_MODELS
+        else LISTING_MODELS
+    )
     items = []
     user_ids: set[uuid.UUID] = set()
     for listing_type, model in models_to_query.items():
@@ -149,7 +150,9 @@ async def list_pending(
                 "status": r.status.value,
                 "submitted_by": r.submitted_by,
                 "created_at": r.created_at.isoformat(),
-                "bundle_id": str(r.bundle_id) if isinstance(getattr(r, "bundle_id", None), uuid.UUID) else None,
+                "bundle_id": str(r.bundle_id)
+                if isinstance(getattr(r, "bundle_id", None), uuid.UUID)
+                else None,
             }
             # Include validation results for MCP listings
             if listing_type == "mcp" and hasattr(r, "validation_results"):
@@ -190,6 +193,33 @@ async def list_pending(
         item["submitted_by"] = user_map.get(uid, str(uid))
 
     return items
+
+
+@router.get("")
+async def list_pending(
+    type: str | None = Query(None),
+    tab: str | None = Query(
+        None,
+        description="Filter by type: 'agents' or 'components'. Defaults to all pending items.",
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.reviewer)),
+):
+    if tab == "agents":
+        return await _query_pending_agents(db)
+
+    if tab == "components":
+        return await _query_pending_components(db, type)
+
+    # Default: return both agents and components
+    agents = await _query_pending_agents(db)
+    components = await _query_pending_components(db, type)
+
+    # Merge and sort by created_at (most recent first)
+    all_items = agents + components
+    all_items.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return all_items
 
 
 @router.get("/{listing_id}")
