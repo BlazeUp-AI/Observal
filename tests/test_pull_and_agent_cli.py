@@ -759,7 +759,7 @@ class TestAgentPublish:
                 ["agent", "publish", "--dir", str(tmp_path)],
             )
         assert result.exit_code == 0, result.output
-        assert "Agent created" in result.output
+        assert "Agent submitted for review" in result.output
         assert "new-agent-uuid" in result.output
 
         # Verify the POST payload

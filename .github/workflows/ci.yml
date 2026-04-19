@@ -128,17 +128,18 @@ jobs:
         if: needs.changes.outputs.python == 'true'
         run: uv python install ${{ matrix.python-version }}
 
+      - name: Install project dependencies
+        if: needs.changes.outputs.python == 'true'
+        run: |
+          cd observal-server
+          uv sync --python ${{ matrix.python-version }} --group dev
+
       - name: Run pytest
         if: needs.changes.outputs.python == 'true'
         run: |
           cd observal-server
           uv run \
             --python ${{ matrix.python-version }} \
-            --with pytest \
-            --with pytest-asyncio \
-            --with pyyaml \
-            --with typer \
-            --with rich \
             pytest ../tests/ -q
 
 # ── Job 3: Next.js lint + typecheck ───────────────────────────────────────────
