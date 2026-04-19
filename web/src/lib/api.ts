@@ -23,6 +23,9 @@ import type {
   LeaderboardItem,
   LeaderboardWindow,
   ValidationResult,
+  VersionSuggestions,
+  BulkResult,
+  ComponentLeaderboardItem,
 } from "./types";
 
 const API = "/api/v1";
@@ -172,6 +175,9 @@ function put<T = unknown>(path: string, body?: unknown) {
 function del<T = unknown>(path: string) {
   return request<T>("DELETE", path);
 }
+function patch<T = unknown>(path: string, body?: unknown) {
+  return request<T>("PATCH", path, body);
+}
 
 export async function graphql<T = unknown>(
   query: string,
@@ -233,6 +239,12 @@ export const registry = {
   validate: (body: { components: { component_type: string; component_id: string }[] }) =>
     post<ValidationResult>("/agents/validate", body),
   my: () => get<RegistryItem[]>("/agents/my"),
+  archive: (id: string) => patch(`/agents/${id}/archive`),
+  draft: (body: unknown) => post<RegistryItem>("/agents/draft", body),
+  updateDraft: (id: string, body: unknown) => put<RegistryItem>(`/agents/${id}/draft`, body),
+  submitDraft: (id: string) => post(`/agents/${id}/submit`),
+  versionSuggestions: (id: string) =>
+    get<VersionSuggestions>(`/agents/${id}/version-suggestions`),
 };
 
 // ── Review ──────────────────────────────────────────────────────────
@@ -249,6 +261,9 @@ export const review = {
   approveAgent: (id: string) => post(`/review/agents/${id}/approve`),
   rejectAgent: (id: string, body: { reason: string }) =>
     post(`/review/agents/${id}/reject`, body),
+  approveBundle: (id: string) => post(`/review/bundles/${id}/approve`),
+  rejectBundle: (id: string, body: { reason: string }) =>
+    post(`/review/bundles/${id}/reject`, body),
 };
 
 // ── Telemetry ───────────────────────────────────────────────────────
@@ -262,13 +277,16 @@ export const dashboard = {
   stats: (range?: string) => get<OverviewStats>(`/overview/stats${range ? `?range=${range}` : ''}`),
   topMcps: () => get<TopItem[]>("/overview/top-mcps"),
   topAgents: (limit?: number) => get<TopAgentItem[]>(`/overview/top-agents${limit ? `?limit=${limit}` : ''}`),
-  leaderboard: (window?: LeaderboardWindow, limit?: number) => {
+  leaderboard: (window?: LeaderboardWindow, limit?: number, user?: string) => {
     const params = new URLSearchParams();
     if (window) params.set("window", window);
     if (limit) params.set("limit", String(limit));
+    if (user) params.set("user", user);
     const qs = params.toString();
     return get<LeaderboardItem[]>(`/overview/leaderboard${qs ? `?${qs}` : ''}`);
   },
+  componentLeaderboard: () =>
+    get<ComponentLeaderboardItem[]>("/overview/component-leaderboard"),
   trends: (range?: string) => get<TrendPoint[]>(`/overview/trends${range ? `?range=${range}` : ''}`),
   mcpMetrics: (id: string) => get<unknown>(`/mcps/${id}/metrics`),
   agentMetrics: (id: string) => get<unknown>(`/agents/${id}/metrics`),
@@ -342,6 +360,12 @@ export type PublicConfig = {
 
 export const config = {
   public: () => get<PublicConfig>("/config/public"),
+};
+
+// ── Bulk ───────────────────────────────────────────────────────────
+export const bulk = {
+  createAgents: (body: { agents: unknown[]; dry_run?: boolean }) =>
+    post<BulkResult>("/bulk/agents", body),
 };
 
 // ── Health ──────────────────────────────────────────────────────────

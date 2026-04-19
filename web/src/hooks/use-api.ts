@@ -16,6 +16,7 @@ import {
   eval_,
   admin,
   telemetry,
+  bulk,
   graphql,
   type RegistryType,
 } from "@/lib/api";
@@ -368,10 +369,17 @@ export function useEvalAggregate(agentId: string) {
   });
 }
 
-export function useLeaderboard(window?: LeaderboardWindow, limit?: number) {
+export function useLeaderboard(window?: LeaderboardWindow, limit?: number, user?: string) {
   return useQuery({
-    queryKey: ["leaderboard", window, limit],
-    queryFn: () => dashboard.leaderboard(window, limit),
+    queryKey: ["leaderboard", window, limit, user],
+    queryFn: () => dashboard.leaderboard(window, limit, user),
+  });
+}
+
+export function useComponentLeaderboard() {
+  return useQuery({
+    queryKey: ["component-leaderboard"],
+    queryFn: dashboard.componentLeaderboard,
   });
 }
 
@@ -402,6 +410,129 @@ export function useEvalScorecard(scorecardId: string | undefined) {
     queryKey: ["eval", "scorecard", scorecardId],
     enabled: !!scorecardId,
     queryFn: () => eval_.show(scorecardId!),
+  });
+}
+
+// ── Archive ────────────────────────────────────────────────────────
+
+export function useArchiveAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.archive(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      toast.success("Agent archived");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to archive agent");
+    },
+  });
+}
+
+// ── Draft ──────────────────────────────────────────────────────────
+
+export function useSaveDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: unknown) => registry.draft(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      toast.success("Draft saved");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to save draft");
+    },
+  });
+}
+
+export function useUpdateDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; body: unknown }) => registry.updateDraft(vars.id, vars.body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      toast.success("Draft updated");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update draft");
+    },
+  });
+}
+
+export function useSubmitDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.submitDraft(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success("Agent submitted for review");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to submit draft");
+    },
+  });
+}
+
+// ── Version ────────────────────────────────────────────────────────
+
+export function useVersionSuggestions(id: string | undefined) {
+  return useQuery({
+    queryKey: ["version-suggestions", id],
+    enabled: !!id,
+    queryFn: () => registry.versionSuggestions(id!),
+  });
+}
+
+// ── Bundle Review ──────────────────────────────────────────────────
+
+export function useBundleReviewAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; action: "approve" | "reject"; reason?: string }) =>
+      vars.action === "approve"
+        ? review.approveBundle(vars.id)
+        : review.rejectBundle(vars.id, { reason: vars.reason ?? "" }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success(vars.action === "approve" ? "Bundle approved" : "Bundle rejected");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Bundle review action failed");
+    },
+  });
+}
+
+// ── Bulk ───────────────────────────────────────────────────────────
+
+export function useBulkCreateAgents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: bulk.createAgents,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      toast.success(`Created ${data.created} agents`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Bulk create failed");
+    },
+  });
+}
+
+// ── Review (agents-only list) ──────────────────────────────────────
+
+export function useReviewAgents() {
+  return useQuery({
+    queryKey: ["review", "agents"],
+    queryFn: () => review.listAgents(),
+  });
+}
+
+export function useReviewComponents(typeFilter?: string) {
+  const params = typeFilter ? { type: typeFilter } : undefined;
+  return useQuery({
+    queryKey: ["review", "components", params],
+    queryFn: () => review.list(params),
   });
 }
 

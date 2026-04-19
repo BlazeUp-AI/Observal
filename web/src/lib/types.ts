@@ -106,6 +106,36 @@ export interface TopAgentItem {
 export type LeaderboardItem = TopAgentItem;
 export type LeaderboardWindow = "24h" | "7d" | "30d" | "all";
 
+export interface ComponentLeaderboardItem {
+  user: string;
+  username?: string | null;
+  mcp_count: number;
+  total_downloads: number;
+}
+
+export interface VersionSuggestions {
+  current: string;
+  patch: string;
+  minor: string;
+  major: string;
+}
+
+export interface BulkResultItem {
+  name: string;
+  status: "created" | "skipped" | "error";
+  agent_id?: string | null;
+  error?: string | null;
+}
+
+export interface BulkResult {
+  total: number;
+  created: number;
+  skipped: number;
+  errors: number;
+  dry_run: boolean;
+  results: BulkResultItem[];
+}
+
 export interface FeedbackSummary {
   listing_id: string;
   average_rating: number;
@@ -146,6 +176,11 @@ export interface ReviewItem {
   status?: string;
   mcp_validated?: boolean;
   validation_results?: McpValidationResult[];
+  components_ready?: boolean;
+  component_blockers?: { component_type: string; component_id: string; name: string; status: string }[];
+  bundle_id?: string;
+  bundle_name?: string;
+  rejection_reason?: string;
 }
 
 // ── Scores ──────────────────────────────────────────────────────────
