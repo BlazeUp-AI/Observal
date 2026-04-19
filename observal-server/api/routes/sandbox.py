@@ -70,6 +70,20 @@ async def list_sandboxes(
     return [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
+@router.get("/my", response_model=list[SandboxListingSummary])
+async def my_sandboxes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(SandboxListing)
+        .where(SandboxListing.submitted_by == current_user.id)
+        .order_by(SandboxListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
 @router.get("/{listing_id}", response_model=SandboxListingResponse)
 async def get_sandbox(listing_id: str, db: AsyncSession = Depends(get_db)):
     listing = await resolve_listing(SandboxListing, listing_id, db)
@@ -98,20 +112,6 @@ async def install_sandbox(
 
     config = generate_sandbox_config(listing, req.ide)
     return SandboxInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
-
-
-@router.get("/my", response_model=list[SandboxListingSummary])
-async def my_sandboxes(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    stmt = (
-        select(SandboxListing)
-        .where(SandboxListing.submitted_by == current_user.id)
-        .order_by(SandboxListing.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    return [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("/draft", response_model=SandboxListingResponse)

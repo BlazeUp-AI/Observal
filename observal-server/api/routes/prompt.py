@@ -70,6 +70,20 @@ async def list_prompts(
     return [PromptListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
+@router.get("/my", response_model=list[PromptListingSummary])
+async def my_prompts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(PromptListing)
+        .where(PromptListing.submitted_by == current_user.id)
+        .order_by(PromptListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [PromptListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
 @router.get("/{listing_id}", response_model=PromptListingResponse)
 async def get_prompt(listing_id: str, db: AsyncSession = Depends(get_db)):
     listing = await resolve_listing(PromptListing, listing_id, db)
@@ -153,20 +167,6 @@ async def render_prompt(
         pass
 
     return PromptRenderResponse(listing_id=listing.id, rendered=rendered)
-
-
-@router.get("/my", response_model=list[PromptListingSummary])
-async def my_prompts(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    stmt = (
-        select(PromptListing)
-        .where(PromptListing.submitted_by == current_user.id)
-        .order_by(PromptListing.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    return [PromptListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("/draft", response_model=PromptListingResponse)

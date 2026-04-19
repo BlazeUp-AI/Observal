@@ -77,6 +77,20 @@ async def list_skills(
     return [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
+@router.get("/my", response_model=list[SkillListingSummary])
+async def my_skills(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(SkillListing)
+        .where(SkillListing.submitted_by == current_user.id)
+        .order_by(SkillListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
 @router.get("/{listing_id}", response_model=SkillListingResponse)
 async def get_skill(listing_id: str, db: AsyncSession = Depends(get_db)):
     listing = await resolve_listing(SkillListing, listing_id, db)
@@ -105,20 +119,6 @@ async def install_skill(
 
     config = generate_skill_config(listing, req.ide)
     return SkillInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
-
-
-@router.get("/my", response_model=list[SkillListingSummary])
-async def my_skills(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    stmt = (
-        select(SkillListing)
-        .where(SkillListing.submitted_by == current_user.id)
-        .order_by(SkillListing.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    return [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("/draft", response_model=SkillListingResponse)

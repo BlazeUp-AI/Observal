@@ -171,6 +171,16 @@ async def list_mcps(
     return [McpListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
+@router.get("/my", response_model=list[McpListingSummary])
+async def my_mcps(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = select(McpListing).where(McpListing.submitted_by == current_user.id).order_by(McpListing.created_at.desc())
+    result = await db.execute(stmt)
+    return [McpListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
 @router.get("/{listing_id}", response_model=McpListingResponse)
 async def get_mcp(listing_id: str, db: AsyncSession = Depends(get_db)):
     listing = await resolve_listing(McpListing, listing_id, db)
@@ -197,16 +207,6 @@ async def install_mcp(
 
     snippet = generate_config(listing, req.ide, env_values=req.env_values, header_values=req.header_values)
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
-
-
-@router.get("/my", response_model=list[McpListingSummary])
-async def my_mcps(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    stmt = select(McpListing).where(McpListing.submitted_by == current_user.id).order_by(McpListing.created_at.desc())
-    result = await db.execute(stmt)
-    return [McpListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("/draft", response_model=McpListingResponse)

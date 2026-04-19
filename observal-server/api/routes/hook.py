@@ -75,6 +75,18 @@ async def list_hooks(
     return [HookListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
+@router.get("/my", response_model=list[HookListingSummary])
+async def my_hooks(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    stmt = (
+        select(HookListing).where(HookListing.submitted_by == current_user.id).order_by(HookListing.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [HookListingSummary.model_validate(r) for r in result.scalars().all()]
+
+
 @router.get("/{listing_id}", response_model=HookListingResponse)
 async def get_hook(listing_id: str, db: AsyncSession = Depends(get_db)):
     listing = await resolve_listing(HookListing, listing_id, db)
@@ -103,18 +115,6 @@ async def install_hook(
 
     config = generate_hook_telemetry_config(listing, req.ide, platform=req.platform)
     return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
-
-
-@router.get("/my", response_model=list[HookListingSummary])
-async def my_hooks(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    stmt = (
-        select(HookListing).where(HookListing.submitted_by == current_user.id).order_by(HookListing.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    return [HookListingSummary.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("/draft", response_model=HookListingResponse)
