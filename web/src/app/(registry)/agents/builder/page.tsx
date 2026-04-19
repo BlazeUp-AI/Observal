@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
@@ -300,6 +300,14 @@ function slugifyName(raw: string): string {
 }
 
 export default function AgentBuilderPage() {
+  return (
+    <Suspense>
+      <AgentBuilderInner />
+    </Suspense>
+  );
+}
+
+function AgentBuilderInner() {
   // Require auth for builder
   const { ready } = useAuthGuard();
 
