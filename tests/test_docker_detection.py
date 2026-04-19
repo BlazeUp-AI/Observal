@@ -278,7 +278,14 @@ class TestParseDirectConfig:
             "mcpServers": {
                 "github": {
                     "command": "docker",
-                    "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"],
+                    "args": [
+                        "run",
+                        "-i",
+                        "--rm",
+                        "-e",
+                        "GITHUB_PERSONAL_ACCESS_TOKEN",
+                        "ghcr.io/github/github-mcp-server",
+                    ],
                     "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "your-token"},
                     "disabled": False,
                     "autoApprove": [],
@@ -335,9 +342,16 @@ class TestParseDirectConfig:
         cfg = {
             "command": "docker",
             "args": [
-                "--rm", "-i",
-                "-v", "/Users/user/Downloads/Jira Attachments:/tmp",
-                "-env", "JIRA_EMAIL", "-env", "JIRA_TOKEN", "-env", "JIRA_URL",
+                "--rm",
+                "-i",
+                "-v",
+                "/Users/user/Downloads/Jira Attachments:/tmp",
+                "-env",
+                "JIRA_EMAIL",
+                "-env",
+                "JIRA_TOKEN",
+                "-env",
+                "JIRA_URL",
                 "registry.example.com/jira-mcp-proxy:latest",
             ],
             "env": {
