@@ -44,7 +44,7 @@ class ComponentRef(BaseModel):
 class AgentCreateRequest(BaseModel):
     name: str
     version: str
-    description: str
+    description: str = Field(min_length=1)
     owner: str
     prompt: str = ""
     model_name: str

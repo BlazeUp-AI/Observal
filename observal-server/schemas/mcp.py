@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models.mcp import ListingStatus
 from schemas.constants import VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS, make_ide_list_validator, make_option_validator
@@ -40,7 +40,7 @@ class McpSubmitRequest(BaseModel):
     git_url: str | None = None
     name: str
     version: str
-    description: str
+    description: str = Field(min_length=1)
     category: str
     owner: str
     framework: str | None = None
