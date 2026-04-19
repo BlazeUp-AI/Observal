@@ -9,6 +9,17 @@ function run(cmd: string): string {
 }
 
 test.describe("Kiro CLI Commands", () => {
+  test.beforeAll(() => {
+    try {
+      execSync(
+        'observal auth login --server http://localhost:8000 --email admin@demo.example --password admin-changeme 2>&1',
+        { encoding: "utf-8", timeout: CLI_TIMEOUT, cwd: CWD },
+      );
+    } catch {
+      // login may fail if already configured — that's fine
+    }
+  });
+
   test("observal doctor --ide kiro runs without errors", () => {
     const output = run("observal doctor --ide kiro 2>&1 || true");
     // Doctor should run and produce output (may have warnings, but shouldn't crash)

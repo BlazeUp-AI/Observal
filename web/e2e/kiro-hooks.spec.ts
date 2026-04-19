@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { sendKiroHookEvent, API_BASE } from "./helpers";
+import { sendKiroHookEvent, getAccessToken, API_BASE } from "./helpers";
 
 test.describe("Kiro Hook Event Ingestion", () => {
   test("accepts PostToolUse hook event from Kiro", async () => {
@@ -116,10 +116,11 @@ test.describe("Kiro Hook Event Ingestion", () => {
       assistant_response: "test response",
     });
 
-    // Check sessions list
-    const sessions = await fetch(`${API_BASE}/api/v1/otel/sessions`).then(
-      (r) => r.json(),
-    );
+    // Check sessions list (requires auth)
+    const token = await getAccessToken();
+    const sessions = await fetch(`${API_BASE}/api/v1/otel/sessions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.json());
     const kiroSession = sessions.find(
       (s: Record<string, unknown>) => s.session_id === sessionId,
     );

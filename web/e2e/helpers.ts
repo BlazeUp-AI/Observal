@@ -3,23 +3,44 @@ import { Page } from "@playwright/test";
 /** Base URL for the Observal API */
 export const API_BASE = process.env.API_BASE ?? "http://localhost:8000";
 
-/** Get the API key from the Observal config */
-export async function getApiKey(): Promise<string> {
-  const { execSync } = await import("child_process");
-  const config = JSON.parse(
-    execSync("cat ~/.observal/config.json", { encoding: "utf-8" }),
-  );
-  return config.api_key;
+let _cachedToken: string | null = null;
+
+/** Get an access token by logging in with demo admin credentials (cached per worker) */
+export async function getAccessToken(): Promise<string> {
+  if (_cachedToken) return _cachedToken;
+  const email = process.env.DEMO_ADMIN_EMAIL ?? "admin@demo.example";
+  const password = process.env.DEMO_ADMIN_PASSWORD ?? "admin-changeme";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      _cachedToken = data.access_token;
+      return _cachedToken;
+    }
+    if (res.status === 429) {
+      await new Promise((r) => setTimeout(r, 15_000));
+      continue;
+    }
+    throw new Error(`Login failed: ${JSON.stringify(data)}`);
+  }
+  throw new Error("Login failed after retries");
 }
+
+/** @deprecated Use getAccessToken */
+export const getApiKey = getAccessToken;
 
 /** Login to the web UI by setting localStorage */
 export async function loginToWebUI(page: Page) {
-  const apiKey = await getApiKey();
+  const token = await getAccessToken();
   await page.goto("/");
-  await page.evaluate((key) => {
-    localStorage.setItem("observal_api_key", key);
+  await page.evaluate((t) => {
+    localStorage.setItem("observal_access_token", t);
     localStorage.setItem("observal_user_role", "admin");
-  }, apiKey);
+  }, token);
   await page.reload();
 }
 
