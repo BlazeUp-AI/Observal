@@ -45,7 +45,11 @@ interface SessionRow {
 }
 
 function isKiroSession(row: SessionRow): boolean {
-  return row.service_name === "kiro-cli" || row.session_id.startsWith("kiro-");
+  return (
+    row.service_name === "kiro-cli" ||
+    row.service_name === "kiro" ||
+    row.session_id.startsWith("kiro-")
+  );
 }
 
 function formatCredits(c: string | undefined): string {

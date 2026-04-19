@@ -1233,7 +1233,7 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
       const eName = getEventName(evt);
       const svc = evt.service_name ?? "";
 
-      if (svc === "kiro-cli") isKiro = true;
+      if (svc === "kiro-cli" || svc === "kiro") isKiro = true;
 
       if (eName === "api_request") {
         apiCalls++;

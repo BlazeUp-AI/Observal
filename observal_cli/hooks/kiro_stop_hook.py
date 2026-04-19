@@ -159,7 +159,7 @@ def main():
     except (json.JSONDecodeError, ValueError):
         sys.exit(0)
 
-    payload.setdefault("service_name", "kiro-cli")
+    payload.setdefault("service_name", "kiro")
 
     # Inject metadata from CLI args (used on Windows where sed is unavailable)
     if agent_name:

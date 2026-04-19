@@ -79,7 +79,7 @@ def main():
 
     # Ensure service_name is set (sed prefix may be overwritten by Kiro's
     # native fields due to JSON duplicate-key semantics — last key wins).
-    payload.setdefault("service_name", "kiro-cli")
+    payload.setdefault("service_name", "kiro")
 
     # Inject metadata from CLI args (used on Windows where sed is unavailable)
     if agent_name:

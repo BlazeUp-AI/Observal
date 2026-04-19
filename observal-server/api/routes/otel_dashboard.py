@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import re
+import time as _time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -13,6 +15,14 @@ from services.secrets_redactor import redact_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
+
+# ── Kiro IDE session correlation ──
+# When Kiro IDE fires hooks, each event may have a different $PPID-based
+# session ID. We correlate them by cwd within a 30-minute window.
+
+_kiro_session_cache: dict[str, tuple[str, float]] = {}  # cwd -> (session_id, timestamp)
+_KIRO_SESSION_WINDOW = 1800  # 30 minutes
+
 
 # Background tasks that must survive until completion (prevent GC)
 _background_tasks: set[asyncio.Task] = set()
@@ -534,8 +544,10 @@ _KIRO_TO_CC_EVENT = {
     "agentSpawn": "SessionStart",
     "userPromptSubmit": "UserPromptSubmit",
     "preToolUse": "PreToolUse",
+    "promptSubmit": "UserPromptSubmit",  # Kiro IDE variant
     "postToolUse": "PostToolUse",
     "stop": "Stop",
+    "agentStop": "Stop",  # Kiro IDE variant
 }
 
 _KIRO_FIELD_MAP = {
@@ -762,6 +774,19 @@ async def ingest_hook(request: Request):
     session_id = body.get("session_id", "")
     tool_name = body.get("tool_name", "")
     service_name = body.get("service_name", "observal-hooks")
+
+    # ── Kiro IDE session correlation ──
+    # $PPID differs per hook invocation in IDE context. Correlate by cwd.
+    cwd = body.get("cwd", "")
+    is_kiro_ppid = bool(re.match(r"^kiro-\d+$", session_id))
+    if is_kiro_ppid and cwd:
+        now_ts = _time.monotonic()
+        cached = _kiro_session_cache.get(cwd)
+        if cached and (now_ts - cached[1]) < _KIRO_SESSION_WINDOW:
+            session_id = cached[0]
+        else:
+            _kiro_session_cache[cwd] = (session_id, now_ts)
+        body["session_id"] = session_id
 
     # Build the attributes map that the frontend already reads
     attrs: dict[str, str] = {

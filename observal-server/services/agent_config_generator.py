@@ -182,23 +182,31 @@ def generate_agent_config(
                 f"--url {observal_url}/api/v1/otel/hooks "
                 f"--agent-name {safe_name}{model_arg}"
             )
+            spawn_cmd = hook_cmd  # Windows: Python script handles session IDs
         else:
-            # Unix: cat | sed | curl pipeline (unchanged)
-            hook_cmd = (
-                f'cat | sed \'s/^{{/{{"session_id":"kiro-\'$PPID\'","service_name":"kiro-cli",'
-                f'"agent_name":"{safe_name}"{model_field},/\' '
-                f"| curl -sf -X POST {observal_url}/api/v1/otel/hooks "
-                f'-H "Content-Type: application/json" '
-                f"-d @-"
+            # Unix: stable UUID session IDs instead of $PPID.
+            # agentSpawn creates a new UUID; other events read the existing one.
+            _sf = "/tmp/observal-kiro-session"  # nosec B108
+            _sid_create = f'$(python3 -c "import uuid; print(uuid.uuid4())" | tee {_sf})'
+            _sid_read = f'$(cat {_sf} 2>/dev/null || echo "kiro-$PPID")'
+
+            def _sed_cmd(sid_expr, pipe_to):
+                return (
+                    'cat | sed \'s/^{{/{{"session_id":"\'"' + sid_expr + '"\'",'
+                    f'"service_name":"kiro","agent_name":"{safe_name}"{model_field},/\' ' + pipe_to
+                )
+
+            _curl_pipe = (
+                f'| curl -sf -X POST {observal_url}/api/v1/otel/hooks -H "Content-Type: application/json" -d @-'
             )
-            stop_cmd = (
-                f'cat | sed \'s/^{{/{{"session_id":"kiro-\'$PPID\'","service_name":"kiro-cli",'
-                f'"agent_name":"{safe_name}"{model_field},/\' '
-                f"| python3 -m observal_cli.hooks.kiro_stop_hook "
-                f"--url {observal_url}/api/v1/otel/hooks"
+            spawn_cmd = _sed_cmd(_sid_create, _curl_pipe)
+            hook_cmd = _sed_cmd(_sid_read, _curl_pipe)
+            stop_cmd = _sed_cmd(
+                _sid_read,
+                f"| python3 -m observal_cli.hooks.kiro_stop_hook --url {observal_url}/api/v1/otel/hooks",
             )
         hooks = {
-            "agentSpawn": [{"command": hook_cmd}],
+            "agentSpawn": [{"command": spawn_cmd}],
             "userPromptSubmit": [{"command": hook_cmd}],
             "preToolUse": [{"matcher": "*", "command": hook_cmd}],
             "postToolUse": [{"matcher": "*", "command": hook_cmd}],
