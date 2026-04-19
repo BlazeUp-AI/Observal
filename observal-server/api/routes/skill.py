@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db, require_role, resolve_listing
+from api.deps import ROLE_HIERARCHY, get_db, require_role, resolve_listing
 from api.sanitize import escape_like
 from models.mcp import ListingStatus
 from models.skill import SkillDownload, SkillListing
@@ -232,7 +232,7 @@ async def delete_skill(
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    is_admin = current_user.role.value == "admin"
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
     if listing.submitted_by != current_user.id and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
     if listing.status == ListingStatus.approved and not is_admin:
