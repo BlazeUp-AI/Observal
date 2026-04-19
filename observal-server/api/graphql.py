@@ -4,7 +4,9 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 
+import jwt
 import strawberry
+from starlette.requests import Request
 from strawberry.dataloader import DataLoader
 from strawberry.scalars import JSON
 from strawberry.types import Info
@@ -15,11 +17,12 @@ from services.clickhouse import (
     query_trace_by_id,
     query_traces,
 )
+from services.jwt_service import decode_access_token
 from services.redis import subscribe
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROJECT = "default"
+_DEFAULT_PROJECT = "default"
 
 
 # --- Helpers ---
@@ -47,58 +50,67 @@ def _parse_json(val: str | None) -> JSON | None:
 # --- DataLoaders ---
 
 
-async def _load_spans_by_trace_ids(keys: list[str]) -> list[list[dict]]:
-    sql = (
-        "SELECT * FROM spans FINAL WHERE project_id = {pid:String} "
-        "AND trace_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY start_time ASC"
-    )
-    params = {
-        "param_pid": DEFAULT_PROJECT,
-        "param_ids": json.dumps(list(keys)),
-    }
-    rows = await _ch_json(sql, params)
-    grouped: dict[str, list[dict]] = {k: [] for k in keys}
-    for r in rows:
-        tid = r.get("trace_id", "")
-        if tid in grouped:
-            grouped[tid].append(r)
-    return [grouped[k] for k in keys]
+def _make_span_loader(project_id: str):
+    async def _load(keys: list[str]) -> list[list[dict]]:
+        sql = (
+            "SELECT * FROM spans FINAL WHERE project_id = {pid:String} "
+            "AND trace_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY start_time ASC"
+        )
+        params = {
+            "param_pid": project_id,
+            "param_ids": json.dumps(list(keys)),
+        }
+        rows = await _ch_json(sql, params)
+        grouped: dict[str, list[dict]] = {k: [] for k in keys}
+        for r in rows:
+            tid = r.get("trace_id", "")
+            if tid in grouped:
+                grouped[tid].append(r)
+        return [grouped[k] for k in keys]
+
+    return _load
 
 
-async def _load_scores_by_trace_ids(keys: list[str]) -> list[list[dict]]:
-    sql = (
-        "SELECT * FROM scores FINAL WHERE project_id = {pid:String} "
-        "AND trace_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY timestamp DESC"
-    )
-    params = {
-        "param_pid": DEFAULT_PROJECT,
-        "param_ids": json.dumps(list(keys)),
-    }
-    rows = await _ch_json(sql, params)
-    grouped: dict[str, list[dict]] = {k: [] for k in keys}
-    for r in rows:
-        tid = r.get("trace_id", "")
-        if tid in grouped:
-            grouped[tid].append(r)
-    return [grouped[k] for k in keys]
+def _make_score_by_trace_loader(project_id: str):
+    async def _load(keys: list[str]) -> list[list[dict]]:
+        sql = (
+            "SELECT * FROM scores FINAL WHERE project_id = {pid:String} "
+            "AND trace_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY timestamp DESC"
+        )
+        params = {
+            "param_pid": project_id,
+            "param_ids": json.dumps(list(keys)),
+        }
+        rows = await _ch_json(sql, params)
+        grouped: dict[str, list[dict]] = {k: [] for k in keys}
+        for r in rows:
+            tid = r.get("trace_id", "")
+            if tid in grouped:
+                grouped[tid].append(r)
+        return [grouped[k] for k in keys]
+
+    return _load
 
 
-async def _load_scores_by_span_ids(keys: list[str]) -> list[list[dict]]:
-    sql = (
-        "SELECT * FROM scores FINAL WHERE project_id = {pid:String} "
-        "AND span_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY timestamp DESC"
-    )
-    params = {
-        "param_pid": DEFAULT_PROJECT,
-        "param_ids": json.dumps(list(keys)),
-    }
-    rows = await _ch_json(sql, params)
-    grouped: dict[str, list[dict]] = {k: [] for k in keys}
-    for r in rows:
-        sid = r.get("span_id", "")
-        if sid in grouped:
-            grouped[sid].append(r)
-    return [grouped[k] for k in keys]
+def _make_score_by_span_loader(project_id: str):
+    async def _load(keys: list[str]) -> list[list[dict]]:
+        sql = (
+            "SELECT * FROM scores FINAL WHERE project_id = {pid:String} "
+            "AND span_id IN ({ids:Array(String)}) AND is_deleted = 0 ORDER BY timestamp DESC"
+        )
+        params = {
+            "param_pid": project_id,
+            "param_ids": json.dumps(list(keys)),
+        }
+        rows = await _ch_json(sql, params)
+        grouped: dict[str, list[dict]] = {k: [] for k in keys}
+        for r in rows:
+            sid = r.get("span_id", "")
+            if sid in grouped:
+                grouped[sid].append(r)
+        return [grouped[k] for k in keys]
+
+    return _load
 
 
 # --- Types ---
@@ -322,8 +334,9 @@ class Query:
         limit: int = 50,
         offset: int = 0,
     ) -> TraceConnection:
+        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
         rows = await query_traces(
-            DEFAULT_PROJECT,
+            project_id,
             trace_type=trace_type,
             mcp_id=mcp_id,
             agent_id=agent_id,
@@ -336,16 +349,19 @@ class Query:
 
     @strawberry.field
     async def trace(self, info: Info, trace_id: str) -> Trace | None:
-        r = await query_trace_by_id(DEFAULT_PROJECT, trace_id)
+        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
+        r = await query_trace_by_id(project_id, trace_id)
         return _row_to_trace(r) if r else None
 
     @strawberry.field
     async def span(self, info: Info, span_id: str) -> Span | None:
-        r = await query_span_by_id(DEFAULT_PROJECT, span_id)
+        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
+        r = await query_span_by_id(project_id, span_id)
         return _row_to_span(r) if r else None
 
     @strawberry.field
-    async def mcp_metrics(self, mcp_id: str, start: str, end: str) -> McpMetrics:
+    async def mcp_metrics(self, info: Info, mcp_id: str, start: str, end: str) -> McpMetrics:
+        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
         rows = await _ch_json(
             "SELECT count() as cnt, "
             "countIf(status='error') as errs, "
@@ -361,7 +377,7 @@ class Query:
             "AND start_time >= {start:String} AND start_time <= {end:String} "
             "AND is_deleted=0",
             {
-                "param_pid": DEFAULT_PROJECT,
+                "param_pid": project_id,
                 "param_mid": mcp_id,
                 "param_start": start,
                 "param_end": end,
@@ -385,13 +401,14 @@ class Query:
         )
 
     @strawberry.field
-    async def overview(self, start: str, end: str) -> OverviewStats:
+    async def overview(self, info: Info, start: str, end: str) -> OverviewStats:
+        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
         rows = await _ch_json(
             "SELECT count() as traces FROM traces FINAL "
             "WHERE project_id={pid:String} AND is_deleted=0 "
             "AND start_time >= {start:String} AND start_time <= {end:String}",
             {
-                "param_pid": DEFAULT_PROJECT,
+                "param_pid": project_id,
                 "param_start": start,
                 "param_end": end,
             },
@@ -403,7 +420,7 @@ class Query:
             "FROM spans FINAL WHERE project_id={pid:String} AND is_deleted=0 "
             "AND start_time >= {start:String} AND start_time <= {end:String}",
             {
-                "param_pid": DEFAULT_PROJECT,
+                "param_pid": project_id,
                 "param_start": start,
                 "param_end": end,
             },
@@ -418,7 +435,8 @@ class Query:
         )
 
     @strawberry.field
-    async def trends(self, start: str, end: str, granularity: str = "DAY") -> list[TrendPoint]:
+    async def trends(self, info: Info, start: str, end: str, granularity: str = "DAY") -> list[TrendPoint]:
+        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
         trunc_whitelist = {
             "HOUR": "toStartOfHour",
             "DAY": "toDate",
@@ -432,7 +450,7 @@ class Query:
             "AND start_time >= {start:String} AND start_time <= {end:String} "
             "GROUP BY d ORDER BY d",
             {
-                "param_pid": DEFAULT_PROJECT,
+                "param_pid": project_id,
                 "param_start": start,
                 "param_end": end,
             },
@@ -443,7 +461,7 @@ class Query:
             "AND start_time >= {start:String} AND start_time <= {end:String} "
             "GROUP BY d ORDER BY d",
             {
-                "param_pid": DEFAULT_PROJECT,
+                "param_pid": project_id,
                 "param_start": start,
                 "param_end": end,
             },
@@ -505,16 +523,63 @@ class Subscription:
 # --- Schema ---
 
 
-def get_context() -> dict:
+async def _resolve_project_id_from_request(request) -> str:
+    """Best-effort extraction of project_id from the Authorization header.
+
+    Decodes the JWT to obtain the user_id, then looks up the user's org_id in
+    the database.  Falls back to ``"default"`` when there is no token, decoding
+    fails, or the user has no org.
+    """
+    import uuid as _uuid
+
+    from sqlalchemy import select
+
+    from database import async_session
+    from models.user import User
+
+    auth: str | None = None
+    if request is not None:
+        auth = request.headers.get("authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return _DEFAULT_PROJECT
+    token = auth.removeprefix("Bearer ").strip()
+    try:
+        payload = decode_access_token(token)
+    except jwt.InvalidTokenError:
+        return _DEFAULT_PROJECT
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return _DEFAULT_PROJECT
+
+    try:
+        uid = _uuid.UUID(user_id)
+    except ValueError:
+        return _DEFAULT_PROJECT
+
+    try:
+        async with async_session() as session:
+            result = await session.execute(select(User.org_id).where(User.id == uid))
+            org_id = result.scalar_one_or_none()
+            return str(org_id) if org_id else _DEFAULT_PROJECT
+    except Exception:
+        logger.debug("Failed to resolve org_id for GraphQL context", exc_info=True)
+        return _DEFAULT_PROJECT
+
+
+def get_context(project_id: str = _DEFAULT_PROJECT) -> dict:
     return {
-        "span_loader": DataLoader(load_fn=_load_spans_by_trace_ids),
-        "score_by_trace_loader": DataLoader(load_fn=_load_scores_by_trace_ids),
-        "score_by_span_loader": DataLoader(load_fn=_load_scores_by_span_ids),
+        "project_id": project_id,
+        "span_loader": DataLoader(load_fn=_make_span_loader(project_id)),
+        "score_by_trace_loader": DataLoader(load_fn=_make_score_by_trace_loader(project_id)),
+        "score_by_span_loader": DataLoader(load_fn=_make_score_by_span_loader(project_id)),
     }
 
 
-async def get_context_dep() -> dict:
-    return get_context()
+async def get_context_dep(request: Request = None) -> dict:
+    """Strawberry FastAPI context getter — receives the incoming ``Request``."""
+    project_id = await _resolve_project_id_from_request(request)
+    return get_context(project_id)
 
 
 schema = strawberry.Schema(query=Query, subscription=Subscription)

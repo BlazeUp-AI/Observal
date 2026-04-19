@@ -17,8 +17,6 @@ from services.clickhouse import insert_scores, query_spans, query_trace_by_id
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROJECT = "default"
-
 # --- Managed eval templates (no custom authoring) ---
 
 EVAL_TEMPLATES: dict[str, dict] = {
@@ -190,7 +188,7 @@ def _extract_json(text: str) -> dict:
 async def run_eval_on_trace(
     agent_id: str,
     trace_id: str,
-    project_id: str = DEFAULT_PROJECT,
+    project_id: str = "default",
 ) -> list[dict]:
     """Run all applicable eval templates on a trace's spans. Returns scores written."""
     backend = get_backend()

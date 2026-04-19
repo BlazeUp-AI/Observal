@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, Request
 
-from api.deps import require_role
+from api.deps import get_project_id, require_role
 from models.user import User, UserRole
 from schemas.telemetry import (
     IngestBatch,
@@ -27,8 +27,6 @@ from services.secrets_redactor import redact_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
-
-DEFAULT_PROJECT = "default"
 
 # Background tasks that must survive until completion (prevent GC)
 _background_tasks: set[asyncio.Task] = set()
@@ -59,6 +57,7 @@ async def ingest(
 ):
     """New ingestion endpoint for shim/proxy telemetry."""
     user_id = str(current_user.id)
+    project_id = get_project_id(current_user)
     environment = x_observal_environment or "default"
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     ingested = 0
@@ -73,7 +72,7 @@ async def ingest(
                     {
                         "trace_id": t.trace_id,
                         "parent_trace_id": t.parent_trace_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "mcp_id": t.mcp_id,
                         "agent_id": t.agent_id,
                         "user_id": user_id,
@@ -112,7 +111,7 @@ async def ingest(
                         "span_id": s.span_id,
                         "trace_id": s.trace_id,
                         "parent_span_id": s.parent_span_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "mcp_id": None,
                         "agent_id": None,
                         "user_id": user_id,
@@ -264,7 +263,7 @@ async def ingest(
                         "score_id": sc.score_id,
                         "trace_id": sc.trace_id,
                         "span_id": sc.span_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "mcp_id": sc.mcp_id,
                         "agent_id": sc.agent_id,
                         "user_id": user_id,
@@ -365,6 +364,7 @@ _KIRO_EVENT_MAP = {
 @router.post("/hooks")
 async def ingest_hook(request: Request, current_user: User = Depends(require_role(UserRole.user))):
     """Ingest raw hook JSON from Claude Code/Kiro."""
+    project_id = get_project_id(current_user)
     body = await request.json()
 
     # Normalize Kiro camelCase field names to snake_case
@@ -387,7 +387,7 @@ async def ingest_hook(request: Request, current_user: User = Depends(require_rol
         "span_id": str(uuid.uuid4()),
         "trace_id": body.get("session_id", str(uuid.uuid4())),
         "parent_span_id": None,
-        "project_id": DEFAULT_PROJECT,
+        "project_id": project_id,
         "mcp_id": None,
         "agent_id": None,
         "user_id": str(current_user.id),

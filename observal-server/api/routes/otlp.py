@@ -4,6 +4,10 @@ Accepts standard OTLP JSON on /v1/traces, /v1/logs, /v1/metrics and converts
 to Observal's internal ClickHouse format.  Authentication is optional: callers
 may pass ``Authorization: Bearer <key>`` but unauthenticated requests are
 accepted by default (OTLP exporters rarely carry API keys).
+
+When an ``Authorization: Bearer <token>`` header is present the receiver
+decodes the JWT, looks up the user's org_id, and scopes all rows to the
+corresponding project_id.  Otherwise rows are inserted under ``"default"``.
 """
 
 import json
@@ -11,16 +15,21 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+import jwt
 from fastapi import APIRouter, Request, Response
+from sqlalchemy import select
 
+from database import async_session
+from models.user import User
 from services.clickhouse import insert_spans, insert_traces
+from services.jwt_service import decode_access_token
 from services.secrets_redactor import redact_secrets
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["otlp"])
 
-DEFAULT_PROJECT = "default"
+_DEFAULT_PROJECT = "default"
 _DT_FMT = "%Y-%m-%d %H:%M:%S.%f"
 
 # OTLP status codes
@@ -122,12 +131,46 @@ def _redact_rows(rows: list[dict]) -> None:
                 row[field] = redact_secrets(val)
 
 
+async def _resolve_project_id(request: Request) -> str:
+    """Derive project_id from an optional ``Authorization: Bearer`` header.
+
+    Returns ``"default"`` when the header is absent, malformed, or the user
+    has no org.
+    """
+    auth = request.headers.get("authorization")
+    if not auth or not auth.startswith("Bearer "):
+        return _DEFAULT_PROJECT
+    token = auth.removeprefix("Bearer ").strip()
+    try:
+        payload = decode_access_token(token)
+    except jwt.InvalidTokenError:
+        return _DEFAULT_PROJECT
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return _DEFAULT_PROJECT
+
+    try:
+        uid = uuid.UUID(user_id)
+    except ValueError:
+        return _DEFAULT_PROJECT
+
+    try:
+        async with async_session() as session:
+            result = await session.execute(select(User.org_id).where(User.id == uid))
+            org_id = result.scalar_one_or_none()
+            return str(org_id) if org_id else _DEFAULT_PROJECT
+    except Exception:
+        logger.debug("OTLP: failed to resolve project_id from auth header", exc_info=True)
+        return _DEFAULT_PROJECT
+
+
 # ---------------------------------------------------------------------------
 # OTLP Trace conversion
 # ---------------------------------------------------------------------------
 
 
-def _convert_resource_spans(body: dict) -> tuple[list[dict], list[dict]]:
+def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> tuple[list[dict], list[dict]]:
     """Parse OTLP resourceSpans into Observal trace and span rows."""
     traces: list[dict] = []
     spans: list[dict] = []
@@ -195,7 +238,7 @@ def _convert_resource_spans(body: dict) -> tuple[list[dict], list[dict]]:
                         "span_id": span_id,
                         "trace_id": trace_id,
                         "parent_span_id": parent_span_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "mcp_id": None,
                         "agent_id": None,
                         "user_id": user_id,
@@ -220,13 +263,13 @@ def _convert_resource_spans(body: dict) -> tuple[list[dict], list[dict]]:
                     spans.append(span_row)
 
                     # Process span events (Claude Code specifics)
-                    _process_span_events(span, trace_id, span_id, all_attrs, ide, user_id, spans)
+                    _process_span_events(span, trace_id, span_id, all_attrs, ide, user_id, spans, project_id)
 
                     # Collect root-level trace (no parent = root span)
                     if not parent_span_id and trace_id not in seen_traces:
                         seen_traces[trace_id] = {
                             "trace_id": trace_id,
-                            "project_id": DEFAULT_PROJECT,
+                            "project_id": project_id,
                             "user_id": user_id,
                             "session_id": session_id,
                             "ide": ide,
@@ -255,6 +298,7 @@ def _process_span_events(
     ide: str,
     user_id: str,
     spans_out: list[dict],
+    project_id: str = _DEFAULT_PROJECT,
 ):
     """Extract Claude Code span events into child spans."""
     for event in span.get("events", []):
@@ -271,7 +315,7 @@ def _process_span_events(
                         "span_id": uuid.uuid4().hex,
                         "trace_id": trace_id,
                         "parent_span_id": parent_span_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "user_id": user_id,
                         "type": "user_prompt",
                         "name": "user_prompt",
@@ -291,7 +335,7 @@ def _process_span_events(
                         "span_id": uuid.uuid4().hex,
                         "trace_id": trace_id,
                         "parent_span_id": parent_span_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "user_id": user_id,
                         "type": "tool_result",
                         "name": event_attrs.get("tool_name", "tool"),
@@ -330,7 +374,7 @@ def _process_span_events(
                         "span_id": uuid.uuid4().hex,
                         "trace_id": trace_id,
                         "parent_span_id": parent_span_id,
-                        "project_id": DEFAULT_PROJECT,
+                        "project_id": project_id,
                         "user_id": user_id,
                         "type": "llm",
                         "name": event_attrs.get("model", "api_request"),
@@ -356,7 +400,7 @@ def _process_span_events(
 # ---------------------------------------------------------------------------
 
 
-def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
+def _convert_resource_logs(body: dict, project_id: str = _DEFAULT_PROJECT) -> tuple[list[dict], list[dict]]:
     """Parse OTLP resourceLogs into Observal trace and span rows."""
     traces: list[dict] = []
     spans: list[dict] = []
@@ -414,7 +458,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                         if trace_id not in prompt_traces:
                             prompt_traces[trace_id] = {
                                 "trace_id": trace_id,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "session_id": session_id,
                                 "ide": ide,
@@ -434,7 +478,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                         if trace_id not in prompt_traces:
                             prompt_traces[trace_id] = {
                                 "trace_id": trace_id,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "session_id": session_id,
                                 "ide": ide,
@@ -450,7 +494,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                             {
                                 "span_id": uuid.uuid4().hex,
                                 "trace_id": trace_id,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "type": "tool_result",
                                 "name": all_attrs.get("tool_name", "tool"),
@@ -469,7 +513,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                         if trace_id not in prompt_traces:
                             prompt_traces[trace_id] = {
                                 "trace_id": trace_id,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "session_id": session_id,
                                 "ide": ide,
@@ -505,7 +549,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                             {
                                 "span_id": uuid.uuid4().hex,
                                 "trace_id": trace_id,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "type": "llm",
                                 "name": all_attrs.get("model", "api_request"),
@@ -528,7 +572,7 @@ def _convert_resource_logs(body: dict) -> tuple[list[dict], list[dict]]:
                             {
                                 "span_id": uuid.uuid4().hex,
                                 "trace_id": trace_id,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "type": "log",
                                 "name": event_name or "log",
@@ -579,8 +623,10 @@ async def otlp_traces(request: Request):
             media_type="application/json",
         )
 
+    project_id = await _resolve_project_id(request)
+
     try:
-        trace_rows, span_rows = _convert_resource_spans(body)
+        trace_rows, span_rows = _convert_resource_spans(body, project_id)
     except Exception:
         logger.warning("OTLP /v1/traces: conversion failed", exc_info=True)
         return Response(content=json.dumps(_OTLP_OK), status_code=200, media_type="application/json")
@@ -645,8 +691,10 @@ async def otlp_logs(request: Request):
                     flush=True,
                 )
 
+    project_id = await _resolve_project_id(request)
+
     try:
-        trace_rows, span_rows = _convert_resource_logs(body)
+        trace_rows, span_rows = _convert_resource_logs(body, project_id)
     except Exception:
         logger.warning("OTLP /v1/logs: conversion failed", exc_info=True)
         return Response(content=json.dumps(_OTLP_OK), status_code=200, media_type="application/json")
@@ -690,6 +738,8 @@ async def otlp_metrics(request: Request):
             media_type="application/json",
         )
 
+    project_id = await _resolve_project_id(request)
+
     span_rows: list[dict] = []
     now = _now_ms()
 
@@ -726,7 +776,7 @@ async def otlp_metrics(request: Request):
                             {
                                 "span_id": uuid.uuid4().hex,
                                 "trace_id": uuid.uuid4().hex,
-                                "project_id": DEFAULT_PROJECT,
+                                "project_id": project_id,
                                 "user_id": user_id,
                                 "type": "metric",
                                 "name": name,

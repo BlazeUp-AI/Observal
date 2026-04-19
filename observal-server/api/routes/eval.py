@@ -43,6 +43,10 @@ async def run_evaluation(
         load_options=[selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)],
     )
 
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
     # Create eval run
     eval_run = EvalRun(agent_id=agent.id, triggered_by=current_user.id)
     db.add(eval_run)
@@ -104,6 +108,9 @@ async def list_eval_runs(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     agent = await resolve_prefix_id(Agent, agent_id, db)
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
     result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent.id).order_by(EvalRun.started_at.desc()))
     return [EvalRunResponse.model_validate(r) for r in result.scalars().all()]
 
@@ -116,6 +123,9 @@ async def list_scorecards(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     agent = await resolve_prefix_id(Agent, agent_id, db)
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
     stmt = select(Scorecard).where(Scorecard.agent_id == agent.id).options(*_scorecard_load)
     if version:
         stmt = stmt.where(Scorecard.version == version)
@@ -130,6 +140,11 @@ async def get_scorecard(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     sc = await resolve_prefix_id(Scorecard, scorecard_id, db, load_options=_scorecard_load, display_field="version")
+    # Org-scope check: verify the scorecard's agent belongs to user's org
+    if current_user.org_id is not None:
+        agent = await db.get(Agent, sc.agent_id)
+        if not agent or agent.owner_org_id != current_user.org_id:
+            raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
     return ScorecardResponse.model_validate(sc)
 
 
@@ -145,6 +160,9 @@ async def compare_versions(
     from sqlalchemy import func
 
     agent = await resolve_prefix_id(Agent, agent_id, db)
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     async def _avg_scores(version: str) -> dict:
         result = await db.execute(
@@ -188,6 +206,9 @@ async def eval_session(
             db,
             load_options=[selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)],
         )
+        # Org-scope check: verify agent belongs to user's org
+        if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+            raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     if agent:
         eval_run = EvalRun(agent_id=agent.id, triggered_by=current_user.id)
@@ -248,6 +269,10 @@ async def eval_agent_in_session(
     agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     # Materialize session and find the agent's spans
     trace, all_spans, agent_ctx = await materialize_agent_eval(session_id, agent.name)
@@ -346,6 +371,9 @@ async def agent_aggregate(
 ):
     """Get aggregate scoring stats for an agent (CI, drift, dimension breakdown)."""
     agent = await resolve_prefix_id(Agent, agent_id, db)
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
     result = await db.execute(
         select(Scorecard)
         .where(Scorecard.agent_id == agent.id)
@@ -373,6 +401,12 @@ async def scorecard_penalties(
 ):
     """Get the list of penalties applied to a scorecard with evidence."""
     sc = await resolve_prefix_id(Scorecard, scorecard_id, db, display_field="version")
+
+    # Org-scope check: verify the scorecard's agent belongs to user's org
+    if current_user.org_id is not None:
+        agent = await db.get(Agent, sc.agent_id)
+        if not agent or agent.owner_org_id != current_user.org_id:
+            raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     # Penalties are stored in raw_output
     raw = sc.raw_output or {}
