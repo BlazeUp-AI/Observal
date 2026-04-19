@@ -19,7 +19,7 @@ export async function getAccessToken(): Promise<string> {
     const data = await res.json();
     if (data.access_token) {
       _cachedToken = data.access_token;
-      return _cachedToken;
+      return data.access_token as string;
     }
     if (res.status === 429) {
       await new Promise((r) => setTimeout(r, 15_000));
