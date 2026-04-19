@@ -382,7 +382,13 @@ async def ingest_hook(request: Request, current_user: User = Depends(require_rol
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     raw_event = body.get("hook_event_name", "unknown")
     hook_event_name = _KIRO_EVENT_MAP.get(raw_event, raw_event)
-    span_type = "hook_exec" if hook_event_name == "PostToolUse" else f"hook_{hook_event_name.lower()}"
+    tool_name = body.get("tool_name", "")
+    if tool_name in ("assistant_response", "assistant_thinking"):
+        span_type = f"hook_{tool_name}"
+    elif hook_event_name == "PostToolUse":
+        span_type = "hook_exec"
+    else:
+        span_type = f"hook_{hook_event_name.lower()}"
     row = {
         "span_id": str(uuid.uuid4()),
         "trace_id": body.get("session_id", str(uuid.uuid4())),

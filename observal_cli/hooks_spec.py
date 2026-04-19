@@ -14,7 +14,7 @@ from __future__ import annotations
 # Bump this when hook definitions change (new events, different scripts,
 # additional handlers, etc.).  Stored in ~/.observal/config.json so we
 # can detect when an upgrade is needed without re-reading all hooks.
-HOOKS_SPEC_VERSION = "3"
+HOOKS_SPEC_VERSION = "4"
 
 # Metadata key injected into every Observal matcher group.
 # Primary identification method — the reconciler checks this first.
@@ -71,8 +71,13 @@ def get_desired_hooks(
 
     # Stop event: generic hook first (always fires), then stop-specific
     # hook for transcript parsing (response + thinking capture).
+    # Each must be in its own matcher group so they receive independent
+    # copies of stdin (a single group shares one stdin pipe).
     if stop_script:
-        stop_group: list[dict] = [{**meta, "hooks": [generic, {"type": "command", "command": stop_script}]}]
+        stop_group: list[dict] = [
+            {**meta, "hooks": [generic]},
+            {**meta, "hooks": [{"type": "command", "command": stop_script}]},
+        ]
     else:
         stop_group = generic_group
 
