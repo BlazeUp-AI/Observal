@@ -103,7 +103,9 @@ def agent_create(
             payload = json.load(f)
         with spinner("Creating agent..."):
             result = client.post("/api/v1/agents", payload)
-        rprint(f"[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
+        status = result.get("status", "pending")
+        rprint(f"[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
         return
 
     rprint("\n[bold cyan]Agent Builder[/bold cyan]\n")
@@ -200,7 +202,7 @@ def agent_create(
     )
     console.print(Panel(review, title="Review", border_style="green"))
 
-    if not typer.confirm("\nPublish this agent?", default=True):
+    if not typer.confirm("\nSubmit this agent for review?", default=True):
         rprint("[yellow]Aborted.[/yellow]")
         raise typer.Exit(0)
 
@@ -220,8 +222,9 @@ def agent_create(
                 "goal_template": {"description": goal_desc, "sections": sections},
             },
         )
-    rprint(f"\n[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
-    rprint(f"[dim]Install with:[/dim] observal pull {name} --ide <ide>")
+    status = result.get("status", "pending")
+    rprint(f"\n[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+    rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
 
 
 @agent_app.command(name="list")
@@ -632,6 +635,8 @@ def agent_publish(
             result = client.put(f"/api/v1/agents/{agent_id}", payload)
         rprint(f"[green]✓ Agent updated![/green] ID: [bold]{result['id']}[/bold]  v{result.get('version', '?')}")
     else:
-        with spinner("Creating agent..."):
+        with spinner("Submitting agent for review..."):
             result = client.post("/api/v1/agents", payload)
-        rprint(f"[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
+        status = result.get("status", "pending")
+        rprint(f"[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
+        rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")

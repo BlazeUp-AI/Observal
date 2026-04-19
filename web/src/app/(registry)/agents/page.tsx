@@ -14,11 +14,12 @@ import {
   ArrowUp,
   ArrowDown,
   Trash2,
+  Clock,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useRegistryList, useWhoami } from "@/hooks/use-api";
+import { useRegistryList, useMyAgents, useWhoami } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
 import { hasMinRole } from "@/hooks/use-role-guard";
 import {
@@ -133,12 +134,20 @@ const columns: ColumnDef<RegistryItem>[] = [
     ),
     cell: ({ row }) => (
       <div className="min-w-[160px]">
-        <Link
-          href={`/agents/${row.original.id}`}
-          className="font-medium text-sm hover:underline underline-offset-4"
-        >
-          {row.original.name}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/agents/${row.original.id}`}
+            className="font-medium text-sm hover:underline underline-offset-4"
+          >
+            {row.original.name}
+          </Link>
+          {row.original.status && row.original.status !== "active" && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-600 dark:text-yellow-400 ring-1 ring-yellow-500/20">
+              <Clock className="h-2.5 w-2.5" />
+              Pending Review
+            </span>
+          )}
+        </div>
         {row.original.description && (
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 max-w-xs">
             {row.original.description}
@@ -268,7 +277,16 @@ function AgentListContent() {
     debouncedSearch ? { search: debouncedSearch } : undefined,
   );
 
-  const filtered = useMemo(() => agents ?? [], [agents]);
+  const { data: myAgents } = useMyAgents();
+
+  const { filtered, pendingCount } = useMemo(() => {
+    const active = agents ?? [];
+    const activeIds = new Set(active.map((a) => a.id));
+    const pending = (myAgents ?? []).filter(
+      (a) => a.status !== "active" && !activeIds.has(a.id),
+    );
+    return { filtered: [...pending, ...active], pendingCount: pending.length };
+  }, [agents, myAgents]);
 
   const table = useReactTable({
     data: filtered,
@@ -329,6 +347,16 @@ function AgentListContent() {
             </Button>
           </div>
         </div>
+
+        {pendingCount > 0 && (
+          <div className="flex items-start gap-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
+            <Clock className="h-4 w-4 mt-0.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+              You have {pendingCount} agent{pendingCount > 1 ? "s" : ""} pending review.
+              An admin must approve {pendingCount > 1 ? "them" : "it"} before {pendingCount > 1 ? "they become" : "it becomes"} visible to other users.
+            </p>
+          </div>
+        )}
 
         {/* Content */}
         {isLoading ? (

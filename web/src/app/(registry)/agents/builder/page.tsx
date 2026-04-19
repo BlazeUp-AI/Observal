@@ -335,7 +335,7 @@ export default function AgentBuilderPage() {
       };
 
       const created = await registry.create("agents", body);
-      toast.success("Agent published to registry");
+      toast.success("Agent submitted for review. An admin must approve it before it becomes visible.");
       router.push(`/agents/${created.id}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to publish agent";
@@ -593,7 +593,7 @@ export default function AgentBuilderPage() {
                 ) : (
                   <ArrowRight className="mr-2 h-4 w-4" />
                 )}
-                Publish to Registry
+                Submit for Review
               </Button>
             </div>
           </div>

@@ -325,6 +325,13 @@ export function useSessionSubscription() {
 
 // ── Agent-specific ──────────────────────────────────────────────────
 
+export function useMyAgents() {
+  return useQuery({
+    queryKey: ["registry", "agents", "my"],
+    queryFn: () => registry.my(),
+  });
+}
+
 export function useAgentResolve(id: string) {
   return useQuery({
     queryKey: ["agent-resolve", id],

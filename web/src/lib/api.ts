@@ -232,6 +232,7 @@ export const registry = {
     get<{ total: number; unique_users: number; recent_7d: number }>(`/agents/${id}/downloads`),
   validate: (body: { components: { component_type: string; component_id: string }[] }) =>
     post<ValidationResult>("/agents/validate", body),
+  my: () => get<RegistryItem[]>("/agents/my"),
 };
 
 // ── Review ──────────────────────────────────────────────────────────

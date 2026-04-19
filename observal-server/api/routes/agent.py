@@ -364,6 +364,53 @@ async def list_agents(
     ]
 
 
+@router.get("/my", response_model=list[AgentSummary])
+async def my_agents(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    from models.feedback import Feedback
+
+    stmt = (
+        select(Agent)
+        .where(Agent.created_by == current_user.id)
+        .options(selectinload(Agent.components))
+        .order_by(Agent.created_at.desc())
+    )
+    agents = (await db.execute(stmt)).scalars().all()
+
+    agent_ids = [a.id for a in agents]
+    rating_map: dict[uuid.UUID, float] = {}
+    if agent_ids:
+        rows = await db.execute(
+            select(Feedback.listing_id, func.avg(Feedback.rating))
+            .where(Feedback.listing_id.in_(agent_ids), Feedback.listing_type == "agent")
+            .group_by(Feedback.listing_id)
+        )
+        rating_map = {r[0]: round(float(r[1]), 2) for r in rows.all()}
+
+    return [
+        AgentSummary(
+            id=a.id,
+            name=a.name,
+            version=a.version,
+            description=a.description,
+            owner=a.owner,
+            model_name=a.model_name,
+            supported_ides=a.supported_ides,
+            status=a.status,
+            download_count=a.download_count,
+            average_rating=rating_map.get(a.id),
+            component_count=len(a.components),
+            created_by_email=current_user.email,
+            created_by_username=current_user.username,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+        )
+        for a in agents
+    ]
+
+
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     agent = await _load_agent(db, agent_id)
