@@ -8,7 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db, require_role
+from api.deps import get_db, get_or_create_default_org, require_role
 from config import settings
 from models.enterprise_config import EnterpriseConfig
 from models.user import User, UserRole
@@ -158,7 +158,10 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    stmt = select(User).order_by(User.created_at.desc())
+    if current_user.org_id is not None:
+        stmt = stmt.where(User.org_id == current_user.org_id)
+    result = await db.execute(stmt)
     return [UserAdminResponse.model_validate(u) for u in result.scalars().all()]
 
 
@@ -180,7 +183,12 @@ async def create_user(
 
     password = req.password or await _generate_unique_password(db)
 
-    user = User(email=req.email, username=req.username, name=req.name, role=role)
+    org_id = current_user.org_id
+    if not org_id:
+        default_org = await get_or_create_default_org(db)
+        org_id = default_org.id
+
+    user = User(email=req.email, username=req.username, name=req.name, role=role, org_id=org_id)
     user.set_password(password)
     db.add(user)
     try:
@@ -215,7 +223,10 @@ async def update_user_role(
     if user_id == current_user.id and new_role != UserRole.admin:
         raise HTTPException(status_code=400, detail="Cannot demote yourself")
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    stmt = select(User).where(User.id == user_id)
+    if current_user.org_id is not None:
+        stmt = stmt.where(User.org_id == current_user.org_id)
+    result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -237,7 +248,10 @@ async def reset_user_password(
     Either provide new_password directly, or set generate=true to create
     a secure random password that doesn't collide with existing hashes.
     """
-    result = await db.execute(select(User).where(User.id == user_id))
+    stmt = select(User).where(User.id == user_id)
+    if current_user.org_id is not None:
+        stmt = stmt.where(User.org_id == current_user.org_id)
+    result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -291,7 +305,10 @@ async def delete_user(
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    stmt = select(User).where(User.id == user_id)
+    if current_user.org_id is not None:
+        stmt = stmt.where(User.org_id == current_user.org_id)
+    result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
