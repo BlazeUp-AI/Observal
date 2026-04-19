@@ -15,11 +15,12 @@ import {
   ArrowDown,
   Trash2,
   Clock,
+  Archive,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useRegistryList, useMyAgents, useWhoami } from "@/hooks/use-api";
+import { useRegistryList, useMyAgents, useWhoami, useArchiveAgent } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
 import { hasMinRole } from "@/hooks/use-role-guard";
 import {
@@ -105,6 +106,56 @@ function DeleteAgentButton({ agent }: { agent: RegistryItem }) {
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ArchiveAgentButton({ agent }: { agent: RegistryItem }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const isAdmin = useSyncExternalStore(roleSub, () => hasMinRole(getUserRole(), "admin"), () => false);
+  const archiveMutation = useArchiveAgent();
+
+  if (!isAdmin || agent.status === "archived") return null;
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 w-7 p-0 text-muted-foreground hover:text-orange-600"
+        onClick={(e) => {
+          e.stopPropagation();
+          setConfirmOpen(true);
+        }}
+      >
+        <Archive className="h-3.5 w-3.5" />
+      </Button>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent onClick={(e) => e.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Archive Agent</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will hide the agent from the registry. The agent data will be preserved.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                archiveMutation.mutate(agent.id, {
+                  onSuccess: () => setConfirmOpen(false),
+                });
+              }}
+              disabled={archiveMutation.isPending}
+            >
+              {archiveMutation.isPending ? "Archiving..." : "Archive"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -235,7 +286,12 @@ const columns: ColumnDef<RegistryItem>[] = [
   {
     id: "actions",
     header: "",
-    cell: ({ row }) => <DeleteAgentButton agent={row.original} />,
+    cell: ({ row }) => (
+      <div className="flex items-center gap-1">
+        <ArchiveAgentButton agent={row.original} />
+        <DeleteAgentButton agent={row.original} />
+      </div>
+    ),
   },
 ];
 
