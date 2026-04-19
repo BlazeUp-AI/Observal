@@ -207,18 +207,18 @@ class TestReconcileHooks:
             assert event in merged
 
     def test_stop_has_two_hooks(self):
-        """Stop event should have both generic and stop-specific handlers."""
+        """Stop event should have both generic and stop-specific handlers in separate matcher groups."""
         desired = get_desired_hooks(
             "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/otel/hooks"
         )
         stop_groups = desired["Stop"]
 
-        # One matcher group with two hook handlers
-        assert len(stop_groups) == 1
-        hooks = stop_groups[0]["hooks"]
-        assert len(hooks) == 2
-        assert "observal-hook.sh" in hooks[0]["command"]
-        assert "observal-stop-hook.sh" in hooks[1]["command"]
+        # Two separate matcher groups so each gets its own stdin
+        assert len(stop_groups) == 2
+        assert len(stop_groups[0]["hooks"]) == 1
+        assert len(stop_groups[1]["hooks"]) == 1
+        assert "observal-hook.sh" in stop_groups[0]["hooks"][0]["command"]
+        assert "observal-stop-hook.sh" in stop_groups[1]["hooks"][0]["command"]
 
 
 # ── Env reconciliation ───────────────────────────────────────
