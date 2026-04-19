@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   Plus,
@@ -22,8 +22,16 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { PageHeader } from "@/components/layouts/page-header";
-import { useRegistryList, useAgentValidation, useWhoami, useSaveDraft, useUpdateDraft } from "@/hooks/use-api";
+import { useRegistryList, useRegistryItem, useAgentValidation, useWhoami, useSaveDraft, useUpdateDraft } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import { registry, type RegistryType } from "@/lib/api";
 import type { RegistryItem } from "@/lib/types";
@@ -52,6 +60,133 @@ interface GoalSection {
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
+
+// ── Version bump utility ──────────────────────────────────────────
+
+type BumpType = "patch" | "minor" | "major";
+
+function bumpVersion(current: string, type: BumpType): string {
+  const parts = current.split(".").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return current;
+  if (type === "major") return `${parts[0] + 1}.0.0`;
+  if (type === "minor") return `${parts[0]}.${parts[1] + 1}.0`;
+  return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+}
+
+// ── Version Bump Dialog ───────────────────────────────────────────
+
+function VersionBumpDialog({
+  open,
+  onOpenChange,
+  currentVersion,
+  onConfirm,
+  publishing,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentVersion: string;
+  onConfirm: (version: string) => void;
+  publishing: boolean;
+}) {
+  const [selection, setSelection] = useState<BumpType | "keep">("patch");
+
+  const previewVersion = useMemo(() => {
+    if (selection === "keep") return currentVersion;
+    return bumpVersion(currentVersion, selection);
+  }, [currentVersion, selection]);
+
+  const options: { value: BumpType | "keep"; label: string; description: string }[] = useMemo(() => [
+    {
+      value: "patch",
+      label: "Patch",
+      description: `${currentVersion} \u2192 ${bumpVersion(currentVersion, "patch")}`,
+    },
+    {
+      value: "minor",
+      label: "Minor",
+      description: `${currentVersion} \u2192 ${bumpVersion(currentVersion, "minor")}`,
+    },
+    {
+      value: "major",
+      label: "Major",
+      description: `${currentVersion} \u2192 ${bumpVersion(currentVersion, "major")}`,
+    },
+    {
+      value: "keep",
+      label: "Keep current",
+      description: currentVersion,
+    },
+  ], [currentVersion]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Version Bump</DialogTitle>
+          <DialogDescription>
+            Choose how to bump the version for this update.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2 py-2">
+          {options.map((opt) => (
+            <label
+              key={opt.value}
+              className={`flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 transition-colors ${
+                selection === opt.value
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:bg-muted/50"
+              }`}
+            >
+              <input
+                type="radio"
+                name="version-bump"
+                value={opt.value}
+                checked={selection === opt.value}
+                onChange={() => setSelection(opt.value)}
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="flex-1">
+                <span className="block text-sm font-medium">{opt.label}</span>
+                <span className="block text-xs text-muted-foreground font-mono">
+                  {opt.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        <div className="rounded-md bg-muted/50 px-4 py-2.5 text-center">
+          <span className="text-xs text-muted-foreground">New version: </span>
+          <span className="text-sm font-semibold font-mono">{previewVersion}</span>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={publishing}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onConfirm(previewVersion)}
+            disabled={publishing}
+          >
+            {publishing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="mr-2 h-4 w-4" />
+            )}
+            Update Agent
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Component Picker ──────────────────────────────────────────────
 
 function ComponentPicker({
   type,
@@ -145,6 +280,14 @@ const TYPE_MAP: Record<string, string> = {
   sandboxes: "sandbox",
 };
 
+const REVERSE_TYPE_MAP: Record<string, string> = {
+  mcp: "mcps",
+  skill: "skills",
+  hook: "hooks",
+  prompt: "prompts",
+  sandbox: "sandboxes",
+};
+
 const AGENT_NAME_REGEX = /^[a-z0-9][a-z0-9_-]*$/;
 
 function slugifyName(raw: string): string {
@@ -161,7 +304,13 @@ export default function AgentBuilderPage() {
   const { ready } = useAuthGuard();
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const isEditMode = !!editId;
+
   const { data: whoami } = useWhoami();
+  const { data: existingAgent } = useRegistryItem("agents", editId ?? undefined);
+
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState("");
   const [description, setDescription] = useState("");
@@ -170,6 +319,9 @@ export default function AgentBuilderPage() {
   const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState<RegistryType>("mcps");
 
+  // Version bump dialog
+  const [showVersionDialog, setShowVersionDialog] = useState(false);
+
   // Draft state
   const [draftId, setDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -177,6 +329,9 @@ export default function AgentBuilderPage() {
   const saveDraft = useSaveDraft();
   const updateDraft = useUpdateDraft();
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Track whether we have loaded the existing agent data
+  const editLoadedRef = useRef(false);
 
   // Selected components keyed by type
   const [selectedComponents, setSelectedComponents] = useState<
@@ -199,6 +354,50 @@ export default function AgentBuilderPage() {
   const [validationResult, setValidationResult] =
     useState<ValidationResult | null>(null);
   const validateTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Load existing agent data when in edit mode
+  useEffect(() => {
+    if (!existingAgent || editLoadedRef.current) return;
+    editLoadedRef.current = true;
+
+    setName(existingAgent.name ?? "");
+    setDescription(existingAgent.description ?? "");
+    const agentVersion = (existingAgent as Record<string, unknown>).version;
+    if (typeof agentVersion === "string") setVersion(agentVersion);
+    const agentModel = (existingAgent as Record<string, unknown>).model_name;
+    if (typeof agentModel === "string") setModelName(agentModel);
+
+    // Load components if available
+    const agentComponents = (existingAgent as Record<string, unknown>).components;
+    if (Array.isArray(agentComponents)) {
+      const grouped: Record<string, RegistryItem[]> = {
+        mcps: [], skills: [], hooks: [], prompts: [], sandboxes: [],
+      };
+      for (const comp of agentComponents) {
+        const c = comp as Record<string, unknown>;
+        const pluralType = REVERSE_TYPE_MAP[c.component_type as string] ?? (c.component_type as string);
+        if (grouped[pluralType]) {
+          grouped[pluralType].push({
+            id: c.component_id as string,
+            name: (c.name as string) ?? (c.component_id as string),
+            description: c.description as string | undefined,
+          });
+        }
+      }
+      setSelectedComponents(grouped);
+    }
+
+    // Load goal template sections if available
+    const goalTemplate = (existingAgent as Record<string, unknown>).goal_template as Record<string, unknown> | undefined;
+    if (goalTemplate && Array.isArray(goalTemplate.sections)) {
+      const loadedSections = (goalTemplate.sections as Array<Record<string, unknown>>).map((s) => ({
+        id: generateId(),
+        title: (s.name as string) ?? "",
+        content: (s.description as string) ?? "",
+      }));
+      if (loadedSections.length > 0) setGoalSections(loadedSections);
+    }
+  }, [existingAgent]);
 
   // Compute selected IDs for quick lookup
   const selectedIds = useMemo(() => {
@@ -242,8 +441,9 @@ export default function AgentBuilderPage() {
     };
   }, [selectedComponents]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Check for localStorage draft on mount
+  // Check for localStorage draft on mount (skip if in edit mode)
   useEffect(() => {
+    if (isEditMode) return;
     try {
       const stored = localStorage.getItem(DRAFT_STORAGE_KEY);
       if (stored) {
@@ -252,10 +452,11 @@ export default function AgentBuilderPage() {
     } catch {
       // localStorage unavailable
     }
-  }, []);
+  }, [isEditMode]);
 
-  // Debounced localStorage auto-save (2s)
+  // Debounced localStorage auto-save (2s) — skip in edit mode
   useEffect(() => {
+    if (isEditMode) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     autoSaveTimerRef.current = setTimeout(() => {
@@ -285,7 +486,7 @@ export default function AgentBuilderPage() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [name, description, version, modelName, selectedComponents, goalSections, draftId]);
+  }, [name, description, version, modelName, selectedComponents, goalSections, draftId, isEditMode]);
 
   function restoreLocalDraft() {
     try {
@@ -431,6 +632,38 @@ export default function AgentBuilderPage() {
     [],
   );
 
+  function buildRequestBody(versionOverride?: string) {
+    const components: { component_type: string; component_id: string }[] = [];
+    for (const [type, items] of Object.entries(selectedComponents)) {
+      const singularType = TYPE_MAP[type] ?? type;
+      for (const item of items) {
+        components.push({ component_type: singularType, component_id: item.id });
+      }
+    }
+
+    const sections = goalSections
+      .filter((s) => s.title.trim())
+      .map((s) => ({
+        name: s.title.trim(),
+        description: s.content.trim() || null,
+      }));
+
+    const goalDescription = description.trim() || name.trim();
+
+    return {
+      name: name.trim(),
+      version: (versionOverride ?? version).trim() || "1.0.0",
+      description: description.trim(),
+      owner: whoami?.name || whoami?.email || "unknown",
+      model_name: modelName,
+      components: components.length > 0 ? components : [],
+      goal_template: {
+        description: goalDescription,
+        sections: sections.length > 0 ? sections : [{ name: "Default", description: goalDescription }],
+      },
+    };
+  }
+
   async function handlePublish() {
     if (!name.trim()) {
       toast.error("Agent name is required");
@@ -443,40 +676,15 @@ export default function AgentBuilderPage() {
       return;
     }
 
+    // In edit mode, show the version bump dialog instead of publishing directly
+    if (isEditMode) {
+      setShowVersionDialog(true);
+      return;
+    }
+
     setPublishing(true);
     try {
-      // Build components array with proper {component_type, component_id} format
-      const components: { component_type: string; component_id: string }[] = [];
-      for (const [type, items] of Object.entries(selectedComponents)) {
-        const singularType = TYPE_MAP[type] ?? type;
-        for (const item of items) {
-          components.push({ component_type: singularType, component_id: item.id });
-        }
-      }
-
-      // Build goal_template with sections
-      const sections = goalSections
-        .filter((s) => s.title.trim())
-        .map((s) => ({
-          name: s.title.trim(),
-          description: s.content.trim() || null,
-        }));
-
-      const goalDescription = description.trim() || name.trim();
-
-      const body = {
-        name: name.trim(),
-        version: version.trim() || "1.0.0",
-        description: description.trim(),
-        owner: whoami?.name || whoami?.email || "unknown",
-        model_name: modelName,
-        components: components.length > 0 ? components : [],
-        goal_template: {
-          description: goalDescription,
-          sections: sections.length > 0 ? sections : [{ name: "Default", description: goalDescription }],
-        },
-      };
-
+      const body = buildRequestBody();
       const created = await registry.create("agents", body);
       toast.success("Agent submitted for review. An admin must approve it before it becomes visible.");
       router.push(`/agents/${created.id}`);
@@ -488,16 +696,35 @@ export default function AgentBuilderPage() {
     }
   }
 
+  async function handleUpdateWithVersion(selectedVersion: string) {
+    if (!editId) return;
+
+    setPublishing(true);
+    try {
+      const body = buildRequestBody(selectedVersion);
+      await registry.updateDraft(editId, body);
+      setVersion(selectedVersion);
+      setShowVersionDialog(false);
+      toast.success("Agent updated and submitted for review.");
+      router.push(`/agents/${editId}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to update agent";
+      toast.error(msg);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   if (!ready) return null;
 
   return (
     <>
       <PageHeader
-        title="Agent Builder"
+        title={isEditMode ? "Edit Agent" : "Agent Builder"}
         breadcrumbs={[
           { label: "Registry", href: "/" },
           { label: "Agents", href: "/agents" },
-          { label: "Builder" },
+          { label: isEditMode ? "Edit" : "Builder" },
         ]}
       />
 
@@ -543,6 +770,7 @@ export default function AgentBuilderPage() {
                   }}
                   className="max-w-md"
                   required
+                  disabled={isEditMode}
                 />
                 {nameError && (
                   <p className="text-sm text-destructive">{nameError}</p>
@@ -741,19 +969,21 @@ export default function AgentBuilderPage() {
 
             {/* Publish */}
             <div className="flex items-center gap-3 animate-in stagger-3">
-              <Button
-                variant="outline"
-                onClick={handleSaveDraft}
-                disabled={savingDraft || !name.trim()}
-                className="min-w-[160px]"
-              >
-                {savingDraft ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-2 h-4 w-4" />
-                )}
-                Save Draft
-              </Button>
+              {!isEditMode && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveDraft}
+                  disabled={savingDraft || !name.trim()}
+                  className="min-w-[160px]"
+                >
+                  {savingDraft ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Save Draft
+                </Button>
+              )}
               <Button
                 onClick={handlePublish}
                 disabled={publishing || !name.trim()}
@@ -764,7 +994,7 @@ export default function AgentBuilderPage() {
                 ) : (
                   <ArrowRight className="mr-2 h-4 w-4" />
                 )}
-                Submit for Review
+                {isEditMode ? "Update Agent" : "Submit for Review"}
               </Button>
             </div>
           </div>
@@ -788,6 +1018,15 @@ export default function AgentBuilderPage() {
           </aside>
         </div>
       </div>
+
+      {/* Version Bump Dialog — shown when updating an existing agent */}
+      <VersionBumpDialog
+        open={showVersionDialog}
+        onOpenChange={setShowVersionDialog}
+        currentVersion={version}
+        onConfirm={handleUpdateWithVersion}
+        publishing={publishing}
+      />
     </>
   );
 }
