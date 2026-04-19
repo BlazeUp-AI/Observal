@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, require_local_mode
+from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode
 from api.ratelimit import limiter
 from config import settings
 from models.user import User, UserRole
@@ -69,11 +69,13 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
     if count and count > 0:
         raise HTTPException(status_code=400, detail="System already initialized")
 
+    default_org = await get_or_create_default_org(db)
     user = User(
         email=req.email,
         username=req.username,
         name=req.name,
         role=UserRole.admin,
+        org_id=default_org.id,
     )
     if req.password:
         user.set_password(req.password)
@@ -106,10 +108,12 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
     if count and count > 0:
         raise HTTPException(status_code=400, detail="System already initialized")
 
+    default_org = await get_or_create_default_org(db)
     user = User(
         email="admin@localhost",
         name="admin",
         role=UserRole.admin,
+        org_id=default_org.id,
     )
     db.add(user)
     try:
@@ -136,11 +140,13 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    default_org = await get_or_create_default_org(db)
     user = User(
         email=req.email,
         username=req.username,
         name=req.name,
         role=UserRole.user,
+        org_id=default_org.id,
     )
     user.set_password(req.password)
     db.add(user)
@@ -220,10 +226,12 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
     if not user:
         # Auto-create new user via SSO
+        default_org = await get_or_create_default_org(db)
         user = User(
             email=email,
             name=name,
             role=UserRole.user,
+            org_id=default_org.id,
         )
         db.add(user)
 

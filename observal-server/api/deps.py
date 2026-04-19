@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from database import async_session
+from models.organization import Organization
 from models.user import User, UserRole
 from services.jwt_service import decode_access_token
 
@@ -77,6 +78,46 @@ def require_role(min_role: UserRole):
 
 # Convenience shorthand for super_admin-only endpoints
 require_super_admin = require_role(UserRole.super_admin)
+
+
+async def get_current_org_id(
+    current_user: User = Depends(get_current_user),
+) -> _uuid.UUID | None:
+    """Return the authenticated user's org_id (None for unaffiliated users)."""
+    return current_user.org_id
+
+
+def get_project_id(user: User) -> str:
+    """Derive the ClickHouse project_id from a user's org membership.
+
+    Returns "default" when the user has no org (backwards compat for local mode).
+    """
+    return str(user.org_id) if user.org_id else "default"
+
+
+async def get_or_create_default_org(db: AsyncSession) -> Organization:
+    """Return the default organization, creating it if it doesn't exist."""
+    result = await db.execute(select(Organization).where(Organization.slug == "default"))
+    org = result.scalar_one_or_none()
+    if org:
+        return org
+    org = Organization(name="Default", slug="default")
+    db.add(org)
+    await db.flush()
+    return org
+
+
+def require_org_scope():
+    """FastAPI dependency that applies org-scoped filtering.
+
+    Returns None when the user has no org (local mode — no filtering).
+    Returns the org_id UUID when the user belongs to an org.
+    """
+
+    async def _dep(current_user: User = Depends(get_current_user)) -> _uuid.UUID | None:
+        return current_user.org_id
+
+    return _dep
 
 
 async def require_local_mode() -> None:

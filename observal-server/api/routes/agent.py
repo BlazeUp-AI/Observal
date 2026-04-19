@@ -217,6 +217,7 @@ async def create_agent(
         external_mcps=[m.model_dump() for m in req.external_mcps],
         supported_ides=req.supported_ides,
         created_by=current_user.id,
+        owner_org_id=current_user.org_id,
     )
     db.add(agent)
     await db.flush()
@@ -854,6 +855,7 @@ async def save_draft(
         external_mcps=[m.model_dump() for m in req.external_mcps],
         supported_ides=req.supported_ides,
         created_by=current_user.id,
+        owner_org_id=current_user.org_id,
         status=AgentStatus.draft,
     )
     db.add(agent)
