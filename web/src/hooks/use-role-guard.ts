@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getUserRole } from "@/lib/api";
@@ -34,11 +34,12 @@ function subscribe(cb: () => void) {
 }
 
 function getRoleSnapshot() {
+  if (typeof window === "undefined") return "";
   return getUserRole() || "";
 }
 
 function getServerSnapshot() {
-  return "";
+  return "ssr";
 }
 
 /**
@@ -48,21 +49,16 @@ function getServerSnapshot() {
 export function useRoleGuard(minRole: Role) {
   const router = useRouter();
   const role = useSyncExternalStore(subscribe, getRoleSnapshot, getServerSnapshot);
-  const [hydrated, setHydrated] = useState(false);
+  const isSSR = role === "ssr";
+  const ready = !isSSR && role !== "" && hasMinRole(role, minRole);
 
   useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  const ready = hydrated && role !== "" && hasMinRole(role, minRole);
-
-  useEffect(() => {
-    if (!hydrated) return;
+    if (isSSR) return;
     if (role !== "" && !hasMinRole(role, minRole)) {
       toast.error("You do not have permission to access this page.");
       router.replace("/");
     }
-  }, [hydrated, role, minRole, router]);
+  }, [isSSR, role, minRole, router]);
 
   return { ready };
 }

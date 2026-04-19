@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { auth, setUserRole, getUserRole, clearSession } from "@/lib/api";
 
@@ -9,31 +9,27 @@ function subscribe(cb: () => void) {
 }
 
 function getAuthSnapshot() {
+  if (typeof window === "undefined") return "";
   const key = localStorage.getItem("observal_access_token");
   const role = getUserRole();
   return key ? (role || "pending") : "";
 }
 
 function getServerSnapshot() {
-  return "";
+  return "ssr";
 }
 
 export function useAuthGuard() {
   const router = useRouter();
   const pathname = usePathname();
   const snapshot = useSyncExternalStore(subscribe, getAuthSnapshot, getServerSnapshot);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  const hasToken = snapshot !== "";
+  const isSSR = snapshot === "ssr";
+  const hasToken = !isSSR && snapshot !== "";
   const ready = hasToken && snapshot !== "pending";
   const role = ready ? snapshot : null;
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (isSSR) return;
 
     if (!hasToken && pathname !== "/login") {
       router.replace("/login");
@@ -51,7 +47,7 @@ export function useAuthGuard() {
         router.replace("/login");
       });
     }
-  }, [hydrated, hasToken, snapshot, pathname, router]);
+  }, [isSSR, hasToken, snapshot, pathname, router]);
 
   return { ready, role };
 }
