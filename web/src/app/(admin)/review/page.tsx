@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { CheckCircle2, X, LayoutGrid, TableProperties, AlertTriangle, ShieldCheck, ShieldX, AlertCircle } from "lucide-react";
-import { useReviewAgents, useReviewComponents, useReviewAction } from "@/hooks/use-api";
+import { CheckCircle2, X, Trash2, LayoutGrid, TableProperties, AlertTriangle, ShieldCheck, ShieldX, AlertCircle } from "lucide-react";
+import { useReviewAgents, useReviewComponents, useReviewAction, useReviewDelete } from "@/hooks/use-api";
 import type { ReviewItem, McpValidationResult } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -98,14 +98,16 @@ function ComponentReadinessBadge({ item }: { item: ReviewItem }) {
   );
 }
 
-function ReviewCard({ item, onApprove, onReject, disableApprove }: {
+function ReviewCard({ item, onApprove, onReject, onDelete, disableApprove }: {
   item: ReviewItem;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
+  onDelete: (id: string, type?: string) => void;
   disableApprove?: boolean;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleReject = useCallback(() => {
     if (!showRejectInput) {
@@ -174,6 +176,22 @@ function ReviewCard({ item, onApprove, onReject, disableApprove }: {
         </div>
       )}
 
+      {confirmDelete && (
+        <div className="flex items-center gap-2 p-2 rounded bg-destructive/5 border border-destructive/15 animate-in">
+          <p className="text-xs text-destructive flex-1">Permanently delete this submission?</p>
+          <Button
+            size="sm"
+            className="h-7 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-none"
+            onClick={() => { onDelete(item.id, item.type); setConfirmDelete(false); }}
+          >
+            Delete
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setConfirmDelete(false)}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         {disableApprove ? (
           <TooltipProvider>
@@ -210,19 +228,38 @@ function ReviewCard({ item, onApprove, onReject, disableApprove }: {
         >
           {showRejectInput ? "Confirm" : "Reject"}
         </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Withdraw / delete submission</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );
 }
 
-function ReviewRow({ item, onApprove, onReject, disableApprove }: {
+function ReviewRow({ item, onApprove, onReject, onDelete, disableApprove }: {
   item: ReviewItem;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
+  onDelete: (id: string, type?: string) => void;
   disableApprove?: boolean;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleReject = useCallback(() => {
     if (!showRejectInput) {
@@ -272,7 +309,21 @@ function ReviewRow({ item, onApprove, onReject, disableApprove }: {
             {item.owner && <span>{item.owner}</span>}
           </div>
         </div>
-        {showRejectInput ? (
+        {confirmDelete ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-destructive">Permanently delete?</span>
+            <Button
+              size="sm"
+              className="h-8 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-none"
+              onClick={() => { onDelete(item.id, item.type); setConfirmDelete(false); }}
+            >
+              Delete
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setConfirmDelete(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : showRejectInput ? (
           <div className="flex items-center gap-2 shrink-0">
             <Input
               placeholder="Reason for rejection..."
@@ -333,6 +384,23 @@ function ReviewRow({ item, onApprove, onReject, disableApprove }: {
             >
               Reject
             </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Withdraw / delete submission</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         )}
       </div>
@@ -345,11 +413,13 @@ function AgentItemList({
   view,
   onApprove,
   onReject,
+  onDelete,
 }: {
   items: ReviewItem[];
   view: ViewMode;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
+  onDelete: (id: string, type?: string) => void;
 }) {
   const grouped = useMemo(() => {
     const bundles = new Map<string, { name: string; items: ReviewItem[] }>();
@@ -378,6 +448,7 @@ function AgentItemList({
             item={item}
             onApprove={onApprove}
             onReject={onReject}
+            onDelete={onDelete}
             disableApprove={item.components_ready === false}
           />
         ))}
@@ -390,6 +461,7 @@ function AgentItemList({
             item={item}
             onApprove={onApprove}
             onReject={onReject}
+            onDelete={onDelete}
             disableApprove={item.components_ready === false}
           />
         ))}
@@ -427,11 +499,13 @@ function ReviewItemList({
   view,
   onApprove,
   onReject,
+  onDelete,
 }: {
   items: ReviewItem[];
   view: ViewMode;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
+  onDelete: (id: string, type?: string) => void;
 }) {
   return view === "list" ? (
     <div className="animate-in rounded-md border border-border overflow-hidden">
@@ -441,6 +515,7 @@ function ReviewItemList({
           item={item}
           onApprove={onApprove}
           onReject={onReject}
+          onDelete={onDelete}
         />
       ))}
     </div>
@@ -452,6 +527,7 @@ function ReviewItemList({
           item={item}
           onApprove={onApprove}
           onReject={onReject}
+          onDelete={onDelete}
         />
       ))}
     </div>
@@ -462,6 +538,7 @@ export default function ReviewPage() {
   const { data: agents, isLoading: agentsLoading, isError: agentsError, error: agentsErr, refetch: refetchAgents } = useReviewAgents();
   const { data: components, isLoading: componentsLoading, isError: componentsError, error: componentsErr, refetch: refetchComponents } = useReviewComponents();
   const reviewAction = useReviewAction();
+  const reviewDelete = useReviewDelete();
   const [view, setView] = useState<ViewMode>("grid");
   const [activeTab, setActiveTab] = useState("agents");
 
@@ -477,6 +554,11 @@ export default function ReviewPage() {
   const handleReject = useCallback(
     (id: string, reason: string, type?: string) => reviewAction.mutate({ id, type, action: "reject", reason }),
     [reviewAction],
+  );
+
+  const handleDelete = useCallback(
+    (id: string, type?: string) => reviewDelete.mutate({ id, type }),
+    [reviewDelete],
   );
 
   return (
@@ -549,6 +631,7 @@ export default function ReviewPage() {
                 view={view}
                 onApprove={handleApprove}
                 onReject={handleReject}
+                onDelete={handleDelete}
               />
             )}
           </TabsContent>
@@ -574,6 +657,7 @@ export default function ReviewPage() {
                 view={view}
                 onApprove={handleApprove}
                 onReject={handleReject}
+                onDelete={handleDelete}
               />
             )}
           </TabsContent>
