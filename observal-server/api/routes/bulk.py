@@ -1,0 +1,143 @@
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.deps import get_db, require_role
+from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
+from models.agent_component import AgentComponent
+from models.user import User, UserRole
+from schemas.bulk import BulkAgentItem, BulkAgentRequest, BulkResult, BulkResultItem
+from services.registry_telemetry import emit_registry_event
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/bulk", tags=["bulk"])
+
+
+async def _agent_name_exists(name: str, user_id, db: AsyncSession) -> bool:
+    """Check whether the authenticated user already owns an agent with the given name."""
+    result = await db.execute(
+        select(Agent.id).where(Agent.name == name, Agent.created_by == user_id)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _create_single_agent(
+    item: BulkAgentItem,
+    user: User,
+    db: AsyncSession,
+) -> Agent:
+    """Create a single Agent row (with components and goal template) from a BulkAgentItem."""
+    agent = Agent(
+        name=item.name,
+        version=item.version,
+        description=item.description,
+        owner=item.owner or user.email,
+        prompt=item.prompt,
+        model_name=item.model_name,
+        model_config_json=item.model_config_json,
+        external_mcps=item.external_mcps,
+        supported_ides=item.supported_ides,
+        created_by=user.id,
+        status=AgentStatus.pending,
+    )
+    db.add(agent)
+    await db.flush()
+
+    # Attach components
+    for i, comp in enumerate(item.components):
+        db.add(
+            AgentComponent(
+                agent_id=agent.id,
+                component_type=comp.get("component_type", "mcp"),
+                component_id=comp["component_id"],
+                version_ref="latest",
+                order_index=i,
+                config_override=comp.get("config_override"),
+            )
+        )
+
+    # Attach goal template when provided
+    if item.goal_template:
+        goal = AgentGoalTemplate(
+            agent_id=agent.id,
+            description=item.goal_template.get("description", ""),
+        )
+        db.add(goal)
+        await db.flush()
+
+        for j, sec in enumerate(item.goal_template.get("sections", [])):
+            db.add(
+                AgentGoalSection(
+                    goal_template_id=goal.id,
+                    name=sec.get("name", f"section-{j}"),
+                    description=sec.get("description"),
+                    grounding_required=sec.get("grounding_required", False),
+                    order=j,
+                )
+            )
+
+    return agent
+
+
+@router.post("/agents", response_model=BulkResult)
+async def bulk_create_agents(
+    request: BulkAgentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Create multiple agents in a single request.
+
+    Duplicate names (agents already owned by the caller) are skipped.
+    When ``dry_run=True`` no agents are persisted — the response previews
+    what *would* happen.
+    """
+    results: list[BulkResultItem] = []
+    created = 0
+    skipped = 0
+    errors = 0
+
+    for item in request.agents:
+        # Check for duplicate name
+        if await _agent_name_exists(item.name, current_user.id, db):
+            results.append(
+                BulkResultItem(name=item.name, status="skipped", error="Agent with this name already exists")
+            )
+            skipped += 1
+            continue
+
+        if request.dry_run:
+            results.append(BulkResultItem(name=item.name, status="created"))
+            created += 1
+            continue
+
+        try:
+            agent = await _create_single_agent(item, current_user, db)
+            results.append(BulkResultItem(name=item.name, status="created", agent_id=agent.id))
+            created += 1
+        except Exception as exc:
+            logger.warning("bulk create failed for agent '%s': %s", item.name, exc)
+            results.append(BulkResultItem(name=item.name, status="error", error=str(exc)))
+            errors += 1
+
+    if not request.dry_run and created > 0:
+        await db.commit()
+
+        emit_registry_event(
+            action="agent.bulk_create",
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            user_role=current_user.role.value,
+            metadata={"total": str(len(request.agents)), "created": str(created), "skipped": str(skipped)},
+        )
+
+    return BulkResult(
+        total=len(request.agents),
+        created=created,
+        skipped=skipped,
+        errors=errors,
+        dry_run=request.dry_run,
+        results=results,
+    )
