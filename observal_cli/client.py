@@ -40,8 +40,17 @@ def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
         rprint("[dim]  This action requires a higher role (admin or super_admin).[/dim]")
     elif code == 404:
         rprint(f"[red]Not found{path_info}.[/red]")
+        # Extract component type from API path (e.g. /api/v1/hooks/abc -> hook)
+        parts = path.strip("/").split("/")
+        type_plural = parts[2] if len(parts) > 2 else "mcps"
+        if type_plural.endswith("xes"):
+            type_singular = type_plural[:-2]  # sandboxes -> sandbox
+        elif type_plural.endswith("s"):
+            type_singular = type_plural[:-1]  # mcps -> mcp, skills -> skill
+        else:
+            type_singular = type_plural
         rprint(
-            "[dim]  Check that the resource ID is correct, or use [bold]observal registry mcp list[/bold] to browse.[/dim]"
+            f"[dim]  Check that the resource ID is correct, or use [bold]observal registry {type_singular} list[/bold] to browse.[/dim]"
         )
     elif code == 429:
         rprint(f"[red]Rate limited{path_info}.[/red]")

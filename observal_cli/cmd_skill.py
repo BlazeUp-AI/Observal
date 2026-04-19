@@ -27,6 +27,11 @@ def skill_submit(
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (skill ID)"),
 ):
     """Submit a new skill for review."""
+    if draft and submit_draft:
+        rprint(
+            "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
+        )
+        raise typer.Exit(code=1)
     if submit_draft:
         resolved = config.resolve_alias(submit_draft)
         with spinner("Submitting draft for review..."):
@@ -35,8 +40,15 @@ def skill_submit(
         return
 
     if from_file:
-        with open(from_file) as f:
-            payload = _json.load(f)
+        try:
+            with open(from_file) as f:
+                payload = _json.load(f)
+        except _json.JSONDecodeError as e:
+            rprint(f"[red]Invalid JSON in {from_file}:[/red] {e}")
+            raise typer.Exit(code=1)
+        except FileNotFoundError:
+            rprint(f"[red]File not found:[/red] {from_file}")
+            raise typer.Exit(code=1)
     else:
         agents_input = typer.prompt("Target agents (comma-separated)", default="")
         payload = {

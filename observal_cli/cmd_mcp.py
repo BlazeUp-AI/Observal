@@ -890,6 +890,11 @@ def submit(
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (MCP ID)"),
 ):
     """Submit an MCP server for review."""
+    if draft and submit_draft:
+        rprint(
+            "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
+        )
+        raise typer.Exit(code=1)
     if submit_draft:
         from observal_cli import config as cfg
 

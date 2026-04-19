@@ -699,6 +699,11 @@ def agent_publish(
     submit: str | None = typer.Option(None, "--submit", help="Submit a draft agent for review (agent ID)"),
 ):
     """Publish the agent definition to the server."""
+    if draft and submit:
+        rprint(
+            "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
+        )
+        raise typer.Exit(code=1)
     if submit:
         resolved = config.resolve_alias(submit)
         with spinner("Submitting draft for review..."):

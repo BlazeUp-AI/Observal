@@ -29,6 +29,11 @@ def prompt_submit(
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (prompt ID)"),
 ):
     """Submit a new prompt for review."""
+    if draft and submit_draft:
+        rprint(
+            "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
+        )
+        raise typer.Exit(code=1)
     if submit_draft:
         resolved = config.resolve_alias(submit_draft)
         with spinner("Submitting draft for review..."):
