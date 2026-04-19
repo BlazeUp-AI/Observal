@@ -345,14 +345,15 @@ def _detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
         break
 
     # 3. Infer GHCR from GitHub URL
+    _safe_name = re.compile(r"^[a-zA-Z0-9._-]+$")
     try:
-        parsed = urlparse(git_url)
-        if parsed.hostname and "github.com" in parsed.hostname:
-            path = parsed.path.strip("/")
+        url_parts = urlparse(git_url)
+        if url_parts.hostname and "github.com" in url_parts.hostname:
+            path = url_parts.path.strip("/")
             if path.endswith(".git"):
                 path = path[:-4]
             parts = path.split("/")
-            if len(parts) >= 2:
+            if len(parts) >= 2 and _safe_name.match(parts[0]) and _safe_name.match(parts[1]):
                 return (f"ghcr.io/{parts[0]}/{parts[1]}", True)
     except Exception:
         pass
