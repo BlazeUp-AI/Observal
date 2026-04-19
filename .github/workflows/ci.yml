@@ -140,6 +140,8 @@ jobs:
           cd observal-server
           uv run \
             --python ${{ matrix.python-version }} \
+            --with asyncpg \
+            --with hypothesis \
             pytest ../tests/ -q
 
 # ── Job 3: Next.js lint + typecheck ───────────────────────────────────────────
