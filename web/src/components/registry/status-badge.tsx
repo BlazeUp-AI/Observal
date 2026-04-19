@@ -11,6 +11,7 @@ const statusConfig: Record<string, { bg: string; text: string; dot?: string; pin
   running:   { bg: "bg-light-blue",   text: "text-dark-blue",   dot: "bg-dark-blue",   ping: true },
   completed: { bg: "bg-light-green",  text: "text-dark-green" },
   success:   { bg: "bg-light-green",  text: "text-dark-green" },
+  archived:  { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-400" },
 };
 
 const fallback = { bg: "bg-muted", text: "text-muted-foreground" };
