@@ -40,7 +40,7 @@ class McpSubmitRequest(BaseModel):
     git_url: str | None = None
     name: str
     version: str
-    description: str = ""
+    description: str
     category: str
     owner: str
     framework: str | None = None

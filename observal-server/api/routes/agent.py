@@ -1034,6 +1034,8 @@ async def submit_draft(
         raise HTTPException(status_code=403, detail="Not the agent owner")
     if agent.status != AgentStatus.draft:
         raise HTTPException(status_code=400, detail="Agent is not a draft")
+    if not agent.description:
+        raise HTTPException(status_code=400, detail="Description is required before submitting")
 
     # Validate components exist
     if agent.components:
