@@ -14,7 +14,7 @@ from __future__ import annotations
 # Bump this when hook definitions change (new events, different scripts,
 # additional handlers, etc.).  Stored in ~/.observal/config.json so we
 # can detect when an upgrade is needed without re-reading all hooks.
-HOOKS_SPEC_VERSION = "3"
+HOOKS_SPEC_VERSION = "4"
 
 # Metadata key injected into every Observal matcher group.
 # Primary identification method — the reconciler checks this first.
@@ -123,6 +123,12 @@ def get_desired_env(
     if user_id:
         env["OBSERVAL_USER_ID"] = user_id
 
+    from observal_cli import config as _cfg
+    _loaded = _cfg.load()
+    _username = _loaded.get("username", "")
+    if _username:
+        env["OBSERVAL_USERNAME"] = _username
+
     return env
 
 
@@ -139,5 +145,6 @@ MANAGED_ENV_KEYS = frozenset(
         "OBSERVAL_HOOKS_URL",
         "OBSERVAL_HOOKS_SPEC_VERSION",
         "OBSERVAL_USER_ID",
+        "OBSERVAL_USERNAME",
     }
 )

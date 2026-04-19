@@ -14,9 +14,20 @@ HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Read payload from stdin into a variable so we can reuse it
 payload=$(cat)
 
+# Get user_id from env var first, then fall back to config file
+if [ -z "$OBSERVAL_USER_ID" ] && [ -f "$HOME/.observal/config.json" ]; then
+  OBSERVAL_USER_ID=$(sed -n 's/.*"user_id":\s*"\([^"]*\)".*/\1/p' "$HOME/.observal/config.json" | head -1)
+fi
+
+# Get username from env var first, then fall back to config file
+if [ -z "$OBSERVAL_USERNAME" ] && [ -f "$HOME/.observal/config.json" ]; then
+  OBSERVAL_USERNAME=$(sed -n 's/.*"username":\s*"\([^"]*\)".*/\1/p' "$HOME/.observal/config.json" | head -1)
+fi
+
 # Try to send to server first
 if echo "$payload" | curl -sf --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
   ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
+  ${OBSERVAL_USERNAME:+-H "X-Observal-Username: $OBSERVAL_USERNAME"} \
   -H "Content-Type: application/json" \
   -d @- >/dev/null 2>&1; then
     # Success — flush any buffered events in the background

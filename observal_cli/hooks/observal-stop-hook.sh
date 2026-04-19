@@ -25,6 +25,16 @@ if [ -z "$SESSION_ID" ] || [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH
   exit 0
 fi
 
+# Get user_id from env var first, then fall back to config file
+if [ -z "$OBSERVAL_USER_ID" ] && [ -f "$HOME/.observal/config.json" ]; then
+  OBSERVAL_USER_ID=$(sed -n 's/.*"user_id":\s*"\([^"]*\)".*/\1/p' "$HOME/.observal/config.json" | head -1)
+fi
+
+# Get username from env var first, then fall back to config file
+if [ -z "$OBSERVAL_USERNAME" ] && [ -f "$HOME/.observal/config.json" ]; then
+  OBSERVAL_USERNAME=$(sed -n 's/.*"username":\s*"\([^"]*\)".*/\1/p' "$HOME/.observal/config.json" | head -1)
+fi
+
 # Collect assistant messages from the current turn (bottom-up until user msg).
 # Each assistant message becomes a separate event with a sequence number.
 # We also capture thinking blocks separately.
@@ -91,6 +101,7 @@ if [ -n "$THINK_FILES" ]; then
         message_total: ($total | tonumber)
       }' | curl -s --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
         ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
+        ${OBSERVAL_USERNAME:+-H "X-Observal-Username: $OBSERVAL_USERNAME"} \
         -H "Content-Type: application/json" \
         -d @- >/dev/null 2>&1 || true
   done
@@ -121,6 +132,7 @@ if [ -n "$MSG_FILES" ]; then
         message_total: ($total | tonumber)
       }' | curl -s --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
         ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
+        ${OBSERVAL_USERNAME:+-H "X-Observal-Username: $OBSERVAL_USERNAME"} \
         -H "Content-Type: application/json" \
         -d @- >/dev/null 2>&1 || true
   done
