@@ -124,13 +124,9 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     return items
 
 
-async def _query_pending_components(
-    db: AsyncSession, type_filter: str | None = None
-) -> list[dict]:
+async def _query_pending_components(db: AsyncSession, type_filter: str | None = None) -> list[dict]:
     models_to_query = (
-        {type_filter: LISTING_MODELS[type_filter]}
-        if type_filter and type_filter in LISTING_MODELS
-        else LISTING_MODELS
+        {type_filter: LISTING_MODELS[type_filter]} if type_filter and type_filter in LISTING_MODELS else LISTING_MODELS
     )
     items = []
     user_ids: set[uuid.UUID] = set()
@@ -150,9 +146,7 @@ async def _query_pending_components(
                 "status": r.status.value,
                 "submitted_by": r.submitted_by,
                 "created_at": r.created_at.isoformat(),
-                "bundle_id": str(r.bundle_id)
-                if isinstance(getattr(r, "bundle_id", None), uuid.UUID)
-                else None,
+                "bundle_id": str(r.bundle_id) if isinstance(getattr(r, "bundle_id", None), uuid.UUID) else None,
             }
             # Include validation results for MCP listings
             if listing_type == "mcp" and hasattr(r, "validation_results"):
