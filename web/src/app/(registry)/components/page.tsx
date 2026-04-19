@@ -73,6 +73,10 @@ const TYPE_LABELS: Record<string, string> = {
   sandboxes: "Sandbox",
 };
 
+const TYPE_PLURAL_LABELS: Record<string, string> = Object.fromEntries(
+  TYPES.map((t) => [t.value, t.label]),
+);
+
 type ViewMode = "table" | "grid";
 
 function SortIcon({ column }: { column: Column<RegistryItem> }) {
@@ -224,7 +228,7 @@ export default function ComponentsPage() {
           <div className="relative max-w-sm flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder={`Search ${TYPE_LABELS[activeType] ?? activeType}s...`}
+              placeholder={`Search ${TYPE_PLURAL_LABELS[activeType] ?? activeType}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 h-9"
@@ -294,11 +298,11 @@ export default function ComponentsPage() {
         ) : items.length === 0 ? (
           <EmptyState
             icon={Puzzle}
-            title={`No ${TYPE_LABELS[activeType] ?? activeType}s found`}
+            title={`No ${TYPE_PLURAL_LABELS[activeType] ?? activeType} found`}
             description={
               debouncedSearch
-                ? `No ${TYPE_LABELS[activeType] ?? activeType}s match "${debouncedSearch}". Try a different search.`
-                : `No ${TYPE_LABELS[activeType] ?? activeType}s have been registered yet.`
+                ? `No ${TYPE_PLURAL_LABELS[activeType] ?? activeType} match "${debouncedSearch}". Try a different search.`
+                : `No ${TYPE_PLURAL_LABELS[activeType] ?? activeType} have been registered yet.`
             }
             actionLabel="Back to Registry"
             actionHref="/"
