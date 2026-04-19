@@ -49,6 +49,28 @@ observal auth login            # auto-creates admin on fresh server
 
 That's it. The `.env.example` ships with working defaults for every setting. The server starts 8 services (API, web UI, PostgreSQL, ClickHouse, Redis, background worker, OpenTelemetry collector, Grafana) and creates all database tables on first boot.
 
+
+> **Port conflicts?** If `docker compose up` fails with `port is already allocated`, another service is using the default ports. Check and resolve before starting:
+> ```bash
+> # Check for occupied default ports (macOS/Linux)
+> lsof -nP -iTCP:5432 -sTCP:LISTEN   # PostgreSQL
+> lsof -nP -iTCP:6379 -sTCP:LISTEN   # Redis
+>
+> # Windows (PowerShell)
+> netstat -ano | findstr :5432
+> netstat -ano | findstr :6379
+> ```
+> Either stop the conflicting services, or remap Observal's host ports:
+> ```bash
+> POSTGRES_HOST_PORT=5433 REDIS_HOST_PORT=6380 docker compose up --build -d
+> ```
+> If you already started with a port conflict, fully recreate the stack:
+> ```bash
+> docker compose down && docker compose up -d
+> ```
+> See `.env.example` for all configurable port variables.
+
+
 Already have MCP servers in your IDE? Instrument them in one command:
 
 ```bash
