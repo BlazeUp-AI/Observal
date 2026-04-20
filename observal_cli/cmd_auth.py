@@ -97,6 +97,7 @@ def login(
             rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
             _fetch_server_public_key(server_url)
             _configure_claude_code(server_url, data["access_token"])
+            _configure_kiro(server_url)
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 400 and "already initialized" in e.response.text.lower():
@@ -160,6 +161,7 @@ def register(
 
         _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, data["access_token"])
+        _configure_kiro(server_url)
 
     except httpx.HTTPStatusError as e:
         detail = ""
@@ -320,6 +322,7 @@ def _do_password_login(server_url: str, email: str, password: str):
 
         _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, data["access_token"])
+        _configure_kiro(server_url)
 
     except httpx.ConnectError:
         rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
@@ -411,6 +414,129 @@ def _find_hook_script(name: str) -> str | None:
         if p.is_file():
             return str(p.resolve())
     return None
+
+
+def _configure_kiro(server_url: str):
+    """Check for Kiro CLI and offer to configure its telemetry hooks."""
+    kiro_dir = Path.home() / ".kiro"
+
+    try:
+        kiro_exists = kiro_dir.is_dir() or shutil.which("kiro-cli") or shutil.which("kiro")
+        if not kiro_exists:
+            return
+
+        if not typer.confirm(
+            "\nDetected Kiro CLI. Configure telemetry -> Observal?",
+            default=True,
+        ):
+            return
+
+        hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+        cfg = config.load()
+        user_id = cfg.get("user_id", "")
+
+        hook_py = _find_hook_script("kiro_hook.py")
+        stop_py = _find_hook_script("kiro_stop_hook.py")
+
+        def _sed_prefix(agent_name: str) -> str:
+            meta = f'"session_id":"kiro-\'$PPID\'","service_name":"kiro-cli","agent_name":"{agent_name}"'
+            if user_id:
+                meta += f',"user_id":"{user_id}"'
+            return "cat | sed 's/^{/{" + meta + ",/' "
+
+        def _hook_cmd(agent_name: str) -> str:
+            prefix = _sed_prefix(agent_name)
+            if hook_py:
+                return f"{prefix}| python3 {hook_py} --url {hooks_url}"
+            return f'{prefix}| curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
+
+        def _stop_cmd(agent_name: str) -> str:
+            prefix = _sed_prefix(agent_name)
+            if stop_py:
+                return f"{prefix}| python3 {stop_py} --url {hooks_url}"
+            return f'{prefix}| curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
+
+        changes = 0
+
+        # 1. Inject into agent JSON files (merge, preserve existing hooks)
+        agents_dir = kiro_dir / "agents"
+        if agents_dir.is_dir():
+            for af in sorted(agents_dir.glob("*.json")):
+                try:
+                    data = _json.loads(af.read_text())
+                    existing = data.get("hooks", {})
+                    already = any(
+                        "otel/hooks" in h.get("command", "")
+                        for handlers in existing.values()
+                        if isinstance(handlers, list)
+                        for h in handlers
+                    )
+                    if already:
+                        continue
+                    name = data.get("name") or af.stem
+                    cmd = _hook_cmd(name)
+                    stop = _stop_cmd(name)
+                    desired = {
+                        "agentSpawn": [{"command": cmd}],
+                        "userPromptSubmit": [{"command": cmd}],
+                        "preToolUse": [{"matcher": "*", "command": cmd}],
+                        "postToolUse": [{"matcher": "*", "command": cmd}],
+                        "stop": [{"command": stop}],
+                    }
+                    merged = dict(existing)
+                    for evt, handlers in desired.items():
+                        cur = merged.get(evt, [])
+                        has_obs = any("otel/hooks" in h.get("command", "") for h in cur)
+                        if not has_obs:
+                            merged[evt] = cur + handlers
+                    data["hooks"] = merged
+                    af.write_text(_json.dumps(data, indent=2) + "\n")
+                    changes += 1
+                except (ValueError, OSError):
+                    pass
+
+        # 2. Install global IDE-format hooks for agentless chat
+        global_hooks_dir = kiro_dir / "hooks"
+        global_hooks_dir.mkdir(parents=True, exist_ok=True)
+        g_cmd = _hook_cmd("global")
+        g_stop = _stop_cmd("global")
+        for hook_id, event_type, cmd in [
+            ("observal-prompt-submit", "promptSubmit", g_cmd),
+            ("observal-pre-tool-use", "preToolUse", g_cmd),
+            ("observal-post-tool-use", "postToolUse", g_cmd),
+            ("observal-agent-stop", "agentStop", g_stop),
+        ]:
+            hf = global_hooks_dir / f"{hook_id}.json"
+            if hf.exists():
+                try:
+                    ex = _json.loads(hf.read_text())
+                    if hooks_url in ex.get("then", {}).get("command", ""):
+                        continue
+                except (ValueError, OSError):
+                    pass
+            hf.write_text(
+                _json.dumps(
+                    {
+                        "id": hook_id,
+                        "name": f"Observal: {event_type}",
+                        "comment": "Auto-injected by Observal for telemetry collection",
+                        "when": {"type": event_type},
+                        "then": {"type": "runCommand", "command": cmd},
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            changes += 1
+
+        if changes:
+            rprint(f"[green]Configured Kiro telemetry ({changes} hooks updated)[/green]")
+        else:
+            rprint("[dim]Kiro hooks already configured.[/dim]")
+
+    except Exception as e:
+        rprint(f"\n[yellow]Could not configure Kiro automatically: {e}[/yellow]")
+        rprint("Run [bold]observal scan --ide kiro --home[/bold] to set up manually.")
 
 
 def _configure_claude_code(server_url: str, access_token: str):

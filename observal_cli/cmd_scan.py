@@ -279,9 +279,9 @@ def _scan_kiro_home(
             try:
                 data = json.loads(agent_file.read_text())
                 name = data.get("name", agent_file.stem)
-                desc = data.get("description", "")
-                model = data.get("model", "")
-                prompt = data.get("prompt", "")
+                desc = data.get("description") or ""
+                model = data.get("model") or ""
+                prompt = data.get("prompt") or ""
 
                 agents.append(
                     DiscoveredAgent(
@@ -932,11 +932,18 @@ def register_scan(app: typer.Typer):
 
                         # Extract agent metadata for per-agent hook enrichment
                         agent_name = agent_data.get("name", agent_file.stem)
-                        agent_model = agent_data.get("model", "")
+                        agent_model = agent_data.get("model") or ""
 
-                        # Backup and inject
+                        # Backup and merge (preserve existing user hooks)
                         _backup_config(agent_file)
-                        agent_data["hooks"] = _kiro_hooks_block(agent_name, agent_model)
+                        desired = _kiro_hooks_block(agent_name, agent_model)
+                        merged = dict(existing)
+                        for evt, handlers in desired.items():
+                            cur = merged.get(evt, [])
+                            has_obs = any("otel/hooks" in h.get("command", "") for h in cur)
+                            if not has_obs:
+                                merged[evt] = cur + handlers
+                        agent_data["hooks"] = merged
                         agent_file.write_text(json.dumps(agent_data, indent=2) + "\n")
                         injected_count += 1
                     except (json.JSONDecodeError, OSError) as e:
@@ -947,3 +954,46 @@ def register_scan(app: typer.Typer):
                     rprint(f"[dim]Hooks endpoint: {kiro_hooks_url}[/dim]")
                 else:
                     rprint(f"\n[dim]Kiro agent hooks already configured -> {kiro_hooks_url}[/dim]")
+
+            # ── Global IDE-format hooks in ~/.kiro/hooks/ ─────────
+            # These fire for ALL Kiro sessions (including agentless chat)
+            kiro_global_hooks_dir = Path.home() / ".kiro" / "hooks"
+            kiro_global_hooks_dir.mkdir(parents=True, exist_ok=True)
+
+            global_hook_cmd = _kiro_hook_cmd("global", "")
+            global_stop_cmd = _kiro_stop_cmd("global", "")
+
+            _ide_hook_defs = [
+                ("observal-prompt-submit", "promptSubmit", global_hook_cmd),
+                ("observal-pre-tool-use", "preToolUse", global_hook_cmd),
+                ("observal-post-tool-use", "postToolUse", global_hook_cmd),
+                ("observal-agent-stop", "agentStop", global_stop_cmd),
+            ]
+
+            global_injected = 0
+            for hook_id, event_type, cmd in _ide_hook_defs:
+                hook_file = kiro_global_hooks_dir / f"{hook_id}.json"
+                hook_json = {
+                    "id": hook_id,
+                    "name": f"Observal: {event_type}",
+                    "comment": "Auto-injected by Observal for telemetry collection",
+                    "when": {"type": event_type},
+                    "then": {"type": "runCommand", "command": cmd},
+                }
+                # Only write if missing or stale (different URL)
+                if hook_file.exists():
+                    try:
+                        existing_hook = json.loads(hook_file.read_text())
+                        if kiro_hooks_url in existing_hook.get("then", {}).get("command", ""):
+                            continue
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                    _backup_config(hook_file)
+                hook_file.write_text(json.dumps(hook_json, indent=2) + "\n")
+                global_injected += 1
+
+            if global_injected:
+                rprint(f"[green]Installed {global_injected} global Kiro hooks in ~/.kiro/hooks/[/green]")
+                rprint("[dim]These capture all Kiro sessions, including agentless chat.[/dim]")
+            else:
+                rprint("[dim]Global Kiro hooks already configured.[/dim]")
