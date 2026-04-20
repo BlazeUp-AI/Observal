@@ -15,7 +15,7 @@ from services.skill_config_generator import (
 def _make_skill_listing(
     name: str = "code-review",
     description: str = "Automated code review skill",
-    slash_command: str | None = "/review",
+    slash_command: str | None = "review",
     git_url: str = "https://github.com/org/skills.git",
     skill_path: str = "skills/code-review",
 ) -> MagicMock:
@@ -48,7 +48,7 @@ class TestGenerateSkillFile:
         assert result["path"] == ".claude/skills/code-review/SKILL.md"
         assert "name: code-review" in result["content"]
         assert 'description: "Automated code review skill"' in result["content"]
-        assert "command: //review" in result["content"]
+        assert "command: /review" in result["content"]
 
     def test_claude_code_user_scope(self):
         listing = _make_skill_listing()
