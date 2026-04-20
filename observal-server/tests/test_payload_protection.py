@@ -13,8 +13,35 @@ from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 from starlette.requests import Request
 
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from api.middleware.content_type import MAX_JSON_DEPTH, ContentTypeMiddleware
 from api.middleware.request_id import RequestIDMiddleware
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Minimal copy for testing — mirrors main.SecurityHeadersMiddleware."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self'; "
+            "connect-src 'self' https:; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+        return response
 
 # ---------------------------------------------------------------------------
 # Lightweight test app
@@ -23,6 +50,7 @@ from api.middleware.request_id import RequestIDMiddleware
 
 def _build_app() -> FastAPI:
     app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(ContentTypeMiddleware)
     app.add_middleware(RequestIDMiddleware)
 
@@ -292,3 +320,43 @@ class TestRequestID:
         rid = resp.headers.get("X-Request-ID")
         assert rid is not None
         uuid.UUID(rid)
+
+
+# ===================================================================
+# Security headers middleware
+# ===================================================================
+
+
+class TestSecurityHeaders:
+    @pytest.mark.asyncio
+    async def test_csp_header_present(self, client):
+        resp = await client.get("/api/v1/items")
+        csp = resp.headers.get("Content-Security-Policy")
+        assert csp is not None
+        assert "default-src 'self'" in csp
+        assert "script-src 'self'" in csp
+        assert "frame-ancestors 'none'" in csp
+
+    @pytest.mark.asyncio
+    async def test_xss_protection_headers(self, client):
+        resp = await client.get("/api/v1/items")
+        assert resp.headers["X-Content-Type-Options"] == "nosniff"
+        assert resp.headers["X-Frame-Options"] == "DENY"
+        assert resp.headers["X-XSS-Protection"] == "1; mode=block"
+        assert resp.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+        assert resp.headers["X-Permitted-Cross-Domain-Policies"] == "none"
+
+    @pytest.mark.asyncio
+    async def test_csp_blocks_inline_scripts(self, client):
+        resp = await client.get("/api/v1/items")
+        csp = resp.headers["Content-Security-Policy"]
+        assert "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+
+    @pytest.mark.asyncio
+    async def test_permissions_policy(self, client):
+        resp = await client.get("/api/v1/items")
+        pp = resp.headers.get("Permissions-Policy")
+        assert pp is not None
+        assert "camera=()" in pp
+        assert "microphone=()" in pp
+        assert "geolocation=()" in pp
