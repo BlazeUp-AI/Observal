@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")

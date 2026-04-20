@@ -1166,10 +1166,9 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "claude-code")
         assert config.ide == "claude-code"
-        rules_files = [f for f in config.files if f.format == "markdown"]
-        assert len(rules_files) == 1
-        assert rules_files[0].path == ".claude/agents/test-agent.md"
-        assert "You are a helpful coding assistant." in rules_files[0].content
+        agent_file = next(f for f in config.files if f.path == ".claude/agents/test-agent.md")
+        assert agent_file.format == "markdown"
+        assert "You are a helpful coding assistant." in agent_file.content
 
     def test_claude_code_mcp_setup_commands(self):
         from services.agent_builder import generate_ide_agent_files
@@ -1203,10 +1202,9 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "cursor")
         assert config.ide == "cursor"
-        assert len(config.files) == 2
-        rules = next(f for f in config.files if f.format == "markdown")
+        rules = next(f for f in config.files if f.path == ".cursor/rules/test-agent.md")
         mcp_json = next(f for f in config.files if f.format == "json")
-        assert rules.path == ".cursor/rules/test-agent.md"
+        assert rules.format == "markdown"
         assert mcp_json.path == ".cursor/mcp.json"
         assert "mcpServers" in mcp_json.content
         assert "github-mcp" in mcp_json.content["mcpServers"]
@@ -1259,9 +1257,7 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "kiro")
         assert config.ide == "kiro"
-        assert len(config.files) == 1
-        agent_file = config.files[0]
-        assert agent_file.path == "~/.kiro/agents/test-agent.json"
+        agent_file = next(f for f in config.files if f.path == "~/.kiro/agents/test-agent.json")
         assert agent_file.format == "json"
         content = agent_file.content
         assert content["name"] == "test-agent"

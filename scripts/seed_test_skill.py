@@ -14,10 +14,13 @@ BASE = "http://localhost:8000"
 
 # Login as admin (can approve skills)
 print("1. Logging in as admin...")
-r = requests.post(f"{BASE}/api/v1/auth/login", json={
-    "email": "admin@demo.example",
-    "password": "admin-changeme",
-})
+r = requests.post(
+    f"{BASE}/api/v1/auth/login",
+    json={
+        "email": "admin@demo.example",
+        "password": "admin-changeme",
+    },
+)
 if r.status_code != 200:
     print(f"   FAILED to login: {r.status_code} {r.text}")
     sys.exit(1)
@@ -119,15 +122,11 @@ agent_payload = {
     "owner": "demo-admin",
     "model_name": "claude-sonnet-4",
     "supported_ides": ["claude-code", "cursor", "vscode", "kiro"],
-    "components": [
-        {"component_type": "skill", "component_id": skill_id}
-    ],
+    "components": [{"component_type": "skill", "component_id": skill_id}],
     "external_mcps": [],
     "goal_template": {
         "description": "Code review and assistance",
-        "sections": [
-            {"name": "default", "description": "Default goal section"}
-        ],
+        "sections": [{"name": "default", "description": "Default goal section"}],
     },
 }
 r = requests.post(

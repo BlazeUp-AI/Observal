@@ -118,13 +118,15 @@ def _build_skill_configs(
         listing = skill_listings.get(comp.component_id)
         if not listing:
             continue
-        skills.append({
-            "name": _sanitize_name(listing.name),
-            "description": getattr(listing, "description", "") or "",
-            "slash_command": getattr(listing, "slash_command", None),
-            "task_type": getattr(listing, "task_type", ""),
-            "activation_keywords": getattr(listing, "activation_keywords", None),
-        })
+        skills.append(
+            {
+                "name": _sanitize_name(listing.name),
+                "description": getattr(listing, "description", "") or "",
+                "slash_command": getattr(listing, "slash_command", None),
+                "task_type": getattr(listing, "task_type", ""),
+                "activation_keywords": getattr(listing, "activation_keywords", None),
+            }
+        )
 
     return skills
 
