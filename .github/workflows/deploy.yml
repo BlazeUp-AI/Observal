@@ -23,7 +23,8 @@ jobs:
           script_stop: true
           script: |
             cd ~/Observal
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             cd docker
             docker compose up -d --build --remove-orphans
