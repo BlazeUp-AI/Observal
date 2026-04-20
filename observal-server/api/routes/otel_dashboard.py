@@ -76,10 +76,22 @@ async def list_sessions(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     is_admin = _is_admin_user(current_user)
-    uid_filter = ""
+    session_filter = ""
     params: dict[str, str] = {}
     if not is_admin:
-        uid_filter = "AND (LogAttributes['user.id'] = {uid:String} OR LogAttributes['user.id'] = {uemail:String}) "
+        # Claude Code native telemetry uses a hashed user.id while hook
+        # events use the Observal UUID.  Filter by session ownership: a
+        # session belongs to a user if *any* event in it carries their
+        # Observal UUID or email (from hook events).  We then aggregate
+        # *all* events (including claude-code telemetry) for those sessions.
+        session_filter = (
+            "AND LogAttributes['session.id'] IN ("
+            "  SELECT DISTINCT LogAttributes['session.id'] FROM otel_logs"
+            "  WHERE LogAttributes['session.id'] != ''"
+            "  AND (LogAttributes['user.id'] = {uid:String}"
+            "       OR LogAttributes['user.id'] = {uemail:String})"
+            ") "
+        )
         params["param_uid"] = str(current_user.id)
         params["param_uemail"] = current_user.email
 
@@ -101,6 +113,7 @@ async def list_sessions(
         "sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input_tokens, "
         "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens, "
         "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
+        "sum(toUInt64OrZero(LogAttributes['cache_creation_tokens'])) AS total_cache_write_tokens, "
         "anyIf(LogAttributes['model'], LogAttributes['model'] != '') AS model, "
         "anyIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_id, "
         "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
@@ -108,7 +121,7 @@ async def list_sessions(
         "anyIf(LogAttributes['tools_used'], LogAttributes['tools_used'] != '') AS tools_used, "
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] != '' " + uid_filter + "GROUP BY session_id "
+        "WHERE LogAttributes['session.id'] != '' " + session_filter + "GROUP BY session_id "
         "ORDER BY last_event_time DESC "
         "LIMIT 100",
         params or None,
@@ -400,13 +413,24 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str, current_user: User = Depends(require_role(UserRole.user))):
     is_admin = _is_admin_user(current_user)
-    uid_filter = ""
     params: dict[str, str] = {"param_sid": session_id}
+
     if not is_admin:
-        uid_filter = "AND (LogAttributes['user.id'] = {uid:String} OR LogAttributes['user.id'] = {uemail:String}) "
+        # Verify the user owns this session (any event with their UUID/email)
         params["param_uid"] = str(current_user.id)
         params["param_uemail"] = current_user.email
+        ownership = await _ch_json(
+            "SELECT 1 FROM otel_logs "
+            "WHERE LogAttributes['session.id'] = {sid:String} "
+            "AND (LogAttributes['user.id'] = {uid:String} "
+            "     OR LogAttributes['user.id'] = {uemail:String}) "
+            "LIMIT 1",
+            params,
+        )
+        if not ownership:
+            return {"session_id": session_id, "service_name": "", "events": [], "traces": []}
 
+    # Fetch all events for the session (both hook and native telemetry)
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -415,7 +439,8 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         "LogAttributes AS attributes, "
         "ServiceName AS service_name "
         "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] = {sid:String} " + uid_filter + "ORDER BY Timestamp ASC",
+        "WHERE LogAttributes['session.id'] = {sid:String} "
+        "ORDER BY Timestamp ASC",
         params,
     )
     traces = await _ch_json(
@@ -541,7 +566,9 @@ async def otel_stats(current_user: User = Depends(require_role(UserRole.admin)))
         "countIf(LogAttributes['event.name'] = 'api_request' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS total_api_requests, "
         "countIf(LogAttributes['event.name'] = 'tool_result' OR LogAttributes['event.name'] = 'hook_posttooluse') AS total_tool_calls, "
         "sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input_tokens, "
-        "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens "
+        "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens, "
+        "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
+        "sum(toUInt64OrZero(LogAttributes['cache_creation_tokens'])) AS total_cache_write_tokens "
         "FROM otel_logs"
     )
     trace_rows = await _ch_json(
@@ -556,6 +583,8 @@ async def otel_stats(current_user: User = Depends(require_role(UserRole.admin)))
         "total_tool_calls": int(log.get("total_tool_calls", 0)),
         "total_input_tokens": int(log.get("total_input_tokens", 0)),
         "total_output_tokens": int(log.get("total_output_tokens", 0)),
+        "total_cache_read_tokens": int(log.get("total_cache_read_tokens", 0)),
+        "total_cache_write_tokens": int(log.get("total_cache_write_tokens", 0)),
         "total_traces": int(tr.get("total_traces", 0)),
         "total_spans": int(tr.get("total_spans", 0)),
     }
