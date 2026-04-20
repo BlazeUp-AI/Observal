@@ -606,23 +606,23 @@ async def update_agent(
                 )
             )
 
-    # Re-infer IDE features after component changes
-    # Re-query the current component rows to avoid stale relationship state
-    current_comps = (
-        (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
-    )
-    skill_comp_ids = [c.component_id for c in current_comps if c.component_type == "skill"]
-    skill_listings_map_update: dict = {}
-    if skill_comp_ids:
-        rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
-        skill_listings_map_update = {row.id: row for row in rows}
+    # Re-infer IDE features only when components or external_mcps changed
+    if req.components is not None or req.mcp_server_ids is not None or req.external_mcps is not None:
+        current_comps = (
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
+        )
+        skill_comp_ids = [c.component_id for c in current_comps if c.component_type == "skill"]
+        skill_listings_map_update: dict = {}
+        if skill_comp_ids:
+            rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+            skill_listings_map_update = {row.id: row for row in rows}
 
-    class _AgentProxy:
-        components = current_comps
-        external_mcps = agent.external_mcps
+        class _AgentProxy:
+            components = current_comps
+            external_mcps = agent.external_mcps
 
-    agent.required_ide_features = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map_update)
-    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+        agent.required_ide_features = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map_update)
+        agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
@@ -1100,24 +1100,25 @@ async def update_draft(
                 )
             )
 
-    # Re-infer IDE features for draft update
-    current_comps_draft = (
-        (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
-    )
-    skill_comp_ids = [c.component_id for c in current_comps_draft if c.component_type == "skill"]
-    skill_listings_map_draft_update: dict = {}
-    if skill_comp_ids:
-        rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
-        skill_listings_map_draft_update = {row.id: row for row in rows}
+    # Re-infer IDE features only when components or external_mcps changed
+    if req.components is not None or req.external_mcps is not None:
+        current_comps_draft = (
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
+        )
+        skill_comp_ids = [c.component_id for c in current_comps_draft if c.component_type == "skill"]
+        skill_listings_map_draft_update: dict = {}
+        if skill_comp_ids:
+            rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+            skill_listings_map_draft_update = {row.id: row for row in rows}
 
-    class _DraftUpdateProxy:
-        components = current_comps_draft
-        external_mcps = agent.external_mcps
+        class _DraftUpdateProxy:
+            components = current_comps_draft
+            external_mcps = agent.external_mcps
 
-    agent.required_ide_features = infer_required_features(
-        _DraftUpdateProxy(), skill_listings=skill_listings_map_draft_update
-    )
-    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+        agent.required_ide_features = infer_required_features(
+            _DraftUpdateProxy(), skill_listings=skill_listings_map_draft_update
+        )
+        agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
