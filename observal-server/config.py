@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # ClickHouse data retention
     DATA_RETENTION_DAYS: int = 90
 
+    # Cache TTL defaults (seconds)
+    CACHE_TTL_DEFAULT: int = 30
+    CACHE_TTL_DASHBOARD: int = 60
+    CACHE_TTL_OTEL: int = 15
+
     @field_validator("DATA_RETENTION_DAYS")
     @classmethod
     def validate_retention_days(cls, v: int) -> int:

@@ -1,0 +1,74 @@
+"""Redis-backed response cache for dashboard and OTEL endpoints."""
+
+import logging
+
+from redis import asyncio as aioredis
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+CACHE_PREFIX = "observal-cache"
+
+_redis: aioredis.Redis | None = None
+
+
+async def init_cache() -> None:
+    """Initialize FastAPICache with a Redis backend.
+
+    Uses a separate Redis connection with ``decode_responses=False``
+    because fastapi-cache2 stores binary (bytes) values.
+    """
+    global _redis
+    from fastapi_cache import FastAPICache
+    from fastapi_cache.backends.redis import RedisBackend
+
+    _redis = aioredis.from_url(
+        settings.REDIS_URL,
+        encoding="utf-8",
+        decode_responses=False,
+        socket_connect_timeout=settings.REDIS_SOCKET_TIMEOUT,
+        socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+    )
+    FastAPICache.init(RedisBackend(_redis), prefix=CACHE_PREFIX)
+    logger.info("FastAPICache initialized (Redis backend, prefix=%s)", CACHE_PREFIX)
+
+
+async def close_cache() -> None:
+    global _redis
+    if _redis:
+        await _redis.aclose()
+        _redis = None
+
+
+async def invalidate_all() -> int:
+    """Delete every key under the cache prefix. Returns count deleted."""
+    if not _redis:
+        return 0
+    cursor, keys = 0, []
+    pattern = f"{CACHE_PREFIX}:*"
+    while True:
+        cursor, batch = await _redis.scan(cursor=cursor, match=pattern, count=500)
+        keys.extend(batch)
+        if cursor == 0:
+            break
+    if keys:
+        await _redis.delete(*keys)
+    logger.info("Cache invalidated: %d keys deleted", len(keys))
+    return len(keys)
+
+
+async def invalidate_namespace(namespace: str) -> int:
+    """Delete keys matching a specific namespace."""
+    if not _redis:
+        return 0
+    pattern = f"{CACHE_PREFIX}:{namespace}:*"
+    cursor, keys = 0, []
+    while True:
+        cursor, batch = await _redis.scan(cursor=cursor, match=pattern, count=500)
+        keys.extend(batch)
+        if cursor == 0:
+            break
+    if keys:
+        await _redis.delete(*keys)
+    return len(keys)

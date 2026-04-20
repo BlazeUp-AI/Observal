@@ -10,6 +10,17 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+
+async def _invalidate_cache():
+    """Best-effort cache invalidation after ClickHouse writes."""
+    try:
+        from services.cache import invalidate_all
+
+        await invalidate_all()
+    except Exception:
+        pass
+
+
 _parsed = urlparse(settings.CLICKHOUSE_URL.replace("clickhouse://", "http://"))
 CLICKHOUSE_HTTP = f"http://{_parsed.hostname}:{_parsed.port or 8123}"
 CLICKHOUSE_DB = _parsed.path.strip("/") or "default"
@@ -349,6 +360,7 @@ async def insert_tool_call(event: dict):
     try:
         r = await _query(sql, params)
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"ClickHouse insert_tool_call failed: {e}")
         raise
@@ -373,6 +385,7 @@ async def insert_agent_interaction(event: dict):
     try:
         r = await _query(sql, params)
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"ClickHouse insert_agent_interaction failed: {e}")
         raise
@@ -427,6 +440,7 @@ async def insert_traces(traces: list[dict]):
     try:
         r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"ClickHouse insert_traces failed: {e}")
         raise
@@ -511,6 +525,7 @@ async def insert_spans(spans: list[dict]):
     try:
         r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"ClickHouse insert_spans failed: {e}")
         raise
@@ -556,6 +571,7 @@ async def insert_scores(scores: list[dict]):
     try:
         r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"ClickHouse insert_scores failed: {e}")
         raise
@@ -589,6 +605,7 @@ async def insert_otel_logs(rows: list[dict]):
     try:
         r = await _query(sql, data="\n".join(lines))
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as e:
         logger.error(f"ClickHouse insert_otel_logs failed: {e}")
         raise
@@ -851,5 +868,6 @@ async def insert_audit_log(events: list[dict]):
     try:
         r = await _query(sql, data=body)
         r.raise_for_status()
+        await _invalidate_cache()
     except Exception as exc:
         logger.error(f"ClickHouse insert_audit_log failed: {exc}")

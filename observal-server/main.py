@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
@@ -45,6 +46,7 @@ from config import settings
 from database import engine
 from models import Base
 from models.user import User
+from services.cache import close_cache, init_cache
 from services.clickhouse import init_clickhouse
 from services.crypto import init_key_manager
 from services.redis import close as close_redis
@@ -76,6 +78,7 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_columns(conn)
     await init_clickhouse()
+    await init_cache()
     # Initialize asymmetric key manager for JWT signing
     init_key_manager(
         key_dir=settings.JWT_KEY_DIR,
@@ -101,6 +104,7 @@ async def lifespan(app: FastAPI):
             app.state.enterprise_issues = ["ee/ module not installed"]
 
     yield
+    await close_cache()
     await close_redis()
 
 
@@ -213,6 +217,23 @@ app.add_middleware(ContentTypeMiddleware)
 
 # --- Request ID ---
 app.add_middleware(RequestIDMiddleware)
+
+# --- GZip compression for responses >= 500 bytes ---
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    """Set Cache-Control headers on responses served from cache."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        cache_header = response.headers.get("X-FastAPI-Cache")
+        if cache_header == "HIT" or (request.method == "GET" and cache_header == "MISS"):
+            response.headers["Cache-Control"] = f"public, max-age={settings.CACHE_TTL_DEFAULT}"
+        return response
+
+
+app.add_middleware(CacheControlMiddleware)
 
 # GraphQL (replaces REST dashboard endpoints)
 graphql_app = GraphQLRouter(schema, context_getter=get_context_dep)

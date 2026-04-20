@@ -6,8 +6,10 @@ import time as _time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi_cache.decorator import cache
 
 from api.deps import require_role
+from config import settings
 from models.user import User, UserRole
 from services.clickhouse import _query, query_shim_spans_for_window
 from services.redis import publish
@@ -71,6 +73,7 @@ def _is_admin_user(user: User) -> bool:
 
 
 @router.get("/sessions")
+@cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_sessions(
     status: str | None = Query(None),
     current_user: User = Depends(require_role(UserRole.user)),
@@ -467,6 +470,7 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
 
 
 @router.get("/traces")
+@cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_traces(current_user: User = Depends(require_role(UserRole.admin))):
     rows = await _ch_json(
         "SELECT "
@@ -532,6 +536,7 @@ async def get_trace(trace_id: str, current_user: User = Depends(require_role(Use
 
 
 @router.get("/errors")
+@cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_errors(current_user: User = Depends(require_role(UserRole.admin))):
     """List recent error events (tool failures, stop failures, API errors)."""
     rows = await _ch_json(
@@ -558,6 +563,7 @@ async def list_errors(current_user: User = Depends(require_role(UserRole.admin))
 
 
 @router.get("/stats")
+@cache(expire=settings.CACHE_TTL_DEFAULT, namespace="otel")
 async def otel_stats(current_user: User = Depends(require_role(UserRole.admin))):
     log_rows = await _ch_json(
         "SELECT "
