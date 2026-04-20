@@ -81,6 +81,17 @@ def main():
     # native fields due to JSON duplicate-key semantics — last key wins).
     payload.setdefault("service_name", "kiro")
 
+    # Inject user_id from Observal config if not already present
+    if not payload.get("user_id"):
+        try:
+            cfg_path = Path.home() / ".observal" / "config.json"
+            if cfg_path.exists():
+                cfg = json.loads(cfg_path.read_text())
+                if cfg.get("user_id"):
+                    payload["user_id"] = cfg["user_id"]
+        except Exception:
+            pass
+
     # Inject metadata from CLI args (used on Windows where sed is unavailable)
     if agent_name:
         payload.setdefault("agent_name", agent_name)
