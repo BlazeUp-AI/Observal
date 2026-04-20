@@ -106,6 +106,7 @@ class SkillListingSummary(BaseModel):
 
 class SkillInstallRequest(BaseModel):
     ide: str
+    scope: str = "project"
 
 
 class SkillInstallResponse(BaseModel):

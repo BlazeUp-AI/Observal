@@ -12,6 +12,7 @@ from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
 from models.mcp import ListingStatus, McpListing
+from models.skill import SkillListing
 from models.user import User, UserRole
 from schemas.agent import (
     AgentCreateRequest,
@@ -631,6 +632,13 @@ async def install_agent(
         mcp_rows = (await db.execute(select(McpListing).where(McpListing.id.in_(mcp_comp_ids)))).scalars().all()
         mcp_listings_map = {row.id: row for row in mcp_rows}
 
+    # Pre-load skill listings for skill file generation
+    skill_comp_ids = [c.component_id for c in agent.components if c.component_type == "skill"]
+    skill_listings_map = {}
+    if skill_comp_ids:
+        skill_rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+        skill_listings_map = {row.id: row for row in skill_rows}
+
     # Resolve all component names for rules file content
     name_map = await _resolve_component_names(agent.components, db)
 
@@ -642,6 +650,7 @@ async def install_agent(
         env_values=req.env_values,
         options=req.options,
         platform=req.platform,
+        skill_listings=skill_listings_map,
     )
 
     # Capture agent.id before any DB operations that might expire the ORM

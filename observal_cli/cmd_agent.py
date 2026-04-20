@@ -509,6 +509,14 @@ def agent_install(
         content = rules.get("content", "")
         rprint(f"[dim]{content[:200]}{'...' if len(content) > 200 else ''}[/dim]\n")
 
+    # Skill files
+    skill_files = snippet.get("skill_files", [])
+    if skill_files:
+        rprint(f"[bold]Skill files ({len(skill_files)}):[/bold]")
+        for sf in skill_files:
+            rprint(f"  [green]{sf['path']}[/green]")
+        rprint()
+
     # MCP config
     mcp_cfg = snippet.get("mcp_config")
     if mcp_cfg:
