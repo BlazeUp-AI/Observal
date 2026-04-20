@@ -32,6 +32,8 @@ import { hasMinRole } from "@/hooks/use-role-guard";
 import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
 import { StatusBadge } from "@/components/registry/status-badge";
+import { IdeBadges } from "@/components/registry/ide-badges";
+import { FEATURE_LABELS, type IdeFeature } from "@/lib/ide-features";
 import { ReviewForm } from "@/components/registry/review-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +62,9 @@ interface AgentDetail {
     description?: string;
     sections?: { name: string; description?: string }[];
   };
+  supported_ides?: string[];
+  required_ide_features?: string[];
+  inferred_supported_ides?: string[];
   [key: string]: unknown;
 }
 
@@ -707,6 +712,31 @@ export default function AgentDetailPage({
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div className="border border-border rounded-md p-4 space-y-3">
+                <h3 className="text-xs font-semibold font-display uppercase tracking-wider text-muted-foreground">
+                  IDE Compatibility
+                </h3>
+                <IdeBadges
+                  supportedIdes={a.supported_ides}
+                  inferredSupportedIdes={a.inferred_supported_ides}
+                  max={7}
+                />
+                {a.required_ide_features && a.required_ide_features.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                      Required features
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {a.required_ide_features.map((f: string) => (
+                        <span key={f} className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {FEATURE_LABELS[f as IdeFeature] ?? f}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {a.owner && (
