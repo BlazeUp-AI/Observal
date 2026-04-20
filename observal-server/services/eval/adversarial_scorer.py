@@ -4,11 +4,18 @@ Entirely structural — no SLM needed. Uses TraceSanitizer injection detection
 and evaluator path probing to detect agents attempting to game the evaluation.
 """
 
+import asyncio
 import logging
 import re
 
 from models.scoring import ScoringDimension
 from services.eval.sanitizer import TraceSanitizer
+from services.security_events import (
+    EventType,
+    SecurityEvent,
+    Severity,
+    emit_security_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +116,26 @@ class AdversarialScorer:
 
         for p in penalties:
             logger.info("Adversarial penalty: %s — %s", p["event_name"], p["evidence"][:100])
+            event_type = (
+                EventType.EVALUATOR_PATH_PROBE
+                if p["event_name"] == "evaluator_path_probing"
+                else EventType.INJECTION_DETECTED
+            )
+            try:
+                asyncio.get_running_loop().create_task(
+                    emit_security_event(
+                        SecurityEvent(
+                            event_type=event_type,
+                            severity=Severity.CRITICAL,
+                            outcome="detected",
+                            target_id=trace.get("trace_id", ""),
+                            target_type="trace",
+                            detail=p["evidence"][:200],
+                        )
+                    )
+                )
+            except RuntimeError:
+                pass
 
         return penalties
 

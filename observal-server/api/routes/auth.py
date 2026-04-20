@@ -30,6 +30,13 @@ from schemas.auth import (
 )
 from services.jwt_service import create_access_token, create_refresh_token, decode_refresh_token
 from services.redis import get_redis
+from services.security_events import (
+    EventType,
+    SecurityEvent,
+    Severity,
+    _extract_request_info,
+    emit_security_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +148,7 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
 @limiter.limit("3/minute")
 async def register(request: Request, req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Create a new account with email + password."""
+    source_ip, user_agent = _extract_request_info(request)
     existing = await db.execute(select(User).where(User.email == req.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -162,6 +170,17 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
         raise HTTPException(status_code=409, detail="Email or username already registered")
     await db.refresh(user)
 
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.REGISTRATION,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(user.id),
+            actor_email=user.email,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
     access_token, refresh_token, expires_in = await _issue_tokens(user)
     return InitResponse(
         user=UserResponse.model_validate(user),
@@ -175,12 +194,36 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
 @limiter.limit("5/minute")
 async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Login with email + password. Returns user info and JWT tokens."""
+    source_ip, user_agent = _extract_request_info(request)
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if not user or not user.verify_password(req.password):
+        await emit_security_event(
+            SecurityEvent(
+                event_type=EventType.LOGIN_FAILURE,
+                severity=Severity.WARNING,
+                outcome="failure",
+                actor_email=req.email,
+                source_ip=source_ip,
+                user_agent=user_agent,
+                detail="Invalid email or password",
+            )
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     access_token, refresh_token, expires_in = await _issue_tokens(user)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.LOGIN_SUCCESS,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(user.id),
+            actor_email=user.email,
+            actor_role=user.role.value,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -208,9 +251,20 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
 
+    source_ip, user_agent = _extract_request_info(request)
     try:
         token = await oauth.oidc.authorize_access_token(request)
     except Exception as e:
+        await emit_security_event(
+            SecurityEvent(
+                event_type=EventType.SSO_FAILURE,
+                severity=Severity.WARNING,
+                outcome="failure",
+                source_ip=source_ip,
+                user_agent=user_agent,
+                detail=f"OAuth authorization failed: {e}",
+            )
+        )
         raise HTTPException(status_code=400, detail=f"OAuth authorization failed: {e}")
 
     userinfo = token.get("userinfo")
@@ -276,6 +330,18 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         logger.warning("Redis unavailable during OAuth callback: %s", e)
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
 
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.SSO_SUCCESS,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(user.id),
+            actor_email=email,
+            actor_role=user.role.value,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
     frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}"
     return RedirectResponse(url=frontend_redirect)
 
@@ -343,11 +409,35 @@ async def whoami(current_user: User = Depends(get_current_user)):
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 async def issue_token(request: Request, req: TokenRequest, db: AsyncSession = Depends(get_db)):
     """Exchange email+password for JWT access + refresh tokens."""
+    source_ip, user_agent = _extract_request_info(request)
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if not user or not user.verify_password(req.password):
+        await emit_security_event(
+            SecurityEvent(
+                event_type=EventType.LOGIN_FAILURE,
+                severity=Severity.WARNING,
+                outcome="failure",
+                actor_email=req.email,
+                source_ip=source_ip,
+                user_agent=user_agent,
+                detail="Invalid email or password (token endpoint)",
+            )
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.LOGIN_SUCCESS,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(user.id),
+            actor_email=user.email,
+            actor_role=user.role.value,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
     access_token, refresh_token, expires_in = await _issue_tokens(user)
     return TokenResponse(
         access_token=access_token,
@@ -465,5 +555,16 @@ async def create_hooks_token(current_user: User = Depends(get_current_user)):
         current_user.id,
         current_user.role,
         expires_in_minutes=settings.JWT_HOOKS_TOKEN_EXPIRE_MINUTES,
+    )
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.API_KEY_CREATED,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            detail="Hooks token created (30-day)",
+        )
     )
     return {"access_token": token, "expires_in": expires_in}

@@ -6,6 +6,16 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # Filelog receiver for structured security logs from observal-api
+  filelog/security:
+    include:
+      - /var/log/observal/security.log
+    operators:
+      - type: json_parser
+        timestamp:
+          parse_from: attributes.timestamp
+          layout: "%Y-%m-%d %H:%M:%S.%L"
+
 processors:
   batch:
     timeout: 5s
@@ -14,6 +24,15 @@ processors:
     check_interval: 1s
     limit_mib: 512
     spike_limit_mib: 128
+
+  # Filter processor: route only observal.security logs to the SIEM pipeline
+  filter/security:
+    logs:
+      include:
+        match_type: strict
+        record_attributes:
+          - key: logger.name
+            value: observal.security
 
 exporters:
   clickhouse:
@@ -30,11 +49,32 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-  # Also forward to Observal API for real-time processing (optional)
-  # otlphttp:
-  #   endpoint: http://observal-api:8000
+
+  # ── SIEM exporters (uncomment the one matching your SIEM) ──
+
+  # Syslog (RFC 5424) — Splunk, QRadar, ArcSight
+  # syslog/siem:
+  #   endpoint: ${env:SIEM_ENDPOINT}
+  #   network: tcp
+  #   protocol: rfc5424
   #   tls:
-  #     insecure: true
+  #     insecure: false
+
+  # OTLP/HTTP — Datadog, Elastic, Grafana Cloud
+  # otlphttp/siem:
+  #   endpoint: ${env:SIEM_ENDPOINT}
+  #   headers:
+  #     Authorization: "Bearer ${env:SIEM_TOKEN}"
+  #   tls:
+  #     insecure: false
+
+  # Splunk HEC
+  # splunk_hec/siem:
+  #   endpoint: ${env:SIEM_ENDPOINT}
+  #   token: ${env:SIEM_TOKEN}
+  #   source: observal
+  #   sourcetype: observal:security
+  #   index: security
 
 service:
   pipelines:
@@ -50,3 +90,9 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [clickhouse]
+
+    # ── SIEM pipeline (uncomment and pick one exporter) ──
+    # logs/siem:
+    #   receivers: [filelog/security]
+    #   processors: [filter/security, memory_limiter, batch]
+    #   exporters: [otlphttp/siem]  # or syslog/siem, splunk_hec/siem

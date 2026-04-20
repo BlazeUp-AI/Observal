@@ -11,6 +11,12 @@ from database import async_session
 from models.organization import Organization
 from models.user import User, UserRole
 from services.jwt_service import decode_access_token
+from services.security_events import (
+    EventType,
+    SecurityEvent,
+    Severity,
+    emit_security_event,
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -81,6 +87,17 @@ def require_role(min_role: UserRole):
         user_level = ROLE_HIERARCHY.get(current_user.role, 999)
         required_level = ROLE_HIERARCHY[min_role]
         if user_level > required_level:
+            await emit_security_event(
+                SecurityEvent(
+                    event_type=EventType.PERMISSION_DENIED,
+                    severity=Severity.WARNING,
+                    outcome="failure",
+                    actor_id=str(current_user.id),
+                    actor_email=current_user.email,
+                    actor_role=current_user.role.value,
+                    detail=f"Required role: {min_role.value}, has: {current_user.role.value}",
+                )
+            )
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return current_user
 

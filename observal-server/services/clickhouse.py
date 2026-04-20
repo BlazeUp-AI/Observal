@@ -236,6 +236,30 @@ INIT_SQL = [
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS hook_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS skill_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS prompt_id Nullable(String)""",
+    # Security events table (SIEM integration — SOC 2 / ISO 27001)
+    """CREATE TABLE IF NOT EXISTS security_events (
+        event_id    UUID,
+        timestamp   DateTime64(3, 'UTC'),
+        event_type  LowCardinality(String),
+        severity    LowCardinality(String),
+        actor_id    String DEFAULT '',
+        actor_email String DEFAULT '',
+        actor_role  LowCardinality(String) DEFAULT '',
+        target_id   String DEFAULT '',
+        target_type LowCardinality(String) DEFAULT '',
+        outcome     LowCardinality(String),
+        source_ip   String DEFAULT '',
+        user_agent  String DEFAULT '',
+        detail      String DEFAULT '',
+        org_id      String DEFAULT '',
+        INDEX idx_event_type event_type TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_severity severity TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_actor_id actor_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_outcome outcome TYPE bloom_filter(0.01) GRANULARITY 1
+    ) ENGINE = MergeTree()
+    TTL toDateTime(timestamp) + INTERVAL 730 DAY
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (event_type, severity, timestamp)""",
     # Audit log table (enterprise compliance — SOC 2 / ISO 27001)
     """CREATE TABLE IF NOT EXISTS audit_log (
         event_id    UUID,

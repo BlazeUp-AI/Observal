@@ -21,6 +21,12 @@ from schemas.admin import (
     UserCreateResponse,
     UserRoleUpdate,
 )
+from services.security_events import (
+    EventType,
+    SecurityEvent,
+    Severity,
+    emit_security_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +138,18 @@ async def upsert_setting(
         db.add(cfg)
     await db.commit()
     await db.refresh(cfg)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.SETTING_CHANGED,
+            severity=Severity.WARNING,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=key,
+            target_type="setting",
+        )
+    )
     return EnterpriseConfigResponse.model_validate(cfg)
 
 
@@ -198,6 +216,19 @@ async def create_user(
         raise HTTPException(status_code=409, detail="Email already registered")
     await db.refresh(user)
 
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.USER_CREATED,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(user.id),
+            target_type="user",
+            detail=f"Created user {user.email} with role {role.value}",
+        )
+    )
     return UserCreateResponse(
         id=user.id,
         email=user.email,
@@ -230,9 +261,23 @@ async def update_user_role(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    old_role = user.role.value
     user.role = new_role
     await db.commit()
     await db.refresh(user)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.ROLE_CHANGED,
+            severity=Severity.WARNING,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(user.id),
+            target_type="user",
+            detail=f"Role changed from {old_role} to {new_role.value}",
+        )
+    )
     return UserAdminResponse.model_validate(user)
 
 
@@ -265,6 +310,19 @@ async def reset_user_password(
 
     user.set_password(new_password)
     await db.commit()
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.ADMIN_PASSWORD_RESET,
+            severity=Severity.WARNING,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(user.id),
+            target_type="user",
+            detail=f"Password reset for {user.email}",
+        )
+    )
     logger.warning("Admin %s reset password for user %s", current_user.email, user.email)
 
     resp: dict[str, str] = {"message": f"Password reset for {user.email}"}
@@ -322,6 +380,19 @@ async def delete_user(
             raise HTTPException(status_code=400, detail="Cannot delete the last admin")
 
     logger.warning("Admin %s deleted user %s (%s)", current_user.email, user.email, user.id)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.USER_DELETED,
+            severity=Severity.WARNING,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(user.id),
+            target_type="user",
+            detail=f"Deleted user {user.email}",
+        )
+    )
     await db.delete(user)
     await db.commit()
 
@@ -379,6 +450,19 @@ async def update_penalty(
 
     await db.commit()
     await db.refresh(penalty)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.PENALTY_WEIGHTS_MODIFIED,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(penalty_id),
+            target_type="penalty",
+            detail=f"Modified penalty {penalty.event_name}",
+        )
+    )
     return {
         "id": str(penalty.id),
         "event_name": penalty.event_name,
@@ -510,6 +594,19 @@ async def create_canary(
         _canary_configs[agent_id] = []
     _canary_configs[agent_id].append(config.model_dump())
 
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.CANARY_CREATED,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(agent_id),
+            target_type="canary",
+            detail=f"Canary type: {config.canary_type}",
+        )
+    )
     return {"id": config.id, "agent_id": agent_id, "canary_type": config.canary_type}
 
 
@@ -541,5 +638,60 @@ async def delete_canary(
         for i, config in enumerate(configs):
             if config.get("id") == canary_id:
                 configs.pop(i)
+                await emit_security_event(
+                    SecurityEvent(
+                        event_type=EventType.CANARY_DELETED,
+                        severity=Severity.INFO,
+                        outcome="success",
+                        actor_id=str(current_user.id),
+                        actor_email=current_user.email,
+                        actor_role=current_user.role.value,
+                        target_id=canary_id,
+                        target_type="canary",
+                    )
+                )
                 return {"deleted": canary_id}
     raise HTTPException(status_code=404, detail="Canary config not found")
+
+
+# ── Security Audit Log ──────────────────────────────────
+
+
+@router.get("/audit-log")
+async def get_audit_log(
+    event_type: str | None = None,
+    severity: str | None = None,
+    actor_email: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Query the security events audit log from ClickHouse."""
+    from services.clickhouse import _query
+
+    conditions = ["1 = 1"]
+    params: dict[str, str] = {}
+    if event_type:
+        conditions.append("event_type = {et:String}")
+        params["param_et"] = event_type
+    if severity:
+        conditions.append("severity = {sev:String}")
+        params["param_sev"] = severity
+    if actor_email:
+        conditions.append("actor_email = {ae:String}")
+        params["param_ae"] = actor_email
+
+    where = " AND ".join(conditions)
+    limit = min(max(int(limit), 1), 1000)
+    offset = max(int(offset), 0)
+    sql = (
+        f"SELECT * FROM security_events WHERE {where} ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset} FORMAT JSON"
+    )
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        data = r.json()
+        return {"events": data.get("data", []), "total": data.get("rows", 0)}
+    except Exception as e:
+        logger.warning("Audit log query failed: %s", e)
+        return {"events": [], "total": 0}

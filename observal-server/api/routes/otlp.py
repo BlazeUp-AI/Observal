@@ -23,7 +23,13 @@ from database import async_session
 from models.user import User
 from services.clickhouse import insert_spans, insert_traces
 from services.jwt_service import decode_access_token
-from services.secrets_redactor import redact_secrets
+from services.secrets_redactor import get_and_reset_redaction_count, redact_secrets
+from services.security_events import (
+    EventType,
+    SecurityEvent,
+    Severity,
+    emit_security_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -631,8 +637,19 @@ async def otlp_traces(request: Request):
         logger.warning("OTLP /v1/traces: conversion failed", exc_info=True)
         return Response(content=json.dumps(_OTLP_OK), status_code=200, media_type="application/json")
 
+    get_and_reset_redaction_count()
     _redact_rows(trace_rows)
     _redact_rows(span_rows)
+    redacted = get_and_reset_redaction_count()
+    if redacted:
+        await emit_security_event(
+            SecurityEvent(
+                event_type=EventType.SECRETS_REDACTED,
+                severity=Severity.INFO,
+                outcome="success",
+                detail=f"Redacted {redacted} secrets in OTLP traces batch",
+            )
+        )
 
     errors = 0
     if trace_rows:

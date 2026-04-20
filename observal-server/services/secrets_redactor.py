@@ -144,6 +144,15 @@ _RE_LONG_BASE64 = re.compile(
 
 REDACTED = "**REDACTED**"
 
+_redaction_count: int = 0
+
+
+def get_and_reset_redaction_count() -> int:
+    global _redaction_count
+    count = _redaction_count
+    _redaction_count = 0
+    return count
+
 
 def redact_secrets(text: str) -> str:
     """Redact secrets from a string while preserving non-secret content.
@@ -162,8 +171,10 @@ def redact_secrets(text: str) -> str:
     text = _RE_PRIVATE_KEY.sub(REDACTED, text)
 
     # 2. Known API key prefixes (highest confidence — always redact)
+    global _redaction_count
     for pat in _KNOWN_KEY_PATTERNS:
-        text = pat.sub(REDACTED, text)
+        text, n = pat.subn(REDACTED, text)
+        _redaction_count += n
 
     # 3. JWT tokens
     text = _RE_JWT.sub(REDACTED, text)
