@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -166,6 +167,29 @@ def _enter_env_vars_manually() -> list[dict]:
     return env_vars
 
 
+# ── Dollar-sign variable detection ──────────────────────────
+
+_DOLLAR_VAR_RE = re.compile(r"\$\{?([A-Z][A-Z0-9_]+)\}?")
+
+
+def _extract_dollar_vars(args: list[str], env: dict[str, str]) -> list[str]:
+    """Extract unique $VAR / ${VAR} references from args and env values.
+
+    Returns a sorted list of uppercase variable names found in the args list
+    and the *values* (not keys) of the env dict, filtered to exclude
+    system/infrastructure vars (PATH, HOME, CI_*, etc.).
+    """
+    from observal_cli.analyzer import _is_filtered_env_var
+
+    found: set[str] = set()
+    for arg in args:
+        found.update(_DOLLAR_VAR_RE.findall(arg))
+    for value in env.values():
+        if isinstance(value, str):
+            found.update(_DOLLAR_VAR_RE.findall(value))
+    return sorted(name for name in found if not _is_filtered_env_var(name))
+
+
 # ── Direct config helpers ────────────────────────────────────
 
 
@@ -235,6 +259,18 @@ def _parse_direct_config(cfg: dict) -> dict:
         if isinstance(raw_env, dict):
             parsed["environment_variables"] = [{"name": k, "description": "", "required": True} for k in raw_env]
 
+        # Detect $VAR references in env values
+        dollar_vars = _extract_dollar_vars([], raw_env)
+        existing_names = {ev["name"] for ev in parsed.get("environment_variables", [])}
+        for var_name in dollar_vars:
+            if var_name not in existing_names:
+                parsed.setdefault("environment_variables", []).append(
+                    {"name": var_name, "description": "", "required": True}
+                )
+                existing_names.add(var_name)
+        if dollar_vars:
+            parsed["_dollar_vars_detected"] = dollar_vars
+
     elif inner.get("command"):
         # stdio transport
         parsed["transport"] = "stdio"
@@ -262,6 +298,18 @@ def _parse_direct_config(cfg: dict) -> dict:
         raw_env = inner.get("env") or {}
         if isinstance(raw_env, dict):
             parsed["environment_variables"] = [{"name": k, "description": "", "required": True} for k in raw_env]
+
+        # Detect $VAR references in args and env values
+        dollar_vars = _extract_dollar_vars(parsed["args"], raw_env)
+        existing_names = {ev["name"] for ev in parsed.get("environment_variables", [])}
+        for var_name in dollar_vars:
+            if var_name not in existing_names:
+                parsed.setdefault("environment_variables", []).append(
+                    {"name": var_name, "description": "", "required": True}
+                )
+                existing_names.add(var_name)
+        if dollar_vars:
+            parsed["_dollar_vars_detected"] = dollar_vars
 
         if inner.get("autoApprove"):
             parsed["auto_approve"] = inner["autoApprove"]
@@ -349,17 +397,39 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         parsed = _parse_direct_config(cfg)
         _name = name or parsed.pop("_server_name", None) or "my-mcp-server"
 
+        # Notify about dollar-sign input variables
+        dollar_vars = parsed.pop("_dollar_vars_detected", None)
+        if dollar_vars:
+            rprint("\n[bold yellow]Input variables detected:[/bold yellow]")
+            rprint(
+                "[dim]Dollar-sign variables in args/env will become install-time"
+                " dependencies — users will be prompted for these values.[/dim]\n"
+            )
+            for var in dollar_vars:
+                rprint(f"  [cyan]$[/cyan]{var}")
+            rprint()
+
         rprint("\n[bold]Config preview:[/bold]")
         console.print_json(json.dumps(_build_config_preview(_name, parsed), indent=2))
 
         if not yes:
             if not typer.confirm("\nSubmit this config?", default=True):
                 raise typer.Abort()
+
+            # Let creator review/confirm input dependencies
+            if dollar_vars:
+                rprint("\n[bold]Confirm input dependencies:[/bold]")
+                parsed["environment_variables"] = _review_env_vars(
+                    parsed.get("environment_variables", [])
+                )
+
             _name = name or typer.prompt("Server name", default=_name)
             _desc = typer.prompt("Description (what does this server do?)", default="")
             _owner = typer.prompt("Owner / Team (e.g. your GitHub username)", default="default")
             _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
         else:
+            if dollar_vars:
+                rprint(f"\n[dim]Auto-detected {len(dollar_vars)} input variable(s) from $VAR patterns.[/dim]")
             _desc = ""
             _owner = "default"
             _category = category or "general"
