@@ -75,6 +75,14 @@ async def _load_agent(
             if mine:
                 return mine
 
+        # Fall back to global name lookup (any creator)
+        stmt = select(Agent).where(Agent.name == agent_id).options(*_agent_load_options)
+        if extra_conditions:
+            stmt = stmt.where(*extra_conditions)
+        results = (await db.execute(stmt)).scalars().all()
+        if len(results) == 1:
+            return results[0]
+
         return None
 
 
