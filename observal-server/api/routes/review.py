@@ -156,6 +156,7 @@ async def _query_pending_components(db: AsyncSession, type_filter: str | None = 
                         "stage": vr.stage,
                         "passed": vr.passed,
                         "details": vr.details,
+                        "run_at": vr.run_at.isoformat() if vr.run_at else None,
                     }
                     for vr in r.validation_results
                 ]

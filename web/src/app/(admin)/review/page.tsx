@@ -20,7 +20,24 @@ function ValidationBadge({ item }: { item: ReviewItem }) {
   if (item.type !== "mcp" || !item.validation_results?.length) return null;
 
   const failed = item.validation_results.filter((v: McpValidationResult) => !v.passed);
-  const hasIssues = failed.some((v: McpValidationResult) => v.details?.includes("Issues:"));
+  const hasWarnings = item.validation_results.some(
+    (v: McpValidationResult) => v.details?.includes("Issues:"),
+  );
+
+  if (item.mcp_validated) {
+    if (hasWarnings) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded px-1.5 py-0.5">
+          <AlertTriangle className="h-3 w-3" /> Has warnings
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-success bg-success/10 border border-success/25 rounded px-1.5 py-0.5">
+        <ShieldCheck className="h-3 w-3" /> Validated
+      </span>
+    );
+  }
 
   if (failed.length > 0) {
     return (
@@ -29,20 +46,7 @@ function ValidationBadge({ item }: { item: ReviewItem }) {
       </span>
     );
   }
-  if (hasIssues) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded px-1.5 py-0.5">
-        <AlertTriangle className="h-3 w-3" /> Has warnings
-      </span>
-    );
-  }
-  if (item.mcp_validated) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-success bg-success/10 border border-success/25 rounded px-1.5 py-0.5">
-        <ShieldCheck className="h-3 w-3" /> Validated
-      </span>
-    );
-  }
+
   return null;
 }
 

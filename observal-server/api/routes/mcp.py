@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import ROLE_HIERARCHY, get_db, require_role, resolve_listing
@@ -39,6 +39,8 @@ async def analyze_mcp(
 
 async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, db: AsyncSession) -> None:
     """Store validation results from client-side (CLI) analysis."""
+    await db.execute(delete(McpValidationResult).where(McpValidationResult.listing_id == listing.id))
+
     has_entry = bool(analysis.entry_point or analysis.framework)
     tool_count = len(analysis.tools)
     issue_count = len(analysis.issues)

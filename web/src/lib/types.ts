@@ -160,6 +160,7 @@ export interface McpValidationResult {
   stage: string;
   passed: boolean;
   details?: string;
+  run_at?: string;
 }
 
 export interface ReviewItem {
