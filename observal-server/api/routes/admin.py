@@ -697,7 +697,7 @@ async def get_audit_log(
         return {"events": [], "total": 0}
 
 
-@router.post("/admin/cache/clear")
+@router.post("/cache/clear")
 async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))):
     """Clear all cached dashboard and OTEL responses."""
     from services.cache import invalidate_all

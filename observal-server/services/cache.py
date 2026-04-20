@@ -1,8 +1,10 @@
 """Redis-backed response cache for dashboard and OTEL endpoints."""
 
+import hashlib
 import logging
 
 from redis import asyncio as aioredis
+from starlette.requests import Request
 
 from config import settings
 
@@ -11,6 +13,15 @@ logger = logging.getLogger(__name__)
 CACHE_PREFIX = "observal-cache"
 
 _redis: aioredis.Redis | None = None
+
+
+def _request_key_builder(func, namespace="", *, request: Request | None = None, **kwargs):
+    """Build cache key from path + query string only, ignoring Depends params."""
+    prefix = f"{CACHE_PREFIX}:{namespace}" if namespace else CACHE_PREFIX
+    url = request.url.path if request else func.__name__
+    qs = str(request.query_params) if request and request.query_params else ""
+    raw = f"{url}?{qs}" if qs else url
+    return f"{prefix}:{hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()}"
 
 
 async def init_cache() -> None:
@@ -30,7 +41,7 @@ async def init_cache() -> None:
         socket_connect_timeout=settings.REDIS_SOCKET_TIMEOUT,
         socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
     )
-    FastAPICache.init(RedisBackend(_redis), prefix=CACHE_PREFIX)
+    FastAPICache.init(RedisBackend(_redis), prefix=CACHE_PREFIX, key_builder=_request_key_builder)
     logger.info("FastAPICache initialized (Redis backend, prefix=%s)", CACHE_PREFIX)
 
 
