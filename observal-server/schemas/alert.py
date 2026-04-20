@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 
 class AlertRuleCreate(BaseModel):
@@ -28,11 +28,46 @@ class AlertRuleResponse(BaseModel):
     target_type: str
     target_id: str
     webhook_url: str
+    webhook_secret_last4: str = ""
     status: str
     last_triggered: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_rule(cls, rule) -> "AlertRuleResponse":
+        """Create response from AlertRule, computing webhook_secret_last4."""
+        return cls(
+            id=rule.id,
+            name=rule.name,
+            metric=rule.metric,
+            threshold=rule.threshold,
+            condition=rule.condition,
+            target_type=rule.target_type,
+            target_id=rule.target_id,
+            webhook_url=rule.webhook_url,
+            webhook_secret_last4=rule.webhook_secret[-4:] if rule.webhook_secret else "",
+            status=rule.status,
+            last_triggered=rule.last_triggered,
+            created_at=rule.created_at,
+        )
+
+
+class WebhookSecretResponse(BaseModel):
+    webhook_secret: str
+
+
+class WebhookSecretRotateResponse(BaseModel):
+    webhook_secret_last4: str
+    rotated_at: datetime
+
+
+class WebhookTestResponse(BaseModel):
+    success: bool
+    status_code: int | None
+    attempts: int
+    duration_ms: float
 
 
 class AlertHistoryResponse(BaseModel):

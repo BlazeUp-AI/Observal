@@ -169,39 +169,57 @@ class TestQueryMetric:
 class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_successful_delivery(self):
-        from services.alert_evaluator import _deliver_webhook
+        from services.alert_evaluator import _deliver_webhook_signed
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         with (
-            patch("services.alert_evaluator.is_private_url", return_value=False),
-            patch("httpx.AsyncClient") as mock_client_cls,
+            patch("services.webhook_delivery.is_private_url", return_value=False),
+            patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls,
         ):
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
-            code, err = await _deliver_webhook("https://example.com/hook", {"test": True})
+            code, err = await _deliver_webhook_signed(
+                "https://example.com/hook", "secret123", {"test": True}, uuid.uuid4()
+            )
         assert code == 200
         assert err is None
 
     @pytest.mark.asyncio
     async def test_ssrf_rejected(self):
-        from services.alert_evaluator import _deliver_webhook
+        from services.alert_evaluator import _deliver_webhook_signed
 
-        with patch("services.alert_evaluator.is_private_url", return_value=True):
-            code, err = await _deliver_webhook("http://127.0.0.1/hook", {"test": True})
+        with patch("services.webhook_delivery.is_private_url", return_value=True):
+            code, err = await _deliver_webhook_signed(
+                "http://127.0.0.1/hook", "secret123", {"test": True}, uuid.uuid4()
+            )
         assert code is None
         assert "SSRF" in err
 
     @pytest.mark.asyncio
-    async def test_empty_url(self):
-        from services.alert_evaluator import _deliver_webhook
+    async def test_empty_secret_still_delivers(self):
+        """Legacy rules with empty secret deliver without signing."""
+        from services.alert_evaluator import _deliver_webhook_signed
 
-        code, err = await _deliver_webhook("", {"test": True})
-        assert code is None
-        assert "empty" in err
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        with (
+            patch("services.webhook_delivery.is_private_url", return_value=False),
+            patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+            code, err = await _deliver_webhook_signed(
+                "https://example.com/hook", "", {"test": True}, uuid.uuid4()
+            )
+        assert code == 200
+        assert err is None
 
 
 class TestEvaluateAlerts:
@@ -218,6 +236,7 @@ class TestEvaluateAlerts:
         rule.target_type = "agent"
         rule.target_id = "agent-1"
         rule.webhook_url = "https://example.com/webhook"
+        rule.webhook_secret = "a" * 64
         rule.status = "active"
         rule.last_triggered = None
 
@@ -244,7 +263,7 @@ class TestEvaluateAlerts:
                 return_value=0.25,
             ),
             patch(
-                "services.alert_evaluator._deliver_webhook",
+                "services.alert_evaluator._deliver_webhook_signed",
                 new_callable=AsyncMock,
                 return_value=(200, None),
             ),
@@ -292,7 +311,7 @@ class TestEvaluateAlerts:
                 return_value=0.05,
             ),
             patch(
-                "services.alert_evaluator._deliver_webhook",
+                "services.alert_evaluator._deliver_webhook_signed",
                 new_callable=AsyncMock,
             ) as mock_deliver,
         ):

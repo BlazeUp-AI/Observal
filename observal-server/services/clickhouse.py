@@ -260,6 +260,22 @@ INIT_SQL = [
     TTL toDateTime(timestamp) + INTERVAL 730 DAY
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (action, resource_type, timestamp)""",
+    # Webhook delivery tracking
+    """CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        delivery_id     UUID,
+        event_id        UUID,
+        alert_rule_id   UUID,
+        attempt_number  UInt8,
+        timestamp       DateTime64(3, 'UTC'),
+        webhook_url     String,
+        status_code     Nullable(UInt16),
+        delivery_status LowCardinality(String),
+        error           Nullable(String),
+        duration_ms     Float32,
+        payload_size    UInt32
+    ) ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (alert_rule_id, timestamp)""",
 ]
 
 
@@ -817,3 +833,36 @@ async def insert_audit_log(events: list[dict]):
         r.raise_for_status()
     except Exception as exc:
         logger.error(f"ClickHouse insert_audit_log failed: {exc}")
+
+
+async def _insert_webhook_deliveries(records: list[dict]):
+    """Batch insert webhook delivery records into ClickHouse."""
+    if not records:
+        return
+    lines = []
+    for r in records:
+        row = {
+            "delivery_id": r["delivery_id"],
+            "event_id": r["event_id"],
+            "alert_rule_id": r["alert_rule_id"],
+            "attempt_number": r["attempt_number"],
+            "timestamp": r["timestamp"],
+            "webhook_url": r["webhook_url"],
+            "status_code": r["status_code"],
+            "delivery_status": r["delivery_status"],
+            "error": r.get("error"),
+            "duration_ms": r["duration_ms"],
+            "payload_size": r["payload_size"],
+        }
+        lines.append(json.dumps(row, default=str))
+    body = "\n".join(lines)
+    sql = (
+        "INSERT INTO webhook_deliveries (delivery_id, event_id, alert_rule_id, "
+        "attempt_number, timestamp, webhook_url, status_code, delivery_status, "
+        "error, duration_ms, payload_size) FORMAT JSONEachRow"
+    )
+    try:
+        r = await _query(sql, data=body)
+        r.raise_for_status()
+    except Exception as exc:
+        logger.error(f"ClickHouse _insert_webhook_deliveries failed: {exc}")

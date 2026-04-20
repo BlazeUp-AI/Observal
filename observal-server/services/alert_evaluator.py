@@ -7,7 +7,6 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
-import httpx
 from sqlalchemy import select
 
 from database import async_session
@@ -140,22 +139,25 @@ async def _query_metric(metric: str, target_type: str, target_id: str, lookback_
         return None
 
 
-async def _deliver_webhook(url: str, payload: dict) -> tuple[int | None, str | None]:
-    """POST JSON payload to a webhook URL with SSRF protection and retry."""
-    if not url:
-        return None, "empty webhook URL"
-    if is_private_url(url):
-        return None, "SSRF: webhook URL resolves to private network"
-    async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
-        last_error: str | None = None
-        for attempt in range(2):
-            try:
-                resp = await client.post(url, json=payload)
-                return resp.status_code, None
-            except Exception as e:
-                last_error = f"attempt {attempt + 1}: {e}"
-                logger.warning("Webhook delivery to %s failed (%s)", url, last_error)
-    return None, last_error
+async def _deliver_webhook_signed(
+    url: str, secret: str, payload: dict, alert_rule_id: uuid.UUID
+) -> tuple[int | None, str | None]:
+    """Deliver a signed webhook using the webhook_delivery service.
+
+    Returns (status_code, error) tuple for AlertHistory compatibility.
+    If secret is empty (legacy rule), delivers without signature (AD-4).
+    """
+    from services.webhook_delivery import deliver_webhook
+
+    result = await deliver_webhook(
+        webhook_url=url,
+        webhook_secret=secret,
+        payload=payload,
+        alert_rule_id=alert_rule_id,
+    )
+    if result.success:
+        return result.status_code, None
+    return result.status_code, result.error
 
 
 def _condition_met(condition: str, value: float, threshold: float) -> bool:
@@ -169,6 +171,8 @@ def _condition_met(condition: str, value: float, threshold: float) -> bool:
 
 async def evaluate_alerts(ctx: dict) -> None:
     """Main arq cron job: evaluate all active alert rules and fire webhooks."""
+    from services.webhook_delivery import flush_delivery_records
+
     logger.info("Starting alert evaluation cycle")
     async with async_session() as db:
         stmt = select(AlertRule).where(AlertRule.status == "active")
@@ -205,7 +209,10 @@ async def evaluate_alerts(ctx: dict) -> None:
                         "target_id": rule.target_id,
                         "fired_at": now.isoformat(),
                     }
-                    status_code, error = await _deliver_webhook(rule.webhook_url, payload)
+                    # AD-3: secret resolved here at evaluation time, not later
+                    status_code, error = await _deliver_webhook_signed(
+                        rule.webhook_url, rule.webhook_secret, payload, rule.id
+                    )
                     delivery_status = "delivered" if error is None else "failed"
                 else:
                     delivery_status = "delivered"
@@ -236,4 +243,7 @@ async def evaluate_alerts(ctx: dict) -> None:
                 )
             except Exception as e:
                 logger.exception("Error evaluating alert rule %s: %s", rule.id, e)
+
+    # AD-1: Batch-flush delivery records to ClickHouse at end of cycle
+    await flush_delivery_records()
     logger.info("Alert evaluation cycle complete")

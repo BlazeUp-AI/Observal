@@ -20,6 +20,7 @@ class AlertRule(Base):
     target_type: Mapped[str] = mapped_column(String(20), nullable=False)  # mcp | agent | all
     target_id: Mapped[str] = mapped_column(String(255), default="")
     webhook_url: Mapped[str] = mapped_column(String(1024), default="")
+    webhook_secret: Mapped[str] = mapped_column(String(255), default="")
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | paused
     last_triggered: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)

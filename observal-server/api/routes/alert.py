@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from urllib.parse import urlparse
 
@@ -9,7 +10,15 @@ from api.deps import ROLE_HIERARCHY, get_db, require_role
 from models.alert import AlertRule
 from models.alert_history import AlertHistory
 from models.user import User, UserRole
-from schemas.alert import AlertHistoryResponse, AlertRuleCreate, AlertRuleResponse, AlertRuleUpdate
+from schemas.alert import (
+    AlertHistoryResponse,
+    AlertRuleCreate,
+    AlertRuleResponse,
+    AlertRuleUpdate,
+    WebhookSecretResponse,
+    WebhookSecretRotateResponse,
+    WebhookTestResponse,
+)
 from services.alert_evaluator import is_private_url
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
@@ -39,7 +48,7 @@ async def list_alerts(
         stmt = stmt.where(AlertRule.created_by.in_(org_user_ids))
     # else: admin with no org (local mode) — no filter, sees everything
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return [AlertRuleResponse.from_rule(r) for r in result.scalars().all()]
 
 
 @router.post("", response_model=AlertRuleResponse, status_code=201)
@@ -57,12 +66,13 @@ async def create_alert(
         target_type=body.target_type,
         target_id=body.target_id if body.target_type != "all" else "",
         webhook_url=body.webhook_url,
+        webhook_secret=secrets.token_hex(32),
         created_by=current_user.id,
     )
     db.add(rule)
     await db.commit()
     await db.refresh(rule)
-    return rule
+    return AlertRuleResponse.from_rule(rule)
 
 
 @router.patch("/{alert_id}", response_model=AlertRuleResponse)
@@ -90,7 +100,7 @@ async def update_alert(
         rule.webhook_url = body.webhook_url
     await db.commit()
     await db.refresh(rule)
-    return rule
+    return AlertRuleResponse.from_rule(rule)
 
 
 @router.delete("/{alert_id}", status_code=204)
@@ -143,3 +153,97 @@ async def get_alert_history(
     )
     result = await db.execute(stmt)
     return result.scalars().all()
+
+
+@router.post("/{alert_id}/webhook-secret/rotate", response_model=WebhookSecretRotateResponse)
+async def rotate_webhook_secret(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Rotate the webhook signing secret for an alert rule. Admin only."""
+    rule = await db.get(AlertRule, alert_id)
+    if not rule:
+        raise HTTPException(404, "Alert rule not found")
+
+    from datetime import UTC, datetime
+
+    rule.webhook_secret = secrets.token_hex(32)
+    await db.commit()
+    await db.refresh(rule)
+
+    return WebhookSecretRotateResponse(
+        webhook_secret_last4=rule.webhook_secret[-4:],
+        rotated_at=datetime.now(UTC),
+    )
+
+
+@router.get("/{alert_id}/webhook-secret", response_model=WebhookSecretResponse)
+async def reveal_webhook_secret(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Reveal the full webhook secret. Admin only, audit-logged."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    rule = await db.get(AlertRule, alert_id)
+    if not rule:
+        raise HTTPException(404, "Alert rule not found")
+
+    logger.info(
+        "Webhook secret revealed: alert_rule_id=%s by user_id=%s",
+        alert_id,
+        current_user.id,
+    )
+
+    return WebhookSecretResponse(webhook_secret=rule.webhook_secret)
+
+
+@router.post("/{alert_id}/webhook/test", response_model=WebhookTestResponse)
+async def test_webhook(
+    alert_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Send a test webhook to the configured URL. Owner or admin."""
+    rule = await db.get(AlertRule, alert_id)
+    if not rule:
+        raise HTTPException(404, "Alert rule not found")
+
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
+    if rule.created_by != current_user.id and not is_admin:
+        raise HTTPException(403, "Not authorized to test this alert rule")
+
+    if not rule.webhook_url:
+        raise HTTPException(400, "No webhook URL configured for this alert rule")
+
+    from services.webhook_delivery import deliver_webhook
+
+    payload = {
+        "test": True,
+        "alert_rule_id": str(rule.id),
+        "alert_name": rule.name,
+        "metric": rule.metric,
+        "threshold": rule.threshold,
+        "condition": rule.condition,
+        "target_type": rule.target_type,
+        "target_id": rule.target_id,
+        "message": "This is a test webhook from Observal",
+    }
+
+    result = await deliver_webhook(
+        webhook_url=rule.webhook_url,
+        webhook_secret=rule.webhook_secret,
+        payload=payload,
+        alert_rule_id=rule.id,
+    )
+
+    return WebhookTestResponse(
+        success=result.success,
+        status_code=result.status_code,
+        attempts=result.attempts,
+        duration_ms=result.duration_ms,
+    )
