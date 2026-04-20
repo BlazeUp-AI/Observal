@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
+import re
 import shutil
 import tarfile
 import tempfile
@@ -24,6 +26,8 @@ from rich import print as rprint
 
 from observal_cli import client
 from observal_cli.render import spinner
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ── Constants ────────────────────────────────────────────
 
@@ -90,6 +94,27 @@ JSONB_COLUMNS: dict[str, list[str]] = {
     "exporter_configs": ["config"],
 }
 
+# ── Phase 2: ClickHouse telemetry constants ──────────────
+
+CLICKHOUSE_TABLES: list[dict[str, str | list[str]]] = [
+    {"name": "traces", "engine": "replacing", "time_col": "start_time", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
+    {"name": "spans", "engine": "replacing", "time_col": "start_time", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
+    {"name": "scores", "engine": "replacing", "time_col": "timestamp", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
+    {"name": "audit_log", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["actor_id"]},
+    {"name": "mcp_tool_calls", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["mcp_server_id", "user_id"]},
+    {"name": "agent_interactions", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["agent_id", "user_id"]},
+]
+
+FK_PG_TABLE_MAP: dict[str, str] = {
+    "agent_id": "agents",
+    "mcp_id": "mcp_listings",
+    "mcp_server_id": "mcp_listings",
+    "user_id": "users",
+    "actor_id": "users",
+}
+
+EPOCH_SENTINELS: set[str | None] = {None, "", "1970-01-01 00:00:00.000", "1970-01-01 00:00:00"}
+
 
 # ── PGEncoder ────────────────────────────────────────────
 
@@ -145,6 +170,34 @@ class ValidationResult:
     cross_db_results: dict[str, tuple[int, int]] | None
 
 
+@dataclass
+class TelemetryExportResult:
+    output_dir: str
+    migration_id: str
+    table_results: dict[str, dict]
+    total_rows: int
+    total_size_bytes: int
+    duration_seconds: float
+
+
+@dataclass
+class TelemetryImportResult:
+    migration_id: str
+    tables_imported: int
+    tables_skipped: list[str]
+    rows_imported: dict[str, int]
+    duration_seconds: float
+    warnings: list[str]
+
+
+@dataclass
+class TelemetryValidationResult:
+    checksums_valid: bool
+    checksum_results: dict[str, bool]
+    fk_results: dict[str, list[str]] | None
+    row_count_results: dict[str, tuple[int, int]] | None
+
+
 # ── Helper functions ─────────────────────────────────────
 
 
@@ -184,6 +237,18 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _parse_clickhouse_url(url: str) -> tuple[str, str, str, str]:
+    """Parse clickhouse://user:pass@host:port/db -> (http_url, db, user, password)."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url.replace("clickhouse://", "http://"))
+    http_url = f"http://{parsed.hostname}:{parsed.port or 8123}"
+    db = (parsed.path or "/").strip("/") or "default"
+    user = parsed.username or "default"
+    password = parsed.password or ""
+    return http_url, db, user, password
 
 
 # ── Async helpers ────────────────────────────────────────
@@ -340,6 +405,183 @@ async def _insert_table(
         skipped += sk
 
     return inserted, skipped
+
+
+# ── Phase 2: ClickHouse HTTP helpers ─────────────────────
+
+
+async def _ch_query(
+    http_url: str,
+    db: str,
+    user: str,
+    password: str,
+    sql: str,
+    *,
+    stream_to: Path | None = None,
+    client: object | None = None,
+) -> object:
+    """Execute a ClickHouse query via HTTP.
+
+    If stream_to is provided, streams response body to disk.
+    An optional pre-existing client avoids creating new connections per call.
+    """
+    import httpx as _httpx
+
+    params = {"database": db, "user": user, "password": password}
+    owns_client = client is None
+    if owns_client:
+        client = _httpx.AsyncClient(timeout=_httpx.Timeout(300.0, connect=10.0))
+    try:
+        if stream_to:
+            async with client.stream("POST", http_url, content=sql, params=params) as resp:
+                resp.raise_for_status()
+                with open(stream_to, "wb") as f:
+                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                        f.write(chunk)
+                return resp
+        else:
+            resp = await client.post(http_url, content=sql, params=params)
+            resp.raise_for_status()
+            return resp
+    except _httpx.HTTPStatusError as exc:
+        rprint(f"[red]ClickHouse returned HTTP {exc.response.status_code}[/red]")
+        rprint(f"[dim]{exc.response.text[:500]}[/dim]")
+        raise typer.Exit(1)
+    except _httpx.RequestError:
+        rprint("[red]ClickHouse unreachable.[/red]")
+        raise typer.Exit(1)
+    finally:
+        if owns_client:
+            await client.aclose()
+
+
+async def _ch_import(
+    http_url: str,
+    db: str,
+    user: str,
+    password: str,
+    table: str,
+    parquet_path: Path,
+) -> None:
+    """Import a Parquet file into ClickHouse via INSERT ... FORMAT Parquet."""
+    import httpx as _httpx
+
+    sql_prefix = f"INSERT INTO {table} FORMAT Parquet"
+    params = {"database": db, "user": user, "password": password, "query": sql_prefix}
+
+    async def _file_stream():
+        with open(parquet_path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
+
+    try:
+        async with _httpx.AsyncClient(timeout=_httpx.Timeout(600.0, connect=10.0)) as c:
+            resp = await c.post(http_url, content=_file_stream(), params=params)
+            resp.raise_for_status()
+    except _httpx.HTTPStatusError as exc:
+        rprint(f"[red]ClickHouse returned HTTP {exc.response.status_code}[/red]")
+        rprint(f"[dim]{exc.response.text[:500]}[/dim]")
+        raise typer.Exit(1)
+    except _httpx.RequestError:
+        rprint("[red]ClickHouse unreachable.[/red]")
+        raise typer.Exit(1)
+
+
+async def _ch_existing_tables(
+    http_url: str,
+    db: str,
+    user: str,
+    password: str,
+) -> set[str]:
+    """Query system.tables to discover which tables exist on target ClickHouse."""
+    sql = f"SELECT name FROM system.tables WHERE database = '{db}' FORMAT JSON"
+    resp = await _ch_query(http_url, db, user, password, sql)
+    return {r["name"] for r in resp.json().get("data", [])}
+
+
+async def _ch_partition_has_data(
+    http_url: str,
+    db: str,
+    user: str,
+    password: str,
+    table_cfg: dict,
+    yyyymm: int,
+) -> bool:
+    """Check if a MergeTree table already has data in a given month partition."""
+    name = table_cfg["name"]
+    time_col = table_cfg["time_col"]
+    sql = f"SELECT 1 AS has_data FROM {name} WHERE toYYYYMM({time_col}) = {yyyymm} LIMIT 1 FORMAT JSON"
+    resp = await _ch_query(http_url, db, user, password, sql)
+    return len(resp.json().get("data", [])) > 0
+
+
+# ── Phase 2: Query builders and utilities ────────────────
+
+
+def _build_ch_export_query(table_cfg: dict, yyyymm: int) -> str:
+    """Build a ClickHouse export query for a monthly partition."""
+    name = table_cfg["name"]
+    time_col = table_cfg["time_col"]
+    if table_cfg["engine"] == "replacing":
+        return f"SELECT * FROM {name} FINAL WHERE is_deleted = 0 AND toYYYYMM({time_col}) = {yyyymm} FORMAT Parquet"
+    return f"SELECT * FROM {name} WHERE toYYYYMM({time_col}) = {yyyymm} FORMAT Parquet"
+
+
+def _build_ch_count_query(table_cfg: dict, yyyymm: int) -> str:
+    """Build a row count query for a monthly partition."""
+    name = table_cfg["name"]
+    time_col = table_cfg["time_col"]
+    if table_cfg["engine"] == "replacing":
+        return (
+            f"SELECT count() AS cnt FROM {name} FINAL "
+            f"WHERE is_deleted = 0 AND toYYYYMM({time_col}) = {yyyymm} "
+            f"FORMAT JSON"
+        )
+    return f"SELECT count() AS cnt FROM {name} WHERE toYYYYMM({time_col}) = {yyyymm} FORMAT JSON"
+
+
+def _read_count(resp: object) -> int:
+    """Parse a count query response."""
+    return int(resp.json().get("data", [{}])[0].get("cnt", 0))
+
+
+def _build_ch_time_range_query(table_cfg: dict) -> str:
+    """Build a time range query to discover partition months."""
+    name = table_cfg["name"]
+    time_col = table_cfg["time_col"]
+    if table_cfg["engine"] == "replacing":
+        return (
+            f"SELECT min({time_col}) AS min_t, max({time_col}) AS max_t "
+            f"FROM {name} FINAL WHERE is_deleted = 0 FORMAT JSON"
+        )
+    return f"SELECT min({time_col}) AS min_t, max({time_col}) AS max_t FROM {name} FORMAT JSON"
+
+
+def _month_range(min_dt: datetime, max_dt: datetime) -> list[int]:
+    """Generate list of YYYYMM integers from min to max datetime, inclusive."""
+    months: list[int] = []
+    current = min_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    end = max_dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    while current <= end:
+        months.append(current.year * 100 + current.month)
+        if current.month == 12:
+            current = current.replace(year=current.year + 1, month=1)
+        else:
+            current = current.replace(month=current.month + 1)
+    return months
+
+
+def _is_empty_parquet(path: Path) -> bool:
+    """Return True if the file is empty or a Parquet file with zero rows."""
+    if path.stat().st_size == 0:
+        return True
+    try:
+        import pyarrow.parquet as pq
+
+        meta = pq.read_metadata(path)
+        return meta.num_rows == 0
+    except Exception:
+        return True
 
 
 async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
@@ -606,6 +848,11 @@ async def _export_database(db_url: str, output_path: Path) -> ExportResult:
         # Ensure output parent directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Write sidecar manifest for Phase 2 consumption
+        sidecar_stem = output_path.name.removesuffix(".tar.gz").removesuffix(".tgz")
+        sidecar_path = output_path.parent / f"{sidecar_stem}.manifest.json"
+        sidecar_path.write_text(json.dumps(migration_manifest, indent=2) + "\n")
+
         # Pack archive
         with tarfile.open(output_path, "w:gz") as tar:
             tar.add(str(manifest_path), arcname="manifest.json")
@@ -628,6 +875,402 @@ async def _export_database(db_url: str, output_path: Path) -> ExportResult:
 
     finally:
         shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+# ── Phase 2: Core async functions ────────────────────────
+
+
+async def _export_telemetry(
+    clickhouse_url: str,
+    manifest_path: Path,
+    output_dir: Path,
+) -> TelemetryExportResult:
+    """Export ClickHouse telemetry tables to monthly Parquet files."""
+    import httpx as _httpx
+
+    t0 = time.monotonic()
+
+    # Phase gate: read Phase 1 manifest
+    if not manifest_path.exists():
+        rprint(f"[red]Phase 1 manifest not found:[/red] {manifest_path}")
+        raise typer.Exit(1)
+    p1_manifest = json.loads(manifest_path.read_text())
+    if not p1_manifest.get("phase1_completed_at"):
+        rprint("[red]Phase 1 has not completed.[/red]")
+        rprint("[dim]  Run 'observal migrate export' and 'observal migrate import' first.[/dim]")
+        raise typer.Exit(1)
+    migration_id = p1_manifest["migration_id"]
+
+    # Record cutoff before any queries
+    export_time_cutoff = datetime.now(UTC).isoformat()
+
+    # Parse ClickHouse URL
+    http_url, db, user, password = _parse_clickhouse_url(clickhouse_url)
+
+    # Health check
+    try:
+        await _ch_query(http_url, db, user, password, "SELECT 1")
+    except typer.Exit:
+        raise
+    except Exception:
+        rprint("[red]ClickHouse health check failed.[/red]")
+        raise typer.Exit(1)
+
+    # Create output directory
+    if output_dir.exists() and any(output_dir.iterdir()):
+        rprint(f"[red]Output directory is not empty:[/red] {output_dir}")
+        raise typer.Exit(1)
+    os.makedirs(output_dir, mode=0o700, exist_ok=True)
+
+    dir_created = True
+    try:
+        table_meta: dict[str, dict] = {}
+        total_rows = 0
+        total_size = 0
+
+        async with _httpx.AsyncClient(timeout=_httpx.Timeout(300.0, connect=10.0)) as client:
+            for table_cfg in CLICKHOUSE_TABLES:
+                table_name = table_cfg["name"]
+
+                # Query time range
+                tr_sql = _build_ch_time_range_query(table_cfg)
+                tr_resp = await _ch_query(http_url, db, user, password, tr_sql, client=client)
+                tr_data = tr_resp.json().get("data", [{}])[0]
+                min_t = tr_data.get("min_t")
+                max_t = tr_data.get("max_t")
+
+                if min_t in EPOCH_SENTINELS or max_t in EPOCH_SENTINELS:
+                    table_meta[table_name] = {"files": [], "row_count": 0, "checksum": {}, "time_range": None}
+                    rprint(f"  [dim]{table_name}: empty[/dim]")
+                    continue
+
+                # Parse time range
+                min_dt = datetime.fromisoformat(str(min_t).replace(" ", "T"))
+                max_dt = datetime.fromisoformat(str(max_t).replace(" ", "T"))
+                months = _month_range(min_dt, max_dt)
+
+                files: list[str] = []
+                checksums: dict[str, str] = {}
+                table_row_count = 0
+
+                for yyyymm in months:
+                    filename = f"{table_name}_{yyyymm // 100}-{yyyymm % 100:02d}.parquet"
+                    filepath = output_dir / filename
+
+                    # Get row count first for progress display
+                    count_sql = _build_ch_count_query(table_cfg, yyyymm)
+                    count_resp = await _ch_query(http_url, db, user, password, count_sql, client=client)
+                    partition_count = _read_count(count_resp)
+
+                    if partition_count == 0:
+                        continue
+
+                    rprint(f"  Exporting {filename} ({partition_count:,} rows)...")
+
+                    # Stream Parquet to disk
+                    export_sql = _build_ch_export_query(table_cfg, yyyymm)
+                    await _ch_query(http_url, db, user, password, export_sql, stream_to=filepath, client=client)
+
+                    # Check if file is actually empty (edge case)
+                    if _is_empty_parquet(filepath):
+                        filepath.unlink(missing_ok=True)
+                        continue
+
+                    checksum = _sha256_file(filepath)
+                    files.append(filename)
+                    checksums[filename] = checksum
+                    table_row_count += partition_count
+                    total_size += filepath.stat().st_size
+
+                total_rows += table_row_count
+                table_meta[table_name] = {
+                    "files": files,
+                    "row_count": table_row_count,
+                    "checksum": checksums,
+                    "time_range": {"min": str(min_t), "max": str(max_t)} if files else None,
+                }
+                rprint(f"  [green]✓[/green] {table_name}: {table_row_count:,} rows in {len(files)} file(s)")
+
+        # Write telemetry manifest
+        ch_url_hash = hashlib.sha256(clickhouse_url.encode()).hexdigest()
+        telemetry_manifest = {
+            "migration_id": migration_id,
+            "phase": "deep_copy",
+            "phase_status": "export_complete",
+            "export_completed_at": datetime.now(UTC).isoformat(),
+            "export_time_cutoff": export_time_cutoff,
+            "source_clickhouse_url_hash": ch_url_hash,
+            "tables": table_meta,
+            "fk_validation": {
+                "orphaned_agent_ids": [],
+                "orphaned_agent_ids_truncated": False,
+                "orphaned_mcp_ids": [],
+                "orphaned_mcp_ids_truncated": False,
+                "orphaned_user_ids": [],
+                "orphaned_user_ids_truncated": False,
+                "validated_at": None,
+            },
+        }
+        manifest_out = output_dir / "telemetry_manifest.json"
+        manifest_out.write_text(json.dumps(telemetry_manifest, indent=2) + "\n")
+
+        elapsed = time.monotonic() - t0
+        return TelemetryExportResult(
+            output_dir=str(output_dir),
+            migration_id=migration_id,
+            table_results=table_meta,
+            total_rows=total_rows,
+            total_size_bytes=total_size,
+            duration_seconds=round(elapsed, 2),
+        )
+
+    except Exception:
+        # Clean up on failure only if we created the directory
+        if dir_created and output_dir.exists():
+            shutil.rmtree(output_dir, ignore_errors=True)
+        raise
+
+
+async def _import_telemetry(
+    clickhouse_url: str,
+    input_dir: Path,
+) -> TelemetryImportResult:
+    """Import Parquet files into target ClickHouse."""
+    t0 = time.monotonic()
+    warnings: list[str] = []
+
+    # Read telemetry manifest
+    manifest_path = input_dir / "telemetry_manifest.json"
+    if not manifest_path.exists():
+        rprint("[red]Telemetry manifest not found in input directory.[/red]")
+        raise typer.Exit(1)
+    manifest = json.loads(manifest_path.read_text())
+    migration_id = manifest["migration_id"]
+
+    # Verify checksums before any imports
+    failed: list[str] = []
+    for table_cfg in CLICKHOUSE_TABLES:
+        table_name = table_cfg["name"]
+        table_info = manifest["tables"].get(table_name, {})
+        for filename, expected_hash in table_info.get("checksum", {}).items():
+            filepath = input_dir / filename
+            if not filepath.exists():
+                failed.append(f"{filename} (missing)")
+                continue
+            actual = _sha256_file(filepath)
+            if actual != expected_hash:
+                failed.append(filename)
+
+    if failed:
+        rprint("[red]Checksum verification failed:[/red]")
+        for f in failed:
+            rprint(f"  [red]✗[/red] {f}")
+        raise typer.Exit(1)
+
+    # Connect and discover existing tables
+    http_url, db, user, password = _parse_clickhouse_url(clickhouse_url)
+    try:
+        await _ch_query(http_url, db, user, password, "SELECT 1")
+    except typer.Exit:
+        raise
+    except Exception:
+        rprint("[red]ClickHouse health check failed.[/red]")
+        raise typer.Exit(1)
+
+    existing = await _ch_existing_tables(http_url, db, user, password)
+    rows_imported: dict[str, int] = {}
+    tables_skipped: list[str] = []
+
+    for table_cfg in CLICKHOUSE_TABLES:
+        table_name = table_cfg["name"]
+        table_info = manifest["tables"].get(table_name, {})
+        files = table_info.get("files", [])
+
+        if not files:
+            rows_imported[table_name] = 0
+            continue
+
+        if table_name not in existing:
+            rprint(f"  [yellow]Skipping {table_name} (table does not exist on target)[/yellow]")
+            tables_skipped.append(table_name)
+            rows_imported[table_name] = 0
+            continue
+
+        for filename in files:
+            filepath = input_dir / filename
+
+            # MergeTree idempotency: check if partition already has data
+            if table_cfg["engine"] == "mergetree":
+                # Extract YYYYMM from filename like "traces_2025-01.parquet"
+                parts = filename.replace(".parquet", "").split("_")
+                date_part = parts[-1]  # "2025-01"
+                year, month = date_part.split("-")
+                yyyymm = int(year) * 100 + int(month)
+                if await _ch_partition_has_data(http_url, db, user, password, table_cfg, yyyymm):
+                    rprint(f"  [dim]Skipping {filename} (partition already has data)[/dim]")
+                    continue
+
+            rprint(f"  Importing {filename}...")
+            await _ch_import(http_url, db, user, password, table_name, filepath)
+
+        rows_imported[table_name] = table_info.get("row_count", 0)
+        rprint(f"  [green]✓[/green] {table_name}: {rows_imported[table_name]:,} rows")
+
+    elapsed = time.monotonic() - t0
+    return TelemetryImportResult(
+        migration_id=migration_id,
+        tables_imported=len([t for t in rows_imported if rows_imported[t] > 0]),
+        tables_skipped=tables_skipped,
+        rows_imported=rows_imported,
+        duration_seconds=round(elapsed, 2),
+        warnings=warnings,
+    )
+
+
+async def _validate_fk_references(
+    parquet_dir: Path,
+    manifest: dict,
+    db_url: str,
+) -> dict[str, list[str] | bool]:
+    """Read FK columns from Parquet files and check against PostgreSQL."""
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    fk_values: dict[str, set[str]] = {
+        "agent_id": set(),
+        "mcp_id": set(),
+        "mcp_server_id": set(),
+        "user_id": set(),
+        "actor_id": set(),
+    }
+
+    for table_cfg in CLICKHOUSE_TABLES:
+        table_name = table_cfg["name"]
+        fk_cols = table_cfg["fk_cols"]
+        files = manifest["tables"].get(table_name, {}).get("files", [])
+        for filename in files:
+            filepath = parquet_dir / filename
+            if not filepath.exists():
+                continue
+            cols_to_read = [c for c in fk_cols if c in fk_values]
+            if not cols_to_read:
+                continue
+            table = pq.read_table(filepath, columns=cols_to_read)
+            for col in cols_to_read:
+                if col in table.column_names:
+                    unique = pc.unique(table.column(col))
+                    for val in unique.to_pylist():
+                        if val is not None and val != "":
+                            fk_values[col].add(str(val))
+
+    # Merge aliases
+    fk_values["mcp_id"] |= fk_values.pop("mcp_server_id", set())
+    fk_values["user_id"] |= fk_values.pop("actor_id", set())
+
+    # Filter to valid UUIDs only — ClickHouse stores these as String,
+    # so non-UUID values like "filesystem" or "default" can appear.
+    _uuid_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+    for key in list(fk_values):
+        fk_values[key] = {v for v in fk_values[key] if _uuid_re.match(v)}
+
+    # Check against PostgreSQL
+    conn = await _connect(db_url)
+    try:
+        orphaned: dict[str, list[str] | bool] = {}
+        for fk_col, pg_table in [("agent_id", "agents"), ("mcp_id", "mcp_listings"), ("user_id", "users")]:
+            ids = fk_values.get(fk_col, set())
+            if not ids:
+                orphaned[f"orphaned_{fk_col}s"] = []
+                orphaned[f"orphaned_{fk_col}s_truncated"] = False
+                continue
+            existing = set()
+            id_list = list(ids)
+            # Batch in chunks of 1000 to avoid query size limits
+            for i in range(0, len(id_list), 1000):
+                batch = id_list[i : i + 1000]
+                rows = await conn.fetch(
+                    f"SELECT id::text FROM {pg_table} WHERE id = ANY($1::uuid[])",
+                    batch,
+                )
+                existing.update(row["id"] for row in rows)
+            missing = sorted(ids - existing)
+            orphaned[f"orphaned_{fk_col}s"] = missing[:10_000]
+            orphaned[f"orphaned_{fk_col}s_truncated"] = len(missing) > 10_000
+        return orphaned
+    finally:
+        await conn.close()
+
+
+async def _validate_telemetry(
+    input_dir: Path,
+    clickhouse_url: str | None,
+    target_db_url: str | None,
+) -> TelemetryValidationResult:
+    """Validate telemetry Parquet files: checksums, row counts, FK references."""
+    manifest_path = input_dir / "telemetry_manifest.json"
+    if not manifest_path.exists():
+        rprint("[red]Telemetry manifest not found.[/red]")
+        raise typer.Exit(1)
+    manifest = json.loads(manifest_path.read_text())
+
+    # Checksum verification
+    checksum_results: dict[str, bool] = {}
+    for table_cfg in CLICKHOUSE_TABLES:
+        table_name = table_cfg["name"]
+        table_info = manifest["tables"].get(table_name, {})
+        for filename, expected in table_info.get("checksum", {}).items():
+            filepath = input_dir / filename
+            if not filepath.exists():
+                checksum_results[filename] = False
+                continue
+            actual = _sha256_file(filepath)
+            checksum_results[filename] = actual == expected
+
+    checksums_valid = all(checksum_results.values()) if checksum_results else True
+
+    # Optional row count comparison
+    row_count_results: dict[str, tuple[int, int]] | None = None
+    if clickhouse_url:
+        http_url, db, user, password = _parse_clickhouse_url(clickhouse_url)
+        try:
+            await _ch_query(http_url, db, user, password, "SELECT 1")
+        except typer.Exit:
+            raise
+        except Exception:
+            rprint("[red]ClickHouse health check failed.[/red]")
+            raise typer.Exit(1)
+
+        existing = await _ch_existing_tables(http_url, db, user, password)
+        row_count_results = {}
+        for table_cfg in CLICKHOUSE_TABLES:
+            table_name = table_cfg["name"]
+            manifest_count = manifest["tables"].get(table_name, {}).get("row_count", 0)
+            if table_name not in existing:
+                row_count_results[table_name] = (manifest_count, -1)
+                continue
+            # Use FINAL for ReplacingMergeTree
+            if table_cfg["engine"] == "replacing":
+                sql = f"SELECT count() AS cnt FROM {table_name} FINAL WHERE is_deleted = 0 FORMAT JSON"
+            else:
+                sql = f"SELECT count() AS cnt FROM {table_name} FORMAT JSON"
+            resp = await _ch_query(http_url, db, user, password, sql)
+            db_count = _read_count(resp)
+            row_count_results[table_name] = (manifest_count, db_count)
+
+    # Optional FK validation
+    fk_results: dict[str, list[str]] | None = None
+    if target_db_url:
+        fk_results = await _validate_fk_references(input_dir, manifest, target_db_url)
+        # Update manifest with FK results
+        manifest["fk_validation"] = {**fk_results, "validated_at": datetime.now(UTC).isoformat()}
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+    return TelemetryValidationResult(
+        checksums_valid=checksums_valid,
+        checksum_results=checksum_results,
+        fk_results=fk_results,
+        row_count_results=row_count_results,
+    )
 
 
 # ── Typer app ────────────────────────────────────────────
@@ -762,3 +1405,123 @@ def validate_cmd(
             rprint("\n[green]✓ All row counts match[/green]")
         else:
             rprint(f"\n[yellow]⚠  {mismatches} table(s) have different row counts[/yellow]")
+
+
+# ── Phase 2: Telemetry CLI commands ─────────────────────
+
+
+@migrate_app.command("export-telemetry")
+def export_telemetry_cmd(
+    clickhouse_url: str = typer.Option(..., "--clickhouse-url", help="Source ClickHouse connection string"),
+    manifest: str = typer.Option(..., "--manifest", help="Path to Phase 1 migration_manifest.json"),
+    output_dir: str = typer.Option(..., "--output-dir", help="Directory for exported Parquet files"),
+) -> None:
+    """Export ClickHouse telemetry data to Parquet files."""
+    _require_admin()
+
+    rprint(f"[bold]Exporting telemetry to:[/bold] {output_dir}")
+    result = asyncio.run(_export_telemetry(clickhouse_url, Path(manifest), Path(output_dir)))
+
+    size_mb = result.total_size_bytes / (1024 * 1024)
+    rprint("\n[bold green]✓ Telemetry export complete[/bold green]")
+    rprint(f"  Directory:  {result.output_dir}")
+    rprint(f"  Migration:  {result.migration_id}")
+    rprint(f"  Rows:       {result.total_rows:,}")
+    rprint(f"  Size:       {size_mb:.1f} MB")
+    rprint(f"  Duration:   {result.duration_seconds:.1f}s")
+    rprint()
+    rprint("[yellow]⚠  Parquet files may contain PII in trace input/output fields.[/yellow]")
+    rprint("[yellow]   Store securely and delete after import.[/yellow]")
+
+
+@migrate_app.command("import-telemetry")
+def import_telemetry_cmd(
+    clickhouse_url: str = typer.Option(..., "--clickhouse-url", help="Target ClickHouse connection string"),
+    input_dir: str = typer.Option(..., "--input-dir", help="Directory containing Parquet files"),
+) -> None:
+    """Import Parquet telemetry files into target ClickHouse."""
+    _require_admin()
+
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        rprint(f"[red]Directory not found:[/red] {input_path}")
+        raise typer.Exit(1)
+
+    rprint(f"[bold]Importing telemetry from:[/bold] {input_path}")
+    result = asyncio.run(_import_telemetry(clickhouse_url, input_path))
+
+    total = sum(result.rows_imported.values())
+    rprint("\n[bold green]✓ Telemetry import complete[/bold green]")
+    rprint(f"  Migration:  {result.migration_id}")
+    rprint(f"  Tables:     {result.tables_imported}")
+    rprint(f"  Rows:       {total:,}")
+    rprint(f"  Duration:   {result.duration_seconds:.1f}s")
+    if result.tables_skipped:
+        rprint(f"  Skipped:    {', '.join(result.tables_skipped)}")
+
+
+@migrate_app.command("validate-telemetry")
+def validate_telemetry_cmd(
+    input_dir: str = typer.Option(..., "--input-dir", help="Directory containing Parquet files"),
+    clickhouse_url: str | None = typer.Option(
+        None, "--clickhouse-url", help="Target ClickHouse for row count comparison"
+    ),
+    target_db_url: str | None = typer.Option(None, "--target-db-url", help="Target PostgreSQL for FK validation"),
+) -> None:
+    """Validate telemetry Parquet files and optionally check FK references."""
+    _require_admin()
+
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        rprint(f"[red]Directory not found:[/red] {input_path}")
+        raise typer.Exit(1)
+
+    rprint(f"[bold]Validating telemetry in:[/bold] {input_path}")
+    result = asyncio.run(_validate_telemetry(input_path, clickhouse_url, target_db_url))
+
+    # Checksum results
+    rprint("\n[bold]Checksum verification:[/bold]")
+    for filename, passed in result.checksum_results.items():
+        status = "[green]✓[/green]" if passed else "[red]✗[/red]"
+        rprint(f"  {status} {filename}")
+
+    if not result.checksums_valid:
+        rprint("\n[red]Checksum validation failed.[/red]")
+        raise typer.Exit(1)
+    rprint("\n[green]✓ All checksums valid[/green]")
+
+    # Row count comparison
+    if result.row_count_results:
+        rprint("\n[bold]Row count comparison:[/bold]")
+        mismatches = 0
+        for table, (manifest_count, db_count) in result.row_count_results.items():
+            if db_count == -1:
+                rprint(f"  [dim]-[/dim] {table}: [dim]table not on target[/dim]")
+            elif manifest_count == db_count:
+                rprint(f"  [green]✓[/green] {table}: {manifest_count:,}")
+            else:
+                rprint(f"  [yellow]≠[/yellow] {table}: manifest={manifest_count:,}, db={db_count:,}")
+                mismatches += 1
+        if mismatches == 0:
+            rprint("\n[green]✓ All row counts match[/green]")
+        else:
+            rprint(f"\n[yellow]⚠  {mismatches} table(s) have different row counts[/yellow]")
+
+    # FK validation results
+    if result.fk_results:
+        rprint("\n[bold]FK validation:[/bold]")
+        has_orphans = False
+        for key, value in result.fk_results.items():
+            if key.endswith("_truncated"):
+                continue
+            if isinstance(value, list) and value:
+                has_orphans = True
+                truncated = result.fk_results.get(f"{key}_truncated", False)
+                suffix = " (truncated)" if truncated else ""
+                rprint(f"  [yellow]⚠[/yellow] {key}: {len(value)} orphaned{suffix}")
+            elif isinstance(value, list):
+                rprint(f"  [green]✓[/green] {key}: 0 orphaned")
+        if not has_orphans:
+            rprint("\n[green]✓ All FK references valid[/green]")
+        else:
+            rprint("\n[yellow]⚠  Orphaned references found (see above)[/yellow]")

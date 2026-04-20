@@ -142,6 +142,7 @@ jobs:
             --python ${{ matrix.python-version }} \
             --with asyncpg \
             --with hypothesis \
+            --with pyarrow \
             pytest ../tests/ -q
 
 # ── Job 3: Next.js lint + typecheck ───────────────────────────────────────────
