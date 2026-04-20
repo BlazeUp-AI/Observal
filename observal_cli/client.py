@@ -50,13 +50,8 @@ def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
         else:
             type_singular = type_plural
         # 'agent' is a top-level subcommand, not nested under 'registry'
-        if type_singular == "agent":
-            browse_cmd = f"observal agent list"
-        else:
-            browse_cmd = f"observal registry {type_singular} list"
-        rprint(
-            f"[dim]  Check that the resource ID is correct, or use [bold]{browse_cmd}[/bold] to browse.[/dim]"
-        )
+        browse_cmd = "observal agent list" if type_singular == "agent" else f"observal registry {type_singular} list"
+        rprint(f"[dim]  Check that the resource ID is correct, or use [bold]{browse_cmd}[/bold] to browse.[/dim]")
     elif code == 429:
         rprint(f"[red]Rate limited{path_info}.[/red]")
         retry_after = e.response.headers.get("Retry-After", "a few seconds")
