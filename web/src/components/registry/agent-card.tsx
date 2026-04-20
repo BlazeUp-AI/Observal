@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowDownToLine, Puzzle, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { IdeBadges } from "@/components/registry/ide-badges";
 import { compactNumber } from "@/lib/utils";
 
 interface AgentCardProps {
@@ -17,6 +18,8 @@ interface AgentCardProps {
   version?: string;
   component_count?: number;
   status?: string;
+  supported_ides?: string[];
+  inferred_supported_ides?: string[];
   className?: string;
 }
 
@@ -30,6 +33,8 @@ export function AgentCard({
   score,
   version,
   component_count,
+  supported_ides,
+  inferred_supported_ides,
   className,
 }: AgentCardProps) {
   return (
@@ -86,6 +91,13 @@ export function AgentCard({
           </span>
         )}
       </div>
+
+      <IdeBadges
+        supportedIdes={supported_ides}
+        inferredSupportedIdes={inferred_supported_ides}
+        max={3}
+        className="mt-2"
+      />
     </Link>
   );
 }
