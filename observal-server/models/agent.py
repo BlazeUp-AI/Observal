@@ -32,6 +32,8 @@ class Agent(Base):
     model_config_json: Mapped[dict] = mapped_column(JSON, default=dict)
     external_mcps: Mapped[list] = mapped_column(JSON, default=list)
     supported_ides: Mapped[list] = mapped_column(JSON, default=list)
+    required_ide_features: Mapped[list] = mapped_column(JSON, default=list)
+    inferred_supported_ides: Mapped[list] = mapped_column(JSON, default=list)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True

@@ -146,6 +146,8 @@ class AgentResponse(BaseModel):
     model_config_json: dict
     external_mcps: list = []
     supported_ides: list[str]
+    required_ide_features: list[str] = []
+    inferred_supported_ides: list[str] = []
     status: AgentStatus
     rejection_reason: str | None = None
     created_by: uuid.UUID
@@ -168,6 +170,8 @@ class AgentSummary(BaseModel):
     owner: str
     model_name: str
     supported_ides: list[str]
+    required_ide_features: list[str] = []
+    inferred_supported_ides: list[str] = []
     status: AgentStatus
     download_count: int = 0
     average_rating: float | None = None
@@ -209,3 +213,4 @@ class AgentInstallResponse(BaseModel):
     agent_id: uuid.UUID
     ide: str
     config_snippet: dict
+    warnings: list[str] = []
