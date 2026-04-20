@@ -114,7 +114,7 @@ async def list_sessions(
         "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens, "
         "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
         "sum(toUInt64OrZero(LogAttributes['cache_creation_tokens'])) AS total_cache_write_tokens, "
-        "anyIf(LogAttributes['model'], LogAttributes['model'] != '') AS model, "
+        "topKIf(1)(LogAttributes['model'], LogAttributes['model'] != '')[1] AS model, "
         "anyIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_id, "
         "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
         "anyIf(LogAttributes['credits'], LogAttributes['credits'] != '') AS credits, "
