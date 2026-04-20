@@ -158,11 +158,7 @@ async def deliver_webhook(
     event_id = uuid.uuid4()
 
     # Build headers (with or without signing)
-    if webhook_secret:
-        headers = build_headers(webhook_secret, body)
-    else:
-        # Legacy rule: no signing, still include event ID
-        headers = {HEADER_EVENT_ID: str(event_id)}
+    headers = build_headers(webhook_secret, body) if webhook_secret else {HEADER_EVENT_ID: str(event_id)}
 
     headers["Content-Type"] = "application/json"
     headers[HEADER_EVENT_ID] = str(event_id)  # Ensure event_id is always set

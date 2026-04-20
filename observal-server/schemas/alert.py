@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel
 
 
 class AlertRuleCreate(BaseModel):

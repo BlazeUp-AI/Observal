@@ -11,7 +11,6 @@ from hypothesis import strategies as st
 
 from services.webhook_signer import sign_payload, verify_signature
 
-
 # Strategy for valid secrets (non-empty strings)
 secrets_st = st.text(min_size=1, max_size=128, alphabet=st.characters(categories=("L", "N", "P")))
 # Strategy for valid timestamps

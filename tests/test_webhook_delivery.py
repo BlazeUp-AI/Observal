@@ -7,7 +7,6 @@ import httpx
 import pytest
 
 from services.webhook_delivery import (
-    DeliveryResult,
     _buffer_delivery_record,
     _delivery_buffer,
     deliver_webhook,

@@ -3,8 +3,6 @@
 import time
 from unittest.mock import patch
 
-import pytest
-
 from services.webhook_signer import (
     HEADER_EVENT_ID,
     HEADER_SIGNATURE,
