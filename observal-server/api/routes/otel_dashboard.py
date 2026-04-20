@@ -66,11 +66,23 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
     return []
 
 
+def _is_admin_user(user: User) -> bool:
+    return user.role in (UserRole.admin, UserRole.super_admin)
+
+
 @router.get("/sessions")
 async def list_sessions(
     status: str | None = Query(None),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
+    is_admin = _is_admin_user(current_user)
+    uid_filter = ""
+    params: dict[str, str] = {}
+    if not is_admin:
+        uid_filter = "AND (LogAttributes['user.id'] = {uid:String} OR LogAttributes['user.id'] = {uemail:String}) "
+        params["param_uid"] = str(current_user.id)
+        params["param_uemail"] = current_user.email
+
     rows = await _ch_json(
         "SELECT "
         "LogAttributes['session.id'] AS session_id, "
@@ -96,10 +108,10 @@ async def list_sessions(
         "anyIf(LogAttributes['tools_used'], LogAttributes['tools_used'] != '') AS tools_used, "
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] != '' "
-        "GROUP BY session_id "
+        "WHERE LogAttributes['session.id'] != '' " + uid_filter + "GROUP BY session_id "
         "ORDER BY last_event_time DESC "
-        "LIMIT 100"
+        "LIMIT 100",
+        params or None,
     )
     for row in rows:
         row["is_active"] = bool(int(row.get("is_active", 0)))
@@ -386,7 +398,15 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str, current_user: User = Depends(require_role(UserRole.admin))):
+async def get_session(session_id: str, current_user: User = Depends(require_role(UserRole.user))):
+    is_admin = _is_admin_user(current_user)
+    uid_filter = ""
+    params: dict[str, str] = {"param_sid": session_id}
+    if not is_admin:
+        uid_filter = "AND (LogAttributes['user.id'] = {uid:String} OR LogAttributes['user.id'] = {uemail:String}) "
+        params["param_uid"] = str(current_user.id)
+        params["param_uemail"] = current_user.email
+
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -395,9 +415,8 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         "LogAttributes AS attributes, "
         "ServiceName AS service_name "
         "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] = {sid:String} "
-        "ORDER BY Timestamp ASC",
-        {"param_sid": session_id},
+        "WHERE LogAttributes['session.id'] = {sid:String} " + uid_filter + "ORDER BY Timestamp ASC",
+        params,
     )
     traces = await _ch_json(
         "SELECT "

@@ -334,12 +334,15 @@ class Query:
         limit: int = 50,
         offset: int = 0,
     ) -> TraceConnection:
-        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
+        ctx = info.context
+        project_id = ctx.get("project_id", _DEFAULT_PROJECT)
+        uid = None if _is_admin(ctx) else ctx.get("user_id")
         rows = await query_traces(
             project_id,
             trace_type=trace_type,
             mcp_id=mcp_id,
             agent_id=agent_id,
+            user_id=uid,
             limit=limit + 1,
             offset=offset,
         )
@@ -349,19 +352,34 @@ class Query:
 
     @strawberry.field
     async def trace(self, info: Info, trace_id: str) -> Trace | None:
-        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
-        r = await query_trace_by_id(project_id, trace_id)
+        ctx = info.context
+        project_id = ctx.get("project_id", _DEFAULT_PROJECT)
+        uid = None if _is_admin(ctx) else ctx.get("user_id")
+        r = await query_trace_by_id(project_id, trace_id, user_id=uid)
         return _row_to_trace(r) if r else None
 
     @strawberry.field
     async def span(self, info: Info, span_id: str) -> Span | None:
-        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
-        r = await query_span_by_id(project_id, span_id)
+        ctx = info.context
+        project_id = ctx.get("project_id", _DEFAULT_PROJECT)
+        uid = None if _is_admin(ctx) else ctx.get("user_id")
+        r = await query_span_by_id(project_id, span_id, user_id=uid)
         return _row_to_span(r) if r else None
 
     @strawberry.field
     async def mcp_metrics(self, info: Info, mcp_id: str, start: str, end: str) -> McpMetrics:
-        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
+        ctx = info.context
+        project_id = ctx.get("project_id", _DEFAULT_PROJECT)
+        uid = None if _is_admin(ctx) else ctx.get("user_id")
+        uid_clause = " AND user_id={uid:String}" if uid else ""
+        params: dict[str, str] = {
+            "param_pid": project_id,
+            "param_mid": mcp_id,
+            "param_start": start,
+            "param_end": end,
+        }
+        if uid:
+            params["param_uid"] = uid
         rows = await _ch_json(
             "SELECT count() as cnt, "
             "countIf(status='error') as errs, "
@@ -375,13 +393,8 @@ class Query:
             "FROM spans FINAL WHERE project_id={pid:String} "
             "AND mcp_id={mid:String} AND type='tool_call' "
             "AND start_time >= {start:String} AND start_time <= {end:String} "
-            "AND is_deleted=0",
-            {
-                "param_pid": project_id,
-                "param_mid": mcp_id,
-                "param_start": start,
-                "param_end": end,
-            },
+            "AND is_deleted=0" + uid_clause,
+            params,
         )
         r = rows[0] if rows else {}
         cnt = int(r.get("cnt", 0))
@@ -402,28 +415,30 @@ class Query:
 
     @strawberry.field
     async def overview(self, info: Info, start: str, end: str) -> OverviewStats:
-        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
+        ctx = info.context
+        project_id = ctx.get("project_id", _DEFAULT_PROJECT)
+        uid = None if _is_admin(ctx) else ctx.get("user_id")
+        uid_clause = " AND user_id={uid:String}" if uid else ""
+        params: dict[str, str] = {
+            "param_pid": project_id,
+            "param_start": start,
+            "param_end": end,
+        }
+        if uid:
+            params["param_uid"] = uid
         rows = await _ch_json(
             "SELECT count() as traces FROM traces FINAL "
             "WHERE project_id={pid:String} AND is_deleted=0 "
-            "AND start_time >= {start:String} AND start_time <= {end:String}",
-            {
-                "param_pid": project_id,
-                "param_start": start,
-                "param_end": end,
-            },
+            "AND start_time >= {start:String} AND start_time <= {end:String}" + uid_clause,
+            params,
         )
         span_rows = await _ch_json(
             "SELECT count() as spans, "
             "countIf(type='tool_call') as tools, "
             "countIf(status='error') as errs "
             "FROM spans FINAL WHERE project_id={pid:String} AND is_deleted=0 "
-            "AND start_time >= {start:String} AND start_time <= {end:String}",
-            {
-                "param_pid": project_id,
-                "param_start": start,
-                "param_end": end,
-            },
+            "AND start_time >= {start:String} AND start_time <= {end:String}" + uid_clause,
+            params,
         )
         tr = rows[0] if rows else {}
         sr = span_rows[0] if span_rows else {}
@@ -436,7 +451,10 @@ class Query:
 
     @strawberry.field
     async def trends(self, info: Info, start: str, end: str, granularity: str = "DAY") -> list[TrendPoint]:
-        project_id = info.context.get("project_id", _DEFAULT_PROJECT)
+        ctx = info.context
+        project_id = ctx.get("project_id", _DEFAULT_PROJECT)
+        uid = None if _is_admin(ctx) else ctx.get("user_id")
+        uid_clause = " AND user_id={uid:String}" if uid else ""
         trunc_whitelist = {
             "HOUR": "toStartOfHour",
             "DAY": "toDate",
@@ -444,27 +462,24 @@ class Query:
             "MONTH": "toStartOfMonth",
         }
         trunc = trunc_whitelist.get(granularity, "toDate")
+        params: dict[str, str] = {
+            "param_pid": project_id,
+            "param_start": start,
+            "param_end": end,
+        }
+        if uid:
+            params["param_uid"] = uid
         rows = await _ch_json(
             f"SELECT {trunc}(start_time) as d, count() as traces "
             "FROM traces FINAL WHERE project_id={pid:String} AND is_deleted=0 "
-            "AND start_time >= {start:String} AND start_time <= {end:String} "
-            "GROUP BY d ORDER BY d",
-            {
-                "param_pid": project_id,
-                "param_start": start,
-                "param_end": end,
-            },
+            "AND start_time >= {start:String} AND start_time <= {end:String}" + uid_clause + " GROUP BY d ORDER BY d",
+            params,
         )
         span_rows = await _ch_json(
             f"SELECT {trunc}(start_time) as d, count() as spans, countIf(status='error') as errs "
             "FROM spans FINAL WHERE project_id={pid:String} AND is_deleted=0 "
-            "AND start_time >= {start:String} AND start_time <= {end:String} "
-            "GROUP BY d ORDER BY d",
-            {
-                "param_pid": project_id,
-                "param_start": start,
-                "param_end": end,
-            },
+            "AND start_time >= {start:String} AND start_time <= {end:String}" + uid_clause + " GROUP BY d ORDER BY d",
+            params,
         )
         span_map = {r["d"]: r for r in span_rows}
         return [
@@ -523,12 +538,12 @@ class Subscription:
 # --- Schema ---
 
 
-async def _resolve_project_id_from_request(request) -> str:
-    """Best-effort extraction of project_id from the Authorization header.
+async def _resolve_user_context_from_request(request) -> dict:
+    """Extract project_id, user_id, and user_role from the Authorization header.
 
-    Decodes the JWT to obtain the user_id, then looks up the user's org_id in
-    the database.  Falls back to ``"default"`` when there is no token, decoding
-    fails, or the user has no org.
+    Returns a dict with ``project_id``, ``user_id`` (str or None), and
+    ``user_role`` (str or None).  Non-admin users will have their queries
+    scoped to only their own traces.
     """
     import uuid as _uuid
 
@@ -537,49 +552,68 @@ async def _resolve_project_id_from_request(request) -> str:
     from database import async_session
     from models.user import User
 
+    default = {"project_id": _DEFAULT_PROJECT, "user_id": None, "user_role": None}
+
     auth: str | None = None
     if request is not None:
         auth = request.headers.get("authorization")
     if not auth or not auth.startswith("Bearer "):
-        return _DEFAULT_PROJECT
+        return default
     token = auth.removeprefix("Bearer ").strip()
     try:
         payload = decode_access_token(token)
     except jwt.InvalidTokenError:
-        return _DEFAULT_PROJECT
+        return default
 
-    user_id = payload.get("sub")
-    if not user_id:
-        return _DEFAULT_PROJECT
+    sub = payload.get("sub")
+    if not sub:
+        return default
 
     try:
-        uid = _uuid.UUID(user_id)
+        uid = _uuid.UUID(sub)
     except ValueError:
-        return _DEFAULT_PROJECT
+        return default
 
     try:
         async with async_session() as session:
-            result = await session.execute(select(User.org_id).where(User.id == uid))
-            org_id = result.scalar_one_or_none()
-            return str(org_id) if org_id else _DEFAULT_PROJECT
+            result = await session.execute(select(User.org_id, User.role).where(User.id == uid))
+            row = result.one_or_none()
+            if not row:
+                return default
+            org_id, role = row
+            return {
+                "project_id": str(org_id) if org_id else _DEFAULT_PROJECT,
+                "user_id": str(uid),
+                "user_role": role.value if role else None,
+            }
     except Exception:
-        logger.debug("Failed to resolve org_id for GraphQL context", exc_info=True)
-        return _DEFAULT_PROJECT
+        logger.debug("Failed to resolve user context for GraphQL", exc_info=True)
+        return default
 
 
-def get_context(project_id: str = _DEFAULT_PROJECT) -> dict:
+def get_context(
+    project_id: str = _DEFAULT_PROJECT,
+    user_id: str | None = None,
+    user_role: str | None = None,
+) -> dict:
     return {
         "project_id": project_id,
+        "user_id": user_id,
+        "user_role": user_role,
         "span_loader": DataLoader(load_fn=_make_span_loader(project_id)),
         "score_by_trace_loader": DataLoader(load_fn=_make_score_by_trace_loader(project_id)),
         "score_by_span_loader": DataLoader(load_fn=_make_score_by_span_loader(project_id)),
     }
 
 
+def _is_admin(ctx: dict) -> bool:
+    return ctx.get("user_role") in ("admin", "super_admin")
+
+
 async def get_context_dep(request: Request = None) -> dict:
     """Strawberry FastAPI context getter — receives the incoming ``Request``."""
-    project_id = await _resolve_project_id_from_request(request)
-    return get_context(project_id)
+    uctx = await _resolve_user_context_from_request(request)
+    return get_context(uctx["project_id"], uctx["user_id"], uctx["user_role"])
 
 
 schema = strawberry.Schema(query=Query, subscription=Subscription)

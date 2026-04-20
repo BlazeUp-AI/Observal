@@ -50,9 +50,12 @@ const reviewNav: NavItem[] = [
   { title: "Review", href: "/review", icon: ShieldCheck, minRole: "reviewer" },
 ];
 
+const userNav: NavItem[] = [
+  { title: "My Traces", href: "/traces", icon: Activity, minRole: "user" },
+];
+
 const adminNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, minRole: "admin" },
-  { title: "Traces", href: "/traces", icon: Activity, minRole: "admin" },
   { title: "Errors", href: "/errors", icon: AlertTriangle, minRole: "admin" },
   { title: "Evals", href: "/eval", icon: FlaskConical, minRole: "admin" },
   { title: "Users", href: "/users", icon: Users, minRole: "admin" },
@@ -62,6 +65,7 @@ const adminNav: NavItem[] = [
 export const allNavItems = [
   { group: "Registry", items: registryNav },
   { group: "Review", items: reviewNav },
+  { group: "Traces", items: userNav },
   { group: "Admin", items: adminNav },
 ];
 
@@ -90,6 +94,10 @@ export function RegistrySidebar() {
 
   const visibleReviewNav = isAuthenticated
     ? reviewNav.filter((item) => !item.minRole || hasMinRole(role, item.minRole))
+    : [];
+
+  const visibleUserNav = isAuthenticated
+    ? userNav.filter((item) => !item.minRole || hasMinRole(role, item.minRole))
     : [];
 
   const visibleAdminNav = isAuthenticated
@@ -134,6 +142,28 @@ export function RegistrySidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {visibleReviewNav.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive(item.href)}>
+                      <Link href={item.href}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {visibleUserNav.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              Traces
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleUserNav.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={isActive(item.href)}>
                       <Link href={item.href}>

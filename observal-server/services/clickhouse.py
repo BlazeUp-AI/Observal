@@ -665,13 +665,19 @@ async def query_traces(
         return []
 
 
-async def query_trace_by_id(project_id: str, trace_id: str) -> dict | None:
-    """Get a single trace by ID."""
-    sql = (
-        "SELECT * FROM traces FINAL WHERE project_id = {pid:String} "
-        "AND trace_id = {tid:String} AND is_deleted = 0 LIMIT 1 FORMAT JSON"
-    )
-    params = {"param_pid": project_id, "param_tid": trace_id}
+async def query_trace_by_id(project_id: str, trace_id: str, *, user_id: str | None = None) -> dict | None:
+    """Get a single trace by ID, optionally scoped to a user."""
+    conditions = [
+        "project_id = {pid:String}",
+        "trace_id = {tid:String}",
+        "is_deleted = 0",
+    ]
+    params: dict[str, str] = {"param_pid": project_id, "param_tid": trace_id}
+    if user_id:
+        conditions.append("user_id = {uid:String}")
+        params["param_uid"] = user_id
+    where = " AND ".join(conditions)
+    sql = f"SELECT * FROM traces FINAL WHERE {where} LIMIT 1 FORMAT JSON"
     try:
         r = await _query(sql, params)
         r.raise_for_status()
@@ -714,13 +720,19 @@ async def query_spans(
         return []
 
 
-async def query_span_by_id(project_id: str, span_id: str) -> dict | None:
-    """Get a single span by ID."""
-    sql = (
-        "SELECT * FROM spans FINAL WHERE project_id = {pid:String} "
-        "AND span_id = {sid:String} AND is_deleted = 0 LIMIT 1 FORMAT JSON"
-    )
-    params = {"param_pid": project_id, "param_sid": span_id}
+async def query_span_by_id(project_id: str, span_id: str, *, user_id: str | None = None) -> dict | None:
+    """Get a single span by ID, optionally scoped to a user."""
+    conditions = [
+        "project_id = {pid:String}",
+        "span_id = {sid:String}",
+        "is_deleted = 0",
+    ]
+    params: dict[str, str] = {"param_pid": project_id, "param_sid": span_id}
+    if user_id:
+        conditions.append("user_id = {uid:String}")
+        params["param_uid"] = user_id
+    where = " AND ".join(conditions)
+    sql = f"SELECT * FROM spans FINAL WHERE {where} LIMIT 1 FORMAT JSON"
     try:
         r = await _query(sql, params)
         r.raise_for_status()
