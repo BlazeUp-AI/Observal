@@ -11,6 +11,7 @@ import typer
 from rich import print as rprint
 
 from observal_cli import client, config, settings_reconciler
+from observal_cli.branding import welcome_banner
 from observal_cli.hooks_spec import get_desired_env, get_desired_hooks
 from observal_cli.render import console, kv_panel, spinner, status_badge
 
@@ -40,6 +41,7 @@ def login(
     On a fresh server: prompts for email, name, and password to create admin.
     With email+password: logs in with credentials.
     """
+    welcome_banner()
     server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
     server_url = server_url.rstrip("/")
 
