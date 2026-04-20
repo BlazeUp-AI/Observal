@@ -47,12 +47,14 @@ async def _load_agent(
     extra_conditions=None,
     *,
     prefer_user_id: uuid.UUID | None = None,
+    org_id: uuid.UUID | None = None,
 ) -> Agent | None:
     """Load an agent by UUID, prefix, or name with eager loading.
 
     When *prefer_user_id* is provided and resolution is by name, prefer the
     caller's own agent over agents created by other users with the same name.
-    Returns None if no match is found for the current user.
+    The global name fallback is restricted to active agents and, when *org_id*
+    is set, to agents within the same organisation.
     """
     try:
         return await resolve_prefix_id(
@@ -75,10 +77,16 @@ async def _load_agent(
             if mine:
                 return mine
 
-        # Fall back to global name lookup (any creator)
-        stmt = select(Agent).where(Agent.name == agent_id).options(*_agent_load_options)
+        # Fall back to global name lookup — only active, org-scoped agents
+        stmt = (
+            select(Agent)
+            .where(Agent.name == agent_id, Agent.status == AgentStatus.active)
+            .options(*_agent_load_options)
+        )
         if extra_conditions:
             stmt = stmt.where(*extra_conditions)
+        if org_id is not None:
+            stmt = stmt.where(Agent.owner_org_id == org_id)
         results = (await db.execute(stmt)).scalars().all()
         if len(results) == 1:
             return results[0]
@@ -436,7 +444,12 @@ async def get_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id if current_user else None)
+    agent = await _load_agent(
+        db,
+        agent_id,
+        prefer_user_id=current_user.id if current_user else None,
+        org_id=current_user.org_id if current_user else None,
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -457,7 +470,12 @@ async def version_suggestions(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id if current_user else None)
+    agent = await _load_agent(
+        db,
+        agent_id,
+        prefer_user_id=current_user.id if current_user else None,
+        org_id=current_user.org_id if current_user else None,
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -474,7 +492,7 @@ async def update_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -625,9 +643,10 @@ async def install_agent(
         agent_id,
         extra_conditions=[Agent.status == AgentStatus.active],
         prefer_user_id=current_user.id,
+        org_id=current_user.org_id,
     )
     if not agent:
-        agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+        agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
         if not agent or agent.created_by != current_user.id:
             raise HTTPException(status_code=404, detail="Agent not found or not active")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -696,7 +715,12 @@ async def agent_download_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id if current_user else None)
+    agent = await _load_agent(
+        db,
+        agent_id,
+        prefer_user_id=current_user.id if current_user else None,
+        org_id=current_user.org_id if current_user else None,
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -716,7 +740,12 @@ async def get_agent_traces(
     current_user: User | None = Depends(optional_current_user),
 ):
     """Return all traces where this agent participated."""
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id if current_user else None)
+    agent = await _load_agent(
+        db,
+        agent_id,
+        prefer_user_id=current_user.id if current_user else None,
+        org_id=current_user.org_id if current_user else None,
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -743,7 +772,7 @@ async def resolve_agent_components(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Resolve all components for an agent — validates they exist and are approved."""
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -763,7 +792,7 @@ async def get_agent_manifest(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Generate a portable agent manifest with all resolved components."""
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -824,7 +853,7 @@ async def delete_agent(
     from models.eval import EvalRun, Scorecard
     from models.feedback import Feedback
 
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -875,7 +904,7 @@ async def archive_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -901,7 +930,7 @@ async def unarchive_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -1007,7 +1036,7 @@ async def update_draft(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Update a draft agent."""
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -1064,7 +1093,7 @@ async def submit_draft(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Submit a draft agent for review (transitions draft -> pending)."""
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
