@@ -432,68 +432,111 @@ def _configure_kiro(server_url: str):
             return
 
         hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
-        cfg = config.load()
-        user_id = cfg.get("user_id", "")
 
         hook_py = _find_hook_script("kiro_hook.py")
         stop_py = _find_hook_script("kiro_stop_hook.py")
 
-        def _sed_prefix(agent_name: str) -> str:
-            meta = f'"session_id":"kiro-\'$PPID\'","service_name":"kiro-cli","agent_name":"{agent_name}"'
-            if user_id:
-                meta += f',"user_id":"{user_id}"'
-            return "cat | sed 's/^{/{" + meta + ",/' "
-
         def _hook_cmd(agent_name: str) -> str:
-            prefix = _sed_prefix(agent_name)
             if hook_py:
-                return f"{prefix}| python3 {hook_py} --url {hooks_url}"
-            return f'{prefix}| curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
+                return f"cat | python3 {hook_py} --url {hooks_url} --agent-name {agent_name}"
+            return f'cat | curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
 
         def _stop_cmd(agent_name: str) -> str:
-            prefix = _sed_prefix(agent_name)
             if stop_py:
-                return f"{prefix}| python3 {stop_py} --url {hooks_url}"
-            return f'{prefix}| curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
+                return f"cat | python3 {stop_py} --url {hooks_url} --agent-name {agent_name}"
+            return f'cat | curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
 
         changes = 0
 
         # 1. Inject into agent JSON files (merge, preserve existing hooks)
+        # If kiro_default.json doesn't exist, create it so hooks attach to the
+        # built-in kiro_default agent instead of a separate workspace agent.
         agents_dir = kiro_dir / "agents"
-        if agents_dir.is_dir():
-            for af in sorted(agents_dir.glob("*.json")):
-                try:
-                    data = _json.loads(af.read_text())
-                    existing = data.get("hooks", {})
-                    already = any(
-                        "otel/hooks" in h.get("command", "")
-                        for handlers in existing.values()
-                        if isinstance(handlers, list)
-                        for h in handlers
-                    )
-                    if already:
-                        continue
-                    name = data.get("name") or af.stem
-                    cmd = _hook_cmd(name)
-                    stop = _stop_cmd(name)
-                    desired = {
-                        "agentSpawn": [{"command": cmd}],
-                        "userPromptSubmit": [{"command": cmd}],
-                        "preToolUse": [{"matcher": "*", "command": cmd}],
-                        "postToolUse": [{"matcher": "*", "command": cmd}],
-                        "stop": [{"command": stop}],
-                    }
-                    merged = dict(existing)
-                    for evt, handlers in desired.items():
-                        cur = merged.get(evt, [])
-                        has_obs = any("otel/hooks" in h.get("command", "") for h in cur)
-                        if not has_obs:
-                            merged[evt] = cur + handlers
-                    data["hooks"] = merged
-                    af.write_text(_json.dumps(data, indent=2) + "\n")
+        agents_dir.mkdir(parents=True, exist_ok=True)
+
+        # Migrate: remove old default.json created by earlier Observal versions.
+        # It shadowed the built-in kiro_default agent.
+        old_default = agents_dir / "default.json"
+        if old_default.exists():
+            try:
+                od = _json.loads(old_default.read_text())
+                if od.get("name") == "default" and any(
+                    "otel/hooks" in h.get("command", "")
+                    for hs in od.get("hooks", {}).values()
+                    if isinstance(hs, list)
+                    for h in hs
+                ):
+                    old_default.unlink()
+                    import subprocess
+
+                    kiro_bin = shutil.which("kiro-cli") or shutil.which("kiro") or shutil.which("kiro-cli-chat")
+                    if kiro_bin:
+                        subprocess.run(
+                            [kiro_bin, "agent", "set-default", "kiro_default"],
+                            capture_output=True,
+                            timeout=10,
+                        )
                     changes += 1
-                except (ValueError, OSError):
-                    pass
+            except (ValueError, OSError):
+                pass
+
+        agent_files = sorted(agents_dir.glob("*.json"))
+        default_agent = agents_dir / "kiro_default.json"
+        if not default_agent.exists():
+            cmd = _hook_cmd("kiro_default")
+            stop = _stop_cmd("kiro_default")
+            default_agent.write_text(
+                _json.dumps(
+                    {
+                        "name": "kiro_default",
+                        "hooks": {
+                            "agentSpawn": [{"command": cmd}],
+                            "userPromptSubmit": [{"command": cmd}],
+                            "preToolUse": [{"matcher": "*", "command": cmd}],
+                            "postToolUse": [{"matcher": "*", "command": cmd}],
+                            "stop": [{"command": stop}],
+                        },
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            changes += 1
+            agent_files = sorted(agents_dir.glob("*.json"))
+
+        for af in agent_files:
+            try:
+                data = _json.loads(af.read_text())
+                existing = data.get("hooks", {})
+                already = any(
+                    "otel/hooks" in h.get("command", "")
+                    for handlers in existing.values()
+                    if isinstance(handlers, list)
+                    for h in handlers
+                )
+                if already:
+                    continue
+                name = data.get("name") or af.stem
+                cmd = _hook_cmd(name)
+                stop = _stop_cmd(name)
+                desired = {
+                    "agentSpawn": [{"command": cmd}],
+                    "userPromptSubmit": [{"command": cmd}],
+                    "preToolUse": [{"matcher": "*", "command": cmd}],
+                    "postToolUse": [{"matcher": "*", "command": cmd}],
+                    "stop": [{"command": stop}],
+                }
+                merged = dict(existing)
+                for evt, handlers in desired.items():
+                    cur = merged.get(evt, [])
+                    has_obs = any("otel/hooks" in h.get("command", "") for h in cur)
+                    if not has_obs:
+                        merged[evt] = cur + handlers
+                data["hooks"] = merged
+                af.write_text(_json.dumps(data, indent=2) + "\n")
+                changes += 1
+            except (ValueError, OSError):
+                pass
 
         # 2. Install global IDE-format hooks for agentless chat
         global_hooks_dir = kiro_dir / "hooks"

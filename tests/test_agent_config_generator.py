@@ -841,30 +841,40 @@ class TestGetKiroDb:
 
     def test_unix_path(self):
         import unittest.mock
-
-        from observal_cli.hooks.kiro_hook import _get_kiro_db
-
-        with unittest.mock.patch("observal_cli.hooks.kiro_hook.sys") as mock_sys:
-            mock_sys.platform = "linux"
-            db = _get_kiro_db()
-            assert ".local" in str(db)
-            assert "kiro-cli" in str(db)
-            assert "data.sqlite3" in str(db)
-
-    def test_win32_path_with_localappdata(self):
-        import unittest.mock
+        from pathlib import Path
 
         from observal_cli.hooks.kiro_hook import _get_kiro_db
 
         with (
             unittest.mock.patch("observal_cli.hooks.kiro_hook.sys") as mock_sys,
             unittest.mock.patch("observal_cli.hooks.kiro_hook.os") as mock_os,
+            unittest.mock.patch.object(Path, "exists", lambda self: ".local" in str(self)),
+        ):
+            mock_sys.platform = "linux"
+            mock_os.environ.get = lambda key, default="": default
+            db = _get_kiro_db()
+            assert db is not None
+            assert ".local" in str(db)
+            assert "kiro-cli" in str(db)
+            assert "data.sqlite3" in str(db)
+
+    def test_win32_path_with_localappdata(self):
+        import unittest.mock
+        from pathlib import Path
+
+        from observal_cli.hooks.kiro_hook import _get_kiro_db
+
+        with (
+            unittest.mock.patch("observal_cli.hooks.kiro_hook.sys") as mock_sys,
+            unittest.mock.patch("observal_cli.hooks.kiro_hook.os") as mock_os,
+            unittest.mock.patch.object(Path, "exists", return_value=True),
         ):
             mock_sys.platform = "win32"
             mock_os.environ.get = lambda key, default="": (
                 "C:\\Users\\test\\AppData\\Local" if key == "LOCALAPPDATA" else default
             )
             db = _get_kiro_db()
+            assert db is not None
             assert "AppData" in str(db)
             assert "kiro-cli" in str(db)
             assert "data.sqlite3" in str(db)

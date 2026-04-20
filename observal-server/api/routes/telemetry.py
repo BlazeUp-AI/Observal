@@ -228,7 +228,7 @@ async def ingest(
                         "Timestamp": s.start_time or now,
                         "Body": body_text,
                         "LogAttributes": attrs,
-                        "ServiceName": "observal-shim",
+                        "ServiceName": meta.get("ide") or "claude-code",
                         "SeverityText": "ERROR" if s.status == "error" else "INFO",
                         "SeverityNumber": 17 if s.status == "error" else 9,
                         "TraceId": s.trace_id or "",

@@ -26,29 +26,23 @@ import { QueryError } from "@/components/dashboard/query-error";
 import { ListTree } from "lucide-react";
 
 const IDE_BADGE_STYLES: Record<string, string> = {
-  claude_code: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
   "claude-code": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
   kiro: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  "kiro-cli": "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   cursor: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
-  gemini_cli: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   "gemini-cli": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   vscode: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  github_copilot: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
   codex: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
+  copilot: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
 };
 
 const IDE_LABELS: Record<string, string> = {
-  claude_code: "Claude Code",
   "claude-code": "Claude Code",
   kiro: "Kiro",
-  "kiro-cli": "Kiro CLI",
   cursor: "Cursor",
-  gemini_cli: "Gemini CLI",
   "gemini-cli": "Gemini CLI",
   vscode: "VS Code",
-  github_copilot: "Copilot",
   codex: "Codex",
+  copilot: "Copilot",
 };
 
 const TRACE_TYPES = [
@@ -64,12 +58,13 @@ const TRACE_TYPES = [
 ];
 const IDES = [
   "all",
-  "cursor",
-  "kiro",
-  "kiro-cli",
   "claude-code",
+  "kiro",
+  "cursor",
   "gemini-cli",
   "vscode",
+  "codex",
+  "copilot",
 ];
 
 export function TraceList() {

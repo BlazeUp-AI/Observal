@@ -16,6 +16,20 @@ from services.secrets_redactor import redact_secrets
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
 
+# Normalize legacy ServiceName values to canonical IDE names.
+# Old events in ClickHouse may still carry these; normalization at query
+# time ensures the frontend always sees the canonical form.
+_SERVICE_NAME_MAP: dict[str, str] = {
+    "kiro-cli": "kiro",
+    "observal-hooks": "claude-code",
+    "observal-shim": "claude-code",
+}
+
+
+def _normalize_service(svc: str) -> str:
+    return _SERVICE_NAME_MAP.get(svc, svc)
+
+
 # ── Kiro IDE session correlation ──
 # When Kiro IDE fires hooks, each event may have a different $PPID-based
 # session ID. We correlate them by cwd within a 30-minute window.
@@ -69,8 +83,8 @@ async def list_sessions(
         " ) NOT IN ('hook_stop', 'hook_stopfailure')"
         ") AS is_active, "
         "countIf(LogAttributes['event.name'] = 'user_prompt' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS prompt_count, "
-        "countIf(LogAttributes['event.name'] = 'api_request') AS api_request_count, "
-        "countIf(LogAttributes['event.name'] = 'tool_result') AS tool_result_count, "
+        "countIf(LogAttributes['event.name'] = 'api_request' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS api_request_count, "
+        "countIf(LogAttributes['event.name'] = 'tool_result' OR LogAttributes['event.name'] = 'hook_posttooluse') AS tool_result_count, "
         "countIf(LogAttributes['event.name'] LIKE 'hook_%') AS hook_event_count, "
         "sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input_tokens, "
         "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens, "
@@ -89,6 +103,7 @@ async def list_sessions(
     )
     for row in rows:
         row["is_active"] = bool(int(row.get("is_active", 0)))
+        row["service_name"] = _normalize_service(row.get("service_name", ""))
     if status == "active":
         rows = [r for r in rows if r["is_active"]]
     return rows
@@ -251,6 +266,7 @@ _SHIM_TYPE_TO_EVENT: dict[str, str] = {
 def _synthesize_shim_events(
     shim_spans: list[dict],
     existing_shim_span_ids: set[str],
+    session_service_name: str = "claude-code",
 ) -> list[dict]:
     """Convert shim span rows into otel_logs-shaped event dicts.
 
@@ -302,7 +318,7 @@ def _synthesize_shim_events(
                 "event_name": event_name,
                 "body": body_text,
                 "attributes": attrs,
-                "service_name": "observal-shim",
+                "service_name": session_service_name,
             }
         )
     return events
@@ -322,10 +338,11 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
     if not events:
         return events
 
-    # Extract user_id and time bounds from existing events
+    # Extract user_id, time bounds, and dominant service_name from existing events
     user_id = ""
     min_ts = ""
     max_ts = ""
+    session_service = ""
     existing_shim_span_ids: set[str] = set()
 
     for e in events:
@@ -346,6 +363,11 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
         # Track shim spans already in otel_logs (from write-time mirroring)
         if attrs.get("source") == "shim" and attrs.get("mcp_span_id"):
             existing_shim_span_ids.add(attrs["mcp_span_id"])
+        # Prefer a canonical IDE service_name (skip legacy "observal-shim"
+        # that old data may still carry — new shim events use the IDE name).
+        svc = e.get("service_name", "")
+        if svc and svc != "observal-shim" and not session_service:
+            session_service = svc
 
     if not user_id or not min_ts or not max_ts:
         return events
@@ -354,7 +376,9 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
     if not shim_spans:
         return events
 
-    synthetic = _synthesize_shim_events(shim_spans, existing_shim_span_ids)
+    synthetic = _synthesize_shim_events(
+        shim_spans, existing_shim_span_ids, _normalize_service(session_service) or "claude-code"
+    )
     if not synthetic:
         return events
 
@@ -394,7 +418,7 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     events = await _sideload_shim_spans(events)
     # Merge events from multiple sources (hook + shim + collector)
     events = _merge_session_events(events)
-    svc = events[0]["service_name"] if events else ""
+    svc = _normalize_service(events[0]["service_name"]) if events else ""
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
 
 
@@ -495,8 +519,8 @@ async def otel_stats(current_user: User = Depends(require_role(UserRole.admin)))
         "SELECT "
         "count(DISTINCT LogAttributes['session.id']) AS total_sessions, "
         "countIf(LogAttributes['event.name'] = 'user_prompt' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS total_prompts, "
-        "countIf(LogAttributes['event.name'] = 'api_request') AS total_api_requests, "
-        "countIf(LogAttributes['event.name'] = 'tool_result') AS total_tool_calls, "
+        "countIf(LogAttributes['event.name'] = 'api_request' OR LogAttributes['event.name'] = 'hook_userpromptsubmit') AS total_api_requests, "
+        "countIf(LogAttributes['event.name'] = 'tool_result' OR LogAttributes['event.name'] = 'hook_posttooluse') AS total_tool_calls, "
         "sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input_tokens, "
         "sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output_tokens "
         "FROM otel_logs"
@@ -773,12 +797,25 @@ async def ingest_hook(request: Request):
 
     session_id = body.get("session_id", "")
     tool_name = body.get("tool_name", "")
-    service_name = body.get("service_name", "observal-hooks")
+    service_name = body.get("service_name", "claude-code")
+    if service_name == "kiro-cli":
+        service_name = "kiro"
+    if service_name == "observal-hooks":
+        service_name = "claude-code"
 
     # ── Kiro IDE session correlation ──
     # $PPID differs per hook invocation in IDE context. Correlate by cwd.
     cwd = body.get("cwd", "")
+    is_kiro = service_name == "kiro"
     is_kiro_ppid = bool(re.match(r"^kiro-\d+$", session_id))
+
+    # Fallback: if a Kiro event arrives with no session_id, synthesize one from cwd
+    if is_kiro and not session_id and cwd:
+        import hashlib
+
+        session_id = f"kiro-{hashlib.sha256(cwd.encode()).hexdigest()[:12]}"
+        is_kiro_ppid = True  # treat it like a PPID session for caching below
+
     if is_kiro_ppid and cwd:
         now_ts = _time.monotonic()
         cached = _kiro_session_cache.get(cwd)
@@ -819,7 +856,6 @@ async def ingest_hook(request: Request):
     # Detect IDE from service_name, then delegate to the right handler.
     # This keeps Kiro and Claude Code logic fully isolated so they can't
     # overwrite each other's fields.
-    is_kiro = service_name in ("kiro-cli", "kiro")
     if is_kiro:
         _extract_kiro(body, hook_event, attrs)
     else:

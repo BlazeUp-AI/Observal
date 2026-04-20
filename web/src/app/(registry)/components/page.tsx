@@ -65,14 +65,6 @@ const TYPES: { value: RegistryType; label: string }[] = [
   { value: "sandboxes", label: "Sandboxes" },
 ];
 
-const TYPE_LABELS: Record<string, string> = {
-  mcps: "MCP",
-  skills: "Skill",
-  hooks: "Hook",
-  prompts: "Prompt",
-  sandboxes: "Sandbox",
-};
-
 const TYPE_PLURAL_LABELS: Record<string, string> = Object.fromEntries(
   TYPES.map((t) => [t.value, t.label]),
 );

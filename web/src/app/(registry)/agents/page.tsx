@@ -405,7 +405,7 @@ function AgentListContent() {
       (a) => a.status !== "active" && a.status !== "draft" && !activeIds.has(a.id),
     );
     return { filtered: [...pending, ...active], pendingCount: pending.length };
-  }, [agents, myAgents, drafts]);
+  }, [agents, myAgents]);
 
   const table = useReactTable({
     data: filtered,

@@ -28,7 +28,7 @@ def generate_hook_telemetry_config(
 
         # Unix: cat | sed | curl pipeline (unchanged)
         curl_cmd = (
-            'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'","service_name":"kiro-cli",'
+            'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'","service_name":"kiro",'
             '"terminal_type":"\'$TERM\'","shell":"\'$SHELL\'",/\' '
             f"| curl -sf -X POST {server_url}/api/v1/otel/hooks "
             f'-H "Content-Type: application/json" '
@@ -38,7 +38,7 @@ def generate_hook_telemetry_config(
         # For stop events, use the enrichment script to capture model/tokens
         if kiro_event == "stop":
             stop_cmd = (
-                'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'","service_name":"kiro-cli",'
+                'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'","service_name":"kiro",'
                 '"terminal_type":"\'$TERM\'","shell":"\'$SHELL\'",/\' '
                 f"| python3 -m observal_cli.hooks.kiro_stop_hook "
                 f"--url {server_url}/api/v1/otel/hooks"

@@ -203,9 +203,7 @@ test.describe("Enterprise Mode Login Page", () => {
     page,
   }) => {
     // Mock the config endpoint BEFORE navigation and wait for it to resolve
-    let configFetched = false;
     await page.route("**/api/v1/config/public", (route) => {
-      configFetched = true;
       return route.fulfill({
         status: 200,
         contentType: "application/json",

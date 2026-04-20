@@ -18,6 +18,16 @@ from services.clickhouse import _query, query_shim_spans_for_window
 
 logger = logging.getLogger(__name__)
 
+_SERVICE_NAME_MAP: dict[str, str] = {
+    "kiro-cli": "kiro",
+    "observal-hooks": "claude-code",
+    "observal-shim": "claude-code",
+}
+
+
+def _normalize_service(svc: str) -> str:
+    return _SERVICE_NAME_MAP.get(svc, svc)
+
 
 @dataclass
 class AgentContext:
@@ -137,6 +147,7 @@ async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
     user_id = ""
     min_ts = ""
     max_ts = ""
+    session_service = ""
     existing_shim_span_ids: set[str] = set()
 
     for e in events:
@@ -156,6 +167,9 @@ async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
                 max_ts = ts
         if attrs.get("source") == "shim" and attrs.get("mcp_span_id"):
             existing_shim_span_ids.add(attrs["mcp_span_id"])
+        svc = e.get("service_name", "")
+        if svc and svc != "observal-shim" and not session_service:
+            session_service = svc
 
     if not user_id or not min_ts or not max_ts:
         return events
@@ -164,6 +178,7 @@ async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
     if not shim_spans:
         return events
 
+    svc_name = _normalize_service(session_service) or "claude-code"
     synthetic: list[dict] = []
     for s in shim_spans:
         span_id = s.get("span_id", "")
@@ -208,7 +223,7 @@ async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
                 "event_name": event_name,
                 "body": body_text,
                 "attributes": attrs,
-                "service_name": "observal-shim",
+                "service_name": svc_name,
             }
         )
 

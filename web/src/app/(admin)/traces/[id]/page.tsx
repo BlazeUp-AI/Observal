@@ -1226,7 +1226,7 @@ function TurnNode({ turn, index, expandedSet, onToggleEvent, activeFilters, sear
 
 /* ── Session summary stats ─────────────────────────────── */
 
-function SessionStats({ events }: { events: RawOtelEvent[] }) {
+function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent[]; sessionId: string; serviceName?: string }) {
   const stats = useMemo(() => {
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
@@ -1236,7 +1236,7 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
     let toolCalls = 0;
     let hookEvents = 0;
     let credits = 0;
-    let isKiro = false;
+    let isKiro = serviceName === "kiro" || sessionId.startsWith("kiro-");
     const models = new Set<string>();
     const tools: Record<string, number> = {};
 
@@ -1245,9 +1245,9 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
       const eName = getEventName(evt);
       const svc = evt.service_name ?? "";
 
-      if (svc === "kiro-cli" || svc === "kiro") isKiro = true;
+      if (svc === "kiro") isKiro = true;
 
-      if (eName === "api_request") {
+      if (eName === "api_request" || eName === "hook_userpromptsubmit") {
         apiCalls++;
         if (attrs.input_tokens) totalInputTokens += parseInt(attrs.input_tokens, 10);
         if (attrs.output_tokens) totalOutputTokens += parseInt(attrs.output_tokens, 10);
@@ -1260,7 +1260,7 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
       if (attrs.credits) credits += parseFloat(attrs.credits) || 0;
       if (attrs.model) models.add(attrs.model);
 
-      if (eName === "tool_result") {
+      if (eName === "tool_result" || eName === "hook_posttooluse") {
         toolCalls++;
         const tn = attrs.tool_name || "unknown";
         tools[tn] = (tools[tn] || 0) + 1;
@@ -1276,13 +1276,13 @@ function SessionStats({ events }: { events: RawOtelEvent[] }) {
     }
 
     return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, models, tools };
-  }, [events]);
+  }, [events, sessionId, serviceName]);
 
   const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
-      {stats.isKiro && stats.credits > 0 ? (
+      {stats.isKiro ? (
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Credits</p>
           <p className="text-lg font-semibold tabular-nums text-orange-500">{formatCredits(stats.credits)}</p>
@@ -1409,14 +1409,18 @@ const KIRO_HOOK_CAPABILITIES: HookCapGroup[] = [
   },
 ];
 
-function getHookCapabilities(serviceName: string): HookCapGroup[] {
-  if (serviceName === "kiro-cli" || serviceName === "kiro") return KIRO_HOOK_CAPABILITIES;
+function isKiroService(serviceName: string, sessionId: string): boolean {
+  return serviceName === "kiro" || sessionId.startsWith("kiro-");
+}
+
+function getHookCapabilities(serviceName: string, sessionId: string): HookCapGroup[] {
+  if (isKiroService(serviceName, sessionId)) return KIRO_HOOK_CAPABILITIES;
   return CLAUDE_CODE_HOOK_CAPABILITIES;
 }
 
 function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEvent[]; sessionId: string; serviceName: string }) {
-  const isKiro = serviceName === "kiro-cli" || serviceName === "kiro";
-  const hookCapabilities = useMemo(() => getHookCapabilities(serviceName), [serviceName]);
+  const isKiro = isKiroService(serviceName, sessionId);
+  const hookCapabilities = useMemo(() => getHookCapabilities(serviceName, sessionId), [serviceName, sessionId]);
 
   // Derive active hooks from events actually present in this session
   const activeHookEvents = useMemo(() => {
@@ -1630,7 +1634,7 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
               </div>
               {session.service_name && (
                 <div>
-                  <span className="text-xs text-muted-foreground block mb-0.5">Service</span>
+                  <span className="text-xs text-muted-foreground block mb-0.5">IDE</span>
                   <span className="text-sm">{session.service_name}</span>
                 </div>
               )}
@@ -1657,7 +1661,7 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             <Separator />
-            <SessionStats events={events} />
+            <SessionStats events={events} sessionId={id} serviceName={session.service_name} />
             <Separator />
 
             {/* Tabbed content */}

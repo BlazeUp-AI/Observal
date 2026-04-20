@@ -92,7 +92,7 @@ async def bulk_scan(
     registered = []
     counts: dict[str, int] = {"mcp": 0, "skill": 0, "hook": 0, "agent": 0}
 
-    owner = current_user.username if hasattr(current_user, "username") else str(current_user.id)
+    owner = current_user.username or current_user.name or str(current_user.id)
 
     # ── MCPs ────────────────────────────────────────────
     for mcp in req.mcps:

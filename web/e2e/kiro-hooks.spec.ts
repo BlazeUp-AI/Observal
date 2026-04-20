@@ -97,21 +97,21 @@ test.describe("Kiro Hook Event Ingestion", () => {
     await sendKiroHookEvent({
       hook_event_name: "agentSpawn",
       session_id: sessionId,
-      service_name: "kiro-cli",
+      service_name: "kiro",
       cwd: "/tmp",
       prompt: "test prompt",
     });
     await sendKiroHookEvent({
       hook_event_name: "userPromptSubmit",
       session_id: sessionId,
-      service_name: "kiro-cli",
+      service_name: "kiro",
       cwd: "/tmp",
       prompt: "test prompt",
     });
     await sendKiroHookEvent({
       hook_event_name: "stop",
       session_id: sessionId,
-      service_name: "kiro-cli",
+      service_name: "kiro",
       cwd: "/tmp",
       assistant_response: "test response",
     });

@@ -868,36 +868,23 @@ def register_scan(app: typer.Typer):
             hook_script = hooks_dir / "kiro_hook.py"
             stop_script = hooks_dir / "kiro_stop_hook.py"
 
-            kiro_user_id = kcfg.get("user_id", "")
-
-            def _kiro_sed_prefix(agent_name: str, model: str) -> str:
-                """Build the sed expression that injects metadata into JSON."""
-                meta_fields = (
-                    f'"session_id":"kiro-\'$PPID\'",'
-                    f'"service_name":"kiro-cli",'
-                    f'"agent_name":"{agent_name}",'
-                    f'"terminal_type":"\'$TERM\'",'
-                    f'"shell":"\'$SHELL\'"'
-                )
-                if model:
-                    meta_fields += f',"model":"{model}"'
-                if kiro_user_id:
-                    meta_fields += f',"user_id":"{kiro_user_id}"'
-                return "cat | sed 's/^{/{" + meta_fields + ",/' "
-
             def _kiro_hook_cmd(agent_name: str, model: str) -> str:
-                """Build a per-agent hook command with conversation_id lookup."""
-                prefix = _kiro_sed_prefix(agent_name, model)
+                """Build a per-agent hook command (kiro_hook.py handles metadata natively)."""
+                args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
+                if model:
+                    args += f" --model {model}"
                 if hook_script.is_file():
-                    return f"{prefix}| python3 {hook_script.resolve()} --url {kiro_hooks_url}"
-                return f'{prefix}| curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
+                    return f"cat | python3 {hook_script.resolve()} {args}"
+                return f'cat | curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
 
             def _kiro_stop_cmd(agent_name: str, model: str) -> str:
                 """Build the stop hook command with full SQLite enrichment."""
-                prefix = _kiro_sed_prefix(agent_name, model)
+                args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
+                if model:
+                    args += f" --model {model}"
                 if stop_script.is_file():
-                    return f"{prefix}| python3 {stop_script.resolve()} --url {kiro_hooks_url}"
-                return f'{prefix}| curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
+                    return f"cat | python3 {stop_script.resolve()} {args}"
+                return f'cat | curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
 
             def _kiro_hooks_block(agent_name: str, model: str) -> dict:
                 cmd = _kiro_hook_cmd(agent_name, model)
@@ -911,9 +898,55 @@ def register_scan(app: typer.Typer):
                 }
 
             kiro_agents_dir = Path.home() / ".kiro" / "agents"
-            if kiro_agents_dir.is_dir():
+            kiro_agents_dir.mkdir(parents=True, exist_ok=True)
+
+            # Migrate: remove old default.json created by earlier Observal versions.
+            old_default = kiro_agents_dir / "default.json"
+            if old_default.exists():
+                try:
+                    od = json.loads(old_default.read_text())
+                    if od.get("name") == "default" and any(
+                        "otel/hooks" in h.get("command", "")
+                        for hs in od.get("hooks", {}).values()
+                        if isinstance(hs, list)
+                        for h in hs
+                    ):
+                        old_default.unlink()
+                        kiro_bin = shutil.which("kiro-cli") or shutil.which("kiro") or shutil.which("kiro-cli-chat")
+                        if kiro_bin:
+                            import subprocess
+
+                            subprocess.run(
+                                [kiro_bin, "agent", "set-default", "kiro_default"],
+                                capture_output=True,
+                                timeout=10,
+                            )
+                        rprint("[green]Removed old default agent (migrated to kiro_default)[/green]")
+                except (ValueError, OSError):
+                    pass
+
+            kiro_agent_files = sorted(kiro_agents_dir.glob("*.json"))
+
+            # Create kiro_default agent config if it doesn't exist, so hooks attach
+            # to the built-in kiro_default agent instead of a separate workspace agent.
+            default_agent_path = kiro_agents_dir / "kiro_default.json"
+            if not default_agent_path.exists():
+                default_agent_path.write_text(
+                    json.dumps(
+                        {
+                            "name": "kiro_default",
+                            "hooks": _kiro_hooks_block("kiro_default", ""),
+                        },
+                        indent=2,
+                    )
+                    + "\n"
+                )
+                rprint("[green]Created kiro_default agent with Observal hooks[/green]")
+                kiro_agent_files = sorted(kiro_agents_dir.glob("*.json"))
+
+            if kiro_agent_files:
                 injected_count = 0
-                for agent_file in sorted(kiro_agents_dir.glob("*.json")):
+                for agent_file in kiro_agent_files:
                     try:
                         agent_data = json.loads(agent_file.read_text())
                         existing = agent_data.get("hooks", {})

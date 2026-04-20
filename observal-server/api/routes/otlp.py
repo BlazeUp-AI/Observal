@@ -43,15 +43,17 @@ _STATUS_MAP = {0: "success", 1: "success", 2: "error"}
 
 # IDE detection from resource attributes
 _IDE_HINTS = {
-    "claude-code": "claude_code",
-    "claude code": "claude_code",
-    "gemini": "gemini_cli",
-    "copilot": "github_copilot",
+    "claude-code": "claude-code",
+    "claude code": "claude-code",
+    "gemini": "gemini-cli",
+    "copilot": "copilot",
     "cursor": "cursor",
     "kiro": "kiro",
     "kiro-cli": "kiro",
     "amazon-kiro": "kiro",
     "aws-kiro": "kiro",
+    "codex": "codex",
+    "vscode": "vscode",
 }
 
 

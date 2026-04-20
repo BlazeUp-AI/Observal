@@ -23,19 +23,31 @@ import sys
 from pathlib import Path
 
 
-def _get_kiro_db() -> Path:
-    """Return the platform-appropriate path to the Kiro SQLite database."""
+def _get_kiro_db() -> Path | None:
+    """Return the first existing Kiro SQLite database across standard data dirs."""
+    candidates = []
     if sys.platform == "win32":
-        local_app_data = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or ""
-        if local_app_data:
-            return Path(local_app_data) / "kiro-cli" / "data.sqlite3"
-    return Path.home() / ".local" / "share" / "kiro-cli" / "data.sqlite3"
+        for var in ("LOCALAPPDATA", "APPDATA"):
+            val = os.environ.get(var)
+            if val:
+                candidates.append(Path(val) / "kiro-cli" / "data.sqlite3")
+    else:
+        xdg = os.environ.get("XDG_DATA_HOME")
+        if xdg:
+            candidates.append(Path(xdg) / "kiro-cli" / "data.sqlite3")
+        home = Path.home()
+        candidates.append(home / "Library" / "Application Support" / "kiro-cli" / "data.sqlite3")
+        candidates.append(home / ".local" / "share" / "kiro-cli" / "data.sqlite3")
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
 
 def _enrich(payload: dict) -> dict:
     """Read the Kiro SQLite DB and merge session-level stats into *payload*."""
     kiro_db = _get_kiro_db()
-    if not kiro_db.exists():
+    if not kiro_db:
         return payload
 
     cwd = payload.get("cwd", "")
@@ -160,6 +172,12 @@ def main():
         sys.exit(0)
 
     payload.setdefault("service_name", "kiro")
+
+    # Ensure session_id is set. The sed $PPID injection in the hook command
+    # may fail (Kiro may not expand shell vars, or duplicate JSON keys cause
+    # last-key-wins). Generate a stable kiro-<ppid> ID in Python as fallback.
+    if not payload.get("session_id"):
+        payload["session_id"] = f"kiro-{os.getppid()}"
 
     # Inject user_id from Observal config if not already present
     if not payload.get("user_id"):

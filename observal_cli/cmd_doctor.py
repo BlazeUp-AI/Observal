@@ -483,12 +483,9 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
     changes: list[str] = []
     changed = False
 
-    if not agents_dir.exists():
-        return ["[dim]~/.kiro/agents/ not found — skipping Kiro[/dim]"], False
+    agents_dir.mkdir(parents=True, exist_ok=True)
 
     agent_files = list(agents_dir.glob("*.json"))
-    if not agent_files:
-        return ["[dim]No Kiro agent configs found — skipping[/dim]"], False
 
     hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
 
@@ -502,6 +499,59 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
     hook_py_str = str(hook_py.resolve())
     stop_py_str = str(stop_py.resolve())
 
+    # Migrate: remove old default.json created by earlier Observal versions.
+    old_default = agents_dir / "default.json"
+    if old_default.exists():
+        try:
+            od = json.loads(old_default.read_text())
+            if od.get("name") == "default" and any(
+                "otel/hooks" in h.get("command", "")
+                for hs in od.get("hooks", {}).values()
+                if isinstance(hs, list)
+                for h in hs
+            ):
+                old_default.unlink()
+                kiro_bin = shutil.which("kiro-cli") or shutil.which("kiro") or shutil.which("kiro-cli-chat")
+                if kiro_bin:
+                    import subprocess
+
+                    subprocess.run(
+                        [kiro_bin, "agent", "set-default", "kiro_default"],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                changes.append("- default: removed (migrated to kiro_default)")
+                changed = True
+        except (ValueError, OSError):
+            pass
+    agent_files = list(agents_dir.glob("*.json"))
+
+    # Create kiro_default agent config if it doesn't exist, so hooks attach to
+    # the built-in kiro_default agent instead of a separate workspace agent.
+    default_agent = agents_dir / "kiro_default.json"
+    if not default_agent.exists():
+        cmd = "cat | python3 " + hook_py_str + " --url " + hooks_url + " --agent-name kiro_default"
+        stop_cmd = "cat | python3 " + stop_py_str + " --url " + hooks_url + " --agent-name kiro_default"
+        default_agent.write_text(
+            json.dumps(
+                {
+                    "name": "kiro_default",
+                    "hooks": {
+                        "agentSpawn": [{"command": cmd}],
+                        "userPromptSubmit": [{"command": cmd}],
+                        "preToolUse": [{"matcher": "*", "command": cmd}],
+                        "postToolUse": [{"matcher": "*", "command": cmd}],
+                        "stop": [{"command": stop_cmd}],
+                    },
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        changes.append("+ kiro_default: created with Observal hooks")
+        changed = True
+        agent_files = list(agents_dir.glob("*.json"))
+
     for af in agent_files:
         agent_name = af.stem
         try:
@@ -510,15 +560,9 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             changes.append(f"[yellow]⚠ {agent_name}: could not parse, skipped[/yellow]")
             continue
 
-        # Build per-agent sed prefix (includes agent_name)
-        # Must produce: cat | sed 's/^{/{"session_id":"kiro-'$PPID'","service_name":"kiro-cli","agent_name":"<name>",/'
-        sed_prefix = (
-            'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'",'
-            '"service_name":"kiro-cli",'
-            '"agent_name":"' + agent_name + "\",/' "
-        )
-        generic_cmd = sed_prefix + "| python3 " + hook_py_str + " --url " + hooks_url
-        stop_cmd = sed_prefix + "| python3 " + stop_py_str + " --url " + hooks_url
+        # Build per-agent hook command (kiro_hook.py handles all metadata natively)
+        generic_cmd = "cat | python3 " + hook_py_str + " --url " + hooks_url + " --agent-name " + agent_name
+        stop_cmd = "cat | python3 " + stop_py_str + " --url " + hooks_url + " --agent-name " + agent_name
 
         desired_kiro_hooks: dict[str, list[dict]] = {}
         for event in _ALL_EVENTS:
