@@ -3,13 +3,16 @@ import json
 import logging
 import re
 import time as _time
+import uuid as _uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi_cache.decorator import cache
+from sqlalchemy import select
 
 from api.deps import require_role
 from config import settings
+from database import async_session
 from models.user import User, UserRole
 from services.clickhouse import _query, query_shim_spans_for_window
 from services.redis import publish
@@ -73,20 +76,104 @@ def _is_admin_user(user: User) -> bool:
 
 
 @router.get("/sessions")
-@cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_sessions(
     status: str | None = Query(None),
+    platform: str | None = Query(None),
+    days: int | None = Query(None),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     is_admin = _is_admin_user(current_user)
+    uid_str = str(current_user.id)
+    rows = await _list_sessions_query(
+        status=status,
+        platform=platform,
+        days=days,
+        is_admin=is_admin,
+        uid=uid_str,
+        uemail=current_user.email,
+    )
+
+    # ── Resolve user display names ──
+    # Build uuid→name and email→name maps from PostgreSQL.
+    uid_to_name: dict[str, str] = {}
+    needs_resolution = False
+    for row in rows:
+        user_ids = row.pop("user_ids", []) or []
+        best_uid = ""
+        for u in user_ids:
+            try:
+                _uuid.UUID(u)
+                best_uid = u
+                break
+            except ValueError:
+                best_uid = best_uid or u
+        row["user_id"] = best_uid
+        if not row.get("user_name"):
+            needs_resolution = True
+
+    if needs_resolution:
+        try:
+            async with async_session() as db:
+                result = await db.execute(select(User.id, User.email, User.name))
+                for u_id, u_email, u_name in result.all():
+                    uid_to_name[str(u_id)] = u_name
+                    if u_email:
+                        uid_to_name[u_email] = u_name
+        except Exception:
+            logger.warning("User name resolution failed", exc_info=True)
+
+    # For admin: map unresolved OTLP hashes to users.
+    # On Windows, .sh hooks don't run, so sessions only have native OTLP
+    # hashes (not Observal UUIDs). If all unresolved user_ids map to a
+    # single hash, attribute them to the current admin (the person who
+    # set up OTLP via `observal auth login`).
+    if is_admin:
+        unresolved: set[str] = set()
+        for row in rows:
+            uid = row.get("user_id", "")
+            if uid and not row.get("user_name") and uid not in uid_to_name:
+                unresolved.add(uid)
+        if len(unresolved) == 1:
+            uid_to_name[unresolved.pop()] = current_user.name
+
+    for row in rows:
+        row["is_active"] = bool(int(row.get("is_active", 0)))
+        row["service_name"] = _normalize_service(row.get("service_name", ""))
+        if not row.get("user_name") and row.get("user_id"):
+            row["user_name"] = uid_to_name.get(row["user_id"], "")
+        # Non-admin users only see their own sessions (session filter
+        # guarantees this), so any remaining blank names belong to them.
+        # For admins: Kiro sessions often have no user_id at all (raw curl
+        # hooks don't inject identity). Attribute them to the admin too.
+        if not row.get("user_name") and not is_admin:
+            row["user_name"] = current_user.name
+        if not row.get("user_name") and is_admin:
+            row["user_name"] = current_user.name
+        svc = row.get("service_name", "")
+        sid = row.get("session_id", "")
+        row["platform"] = "Kiro" if (svc == "kiro" or sid.startswith("kiro-")) else "Claude Code"
+
+    if status == "active":
+        rows = [r for r in rows if r["is_active"]]
+    if platform:
+        rows = [r for r in rows if r.get("service_name") == platform]
+    return rows
+
+
+async def _list_sessions_query(
+    *,
+    status: str | None,
+    platform: str | None,
+    days: int | None,
+    is_admin: bool,
+    uid: str,
+    uemail: str,
+) -> list[dict]:
+    """ClickHouse query for session list."""
     session_filter = ""
+    time_filter = ""
     params: dict[str, str] = {}
     if not is_admin:
-        # Claude Code native telemetry uses a hashed user.id while hook
-        # events use the Observal UUID.  Filter by session ownership: a
-        # session belongs to a user if *any* event in it carries their
-        # Observal UUID or email (from hook events).  We then aggregate
-        # *all* events (including claude-code telemetry) for those sessions.
         session_filter = (
             "AND LogAttributes['session.id'] IN ("
             "  SELECT DISTINCT LogAttributes['session.id'] FROM otel_logs"
@@ -95,10 +182,13 @@ async def list_sessions(
             "       OR LogAttributes['user.id'] = {uemail:String})"
             ") "
         )
-        params["param_uid"] = str(current_user.id)
-        params["param_uemail"] = current_user.email
+        params["param_uid"] = uid
+        params["param_uemail"] = uemail
 
-    rows = await _ch_json(
+    if days is not None and days > 0:
+        time_filter = f"AND Timestamp > now('UTC') - INTERVAL {int(days)} DAY "
+
+    return await _ch_json(
         "SELECT "
         "LogAttributes['session.id'] AS session_id, "
         "min(Timestamp) AS first_event_time, "
@@ -118,23 +208,54 @@ async def list_sessions(
         "sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS total_cache_read_tokens, "
         "sum(toUInt64OrZero(LogAttributes['cache_creation_tokens'])) AS total_cache_write_tokens, "
         "topKIf(1)(LogAttributes['model'], LogAttributes['model'] != '')[1] AS model, "
-        "anyIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_id, "
+        "groupUniqArrayIf(LogAttributes['user.id'], LogAttributes['user.id'] != '') AS user_ids, "
+        "anyIf(LogAttributes['user.name'], LogAttributes['user.name'] != '') AS user_name, "
         "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
         "anyIf(LogAttributes['credits'], LogAttributes['credits'] != '') AS credits, "
         "anyIf(LogAttributes['tools_used'], LogAttributes['tools_used'] != '') AS tools_used, "
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] != '' " + session_filter + "GROUP BY session_id "
+        "WHERE LogAttributes['session.id'] != '' " + session_filter + time_filter + "GROUP BY session_id "
         "ORDER BY last_event_time DESC "
         "LIMIT 100",
         params or None,
     )
-    for row in rows:
-        row["is_active"] = bool(int(row.get("is_active", 0)))
-        row["service_name"] = _normalize_service(row.get("service_name", ""))
-    if status == "active":
-        rows = [r for r in rows if r["is_active"]]
-    return rows
+
+
+@router.get("/sessions/summary")
+@cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
+async def sessions_summary(
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    is_admin = _is_admin_user(current_user)
+    session_filter = ""
+    params: dict[str, str] = {}
+    if not is_admin:
+        session_filter = (
+            "AND LogAttributes['session.id'] IN ("
+            "  SELECT DISTINCT LogAttributes['session.id'] FROM otel_logs"
+            "  WHERE LogAttributes['session.id'] != ''"
+            "  AND (LogAttributes['user.id'] = {uid:String}"
+            "       OR LogAttributes['user.id'] = {uemail:String})"
+            ") "
+        )
+        params["param_uid"] = str(current_user.id)
+        params["param_uemail"] = current_user.email
+
+    rows = await _ch_json(
+        "SELECT "
+        "count(DISTINCT LogAttributes['session.id']) AS total, "
+        "count(DISTINCT CASE WHEN Timestamp > today() "
+        "  THEN LogAttributes['session.id'] END) AS today_sessions "
+        "FROM otel_logs "
+        "WHERE LogAttributes['session.id'] != '' " + session_filter,
+        params or None,
+    )
+    row = rows[0] if rows else {}
+    return {
+        "total_sessions": int(row.get("total", 0)),
+        "today_sessions": int(row.get("today_sessions", 0)),
+    }
 
 
 def _merge_session_events(events: list[dict]) -> list[dict]:
@@ -905,6 +1026,10 @@ async def ingest_hook(request: Request):
     user_id = body.get("user_id") or request.headers.get("x-observal-user-id") or ""
     if user_id:
         attrs["user.id"] = user_id
+
+    user_name = body.get("user_name") or request.headers.get("x-observal-username") or ""
+    if user_name:
+        attrs["user.name"] = user_name
 
     # ── IDE-specific extraction ──
     # Detect IDE from service_name, then delegate to the right handler.
