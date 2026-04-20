@@ -643,7 +643,8 @@ export function useReviewAgents() {
 }
 
 export function useReviewComponents(typeFilter?: string) {
-  const params = typeFilter ? { type: typeFilter } : undefined;
+  const params: Record<string, string> = { tab: "components" };
+  if (typeFilter) params.type = typeFilter;
   return useQuery({
     queryKey: ["review", "components", params],
     queryFn: () => review.list(params),
