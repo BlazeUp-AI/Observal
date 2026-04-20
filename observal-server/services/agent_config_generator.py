@@ -1,6 +1,7 @@
 import re
 
 from models.agent import Agent
+from schemas.constants import IDE_FEATURE_MATRIX
 from services.config_generator import (
     _build_run_command,
     _claude_otlp_env,
@@ -10,6 +11,30 @@ from services.config_generator import (
 )
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+_FEATURE_LABELS: dict[str, str] = {
+    "skills": "slash-command skills",
+    "superpowers": "Kiro superpowers",
+    "hook_bridge": "hook bridge",
+    "mcp_servers": "MCP servers",
+    "rules": "rules / system prompt",
+    "steering_files": "steering files",
+    "otlp_telemetry": "OTLP telemetry",
+}
+
+
+def _check_ide_compatibility(agent: Agent, ide: str) -> list[str]:
+    """Return warning strings when *ide* lacks features the agent requires."""
+    required = getattr(agent, "required_ide_features", None) or []
+    ide_caps = IDE_FEATURE_MATRIX.get(ide, set())
+    warnings: list[str] = []
+    for feature in required:
+        if feature not in ide_caps:
+            label = _FEATURE_LABELS.get(feature, feature)
+            warnings.append(
+                f"This agent requires '{label}' but {ide} does not support it. Some functionality may not work."
+            )
+    return warnings
 
 
 def _sanitize_name(name: str) -> str:
@@ -236,6 +261,7 @@ def generate_agent_config(
     rules_content = _build_rules_content(agent, component_names)
     skill_configs = _build_skill_configs(agent, skill_listings)
     options = options or {}
+    compatibility_warnings = _check_ide_compatibility(agent, ide)
 
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
@@ -318,6 +344,8 @@ def generate_agent_config(
         skill_files = [f for f in skill_files if f]
         if skill_files:
             result["skill_files"] = skill_files
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
         return result
 
     if ide in ("claude-code", "claude_code"):
@@ -372,29 +400,40 @@ def generate_agent_config(
         }
         if skill_files:
             result["skill_files"] = skill_files
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
         return result
 
     if ide in ("gemini-cli", "gemini_cli"):
         gemini_scope = options.get("scope", "project")
         rules_path = "~/.gemini/GEMINI.md" if gemini_scope == "user" else "GEMINI.md"
         mcp_path = "~/.gemini/mcp.json" if gemini_scope == "user" else ".gemini/mcp.json"
-        return {
+        result = {
             "rules_file": {"path": rules_path, "content": rules_content},
             "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
             "otlp_env": _gemini_otlp_env(observal_url),
             "gemini_settings_snippet": _gemini_settings(observal_url),
             "scope": gemini_scope,
         }
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
+        return result
 
     if ide == "codex":
-        return {
+        result = {
             "rules_file": {"path": "AGENTS.md", "content": rules_content},
         }
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
+        return result
 
     if ide == "copilot":
-        return {
+        result = {
             "rules_file": {"path": ".github/copilot-instructions.md", "content": rules_content},
         }
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
+        return result
 
     # cursor, vscode: rules file + mcp.json — telemetry via observal-shim
     ide_scope = options.get("scope", "project")
@@ -415,4 +454,6 @@ def generate_agent_config(
     }
     if skill_files:
         result["skill_files"] = skill_files
+    if compatibility_warnings:
+        result["_warnings"] = compatibility_warnings
     return result

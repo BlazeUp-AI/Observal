@@ -30,6 +30,7 @@ from schemas.agent import (
     ValidationResult,
 )
 from services.agent_config_generator import generate_agent_config
+from services.ide_feature_inference import compute_supported_ides, infer_required_features
 from services.registry_telemetry import emit_registry_event
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
@@ -263,6 +264,16 @@ async def create_agent(
                 order=i,
             )
         )
+
+    # Auto-infer IDE feature requirements from components
+    await db.flush()
+    skill_comp_ids = [c.component_id for c in agent.components if c.component_type == "skill"]
+    skill_listings_map: dict = {}
+    if skill_comp_ids:
+        rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+        skill_listings_map = {row.id: row for row in rows}
+    agent.required_ide_features = infer_required_features(agent, skill_listings=skill_listings_map)
+    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
 
     try:
         await db.commit()
@@ -586,6 +597,16 @@ async def update_agent(
                 )
             )
 
+    # Re-infer IDE features after component changes
+    await db.flush()
+    skill_comp_ids = [c.component_id for c in agent.components if c.component_type == "skill"]
+    skill_listings_map_update: dict = {}
+    if skill_comp_ids:
+        rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+        skill_listings_map_update = {row.id: row for row in rows}
+    agent.required_ide_features = infer_required_features(agent, skill_listings=skill_listings_map_update)
+    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
     name_map = await _resolve_component_names(agent.components, db)
@@ -679,7 +700,8 @@ async def install_agent(
         metadata={"ide": req.ide},
     )
 
-    return AgentInstallResponse(agent_id=resolved_agent_id, ide=req.ide, config_snippet=snippet)
+    warnings = snippet.pop("_warnings", [])
+    return AgentInstallResponse(agent_id=resolved_agent_id, ide=req.ide, config_snippet=snippet, warnings=warnings)
 
 
 @router.get("/{agent_id}/downloads")
@@ -986,6 +1008,16 @@ async def save_draft(
             )
         )
 
+    # Auto-infer IDE features for draft
+    await db.flush()
+    skill_comp_ids = [c.component_id for c in agent.components if c.component_type == "skill"]
+    skill_listings_map_draft: dict = {}
+    if skill_comp_ids:
+        rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+        skill_listings_map_draft = {row.id: row for row in rows}
+    agent.required_ide_features = infer_required_features(agent, skill_listings=skill_listings_map_draft)
+    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
     return _agent_to_response(agent, created_by_email=current_user.email, created_by_username=current_user.username)
@@ -1043,6 +1075,16 @@ async def update_draft(
                     config_override=cref.config_override,
                 )
             )
+
+    # Re-infer IDE features for draft update
+    await db.flush()
+    skill_comp_ids = [c.component_id for c in agent.components if c.component_type == "skill"]
+    skill_listings_map_draft_update: dict = {}
+    if skill_comp_ids:
+        rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
+        skill_listings_map_draft_update = {row.id: row for row in rows}
+    agent.required_ide_features = infer_required_features(agent, skill_listings=skill_listings_map_draft_update)
+    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
