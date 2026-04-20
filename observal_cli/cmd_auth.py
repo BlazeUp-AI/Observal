@@ -92,6 +92,7 @@ def login(
                     "access_token": data["access_token"],
                     "refresh_token": data["refresh_token"],
                     "user_id": user.get("id", ""),
+                    "user_name": user.get("name", ""),
                 }
             )
 
@@ -155,6 +156,7 @@ def register(
                 "access_token": data["access_token"],
                 "refresh_token": data["refresh_token"],
                 "user_id": user.get("id", ""),
+                "user_name": user.get("name", ""),
             }
         )
         rprint(
@@ -319,6 +321,7 @@ def _do_password_login(server_url: str, email: str, password: str):
                 "access_token": data["access_token"],
                 "refresh_token": data["refresh_token"],
                 "user_id": user.get("id", ""),
+                "user_name": user.get("name", ""),
             }
         )
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
@@ -782,9 +785,10 @@ def _configure_claude_code(server_url: str, access_token: str):
         stop_script = _find_hook_script("observal-stop-hook.sh")
         cfg = config.load()
         user_id = cfg.get("user_id", "")
+        user_name = cfg.get("user_name", "")
 
         desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-        desired_env = get_desired_env(server_url, hooks_token, user_id)
+        desired_env = get_desired_env(server_url, hooks_token, user_id, user_name)
 
         # Reconcile: non-destructive merge preserving foreign hooks/env
         changes = settings_reconciler.reconcile(desired_hooks, desired_env)

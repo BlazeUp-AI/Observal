@@ -17,6 +17,7 @@ payload=$(cat)
 # Try to send to server first
 if echo "$payload" | curl -sf --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
   ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
+  ${OBSERVAL_USERNAME:+-H "X-Observal-Username: $OBSERVAL_USERNAME"} \
   -H "Content-Type: application/json" \
   -d @- >/dev/null 2>&1; then
     # Success — flush any buffered events in the background

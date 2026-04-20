@@ -179,16 +179,18 @@ def main():
     if not payload.get("session_id"):
         payload["session_id"] = f"kiro-{os.getppid()}"
 
-    # Inject user_id from Observal config if not already present
-    if not payload.get("user_id"):
+    # Inject user_id and user_name from Observal config if not already present
+    if not payload.get("user_id") or not payload.get("user_name"):
         try:
             cfg_path = Path.home() / ".observal" / "config.json"
             if cfg_path.exists():
                 import json as _json
 
                 cfg = _json.loads(cfg_path.read_text())
-                if cfg.get("user_id"):
+                if not payload.get("user_id") and cfg.get("user_id"):
                     payload["user_id"] = cfg["user_id"]
+                if not payload.get("user_name") and cfg.get("user_name"):
+                    payload["user_name"] = cfg["user_name"]
         except Exception:
             pass
 
