@@ -153,15 +153,35 @@ def skill_install(
     skill_id: str = typer.Argument(..., help="Skill ID, name, row number, or @alias"),
     ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
+    no_write: bool = typer.Option(False, "--no-write", help="Print config without writing files"),
 ):
-    """Get install config for a skill."""
+    """Install a skill — writes the skill file to disk and shows config."""
     resolved = config.resolve_alias(skill_id)
     with spinner(f"Generating {ide} config..."):
         result = client.post(f"/api/v1/skills/{resolved}/install", {"ide": ide})
     snippet = result.get("config_snippet", result)
+
     if raw:
         print(_json.dumps(snippet, indent=2))
         return
+
+    # Write the skill file to disk unless --no-write
+    skill_file = snippet.get("skill_file")
+    if skill_file and not no_write:
+        import os
+        from pathlib import Path
+
+        file_path = skill_file["path"]
+        if file_path.startswith("~/"):
+            file_path = str(Path.home() / file_path[2:])
+
+        dest = Path(file_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(skill_file["content"], encoding="utf-8")
+        rprint(f"[green]✓ Wrote skill file:[/green] {dest}")
+    elif skill_file:
+        rprint(f"[dim]Skill file (not written):[/dim] {skill_file['path']}")
+
     rprint(f"\n[bold]Config for {ide}:[/bold]\n")
     console.print_json(_json.dumps(snippet, indent=2))
 

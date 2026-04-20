@@ -295,6 +295,40 @@ def _build_mcp_entries(manifest: AgentManifest) -> dict:
     return entries
 
 
+def _build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
+    """Generate IDE-specific skill files from manifest skills."""
+    files: list[AgentFile] = []
+    for skill in manifest.components.skills:
+        name = _sanitize_name(skill.name)
+        desc = skill.description or ""
+
+        if ide in ("claude-code", "claude_code"):
+            content = f"---\nname: {name}\n"
+            if desc:
+                content += f'description: "{desc}"\n'
+            if skill.slash_command:
+                content += f"command: /{skill.slash_command}\n"
+            content += f"---\n\n{desc}\n"
+            files.append(AgentFile(path=f".claude/skills/{name}/SKILL.md", content=content, format="markdown"))
+
+        elif ide == "kiro":
+            content = f"---\nname: {name}\n"
+            if desc:
+                content += f'description: "{desc}"\n'
+            content += f"---\n\n{desc}\n"
+            files.append(AgentFile(path=f".kiro/skills/{name}/SKILL.md", content=content, format="markdown"))
+
+        elif ide == "cursor":
+            content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
+            files.append(AgentFile(path=f".cursor/rules/{name}.md", content=content, format="markdown"))
+
+        elif ide == "vscode":
+            content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
+            files.append(AgentFile(path=f".vscode/rules/{name}.md", content=content, format="markdown"))
+
+    return files
+
+
 def _build_rules_markdown(manifest: AgentManifest) -> str:
     """Build markdown rules content from the agent manifest."""
     sections = []
@@ -314,7 +348,8 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
         lines = ["## Skills", ""]
         for skill in manifest.components.skills:
             cmd = f" (`/{skill.slash_command}`)" if skill.slash_command else ""
-            lines.append(f"- **{skill.name}** v{skill.version}{cmd}")
+            desc = f" — {skill.description}" if skill.description else ""
+            lines.append(f"- **{skill.name}** v{skill.version}{cmd}{desc}")
         sections.append("\n".join(lines))
 
     if manifest.components.hooks:
@@ -358,6 +393,8 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
     frontmatter_lines.append("---")
     agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
+    skill_files = _build_skill_files(manifest, "claude-code")
+
     return IdeAgentConfig(
         ide="claude-code",
         files=[
@@ -366,6 +403,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
                 content=agent_content,
                 format="markdown",
             ),
+            *skill_files,
         ],
         mcp_servers=mcp_entries,
         env={
@@ -383,6 +421,8 @@ def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
 
+    skill_files = _build_skill_files(manifest, "cursor")
+
     return IdeAgentConfig(
         ide="cursor",
         files=[
@@ -396,6 +436,7 @@ def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
                 content={"mcpServers": mcp_entries},
                 format="json",
             ),
+            *skill_files,
         ],
         mcp_servers=mcp_entries,
     )
@@ -406,6 +447,8 @@ def _generate_vscode(manifest: AgentManifest) -> IdeAgentConfig:
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
+
+    skill_files = _build_skill_files(manifest, "vscode")
 
     return IdeAgentConfig(
         ide="vscode",
@@ -420,6 +463,7 @@ def _generate_vscode(manifest: AgentManifest) -> IdeAgentConfig:
                 content={"mcpServers": mcp_entries},
                 format="json",
             ),
+            *skill_files,
         ],
         mcp_servers=mcp_entries,
     )
@@ -463,6 +507,8 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
         "model": manifest.model_name or "default",
     }
 
+    skill_files = _build_skill_files(manifest, "kiro")
+
     return IdeAgentConfig(
         ide="kiro",
         files=[
@@ -471,6 +517,7 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
                 content=kiro_agent,
                 format="json",
             ),
+            *skill_files,
         ],
         mcp_servers=mcp_entries,
     )

@@ -119,7 +119,7 @@ async def install_skill(
 
     from services.skill_config_generator import generate_skill_config
 
-    config = generate_skill_config(listing, req.ide)
+    config = generate_skill_config(listing, req.ide, scope=req.scope)
     return SkillInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 

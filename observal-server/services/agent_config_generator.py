@@ -100,6 +100,75 @@ def _build_mcp_configs(
     return mcp_configs
 
 
+def _build_skill_configs(
+    agent: Agent,
+    skill_listings: dict | None = None,
+) -> list[dict]:
+    """Build skill metadata from registry skill components.
+
+    Returns a list of dicts with skill metadata (name, description, etc.)
+    that IDE-specific generators turn into skill files.
+    """
+    skill_listings = skill_listings or {}
+    skills: list[dict] = []
+
+    for comp in agent.components:
+        if comp.component_type != "skill":
+            continue
+        listing = skill_listings.get(comp.component_id)
+        if not listing:
+            continue
+        skills.append({
+            "name": _sanitize_name(listing.name),
+            "description": getattr(listing, "description", "") or "",
+            "slash_command": getattr(listing, "slash_command", None),
+            "task_type": getattr(listing, "task_type", ""),
+            "activation_keywords": getattr(listing, "activation_keywords", None),
+        })
+
+    return skills
+
+
+def _generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict:
+    """Generate an IDE-specific skill file entry.
+
+    Returns a dict with 'path' and 'content' keys, or None for
+    monolithic IDEs (Gemini, Codex, Copilot) that inline skills into rules.
+    """
+    name = skill["name"]
+    desc = skill.get("description", "")
+    slash_cmd = skill.get("slash_command")
+
+    if ide in ("claude-code", "claude_code"):
+        content = f"---\nname: {name}\n"
+        if desc:
+            content += f'description: "{desc}"\n'
+        if slash_cmd:
+            content += f"command: /{slash_cmd}\n"
+        content += f"---\n\n{desc}\n"
+        prefix = "~/.claude" if scope == "user" else ".claude"
+        return {"path": f"{prefix}/skills/{name}/SKILL.md", "content": content}
+
+    if ide == "kiro":
+        content = f"---\nname: {name}\n"
+        if desc:
+            content += f'description: "{desc}"\n'
+        content += f"---\n\n{desc}\n"
+        return {"path": f".kiro/skills/{name}/SKILL.md", "content": content}
+
+    if ide == "cursor":
+        prefix = "~/.cursor" if scope == "user" else ".cursor"
+        content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
+        return {"path": f"{prefix}/rules/{name}.md", "content": content}
+
+    if ide == "vscode":
+        content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
+        return {"path": f".vscode/rules/{name}.md", "content": content}
+
+    # Monolithic IDEs (gemini, codex, copilot) — no separate file
+    return None
+
+
 def _build_rules_content(agent: Agent, component_names: dict | None = None) -> str:
     """Build markdown rules content from the agent and its components.
 
@@ -149,6 +218,7 @@ def generate_agent_config(
     env_values: dict | None = None,
     options: dict | None = None,
     platform: str = "",
+    skill_listings: dict | None = None,
 ) -> dict:
     """Generate IDE-specific config for an agent.
 
@@ -157,10 +227,12 @@ def generate_agent_config(
         component_names: optional {component_id_str: name} map for all component types.
         env_values: optional {mcp_listing_id_str: {VAR: value}} map of user-supplied env var values.
         platform: client platform string (e.g. "win32", "darwin", "linux"). Empty = Unix default.
+        skill_listings: optional {component_id: SkillListing} map pre-loaded by caller.
     """
     safe_name = _sanitize_name(agent.name)
     mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings, env_values=env_values)
     rules_content = _build_rules_content(agent, component_names)
+    skill_configs = _build_skill_configs(agent, skill_listings)
     options = options or {}
 
     if ide == "kiro":
@@ -240,6 +312,10 @@ def generate_agent_config(
                     f"{agent.prompt}"
                 ),
             }
+        skill_files = [_generate_skill_file(s, "kiro") for s in skill_configs]
+        skill_files = [f for f in skill_files if f]
+        if skill_files:
+            result["skill_files"] = skill_files
         return result
 
     if ide in ("claude-code", "claude_code"):
@@ -281,7 +357,10 @@ def generate_agent_config(
         # Path: project-level (.claude/agents/) or user-level (~/.claude/agents/)
         agent_path = f"~/.claude/agents/{safe_name}.md" if scope == "user" else f".claude/agents/{safe_name}.md"
 
-        return {
+        skill_files = [_generate_skill_file(s, ide, scope) for s in skill_configs]
+        skill_files = [f for f in skill_files if f]
+
+        result = {
             "rules_file": {"path": agent_path, "content": agent_content},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
@@ -289,6 +368,9 @@ def generate_agent_config(
             "claude_settings_snippet": {"env": otlp},
             "scope": scope,
         }
+        if skill_files:
+            result["skill_files"] = skill_files
+        return result
 
     if ide in ("gemini-cli", "gemini_cli"):
         gemini_scope = options.get("scope", "project")
@@ -322,8 +404,13 @@ def generate_agent_config(
         "vscode": (".vscode/rules/{name}.md", ".vscode/mcp.json"),
     }
     rules_path, mcp_path = ide_paths.get(ide, (f".rules/{safe_name}.md", ".mcp.json"))
-    return {
+    skill_files = [_generate_skill_file(s, ide, ide_scope) for s in skill_configs]
+    skill_files = [f for f in skill_files if f]
+    result = {
         "rules_file": {"path": rules_path.format(name=safe_name), "content": rules_content},
         "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
         "scope": ide_scope,
     }
+    if skill_files:
+        result["skill_files"] = skill_files
+    return result
