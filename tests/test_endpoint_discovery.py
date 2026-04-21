@@ -37,6 +37,7 @@ def _import_derive_endpoints(settings_mock):
 
     try:
         from api.routes.config import derive_endpoints
+
         return derive_endpoints
     finally:
         # Restore
@@ -127,9 +128,7 @@ class TestHooksSpecOtlpGrpc:
     def test_uses_passed_otlp_grpc_url(self):
         from observal_cli.hooks_spec import get_desired_env
 
-        env = get_desired_env(
-            "http://localhost:8000", "token123", otlp_grpc_url="https://otel.company.com:4317"
-        )
+        env = get_desired_env("http://localhost:8000", "token123", otlp_grpc_url="https://otel.company.com:4317")
         assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://otel.company.com:4317"
 
     def test_derives_when_no_otlp_grpc_url(self):
