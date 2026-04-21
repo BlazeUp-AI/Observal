@@ -430,6 +430,117 @@ def _scan_gemini_home(
     return mcps, skills, hooks, agents
 
 
+def _scan_codex_home(
+    codex_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.codex for MCP servers from config.toml."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    config_file = codex_dir / "config.toml"
+    if config_file.exists():
+        try:
+            try:
+                import tomllib as toml
+            except ImportError:
+                try:
+                    import tomli as toml  # type: ignore[no-redef]
+                except ImportError:
+                    import toml  # type: ignore[no-redef]
+            content = config_file.read_text()
+            data = toml.loads(content) if hasattr(toml, "loads") else toml.load(config_file.open("rb"))  # type: ignore[call-arg]
+            servers = data.get("mcp", {}).get("servers", {})
+            for srv_name, srv_config in servers.items():
+                if isinstance(srv_config, dict):
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=srv_name,
+                            command=srv_config.get("command"),
+                            args=srv_config.get("args", []),
+                            url=srv_config.get("url"),
+                            description=f"Codex MCP: {srv_name}",
+                            source="codex:global",
+                        )
+                    )
+        except Exception:
+            pass
+
+    return mcps, skills, hooks, agents
+
+
+def _scan_copilot_home(
+    vscode_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.vscode or project .vscode for Copilot MCP servers from mcp.json."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    mcp_file = vscode_dir / "mcp.json"
+    if mcp_file.exists():
+        try:
+            data = json.loads(mcp_file.read_text())
+            servers = data.get("servers", data.get("mcpServers", {}))
+            for srv_name, srv_config in servers.items():
+                if isinstance(srv_config, dict):
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=srv_name,
+                            command=srv_config.get("command"),
+                            args=srv_config.get("args", []),
+                            url=srv_config.get("url"),
+                            description=f"Copilot MCP: {srv_name}",
+                            source="copilot:global",
+                        )
+                    )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return mcps, skills, hooks, agents
+
+
+def _scan_opencode_home(
+    opencode_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.config/opencode for MCP servers from opencode.json."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    config_file = opencode_dir / "opencode.json"
+    if config_file.exists():
+        try:
+            data = json.loads(config_file.read_text())
+            servers = data.get("mcp", {})
+            for srv_name, srv_config in servers.items():
+                if isinstance(srv_config, dict):
+                    cmd = srv_config.get("command")
+                    if isinstance(cmd, list):
+                        command = cmd[0] if cmd else None
+                        args = cmd[1:] if len(cmd) > 1 else []
+                    else:
+                        command = cmd
+                        args = srv_config.get("args", [])
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=srv_name,
+                            command=command,
+                            args=args,
+                            url=srv_config.get("url"),
+                            description=f"OpenCode MCP: {srv_name}",
+                            source="opencode:global",
+                        )
+                    )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return mcps, skills, hooks, agents
+
+
 def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
     """Extract server entries from .mcp.json, handling both formats.
 
@@ -631,7 +742,7 @@ def register_scan(app: typer.Typer):
         ide: str | None = typer.Option(None, "--ide", "-i", help="Target IDE (auto-detected if omitted)"),
         home: bool = typer.Option(False, "--home", help="Scan IDE home directories for plugins, agents, skills, hooks"),
         all_ides: bool = typer.Option(
-            False, "--all-ides", help="Scan home directories for ALL IDEs (Claude Code, Kiro, Gemini CLI)"
+            False, "--all-ides", help="Scan home directories for ALL supported IDEs"
         ),
         dry_run: bool = typer.Option(
             False, "--dry-run", "-n", help="Show what would be registered without making changes"
@@ -663,23 +774,37 @@ def register_scan(app: typer.Typer):
         scan_claude = False
         scan_kiro = False
         scan_gemini = False
+        scan_codex = False
+        scan_copilot = False
+        scan_opencode = False
 
         if all_ides:
             home = True  # --all-ides implies --home
             scan_claude = True
             scan_kiro = True
             scan_gemini = True
+            scan_codex = True
+            scan_copilot = True
+            scan_opencode = True
         elif home:
             if ide == "kiro":
                 scan_kiro = True
             elif ide == "gemini-cli":
                 scan_gemini = True
+            elif ide == "codex":
+                scan_codex = True
+            elif ide == "copilot":
+                scan_copilot = True
+            elif ide == "opencode":
+                scan_opencode = True
             elif ide == "claude-code" or ide is None:
                 scan_claude = True
-                # When no --ide specified, also scan kiro and gemini if they exist
                 if ide is None:
                     scan_kiro = True
                     scan_gemini = True
+                    scan_codex = True
+                    scan_copilot = True
+                    scan_opencode = True
 
         # ── Scan ~/.claude ─────────────────────────────
         if scan_claude:
@@ -722,6 +847,48 @@ def register_scan(app: typer.Typer):
                 scanned_ides.append("gemini-cli")
             elif not all_ides:
                 rprint("[yellow]~/.gemini directory not found.[/yellow]")
+
+        # ── Scan ~/.codex ────────────────────────────
+        if scan_codex:
+            codex_dir = Path.home() / ".codex"
+            if codex_dir.is_dir():
+                with spinner("Scanning ~/.codex..."):
+                    cx_mcps, cx_skills, cx_hooks, cx_agents = _scan_codex_home(codex_dir)
+                all_mcps.extend(cx_mcps)
+                all_skills.extend(cx_skills)
+                all_hooks.extend(cx_hooks)
+                all_agents.extend(cx_agents)
+                scanned_ides.append("codex")
+            elif not all_ides:
+                rprint("[yellow]~/.codex directory not found.[/yellow]")
+
+        # ── Scan ~/.vscode (Copilot) ─────────────────
+        if scan_copilot:
+            vscode_dir = Path.home() / ".vscode"
+            if vscode_dir.is_dir():
+                with spinner("Scanning ~/.vscode..."):
+                    cp_mcps, cp_skills, cp_hooks, cp_agents = _scan_copilot_home(vscode_dir)
+                all_mcps.extend(cp_mcps)
+                all_skills.extend(cp_skills)
+                all_hooks.extend(cp_hooks)
+                all_agents.extend(cp_agents)
+                scanned_ides.append("copilot")
+            elif not all_ides:
+                rprint("[yellow]~/.vscode directory not found.[/yellow]")
+
+        # ── Scan ~/.config/opencode ──────────────────
+        if scan_opencode:
+            opencode_dir = Path.home() / ".config" / "opencode"
+            if opencode_dir.is_dir():
+                with spinner("Scanning ~/.config/opencode..."):
+                    oc_mcps, oc_skills, oc_hooks, oc_agents = _scan_opencode_home(opencode_dir)
+                all_mcps.extend(oc_mcps)
+                all_skills.extend(oc_skills)
+                all_hooks.extend(oc_hooks)
+                all_agents.extend(oc_agents)
+                scanned_ides.append("opencode")
+            elif not all_ides:
+                rprint("[yellow]~/.config/opencode directory not found.[/yellow]")
 
         # ── Scan project directory (or home) ────────
         # If --home is passed, we should also scan the home directory using _IDE_PROJECT_CONFIGS

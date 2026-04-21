@@ -442,6 +442,7 @@ def _post_auth_onboarding():
             "Cursor": (Path.home() / ".cursor", "cursor"),
             "Gemini CLI": (Path.home() / ".gemini", "gemini-cli"),
             "Codex": (Path.home() / ".codex", "codex"),
+            "Copilot": (Path.home() / ".vscode", "copilot"),
             "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
         }
 
@@ -495,14 +496,14 @@ def _post_auth_onboarding():
                     except Exception:
                         pass
             else:
-                # Cursor: just check for mcp.json
+                # Cursor / Copilot: check for mcp.json
                 mcp_file = dir_path / "mcp.json"
                 if mcp_file.exists():
                     try:
                         import json as _j
 
                         data = _j.loads(mcp_file.read_text())
-                        mcps = len(data.get("mcpServers", {}))
+                        mcps = len(data.get("mcpServers", data.get("servers", {})))
                     except Exception:
                         pass
             if agents > 0 or mcps > 0:
@@ -531,8 +532,24 @@ def _post_auth_onboarding():
 
         # Run scan for each selected IDE using the existing scan machinery
         from observal_cli import client
-        from observal_cli.cmd_scan import _scan_claude_home, _scan_gemini_home, _scan_kiro_home
+        from observal_cli.cmd_scan import (
+            _scan_claude_home,
+            _scan_codex_home,
+            _scan_copilot_home,
+            _scan_gemini_home,
+            _scan_kiro_home,
+            _scan_opencode_home,
+        )
         from observal_cli.render import spinner
+
+        _scan_fns = {
+            "claude-code": (Path.home() / ".claude", _scan_claude_home),
+            "kiro": (Path.home() / ".kiro", _scan_kiro_home),
+            "gemini-cli": (Path.home() / ".gemini", _scan_gemini_home),
+            "codex": (Path.home() / ".codex", _scan_codex_home),
+            "copilot": (Path.home() / ".vscode", _scan_copilot_home),
+            "opencode": (Path.home() / ".config" / "opencode", _scan_opencode_home),
+        }
 
         all_mcps: list = []
         all_skills: list = []
@@ -540,20 +557,10 @@ def _post_auth_onboarding():
         all_agents: list = []
 
         for _label, ide_key, _a, _m in found:
-            if ide_key == "claude-code":
-                m, s, h, a = _scan_claude_home(Path.home() / ".claude")
-                all_mcps.extend(m)
-                all_skills.extend(s)
-                all_hooks.extend(h)
-                all_agents.extend(a)
-            elif ide_key == "kiro":
-                m, s, h, a = _scan_kiro_home(Path.home() / ".kiro")
-                all_mcps.extend(m)
-                all_skills.extend(s)
-                all_hooks.extend(h)
-                all_agents.extend(a)
-            elif ide_key == "gemini-cli":
-                m, s, h, a = _scan_gemini_home(Path.home() / ".gemini")
+            entry = _scan_fns.get(ide_key)
+            if entry:
+                scan_dir, scan_fn = entry
+                m, s, h, a = scan_fn(scan_dir)
                 all_mcps.extend(m)
                 all_skills.extend(s)
                 all_hooks.extend(h)
@@ -570,6 +577,10 @@ def _post_auth_onboarding():
                 return "claude-code"
             if source.startswith("gemini:"):
                 return "gemini-cli"
+            if source.startswith("codex:"):
+                return "codex"
+            if source.startswith("copilot:"):
+                return "copilot"
             if source.startswith("opencode:"):
                 return "opencode"
             return "auto"
