@@ -5,7 +5,8 @@ Hardened against BenchJack Pattern 4 (prompt injection in agent output).
 """
 
 import json
-import logging
+
+import structlog
 
 from models.scoring import ScoringDimension
 from schemas.judge_output import (
@@ -18,7 +19,7 @@ from schemas.judge_output import (
 )
 from services.eval.eval_engine import EvalBackend
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # --- Hardened Prompt Templates ---

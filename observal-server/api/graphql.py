@@ -1,11 +1,11 @@
 """Strawberry GraphQL schema: types, resolvers, DataLoaders, subscriptions."""
 
 import json
-import logging
 from collections.abc import AsyncGenerator
 
 import jwt
 import strawberry
+import structlog
 from starlette.requests import Request
 from strawberry.dataloader import DataLoader
 from strawberry.scalars import JSON
@@ -20,7 +20,7 @@ from services.clickhouse import (
 from services.jwt_service import decode_access_token
 from services.redis import subscribe
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _DEFAULT_PROJECT = "default"
 

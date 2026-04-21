@@ -1,11 +1,11 @@
 import asyncio
 import json
-import logging
 import re
 import time as _time
 import uuid as _uuid
 from datetime import UTC, datetime
 
+import structlog
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi_cache.decorator import cache
 from sqlalchemy import or_, select
@@ -18,7 +18,7 @@ from services.clickhouse import _query, query_shim_spans_for_window
 from services.redis import publish
 from services.secrets_redactor import redact_secrets
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
 
 # Normalize legacy ServiceName values to canonical IDE names.

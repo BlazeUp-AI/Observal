@@ -1,8 +1,8 @@
 import json
-import logging
 import uuid
 
 import httpx
+import structlog
 
 from config import settings
 from models.agent import Agent
@@ -18,7 +18,7 @@ from services.eval.score_aggregator import ScoreAggregator
 from services.eval.slm_scorer import SLMScorer
 from services.eval.structural_scorer import StructuralScorer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 DIMENSIONS = [
     "task_completion",

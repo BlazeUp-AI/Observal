@@ -1,13 +1,13 @@
 """Redis client and pub/sub helpers for background jobs and subscriptions."""
 
 import json
-import logging
 
 import redis.asyncio as aioredis
+import structlog
 
 from config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _pool: aioredis.ConnectionPool | None = None
 

@@ -5,17 +5,17 @@ Designed as a pluggable interface so ITJ can replace LLM-as-judge later.
 """
 
 import json
-import logging
 import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 
 import httpx
+import structlog
 
 from config import settings
 from services.clickhouse import insert_scores, query_spans, query_trace_by_id
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # --- Managed eval templates (no custom authoring) ---
 

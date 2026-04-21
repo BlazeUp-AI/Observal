@@ -1,14 +1,14 @@
 import json
-import logging
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
+import structlog
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config import settings
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 async def _invalidate_cache():

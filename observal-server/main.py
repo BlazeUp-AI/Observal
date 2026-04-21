@@ -1,4 +1,3 @@
-import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -23,7 +22,6 @@ from api.graphql import get_context_dep, schema
 from api.middleware.content_type import ContentTypeMiddleware
 from api.middleware.request_id import RequestIDMiddleware
 from api.ratelimit import limiter
-from logging_config import setup_logging
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.alert import router as alert_router
@@ -47,6 +45,7 @@ from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
 from config import settings
 from database import engine
+from logging_config import setup_logging
 from models import Base
 from models.user import User
 from services.cache import close_cache, init_cache

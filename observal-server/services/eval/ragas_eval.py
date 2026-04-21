@@ -18,14 +18,15 @@ References:
 Content was rephrased for compliance with licensing restrictions.
 """
 
-import logging
 import uuid
 from datetime import UTC, datetime
+
+import structlog
 
 from services.clickhouse import insert_scores
 from services.eval.eval_engine import _call_model
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 RAGAS_DIMENSIONS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
 
