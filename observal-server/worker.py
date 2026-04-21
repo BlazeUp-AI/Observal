@@ -1,15 +1,16 @@
 """arq background worker for eval jobs and async tasks."""
 
-import logging
-
+import structlog
 from arq.connections import RedisSettings
 from arq.cron import cron
 
 from config import settings
+from logging_config import setup_logging
 from services.alert_evaluator import evaluate_alerts
 from services.redis import publish
 
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = structlog.get_logger(__name__)
 
 
 def _redis_settings() -> RedisSettings:
@@ -27,7 +28,7 @@ def _redis_settings() -> RedisSettings:
 
 async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None, project_id: str = "default"):
     """Background job: run eval on an agent's traces."""
-    logger.info(f"Running eval for agent={agent_id} trace={trace_id} project={project_id}")
+    logger.info("eval_started", agent_id=agent_id, trace_id=trace_id, project_id=project_id)
     try:
         from services.clickhouse import query_traces
         from services.eval.eval_engine import run_eval_on_trace
@@ -56,7 +57,7 @@ async def run_eval(ctx: dict, agent_id: str, trace_id: str | None = None, projec
                     },
                 )
     except Exception as e:
-        logger.exception(f"Eval job failed: {e}")
+        logger.exception("eval_failed", error=str(e))
 
 
 async def sync_component_sources(ctx: dict):
