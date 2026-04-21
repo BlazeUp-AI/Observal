@@ -105,11 +105,13 @@ def _check_claude_code(path: Path, data: dict, issues: list, warnings: list):
     # allowedHttpHookUrls blocks our endpoint
     allowed_urls = data.get("allowedHttpHookUrls")
     if isinstance(allowed_urls, list) and len(allowed_urls) > 0:
-        has_observal = any("localhost:8000" in u or "observal" in u.lower() for u in allowed_urls)
+        cfg = config.load()
+        cfg_server = cfg.get("server_url", "localhost:8000")
+        has_observal = any(cfg_server in u or "observal" in u.lower() for u in allowed_urls)
         if not has_observal:
             issues.append(
                 f"{path}: `allowedHttpHookUrls` is set but does not include Observal's URL. "
-                "Add `http://localhost:8000/*` to allow hook telemetry."
+                f"Add `{cfg_server.rstrip('/')}/*` to allow hook telemetry."
             )
 
     # httpHookAllowedEnvVars blocks OBSERVAL_API_KEY
@@ -142,11 +144,16 @@ def _check_claude_code(path: Path, data: dict, issues: list, warnings: list):
     network = sandbox.get("network", {})
     allowed_domains = network.get("allowedDomains", [])
     if isinstance(allowed_domains, list) and len(allowed_domains) > 0:
-        has_localhost = any("localhost" in d for d in allowed_domains)
-        if not has_localhost:
+        cfg = config.load()
+        cfg_server = cfg.get("server_url", "http://localhost:8000")
+        from urllib.parse import urlparse
+
+        cfg_host = urlparse(cfg_server).hostname or "localhost"
+        has_server_host = any(cfg_host in d for d in allowed_domains)
+        if not has_server_host:
             warnings.append(
-                f"{path}: sandbox `network.allowedDomains` does not include `localhost`. "
-                "Observal telemetry POSTs to localhost:8000."
+                f"{path}: sandbox `network.allowedDomains` does not include `{cfg_host}`. "
+                f"Observal telemetry POSTs to {cfg_server}."
             )
 
     # env vars that override Observal
@@ -604,7 +611,9 @@ def doctor(
             if "disableAllHooks" in issue:
                 rprint("  Set `disableAllHooks: false` in your Claude Code settings.json")
             elif "allowedHttpHookUrls" in issue:
-                rprint('  Add `"http://localhost:8000/*"` to `allowedHttpHookUrls`')
+                cfg = config.load()
+                cfg_server = cfg.get("server_url", "http://localhost:8000").rstrip("/")
+                rprint(f'  Add `"{cfg_server}/*"` to `allowedHttpHookUrls`')
             elif "OBSERVAL_API_KEY" in issue and "httpHookAllowedEnvVars" in issue:
                 rprint('  Add `"OBSERVAL_API_KEY"` to `httpHookAllowedEnvVars`')
             elif "allowManagedHooksOnly" in issue:

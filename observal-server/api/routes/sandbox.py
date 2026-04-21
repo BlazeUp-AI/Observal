@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +98,7 @@ async def get_sandbox(listing_id: str, db: AsyncSession = Depends(get_db)):
 async def install_sandbox(
     listing_id: str,
     req: SandboxInstallRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
@@ -112,7 +113,8 @@ async def install_sandbox(
 
     from services.sandbox_config_generator import generate_sandbox_config
 
-    config = generate_sandbox_config(listing, req.ide)
+    server_url = str(request.base_url).rstrip("/")
+    config = generate_sandbox_config(listing, req.ide, server_url=server_url)
     return SandboxInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 

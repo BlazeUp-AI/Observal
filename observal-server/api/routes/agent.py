@@ -709,9 +709,11 @@ async def install_agent(
     # Resolve all component names for rules file content
     name_map = await _resolve_component_names(agent.components, db)
 
+    server_url = str(request.base_url).rstrip("/")
     snippet = generate_agent_config(
         agent,
         req.ide,
+        observal_url=server_url,
         mcp_listings=mcp_listings_map,
         component_names=name_map,
         env_values=req.env_values,
