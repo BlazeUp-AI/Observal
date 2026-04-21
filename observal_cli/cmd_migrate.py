@@ -194,7 +194,9 @@ async def _connect(db_url: str) -> asyncpg.Connection:
     try:
         import asyncpg
     except ImportError:
-        rprint("[red]asyncpg not found.[/red] Install the migrate extra: [bold]pip install 'observal-cli[migrate]'[/bold]")
+        rprint(
+            "[red]asyncpg not found.[/red] Install the migrate extra: [bold]pip install 'observal-cli[migrate]'[/bold]"
+        )
         raise typer.Exit(1)
 
     # Strip SQLAlchemy dialect suffixes (e.g. postgresql+asyncpg:// → postgresql://)
@@ -271,7 +273,9 @@ async def _flush_batch(
     try:
         import asyncpg
     except ImportError:
-        rprint("[red]asyncpg not found.[/red] Install the migrate extra: [bold]pip install 'observal-cli[migrate]'[/bold]")
+        rprint(
+            "[red]asyncpg not found.[/red] Install the migrate extra: [bold]pip install 'observal-cli[migrate]'[/bold]"
+        )
         raise typer.Exit(1)
 
     if not batch:

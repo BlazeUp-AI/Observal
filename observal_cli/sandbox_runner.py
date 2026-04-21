@@ -45,7 +45,9 @@ def run_sandbox(sandbox_id: str, image: str, command: str | None = None, timeout
         import typer
         from rich import print as rprint
 
-        rprint("[red]Docker SDK not found.[/red] Install the sandbox extra: [bold]pip install 'observal-cli[sandbox]'[/bold]")
+        rprint(
+            "[red]Docker SDK not found.[/red] Install the sandbox extra: [bold]pip install 'observal-cli[sandbox]'[/bold]"
+        )
         raise typer.Exit(1)
 
     client = docker.from_env()
