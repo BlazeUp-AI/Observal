@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -101,6 +101,7 @@ async def get_hook(listing_id: str, db: AsyncSession = Depends(get_db)):
 async def install_hook(
     listing_id: str,
     req: HookInstallRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
@@ -115,7 +116,8 @@ async def install_hook(
 
     from services.hook_config_generator import generate_hook_telemetry_config
 
-    config = generate_hook_telemetry_config(listing, req.ide, platform=req.platform)
+    server_url = str(request.base_url).rstrip("/")
+    config = generate_hook_telemetry_config(listing, req.ide, server_url=server_url, platform=req.platform)
     return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 

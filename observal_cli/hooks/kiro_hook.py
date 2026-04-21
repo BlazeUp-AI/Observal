@@ -7,8 +7,10 @@ the full enrichment in ``kiro_stop_hook.py`` — it only reads the
 conversation_id column, not the multi-MB conversation JSON.
 
 Usage (in a Kiro agent hook):
-    Unix:    cat | python3 /path/to/kiro_hook.py --url http://localhost:8000/api/v1/otel/hooks
-    Windows: python -m observal_cli.hooks.kiro_hook --url http://localhost:8000/api/v1/otel/hooks --agent-name my-agent
+    Unix:    cat | python3 /path/to/kiro_hook.py --url https://your-server/api/v1/otel/hooks
+    Windows: python -m observal_cli.hooks.kiro_hook --url https://your-server/api/v1/otel/hooks --agent-name my-agent
+
+URL resolution order: --url flag > OBSERVAL_HOOKS_URL env var > ~/.observal/config.json server_url > localhost:8000
 """
 
 from __future__ import annotations
@@ -137,10 +139,27 @@ def _auto_inject_hooks(url: str):
             pass
 
 
+def _resolve_hooks_url() -> str:
+    """Resolve the hooks URL from env var or config file."""
+    env_url = os.environ.get("OBSERVAL_HOOKS_URL")
+    if env_url:
+        return env_url
+    try:
+        cfg_path = Path.home() / ".observal" / "config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text())
+            server_url = cfg.get("server_url", "")
+            if server_url:
+                return server_url.rstrip("/") + "/api/v1/otel/hooks"
+    except Exception:
+        pass
+    return "http://localhost:8000/api/v1/otel/hooks"
+
+
 def main():
     import urllib.request
 
-    url = "http://localhost:8000/api/v1/otel/hooks"
+    url = ""
     agent_name = ""
     model = ""
     args = sys.argv[1:]
@@ -151,6 +170,9 @@ def main():
             agent_name = args[i + 1]
         elif arg == "--model" and i + 1 < len(args):
             model = args[i + 1]
+
+    if not url:
+        url = _resolve_hooks_url()
 
     try:
         raw = sys.stdin.read()

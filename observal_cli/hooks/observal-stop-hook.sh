@@ -12,7 +12,20 @@
 # IMPORTANT: No `set -eu` — we must never exit early and always reach
 # the final exit 0 so Claude Code doesn't see a hook failure.
 
-OBSERVAL_HOOKS_URL="${OBSERVAL_HOOKS_URL:-http://localhost:8000/api/v1/otel/hooks}"
+if [ -z "$OBSERVAL_HOOKS_URL" ]; then
+  _cfg="$HOME/.observal/config.json"
+  if [ -f "$_cfg" ] && command -v python3 >/dev/null 2>&1; then
+    OBSERVAL_HOOKS_URL=$(python3 -c "
+import json, sys
+try:
+    c = json.load(open('$_cfg'))
+    u = c.get('server_url','')
+    if u: print(u.rstrip('/') + '/api/v1/otel/hooks')
+except Exception: pass
+" 2>/dev/null)
+  fi
+  OBSERVAL_HOOKS_URL="${OBSERVAL_HOOKS_URL:-http://localhost:8000/api/v1/otel/hooks}"
+fi
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Read hook payload from stdin
