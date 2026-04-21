@@ -38,7 +38,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')\""]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -186,6 +186,25 @@ services:
     depends_on:
       observal-clickhouse:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - observal-net
+
+  observal-prometheus:
+    image: prom/prometheus:v3.4.2
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    volumes:
+      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      observal-api:
+        condition: service_healthy
+    restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     deploy:

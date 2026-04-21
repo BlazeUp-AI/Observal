@@ -1,0 +1,235 @@
+{
+  "uid": "observal-self-observability",
+  "title": "Observal API Health",
+  "description": "Self-observability: uptime, traffic, latency, errors, and resource usage",
+  "tags": ["observal", "ops"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Overview",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "id": 1,
+      "title": "API Status",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 0, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "up{job=\"observal-api\"}", "legendFormat": "" }],
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "Healthy", "color": "green" } } },
+            { "type": "value", "options": { "0": { "text": "Down", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 3, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "time() - process_start_time_seconds{job=\"observal-api\"}", "legendFormat": "" }],
+      "options": { "colorMode": "none", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "dtdurations" } }
+    },
+    {
+      "id": 3,
+      "title": "Req/min",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 6, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum(rate(http_requests_total[1m])) * 60", "legendFormat": "" }],
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "decimals": 1, "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+    {
+      "id": 4,
+      "title": "Errors (5xx)",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 9, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "sum(rate(http_requests_total{status=\"5xx\"}[5m])) / sum(rate(http_requests_total[5m])) * 100 or vector(0)", "legendFormat": "" }],
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "yellow" }, { "value": 5, "color": "red" }] }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "p95 Latency",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 12, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_highr_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "" }],
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 500, "color": "yellow" }, { "value": 2000, "color": "red" }] }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Memory (RSS)",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 15, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "process_resident_memory_bytes{job=\"observal-api\"}", "legendFormat": "" }],
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "green" }, { "value": 400000000, "color": "yellow" }, { "value": 500000000, "color": "red" }] }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "CPU",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 18, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "rate(process_cpu_seconds_total{job=\"observal-api\"}[1m]) * 100", "legendFormat": "" }],
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "color": { "mode": "fixed", "fixedColor": "orange" } } }
+    },
+    {
+      "id": 15,
+      "title": "Open FDs",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 3, "x": 21, "y": 1 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "process_open_fds{job=\"observal-api\"}", "legendFormat": "" }],
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" } } }
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "Traffic",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "collapsed": false
+    },
+    {
+      "id": 7,
+      "title": "Request Rate by Status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{status=\"2xx\"}[1m]))", "legendFormat": "2xx" },
+        { "expr": "sum(rate(http_requests_total{status=\"4xx\"}[1m]))", "legendFormat": "4xx" },
+        { "expr": "sum(rate(http_requests_total{status=\"5xx\"}[1m]))", "legendFormat": "5xx" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "spanNulls": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 8,
+      "title": "Response Time Percentiles",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_highr_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_highr_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_highr_seconds_bucket[5m])) by (le)) * 1000", "legendFormat": "p99" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never", "spanNulls": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p50" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] },
+          { "matcher": { "id": "byName", "options": "p99" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 9,
+      "title": "Top Endpoints (1h)",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "topk(8, sum by (handler) (increase(http_requests_total[1h])))", "legendFormat": "{{handler}}" }],
+      "options": { "legend": { "placement": "right", "displayMode": "table", "values": ["value"] }, "pieType": "donut" }
+    },
+    {
+      "id": 10,
+      "title": "Avg Response Size",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 13 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "rate(http_response_size_bytes_sum[5m]) / rate(http_response_size_bytes_count[5m])", "legendFormat": "{{handler}}" }],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never", "spanNulls": true } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "Resources",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "collapsed": false
+    },
+    {
+      "id": 11,
+      "title": "Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [
+        { "expr": "process_resident_memory_bytes{job=\"observal-api\"}", "legendFormat": "RSS" },
+        { "expr": "536870912", "legendFormat": "Limit (512 MB)" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "min": 0, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "spanNulls": true } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "RSS" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "Limit (512 MB)" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }, { "id": "custom.fillOpacity", "value": 0 }, { "id": "custom.lineWidth", "value": 1 }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 12,
+      "title": "CPU",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "uid": "observal-prometheus", "type": "prometheus" },
+      "targets": [{ "expr": "rate(process_cpu_seconds_total{job=\"observal-api\"}[1m]) * 100", "legendFormat": "CPU %" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "spanNulls": true },
+          "color": { "mode": "fixed", "fixedColor": "orange" }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 4
+}
