@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { registry, type RegistryType } from "@/lib/api";
 import { Copy, Check, Download, AlertTriangle } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils";
 
 const IDE_OPTIONS = [
   "Cursor",
@@ -50,7 +51,7 @@ export function InstallDialog({ type, id, name }: InstallDialogProps) {
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(config);
+    copyToClipboard(config);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

@@ -5,6 +5,7 @@ import { Users, Plus, Copy, Check, Loader2, Key, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminUsers, useCreateUser, useUpdateUserRole, useDeleteUser } from "@/hooks/use-api";
 import type { AdminUser } from "@/lib/types";
+import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -78,7 +79,7 @@ export default function UsersPage() {
 
   const handleCopyPassword = useCallback(() => {
     if (!createdPassword) return;
-    navigator.clipboard.writeText(createdPassword);
+    copyToClipboard(createdPassword);
     setCopied(true);
     toast.success("Password copied");
     setTimeout(() => setCopied(false), 2000);

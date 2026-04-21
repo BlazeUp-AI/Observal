@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useRegistryItem, useFeedback, useFeedbackSummary, useRegistryMetrics } from "@/hooks/use-api";
 import type { RegistryType } from "@/lib/api";
 import type { FeedbackItem, RegistryItem } from "@/lib/types";
+import { copyToClipboard } from "@/lib/utils";
 import Link from "next/link";
 import { ReviewForm } from "@/components/registry/review-form";
 import { Badge } from "@/components/ui/badge";
@@ -284,7 +285,7 @@ function InstallSnippet({ type, name }: { type: string; name: string }) {
   const cmd = `observal agent add ${type} ${name}`;
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(cmd);
+    copyToClipboard(cmd);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);

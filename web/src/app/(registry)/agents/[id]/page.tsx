@@ -44,7 +44,7 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { DetailSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
-import { compactNumber } from "@/lib/utils";
+import { compactNumber, copyToClipboard } from "@/lib/utils";
 
 interface AgentDetail {
   name: string;
@@ -774,7 +774,7 @@ function ConfigSnippet({
   );
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(snippet);
+    copyToClipboard(snippet);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);

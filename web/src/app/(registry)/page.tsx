@@ -27,6 +27,7 @@ import {
   useLeaderboard,
 } from "@/hooks/use-api";
 import { useRouter } from "next/navigation";
+import { copyToClipboard } from "@/lib/utils";
 import { PageHeader } from "@/components/layouts/page-header";
 import { CardSkeleton, TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -60,7 +61,7 @@ export default function RegistryHome() {
   }
 
   const handleHeroCopy = useCallback(() => {
-    navigator.clipboard.writeText("observal pull my-agent --ide cursor");
+    copyToClipboard("observal pull my-agent --ide cursor");
     setHeroCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setHeroCopied(false), 2000);

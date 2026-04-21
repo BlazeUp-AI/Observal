@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
 import { toast } from "sonner";
+import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -29,7 +30,7 @@ export function PullCommand({ agentName }: { agentName: string }) {
   const command = `observal pull ${agentName} --ide ${ide}`;
 
   function handleCopy() {
-    navigator.clipboard.writeText(command);
+    copyToClipboard(command);
     setCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
