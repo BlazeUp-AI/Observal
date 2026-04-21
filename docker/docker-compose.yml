@@ -88,7 +88,7 @@ services:
     volumes:
       - chdata:/var/lib/clickhouse
       - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
-      - ./clickhouse/users.d:/etc/clickhouse-server/users.d:ro
+      - ./clickhouse/users.d:/etc/clickhouse-server/users.d
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
       interval: 5s

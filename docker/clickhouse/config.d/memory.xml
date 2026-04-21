@@ -1,13 +1,9 @@
 <clickhouse>
+    <!-- Listen on all interfaces (required for Docker networking) -->
+    <listen_host>::</listen_host>
+    <listen_host>0.0.0.0</listen_host>
+    <listen_try>1</listen_try>
+
     <!-- Cap ClickHouse to 80% of container RAM; leaves headroom for OS page cache -->
     <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
-
-    <!-- Limit background merge threads to reduce memory spikes from concurrent merges -->
-    <background_pool_size>2</background_pool_size>
-    <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
-
-    <!-- Async-insert server-side settings: flush every 200ms or 1M bytes,
-         whichever comes first.  Keeps the in-memory buffer small. -->
-    <async_insert_max_data_size>1048576</async_insert_max_data_size>
-    <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
 </clickhouse>

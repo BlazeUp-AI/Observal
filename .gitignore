@@ -32,6 +32,7 @@ observal-web/dist/
 
 # Docker
 docker/data/
+docker/clickhouse/users.d/default-user.xml
 
 # Local config
 .kiro/
