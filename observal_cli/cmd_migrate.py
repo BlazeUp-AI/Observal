@@ -191,7 +191,11 @@ def _sha256_file(path: Path) -> str:
 
 async def _connect(db_url: str) -> asyncpg.Connection:
     """Establish asyncpg connection, verify alembic_version table exists."""
-    import asyncpg
+    try:
+        import asyncpg
+    except ImportError:
+        rprint("[red]asyncpg not found.[/red] Install the migrate extra: [bold]pip install 'observal-cli[migrate]'[/bold]")
+        raise typer.Exit(1)
 
     # Strip SQLAlchemy dialect suffixes (e.g. postgresql+asyncpg:// → postgresql://)
     clean_url = (
@@ -264,7 +268,11 @@ async def _flush_batch(
     batch: list[dict],
 ) -> tuple[int, int]:
     """Flush a batch of rows to the database. Returns (inserted, skipped)."""
-    import asyncpg
+    try:
+        import asyncpg
+    except ImportError:
+        rprint("[red]asyncpg not found.[/red] Install the migrate extra: [bold]pip install 'observal-cli[migrate]'[/bold]")
+        raise typer.Exit(1)
 
     if not batch:
         return 0, 0

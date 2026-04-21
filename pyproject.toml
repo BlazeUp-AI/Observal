@@ -1,5 +1,5 @@
 [project]
-name = "observal"
+name = "observal-cli"
 version = "0.2.0"
 description = "Observal MCP Server Registry & Agent Registry CLI"
 readme = "README.md"
@@ -12,10 +12,7 @@ dependencies = [
     "rich>=13.0.0",
     "pyyaml>=6.0.3",
     "questionary>=2.0.0",
-    "docker>=7.0.0",
-    "asyncpg>=0.29.0",
 ]
-
 
 keywords = ["mcp", "model-context-protocol", "registry", "cli", "agents", "observability"]
 classifiers = [
@@ -30,8 +27,14 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 
+[project.optional-dependencies]
+sandbox = ["docker>=7.0.0"]
+migrate = ["asyncpg>=0.29.0"]
+all = ["observal-cli[sandbox,migrate]"]
+
 [project.urls]
 Homepage = "https://github.com/BlazeUp-AI/Observal"
+Documentation = "https://github.com/BlazeUp-AI/Observal/blob/main/docs/cli.md"
 Repository = "https://github.com/BlazeUp-AI/Observal"
 Changelog = "https://github.com/BlazeUp-AI/Observal/blob/main/CHANGELOG.md"
 Issues = "https://github.com/BlazeUp-AI/Observal/issues"

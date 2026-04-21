@@ -36,7 +36,7 @@ observal doctor --ide kiro
 
 Before starting, you need:
 
-- **Observal CLI installed** — `pip install observal` or `uv tool install --editable .`
+- **Observal CLI installed** — `pip install observal-cli` or `uv tool install --editable .`
 - **Authenticated with Observal** — run `observal auth login` (not the deprecated `observal login`)
 - **Observal server reachable** — either self-hosted (see [SETUP.md](../SETUP.md)) or a remote instance
 

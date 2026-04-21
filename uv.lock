@@ -366,23 +366,33 @@ wheels = [
 ]
 
 [[package]]
-name = "observal"
-version = "0.1.0"
+name = "observal-cli"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "asyncpg" },
-    { name = "docker" },
     { name = "httpx" },
-    { name = "hypothesis" },
     { name = "pyyaml" },
     { name = "questionary" },
     { name = "rich" },
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+all = [
+    { name = "asyncpg" },
+    { name = "docker" },
+]
+migrate = [
+    { name = "asyncpg" },
+]
+sandbox = [
+    { name = "docker" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "fastapi" },
+    { name = "hypothesis" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pytest" },
@@ -393,19 +403,21 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "asyncpg", specifier = ">=0.29.0" },
-    { name = "docker", specifier = ">=7.0.0" },
+    { name = "asyncpg", marker = "extra == 'migrate'", specifier = ">=0.29.0" },
+    { name = "docker", marker = "extra == 'sandbox'", specifier = ">=7.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "hypothesis" },
+    { name = "observal-cli", extras = ["sandbox", "migrate"], marker = "extra == 'all'" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "questionary", specifier = ">=2.0.0" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
+provides-extras = ["sandbox", "migrate", "all"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "fastapi", specifier = ">=0.135.3" },
+    { name = "hypothesis" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "pytest", specifier = ">=9.0.3" },
