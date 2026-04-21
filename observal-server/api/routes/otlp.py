@@ -53,6 +53,7 @@ _IDE_HINTS = {
     "amazon-kiro": "kiro",
     "aws-kiro": "kiro",
     "codex": "codex",
+    "opencode": "opencode",
     "vscode": "vscode",
 }
 
@@ -425,9 +426,6 @@ def _convert_resource_logs(body: dict, project_id: str = _DEFAULT_PROJECT) -> tu
                     log_attrs = _extract_attrs(rec.get("attributes", []))
                     all_attrs = {**res_attrs, **log_attrs}
                     event_name = all_attrs.get("event.name", "")
-                    print(
-                        f"OTLP log: event_name={event_name!r}, all_attr_keys={list(all_attrs.keys())[:15]}", flush=True
-                    )
                     time_nano = rec.get("timeUnixNano", "0")
                     dt = _nanos_to_dt(time_nano) if int(time_nano) > 0 else _now_ms()
 
@@ -599,15 +597,6 @@ def _convert_resource_logs(body: dict, project_id: str = _DEFAULT_PROJECT) -> tu
                     logger.warning("Failed to convert OTLP log record", exc_info=True)
 
     traces = list(prompt_traces.values())
-    print(
-        f"OTLP logs converted: {len(traces)} traces, {len(spans)} spans, prompt_traces_keys={list(prompt_traces.keys())[:5]}",
-        flush=True,
-    )
-    if traces:
-        print(
-            f"OTLP first trace: name={traces[0].get('name')}, input={repr(traces[0].get('input'))[:100]}, session={traces[0].get('session_id')}",
-            flush=True,
-        )
     return traces, spans
 
 
@@ -690,25 +679,7 @@ async def otlp_logs(request: Request):
         )
 
     rl_count = len(body.get("resourceLogs", []))
-    total_recs = sum(
-        len(rec)
-        for rl in body.get("resourceLogs", [])
-        for sl in rl.get("scopeLogs", [])
-        for rec in [sl.get("logRecords", [])]
-    )
-    print(f"OTLP /v1/logs: {rl_count} resourceLogs, {total_recs} total records", flush=True)
-    if rl_count > 0:
-        sample = body["resourceLogs"][0]
-        print(
-            f"OTLP /v1/logs sample resource attrs: {[a.get('key') for a in sample.get('resource', {}).get('attributes', [])][:10]}",
-            flush=True,
-        )
-        for sl in sample.get("scopeLogs", []):
-            for rec in sl.get("logRecords", [])[:3]:
-                print(
-                    f"OTLP /v1/logs sample record: body={repr(rec.get('body', {}))[:200]}, attrs={[a.get('key') for a in rec.get('attributes', [])][:15]}",
-                    flush=True,
-                )
+    logger.debug("OTLP /v1/logs: %d resourceLogs", rl_count)
 
     project_id = await _resolve_project_id(request)
 

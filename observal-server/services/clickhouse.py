@@ -487,6 +487,20 @@ def _now_ms() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
+def _normalize_ts(value: str | None) -> str | None:
+    """Normalize a timestamp string for ClickHouse DateTime64 compatibility.
+
+    ClickHouse JSONEachRow cannot parse ISO 8601 ``T``/``Z`` separators,
+    so we convert ``2026-04-21T07:35:00Z`` -> ``2026-04-21 07:35:00.000``.
+    """
+    if value is None:
+        return None
+    v = value.replace("T", " ").rstrip("Z")
+    if "." not in v:
+        v += ".000"
+    return v
+
+
 async def insert_traces(traces: list[dict]):
     """Batch insert traces into ClickHouse using JSONEachRow."""
     if not traces:
@@ -504,8 +518,8 @@ async def insert_traces(traces: list[dict]):
             "session_id": t.get("session_id"),
             "ide": t.get("ide", ""),
             "environment": t.get("environment", "default"),
-            "start_time": t["start_time"],
-            "end_time": t.get("end_time"),
+            "start_time": _normalize_ts(t["start_time"]),
+            "end_time": _normalize_ts(t.get("end_time")),
             "trace_type": t.get("trace_type", "mcp"),
             "name": t.get("name", ""),
             "metadata": t.get("metadata", {}),
@@ -558,8 +572,8 @@ async def insert_spans(spans: list[dict]):
             "input": s.get("input"),
             "output": s.get("output"),
             "error": s.get("error"),
-            "start_time": s["start_time"],
-            "end_time": s.get("end_time"),
+            "start_time": _normalize_ts(s["start_time"]),
+            "end_time": _normalize_ts(s.get("end_time")),
             "latency_ms": s.get("latency_ms"),
             "status": s.get("status", "success"),
             "level": s.get("level", "DEFAULT"),
@@ -648,7 +662,7 @@ async def insert_scores(scores: list[dict]):
             "eval_run_id": sc.get("eval_run_id"),
             "environment": sc.get("environment", "default"),
             "metadata": sc.get("metadata", {}),
-            "timestamp": sc["timestamp"],
+            "timestamp": _normalize_ts(sc["timestamp"]),
             "event_ts": event_ts,
             "is_deleted": 0,
         }
@@ -679,7 +693,7 @@ async def insert_otel_logs(rows: list[dict]):
     lines = []
     for r in rows:
         line = {
-            "Timestamp": r["Timestamp"],
+            "Timestamp": _normalize_ts(r["Timestamp"]),
             "Body": r.get("Body", ""),
             "LogAttributes": r.get("LogAttributes", {}),
             "ServiceName": r.get("ServiceName", ""),
@@ -943,7 +957,7 @@ async def insert_audit_log(events: list[dict]):
     for e in events:
         row = {
             "event_id": e["event_id"],
-            "timestamp": e["timestamp"],
+            "timestamp": _normalize_ts(e["timestamp"]),
             "actor_id": e.get("actor_id", ""),
             "actor_email": e.get("actor_email", ""),
             "actor_role": e.get("actor_role", ""),
@@ -975,7 +989,7 @@ async def _insert_webhook_deliveries(records: list[dict]):
             "event_id": r["event_id"],
             "alert_rule_id": r["alert_rule_id"],
             "attempt_number": r["attempt_number"],
-            "timestamp": r["timestamp"],
+            "timestamp": _normalize_ts(r["timestamp"]),
             "webhook_url": r["webhook_url"],
             "status_code": r["status_code"],
             "delivery_status": r["delivery_status"],

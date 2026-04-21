@@ -942,6 +942,8 @@ def _install_impl(mcp_id, ide, raw):
         "claude_code": "(run the command below)",
         "gemini-cli": ".gemini/settings.json",
         "gemini_cli": ".gemini/settings.json",
+        "opencode": ".config/opencode/opencode.json",
+        "codex": "~/.codex/config.toml",
     }
 
     rprint(f"\n[bold]Config for {ide}:[/bold]\n")

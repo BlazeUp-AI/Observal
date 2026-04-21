@@ -29,7 +29,10 @@ _IDE_PROJECT_CONFIGS = {
     "cursor": ".cursor/mcp.json",
     "kiro": ".kiro/settings/mcp.json",
     "vscode": ".vscode/mcp.json",
+    "copilot": ".vscode/mcp.json",
     "gemini-cli": ".gemini/settings.json",
+    "opencode": "opencode.json",
+    "codex": ".codex/config.toml",
 }
 
 
@@ -404,6 +407,37 @@ def _scan_kiro_home(
     return mcps, skills, hooks, agents
 
 
+def _scan_gemini_home(
+    gemini_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.gemini for MCP servers from settings.json."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    settings_file = gemini_dir / "settings.json"
+    if settings_file.exists():
+        try:
+            settings = json.loads(settings_file.read_text())
+            servers = _extract_mcp_servers(settings)
+            for srv_name, srv_config in servers.items():
+                mcps.append(
+                    DiscoveredMcp(
+                        name=srv_name,
+                        command=srv_config.get("command"),
+                        args=srv_config.get("args", []),
+                        url=srv_config.get("url"),
+                        description=f"Gemini MCP: {srv_name}",
+                        source="gemini:global",
+                    )
+                )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return mcps, skills, hooks, agents
+
+
 def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
     """Extract server entries from .mcp.json, handling both formats.
 
@@ -472,9 +506,24 @@ def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[s
         config_path = project_dir / rel
         if not config_path.exists():
             continue
+
         try:
-            config = json.loads(config_path.read_text())
-        except (json.JSONDecodeError, OSError):
+            if config_path.suffix == ".toml":
+                try:
+                    import tomllib as toml
+                except ImportError:
+                    try:
+                        import tomli as toml
+                    except ImportError:
+                        try:
+                            import toml
+                        except ImportError:
+                            rprint("[yellow]Warning: no toml parser found. Skipping .toml config.[/yellow]")
+                            continue
+                config = toml.loads(config_path.read_text())
+            else:
+                config = json.loads(config_path.read_text())
+        except (Exception, OSError):
             continue
 
         servers = _parse_project_mcp_servers(config, ide)
@@ -501,8 +550,12 @@ def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[s
 
 def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
     """Extract MCP servers dict from project-level IDE config."""
-    if ide == "vscode":
+    if ide in ("vscode", "copilot"):
         return config.get("servers", config.get("mcpServers", {}))
+    if ide == "opencode":
+        return config.get("mcp", {})
+    if ide == "codex":
+        return config.get("mcp", {}).get("servers", {})
     # cursor, kiro, gemini-cli all use mcpServers at top level
     return config.get("mcpServers", config.get("servers", {}))
 
@@ -548,7 +601,7 @@ def register_scan(app: typer.Typer):
         ide: str | None = typer.Option(None, "--ide", "-i", help="Target IDE (auto-detected if omitted)"),
         home: bool = typer.Option(False, "--home", help="Scan IDE home directories for plugins, agents, skills, hooks"),
         all_ides: bool = typer.Option(
-            False, "--all-ides", help="Scan home directories for ALL IDEs (Claude Code, Kiro, Cursor)"
+            False, "--all-ides", help="Scan home directories for ALL IDEs (Claude Code, Kiro, Gemini CLI)"
         ),
         dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show discovered components without instrumenting"),
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
@@ -564,7 +617,7 @@ def register_scan(app: typer.Typer):
         With --home, scans your IDE home directory. Use --ide to target a specific
         IDE (e.g. --home --ide kiro), or --all-ides to scan all IDEs at once.
 
-        With --all-ides, scans ~/.claude, ~/.kiro, and ~/.cursor to discover
+        With --all-ides, scans ~/.claude, ~/.kiro, and ~/.gemini to discover
         all agents, MCP servers, skills, and hooks across every IDE you use.
 
         Components are NOT published to the registry. Use 'observal registry <type>
@@ -580,19 +633,24 @@ def register_scan(app: typer.Typer):
         # ── Determine which IDE home dirs to scan ──
         scan_claude = False
         scan_kiro = False
+        scan_gemini = False
 
         if all_ides:
             home = True  # --all-ides implies --home
             scan_claude = True
             scan_kiro = True
+            scan_gemini = True
         elif home:
             if ide == "kiro":
                 scan_kiro = True
+            elif ide == "gemini-cli":
+                scan_gemini = True
             elif ide == "claude-code" or ide is None:
                 scan_claude = True
-                # When no --ide specified, also scan kiro if it exists
+                # When no --ide specified, also scan kiro and gemini if they exist
                 if ide is None:
                     scan_kiro = True
+                    scan_gemini = True
 
         # ── Scan ~/.claude ─────────────────────────────
         if scan_claude:
@@ -622,16 +680,40 @@ def register_scan(app: typer.Typer):
             elif not all_ides:
                 rprint("[yellow]~/.kiro directory not found.[/yellow]")
 
-        # ── Scan project directory ──────────────────
+        # ── Scan ~/.gemini ────────────────────────────
+        if scan_gemini:
+            gemini_dir = Path.home() / ".gemini"
+            if gemini_dir.is_dir():
+                with spinner("Scanning ~/.gemini..."):
+                    g_mcps, g_skills, g_hooks, g_agents = _scan_gemini_home(gemini_dir)
+                all_mcps.extend(g_mcps)
+                all_skills.extend(g_skills)
+                all_hooks.extend(g_hooks)
+                all_agents.extend(g_agents)
+                scanned_ides.append("gemini-cli")
+            elif not all_ides:
+                rprint("[yellow]~/.gemini directory not found.[/yellow]")
+
+        # ── Scan project directory (or home) ────────
+        # If --home is passed, we should also scan the home directory using _IDE_PROJECT_CONFIGS
+        # (which maps to ~/.gemini, ~/.codex, etc.)
         root = Path(project_dir).resolve()
-        if root.is_dir():
-            project_mcp_entries = _scan_project_dir(root, ide)
-            # Add project MCPs to the list (dedup by name)
+
+        def _do_project_scan(target: Path):
+            if not target.is_dir():
+                return
+            entries = _scan_project_dir(target, ide)
             seen_names = {m.name for m in all_mcps}
-            for _ide, _name, mcp, _path in project_mcp_entries:
+            for _ide, _name, mcp, config_path in entries:
+                project_mcp_entries.append((_ide, _name, mcp, config_path))
                 if mcp.name not in seen_names:
                     all_mcps.append(mcp)
                     seen_names.add(mcp.name)
+
+        _do_project_scan(root)
+
+        if home and root != Path.home():
+            _do_project_scan(Path.home())
 
         total = len(all_mcps) + len(all_skills) + len(all_hooks) + len(all_agents)
         if total == 0:
@@ -984,6 +1066,49 @@ def register_scan(app: typer.Typer):
                 rprint("[dim]These capture all Kiro sessions, including agentless chat.[/dim]")
             else:
                 rprint("[dim]Global Kiro hooks already configured.[/dim]")
+
+        # ── Auto-inject telemetry into ~/.gemini/settings.json ──
+        if scan_gemini:
+            from observal_cli.config import load as _load_gemini_config
+
+            gcfg = _load_gemini_config()
+            otlp_endpoint = gcfg.get("otlp_endpoint", "http://localhost:4318")
+
+            gemini_settings = Path.home() / ".gemini" / "settings.json"
+            try:
+                gemini_data: dict = {}
+                if gemini_settings.exists():
+                    gemini_data = json.loads(gemini_settings.read_text())
+
+                telemetry = gemini_data.get("telemetry", {})
+                needs_telemetry_update = False
+
+                if not isinstance(telemetry, dict):
+                    telemetry = {}
+                if not telemetry.get("enabled"):
+                    needs_telemetry_update = True
+                if telemetry.get("target") != "custom":
+                    needs_telemetry_update = True
+                if telemetry.get("otlpEndpoint") != otlp_endpoint:
+                    needs_telemetry_update = True
+
+                if needs_telemetry_update:
+                    _backup_config(gemini_settings)
+                    gemini_data.setdefault("telemetry", {})
+                    gemini_data["telemetry"]["enabled"] = True
+                    gemini_data["telemetry"]["target"] = "custom"
+                    gemini_data["telemetry"]["otlpEndpoint"] = otlp_endpoint
+                    gemini_data["telemetry"]["logPrompts"] = True
+                    gemini_settings.parent.mkdir(parents=True, exist_ok=True)
+                    gemini_settings.write_text(json.dumps(gemini_data, indent=2) + "\n")
+                    rprint(f"\n[green]Configured Gemini CLI telemetry in {gemini_settings}[/green]")
+                    rprint(f"[dim]OTLP endpoint: {otlp_endpoint}[/dim]")
+                    rprint("[dim]Telemetry will be sent to Observal via OTLP.[/dim]")
+                else:
+                    rprint(f"\n[dim]Gemini CLI telemetry already configured -> {otlp_endpoint}[/dim]")
+            except Exception as e:
+                rprint(f"\n[yellow]Could not configure Gemini CLI telemetry: {e}[/yellow]")
+                rprint("[dim]Add telemetry settings manually to ~/.gemini/settings.json.[/dim]")
 
         rprint()
         rprint(

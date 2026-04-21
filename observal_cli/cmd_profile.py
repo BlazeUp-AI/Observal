@@ -36,10 +36,23 @@ IDE_FILE_MAP = {
     # Gemini CLI
     ".gemini/settings.json": Path.home() / ".gemini" / "settings.json",
     ".gemini/GEMINI.md": Path.home() / ".gemini" / "GEMINI.md",
+    # GitHub Copilot (VS Code)
+    ".vscode/mcp.json": Path.home() / ".vscode" / "mcp.json",
+    ".github/copilot-instructions.md": None,  # project-level
+    # OpenCode
+    ".config/opencode/opencode.json": Path.home() / ".config" / "opencode" / "opencode.json",
+    "AGENTS.md": None,  # project-level
 }
 
 # Files that are project-level (placed in CWD, not home)
-PROJECT_FILES = {".mcp.json", ".cursor/rules", ".cursorrules", "CLAUDE.md"}
+PROJECT_FILES = {
+    ".mcp.json",
+    ".cursor/rules",
+    ".cursorrules",
+    "CLAUDE.md",
+    ".github/copilot-instructions.md",
+    "AGENTS.md",
+}
 
 
 def _load_state() -> dict:

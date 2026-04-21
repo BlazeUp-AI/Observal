@@ -361,7 +361,7 @@ class TestGenerateGemini:
     def test_mcp_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "gemini-cli")
-        assert cfg["mcp_config"]["path"] == ".gemini/mcp.json"
+        assert cfg["mcp_config"]["path"] == ".gemini/settings.json"
 
     def test_gemini_underscore_alias(self):
         agent = _make_agent()
@@ -385,10 +385,17 @@ class TestGenerateCodex:
         cfg = generate_agent_config(agent, "codex")
         assert cfg["rules_file"]["path"] == "AGENTS.md"
 
-    def test_no_mcp_config(self):
+    def test_mcp_config_present(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert "mcp_config" not in cfg
+        assert "mcp_config" in cfg
+        assert cfg["mcp_config"]["path"] == "~/.codex/config.toml"
+        assert "mcp.servers" in cfg["mcp_config"]["content"]
+
+    def test_mcp_config_empty_servers(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "codex")
+        assert cfg["mcp_config"]["content"]["mcp.servers"] == {}
 
     def test_content_not_empty(self):
         agent = _make_agent()
@@ -407,15 +414,48 @@ class TestGenerateCopilot:
         cfg = generate_agent_config(agent, "copilot")
         assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
 
-    def test_no_mcp_config(self):
+    def test_mcp_config_present(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert "mcp_config" not in cfg
+        assert "mcp_config" in cfg
+        assert cfg["mcp_config"]["path"] == ".vscode/mcp.json"
+
+    def test_mcp_config_uses_servers_key(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot")
+        assert "servers" in cfg["mcp_config"]["content"]
 
     def test_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
         assert len(cfg["rules_file"]["content"]) > 0
+
+    def test_external_mcps_get_type_stdio(self):
+        ext = [{"name": "my-srv", "command": "npx", "args": ["-y", "my-srv"]}]
+        agent = _make_agent(external_mcps=ext)
+        cfg = generate_agent_config(agent, "copilot")
+        entry = cfg["mcp_config"]["content"]["servers"]["my-srv"]
+        assert entry["type"] == "stdio"
+        assert entry["command"] == "observal-shim"
+        assert isinstance(entry["args"], list)
+
+    def test_env_vars_preserved(self):
+        ext = [{"name": "my-srv", "command": "npx", "args": [], "env": {"API_KEY": "secret"}}]
+        agent = _make_agent(external_mcps=ext)
+        cfg = generate_agent_config(agent, "copilot")
+        entry = cfg["mcp_config"]["content"]["servers"]["my-srv"]
+        assert entry["env"]["API_KEY"] == "secret"
+        assert entry["env"]["OBSERVAL_AGENT_ID"] == str(agent.id)
+
+    def test_scope_is_project(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot")
+        assert cfg["scope"] == "project"
+
+    def test_no_mcpservers_key(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot")
+        assert "mcpServers" not in cfg["mcp_config"]["content"]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -643,6 +683,40 @@ class TestBuilderCopilot:
         result = generate_ide_agent_files(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".github/copilot-instructions.md" in paths
+
+    def test_mcp_json_path(self):
+        manifest = _make_manifest(
+            mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
+        )
+        result = generate_ide_agent_files(manifest, "copilot")
+        paths = [f.path for f in result.files]
+        assert ".vscode/mcp.json" in paths
+
+    def test_mcp_config_uses_servers_key(self):
+        manifest = _make_manifest(
+            mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
+        )
+        result = generate_ide_agent_files(manifest, "copilot")
+        mcp_file = next(f for f in result.files if f.path == ".vscode/mcp.json")
+        content = mcp_file.content
+        assert "servers" in content
+        assert "mcpServers" not in content
+
+    def test_mcp_entries_have_type_stdio(self):
+        manifest = _make_manifest(
+            mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
+        )
+        result = generate_ide_agent_files(manifest, "copilot")
+        mcp_file = next(f for f in result.files if f.path == ".vscode/mcp.json")
+        entry = mcp_file.content["servers"]["my-srv"]
+        assert entry["type"] == "stdio"
+        assert entry["command"] == "observal-shim"
+
+    def test_no_mcp_file_when_no_mcp_components(self):
+        manifest = _make_manifest()
+        result = generate_ide_agent_files(manifest, "copilot")
+        paths = [f.path for f in result.files]
+        assert ".vscode/mcp.json" not in paths
 
 
 class TestBuilderUnsupportedIde:

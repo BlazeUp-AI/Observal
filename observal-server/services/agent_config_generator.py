@@ -407,7 +407,7 @@ def generate_agent_config(
     if ide in ("gemini-cli", "gemini_cli"):
         gemini_scope = options.get("scope", "project")
         rules_path = "~/.gemini/GEMINI.md" if gemini_scope == "user" else "GEMINI.md"
-        mcp_path = "~/.gemini/mcp.json" if gemini_scope == "user" else ".gemini/mcp.json"
+        mcp_path = "~/.gemini/settings.json" if gemini_scope == "user" else ".gemini/settings.json"
         result = {
             "rules_file": {"path": rules_path, "content": rules_content},
             "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
@@ -422,14 +422,45 @@ def generate_agent_config(
     if ide == "codex":
         result = {
             "rules_file": {"path": "AGENTS.md", "content": rules_content},
+            "mcp_config": {"path": "~/.codex/config.toml", "content": {"mcp.servers": mcp_configs}},
+            "scope": "user",
         }
         if compatibility_warnings:
             result["_warnings"] = compatibility_warnings
         return result
 
     if ide == "copilot":
+        copilot_configs = {}
+        for k, v in mcp_configs.items():
+            if v.get("url"):
+                transport_type = v.get("type", "sse")
+                copilot_configs[k] = {"type": transport_type, "url": v["url"]}
+                if "env" in v:
+                    copilot_configs[k]["env"] = v["env"]
+            else:
+                copilot_configs[k] = {"type": "stdio", "command": v["command"], "args": v.get("args", [])}
+                if "env" in v:
+                    copilot_configs[k]["env"] = v["env"]
         result = {
             "rules_file": {"path": ".github/copilot-instructions.md", "content": rules_content},
+            "mcp_config": {"path": ".vscode/mcp.json", "content": {"servers": copilot_configs}},
+            "scope": "project",
+        }
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
+        return result
+
+    if ide == "opencode":
+        opencode_configs = {}
+        for k, v in mcp_configs.items():
+            cmd_array = [v["command"]] + v.get("args", [])
+            opencode_configs[k] = {"type": "local", "command": cmd_array}
+            if "env" in v:
+                opencode_configs[k]["env"] = v["env"]
+        result = {
+            "rules_file": {"path": "AGENTS.md", "content": rules_content},
+            "mcp_config": {"path": "~/.config/opencode/opencode.json", "content": {"mcp": opencode_configs}},
+            "scope": "user",
         }
         if compatibility_warnings:
             result["_warnings"] = compatibility_warnings

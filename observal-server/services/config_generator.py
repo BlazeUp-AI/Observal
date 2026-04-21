@@ -51,7 +51,7 @@ def _gemini_settings(observal_url: str) -> dict:
         "telemetry": {
             "enabled": True,
             "target": "custom",
-            "otlpEndpoint": "http://localhost:4318",
+            "otlpEndpoint": observal_url,
             "logPrompts": True,
         }
     }
@@ -147,6 +147,26 @@ def generate_config(
                 "claude_settings_snippet": {"env": server_env} if server_env else {},
                 "mcpServers": {name: config},
             }
+        if ide == "copilot":
+            return {"mcpServers": {name: {**config, "type": transport_type}}}
+        if ide == "opencode":
+            opencode_config: dict = {"type": "remote", "url": listing.url}
+            if header_values:
+                opencode_config["headers"] = header_values
+            if server_env:
+                opencode_config["env"] = server_env
+            return {"mcp": {name: opencode_config}}
+        if ide == "codex":
+            # Codex uses mcp.servers TOML format
+            codex_entry: dict = {"url": listing.url}
+            if header_values:
+                codex_entry["headers"] = header_values
+            if server_env:
+                codex_entry["env"] = server_env
+            return {
+                "mcp.servers": {name: codex_entry},
+                "codex_config": generate_codex_config(observal_url),
+            }
         return {"mcpServers": {name: config}}
 
     # HTTP proxy transport (existing): point IDE at the proxy URL
@@ -167,9 +187,13 @@ def generate_config(
             }
         if ide == "codex":
             return {
-                "mcpServers": {name: {"url": proxy_url, "env": server_env}},
+                "mcp.servers": {name: {"url": proxy_url, "env": server_env}},
                 "codex_config": generate_codex_config(observal_url),
             }
+        if ide == "copilot":
+            return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env}}}
+        if ide == "opencode":
+            return {"mcp": {name: {"type": "remote", "url": proxy_url, "env": server_env}}}
         return {"mcpServers": {name: {"url": proxy_url, "env": server_env}}}
 
     # Stdio transport: shim wraps the original command
@@ -208,11 +232,31 @@ def generate_config(
         }
     if ide == "codex":
         return {
-            "mcpServers": {
+            "mcp.servers": {
                 name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
             },
             "codex_config": generate_codex_config(observal_url),
         }
+
+    if ide == "copilot":
+        return {
+            "mcpServers": {
+                name: {
+                    "type": "stdio",
+                    "command": "observal-shim",
+                    "args": shim_args,
+                    "env": server_env,
+                    **auto_approve_fields,
+                }
+            },
+        }
+
+    if ide == "opencode":
+        flat_cmd = ["observal-shim", *shim_args]
+        entry: dict = {"type": "local", "command": flat_cmd}
+        if server_env:
+            entry["env"] = server_env
+        return {"mcp": {name: entry}}
 
     # cursor, vscode, kiro, kiro-cli — no native OTel; telemetry collected via observal-shim
     return {
