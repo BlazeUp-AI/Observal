@@ -101,6 +101,9 @@ def login(
             _fetch_server_public_key(server_url)
             _configure_claude_code(server_url, data["access_token"])
             _configure_kiro(server_url)
+            _configure_gemini_cli(server_url)
+            _configure_codex(server_url)
+            _configure_opencode(server_url)
             _post_auth_onboarding()
 
         except httpx.HTTPStatusError as e:
@@ -167,6 +170,9 @@ def register(
         _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, data["access_token"])
         _configure_kiro(server_url)
+        _configure_gemini_cli(server_url)
+        _configure_codex(server_url)
+        _configure_opencode(server_url)
         _post_auth_onboarding()
 
     except httpx.HTTPStatusError as e:
@@ -330,11 +336,11 @@ def _do_password_login(server_url: str, email: str, password: str):
         _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, data["access_token"])
         _configure_kiro(server_url)
+        _configure_gemini_cli(server_url)
+        _configure_codex(server_url)
+        _configure_opencode(server_url)
         _post_auth_onboarding()
 
-    except httpx.ConnectError:
-        rprint(f"[red]Connection failed.[/red] Is the server running at {server_url}?")
-        raise typer.Exit(1)
     except httpx.HTTPStatusError as e:
         detail = ""
         try:
@@ -431,6 +437,9 @@ def _post_auth_onboarding():
             "Claude Code": (Path.home() / ".claude", "claude-code"),
             "Kiro CLI": (Path.home() / ".kiro", "kiro"),
             "Cursor": (Path.home() / ".cursor", "cursor"),
+            "Gemini CLI": (Path.home() / ".gemini", "gemini-cli"),
+            "Codex": (Path.home() / ".codex", "codex"),
+            "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
         }
 
         found: list[tuple[str, str, int, int]] = []  # (label, ide_key, agents, mcps)
@@ -448,6 +457,39 @@ def _post_auth_onboarding():
 
                 m, _s, _h, a = _scan_kiro_home(dir_path)
                 agents, mcps = len(a), len(m)
+            elif ide_key == "gemini-cli":
+                from observal_cli.cmd_scan import _scan_gemini_home
+
+                m, _s, _h, _a = _scan_gemini_home(dir_path)
+                mcps = len(m)
+            elif ide_key == "codex":
+                # Codex: parse ~/.codex/config.toml for [mcp.servers]
+                toml_file = dir_path / "config.toml"
+                if toml_file.exists():
+                    try:
+                        try:
+                            import tomllib as _toml
+                        except ImportError:
+                            try:
+                                import tomli as _toml  # type: ignore[no-redef]
+                            except ImportError:
+                                import toml as _toml  # type: ignore[no-redef]
+                        content = toml_file.read_text()
+                        data = _toml.loads(content) if hasattr(_toml, "loads") else _toml.load(toml_file.open("rb"))  # type: ignore[call-arg]
+                        mcps = len(data.get("mcp", {}).get("servers", {}))
+                    except Exception:
+                        pass
+            elif ide_key == "opencode":
+                # OpenCode: parse ~/.config/opencode/opencode.json for `mcp` key
+                oc_file = dir_path / "opencode.json"
+                if oc_file.exists():
+                    try:
+                        import json as _j
+
+                        oc_data = _j.loads(oc_file.read_text())
+                        mcps = len(oc_data.get("mcp", {}))
+                    except Exception:
+                        pass
             else:
                 mcp_file = dir_path / "mcp.json"
                 if mcp_file.exists():
@@ -650,6 +692,146 @@ def _configure_kiro(server_url: str):
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Kiro automatically: {e}[/yellow]")
         rprint("Run [bold]observal scan --ide kiro --home[/bold] to set up manually.")
+
+
+def _configure_gemini_cli(server_url: str):
+    """Check for Gemini CLI and offer to configure its OTLP telemetry.
+
+    Writes the `telemetry` block in ~/.gemini/settings.json.  Non-destructive:
+    all existing keys are preserved; only the telemetry sub-block is updated.
+    A timestamped backup is created before any write.
+    """
+    gemini_dir = Path.home() / ".gemini"
+
+    try:
+        gemini_exists = gemini_dir.is_dir() or shutil.which("gemini")
+        if not gemini_exists:
+            return
+
+        if not typer.confirm(
+            "\nDetected Gemini CLI. Configure telemetry -> Observal?",
+            default=True,
+        ):
+            return
+
+        from urllib.parse import urlparse
+
+        from observal_cli.cmd_scan import inject_gemini_telemetry
+
+        # Derive the OTLP HTTP endpoint from server_url: same host, port 4318.
+
+        parsed = urlparse(server_url)
+        otlp_endpoint = f"{parsed.scheme}://{parsed.hostname}:4318"
+
+        gemini_settings = gemini_dir / "settings.json"
+        written = inject_gemini_telemetry(otlp_endpoint)
+        if written:
+            rprint(f"[green]Configured Gemini CLI telemetry in {gemini_settings}[/green]")
+            rprint(f"[dim]OTLP endpoint: {otlp_endpoint}[/dim]")
+        else:
+            rprint("[dim]Gemini CLI telemetry already configured.[/dim]")
+
+    except Exception as e:
+        rprint(f"\n[yellow]Could not configure Gemini CLI automatically: {e}[/yellow]")
+        rprint("Run [bold]observal scan --ide gemini-cli --home[/bold] to set up manually.")
+
+
+def _configure_codex(server_url: str):
+    """Check for Codex CLI and offer to configure its OTLP telemetry.
+
+    Appends [otel] / [otel.exporter.otlp-http] / [otel.trace_exporter.otlp-http]
+    blocks to ~/.codex/config.toml when they are not already present.
+    A timestamped backup is created before any write.
+    """
+    codex_dir = Path.home() / ".codex"
+
+    try:
+        codex_exists = codex_dir.is_dir() or shutil.which("codex")
+        if not codex_exists:
+            return
+
+        if not typer.confirm(
+            "\nDetected Codex CLI. Configure OTLP telemetry -> Observal?",
+            default=True,
+        ):
+            return
+
+        from urllib.parse import urlparse
+
+        parsed = urlparse(server_url)
+        otlp_base = f"{parsed.scheme}://{parsed.hostname}:4318"
+
+        codex_config = codex_dir / "config.toml"
+
+        # Load existing TOML (best-effort) to check if already configured.
+        existing_content = ""
+        already_configured = False
+        if codex_config.exists():
+            existing_content = codex_config.read_text()
+            # Consider configured if both OTLP exporter sections are present.
+            if "[otel.exporter.otlp-http]" in existing_content and "[otel.trace_exporter.otlp-http]" in existing_content:
+                already_configured = True
+
+        if already_configured:
+            rprint("[dim]Codex OTLP telemetry already configured.[/dim]")
+            return
+
+        toml_block = f"""
+[otel]
+environment = "production"
+log_user_prompt = true
+
+[otel.exporter.otlp-http]
+endpoint = "{otlp_base}/v1/logs"
+protocol = "http"
+
+[otel.trace_exporter.otlp-http]
+endpoint = "{otlp_base}/v1/traces"
+protocol = "http"
+"""
+
+        if codex_config.exists():
+            from datetime import datetime
+
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup = codex_config.with_suffix(f".pre-observal.{ts}.bak")
+            import shutil as _shutil
+
+            _shutil.copy2(codex_config, backup)
+
+        codex_dir.mkdir(parents=True, exist_ok=True)
+        with codex_config.open("a") as f:
+            f.write(toml_block)
+
+        rprint(f"[green]Configured Codex OTLP telemetry in {codex_config}[/green]")
+        rprint(f"[dim]OTLP endpoint: {otlp_base}[/dim]")
+
+    except Exception as e:
+        rprint(f"\n[yellow]Could not configure Codex automatically: {e}[/yellow]")
+        rprint("Add OTLP settings manually to ~/.codex/config.toml.")
+
+
+def _configure_opencode(server_url: str):
+    """Check for OpenCode and surface install instructions.
+
+    OpenCode has no global telemetry/OTLP settings block; telemetry collection
+    requires wrapping individual MCP servers with observal-shim at install time.
+    This function detects OpenCode and prints actionable guidance.
+    """
+    opencode_config = Path.home() / ".config" / "opencode" / "opencode.json"
+
+    try:
+        opencode_exists = opencode_config.exists() or shutil.which("opencode")
+        if not opencode_exists:
+            return
+
+        rprint(
+            "\n[bold]Detected OpenCode.[/bold] "
+            "Install MCPs via [bold]observal install <id> --ide opencode[/bold] to enable telemetry."
+        )
+
+    except Exception:
+        pass  # Detection is best-effort; never block login
 
 
 def _configure_claude_code(server_url: str, access_token: str):
