@@ -61,38 +61,40 @@ async def _load_agent(
         return await resolve_prefix_id(
             Agent, agent_id, db, load_options=_agent_load_options, extra_conditions=extra_conditions
         )
-    except HTTPException as e:
-        if e.status_code == 400:
-            raise e
+    except HTTPException:
+        # UUID / prefix lookup failed — fall through to name-based lookup.
+        # This handles agent names that are short (< 4 chars) or could be
+        # mistaken for UUID prefixes (e.g. names containing only hex + hyphens).
+        pass
 
-        # Try the caller's own agent first
-        if prefer_user_id is not None:
-            stmt = (
-                select(Agent)
-                .where(Agent.name == agent_id, Agent.created_by == prefer_user_id)
-                .options(*_agent_load_options)
-            )
-            if extra_conditions:
-                stmt = stmt.where(*extra_conditions)
-            mine = (await db.execute(stmt)).scalar_one_or_none()
-            if mine:
-                return mine
-
-        # Fall back to global name lookup — only active, org-scoped agents
+    # Try the caller's own agent first
+    if prefer_user_id is not None:
         stmt = (
             select(Agent)
-            .where(Agent.name == agent_id, Agent.status == AgentStatus.active)
+            .where(Agent.name == agent_id, Agent.created_by == prefer_user_id)
             .options(*_agent_load_options)
         )
         if extra_conditions:
             stmt = stmt.where(*extra_conditions)
-        if org_id is not None:
-            stmt = stmt.where(Agent.owner_org_id == org_id)
-        results = (await db.execute(stmt)).scalars().all()
-        if len(results) == 1:
-            return results[0]
+        mine = (await db.execute(stmt)).scalar_one_or_none()
+        if mine:
+            return mine
 
-        return None
+    # Fall back to global name lookup — only active, org-scoped agents
+    stmt = (
+        select(Agent)
+        .where(Agent.name == agent_id, Agent.status == AgentStatus.active)
+        .options(*_agent_load_options)
+    )
+    if extra_conditions:
+        stmt = stmt.where(*extra_conditions)
+    if org_id is not None:
+        stmt = stmt.where(Agent.owner_org_id == org_id)
+    results = (await db.execute(stmt)).scalars().all()
+    if len(results) == 1:
+        return results[0]
+
+    return None
 
 
 def _agent_to_response(

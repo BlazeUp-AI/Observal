@@ -304,7 +304,7 @@ function slugifyName(raw: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/-{2,}/g, "-")
-    .replace(/^-|-$/g, "");
+    .replace(/^-/, "");
 }
 
 export default function AgentBuilderPage() {
