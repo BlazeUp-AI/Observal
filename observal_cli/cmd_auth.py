@@ -469,7 +469,7 @@ def _post_auth_onboarding():
         # Show what we found
         rprint()
         rprint("[bold]\N{ELECTRIC LIGHT BULB} You have local agent configs that aren't in Observal.[/bold]")
-        rprint("[dim]Upload them to track usage, share with your team, and enable telemetry.[/dim]")
+        rprint("[dim]Register them to track usage, share with your team, and enable telemetry.[/dim]")
         rprint()
         for label, _key, agents, mcps in found:
             parts = []
@@ -481,7 +481,9 @@ def _post_auth_onboarding():
         rprint()
 
         if not typer.confirm("Upload these to Observal?", default=True):
-            rprint("[dim]Tip: run `observal scan --home --all-ides` anytime to upload agents from your IDEs.[/dim]")
+            rprint()
+            rprint("[dim]You can register these anytime by running:[/dim]")
+            rprint("  [bold]observal scan --home --all-ides[/bold]")
             return
 
         # Run scan for each selected IDE using the existing scan machinery
@@ -582,12 +584,15 @@ def _post_auth_onboarding():
         parts = [f"{v} {k}" for k, v in summary.items() if v]
         if parts:
             rprint(f"[green]Registered: {', '.join(parts)}[/green]")
+            rprint(
+                "[dim]View them at[/dim] [bold]http://localhost:3000[/bold] [dim]or run[/dim] [bold]observal agent list[/bold]"
+            )
         else:
             rprint("[dim]All components already registered.[/dim]")
 
     except Exception as e:
         rprint(f"[yellow]Onboarding skipped: {e}[/yellow]")
-        rprint("[dim]Tip: run `observal scan --home --all-ides` anytime to upload agents from your IDEs.[/dim]")
+        rprint("[dim]You can register these anytime by running:[/dim] [bold]observal scan --home --all-ides[/bold]")
 
 
 def _configure_kiro(server_url: str):
