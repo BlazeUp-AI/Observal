@@ -101,6 +101,7 @@ class SkillListingSummary(BaseModel):
     owner: str
     target_agents: list[str]
     status: ListingStatus
+    rejection_reason: str | None = None
     model_config = {"from_attributes": True}
 
 

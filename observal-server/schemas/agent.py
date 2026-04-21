@@ -173,6 +173,7 @@ class AgentSummary(BaseModel):
     required_ide_features: list[str] = []
     inferred_supported_ides: list[str] = []
     status: AgentStatus
+    rejection_reason: str | None = None
     download_count: int = 0
     average_rating: float | None = None
     component_count: int = 0

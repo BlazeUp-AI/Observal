@@ -98,6 +98,7 @@ class SandboxListingSummary(BaseModel):
     owner: str
     supported_ides: list[str]
     status: ListingStatus
+    rejection_reason: str | None = None
     model_config = {"from_attributes": True}
 
 

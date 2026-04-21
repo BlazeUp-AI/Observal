@@ -85,6 +85,7 @@ export interface RegistryItem {
   name: string;
   description?: string;
   status?: string;
+  rejection_reason?: string;
   created_at?: string;
   updated_at?: string;
   [key: string]: unknown;
@@ -174,6 +175,7 @@ export interface ReviewItem {
   submitted_by?: string;
   submitted_at?: string;
   created_at?: string;
+  updated_at?: string;
   status?: string;
   mcp_validated?: boolean;
   validation_results?: McpValidationResult[];
@@ -182,6 +184,76 @@ export interface ReviewItem {
   bundle_id?: string;
   bundle_name?: string;
   rejection_reason?: string;
+
+  // Common detail fields
+  git_url?: string;
+  git_ref?: string;
+  supported_ides?: string[];
+
+  // MCP-specific
+  transport?: string;
+  framework?: string;
+  docker_image?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  headers?: unknown[];
+  auto_approve?: string[];
+  tools_schema?: Record<string, unknown>;
+  environment_variables?: unknown[];
+  setup_instructions?: string;
+  changelog?: string;
+
+  // Skill-specific
+  skill_path?: string;
+  target_agents?: string[];
+  task_type?: string;
+  triggers?: Record<string, unknown>;
+  slash_command?: string;
+  mcp_server_config?: Record<string, unknown>;
+  has_scripts?: boolean;
+  has_templates?: boolean;
+  is_power?: boolean;
+  power_md?: string;
+  activation_keywords?: string[];
+
+  // Hook-specific
+  event?: string;
+  execution_mode?: string;
+  handler_type?: string;
+  handler_config?: Record<string, unknown>;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  scope?: string;
+  tool_filter?: string[];
+  file_pattern?: string[];
+  priority?: number;
+
+  // Prompt-specific
+  category?: string;
+  template?: string;
+  variables?: unknown[];
+  model_hints?: Record<string, unknown>;
+  tags?: string[];
+
+  // Sandbox-specific
+  runtime_type?: string;
+  image?: string;
+  dockerfile_url?: string;
+  resource_limits?: Record<string, unknown>;
+  network_policy?: string;
+  allowed_mounts?: string[];
+  env_vars?: Record<string, unknown>;
+  entrypoint?: string;
+
+  // Agent-specific
+  prompt?: string;
+  model_name?: string;
+  model_config_json?: Record<string, unknown>;
+  external_mcps?: unknown[];
+  required_ide_features?: string[];
+  component_count?: number;
+  components?: { component_type: string; component_id: string }[];
 }
 
 // ── Scores ──────────────────────────────────────────────────────────

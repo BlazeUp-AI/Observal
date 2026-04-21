@@ -385,6 +385,11 @@ export default function ComponentsPage() {
                           {item.description}
                         </p>
                       )}
+                      {item.status === "rejected" && item.rejection_reason && (
+                        <p className="text-xs text-destructive mt-0.5 truncate max-w-xs">
+                          Rejected: {item.rejection_reason}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">

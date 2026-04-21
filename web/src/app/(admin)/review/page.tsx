@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import Link from "next/link";
-import { CheckCircle2, X, Trash2, LayoutGrid, TableProperties, AlertTriangle, ShieldCheck, ShieldX, AlertCircle } from "lucide-react";
+import { CheckCircle2, X, Trash2, LayoutGrid, TableProperties } from "lucide-react";
 import { useReviewAgents, useReviewComponents, useReviewAction, useReviewDelete } from "@/hooks/use-api";
-import type { ReviewItem, McpValidationResult } from "@/lib/types";
+import type { ReviewItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,107 +13,17 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { CardSkeleton, TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
-
-/** Build a detail-page URL for a review item. */
-function reviewItemHref(item: ReviewItem): string {
-  if (item.type === "agent") return `/agents/${item.id}`;
-  const plural = item.type ? `${item.type}s` : "mcps";
-  return `/components/${item.id}?type=${plural}`;
-}
+import { ValidationBadge, ValidationDetails, ComponentReadinessBadge } from "@/components/review/validation-badges";
+import { ReviewDetailSheet } from "@/components/review/review-detail-sheet";
 
 type ViewMode = "list" | "grid";
 
-function ValidationBadge({ item }: { item: ReviewItem }) {
-  if (item.type !== "mcp" || !item.validation_results?.length) return null;
-
-  const failed = item.validation_results.filter((v: McpValidationResult) => !v.passed);
-  const hasWarnings = item.validation_results.some(
-    (v: McpValidationResult) => v.details?.includes("Issues:"),
-  );
-
-  if (item.mcp_validated) {
-    if (hasWarnings) {
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/25 rounded px-1.5 py-0.5">
-          <AlertTriangle className="h-3 w-3" /> Has warnings
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-success bg-success/10 border border-success/25 rounded px-1.5 py-0.5">
-        <ShieldCheck className="h-3 w-3" /> Validated
-      </span>
-    );
-  }
-
-  if (failed.length > 0) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-destructive bg-destructive/10 border border-destructive/25 rounded px-1.5 py-0.5">
-        <ShieldX className="h-3 w-3" /> Validation failed
-      </span>
-    );
-  }
-
-  return null;
-}
-
-function ValidationDetails({ results }: { results?: McpValidationResult[] }) {
-  if (!results?.length) return null;
-
-  const issues = results
-    .filter((v: McpValidationResult) => v.details)
-    .flatMap((v: McpValidationResult) => {
-      const lines = v.details!.split("\n");
-      return lines
-        .filter((l: string) => l.startsWith("- "))
-        .map((l: string) => l.slice(2));
-    });
-
-  if (!issues.length) return null;
-
-  return (
-    <div className="mt-2 p-2 rounded bg-amber-500/5 border border-amber-500/15 space-y-1">
-      <p className="text-[10px] font-medium text-amber-500 flex items-center gap-1">
-        <AlertTriangle className="h-3 w-3" /> Quality warnings ({issues.length})
-      </p>
-      {issues.map((issue: string, i: number) => (
-        <p key={i} className="text-[10px] text-muted-foreground pl-4">
-          {issue}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function ComponentReadinessBadge({ item }: { item: ReviewItem }) {
-  if (item.components_ready !== false) return null;
-
-  return (
-    <div className="space-y-1.5">
-      <span className="inline-flex items-center gap-1 text-[10px] text-destructive bg-destructive/10 border border-destructive/25 rounded px-1.5 py-0.5">
-        <AlertCircle className="h-3 w-3" /> Components Not Ready
-      </span>
-      {item.component_blockers && item.component_blockers.length > 0 && (
-        <div className="p-2 rounded bg-destructive/5 border border-destructive/15 space-y-1">
-          <p className="text-[10px] font-medium text-destructive flex items-center gap-1">
-            <AlertCircle className="h-3 w-3" /> Blocking components ({item.component_blockers.length})
-          </p>
-          {item.component_blockers.map((b, i) => (
-            <p key={i} className="text-[10px] text-muted-foreground pl-4">
-              {b.name} ({b.component_type}) — {b.status}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReviewCard({ item, onApprove, onReject, onDelete, disableApprove }: {
+function ReviewCard({ item, onApprove, onReject, onDelete, onItemClick, disableApprove }: {
   item: ReviewItem;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
   onDelete: (id: string, type?: string) => void;
+  onItemClick: (item: ReviewItem) => void;
   disableApprove?: boolean;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
@@ -140,11 +49,11 @@ function ReviewCard({ item, onApprove, onReject, onDelete, disableApprove }: {
     <div className="rounded-md border border-border bg-card p-4 space-y-3 hover:bg-muted/20 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <Link href={reviewItemHref(item)} className="hover:underline">
+          <button onClick={() => onItemClick(item)} className="hover:underline text-left">
             <h4 className="text-sm font-[family-name:var(--font-display)] font-semibold truncate">
               {item.name ?? "Unnamed"}
             </h4>
-          </Link>
+          </button>
           {item.submitted_by && (
             <p className="text-xs text-muted-foreground mt-0.5">
               by {item.submitted_by}
@@ -265,11 +174,12 @@ function ReviewCard({ item, onApprove, onReject, onDelete, disableApprove }: {
   );
 }
 
-function ReviewRow({ item, onApprove, onReject, onDelete, disableApprove }: {
+function ReviewRow({ item, onApprove, onReject, onDelete, onItemClick, disableApprove }: {
   item: ReviewItem;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
   onDelete: (id: string, type?: string) => void;
+  onItemClick: (item: ReviewItem) => void;
   disableApprove?: boolean;
 }) {
   const [showRejectInput, setShowRejectInput] = useState(false);
@@ -296,9 +206,12 @@ function ReviewRow({ item, onApprove, onReject, onDelete, disableApprove }: {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2.5">
-            <Link href={reviewItemHref(item)} className="text-sm font-[family-name:var(--font-display)] font-semibold truncate hover:underline">
+            <button
+              onClick={() => onItemClick(item)}
+              className="text-sm font-[family-name:var(--font-display)] font-semibold truncate hover:underline text-left"
+            >
               {item.name ?? "Unnamed"}
-            </Link>
+            </button>
             {item.type && (
               <Badge variant="outline" className="text-[10px] shrink-0">
                 {item.type ?? item.listing_type ?? "-"}
@@ -430,12 +343,14 @@ function AgentItemList({
   onApprove,
   onReject,
   onDelete,
+  onItemClick,
 }: {
   items: ReviewItem[];
   view: ViewMode;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
   onDelete: (id: string, type?: string) => void;
+  onItemClick: (item: ReviewItem) => void;
 }) {
   const grouped = useMemo(() => {
     const bundles = new Map<string, { name: string; items: ReviewItem[] }>();
@@ -465,6 +380,7 @@ function AgentItemList({
             onApprove={onApprove}
             onReject={onReject}
             onDelete={onDelete}
+            onItemClick={onItemClick}
             disableApprove={item.components_ready === false}
           />
         ))}
@@ -478,6 +394,7 @@ function AgentItemList({
             onApprove={onApprove}
             onReject={onReject}
             onDelete={onDelete}
+            onItemClick={onItemClick}
             disableApprove={item.components_ready === false}
           />
         ))}
@@ -516,12 +433,14 @@ function ReviewItemList({
   onApprove,
   onReject,
   onDelete,
+  onItemClick,
 }: {
   items: ReviewItem[];
   view: ViewMode;
   onApprove: (id: string, type?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
   onDelete: (id: string, type?: string) => void;
+  onItemClick: (item: ReviewItem) => void;
 }) {
   return view === "list" ? (
     <div className="animate-in rounded-md border border-border overflow-hidden">
@@ -532,6 +451,7 @@ function ReviewItemList({
           onApprove={onApprove}
           onReject={onReject}
           onDelete={onDelete}
+          onItemClick={onItemClick}
         />
       ))}
     </div>
@@ -544,6 +464,7 @@ function ReviewItemList({
           onApprove={onApprove}
           onReject={onReject}
           onDelete={onDelete}
+          onItemClick={onItemClick}
         />
       ))}
     </div>
@@ -557,6 +478,7 @@ export default function ReviewPage() {
   const reviewDelete = useReviewDelete();
   const [view, setView] = useState<ViewMode>("grid");
   const [activeTab, setActiveTab] = useState("agents");
+  const [selectedItem, setSelectedItem] = useState<ReviewItem | null>(null);
 
   const agentCount = (agents ?? []).length;
   const componentCount = (components ?? []).length;
@@ -575,6 +497,11 @@ export default function ReviewPage() {
   const handleDelete = useCallback(
     (id: string, type?: string) => reviewDelete.mutate({ id, type }),
     [reviewDelete],
+  );
+
+  const handleItemClick = useCallback(
+    (item: ReviewItem) => setSelectedItem(item),
+    [],
   );
 
   return (
@@ -648,6 +575,7 @@ export default function ReviewPage() {
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onDelete={handleDelete}
+                onItemClick={handleItemClick}
               />
             )}
           </TabsContent>
@@ -674,11 +602,21 @@ export default function ReviewPage() {
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onDelete={handleDelete}
+                onItemClick={handleItemClick}
               />
             )}
           </TabsContent>
         </Tabs>
       </div>
+
+      <ReviewDetailSheet
+        item={selectedItem}
+        open={!!selectedItem}
+        onOpenChange={(open) => { if (!open) setSelectedItem(null); }}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onDelete={handleDelete}
+      />
     </>
   );
 }

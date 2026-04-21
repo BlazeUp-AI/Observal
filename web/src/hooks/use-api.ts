@@ -660,6 +660,37 @@ export function useReviewAgents() {
   });
 }
 
+export function useReviewDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ["review", "detail", id],
+    enabled: !!id,
+    queryFn: () => review.get(id!),
+  });
+}
+
+export function useRelatedSkills(id: string | undefined) {
+  return useQuery({
+    queryKey: ["review", "related-skills", id],
+    enabled: !!id,
+    queryFn: () => review.relatedSkills(id!).then((r) => r.skills),
+  });
+}
+
+export function useApproveWithSkills() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; skillIds: string[] }) =>
+      review.approveWithSkills(vars.id, { skill_ids: vars.skillIds }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success("MCP and related skills approved");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Bulk approve failed");
+    },
+  });
+}
+
 export function useReviewComponents(typeFilter?: string) {
   const params: Record<string, string> = { tab: "components" };
   if (typeFilter) params.type = typeFilter;

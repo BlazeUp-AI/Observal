@@ -278,6 +278,10 @@ export const review = {
   approveBundle: (id: string) => post(`/review/bundles/${id}/approve`),
   rejectBundle: (id: string, body: { reason: string }) =>
     post(`/review/bundles/${id}/reject`, body),
+  relatedSkills: (id: string) =>
+    get<{ skills: ReviewItem[] }>(`/review/${id}/related-skills`),
+  approveWithSkills: (id: string, body: { skill_ids: string[] }) =>
+    post(`/review/${id}/approve-with-skills`, body),
 };
 
 // ── Telemetry ───────────────────────────────────────────────────────

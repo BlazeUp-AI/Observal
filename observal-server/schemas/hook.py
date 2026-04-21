@@ -110,6 +110,7 @@ class HookListingSummary(BaseModel):
     scope: str
     owner: str
     status: ListingStatus
+    rejection_reason: str | None = None
     model_config = {"from_attributes": True}
 
 

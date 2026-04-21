@@ -333,12 +333,22 @@ const columns: ColumnDef<RegistryItem>[] = [
   {
     accessorKey: "status",
     header: "Status",
-    cell: ({ row }) =>
-      row.original.status ? (
-        <StatusBadge status={row.original.status} />
+    cell: ({ row }) => {
+      const status = row.original.status as string | undefined;
+      const reason = row.original.rejection_reason as string | undefined;
+      return status ? (
+        <div>
+          <StatusBadge status={status} />
+          {status === "rejected" && reason && (
+            <p className="text-xs text-destructive mt-0.5 truncate max-w-[200px]">
+              {reason}
+            </p>
+          )}
+        </div>
       ) : (
         <span className="text-muted-foreground">-</span>
-      ),
+      );
+    },
   },
   {
     accessorKey: "updated_at",
