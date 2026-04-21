@@ -64,10 +64,11 @@ observal pull <agent> --ide cursor  # install a complete agent
 | --- | --- |
 | Claude Code | Full — skills, hooks, MCP, rules, OTLP telemetry |
 | Kiro CLI | Full — superpowers, hooks, MCP, steering files, OTLP telemetry |
-| Cursor | MCP + rules |
-| Gemini CLI | MCP + rules |
-| VS Code | MCP + rules |
-| Codex CLI | Rules |
+| Gemini CLI | Native OTEL + shim telemetry |
+| Codex CLI | Native OTEL + shim telemetry |
+| GitHub Copilot | Shim telemetry |
+| OpenCode | Shim telemetry |
+| Cursor | MCP + shim telemetry |
 
 Compatibility matrix and per-IDE setup: [Integrations](docs/integrations/README.md).
 

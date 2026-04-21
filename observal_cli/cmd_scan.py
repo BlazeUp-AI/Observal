@@ -804,13 +804,14 @@ def register_scan(app: typer.Typer):
         """Discover IDE components and instrument for telemetry.
 
         By default, scans the current project directory for Cursor, VS Code, Kiro,
-        and Gemini CLI MCP configs.
+        Gemini CLI, Codex, Copilot, and OpenCode MCP configs.
 
         With --home, scans your IDE home directory. Use --ide to target a specific
         IDE (e.g. --home --ide kiro), or --all-ides to scan all IDEs at once.
 
-        With --all-ides, scans ~/.claude, ~/.kiro, and ~/.gemini to discover
-        all agents, MCP servers, skills, and hooks across every IDE you use.
+        With --all-ides, scans ~/.claude, ~/.kiro, ~/.gemini, ~/.codex,
+        ~/.vscode, and ~/.config/opencode to discover all agents, MCP servers,
+        skills, and hooks across every IDE you use.
 
         Components are NOT published to the registry. Use 'observal registry <type>
         submit' to explicitly publish when ready.

@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — First-Class Multi-IDE Support
+
+Adds first-class support for **Codex CLI**, **Gemini CLI**, **GitHub Copilot**, and **OpenCode** across the full CLI surface.
+
+- **Auth flow**: `observal auth login` now auto-detects and configures telemetry for all 7 IDEs after login
+  - Codex CLI: appends OTEL exporter config to `~/.codex/config.toml`
+  - Gemini CLI: writes OTEL endpoint to `~/.gemini/settings.json`
+  - Copilot: detects VS Code / `.vscode/mcp.json` and surfaces install guidance
+  - OpenCode: detects `~/.config/opencode` and surfaces install guidance
+- **Scan**: `observal scan --all-ides` now discovers MCP servers in `~/.codex`, `~/.vscode`, and `~/.config/opencode`
+  - Codex: parses TOML `config.toml` with `[mcp.servers]` sections
+  - Copilot: parses `.vscode/mcp.json` with `servers` key (GitHub's format)
+  - OpenCode: parses `opencode.json` with flat command arrays (`command: [cmd, ...args]`)
+  - Auto-shim wraps un-shimmed MCP entries with `observal-shim` for telemetry
+- **Doctor**: `observal doctor` now checks Codex, Copilot, and OpenCode configs
+- **Profile**: `observal use` handles `~/.codex/config.toml` in profile backups/restores
+- **Agent builder**: server generates IDE-specific agent configs for all new IDEs
+  - `_generate_opencode()`: AGENTS.md + opencode.json with flat command arrays
+  - `_generate_gemini_cli()` enhanced: emits `.gemini/settings.json` with OTEL telemetry block
+- **Preview panel**: web builder shows config previews for all 8 IDEs
+
 ## [0.2.0] - 2026-04-21
 
 ### Added — Kiro CLI Setup Guide
