@@ -1,0 +1,17 @@
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- Per-query memory cap: 400 MB.
+                 Prevents any single SELECT/INSERT from consuming all RAM. -->
+            <max_memory_usage>400000000</max_memory_usage>
+
+            <!-- Spill GROUP BY and ORDER BY to disk instead of OOMing -->
+            <max_bytes_before_external_group_by>200000000</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>200000000</max_bytes_before_external_sort>
+
+            <!-- Cap join memory; fall back to partial-merge on overflow -->
+            <max_bytes_in_join>100000000</max_bytes_in_join>
+            <join_algorithm>auto</join_algorithm>
+        </default>
+    </profiles>
+</clickhouse>
