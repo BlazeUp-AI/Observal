@@ -697,6 +697,42 @@ async def get_audit_log(
         return {"events": [], "total": 0}
 
 
+@router.post("/resources/apply")
+async def apply_resources(
+    current_user: User = Depends(require_role(UserRole.admin)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-apply resource tuning settings to ClickHouse without restart."""
+    from services.clickhouse import RESOURCE_SETTINGS_MAP, apply_resource_settings
+
+    result = await db.execute(
+        select(EnterpriseConfig).where(EnterpriseConfig.key.like("resource.%"))
+    )
+    current = {cfg.key: cfg.value for cfg in result.scalars().all()}
+
+    await apply_resource_settings(overrides=current)
+
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.SETTING_CHANGED,
+            severity=Severity.WARNING,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id="resource_settings",
+            target_type="setting",
+            detail=f"Applied resource settings: {list(current.keys())}",
+        )
+    )
+
+    applied_keys = [k for k in current if k in RESOURCE_SETTINGS_MAP]
+    return {
+        "applied": {k: current[k] for k in applied_keys},
+        "message": "ClickHouse resource settings applied",
+    }
+
+
 @router.post("/cache/clear")
 async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))):
     """Clear all cached dashboard and OTEL responses."""

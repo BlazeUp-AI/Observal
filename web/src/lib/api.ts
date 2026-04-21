@@ -370,6 +370,8 @@ export const admin = {
   resetPassword: (id: string, body: { new_password: string }) =>
     put<{ message: string }>(`/admin/users/${id}/password`, body),
   deleteUser: (id: string) => del(`/admin/users/${id}`),
+  applyResources: () =>
+    post<{ applied: Record<string, string>; message: string }>("/admin/resources/apply", {}),
 };
 
 // ── Config ─────────────────────────────────────────────────────────

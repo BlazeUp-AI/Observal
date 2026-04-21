@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info, Database } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminSettings } from "@/hooks/use-api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
@@ -102,6 +102,10 @@ const DEFAULT_SETTINGS = [
   { key: "registry.max_agents_per_user", description: "Maximum agents per user" },
   { key: "eval.default_window_size", description: "Default eval window size" },
   { key: "hooks.auth_required", description: "Require auth for hook endpoints" },
+  { key: "resource.max_query_memory_mb", description: "Per-query memory limit in MB (default: 400)" },
+  { key: "resource.group_by_spill_mb", description: "GROUP BY spill-to-disk threshold in MB (default: 200)" },
+  { key: "resource.sort_spill_mb", description: "ORDER BY spill-to-disk threshold in MB (default: 200)" },
+  { key: "resource.join_memory_mb", description: "JOIN memory limit in MB (default: 100)" },
 ];
 
 export default function SettingsPage() {
@@ -112,6 +116,7 @@ export default function SettingsPage() {
   const [addingValue, setAddingValue] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [applyingResources, setApplyingResources] = useState(false);
 
   const entries: { key: string; value: string }[] = Array.isArray(settings)
     ? settings.map((s: AdminSetting) => ({ key: s.key, value: s.value }))
@@ -136,6 +141,25 @@ export default function SettingsPage() {
       setSaving(false);
     }
   }, [addingKey, addingValue, refetch]);
+
+  const handleApplyResources = useCallback(async () => {
+    setApplyingResources(true);
+    try {
+      const res = await admin.applyResources();
+      const count = Object.keys(res.applied).length;
+      if (count > 0) {
+        toast.success(`Applied ${count} resource setting${count > 1 ? "s" : ""} to ClickHouse`);
+      } else {
+        toast.info("No resource settings configured yet. Add resource.* settings first.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to apply resource settings");
+    } finally {
+      setApplyingResources(false);
+    }
+  }, []);
+
+  const hasResourceSettings = entries.some((e) => e.key.startsWith("resource."));
 
   if (!ready) return null;
 
@@ -232,6 +256,37 @@ export default function SettingsPage() {
                   {entries.map((s) => (
                     <SettingRow key={s.key} setting={s} onSaved={() => refetch()} onDeleted={() => refetch()} />
                   ))}
+                </div>
+              </section>
+            )}
+
+            {/* Resource Tuning */}
+            {hasResourceSettings && (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  Resource Tuning
+                </h3>
+                <div className="rounded-md border border-border bg-card px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <Database className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-xs text-muted-foreground">
+                        Resource settings control ClickHouse memory limits for queries, aggregations, and joins.
+                        After changing any <span className="font-[family-name:var(--font-mono)]">resource.*</span> setting above,
+                        click apply to push the changes to ClickHouse without restarting.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 h-8"
+                        onClick={handleApplyResources}
+                        disabled={applyingResources}
+                      >
+                        {applyingResources ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Database className="mr-1.5 h-3.5 w-3.5" />}
+                        Apply Resource Settings
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </section>
             )}

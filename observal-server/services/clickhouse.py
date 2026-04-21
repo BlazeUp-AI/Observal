@@ -314,6 +314,72 @@ INIT_SQL = [
 ]
 
 
+# ── Resource tuning ───────────────────────────────────────
+# Maps enterprise_config keys to ClickHouse SET-able settings.
+# Only whitelisted settings are accepted to avoid SQL injection.
+RESOURCE_SETTINGS_MAP: dict[str, tuple[str, type]] = {
+    "resource.max_query_memory_mb": ("max_memory_usage", int),
+    "resource.group_by_spill_mb": ("max_bytes_before_external_group_by", int),
+    "resource.sort_spill_mb": ("max_bytes_before_external_sort", int),
+    "resource.join_memory_mb": ("max_bytes_in_join", int),
+}
+
+
+async def apply_resource_settings(overrides: dict[str, str] | None = None):
+    """Apply resource tuning settings to ClickHouse.
+
+    Reads from enterprise_config (Postgres) unless *overrides* is supplied.
+    Values are in megabytes and converted to bytes for ClickHouse.
+    """
+    resource_values: dict[str, str] = {}
+
+    if overrides is not None:
+        resource_values = overrides
+    else:
+        try:
+            from database import async_session
+            from models.enterprise_config import EnterpriseConfig
+
+            from sqlalchemy import select
+
+            async with async_session() as db:
+                result = await db.execute(
+                    select(EnterpriseConfig).where(
+                        EnterpriseConfig.key.like("resource.%")
+                    )
+                )
+                for cfg in result.scalars().all():
+                    resource_values[cfg.key] = cfg.value
+        except Exception as e:
+            logger.debug("Could not read resource settings from DB: %s", e)
+
+    if not resource_values:
+        return
+
+    parts = []
+    for config_key, (ch_setting, cast) in RESOURCE_SETTINGS_MAP.items():
+        raw = resource_values.get(config_key)
+        if raw is None:
+            continue
+        try:
+            mb = cast(raw)
+            if mb <= 0:
+                continue
+            parts.append(f"{ch_setting} = {mb * 1_000_000}")
+        except (ValueError, TypeError):
+            logger.warning("Invalid resource setting %s=%s, skipping", config_key, raw)
+
+    if not parts:
+        return
+
+    sql = f"ALTER USER {CLICKHOUSE_USER} SETTINGS {', '.join(parts)}"
+    try:
+        await _query(sql)
+        logger.info("ClickHouse resource settings applied: %s", ", ".join(parts))
+    except Exception as e:
+        logger.warning("Failed to apply ClickHouse resource settings: %s", e)
+
+
 async def init_clickhouse():
     """Create ClickHouse tables if they don't exist and configure retention.
 
@@ -328,6 +394,9 @@ async def init_clickhouse():
             await _query(stmt)
         except Exception as e:
             logger.warning(f"ClickHouse init statement failed: {e}")
+
+    # Apply admin-configured resource tuning from enterprise_config
+    await apply_resource_settings()
 
     # Apply data retention TTL if configured
     retention_days = settings.DATA_RETENTION_DAYS
