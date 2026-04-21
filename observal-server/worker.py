@@ -101,6 +101,43 @@ async def sync_component_sources(ctx: dict):
             )
 
 
+async def maintain_clickhouse(ctx: dict):
+    """Periodic ClickHouse maintenance: compact parts to prevent OOM on long-running agents.
+
+    OPTIMIZE TABLE (without FINAL) merges small parts into larger ones.
+    This is lightweight and safe to run frequently.  Without it, a
+    month-long agent session accumulates thousands of tiny parts that
+    bloat memory during merges and FINAL queries.
+    """
+    from services.clickhouse import _query
+
+    tables = ["traces", "spans", "scores", "mcp_tool_calls", "agent_interactions"]
+    for table in tables:
+        try:
+            await _query(f"OPTIMIZE TABLE {table}")
+        except Exception as e:
+            logger.warning("ClickHouse OPTIMIZE %s failed: %s", table, e)
+
+    # Check part health — warn before things get critical
+    try:
+        resp = await _query(
+            "SELECT table, count() as parts, sum(rows) as total_rows "
+            "FROM system.parts WHERE database = currentDatabase() AND active "
+            "GROUP BY table FORMAT JSON"
+        )
+        if resp.status_code == 200:
+            for row in resp.json().get("data", []):
+                parts = int(row.get("parts", 0))
+                if parts > 300:
+                    logger.warning(
+                        "ClickHouse table %s has %s active parts — merges may be falling behind",
+                        row["table"],
+                        parts,
+                    )
+    except Exception as e:
+        logger.debug("Part health check failed: %s", e)
+
+
 async def startup(ctx: dict):
     logger.info("arq worker started")
 
@@ -112,10 +149,11 @@ async def shutdown(ctx: dict):
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [run_eval, sync_component_sources, evaluate_alerts]
+    functions = [run_eval, sync_component_sources, evaluate_alerts, maintain_clickhouse]
     cron_jobs = [
         cron(sync_component_sources, hour={0, 6, 12, 18}),  # Every 6 hours
         cron(evaluate_alerts, second={0}, timeout=55),  # Every minute
+        cron(maintain_clickhouse, hour={0, 4, 8, 12, 16, 20}, timeout=120),  # Every 4 hours
     ]
     on_startup = startup
     on_shutdown = shutdown
