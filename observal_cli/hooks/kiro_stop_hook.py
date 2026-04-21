@@ -184,9 +184,7 @@ def main():
         try:
             cfg_path = Path.home() / ".observal" / "config.json"
             if cfg_path.exists():
-                import json as _json
-
-                cfg = _json.loads(cfg_path.read_text())
+                cfg = json.loads(cfg_path.read_text())
                 if not payload.get("user_id") and cfg.get("user_id"):
                     payload["user_id"] = cfg["user_id"]
                 if not payload.get("user_name") and cfg.get("user_name"):

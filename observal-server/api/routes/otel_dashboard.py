@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi_cache.decorator import cache
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from api.deps import require_role
 from config import settings
@@ -84,19 +84,20 @@ async def list_sessions(
 ):
     is_admin = _is_admin_user(current_user)
     uid_str = str(current_user.id)
+    capped_days = min(days, 365) if days is not None and days > 0 else days
     rows = await _list_sessions_query(
-        status=status,
         platform=platform,
-        days=days,
+        days=capped_days,
         is_admin=is_admin,
         uid=uid_str,
         uemail=current_user.email,
     )
 
     # ── Resolve user display names ──
-    # Build uuid→name and email→name maps from PostgreSQL.
+    # Build uuid→name and email→name maps from PostgreSQL,
+    # querying only the user_ids that actually need resolution.
     uid_to_name: dict[str, str] = {}
-    needs_resolution = False
+    unresolved_ids: set[str] = set()
     for row in rows:
         user_ids = row.pop("user_ids", []) or []
         best_uid = ""
@@ -108,17 +109,30 @@ async def list_sessions(
             except ValueError:
                 best_uid = best_uid or u
         row["user_id"] = best_uid
-        if not row.get("user_name"):
-            needs_resolution = True
+        if not row.get("user_name") and best_uid:
+            unresolved_ids.add(best_uid)
 
-    if needs_resolution:
+    if unresolved_ids:
         try:
-            async with async_session() as db:
-                result = await db.execute(select(User.id, User.email, User.name))
-                for u_id, u_email, u_name in result.all():
-                    uid_to_name[str(u_id)] = u_name
-                    if u_email:
-                        uid_to_name[u_email] = u_name
+            uuid_ids = []
+            email_ids = []
+            for uid in unresolved_ids:
+                try:
+                    uuid_ids.append(_uuid.UUID(uid))
+                except ValueError:
+                    email_ids.append(uid)
+            filters = []
+            if uuid_ids:
+                filters.append(User.id.in_(uuid_ids))
+            if email_ids:
+                filters.append(User.email.in_(email_ids))
+            if filters:
+                async with async_session() as db:
+                    result = await db.execute(select(User.id, User.email, User.name).where(or_(*filters)))
+                    for u_id, u_email, u_name in result.all():
+                        uid_to_name[str(u_id)] = u_name
+                        if u_email:
+                            uid_to_name[u_email] = u_name
         except Exception:
             logger.warning("User name resolution failed", exc_info=True)
 
@@ -141,13 +155,10 @@ async def list_sessions(
         row["service_name"] = _normalize_service(row.get("service_name", ""))
         if not row.get("user_name") and row.get("user_id"):
             row["user_name"] = uid_to_name.get(row["user_id"], "")
-        # Non-admin users only see their own sessions (session filter
-        # guarantees this), so any remaining blank names belong to them.
-        # For admins: Kiro sessions often have no user_id at all (raw curl
-        # hooks don't inject identity). Attribute them to the admin too.
-        if not row.get("user_name") and not is_admin:
-            row["user_name"] = current_user.name
-        if not row.get("user_name") and is_admin:
+        # Remaining blank names: non-admins only see their own sessions
+        # (query filter guarantees this); admins get Kiro sessions that
+        # lack user_id entirely. Either way, attribute to current user.
+        if not row.get("user_name"):
             row["user_name"] = current_user.name
         svc = row.get("service_name", "")
         sid = row.get("session_id", "")
@@ -155,14 +166,11 @@ async def list_sessions(
 
     if status == "active":
         rows = [r for r in rows if r["is_active"]]
-    if platform:
-        rows = [r for r in rows if r.get("service_name") == platform]
     return rows
 
 
 async def _list_sessions_query(
     *,
-    status: str | None,
     platform: str | None,
     days: int | None,
     is_admin: bool,
@@ -172,6 +180,7 @@ async def _list_sessions_query(
     """ClickHouse query for session list."""
     session_filter = ""
     time_filter = ""
+    platform_filter = ""
     params: dict[str, str] = {}
     if not is_admin:
         session_filter = (
@@ -187,6 +196,10 @@ async def _list_sessions_query(
 
     if days is not None and days > 0:
         time_filter = f"AND Timestamp > now('UTC') - INTERVAL {int(days)} DAY "
+
+    if platform:
+        platform_filter = "HAVING service_name = {platform:String} "
+        params["param_platform"] = platform
 
     return await _ch_json(
         "SELECT "
@@ -213,17 +226,24 @@ async def _list_sessions_query(
         "anyIf(LogAttributes['terminal.type'], LogAttributes['terminal.type'] != '') AS terminal_type, "
         "anyIf(LogAttributes['credits'], LogAttributes['credits'] != '') AS credits, "
         "anyIf(LogAttributes['tools_used'], LogAttributes['tools_used'] != '') AS tools_used, "
-        "any(ServiceName) AS service_name "
+        "multiIf("
+        "  any(ServiceName) = 'kiro-cli', 'kiro',"
+        "  any(ServiceName) IN ('observal-hooks', 'observal-shim'), 'claude-code',"
+        "  any(ServiceName)"
+        ") AS service_name "
         "FROM otel_logs "
-        "WHERE LogAttributes['session.id'] != '' " + session_filter + time_filter + "GROUP BY session_id "
-        "ORDER BY last_event_time DESC "
+        "WHERE LogAttributes['session.id'] != '' "
+        + session_filter
+        + time_filter
+        + "GROUP BY session_id "
+        + platform_filter
+        + "ORDER BY last_event_time DESC "
         "LIMIT 100",
         params or None,
     )
 
 
 @router.get("/sessions/summary")
-@cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def sessions_summary(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
@@ -1023,6 +1043,9 @@ async def ingest_hook(request: Request):
     # Kiro: user_id in body (via sed injection)
     # Claude Code: X-Observal-User-Id header (via HTTP hook header)
     # Claude Code also sends native user.id in some events
+    # Note: this endpoint is unauthenticated, so these values are
+    # self-reported. The /sessions endpoint resolves canonical names
+    # from PostgreSQL, so hook-supplied names are only a fallback.
     user_id = body.get("user_id") or request.headers.get("x-observal-user-id") or ""
     if user_id:
         attrs["user.id"] = user_id
