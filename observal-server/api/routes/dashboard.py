@@ -1,8 +1,8 @@
-import logging
 import uuid
 from datetime import UTC, timedelta
 from datetime import datetime as dt
 
+import structlog
 from fastapi import APIRouter, Depends, Query
 from fastapi_cache.decorator import cache
 from sqlalchemy import func, select
@@ -45,7 +45,7 @@ from schemas.dashboard import (
 )
 from services.clickhouse import _query
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 
 _RANGE_MAP = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}

@@ -9,14 +9,15 @@ Also provides agent-scoped annotation: given a full session, marks which
 spans belong to a target agent so the eval pipeline can focus its scoring.
 """
 
-import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import structlog
+
 from services.clickhouse import _query, query_shim_spans_for_window
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _SERVICE_NAME_MAP: dict[str, str] = {
     "kiro-cli": "kiro",

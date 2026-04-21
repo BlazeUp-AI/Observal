@@ -39,7 +39,10 @@ class TestReadiness:
 
         app.dependency_overrides[get_db] = _mock_get_db
         try:
-            with patch("services.clickhouse.clickhouse_health", new_callable=AsyncMock, return_value=True):
+            with (
+                patch("services.clickhouse.clickhouse_health", new_callable=AsyncMock, return_value=True),
+                patch("services.redis.ping", new_callable=AsyncMock, return_value=True),
+            ):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     r = await ac.get("/health")
             assert r.status_code == 200
@@ -65,7 +68,11 @@ class TestReadiness:
         app.dependency_overrides[get_db] = _mock_get_db
         app.state.enterprise_issues = ["SECRET_KEY is default"]
         try:
-            with patch("main.settings") as mock_settings:
+            with (
+                patch("main.settings") as mock_settings,
+                patch("services.clickhouse.clickhouse_health", new_callable=AsyncMock, return_value=True),
+                patch("services.redis.ping", new_callable=AsyncMock, return_value=True),
+            ):
                 mock_settings.DEPLOYMENT_MODE = "enterprise"
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     r = await ac.get("/health")
