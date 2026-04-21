@@ -480,7 +480,7 @@ def _post_auth_onboarding():
             rprint(f"  [bold]{label}[/bold] — {', '.join(parts)} found")
         rprint()
 
-        if not typer.confirm("Upload these to Observal?", default=True):
+        if not typer.confirm("Register these in Observal?", default=True):
             rprint()
             rprint("[dim]You can register these anytime by running:[/dim]")
             rprint("  [bold]observal scan --home --all-ides[/bold]")
@@ -577,7 +577,7 @@ def _post_auth_onboarding():
                 result = client.post("/api/v1/scan", scan_payload)
             except Exception as e:
                 rprint(f"[yellow]Registration failed: {e}[/yellow]")
-                rprint("[dim]Tip: run `observal scan --home --all-ides` to retry.[/dim]")
+                rprint("[dim]You can retry by running:[/dim] [bold]observal scan --home --all-ides[/bold]")
                 return
 
         summary = result.get("summary", {})
@@ -585,7 +585,7 @@ def _post_auth_onboarding():
         if parts:
             rprint(f"[green]Registered: {', '.join(parts)}[/green]")
             rprint(
-                "[dim]View them at[/dim] [bold]http://localhost:3000[/bold] [dim]or run[/dim] [bold]observal agent list[/bold]"
+                "[dim]View them with[/dim] [bold]observal agent list[/bold] [dim]or in the Observal dashboard.[/dim]"
             )
         else:
             rprint("[dim]All components already registered.[/dim]")
