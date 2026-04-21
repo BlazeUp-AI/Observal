@@ -68,7 +68,9 @@ async def subscribe(channel: str):
                         continue
         except (ConnectionError, OSError) as e:
             reconnect_count += 1
-            logger.warning("redis_subscribe_reconnecting", attempt=reconnect_count, max_attempts=max_reconnects, error=str(e))
+            logger.warning(
+                "redis_subscribe_reconnecting", attempt=reconnect_count, max_attempts=max_reconnects, error=str(e)
+            )
             await asyncio.sleep(1.0 * reconnect_count)
         finally:
             try:
