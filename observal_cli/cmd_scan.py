@@ -694,6 +694,49 @@ def _backup_config(config_path: Path) -> Path:
     return backup
 
 
+def _auto_shim_home_config(result: dict, config_path: Path, ide: str):
+    """Auto-wrap un-shimmed MCP servers in a home-directory config file.
+
+    For IDEs without native hook/telemetry systems (Codex, Copilot, OpenCode),
+    wrapping MCP servers with observal-shim is the primary telemetry path.
+    """
+    if not config_path.exists():
+        return
+
+    id_map = {r["name"]: r["id"] for r in result.get("registered", []) if r["type"] == "mcp"}
+    if not id_map:
+        return
+
+    try:
+        if config_path.suffix == ".toml":
+            try:
+                import tomllib as toml
+            except ImportError:
+                try:
+                    import tomli as toml  # type: ignore[no-redef]
+                except ImportError:
+                    return
+            data = toml.loads(config_path.read_text()) if hasattr(toml, "loads") else toml.load(config_path.open("rb"))  # type: ignore[call-arg]
+        else:
+            data = json.loads(config_path.read_text())
+
+        servers = _parse_project_mcp_servers(data, ide)
+        shimmed = 0
+        for name, entry in servers.items():
+            mcp_id = id_map.get(name)
+            if mcp_id and not _is_already_shimmed(entry):
+                servers[name] = _wrap_with_shim(entry, mcp_id)
+                shimmed += 1
+
+        if shimmed:
+            _backup_config(config_path)
+            config_path.write_text(json.dumps(data, indent=2) + "\n")
+            rprint(f"\n[green]Shimmed {shimmed} MCP entries in {config_path}[/green]")
+            rprint("[dim]Telemetry will be collected via observal-shim.[/dim]")
+    except Exception as e:
+        rprint(f"\n[yellow]Could not auto-shim {config_path}: {e}[/yellow]")
+
+
 def inject_gemini_telemetry(otlp_endpoint: str) -> bool:
     """Inject Observal OTLP telemetry settings into ~/.gemini/settings.json.
 
@@ -1361,3 +1404,21 @@ def register_scan(app: typer.Typer):
             except Exception as e:
                 rprint(f"\n[yellow]Could not configure Gemini CLI telemetry: {e}[/yellow]")
                 rprint("[dim]Add telemetry settings manually to ~/.gemini/settings.json.[/dim]")
+
+        # ── Auto-shim Codex home MCP servers ──
+        if scan_codex:
+            _auto_shim_home_config(
+                result, Path.home() / ".codex" / "config.toml", "codex",
+            )
+
+        # ── Auto-shim Copilot home MCP servers ──
+        if scan_copilot:
+            _auto_shim_home_config(
+                result, Path.home() / ".vscode" / "mcp.json", "copilot",
+            )
+
+        # ── Auto-shim OpenCode home MCP servers ──
+        if scan_opencode:
+            _auto_shim_home_config(
+                result, Path.home() / ".config" / "opencode" / "opencode.json", "opencode",
+            )
