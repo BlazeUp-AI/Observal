@@ -20,6 +20,7 @@ VALID_IDES: list[str] = [
     "vscode",
     "codex",
     "copilot",
+    "opencode",
 ]
 
 # ── IDE feature capabilities ──────────────────────────────────
@@ -42,7 +43,8 @@ IDE_FEATURE_MATRIX: dict[str, set[str]] = {
     "cursor": {"mcp_servers", "rules"},
     "gemini-cli": {"mcp_servers", "rules"},
     "codex": {"rules"},
-    "copilot": {"rules"},
+    "copilot": {"mcp_servers", "rules"},
+    "opencode": {"mcp_servers", "rules"},
     "vscode": {"mcp_servers", "rules"},
 }
 

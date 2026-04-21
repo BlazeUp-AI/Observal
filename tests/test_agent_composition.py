@@ -1290,11 +1290,22 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "copilot")
         assert config.ide == "copilot"
-        assert len(config.files) == 1
-        md = config.files[0]
-        assert md.path == ".github/copilot-instructions.md"
+        paths = [f.path for f in config.files]
+        assert ".github/copilot-instructions.md" in paths
+        md = next(f for f in config.files if f.path == ".github/copilot-instructions.md")
         assert md.format == "markdown"
         assert "You are a helpful coding assistant." in md.content
+
+    def test_copilot_generates_mcp_json(self):
+        from services.agent_builder import generate_ide_agent_files
+
+        manifest = self._make_manifest()
+        config = generate_ide_agent_files(manifest, "copilot")
+        paths = [f.path for f in config.files]
+        assert ".vscode/mcp.json" in paths
+        mcp_file = next(f for f in config.files if f.path == ".vscode/mcp.json")
+        assert mcp_file.format == "json"
+        assert "servers" in mcp_file.content
 
     # ── Rules markdown content ─────────────────────────────────
 

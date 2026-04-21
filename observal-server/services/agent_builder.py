@@ -559,18 +559,36 @@ def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
 
 
 def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate GitHub Copilot agent config (.github/copilot-instructions.md)."""
+    """Generate GitHub Copilot agent config (.github/copilot-instructions.md + .vscode/mcp.json)."""
+    mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
+
+    files = [
+        AgentFile(
+            path=".github/copilot-instructions.md",
+            content=rules_content,
+            format="markdown",
+        ),
+    ]
+
+    if mcp_entries:
+        copilot_mcp_entries = {}
+        for k, v in mcp_entries.items():
+            copilot_mcp_entries[k] = {"type": "stdio", "command": v["command"], "args": v.get("args", [])}
+            if v.get("env"):
+                copilot_mcp_entries[k]["env"] = v["env"]
+        files.append(
+            AgentFile(
+                path=".vscode/mcp.json",
+                content={"servers": copilot_mcp_entries},
+                format="json",
+            ),
+        )
 
     return IdeAgentConfig(
         ide="copilot",
-        files=[
-            AgentFile(
-                path=".github/copilot-instructions.md",
-                content=rules_content,
-                format="markdown",
-            ),
-        ],
+        files=files,
+        mcp_servers=mcp_entries,
     )
 
 

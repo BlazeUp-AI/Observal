@@ -10,6 +10,7 @@ export const VALID_IDES = [
   "cursor",
   "gemini-cli",
   "kiro",
+  "opencode",
   "vscode",
 ] as const;
 
@@ -33,7 +34,8 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   cursor: new Set(["mcp_servers", "rules"]),
   "gemini-cli": new Set(["mcp_servers", "rules"]),
   codex: new Set(["rules"]),
-  copilot: new Set(["rules"]),
+  copilot: new Set(["mcp_servers", "rules"]),
+  opencode: new Set(["mcp_servers", "rules"]),
   vscode: new Set(["mcp_servers", "rules"]),
 };
 
@@ -44,6 +46,7 @@ export const IDE_DISPLAY_NAMES: Record<IdeName, string> = {
   "gemini-cli": "Gemini CLI",
   codex: "Codex",
   copilot: "Copilot",
+  opencode: "OpenCode",
   vscode: "VS Code",
 };
 
