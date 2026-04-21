@@ -221,30 +221,86 @@ async def list_pending(
 
 _DETAIL_FIELDS: dict[str, list[str]] = {
     "mcp": [
-        "git_url", "git_ref", "category", "transport", "framework", "docker_image",
-        "command", "args", "url", "headers", "auto_approve", "tools_schema",
-        "environment_variables", "supported_ides", "setup_instructions", "changelog",
-        "rejection_reason", "bundle_id",
+        "git_url",
+        "git_ref",
+        "category",
+        "transport",
+        "framework",
+        "docker_image",
+        "command",
+        "args",
+        "url",
+        "headers",
+        "auto_approve",
+        "tools_schema",
+        "environment_variables",
+        "supported_ides",
+        "setup_instructions",
+        "changelog",
+        "rejection_reason",
+        "bundle_id",
     ],
     "skill": [
-        "git_url", "git_ref", "skill_path", "target_agents", "task_type", "triggers",
-        "slash_command", "has_scripts", "has_templates", "is_power", "power_md",
-        "mcp_server_config", "activation_keywords", "supported_ides",
-        "rejection_reason", "bundle_id",
+        "git_url",
+        "git_ref",
+        "skill_path",
+        "target_agents",
+        "task_type",
+        "triggers",
+        "slash_command",
+        "has_scripts",
+        "has_templates",
+        "is_power",
+        "power_md",
+        "mcp_server_config",
+        "activation_keywords",
+        "supported_ides",
+        "rejection_reason",
+        "bundle_id",
     ],
     "hook": [
-        "git_url", "git_ref", "event", "execution_mode", "priority", "handler_type",
-        "handler_config", "input_schema", "output_schema", "scope", "tool_filter",
-        "file_pattern", "supported_ides", "rejection_reason", "bundle_id",
+        "git_url",
+        "git_ref",
+        "event",
+        "execution_mode",
+        "priority",
+        "handler_type",
+        "handler_config",
+        "input_schema",
+        "output_schema",
+        "scope",
+        "tool_filter",
+        "file_pattern",
+        "supported_ides",
+        "rejection_reason",
+        "bundle_id",
     ],
     "prompt": [
-        "git_url", "git_ref", "category", "template", "variables", "model_hints",
-        "tags", "supported_ides", "rejection_reason", "bundle_id",
+        "git_url",
+        "git_ref",
+        "category",
+        "template",
+        "variables",
+        "model_hints",
+        "tags",
+        "supported_ides",
+        "rejection_reason",
+        "bundle_id",
     ],
     "sandbox": [
-        "git_url", "git_ref", "runtime_type", "image", "dockerfile_url",
-        "resource_limits", "network_policy", "allowed_mounts", "env_vars",
-        "entrypoint", "supported_ides", "rejection_reason", "bundle_id",
+        "git_url",
+        "git_ref",
+        "runtime_type",
+        "image",
+        "dockerfile_url",
+        "resource_limits",
+        "network_policy",
+        "allowed_mounts",
+        "env_vars",
+        "entrypoint",
+        "supported_ides",
+        "rejection_reason",
+        "bundle_id",
     ],
 }
 
@@ -306,9 +362,7 @@ async def get_review(
         except ValueError:
             raise HTTPException(status_code=404, detail="Listing not found")
         agent = (
-            await db.execute(
-                select(Agent).where(Agent.id == agent_uuid).options(selectinload(Agent.components))
-            )
+            await db.execute(select(Agent).where(Agent.id == agent_uuid).options(selectinload(Agent.components)))
         ).scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=404, detail="Listing not found")
@@ -583,9 +637,7 @@ async def approve_mcp_with_skills(
             skill_uuid = uuid.UUID(sid)
         except ValueError:
             continue
-        skill = (
-            await db.execute(select(SkillListing).where(SkillListing.id == skill_uuid))
-        ).scalar_one_or_none()
+        skill = (await db.execute(select(SkillListing).where(SkillListing.id == skill_uuid))).scalar_one_or_none()
         if skill and skill.status == ListingStatus.pending:
             skill.status = ListingStatus.approved
             skill.rejection_reason = None
