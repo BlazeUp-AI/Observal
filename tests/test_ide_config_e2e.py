@@ -270,7 +270,7 @@ class TestGenerateOpenCodeConfig:
         entry = cfg["mcp_config"]["content"]["mcp"]["my-server"]
         old_cmd = "npx"
         old_args = ["-y", "my-server"]
-        full_cmd = [entry["command"][0]] + entry["command"][1:]
+        full_cmd = [entry["command"][0], *entry["command"][1:]]
         assert "--mcp-id" in entry["command"]
         assert "--" in entry["command"]
         idx_dash = entry["command"].index("--")
@@ -1018,7 +1018,7 @@ class TestDoctorCopilot:
         _check_copilot(Path(".vscode/mcp.json"), data, issues, warnings)
         assert len(warnings) == 0
 
-    def test_check_copilot_fn_handles_mcpServers_fallback(self):
+    def test_check_copilot_fn_handles_mcp_servers_fallback(self):
         from pathlib import Path
 
         from observal_cli.cmd_doctor import _check_copilot
@@ -1511,8 +1511,8 @@ class TestConfigGeneratorCodexFormat:
     """Bug #4: config_generator should return mcp.servers (not mcpServers) for Codex."""
 
     def _make_listing(self, name="my-mcp", framework="typescript", url=None, command=None, args=None):
-        from unittest.mock import MagicMock
         import uuid
+        from unittest.mock import MagicMock
 
         listing = MagicMock()
         listing.id = uuid.uuid4()

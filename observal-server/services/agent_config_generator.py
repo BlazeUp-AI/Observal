@@ -453,7 +453,7 @@ def generate_agent_config(
     if ide == "opencode":
         opencode_configs = {}
         for k, v in mcp_configs.items():
-            cmd_array = [v["command"]] + v.get("args", [])
+            cmd_array = [v["command"], *v.get("args", [])]
             opencode_configs[k] = {"type": "local", "command": cmd_array}
             if "env" in v:
                 opencode_configs[k]["env"] = v["env"]

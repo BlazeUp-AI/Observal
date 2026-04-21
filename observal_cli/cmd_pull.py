@@ -108,7 +108,7 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
     existed = path.exists()
 
     if isinstance(content, dict):
-        root_key = list(content.keys())[0] if content else "mcpServers"
+        root_key = next(iter(content.keys())) if content else "mcpServers"
         if path.suffix == ".toml":
             incoming_servers = content.get(root_key, {})
             toml_str = _dict_to_toml({root_key: incoming_servers})
