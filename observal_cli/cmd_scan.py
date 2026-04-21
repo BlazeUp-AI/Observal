@@ -22,6 +22,7 @@ def _deterministic_mcp_id(name: str) -> str:
     """Generate a stable UUID for an MCP based on its name."""
     return str(uuid.uuid5(_OBSERVAL_NS, name))
 
+
 # ── IDE config file locations (relative to project root) ────
 
 _IDE_PROJECT_CONFIGS = {
@@ -549,9 +550,7 @@ def register_scan(app: typer.Typer):
         all_ides: bool = typer.Option(
             False, "--all-ides", help="Scan home directories for ALL IDEs (Claude Code, Kiro, Cursor)"
         ),
-        dry_run: bool = typer.Option(
-            False, "--dry-run", "-n", help="Show discovered components without instrumenting"
-        ),
+        dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show discovered components without instrumenting"),
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
         shim: bool = typer.Option(
             False, "--shim", help="Rewrite project IDE configs to route MCPs through observal-shim"
