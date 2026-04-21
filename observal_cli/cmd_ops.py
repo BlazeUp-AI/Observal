@@ -79,7 +79,10 @@ def review_list(
 
 
 @review_app.command(name="show")
-def review_show(review_id: str = typer.Argument(..., help="Name, row #, @alias, or UUID"), output: str = typer.Option("table", "--output", "-o")):
+def review_show(
+    review_id: str = typer.Argument(..., help="Name, row #, @alias, or UUID"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
     """Show review details for a component or agent."""
     resolved = config.resolve_alias(review_id)
     with spinner():
