@@ -442,6 +442,7 @@ def _post_auth_onboarding():
             "Cursor": (Path.home() / ".cursor", "cursor"),
             "Gemini CLI": (Path.home() / ".gemini", "gemini-cli"),
             "Codex": (Path.home() / ".codex", "codex"),
+            "Copilot": (Path.home() / ".vscode", "copilot"),
             "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
         }
 
@@ -500,7 +501,7 @@ def _post_auth_onboarding():
                         import json as _j
 
                         data = _j.loads(mcp_file.read_text())
-                        mcps = len(data.get("mcpServers", {}))
+                        mcps = len(data.get("mcpServers", data.get("servers", {})))
                     except Exception:
                         pass
             if agents > 0 or mcps > 0:
