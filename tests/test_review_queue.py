@@ -264,7 +264,8 @@ class TestGetReview:
     async def test_returns_listing_detail(self):
         app, db, _ = _app_with()
         listing = _listing_mock(name="my-mcp")
-        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(4)])
+        listing.validation_results = []
+        db.execute = AsyncMock(side_effect=[_result_with(listing)] + [_empty_result() for _ in range(5)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get(f"/api/v1/review/{listing.id}")

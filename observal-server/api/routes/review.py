@@ -1,12 +1,14 @@
+import enum
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import cast, or_, select, String
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.deps import get_db, require_role, resolve_prefix_id
+from api.sanitize import escape_like
 from models.agent import Agent, AgentStatus
 from models.component_bundle import ComponentBundle
 from models.hook import HookListing
@@ -247,11 +249,13 @@ _DETAIL_FIELDS: dict[str, list[str]] = {
 }
 
 
-def _safe_serialize(val):
+def _safe_serialize(val: object) -> object:
     if isinstance(val, uuid.UUID):
         return str(val)
     if hasattr(val, "isoformat"):
         return val.isoformat()
+    if isinstance(val, enum.Enum):
+        return val.value
     return val
 
 
@@ -363,6 +367,7 @@ async def approve(
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     listing.status = ListingStatus.approved
+    listing.rejection_reason = None
     await db.commit()
     await db.refresh(listing)
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
@@ -463,6 +468,7 @@ async def approve_bundle(
         result = await db.execute(select(model).where(model.bundle_id == bundle_id))
         for listing in result.scalars().all():
             listing.status = ListingStatus.approved
+            listing.rejection_reason = None
             count += 1
 
     await db.commit()
@@ -516,8 +522,8 @@ async def get_related_skills(
             SkillListing.status == ListingStatus.pending,
             SkillListing.mcp_server_config.isnot(None),
             or_(
-                cast(SkillListing.mcp_server_config, String).contains(mcp_name),
-                cast(SkillListing.mcp_server_config, String).contains(mcp_id),
+                cast(SkillListing.mcp_server_config, String).contains(escape_like(mcp_name)),
+                cast(SkillListing.mcp_server_config, String).contains(escape_like(mcp_id)),
             ),
         )
         .order_by(SkillListing.created_at.desc())
@@ -569,6 +575,7 @@ async def approve_mcp_with_skills(
         raise HTTPException(status_code=400, detail="Only MCP listings support bulk skill approve")
 
     listing.status = ListingStatus.approved
+    listing.rejection_reason = None
 
     approved_skill_ids: list[str] = []
     for sid in req.skill_ids:
@@ -581,6 +588,7 @@ async def approve_mcp_with_skills(
         ).scalar_one_or_none()
         if skill and skill.status == ListingStatus.pending:
             skill.status = ListingStatus.approved
+            skill.rejection_reason = None
             approved_skill_ids.append(str(skill.id))
 
     await db.commit()

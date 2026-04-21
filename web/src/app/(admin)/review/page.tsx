@@ -35,6 +35,7 @@ function ReviewCard({ item, onApprove, onReject, onDelete, onItemClick, disableA
       setShowRejectInput(true);
       return;
     }
+    if (!rejectReason.trim()) return;
     onReject(item.id, rejectReason, item.type);
     setShowRejectInput(false);
     setRejectReason("");
@@ -191,6 +192,7 @@ function ReviewRow({ item, onApprove, onReject, onDelete, onItemClick, disableAp
       setShowRejectInput(true);
       return;
     }
+    if (!rejectReason.trim()) return;
     onReject(item.id, rejectReason, item.type);
     setShowRejectInput(false);
     setRejectReason("");

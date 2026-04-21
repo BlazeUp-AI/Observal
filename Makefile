@@ -15,10 +15,10 @@ check:  ## Full pre-commit check on all files
 # ── Testing ──────────────────────────────────────────────
 
 test:  ## Run Python tests
-	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/ -q
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis pytest ../tests/ -q
 
 test-v:  ## Run Python tests (verbose)
-	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/ -v
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis pytest ../tests/ -v
 
 test-adversarial:  ## Run BenchJack self-test suite
 	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/test_adversarial_self.py -v --tb=short
