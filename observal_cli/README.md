@@ -10,7 +10,7 @@ The CLI is packaged as a Python project. From the repo root:
 uv pip install -e .
 ```
 
-This installs five entry points:
+This installs four entry points:
 
 | Command | Purpose |
 |---------|---------|
@@ -18,7 +18,6 @@ This installs five entry points:
 | `observal-shim` | Telemetry wrapper that sits in front of MCP servers |
 | `observal-proxy` | HTTP proxy for MCP servers |
 | `observal-sandbox-run` | Sandbox execution runner |
-| `observal-graphrag-proxy` | GraphRAG integration proxy |
 
 ## Quick Start
 
@@ -147,6 +146,5 @@ observal_cli/
 ├── shim.py                  # observal-shim entrypoint
 ├── proxy.py                 # observal-proxy entrypoint
 ├── sandbox_runner.py        # observal-sandbox-run entrypoint
-├── graphrag_proxy.py        # observal-graphrag-proxy entrypoint
 └── hooks/                   # Telemetry hook scripts
 ```

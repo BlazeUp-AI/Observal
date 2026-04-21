@@ -297,7 +297,7 @@ def _check_environment(issues: list, warnings: list):
         warnings.append("Docker is not running. `observal-sandbox-run` requires Docker.")
 
     # Check entry points
-    for ep in ["observal-shim", "observal-proxy", "observal-sandbox-run", "observal-graphrag-proxy"]:
+    for ep in ["observal-shim", "observal-proxy", "observal-sandbox-run"]:
         if not shutil.which(ep):
             warnings.append(f"`{ep}` not found in PATH. Run `uv tool install --editable .` from the Observal repo.")
 
