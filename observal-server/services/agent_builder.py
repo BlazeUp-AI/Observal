@@ -8,6 +8,7 @@ Generates IDE-specific agent files from a ResolvedAgent:
 - VSCode: .vscode/rules/<name>.md + .vscode/mcp.json
 - Codex: AGENTS.md (markdown)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)
+- OpenCode: AGENTS.md (markdown) + opencode.json (MCP config)
 """
 
 import logging
@@ -592,6 +593,43 @@ def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
     )
 
 
+def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
+    """Generate OpenCode agent config (opencode.json with flat command arrays)."""
+    mcp_entries = _build_mcp_entries(manifest)
+    rules_content = _build_rules_markdown(manifest)
+
+    opencode_mcp: dict = {}
+    for k, v in mcp_entries.items():
+        flat_cmd = [v["command"], *v.get("args", [])]
+        entry: dict = {"type": "local", "command": flat_cmd}
+        if v.get("env"):
+            entry["env"] = v["env"]
+        opencode_mcp[k] = entry
+
+    files = [
+        AgentFile(
+            path="AGENTS.md",
+            content=rules_content,
+            format="markdown",
+        ),
+    ]
+
+    if opencode_mcp:
+        files.append(
+            AgentFile(
+                path="opencode.json",
+                content={"mcp": opencode_mcp},
+                format="json",
+            ),
+        )
+
+    return IdeAgentConfig(
+        ide="opencode",
+        files=files,
+        mcp_servers=mcp_entries,
+    )
+
+
 _IDE_GENERATORS = {
     "claude-code": _generate_claude_code,
     "claude_code": _generate_claude_code,
@@ -602,6 +640,7 @@ _IDE_GENERATORS = {
     "kiro": _generate_kiro,
     "codex": _generate_codex,
     "copilot": _generate_copilot,
+    "opencode": _generate_opencode,
 }
 
 SUPPORTED_IDES = list(
@@ -613,6 +652,7 @@ SUPPORTED_IDES = list(
         "kiro",
         "codex",
         "copilot",
+        "opencode",
     }
 )
 
