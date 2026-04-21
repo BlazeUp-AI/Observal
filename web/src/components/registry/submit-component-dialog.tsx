@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Plus, X } from "lucide-react";
+import { Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { RegistryType } from "@/lib/api";
 
@@ -298,6 +298,11 @@ export function SubmitComponentDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
+          <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>Only submit components you created (private) or are the point-of-contact for (external).</span>
+          </div>
+
           {/* ── Common fields ──────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

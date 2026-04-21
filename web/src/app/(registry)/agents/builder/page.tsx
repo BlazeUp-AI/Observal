@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Save,
   FileText,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -1081,6 +1082,10 @@ function AgentBuilderInner() {
             <Separator />
 
             {/* Publish */}
+            <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>Only submit agents you created or are the point-of-contact for.</span>
+            </div>
             <div className="flex items-center gap-3 animate-in stagger-3">
               {!isEditMode && (
                 <Button
