@@ -376,6 +376,10 @@ export const admin = {
   deleteUser: (id: string) => del(`/admin/users/${id}`),
   applyResources: () =>
     post<{ applied: Record<string, string>; message: string }>("/admin/resources/apply", {}),
+  getTracePrivacy: () =>
+    get<{ trace_privacy: boolean }>("/admin/org/trace-privacy"),
+  setTracePrivacy: (enabled: boolean) =>
+    put<{ trace_privacy: boolean }>("/admin/org/trace-privacy", { trace_privacy: enabled }),
 };
 
 // ── Config ─────────────────────────────────────────────────────────

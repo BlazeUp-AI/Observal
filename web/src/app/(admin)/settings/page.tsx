@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info, Database, Activity, BookOpen, Shield, HelpCircle } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info, Database, Activity, BookOpen, Shield, HelpCircle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminSettings } from "@/hooks/use-api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
@@ -10,6 +10,7 @@ import type { AdminSetting } from "@/lib/types";
 import { admin } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -190,6 +191,29 @@ export default function SettingsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [applyingResources, setApplyingResources] = useState(false);
+  const [tracePrivacy, setTracePrivacy] = useState(false);
+  const [tracePrivacyLoading, setTracePrivacyLoading] = useState(true);
+  const [tracePrivacyToggling, setTracePrivacyToggling] = useState(false);
+
+  useEffect(() => {
+    admin.getTracePrivacy()
+      .then((res) => setTracePrivacy(res.trace_privacy))
+      .catch(() => {})
+      .finally(() => setTracePrivacyLoading(false));
+  }, []);
+
+  const handleTracePrivacyToggle = useCallback(async (checked: boolean) => {
+    setTracePrivacyToggling(true);
+    try {
+      const res = await admin.setTracePrivacy(checked);
+      setTracePrivacy(res.trace_privacy);
+      toast.success(`Trace privacy ${res.trace_privacy ? "enabled" : "disabled"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update trace privacy");
+    } finally {
+      setTracePrivacyToggling(false);
+    }
+  }, []);
 
   const entries: { key: string; value: string }[] = Array.isArray(settings)
     ? settings.map((s: AdminSetting) => ({ key: s.key, value: s.value }))
@@ -288,6 +312,30 @@ export default function SettingsPage() {
               <span>Enterprise mode is active. Self-registration and password login are disabled.</span>
             </div>
           )}
+        </section>
+
+        {/* Trace Privacy */}
+        <section className="animate-in">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <Eye className="h-3.5 w-3.5" />
+            Trace Privacy
+          </h3>
+          <div className="rounded-md border border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Hide user traces from admins</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  When enabled, admins and super-admins can only see their own traces.
+                  Users&apos; traces remain private and are not visible to other roles.
+                </p>
+              </div>
+              <Switch
+                checked={tracePrivacy}
+                onCheckedChange={handleTracePrivacyToggle}
+                disabled={tracePrivacyLoading || tracePrivacyToggling}
+              />
+            </div>
+          </div>
         </section>
 
         {isLoading ? (
