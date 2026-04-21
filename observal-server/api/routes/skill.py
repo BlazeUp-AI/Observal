@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,6 +105,7 @@ async def get_skill(listing_id: str, db: AsyncSession = Depends(get_db)):
 async def install_skill(
     listing_id: str,
     req: SkillInstallRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
@@ -117,9 +118,11 @@ async def install_skill(
     db.add(SkillDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
+    from api.routes.config import derive_endpoints
     from services.skill_config_generator import generate_skill_config
 
-    config = generate_skill_config(listing, req.ide, scope=req.scope)
+    endpoints = derive_endpoints(request)
+    config = generate_skill_config(listing, req.ide, server_url=endpoints["api"], scope=req.scope)
     return SkillInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 

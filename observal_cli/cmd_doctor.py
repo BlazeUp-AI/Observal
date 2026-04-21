@@ -98,6 +98,9 @@ def _load_json(path: Path) -> dict | None:
 
 def _check_claude_code(path: Path, data: dict, issues: list, warnings: list):
     """Check Claude Code settings for Observal conflicts."""
+    cfg = config.load()
+    server_url = cfg.get("server_url", "http://localhost:8000")
+
     # Hooks disabled entirely
     if data.get("disableAllHooks"):
         issues.append(f"{path}: `disableAllHooks` is true. Observal hook telemetry will not fire.")
@@ -105,11 +108,15 @@ def _check_claude_code(path: Path, data: dict, issues: list, warnings: list):
     # allowedHttpHookUrls blocks our endpoint
     allowed_urls = data.get("allowedHttpHookUrls")
     if isinstance(allowed_urls, list) and len(allowed_urls) > 0:
-        has_observal = any("localhost:8000" in u or "observal" in u.lower() for u in allowed_urls)
+        from urllib.parse import urlparse
+
+        parsed = urlparse(server_url)
+        host_port = f"{parsed.hostname}:{parsed.port or 8000}"
+        has_observal = any(host_port in u or "observal" in u.lower() for u in allowed_urls)
         if not has_observal:
             issues.append(
                 f"{path}: `allowedHttpHookUrls` is set but does not include Observal's URL. "
-                "Add `http://localhost:8000/*` to allow hook telemetry."
+                f"Add `{server_url}/*` to allow hook telemetry."
             )
 
     # httpHookAllowedEnvVars blocks OBSERVAL_API_KEY
@@ -146,7 +153,7 @@ def _check_claude_code(path: Path, data: dict, issues: list, warnings: list):
         if not has_localhost:
             warnings.append(
                 f"{path}: sandbox `network.allowedDomains` does not include `localhost`. "
-                "Observal telemetry POSTs to localhost:8000."
+                f"Observal telemetry POSTs to {server_url}."
             )
 
     # env vars that override Observal
@@ -276,10 +283,12 @@ def _check_gemini(path: Path, data: dict, issues: list, warnings: list):
         target = telemetry.get("target", "")
         otlp_endpoint = telemetry.get("otlpEndpoint", "")
         if target != "custom" or not otlp_endpoint:
+            cfg = config.load()
+            otlp_url = cfg.get("otlp_http_url", "http://localhost:4318")
             warnings.append(
                 f"{path}: Gemini telemetry is enabled but not configured for Observal. "
                 "Set `telemetry.target` to `custom` and `telemetry.otlpEndpoint` to your Observal OTLP endpoint "
-                "(e.g. `http://localhost:4318`)."
+                f"(e.g. `{otlp_url}`)."
             )
 
 
@@ -604,7 +613,9 @@ def doctor(
             if "disableAllHooks" in issue:
                 rprint("  Set `disableAllHooks: false` in your Claude Code settings.json")
             elif "allowedHttpHookUrls" in issue:
-                rprint('  Add `"http://localhost:8000/*"` to `allowedHttpHookUrls`')
+                cfg = config.load()
+                srv = cfg.get("server_url", "http://localhost:8000")
+                rprint(f'  Add `"{srv}/*"` to `allowedHttpHookUrls`')
             elif "OBSERVAL_API_KEY" in issue and "httpHookAllowedEnvVars" in issue:
                 rprint('  Add `"OBSERVAL_API_KEY"` to `httpHookAllowedEnvVars`')
             elif "allowManagedHooksOnly" in issue:
@@ -626,8 +637,10 @@ def doctor(
                     "  Set `telemetry.enabled` to `true` and `telemetry.target` to `custom` in .gemini/settings.json"
                 )
             elif "Gemini telemetry" in issue and "not configured" in issue:
+                cfg = config.load()
+                otlp = cfg.get("otlp_http_url", "http://localhost:4318")
                 rprint(
-                    '  Add telemetry config to .gemini/settings.json:\n  {"telemetry": {"enabled": true, "target": "custom", "otlpEndpoint": "http://localhost:4318", "logPrompts": true}}'
+                    f'  Add telemetry config to .gemini/settings.json:\n  {{"telemetry": {{"enabled": true, "target": "custom", "otlpEndpoint": "{otlp}", "logPrompts": true}}}}'
                 )
             elif "observal-shim" in issue and "gemini-cli" in issue:
                 rprint("  Run: observal install <id> --ide gemini-cli")
@@ -889,7 +902,7 @@ def doctor_sli(
 
         elif target in ("gemini-cli", "gemini_cli"):
             rprint("[cyan]Gemini CLI[/cyan]")
-            otlp_endpoint = cfg.get("otlp_endpoint", "http://localhost:4318")
+            otlp_endpoint = cfg.get("otlp_http_url") or cfg.get("otlp_endpoint", "http://localhost:4318")
 
             gemini_settings = Path.home() / ".gemini" / "settings.json"
             gemini_data: dict = {}

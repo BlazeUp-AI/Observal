@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -197,6 +197,7 @@ async def get_mcp(listing_id: str, db: AsyncSession = Depends(get_db)):
 async def install_mcp(
     listing_id: str,
     req: McpInstallRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
@@ -209,7 +210,16 @@ async def install_mcp(
     db.add(McpDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
-    snippet = generate_config(listing, req.ide, env_values=req.env_values, header_values=req.header_values)
+    from api.routes.config import derive_endpoints
+
+    endpoints = derive_endpoints(request)
+    snippet = generate_config(
+        listing,
+        req.ide,
+        observal_url=endpoints["otlp_http"],
+        env_values=req.env_values,
+        header_values=req.header_values,
+    )
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
 
 

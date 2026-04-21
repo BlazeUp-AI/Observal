@@ -1314,7 +1314,7 @@ def register_scan(app: typer.Typer):
             from observal_cli.config import load as _load_gemini_config
 
             gcfg = _load_gemini_config()
-            otlp_endpoint = gcfg.get("otlp_endpoint", "http://localhost:4318")
+            otlp_endpoint = gcfg.get("otlp_http_url") or gcfg.get("otlp_endpoint", "http://localhost:4318")
             gemini_settings = Path.home() / ".gemini" / "settings.json"
 
             try:

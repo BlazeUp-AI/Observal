@@ -410,7 +410,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
         mcp_servers=mcp_entries,
         env={
             "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": getattr(manifest, "_otlp_http_url", "") or "http://localhost:4318",
             "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
         },
         setup_commands=setup_commands,
@@ -475,12 +475,13 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Gemini CLI agent config (GEMINI.md + .gemini/settings.json)."""
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
+    otlp_url = getattr(manifest, "_otlp_http_url", "") or "http://localhost:4318"
 
     settings: dict = {
         "telemetry": {
             "enabled": True,
             "target": "custom",
-            "otlpEndpoint": "http://localhost:4318",
+            "otlpEndpoint": otlp_url,
             "logPrompts": True,
         },
     }
@@ -503,7 +504,7 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
         ],
         mcp_servers=mcp_entries,
         env={
-            "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+            "OTEL_EXPORTER_OTLP_ENDPOINT": otlp_url,
             "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
         },
     )
@@ -544,6 +545,7 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
 def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Codex agent config (AGENTS.md + ~/.codex/config.toml)."""
     rules_content = _build_rules_markdown(manifest)
+    otlp_url = getattr(manifest, "_otlp_http_url", "") or "http://localhost:4318"
 
     toml_snippet = (
         "[otel]\n"
@@ -551,11 +553,11 @@ def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
         "log_user_prompt = true\n"
         "\n"
         "[otel.exporter.otlp-http]\n"
-        'endpoint = "http://localhost:4318/v1/logs"\n'
+        f'endpoint = "{otlp_url}/v1/logs"\n'
         'protocol = "http"\n'
         "\n"
         "[otel.trace_exporter.otlp-http]\n"
-        'endpoint = "http://localhost:4318/v1/traces"\n'
+        f'endpoint = "{otlp_url}/v1/traces"\n'
         'protocol = "http"\n'
     )
 
@@ -674,7 +676,7 @@ SUPPORTED_IDES = list(
 )
 
 
-def generate_ide_agent_files(manifest: AgentManifest, ide: str) -> IdeAgentConfig:
+def generate_ide_agent_files(manifest: AgentManifest, ide: str, otlp_http_url: str = "") -> IdeAgentConfig:
     """Generate IDE-specific agent files from a portable agent manifest.
 
     This is the universal entry point — takes a Pydantic AgentManifest
@@ -683,4 +685,7 @@ def generate_ide_agent_files(manifest: AgentManifest, ide: str) -> IdeAgentConfi
     generator = _IDE_GENERATORS.get(ide)
     if generator is None:
         raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")
+    # Thread the OTLP URL to generators that need it
+    if otlp_http_url:
+        manifest._otlp_http_url = otlp_http_url  # type: ignore[attr-defined]
     return generator(manifest)

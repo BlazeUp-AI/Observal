@@ -246,6 +246,7 @@ def generate_agent_config(
     options: dict | None = None,
     platform: str = "",
     skill_listings: dict | None = None,
+    otlp_http_url: str = "",
 ) -> dict:
     """Generate IDE-specific config for an agent.
 
@@ -257,7 +258,8 @@ def generate_agent_config(
         skill_listings: optional {component_id: SkillListing} map pre-loaded by caller.
     """
     safe_name = _sanitize_name(agent.name)
-    mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings, env_values=env_values)
+    effective_otlp_http = otlp_http_url or observal_url
+    mcp_configs = _build_mcp_configs(agent, ide, effective_otlp_http, mcp_listings=mcp_listings, env_values=env_values)
     rules_content = _build_rules_content(agent, component_names)
     skill_configs = _build_skill_configs(agent, skill_listings)
     options = options or {}
@@ -349,7 +351,7 @@ def generate_agent_config(
         return result
 
     if ide in ("claude-code", "claude_code"):
-        otlp = _claude_otlp_env(observal_url)
+        otlp = _claude_otlp_env(effective_otlp_http)
         setup_commands = []
         claude_mcps = {}
         for name, cfg in mcp_configs.items():
@@ -411,8 +413,8 @@ def generate_agent_config(
         result = {
             "rules_file": {"path": rules_path, "content": rules_content},
             "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
-            "otlp_env": _gemini_otlp_env(observal_url),
-            "gemini_settings_snippet": _gemini_settings(observal_url),
+            "otlp_env": _gemini_otlp_env(effective_otlp_http),
+            "gemini_settings_snippet": _gemini_settings(effective_otlp_http),
             "scope": gemini_scope,
         }
         if compatibility_warnings:

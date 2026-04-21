@@ -148,11 +148,24 @@ def _enrich(payload: dict) -> dict:
     return payload
 
 
+def _resolve_hooks_url() -> str:
+    """Read hooks URL from config file when no --url is provided."""
+    cfg_path = Path.home() / ".observal" / "config.json"
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text())
+            server = cfg.get("server_url", "")
+            if server:
+                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+        except Exception:
+            pass
+    return "http://localhost:8000/api/v1/otel/hooks"
+
+
 def main():
     import urllib.request
 
-    # Parse --url and --agent-name arguments
-    url = "http://localhost:8000/api/v1/otel/hooks"
+    url = ""
     agent_name = ""
     model = ""
     args = sys.argv[1:]
@@ -163,6 +176,8 @@ def main():
             agent_name = args[i + 1]
         elif arg == "--model" and i + 1 < len(args):
             model = args[i + 1]
+    if not url:
+        url = _resolve_hooks_url()
 
     # Read hook payload from stdin
     try:

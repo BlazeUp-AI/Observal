@@ -1,7 +1,7 @@
 """Generate ~/.codex/config.toml snippet for Observal OTLP telemetry."""
 
 
-def generate_codex_config(observal_url: str = "http://localhost:4318") -> dict:
+def generate_codex_config(observal_url: str) -> dict:
     """Return a config dict with toml_snippet and instructions."""
     toml_snippet = f"""[otel]
 environment = "production"

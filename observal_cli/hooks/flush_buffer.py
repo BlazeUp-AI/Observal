@@ -20,8 +20,27 @@ FLUSH_LIMIT = 20
 MAX_RETRIES = 3
 
 
+def _resolve_hooks_url() -> str:
+    """Read hooks URL from env, then config, with no hardcoded fallback."""
+    env_url = os.environ.get("OBSERVAL_HOOKS_URL")
+    if env_url:
+        return env_url
+    import json
+
+    cfg_path = Path.home() / ".observal" / "config.json"
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text())
+            server = cfg.get("server_url", "")
+            if server:
+                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+        except Exception:
+            pass
+    return "http://localhost:8000/api/v1/otel/hooks"
+
+
 def main() -> None:
-    hooks_url = os.environ.get("OBSERVAL_HOOKS_URL", "http://localhost:8000/api/v1/otel/hooks")
+    hooks_url = _resolve_hooks_url()
     user_id = os.environ.get("OBSERVAL_USER_ID", "")
 
     if not DB_PATH.exists():

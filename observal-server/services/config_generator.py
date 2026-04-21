@@ -32,7 +32,7 @@ def _claude_otlp_env(observal_url: str) -> dict:
         "OTEL_LOG_USER_PROMPTS": "1",
         "OTEL_LOG_TOOL_DETAILS": "1",
         "OTEL_LOG_TOOL_CONTENT": "1",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": observal_url,
         "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
         "OTEL_METRICS_EXPORTER": "otlp",
         "OTEL_LOGS_EXPORTER": "otlp",
@@ -120,7 +120,7 @@ def generate_config(
     listing: McpListing,
     ide: str,
     proxy_port: int | None = None,
-    observal_url: str = "http://localhost:4318",
+    observal_url: str = "",
     env_values: dict[str, str] | None = None,
     header_values: dict[str, str] | None = None,
 ) -> dict:

@@ -108,13 +108,17 @@ def get_desired_env(
     hooks_token: str,
     user_id: str = "",
     user_name: str = "",
+    otlp_grpc_url: str = "",
 ) -> dict[str, str]:
     """Return the desired Observal env vars for Claude Code settings."""
-    from urllib.parse import urlparse
+    if otlp_grpc_url:
+        otel_endpoint = otlp_grpc_url
+    else:
+        from urllib.parse import urlparse
 
-    parsed = urlparse(server_url)
-    scheme = "http" if parsed.hostname in ("localhost", "127.0.0.1") else "https"
-    otel_endpoint = f"{scheme}://{parsed.hostname}:4317"
+        parsed = urlparse(server_url)
+        scheme = "http" if parsed.hostname in ("localhost", "127.0.0.1") else "https"
+        otel_endpoint = f"{scheme}://{parsed.hostname}:4317"
 
     env: dict[str, str] = {
         "CLAUDE_CODE_ENABLE_TELEMETRY": "1",

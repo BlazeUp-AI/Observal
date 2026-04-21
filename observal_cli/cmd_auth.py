@@ -86,15 +86,19 @@ def login(
                 data = r.json()
 
             user = data["user"]
-            config.save(
-                {
-                    "server_url": server_url,
-                    "access_token": data["access_token"],
-                    "refresh_token": data["refresh_token"],
-                    "user_id": user.get("id", ""),
-                    "user_name": user.get("name", ""),
-                }
-            )
+            endpoints = _fetch_endpoints(server_url)
+            cfg_data = {
+                "server_url": server_url,
+                "access_token": data["access_token"],
+                "refresh_token": data["refresh_token"],
+                "user_id": user.get("id", ""),
+                "user_name": user.get("name", ""),
+            }
+            if endpoints:
+                cfg_data["otlp_http_url"] = endpoints.get("otlp_http", "")
+                cfg_data["otlp_grpc_url"] = endpoints.get("otlp_grpc", "")
+                cfg_data["web_url"] = endpoints.get("web", "")
+            config.save(cfg_data)
 
             rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [admin]")
             rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
@@ -154,15 +158,19 @@ def register(
             data = r.json()
 
         user = data["user"]
-        config.save(
-            {
-                "server_url": server_url,
-                "access_token": data["access_token"],
-                "refresh_token": data["refresh_token"],
-                "user_id": user.get("id", ""),
-                "user_name": user.get("name", ""),
-            }
-        )
+        endpoints = _fetch_endpoints(server_url)
+        cfg_data = {
+            "server_url": server_url,
+            "access_token": data["access_token"],
+            "refresh_token": data["refresh_token"],
+            "user_id": user.get("id", ""),
+            "user_name": user.get("name", ""),
+        }
+        if endpoints:
+            cfg_data["otlp_http_url"] = endpoints.get("otlp_http", "")
+            cfg_data["otlp_grpc_url"] = endpoints.get("otlp_grpc", "")
+            cfg_data["web_url"] = endpoints.get("web", "")
+        config.save(cfg_data)
         rprint(
             f"[green]Account created! Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]"
         )
@@ -291,6 +299,21 @@ def version_callback():
 # ── Helper functions ────────────────────────────────────────
 
 
+def _fetch_endpoints(server_url: str) -> dict:
+    """Fetch service endpoint URLs from the discovery endpoint.
+
+    Returns a dict with api, otlp_http, otlp_grpc, web URLs.
+    Falls back to sensible defaults if the endpoint is unavailable.
+    """
+    try:
+        r = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/endpoints", timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return {}
+
+
 def _fetch_server_public_key(server_url: str):
     """Fetch and cache the server's ECIES public key for payload encryption.
 
@@ -323,15 +346,19 @@ def _do_password_login(server_url: str, email: str, password: str):
             data = r.json()
 
         user = data["user"]
-        config.save(
-            {
-                "server_url": server_url,
-                "access_token": data["access_token"],
-                "refresh_token": data["refresh_token"],
-                "user_id": user.get("id", ""),
-                "user_name": user.get("name", ""),
-            }
-        )
+        endpoints = _fetch_endpoints(server_url)
+        cfg_data = {
+            "server_url": server_url,
+            "access_token": data["access_token"],
+            "refresh_token": data["refresh_token"],
+            "user_id": user.get("id", ""),
+            "user_name": user.get("name", ""),
+        }
+        if endpoints:
+            cfg_data["otlp_http_url"] = endpoints.get("otlp_http", "")
+            cfg_data["otlp_grpc_url"] = endpoints.get("otlp_grpc", "")
+            cfg_data["web_url"] = endpoints.get("web", "")
+        config.save(cfg_data)
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
         rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
 
@@ -713,14 +740,16 @@ def _configure_gemini_cli(server_url: str):
         ):
             return
 
-        from urllib.parse import urlparse
-
         from observal_cli.cmd_scan import inject_gemini_telemetry
 
-        # Derive the OTLP HTTP endpoint from server_url: same host, port 4318.
+        cfg = config.load()
+        otlp_endpoint = cfg.get("otlp_http_url", "")
+        if not otlp_endpoint:
+            from urllib.parse import urlparse
 
-        parsed = urlparse(server_url)
-        otlp_endpoint = f"{parsed.scheme}://{parsed.hostname}:4318"
+            parsed = urlparse(server_url)
+            scheme = "http" if parsed.hostname in ("localhost", "127.0.0.1") else "https"
+            otlp_endpoint = f"{scheme}://{parsed.hostname}:4318"
 
         gemini_settings = gemini_dir / "settings.json"
         written = inject_gemini_telemetry(otlp_endpoint)
@@ -755,10 +784,14 @@ def _configure_codex(server_url: str):
         ):
             return
 
-        from urllib.parse import urlparse
+        cfg = config.load()
+        otlp_base = cfg.get("otlp_http_url", "")
+        if not otlp_base:
+            from urllib.parse import urlparse
 
-        parsed = urlparse(server_url)
-        otlp_base = f"{parsed.scheme}://{parsed.hostname}:4318"
+            parsed = urlparse(server_url)
+            scheme = "http" if parsed.hostname in ("localhost", "127.0.0.1") else "https"
+            otlp_base = f"{scheme}://{parsed.hostname}:4318"
 
         codex_config = codex_dir / "config.toml"
 
@@ -889,7 +922,8 @@ def _configure_claude_code(server_url: str, access_token: str):
         user_name = cfg.get("user_name", "")
 
         desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-        desired_env = get_desired_env(server_url, hooks_token, user_id, user_name)
+        otlp_grpc_url = cfg.get("otlp_grpc_url", "")
+        desired_env = get_desired_env(server_url, hooks_token, user_id, user_name, otlp_grpc_url=otlp_grpc_url)
 
         # Reconcile: non-destructive merge preserving foreign hooks/env
         changes = settings_reconciler.reconcile(desired_hooks, desired_env)

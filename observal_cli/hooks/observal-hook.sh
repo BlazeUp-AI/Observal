@@ -8,7 +8,16 @@
 #
 # Claude Code sessions are never disrupted regardless of server state.
 
-OBSERVAL_HOOKS_URL="${OBSERVAL_HOOKS_URL:-http://localhost:8000/api/v1/otel/hooks}"
+if [ -z "$OBSERVAL_HOOKS_URL" ]; then
+  _cfg="$HOME/.observal/config.json"
+  if [ -f "$_cfg" ]; then
+    _srv=$(python3 -c "import json,sys;print(json.load(open('$_cfg')).get('server_url',''))" 2>/dev/null || true)
+    if [ -n "$_srv" ]; then
+      OBSERVAL_HOOKS_URL="${_srv%/}/api/v1/otel/hooks"
+    fi
+  fi
+  OBSERVAL_HOOKS_URL="${OBSERVAL_HOOKS_URL:-http://localhost:8000/api/v1/otel/hooks}"
+fi
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Read payload from stdin into a variable so we can reuse it

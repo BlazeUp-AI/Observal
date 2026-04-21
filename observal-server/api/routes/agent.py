@@ -709,15 +709,20 @@ async def install_agent(
     # Resolve all component names for rules file content
     name_map = await _resolve_component_names(agent.components, db)
 
+    from api.routes.config import derive_endpoints
+
+    endpoints = derive_endpoints(request)
     snippet = generate_agent_config(
         agent,
         req.ide,
+        observal_url=endpoints["api"],
         mcp_listings=mcp_listings_map,
         component_names=name_map,
         env_values=req.env_values,
         options=req.options,
         platform=req.platform,
         skill_listings=skill_listings_map,
+        otlp_http_url=endpoints["otlp_http"],
     )
 
     # Capture agent.id before any DB operations that might expire the ORM
