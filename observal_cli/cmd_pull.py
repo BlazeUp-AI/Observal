@@ -73,11 +73,34 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
     return env_values
 
 
+def _dict_to_toml(d: dict) -> str:
+    """Very basic TOML serializer for MCP configs."""
+    lines = []
+    for section, servers in d.items():
+        for name, srv in servers.items():
+            lines.append(f"[{section}.{name}]")
+            for k, v in srv.items():
+                if isinstance(v, list):
+                    arr = ", ".join(json.dumps(s) for s in v)
+                    lines.append(f"{k} = [{arr}]")
+                elif isinstance(v, dict):
+                    for subk, subv in v.items():
+                        lines.append(f"{k}.{subk} = {json.dumps(subv)}")
+                elif isinstance(v, bool):
+                    lines.append(f"{k} = {'true' if v else 'false'}")
+                elif isinstance(v, str):
+                    lines.append(f"{k} = {json.dumps(v)}")
+                else:
+                    lines.append(f"{k} = {v}")
+            lines.append("")
+    return "\n".join(lines)
+
+
 def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> str:
     """Write content to a file path, creating parent dirs as needed.
 
     If *merge_mcp* is True and the file already exists, merge the incoming
-    ``mcpServers`` dict into the existing one rather than overwriting.
+    dict into the existing one rather than overwriting.
 
     Returns a human-readable status string ("created", "updated", "merged").
     """
@@ -85,16 +108,26 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
     existed = path.exists()
 
     if isinstance(content, dict):
-        if merge_mcp and existed and isinstance(content, dict):
-            try:
-                existing = json.loads(path.read_text())
-            except (json.JSONDecodeError, OSError):
-                existing = {}
-            incoming_servers = content.get("mcpServers", {})
-            existing.setdefault("mcpServers", {}).update(incoming_servers)
-            path.write_text(json.dumps(existing, indent=2) + "\n")
-            return "merged"
-        path.write_text(json.dumps(content, indent=2) + "\n")
+        root_key = list(content.keys())[0] if content else "mcpServers"
+        if path.suffix == ".toml":
+            incoming_servers = content.get(root_key, {})
+            toml_str = _dict_to_toml({root_key: incoming_servers})
+            if existed and merge_mcp:
+                path.write_text(path.read_text() + "\n" + toml_str)
+                return "merged"
+            else:
+                path.write_text(toml_str)
+        else:
+            if merge_mcp and existed:
+                try:
+                    existing = json.loads(path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    existing = {}
+                incoming_servers = content.get(root_key, {})
+                existing.setdefault(root_key, {}).update(incoming_servers)
+                path.write_text(json.dumps(existing, indent=2) + "\n")
+                return "merged"
+            path.write_text(json.dumps(content, indent=2) + "\n")
     else:
         path.write_text(content)
 
@@ -132,6 +165,7 @@ _SCOPE_AWARE_IDES = {
     "kiro": ("project (.kiro/agents/)", "user (~/.kiro/agents/)"),
     "gemini-cli": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
     "cursor": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
+    "opencode": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
 }
 
 
@@ -189,7 +223,10 @@ def register_pull(app: typer.Typer):
     def pull(
         agent_id: str = typer.Argument(..., help="Agent ID, name, row number, or @alias"),
         ide: str = typer.Option(
-            ..., "--ide", "-i", help="Target IDE (cursor, vscode, claude-code, gemini-cli, kiro, codex, copilot)"
+            ...,
+            "--ide",
+            "-i",
+            help="Target IDE (cursor, vscode, claude-code, gemini-cli, kiro, codex, copilot, opencode)",
         ),
         directory: str = typer.Option(".", "--dir", "-d", help="Target directory for written files"),
         dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview files without writing"),

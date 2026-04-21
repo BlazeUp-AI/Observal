@@ -302,6 +302,16 @@ class TestConfigGenerator:
         server = cfg["mcpServers"]["my-mcp"]
         assert server["command"] == "observal-shim"
 
+    def test_copilot_wraps_with_shim_and_type_stdio(self):
+        from services.config_generator import generate_config
+
+        cfg = generate_config(self._make_listing(), "copilot")
+        server = cfg["mcpServers"]["my-mcp"]
+        assert server["type"] == "stdio"
+        assert server["command"] == "observal-shim"
+        assert "--mcp-id" in server["args"]
+        assert "abc-123" in server["args"]
+
 
 class TestAgentConfigGenerator:
     def _make_agent(self, name="test-agent", agent_id="agent-xyz"):

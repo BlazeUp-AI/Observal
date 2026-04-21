@@ -58,6 +58,31 @@ IDE_CONFIGS = {
         ],
         "mcp": [],
     },
+    "copilot": {
+        "user_settings": [],
+        "project_settings": [
+            Path(".vscode") / "mcp.json",
+        ],
+        "mcp": [],
+    },
+    "opencode": {
+        "user_settings": [
+            Path.home() / ".config" / "opencode" / "opencode.json",
+        ],
+        "project_settings": [
+            Path("opencode.json"),
+        ],
+        "mcp": [],
+    },
+    "codex": {
+        "user_settings": [
+            Path.home() / ".codex" / "config.toml",
+        ],
+        "project_settings": [
+            Path(".codex") / "config.toml",
+        ],
+        "mcp": [],
+    },
 }
 
 
@@ -224,6 +249,8 @@ def _check_gemini(path: Path, data: dict, issues: list, warnings: list):
     """Check Gemini CLI settings for Observal conflicts."""
     servers = data.get("mcpServers", {})
     for name, srv_cfg in servers.items():
+        if "url" in srv_cfg:
+            continue  # HTTP transport doesn't need shim
         cmd = srv_cfg.get("command", "")
         args = srv_cfg.get("args", [])
         full_cmd = f"{cmd} {' '.join(str(a) for a in args)}"
@@ -232,6 +259,168 @@ def _check_gemini(path: Path, data: dict, issues: list, warnings: list):
                 f"{path}: MCP server `{name}` is not wrapped with observal-shim. "
                 "Install via `observal install <id> --ide gemini-cli` to enable telemetry."
             )
+
+    # Check telemetry configuration — only warn if a telemetry block exists
+    # but is misconfigured. If there's no telemetry block at all, the user
+    # may not have configured Observal yet (observal scan will set it up).
+    telemetry = data.get("telemetry", {})
+    if not isinstance(telemetry, dict) or not telemetry:
+        return
+
+    if not telemetry.get("enabled", False):
+        warnings.append(
+            f"{path}: Gemini telemetry is disabled. "
+            "Set `telemetry.enabled` to `true` in .gemini/settings.json to enable Observal telemetry."
+        )
+    else:
+        target = telemetry.get("target", "")
+        otlp_endpoint = telemetry.get("otlpEndpoint", "")
+        if target != "custom" or not otlp_endpoint:
+            warnings.append(
+                f"{path}: Gemini telemetry is enabled but not configured for Observal. "
+                "Set `telemetry.target` to `custom` and `telemetry.otlpEndpoint` to your Observal OTLP endpoint "
+                "(e.g. `http://localhost:4318`)."
+            )
+
+
+def _check_gemini_installation(issues: list, warnings: list):
+    """Check Gemini CLI installation and telemetry configuration."""
+    # Check for gemini binary
+    if shutil.which("gemini"):
+        pass  # Installed
+    else:
+        warnings.append("`gemini` CLI not found in PATH. Install it to use MCP servers and telemetry with Observal.")
+
+    # Check ~/.gemini/settings.json for telemetry configuration
+    gemini_settings = Path.home() / ".gemini" / "settings.json"
+    if gemini_settings.exists():
+        data = _load_json(gemini_settings)
+        if data:
+            _check_gemini(gemini_settings, data, issues, warnings)
+    # Also check MCP servers in user settings
+    mcp_path = Path.home() / ".gemini" / "settings.json"
+    if mcp_path.exists():
+        data = _load_json(mcp_path)
+        if data:
+            servers = data.get("mcpServers", {})
+            unwrapped = [
+                n
+                for n, c in servers.items()
+                if isinstance(c, dict)
+                and "observal-shim" not in c.get("command", "")
+                and "observal-proxy" not in c.get("command", "")
+                and "url" not in c  # HTTP transport doesn't need shim
+            ]
+            if unwrapped:
+                warnings.append(
+                    f"Gemini MCP servers not wrapped with observal-shim: {', '.join(unwrapped)}. "
+                    "Run `observal scan --ide gemini-cli` to wrap them."
+                )
+
+
+def _check_copilot(path: Path, data: dict, issues: list, warnings: list):
+    """Check GitHub Copilot (VS Code) MCP config for Observal conflicts."""
+    servers = data.get("servers", data.get("mcpServers", {}))
+    for name, srv_cfg in servers.items():
+        cmd = srv_cfg.get("command", "")
+        args = srv_cfg.get("args", [])
+        full_cmd = f"{cmd} {' '.join(str(a) for a in args)}"
+        if "observal-shim" not in full_cmd and "observal-proxy" not in full_cmd:
+            warnings.append(
+                f"{path}: MCP server `{name}` is not wrapped with observal-shim. "
+                "Install via `observal install <id> --ide copilot` to enable telemetry."
+            )
+
+
+def _check_opencode(path: Path, data: dict, issues: list, warnings: list):
+    """Check OpenCode config for Observal conflicts."""
+    mcp = data.get("mcp", {})
+    for name, srv_cfg in mcp.items():
+        if not isinstance(srv_cfg, dict):
+            continue
+        cmd = srv_cfg.get("command", [])
+        cmd_str = " ".join(str(c) for c in cmd) if isinstance(cmd, list) else str(cmd)
+        if "observal-shim" not in cmd_str and "observal-proxy" not in cmd_str:
+            warnings.append(
+                f"{path}: MCP server `{name}` is not wrapped with observal-shim. "
+                "Install via `observal install <id> --ide opencode` to enable telemetry."
+            )
+
+
+def _check_codex(data: dict, issues: list, warnings: list, path: Path | None = None):
+    """Check Codex config.toml for Observal compatibility.
+
+    Codex uses TOML (not JSON), so data is a parsed dict from tomllib/toml.
+    """
+    mcp = data.get("mcp", {})
+    servers = mcp.get("servers", {})
+    for name, srv_cfg in servers.items():
+        if not isinstance(srv_cfg, dict):
+            continue
+        if "url" in srv_cfg:
+            continue
+        cmd = srv_cfg.get("command", "")
+        args = srv_cfg.get("args", [])
+        full_cmd = f"{cmd} {' '.join(str(a) for a in args)}"
+        if "observal-shim" not in full_cmd and "observal-proxy" not in full_cmd:
+            label = f"{path}: " if path else ""
+            warnings.append(
+                f"{label}MCP server `{name}` is not wrapped with observal-shim. "
+                "Install via `observal install <id> --ide codex` to enable telemetry."
+            )
+
+    otel = data.get("otel", {})
+    if otel:
+        exporter = otel.get("exporter", {}).get("otlp-http", {})
+        trace_exporter = otel.get("trace_exporter", {}).get("otlp-http", {})
+        if not exporter and not trace_exporter:
+            warnings.append(
+                f"{path}: OTel config exists but no OTLP exporters configured. "
+                "Observal needs [otel.exporter.otlp-http] and [otel.trace_exporter.otlp-http] in config.toml."
+            )
+    elif not mcp:
+        path_label = f"{path}: " if path else ""
+        warnings.append(
+            f"{path_label}No OTel or MCP configuration found. "
+            "Run `observal scan --ide codex` or `observal install <id> --ide codex` to configure."
+        )
+
+
+def _load_toml(path: Path) -> dict | None:
+    try:
+        try:
+            import tomllib
+        except ImportError:
+            try:
+                import tomli as tomllib
+            except ImportError:
+                try:
+                    import toml as tomllib
+                except ImportError:
+                    return None
+        content = path.read_text()
+        if hasattr(tomllib, "loads"):
+            return tomllib.loads(content)
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except Exception:
+        return None
+
+
+def _check_codex_installation(issues: list, warnings: list):
+    """Check Codex CLI installation and configuration."""
+    if shutil.which("codex"):
+        pass
+    else:
+        warnings.append("`codex` CLI not found in PATH. Install it to use MCP servers and telemetry with Observal.")
+
+    codex_config = Path.home() / ".codex" / "config.toml"
+    if codex_config.exists():
+        data = _load_toml(codex_config)
+        if data is None:
+            issues.append(f"{codex_config}: file exists but is not valid TOML.")
+        else:
+            _check_codex(data, issues, warnings, codex_config)
 
 
 def _check_mcp_json(path: Path, data: dict, issues: list, warnings: list):
@@ -308,7 +497,9 @@ def _check_environment(issues: list, warnings: list):
 @doctor_app.callback(invoke_without_command=True)
 def doctor(
     ctx: typer.Context,
-    ide: str = typer.Option(None, help="Check specific IDE only (claude-code, kiro, cursor, gemini-cli)"),
+    ide: str = typer.Option(
+        None, help="Check specific IDE only (claude-code, kiro, cursor, gemini-cli, copilot, opencode, codex)"
+    ),
     fix: bool = typer.Option(False, help="Show suggested fixes"),
 ):
     """Diagnose IDE and Observal settings for compatibility issues."""
@@ -332,6 +523,16 @@ def doctor(
         rprint("[cyan]Checking Kiro installation...[/cyan]")
         _check_kiro_installation(issues, warnings)
 
+    # 3b. Gemini CLI-specific installation checks
+    if not ide or ide == "gemini-cli":
+        rprint("[cyan]Checking Gemini CLI installation...[/cyan]")
+        _check_gemini_installation(issues, warnings)
+
+    # 3c. Codex-specific installation checks
+    if not ide or ide == "codex":
+        rprint("[cyan]Checking Codex installation...[/cyan]")
+        _check_codex_installation(issues, warnings)
+
     # 4. Check IDE configs
     ides_to_check = [ide] if ide else list(IDE_CONFIGS.keys())
 
@@ -348,6 +549,8 @@ def doctor(
             "kiro": _check_kiro,
             "cursor": _check_cursor,
             "gemini-cli": _check_gemini,
+            "copilot": _check_copilot,
+            "opencode": _check_opencode,
         }.get(ide_name)
 
         found_any = False
@@ -355,11 +558,19 @@ def doctor(
             for path in config[path_list_key]:
                 if path.exists():
                     found_any = True
-                    data = _load_json(path)
-                    if data is None:
-                        issues.append(f"{path}: file exists but is not valid JSON.")
-                    elif check_fn:
-                        check_fn(path, data, issues, warnings)
+                    if path.suffix == ".toml":
+                        # Codex uses TOML config — load with tomllib
+                        data = _load_toml(path)
+                        if data is None:
+                            issues.append(f"{path}: file exists but is not valid TOML.")
+                        elif ide_name == "codex":
+                            _check_codex(data, issues, warnings, path)
+                    else:
+                        data = _load_json(path)
+                        if data is None:
+                            issues.append(f"{path}: file exists but is not valid JSON.")
+                        elif check_fn:
+                            check_fn(path, data, issues, warnings)
 
         for path in config.get("mcp", []):
             if path.exists():
@@ -410,6 +621,16 @@ def doctor(
                 rprint("  Run: observal scan --ide kiro --home")
             elif "observal-shim" in issue and "Kiro" in issue:
                 rprint("  Run: observal scan --ide kiro")
+            elif "Gemini telemetry" in issue and "disabled" in issue:
+                rprint(
+                    "  Set `telemetry.enabled` to `true` and `telemetry.target` to `custom` in .gemini/settings.json"
+                )
+            elif "Gemini telemetry" in issue and "not configured" in issue:
+                rprint(
+                    '  Add telemetry config to .gemini/settings.json:\n  {"telemetry": {"enabled": true, "target": "custom", "otlpEndpoint": "http://localhost:4318", "logPrompts": true}}'
+                )
+            elif "observal-shim" in issue and "gemini-cli" in issue:
+                rprint("  Run: observal install <id> --ide gemini-cli")
 
     raise typer.Exit(1 if issues else 0)
 
@@ -608,11 +829,11 @@ def doctor_sli(
         None,
         "--ide",
         "-i",
-        help="Target IDE only (claude-code, kiro). Default: both.",
+        help="Target IDE only (claude-code, kiro, gemini-cli). Default: all.",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show changes without applying"),
 ):
-    """Re-install Observal telemetry hooks into Claude Code and/or Kiro.
+    """Re-install Observal telemetry hooks into Claude Code, Kiro, and/or Gemini CLI.
 
     Repairs missing or outdated hooks non-destructively — your existing
     hooks and settings are preserved.
@@ -625,7 +846,7 @@ def doctor_sli(
         rprint("[red]Not configured. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    targets = [ide] if ide else ["claude-code", "kiro"]
+    targets = [ide] if ide else ["claude-code", "kiro", "gemini-cli"]
     any_changes = False
 
     for target in targets:
@@ -665,8 +886,45 @@ def doctor_sli(
                 any_changes = True
             for c in messages:
                 rprint(f"  {c}")
+
+        elif target in ("gemini-cli", "gemini_cli"):
+            rprint("[cyan]Gemini CLI[/cyan]")
+            otlp_endpoint = cfg.get("otlp_endpoint", "http://localhost:4318")
+
+            gemini_settings = Path.home() / ".gemini" / "settings.json"
+            gemini_data: dict = {}
+            if gemini_settings.exists():
+                try:
+                    gemini_data = json.loads(gemini_settings.read_text())
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            telemetry = gemini_data.get("telemetry", {})
+            needs_update = (
+                not isinstance(telemetry, dict)
+                or not telemetry.get("enabled")
+                or telemetry.get("target") != "custom"
+                or telemetry.get("otlpEndpoint") != otlp_endpoint
+            )
+
+            if needs_update:
+                if dry_run:
+                    rprint("  [yellow]Would update telemetry config in ~/.gemini/settings.json[/yellow]")
+                else:
+                    gemini_data.setdefault("telemetry", {})
+                    gemini_data["telemetry"]["enabled"] = True
+                    gemini_data["telemetry"]["target"] = "custom"
+                    gemini_data["telemetry"]["otlpEndpoint"] = otlp_endpoint
+                    gemini_data["telemetry"]["logPrompts"] = True
+                    gemini_settings.parent.mkdir(parents=True, exist_ok=True)
+                    gemini_settings.write_text(json.dumps(gemini_data, indent=2) + "\n")
+                    rprint(f"  + Configured telemetry in {gemini_settings}")
+                    any_changes = True
+            else:
+                rprint("  [dim]Gemini telemetry already configured[/dim]")
+
         else:
-            rprint(f"[yellow]Unknown IDE: {target}. Use 'claude-code' or 'kiro'.[/yellow]")
+            rprint(f"[yellow]Unknown IDE: {target}. Use 'claude-code', 'kiro', or 'gemini-cli'.[/yellow]")
 
     if any_changes:
         rprint("\n[green]✓ Hooks installed.[/green] Restart your IDE session to pick up changes.")

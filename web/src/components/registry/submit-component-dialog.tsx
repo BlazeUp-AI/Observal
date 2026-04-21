@@ -34,7 +34,7 @@ const MCP_FRAMEWORKS = ["python", "docker", "typescript", "go"];
 const MCP_TRANSPORTS = ["stdio", "sse", "streamable-http"];
 
 const VALID_IDES = [
-  "cursor", "kiro", "claude-code", "gemini-cli", "vscode", "codex", "copilot",
+  "cursor", "kiro", "claude-code", "gemini-cli", "vscode", "codex", "copilot", "opencode",
 ];
 
 const SKILL_TASK_TYPES = [

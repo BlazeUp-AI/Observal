@@ -203,6 +203,26 @@ function generateKiro(
   ];
 }
 
+function buildGeminiSettings(mcps: { id: string; name: string }[]): string {
+  const servers: Record<string, object> = {};
+  for (const mcp of mcps) {
+    servers[mcp.name] = {
+      command: "observal-shim",
+      args: ["--mcp-id", mcp.id, "--", "python", "-m", mcp.name],
+    };
+  }
+  const settings: Record<string, unknown> = {
+    telemetry: {
+      enabled: true,
+      target: "custom",
+      otlpEndpoint: "http://localhost:4318",
+      logPrompts: true,
+    },
+    mcpServers: servers,
+  };
+  return JSON.stringify(settings, null, 2);
+}
+
 function generateGemini(
   mcps: { id: string; name: string }[],
   body: string,
@@ -210,13 +230,18 @@ function generateGemini(
   const files: PreviewFile[] = [
     { path: "GEMINI.md", content: body || "", language: "markdown" },
   ];
-  if (mcps.length > 0) {
-    files.push({
-      path: ".gemini/mcp.json",
-      content: buildMcpJson(mcps),
-      language: "json",
-    });
-  }
+  files.push({
+    path: ".gemini/settings.json",
+    content: mcps.length > 0 ? buildGeminiSettings(mcps) : JSON.stringify({
+      telemetry: {
+        enabled: true,
+        target: "custom",
+        otlpEndpoint: "http://localhost:4318",
+        logPrompts: true,
+      },
+    }, null, 2),
+    language: "json",
+  });
   return files;
 }
 
