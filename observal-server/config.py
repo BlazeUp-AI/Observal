@@ -5,6 +5,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: Literal["json", "console"] = "json"
+
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/observal"
     CLICKHOUSE_URL: str = "clickhouse://localhost:8123/observal"
     REDIS_URL: str = "redis://localhost:6379"
