@@ -87,6 +87,8 @@ services:
       CLICKHOUSE_DB: observal
     volumes:
       - chdata:/var/lib/clickhouse
+      - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+      - ./clickhouse/users.d:/etc/clickhouse-server/users.d:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
       interval: 5s
@@ -95,7 +97,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: ${CLICKHOUSE_MEMORY_LIMIT:-2G}
     networks:
       - observal-net
 
@@ -191,7 +193,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: ${OTEL_MEMORY_LIMIT:-512M}
     networks:
       - observal-net
 
