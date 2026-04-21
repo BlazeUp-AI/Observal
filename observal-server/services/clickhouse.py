@@ -61,6 +61,9 @@ async def _query(sql: str, params: dict | None = None, *, data: str | None = Non
         "user": CLICKHOUSE_USER,
         "password": CLICKHOUSE_PASSWORD,
     }
+    # Inject admin-configured resource overrides (e.g. max_memory_usage)
+    if _resource_overrides:
+        query_params.update(_resource_overrides)
     if params:
         query_params.update(params)
     body = f"{sql}\n{data}" if data else sql
@@ -324,23 +327,31 @@ RESOURCE_SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "resource.join_memory_mb": ("max_bytes_in_join", int),
 }
 
+# Per-query overrides injected into every HTTP request.
+# Populated from enterprise_config on startup and when admin clicks "Apply".
+_resource_overrides: dict[str, str] = {}
+
 
 async def apply_resource_settings(overrides: dict[str, str] | None = None):
-    """Apply resource tuning settings to ClickHouse.
+    """Load resource tuning settings and inject them into every ClickHouse query.
+
+    ClickHouse's HTTP API accepts settings as query parameters (e.g.
+    ``?max_memory_usage=300000000``).  This sidesteps the XML-user
+    readonly limitation: no ALTER USER needed, settings apply per-request.
 
     Reads from enterprise_config (Postgres) unless *overrides* is supplied.
-    Values are in megabytes and converted to bytes for ClickHouse.
     """
+    global _resource_overrides
     resource_values: dict[str, str] = {}
 
     if overrides is not None:
         resource_values = overrides
     else:
         try:
+            from sqlalchemy import select
+
             from database import async_session
             from models.enterprise_config import EnterpriseConfig
-
-            from sqlalchemy import select
 
             async with async_session() as db:
                 result = await db.execute(
@@ -356,7 +367,7 @@ async def apply_resource_settings(overrides: dict[str, str] | None = None):
     if not resource_values:
         return
 
-    parts = []
+    new_overrides: dict[str, str] = {}
     for config_key, (ch_setting, cast) in RESOURCE_SETTINGS_MAP.items():
         raw = resource_values.get(config_key)
         if raw is None:
@@ -365,19 +376,12 @@ async def apply_resource_settings(overrides: dict[str, str] | None = None):
             mb = cast(raw)
             if mb <= 0:
                 continue
-            parts.append(f"{ch_setting} = {mb * 1_000_000}")
+            new_overrides[ch_setting] = str(mb * 1_000_000)
         except (ValueError, TypeError):
             logger.warning("Invalid resource setting %s=%s, skipping", config_key, raw)
 
-    if not parts:
-        return
-
-    sql = f"ALTER USER {CLICKHOUSE_USER} SETTINGS {', '.join(parts)}"
-    try:
-        await _query(sql)
-        logger.info("ClickHouse resource settings applied: %s", ", ".join(parts))
-    except Exception as e:
-        logger.warning("Failed to apply ClickHouse resource settings: %s", e)
+    _resource_overrides = new_overrides
+    logger.info("ClickHouse resource overrides loaded: %s", new_overrides)
 
 
 async def init_clickhouse():
