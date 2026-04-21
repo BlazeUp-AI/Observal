@@ -12,7 +12,7 @@ export default function AdminLayout({
 }) {
   return (
     <AuthGuard>
-      <RoleGuard minRole="admin">
+      <RoleGuard minRole="reviewer">
         <SidebarProvider>
           <RegistrySidebar />
           <SidebarInset>{children}</SidebarInset>
