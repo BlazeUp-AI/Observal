@@ -583,6 +583,44 @@ def _backup_config(config_path: Path) -> Path:
     return backup
 
 
+def inject_gemini_telemetry(otlp_endpoint: str) -> bool:
+    """Inject Observal OTLP telemetry settings into ~/.gemini/settings.json.
+
+    Non-destructive: preserves all existing keys, only updates the `telemetry`
+    block. Creates a timestamped backup before any write.
+
+    Returns True if a write was performed, False if already up to date.
+    """
+    gemini_settings = Path.home() / ".gemini" / "settings.json"
+    gemini_data: dict = {}
+    if gemini_settings.exists():
+        gemini_data = json.loads(gemini_settings.read_text())
+
+    telemetry = gemini_data.get("telemetry", {})
+    if not isinstance(telemetry, dict):
+        telemetry = {}
+
+    needs_update = (
+        not telemetry.get("enabled")
+        or telemetry.get("target") != "custom"
+        or telemetry.get("otlpEndpoint") != otlp_endpoint
+    )
+
+    if not needs_update:
+        return False
+
+    if gemini_settings.exists():
+        _backup_config(gemini_settings)
+    gemini_data.setdefault("telemetry", {})
+    gemini_data["telemetry"]["enabled"] = True
+    gemini_data["telemetry"]["target"] = "custom"
+    gemini_data["telemetry"]["otlpEndpoint"] = otlp_endpoint
+    gemini_data["telemetry"]["logPrompts"] = True
+    gemini_settings.parent.mkdir(parents=True, exist_ok=True)
+    gemini_settings.write_text(json.dumps(gemini_data, indent=2) + "\n")
+    return True
+
+
 # ── CLI command ─────────────────────────────────────────────
 
 
@@ -1143,34 +1181,11 @@ def register_scan(app: typer.Typer):
 
             gcfg = _load_gemini_config()
             otlp_endpoint = gcfg.get("otlp_endpoint", "http://localhost:4318")
-
             gemini_settings = Path.home() / ".gemini" / "settings.json"
+
             try:
-                gemini_data: dict = {}
-                if gemini_settings.exists():
-                    gemini_data = json.loads(gemini_settings.read_text())
-
-                telemetry = gemini_data.get("telemetry", {})
-                needs_telemetry_update = False
-
-                if not isinstance(telemetry, dict):
-                    telemetry = {}
-                if not telemetry.get("enabled"):
-                    needs_telemetry_update = True
-                if telemetry.get("target") != "custom":
-                    needs_telemetry_update = True
-                if telemetry.get("otlpEndpoint") != otlp_endpoint:
-                    needs_telemetry_update = True
-
-                if needs_telemetry_update:
-                    _backup_config(gemini_settings)
-                    gemini_data.setdefault("telemetry", {})
-                    gemini_data["telemetry"]["enabled"] = True
-                    gemini_data["telemetry"]["target"] = "custom"
-                    gemini_data["telemetry"]["otlpEndpoint"] = otlp_endpoint
-                    gemini_data["telemetry"]["logPrompts"] = True
-                    gemini_settings.parent.mkdir(parents=True, exist_ok=True)
-                    gemini_settings.write_text(json.dumps(gemini_data, indent=2) + "\n")
+                written = inject_gemini_telemetry(otlp_endpoint)
+                if written:
                     rprint(f"\n[green]Configured Gemini CLI telemetry in {gemini_settings}[/green]")
                     rprint(f"[dim]OTLP endpoint: {otlp_endpoint}[/dim]")
                     rprint("[dim]Telemetry will be sent to Observal via OTLP.[/dim]")
