@@ -13,6 +13,7 @@ const IDE_OPTIONS = [
   { value: "gemini-cli", label: "Gemini CLI" },
   { value: "codex", label: "Codex" },
   { value: "copilot", label: "Copilot" },
+  { value: "opencode", label: "OpenCode" },
 ] as const;
 
 type Ide = (typeof IDE_OPTIONS)[number]["value"];
@@ -259,6 +260,30 @@ function generateCopilot(body: string): PreviewFile[] {
   ];
 }
 
+function generateOpenCode(
+  mcps: { id: string; name: string }[],
+  body: string,
+): PreviewFile[] {
+  const files: PreviewFile[] = [
+    { path: "AGENTS.md", content: body || "", language: "markdown" },
+  ];
+  if (mcps.length > 0) {
+    const mcp: Record<string, object> = {};
+    for (const m of mcps) {
+      mcp[m.name] = {
+        type: "local",
+        command: ["observal-shim", "--mcp-id", m.id, "--", "python", "-m", m.name],
+      };
+    }
+    files.push({
+      path: "opencode.json",
+      content: JSON.stringify({ mcp }, null, 2),
+      language: "json",
+    });
+  }
+  return files;
+}
+
 // ── Main component ────────────────────────────────────────────
 
 export function PreviewPanel({
@@ -297,6 +322,9 @@ export function PreviewPanel({
       break;
     case "copilot":
       files = generateCopilot(body);
+      break;
+    case "opencode":
+      files = generateOpenCode(mcps, body);
       break;
   }
 
