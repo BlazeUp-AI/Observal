@@ -966,3 +966,133 @@ class TestParseDirectConfigDollarVars:
         }
         parsed = _parse_direct_config(cfg)
         assert "_dollar_vars_detected" not in parsed
+
+
+# ═══════════════════════════════════════════════════════════
+# 14. _dollar_to_placeholder
+# ═══════════════════════════════════════════════════════════
+
+
+class TestDollarToPlaceholder:
+    def test_bearer_single_token(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("Bearer $TOKEN") == "Bearer <TOKEN>"
+
+    def test_bearer_braces_form(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("Bearer ${TOKEN}") == "Bearer <TOKEN>"
+
+    def test_bearer_multiple_tokens(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("Bearer $TOKEN1 $TOKEN2") == "Bearer <TOKEN1> <TOKEN2>"
+
+    def test_bearer_mixed_literal(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        result = _dollar_to_placeholder("Bearer $TOKEN1, token2")
+        assert result == "Bearer <TOKEN1>, token2"
+
+    def test_bare_variable(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("$API_KEY") == "<API_KEY>"
+
+    def test_no_variables(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("static-value") == "static-value"
+
+    def test_empty_string(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("") == ""
+
+    def test_multiple_vars_in_path(self):
+        from observal_cli.cmd_mcp import _dollar_to_placeholder
+
+        assert _dollar_to_placeholder("$HOST:$PORT/api") == "<HOST>:<PORT>/api"
+
+
+# ═══════════════════════════════════════════════════════════
+# 15. _build_config_preview dollar-var placeholders
+# ═══════════════════════════════════════════════════════════
+
+
+class TestBuildConfigPreviewPlaceholders:
+    def test_sse_header_bearer_token_placeholder(self):
+        from observal_cli.cmd_mcp import _build_config_preview
+
+        parsed = {
+            "transport": "sse",
+            "url": "https://example.com/sse",
+            "headers": [
+                {"name": "Authorization", "value": "Bearer $TOKEN", "description": "", "required": True},
+            ],
+            "environment_variables": [{"name": "TOKEN", "description": "", "required": True}],
+        }
+        result = _build_config_preview("test-server", parsed)
+        headers = result["test-server"]["headers"]
+        assert headers["Authorization"] == "Bearer <TOKEN>"
+
+    def test_sse_header_multiple_dollar_vars(self):
+        from observal_cli.cmd_mcp import _build_config_preview
+
+        parsed = {
+            "transport": "sse",
+            "url": "https://example.com/sse",
+            "headers": [
+                {"name": "Authorization", "value": "Bearer $TOKEN1 $TOKEN2", "description": "", "required": True},
+            ],
+            "environment_variables": [],
+        }
+        result = _build_config_preview("test-server", parsed)
+        headers = result["test-server"]["headers"]
+        assert headers["Authorization"] == "Bearer <TOKEN1> <TOKEN2>"
+
+    def test_sse_header_no_dollar_uses_name_fallback(self):
+        from observal_cli.cmd_mcp import _build_config_preview
+
+        parsed = {
+            "transport": "sse",
+            "url": "https://example.com/sse",
+            "headers": [
+                {"name": "X-Custom", "description": "", "required": True},
+            ],
+            "environment_variables": [],
+        }
+        result = _build_config_preview("test-server", parsed)
+        headers = result["test-server"]["headers"]
+        assert headers["X-Custom"] == "<X-Custom>"
+
+    def test_stdio_args_dollar_vars_replaced(self):
+        from observal_cli.cmd_mcp import _build_config_preview
+
+        parsed = {
+            "transport": "stdio",
+            "command": "node",
+            "args": ["server.js", "--token=$API_KEY", "--host", "$HOST"],
+            "environment_variables": [
+                {"name": "API_KEY", "description": "", "required": True},
+                {"name": "HOST", "description": "", "required": True},
+            ],
+        }
+        result = _build_config_preview("test-server", parsed)
+        args = result["test-server"]["args"]
+        assert "--token=<API_KEY>" in args
+        assert "<HOST>" in args
+
+    def test_stdio_args_no_dollar_unchanged(self):
+        from observal_cli.cmd_mcp import _build_config_preview
+
+        parsed = {
+            "transport": "stdio",
+            "command": "python",
+            "args": ["-m", "my_server"],
+            "environment_variables": [],
+        }
+        result = _build_config_preview("test-server", parsed)
+        args = result["test-server"]["args"]
+        assert args == ["-m", "my_server"]
