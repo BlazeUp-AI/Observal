@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Bot, Activity, TrendingUp, TrendingDown, Minus, Download } from "lucide-react";
-import { useOverviewStats, useRegistryList, useTopAgents, useOtelSessions } from "@/hooks/use-api";
-import type { RegistryItem, OtelSession, TopAgentItem } from "@/lib/types";
+import { Bot, Activity, TrendingUp, TrendingDown, Minus, Download, FlaskConical } from "lucide-react";
+import { useOverviewStats, useRegistryList, useTopAgents, useOtelSessions, useEvalScorecards } from "@/hooks/use-api";
+import type { RegistryItem, OtelSession, TopAgentItem, Scorecard } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { CardSkeleton, TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ScoreOverview } from "@/components/dashboard/score-overview";
 
 function TrendIcon({ value }: { value: number }) {
   if (value > 0) return <TrendingUp className="h-3 w-3 text-success" />;
@@ -58,6 +59,35 @@ function TopDownloadsBar({ items }: { items: { name: string; value: number }[] }
         </div>
       ))}
     </div>
+  );
+}
+
+function AgentScoreCard({ agent }: { agent: RegistryItem }) {
+  const { data: scorecards } = useEvalScorecards(agent.id);
+  const latest = (scorecards ?? [])[0] as Scorecard | undefined;
+
+  if (!latest?.dimension_scores || !latest?.grade) return null;
+
+  return (
+    <Link href={`/eval/${agent.id}`} className="block">
+      <div className="rounded-md border border-border p-4 hover:bg-muted/30 transition-colors space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="font-[family-name:var(--font-display)] text-sm font-semibold truncate">
+            {agent.name}
+          </span>
+          {latest.version && (
+            <Badge variant="secondary" className="text-[10px]">v{latest.version}</Badge>
+          )}
+        </div>
+        <ScoreOverview
+          displayScore={latest.display_score ?? latest.overall_score ?? 0}
+          grade={latest.grade ?? latest.overall_grade ?? "-"}
+          dimensionScores={latest.dimension_scores ?? {}}
+          penaltyCount={latest.penalty_count}
+          compact
+        />
+      </div>
+    </Link>
   );
 }
 
@@ -211,7 +241,35 @@ export default function DashboardPage() {
 
           {/* Right column: 1/3 */}
           <div className="space-y-6">
+            {/* Agent Scores */}
             <section className="animate-in stagger-3">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Agent Scores
+                </h3>
+                <Link href="/eval" className="text-[10px] text-primary hover:underline">
+                  View all
+                </Link>
+              </div>
+              {agentsLoading ? (
+                <CardSkeleton count={2} />
+              ) : (agents ?? []).length === 0 ? (
+                <EmptyState
+                  icon={FlaskConical}
+                  title="No agents scored"
+                  description="Run evaluations to see scores here."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {(agents ?? []).slice(0, 4).map((a: RegistryItem) => (
+                    <AgentScoreCard key={a.id} agent={a} />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Top Downloads */}
+            <section className="animate-in stagger-4">
               <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                 Top Downloads
               </h3>

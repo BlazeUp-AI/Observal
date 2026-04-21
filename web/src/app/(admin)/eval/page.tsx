@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { CardSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ScoreOverview } from "@/components/dashboard/score-overview";
 
 function gradeColor(grade: string | undefined): string {
   if (!grade) return "bg-muted text-muted-foreground";
@@ -43,19 +44,29 @@ function AgentEvalCard({ agent }: { agent: RegistryItem }) {
         )}
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {latest?.display_score != null && (
-          <span className="font-[family-name:var(--font-mono)] tabular-nums">
-            {latest.display_score.toFixed(1)}/10
-          </span>
-        )}
-        {evalCount > 0 && (
-          <span>{evalCount} eval{evalCount !== 1 ? "s" : ""}</span>
-        )}
-        {!latest && (
-          <span>No evaluations yet</span>
-        )}
-      </div>
+      {latest?.dimension_scores ? (
+        <ScoreOverview
+          displayScore={latest.display_score ?? latest.overall_score ?? 0}
+          grade={latest.grade ?? latest.overall_grade ?? "-"}
+          dimensionScores={latest.dimension_scores}
+          penaltyCount={latest.penalty_count}
+          compact
+        />
+      ) : (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {latest?.display_score != null && (
+            <span className="font-[family-name:var(--font-mono)] tabular-nums">
+              {latest.display_score.toFixed(1)}/10
+            </span>
+          )}
+          {evalCount > 0 && (
+            <span>{evalCount} eval{evalCount !== 1 ? "s" : ""}</span>
+          )}
+          {!latest && (
+            <span>No evaluations yet</span>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mt-auto pt-1">
         <Link href={`/eval/${agent.id}`} className="flex-1">

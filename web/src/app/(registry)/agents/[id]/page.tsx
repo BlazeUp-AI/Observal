@@ -211,22 +211,41 @@ function AnalyticsTab({ agentId }: { agentId: string }) {
       {Object.keys(dims).length > 0 && (
         <div className="space-y-3">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dimension Averages</h4>
-          <div className="space-y-2">
-            {Object.entries(dims).map(([dim, score]) => (
-              <div key={dim} className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground w-32 shrink-0 truncate">{dim}</span>
-                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: `${Math.min(Number(score) * 10, 100)}%` }}
-                  />
+          <div className="space-y-2.5">
+            {Object.entries(dims).map(([dim, score]) => {
+              const dimLabels: Record<string, string> = {
+                goal_completion: "Goal Completion",
+                tool_efficiency: "Tool Efficiency",
+                tool_failures: "Tool Failures",
+                factual_grounding: "Factual Grounding",
+                thought_process: "Thought Process",
+              };
+              const dimColors: Record<string, string> = {
+                goal_completion: "bg-emerald-500",
+                tool_efficiency: "bg-blue-500",
+                tool_failures: "bg-amber-500",
+                factual_grounding: "bg-violet-500",
+                thought_process: "bg-cyan-500",
+              };
+              const clampedScore = Math.max(0, Math.min(100, Number(score)));
+              return (
+                <div key={dim} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">{dimLabels[dim] ?? dim}</span>
+                    <span className="text-xs font-mono tabular-nums">{Math.round(clampedScore)}<span className="text-muted-foreground">/100</span></span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${dimColors[dim] ?? "bg-primary"}`}
+                      style={{ width: `${clampedScore}%` }}
+                    />
+                  </div>
                 </div>
-                <span className="text-xs font-mono w-10 text-right">{Number(score).toFixed(1)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {aggregate.weakest_dimension && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-2">
               Weakest: <span className="text-foreground font-medium">{aggregate.weakest_dimension}</span>
             </p>
           )}

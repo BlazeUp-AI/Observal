@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton, ChartSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ScoreOverview } from "@/components/dashboard/score-overview";
 
 function gradeColor(grade: string | undefined): string {
   if (!grade) return "text-muted-foreground";
@@ -149,30 +150,24 @@ export default function EvalDetailPage({ params }: { params: Promise<{ agentId: 
 
           {/* Right: 1/3 — Score Summary */}
           <div className="space-y-6">
-            {/* Current Grade */}
+            {/* Score Overview with Dimension Breakdown */}
             {latest && (
               <section className="animate-in stagger-1">
                 <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
                   Current Score
                 </h3>
-                <div className="rounded-md border border-border p-4 space-y-3">
-                  <div className="flex items-center gap-4">
-                    <div className={`flex items-center justify-center w-14 h-14 rounded-md ${gradeBg(latest.grade)}`}>
-                      <span className={`text-2xl font-bold font-[family-name:var(--font-display)] ${gradeColor(latest.grade)}`}>
-                        {latest.grade ?? "-"}
-                      </span>
-                    </div>
-                    <div>
-                      {latest.display_score != null && (
-                        <p className="text-lg font-semibold font-[family-name:var(--font-mono)] tabular-nums">
-                          {latest.display_score.toFixed(1)}<span className="text-xs text-muted-foreground">/10</span>
-                        </p>
-                      )}
-                      {latest.version && (
-                        <p className="text-xs text-muted-foreground">v{latest.version}</p>
-                      )}
-                    </div>
-                  </div>
+                <div className="rounded-md border border-border p-5">
+                  <ScoreOverview
+                    displayScore={latest.display_score ?? latest.overall_score ?? 0}
+                    grade={latest.grade ?? latest.overall_grade ?? "-"}
+                    dimensionScores={latest.dimension_scores ?? {}}
+                    penaltyCount={latest.penalty_count}
+                  />
+                  {latest.version && (
+                    <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-border">
+                      Version: <span className="font-[family-name:var(--font-mono)]">v{latest.version}</span>
+                    </p>
+                  )}
                 </div>
               </section>
             )}
@@ -181,7 +176,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ agentId: 
             {latest?.dimension_scores && (
               <section className="animate-in stagger-2">
                 <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                  Dimensions
+                  Dimension Radar
                 </h3>
                 <div className="rounded-md border border-border p-2">
                   <DimensionRadar dimensionScores={latest.dimension_scores} />
