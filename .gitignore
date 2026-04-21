@@ -39,3 +39,4 @@ docker/data/
 CLAUDE.md
 graphify-out/
 observal-web/tsconfig.tsbuildinfo
+.worktrees/
