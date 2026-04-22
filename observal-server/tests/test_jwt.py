@@ -172,7 +172,7 @@ class TestAuthDependency:
         token, _ = create_access_token(user.id, user.role)
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = user
+        mock_result.one_or_none.return_value = (user, False)
         mock_db = AsyncMock()
         mock_db.execute.return_value = mock_result
 
