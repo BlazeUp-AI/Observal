@@ -534,6 +534,30 @@ export function SubmitComponentDialog({
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1.5">
+                <Label>MCP Server</Label>
+                <Select
+                  value={mcpServerName || "none"}
+                  onValueChange={(v) => setMcpServerName(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {availableMcps.map((mcp) => (
+                      <SelectItem key={mcp.id} value={mcp.name}>
+                        <span className="flex items-center gap-2">
+                          {mcp.name}
+                          {mcp.status === "pending" && (
+                            <span className="text-[10px] rounded bg-yellow-500/15 text-yellow-500 px-1.5 py-0.5">
+                              pending
+                            </span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="skill-git-url">Git URL</Label>
