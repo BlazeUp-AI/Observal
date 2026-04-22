@@ -98,6 +98,10 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     )
     agents = result.scalars().all()
 
+    # Exclude auto-scanned agents (local IDE configs like kiro_default that
+    # were registered by the deprecated POST /api/v1/scan endpoint).
+    agents = [a for a in agents if not (a.description or "").startswith("Auto-scanned agent: ")]
+
     user_ids = {a.created_by for a in agents}
     user_map: dict[uuid.UUID, str] = {}
     if user_ids:

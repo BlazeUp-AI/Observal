@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db, require_role
-from models.agent import Agent, AgentGoalSection, AgentGoalTemplate
 from models.hook import HookListing
 from models.mcp import ListingStatus, McpListing
 from models.skill import SkillListing
@@ -184,45 +183,12 @@ async def bulk_scan(
         counts["hook"] += 1
 
     # ── Agents ──────────────────────────────────────────
+    # Scanned agents are local IDE configs (e.g. kiro_default hook files),
+    # not publishable registry entries.  Skip creation to prevent them from
+    # polluting the admin approval queue.  The current CLI no longer sends
+    # agents here; this guard protects against older CLI versions.
     for agent in req.agents:
-        result = await db.execute(select(Agent).where(Agent.name == agent.name))
-        existing = result.scalar_one_or_none()
-        if existing:
-            registered.append(RegisteredItem(name=agent.name, id=str(existing.id), type="agent", status="existing"))
-            counts["agent"] += 1
-            continue
-
-        ide_tag = agent.source_ide or req.ide
-        new_agent = Agent(
-            name=agent.name,
-            version="0.1.0",
-            description=agent.description or f"Auto-scanned agent: {agent.name}",
-            owner=owner,
-            prompt=agent.prompt or "",
-            model_name=agent.model_name or "sonnet-4-6",
-            supported_ides=[ide_tag],
-            created_by=current_user.id,
-        )
-        db.add(new_agent)
-        await db.flush()
-
-        goal_template = AgentGoalTemplate(
-            agent_id=new_agent.id,
-            description=agent.description or f"Goal for {agent.name}",
-        )
-        db.add(goal_template)
-        await db.flush()
-
-        section = AgentGoalSection(
-            goal_template_id=goal_template.id,
-            name="default",
-            description="Default goal section",
-            order=0,
-        )
-        db.add(section)
-        await db.flush()
-
-        registered.append(RegisteredItem(name=agent.name, id=str(new_agent.id), type="agent", status="created"))
+        registered.append(RegisteredItem(name=agent.name, id="", type="agent", status="skipped"))
         counts["agent"] += 1
 
     await db.commit()
