@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import ROLE_HIERARCHY, get_db, require_role, resolve_listing
+from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
 from api.sanitize import escape_like
 from database import async_session
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
@@ -186,11 +186,26 @@ async def my_mcps(
 
 
 @router.get("/{listing_id}", response_model=McpListingResponse)
-async def get_mcp(listing_id: str, db: AsyncSession = Depends(get_db)):
+async def get_mcp(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(optional_current_user),
+):
+    listing = await resolve_listing(McpListing, listing_id, db, require_status=ListingStatus.approved)
+    if listing:
+        return McpListingResponse.model_validate(listing)
+
     listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    return McpListingResponse.model_validate(listing)
+
+    if current_user and (
+        listing.submitted_by == current_user.id
+        or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
+    ):
+        return McpListingResponse.model_validate(listing)
+
+    raise HTTPException(status_code=404, detail="Listing not found")
 
 
 @router.post("/{listing_id}/install", response_model=McpInstallResponse)
