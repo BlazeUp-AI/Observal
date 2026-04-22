@@ -25,7 +25,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
-    """Try to authenticate using a JWT access token. Returns User or None."""
+    """Try to authenticate using a JWT access token. Returns User or None.
+
+    Also resolves the org's trace_privacy flag in the same query (via JOIN)
+    so downstream code never needs a separate DB call for it.
+    """
     try:
         payload = decode_access_token(token)
     except jwt.InvalidTokenError:
@@ -40,8 +44,17 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
     except ValueError:
         return None
 
-    result = await db.execute(select(User).where(User.id == uid))
-    return result.scalar_one_or_none()
+    result = await db.execute(
+        select(User, Organization.trace_privacy)
+        .outerjoin(Organization, User.org_id == Organization.id)
+        .where(User.id == uid)
+    )
+    row = result.one_or_none()
+    if not row:
+        return None
+    user, trace_privacy = row
+    user._trace_privacy = bool(trace_privacy)
+    return user
 
 
 async def get_current_user(

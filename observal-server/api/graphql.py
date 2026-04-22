@@ -578,23 +578,21 @@ async def _resolve_user_context_from_request(request) -> dict:
         from models.organization import Organization
 
         async with async_session() as session:
-            result = await session.execute(select(User.org_id, User.role).where(User.id == uid))
+            result = await session.execute(
+                select(User.org_id, User.role, Organization.trace_privacy)
+                .outerjoin(Organization, User.org_id == Organization.id)
+                .where(User.id == uid)
+            )
             row = result.one_or_none()
             if not row:
                 return default
-            org_id, role = row
-
-            # Check if the org has trace privacy enabled
-            trace_privacy = False
-            if org_id:
-                tp_result = await session.execute(select(Organization.trace_privacy).where(Organization.id == org_id))
-                trace_privacy = bool(tp_result.scalar_one_or_none())
+            org_id, role, trace_privacy = row
 
             return {
                 "project_id": str(org_id) if org_id else _DEFAULT_PROJECT,
                 "user_id": str(uid),
                 "user_role": role.value if role else None,
-                "trace_privacy": trace_privacy,
+                "trace_privacy": bool(trace_privacy),
             }
     except Exception:
         logger.debug("Failed to resolve user context for GraphQL", exc_info=True)
