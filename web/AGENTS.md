@@ -79,6 +79,19 @@ pnpm lint         # ESLint
 pnpm test:e2e     # Playwright e2e tests (requires running API + Docker stack)
 ```
 
+## Enterprise feature gating
+
+There is NO `web/ee/` directory. Enterprise frontend code lives here in `web/src/`, gated server-side via `useDeploymentConfig()`. This follows the Langfuse/PostHog/Infisical pattern — the `ee/` boundary is backend-only.
+
+**Current enterprise conditionals:**
+- `src/app/(auth)/login/page.tsx` — SSO button shown when `ssoEnabled`
+- `src/app/(admin)/settings/page.tsx` — enterprise settings section shown when `deploymentMode === "enterprise"`
+- `src/hooks/use-deployment-config.ts` — fetches `{ deploymentMode, ssoEnabled, samlEnabled }` from `/api/v1/config/public`
+
+**Pattern for new enterprise pages:** Add regular pages in `src/app/(admin)/` that check deployment mode and show an upgrade prompt when not enterprise. Don't duplicate pages or create separate directories.
+
+**Future resource-based access control:** API will include `user_access_level` on response objects (PostHog annotation pattern). Frontend reads the annotation — no client-side policy engine needed.
+
 ## Conventions
 
 - No Tailwind config file — Tailwind CSS 4 uses `globals.css` for all design tokens

@@ -62,6 +62,23 @@ Each event → row in ClickHouse `audit_log` table with actor info, resource det
 
 `ee/plugins/__init__.py` — future home for Grafana, Prometheus, Datadog, and SIEM integrations.
 
+## Frontend architecture
+
+There is NO separate `web/ee/` directory. Enterprise frontend code lives in `web/src/` alongside core code, gated by `useDeploymentConfig()`.
+
+This follows the industry-standard pattern (Langfuse, PostHog, Infisical, Lago all do this). The `ee/` boundary is for backend licensing — the frontend is AGPL and gates features server-side, not by directory.
+
+**How enterprise features are gated in the frontend:**
+- `useDeploymentConfig()` hook returns `{ deploymentMode, ssoEnabled, samlEnabled }`
+- Pages check `deploymentMode === "enterprise"` and show upgrade prompts if not
+- SSO button in login page: conditional on `ssoEnabled`
+- Enterprise settings section: conditional on `deploymentMode`
+- API filters results server-side — frontend reads what it's given
+
+**Enterprise-only admin pages** (audit log viewer, diagnostics, SCIM config) should be regular pages in `web/src/app/(admin)/` that check deployment mode and show an upgrade prompt when not enterprise. Do NOT create a `web/ee/` directory.
+
+**Future resource-based access control** will follow PostHog's annotation pattern: include `user_access_level` on every API response object. The API filters results by team membership; the frontend reads the annotation. No CASL or client-side policy engine needed initially.
+
 ## Directory layout
 
 ```
