@@ -24,6 +24,15 @@ repos:
       - id: no-commit-to-branch
         args: [--branch, main]
 
+  # ── Secrets / .env guard ───────────────────────────────
+  - repo: local
+    hooks:
+      - id: check-secrets
+        name: check for secrets and .env files
+        entry: scripts/check_secrets.sh
+        language: script
+        pass_filenames: false
+
   # ── Alembic migrations ─────────────────────────────────
   - repo: local
     hooks:
