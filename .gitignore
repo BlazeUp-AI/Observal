@@ -41,3 +41,5 @@ CLAUDE.md
 graphify-out/
 observal-web/tsconfig.tsbuildinfo
 .worktrees/
+.playwright-mcp/
+e2e-screenshots/
