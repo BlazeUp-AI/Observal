@@ -21,6 +21,7 @@ import {
 import { Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { RegistryType } from "@/lib/api";
+import { useRegistryList, useMyComponents } from "@/hooks/use-api";
 
 const MCP_CATEGORIES = [
   "browser-automation", "cloud-platforms", "code-execution", "communication",
@@ -108,6 +109,7 @@ export function SubmitComponentDialog({
   const [taskType, setTaskType] = useState("general");
   const [skillGitUrl, setSkillGitUrl] = useState("");
   const [skillPath, setSkillPath] = useState("/");
+  const [mcpServerName, setMcpServerName] = useState("");
 
   // ── Hook ────────────────────────────────────────────────
   const [event, setEvent] = useState("PreToolUse");
@@ -125,6 +127,23 @@ export function SubmitComponentDialog({
   const [image, setImage] = useState("");
   const [networkPolicy, setNetworkPolicy] = useState("none");
   const [entrypoint, setEntrypoint] = useState("");
+
+  const { data: approvedMcps } = useRegistryList("mcps");
+  const { data: myMcps } = useMyComponents("mcps");
+  const availableMcps = (() => {
+    if (type !== "skills") return [];
+    const approved = approvedMcps ?? [];
+    const pending = (myMcps ?? []).filter((m) => m.status === "pending");
+    const seen = new Set<string>();
+    const merged: typeof approved = [];
+    for (const mcp of [...approved, ...pending]) {
+      if (!seen.has(mcp.id)) {
+        seen.add(mcp.id);
+        merged.push(mcp);
+      }
+    }
+    return merged;
+  })();
 
   function reset() {
     setName("");
@@ -145,6 +164,7 @@ export function SubmitComponentDialog({
     setTaskType("general");
     setSkillGitUrl("");
     setSkillPath("/");
+    setMcpServerName("");
     setEvent("PreToolUse");
     setHandlerType("command");
     setExecutionMode("async");
