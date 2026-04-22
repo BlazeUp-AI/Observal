@@ -59,7 +59,7 @@ const adminNav: NavItem[] = [
   { title: "Errors", href: "/errors", icon: AlertTriangle, minRole: "admin" },
   { title: "Evals", href: "/eval", icon: FlaskConical, minRole: "admin" },
   { title: "Users", href: "/users", icon: Users, minRole: "admin" },
-  { title: "Settings", href: "/settings", icon: Settings, minRole: "super_admin" },
+  { title: "Settings", href: "/settings", icon: Settings, minRole: "admin" },
 ];
 
 export const allNavItems = [

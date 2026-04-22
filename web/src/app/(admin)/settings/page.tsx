@@ -183,7 +183,7 @@ const SETTING_SECTIONS: SettingSection[] = [
 const ALL_DEFAULT_SETTINGS = SETTING_SECTIONS.flatMap((s) => s.settings);
 
 export default function SettingsPage() {
-  const { ready } = useRoleGuard("super_admin");
+  const { ready } = useRoleGuard("admin");
   const { data: settings, isLoading, isError, error, refetch } = useAdminSettings();
   const { deploymentMode, ssoEnabled, evalConfigured } = useDeploymentConfig();
   const [addingKey, setAddingKey] = useState("");

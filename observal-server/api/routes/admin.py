@@ -738,7 +738,7 @@ async def apply_resources(
 @router.get("/org/trace-privacy")
 async def get_trace_privacy(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.super_admin)),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Get the trace privacy setting for the current user's organization."""
     if not current_user.org_id:
@@ -754,7 +754,7 @@ async def get_trace_privacy(
 async def set_trace_privacy(
     req: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.super_admin)),
+    current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Toggle trace privacy for the current user's organization.
 
