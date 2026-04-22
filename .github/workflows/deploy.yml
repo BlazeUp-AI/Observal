@@ -20,8 +20,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
           script: |
+            set -e
             cd ~/Observal
             git fetch origin main
             git reset --hard origin/main
@@ -29,16 +29,29 @@ jobs:
             cd docker
             docker compose up -d --build --remove-orphans
 
-            # Wait for API health check
+            # Wait for the API process to be alive (no dependency checks).
+            # /livez returns 200 as soon as uvicorn is serving; /health
+            # checks Postgres+ClickHouse+Redis and returns 503 while they
+            # warm up, which caused false negatives on slow cold-starts.
+            for i in $(seq 1 60); do
+              if curl -sf http://localhost:8000/livez > /dev/null 2>&1; then
+                echo "API is alive (livez ok)"
+                break
+              fi
+              echo "Waiting for API process... ($i/60)"
+              sleep 5
+            done
+
+            # Now wait for full readiness (dependencies healthy)
             for i in $(seq 1 30); do
               if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                echo "API is healthy"
+                echo "API is healthy (all dependencies up)"
                 exit 0
               fi
-              echo "Waiting for API... ($i/30)"
+              echo "Waiting for dependencies... ($i/30)"
               sleep 5
             done
 
             echo "API failed health check"
-            docker compose logs observal-api --tail 30
+            docker compose logs observal-api observal-init observal-db observal-clickhouse --tail 20
             exit 1
