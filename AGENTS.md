@@ -102,7 +102,6 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `api/routes/eval.py` : Run evals, list scorecards, compare versions, aggregate stats
 - `api/routes/admin.py` : Enterprise settings CRUD, user management, role changes, penalty catalog, dimension weights
 - `api/routes/alert.py` : Alert rule CRUD (metric threshold alerts with webhook URLs)
-- `api/routes/scan.py` : `POST /api/v1/scan` bulk registration from IDE config scans; deduplicates by name
 - `api/routes/bulk.py` : Bulk agent creation from scan results
 - `api/routes/jwks.py` : JWKS discovery endpoint for JWT public key distribution
 - `api/routes/otlp.py` : OTLP HTTP receiver; accepts standard `/v1/traces`, `/v1/logs`, `/v1/metrics` and converts to ClickHouse format
@@ -352,7 +351,7 @@ NEVER guess or hallucinate library APIs. Lookup docs first to ensure code matche
 - ClickHouse uses ReplacingMergeTree with bloom filter indexes. Queries go through the HTTP interface, not a native driver. The `_query` helper in `clickhouse.py` handles parameterized queries.
 - The shim is the core telemetry collection mechanism. It sits between the IDE and the MCP server, completely transparent. It never modifies messages: only observes. Telemetry is fire-and-forget via async POST; if the server is down, spans are silently dropped.
 - Config generators automatically wrap MCP commands with `observal-shim` for stdio transport or point to `observal-proxy` for HTTP transport. This is how telemetry collection is opt-in per install.
-- The `observal scan` command reads existing IDE config files, bulk-registers found MCP servers via `POST /api/v1/scan`, and rewrites configs to wrap commands with `observal-shim`. It creates timestamped backups before modifying any file. HTTP-transport MCPs are registered but not shimmed (they would need `observal-proxy`). Supports Claude Code, Cursor, Kiro, VS Code, Gemini CLI, and Codex CLI. Auto-detects home dirs when project dir is empty.
+- The `observal scan` command reads existing IDE config files and rewrites configs to wrap commands with `observal-shim`. It creates timestamped backups before modifying any file. HTTP-transport MCPs are registered but not shimmed (they would need `observal-proxy`). Supports Claude Code, Cursor, Kiro, VS Code, Gemini CLI, and Codex CLI. Auto-detects home dirs when project dir is empty. Scan is fully local — no server calls.
 - GraphQL is the read layer for telemetry data. REST still exists for auth, CRUD, feedback, eval, admin. The GraphQL layer uses DataLoaders to batch ClickHouse queries.
 - Redis serves two purposes: pub/sub for GraphQL subscriptions (live trace/span events) and arq job queue for background eval runs.
 - The eval engine is pluggable. `LLMJudgeBackend` calls Bedrock or OpenAI-compatible endpoints. `FallbackBackend` returns deterministic scores when no LLM is configured. The 6 managed templates are prompt strings, not code.
