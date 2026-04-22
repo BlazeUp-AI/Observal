@@ -20,6 +20,7 @@ from schemas.alert import (
     WebhookTestResponse,
 )
 from services.alert_evaluator import is_private_url
+from services.audit_helpers import audit
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
 
@@ -48,7 +49,9 @@ async def list_alerts(
         stmt = stmt.where(AlertRule.created_by.in_(org_user_ids))
     # else: admin with no org (local mode) — no filter, sees everything
     result = await db.execute(stmt)
-    return [AlertRuleResponse.from_rule(r) for r in result.scalars().all()]
+    alerts = result.scalars().all()
+    await audit(current_user, "alert.list", resource_type="alert_rule")
+    return [AlertRuleResponse.from_rule(r) for r in alerts]
 
 
 @router.post("", response_model=AlertRuleResponse, status_code=201)
@@ -72,6 +75,7 @@ async def create_alert(
     db.add(rule)
     await db.commit()
     await db.refresh(rule)
+    await audit(current_user, "alert.create", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name)
     return AlertRuleResponse.from_rule(rule)
 
 
@@ -100,6 +104,7 @@ async def update_alert(
         rule.webhook_url = body.webhook_url
     await db.commit()
     await db.refresh(rule)
+    await audit(current_user, "alert.update", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name)
     return AlertRuleResponse.from_rule(rule)
 
 
@@ -120,8 +125,11 @@ async def delete_alert(
     is_admin_or_above = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
     if rule.created_by != current_user.id and not is_admin_or_above:
         raise HTTPException(403, "Not authorized to delete this alert rule")
+    alert_id_str = str(rule.id)
+    alert_name = rule.name
     await db.delete(rule)
     await db.commit()
+    await audit(current_user, "alert.delete", resource_type="alert_rule", resource_id=alert_id_str, resource_name=alert_name)
 
 
 @router.get("/{alert_id}/history", response_model=list[AlertHistoryResponse])
@@ -152,7 +160,9 @@ async def get_alert_history(
         .offset(offset)
     )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    history = result.scalars().all()
+    await audit(current_user, "alert.history", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name)
+    return history
 
 
 @router.post("/{alert_id}/webhook-secret/rotate", response_model=WebhookSecretRotateResponse)
@@ -172,6 +182,7 @@ async def rotate_webhook_secret(
     await db.commit()
     await db.refresh(rule)
 
+    await audit(current_user, "alert.webhook_secret.rotate", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name, detail="Webhook secret rotated")
     return WebhookSecretRotateResponse(
         webhook_secret_last4=rule.webhook_secret[-4:],
         rotated_at=datetime.now(UTC),
@@ -199,6 +210,7 @@ async def reveal_webhook_secret(
         current_user.id,
     )
 
+    await audit(current_user, "alert.webhook_secret.reveal", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name, detail="Webhook secret revealed")
     return WebhookSecretResponse(webhook_secret=rule.webhook_secret)
 
 
@@ -241,6 +253,7 @@ async def test_webhook(
         alert_rule_id=rule.id,
     )
 
+    await audit(current_user, "alert.webhook.test", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name, detail=f"Test webhook sent, success={result.success}")
     return WebhookTestResponse(
         success=result.success,
         status_code=result.status_code,

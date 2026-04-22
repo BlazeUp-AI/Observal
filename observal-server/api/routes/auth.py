@@ -28,6 +28,7 @@ from schemas.auth import (
     UsernameUpdateRequest,
     UserResponse,
 )
+from services.audit_helpers import audit
 from services.jwt_service import create_access_token, create_refresh_token, decode_refresh_token
 from services.redis import get_redis
 from services.security_events import (
@@ -100,6 +101,7 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     access_token, refresh_token, expires_in = await _issue_tokens(user)
+    await audit(user, "auth.init_admin", resource_type="auth", resource_id=str(user.id), detail="Initial admin created")
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -136,6 +138,7 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     access_token, refresh_token, expires_in = await _issue_tokens(user)
+    await audit(user, "auth.bootstrap", resource_type="auth", resource_id=str(user.id), detail="Bootstrap admin created from localhost")
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -182,6 +185,7 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
         )
     )
     access_token, refresh_token, expires_in = await _issue_tokens(user)
+    await audit(user, "auth.register", resource_type="auth", resource_id=str(user.id), detail="New user registered")
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -224,6 +228,7 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
             user_agent=user_agent,
         )
     )
+    await audit(user, "auth.login", resource_type="session", resource_id=str(user.id))
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -342,6 +347,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user_agent=user_agent,
         )
     )
+    await audit(user, "auth.oauth_callback", resource_type="session", resource_id=str(user.id), detail="OAuth SSO login")
     frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}"
     return RedirectResponse(url=frontend_redirect)
 
@@ -389,6 +395,7 @@ async def exchange_code(req: CodeExchangeRequest, db: AsyncSession = Depends(get
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
+    await audit(user, "auth.exchange_code", resource_type="session", resource_id=str(user.id), detail="OAuth code exchanged for tokens")
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -399,6 +406,7 @@ async def exchange_code(req: CodeExchangeRequest, db: AsyncSession = Depends(get
 
 @router.get("/whoami", response_model=UserResponse)
 async def whoami(current_user: User = Depends(get_current_user)):
+    await audit(current_user, "auth.whoami", resource_type="auth", resource_id=str(current_user.id))
     return UserResponse.model_validate(current_user)
 
 
@@ -439,6 +447,7 @@ async def issue_token(request: Request, req: TokenRequest, db: AsyncSession = De
         )
     )
     access_token, refresh_token, expires_in = await _issue_tokens(user)
+    await audit(user, "auth.issue_token", resource_type="token", resource_id=str(user.id))
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -493,6 +502,7 @@ async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession 
     except RedisError as e:
         logger.warning("Redis unavailable when storing new refresh JTI: %s", e)
 
+    await audit(user, "auth.refresh_token", resource_type="token", resource_id=str(user.id))
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh_token,
@@ -541,6 +551,7 @@ async def set_username(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Username already taken")
     await db.refresh(current_user)
+    await audit(current_user, "auth.set_username", resource_type="auth", resource_id=str(current_user.id), detail=f"Username set to {req.username}")
     return UserResponse.model_validate(current_user)
 
 
@@ -567,4 +578,5 @@ async def create_hooks_token(current_user: User = Depends(get_current_user)):
             detail="Hooks token created (30-day)",
         )
     )
+    await audit(current_user, "auth.create_hooks_token", resource_type="token", resource_id=str(current_user.id), detail="Hooks token created (30-day)")
     return {"access_token": token, "expires_in": expires_in}

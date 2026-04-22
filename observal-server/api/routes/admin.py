@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import secrets
 import uuid
@@ -22,6 +23,7 @@ from schemas.admin import (
     UserCreateResponse,
     UserRoleUpdate,
 )
+from services.audit_helpers import audit
 from services.security_events import (
     EventType,
     SecurityEvent,
@@ -95,6 +97,7 @@ async def diagnostics(
         if issues:
             diag["status"] = "degraded"
 
+    await audit(current_user, "admin.diagnostics.view", "diagnostics")
     return diag
 
 
@@ -107,7 +110,9 @@ async def list_settings(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     result = await db.execute(select(EnterpriseConfig).order_by(EnterpriseConfig.key))
-    return [EnterpriseConfigResponse.model_validate(c) for c in result.scalars().all()]
+    configs = [EnterpriseConfigResponse.model_validate(c) for c in result.scalars().all()]
+    await audit(current_user, "admin.settings.list", "settings")
+    return configs
 
 
 @router.get("/settings/{key}", response_model=EnterpriseConfigResponse)
@@ -120,6 +125,7 @@ async def get_setting(
     cfg = result.scalar_one_or_none()
     if not cfg:
         raise HTTPException(status_code=404, detail="Setting not found")
+    await audit(current_user, "admin.settings.view", "settings", resource_name=key)
     return EnterpriseConfigResponse.model_validate(cfg)
 
 
@@ -151,6 +157,7 @@ async def upsert_setting(
             target_type="setting",
         )
     )
+    await audit(current_user, "admin.settings.update", "settings", resource_name=key)
     return EnterpriseConfigResponse.model_validate(cfg)
 
 
@@ -166,6 +173,7 @@ async def delete_setting(
         raise HTTPException(status_code=404, detail="Setting not found")
     await db.delete(cfg)
     await db.commit()
+    await audit(current_user, "admin.settings.delete", "settings", resource_name=key)
     return {"deleted": key}
 
 
@@ -181,7 +189,9 @@ async def list_users(
     if current_user.org_id is not None:
         stmt = stmt.where(User.org_id == current_user.org_id)
     result = await db.execute(stmt)
-    return [UserAdminResponse.model_validate(u) for u in result.scalars().all()]
+    users = [UserAdminResponse.model_validate(u) for u in result.scalars().all()]
+    await audit(current_user, "admin.users.list", "user")
+    return users
 
 
 @router.post("/users", response_model=UserCreateResponse)
@@ -232,6 +242,14 @@ async def create_user(
             target_type="user",
             detail=f"Created user {user.email} with role {role.value}",
         )
+    )
+    await audit(
+        current_user,
+        "admin.users.create",
+        "user",
+        resource_id=str(user.id),
+        resource_name=user.email,
+        detail=json.dumps({"role": role.value}),
     )
     return UserCreateResponse(
         id=user.id,
@@ -287,6 +305,14 @@ async def update_user_role(
             detail=f"Role changed from {old_role} to {new_role.value}",
         )
     )
+    await audit(
+        current_user,
+        "admin.users.role_update",
+        "user",
+        resource_id=str(user.id),
+        resource_name=user.email,
+        detail=json.dumps({"old_role": old_role, "new_role": new_role.value}),
+    )
     return UserAdminResponse.model_validate(user)
 
 
@@ -333,6 +359,13 @@ async def reset_user_password(
         )
     )
     logger.warning("Admin %s reset password for user %s", current_user.email, user.email)
+    await audit(
+        current_user,
+        "admin.users.password_reset",
+        "user",
+        resource_id=str(user.id),
+        resource_name=user.email,
+    )
 
     resp: dict[str, str] = {"message": f"Password reset for {user.email}"}
     if req.generate:
@@ -389,6 +422,8 @@ async def delete_user(
             raise HTTPException(status_code=400, detail="Cannot delete the last admin")
 
     logger.warning("Admin %s deleted user %s (%s)", current_user.email, user.email, user.id)
+    deleted_user_email = user.email
+    deleted_user_id = str(user.id)
     await emit_security_event(
         SecurityEvent(
             event_type=EventType.USER_DELETED,
@@ -397,13 +432,20 @@ async def delete_user(
             actor_id=str(current_user.id),
             actor_email=current_user.email,
             actor_role=current_user.role.value,
-            target_id=str(user.id),
+            target_id=deleted_user_id,
             target_type="user",
-            detail=f"Deleted user {user.email}",
+            detail=f"Deleted user {deleted_user_email}",
         )
     )
     await db.delete(user)
     await db.commit()
+    await audit(
+        current_user,
+        "admin.users.delete",
+        "user",
+        resource_id=deleted_user_id,
+        resource_name=deleted_user_email,
+    )
 
 
 # ── Penalty & Weight Customization ──────────────────────
@@ -420,7 +462,7 @@ async def list_penalties(
     result = await db.execute(
         select(PenaltyDefinition).order_by(PenaltyDefinition.dimension, PenaltyDefinition.event_name)
     )
-    return [
+    penalties = [
         {
             "id": str(p.id),
             "dimension": p.dimension.value,
@@ -433,6 +475,8 @@ async def list_penalties(
         }
         for p in result.scalars().all()
     ]
+    await audit(current_user, "admin.penalties.list", "penalty")
+    return penalties
 
 
 @router.put("/penalties/{penalty_id}", response_model=dict)
@@ -472,6 +516,13 @@ async def update_penalty(
             detail=f"Modified penalty {penalty.event_name}",
         )
     )
+    await audit(
+        current_user,
+        "admin.penalties.update",
+        "penalty",
+        resource_id=str(penalty_id),
+        resource_name=penalty.event_name,
+    )
     return {
         "id": str(penalty.id),
         "event_name": penalty.event_name,
@@ -501,6 +552,7 @@ async def list_weights(
                 "is_custom": dim.value in db_weights,
             }
         )
+    await audit(current_user, "admin.weights.list", "weights")
     return weights
 
 
@@ -534,6 +586,12 @@ async def set_global_weights(
         updated[dim_name] = float(weight)
 
     await db.commit()
+    await audit(
+        current_user,
+        "admin.weights.set_global",
+        "weights",
+        detail=json.dumps(updated),
+    )
     return {"updated": updated}
 
 
@@ -568,6 +626,13 @@ async def set_agent_weights(
         updated[dim_name] = float(weight)
 
     await db.commit()
+    await audit(
+        current_user,
+        "admin.weights.set_agent",
+        "weights",
+        resource_id=str(agent_id),
+        detail=json.dumps(updated),
+    )
     return {"agent_id": str(agent_id), "updated": updated}
 
 
@@ -616,6 +681,13 @@ async def create_canary(
             detail=f"Canary type: {config.canary_type}",
         )
     )
+    await audit(
+        current_user,
+        "admin.canaries.create",
+        "canary",
+        resource_id=config.id,
+        detail=json.dumps({"agent_id": str(agent_id), "canary_type": config.canary_type}),
+    )
     return {"id": config.id, "agent_id": agent_id, "canary_type": config.canary_type}
 
 
@@ -625,7 +697,9 @@ async def list_canaries(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """List canary configs for an agent."""
-    return _canary_configs.get(agent_id, [])
+    configs = _canary_configs.get(agent_id, [])
+    await audit(current_user, "admin.canaries.list", "canary", resource_id=agent_id)
+    return configs
 
 
 @router.get("/canaries/{agent_id}/reports", response_model=list[dict])
@@ -634,7 +708,9 @@ async def list_canary_reports(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """List canary reports with pass/fail stats."""
-    return _canary_reports.get(agent_id, [])
+    reports = _canary_reports.get(agent_id, [])
+    await audit(current_user, "admin.canaries.reports", "canary", resource_id=agent_id)
+    return reports
 
 
 @router.delete("/canaries/{canary_id}")
@@ -659,6 +735,7 @@ async def delete_canary(
                         target_type="canary",
                     )
                 )
+                await audit(current_user, "admin.canaries.delete", "canary", resource_id=canary_id)
                 return {"deleted": canary_id}
     raise HTTPException(status_code=404, detail="Canary config not found")
 
@@ -666,8 +743,8 @@ async def delete_canary(
 # ── Security Audit Log ──────────────────────────────────
 
 
-@router.get("/audit-log")
-async def get_audit_log(
+@router.get("/security-events")
+async def get_security_events(
     event_type: str | None = None,
     severity: str | None = None,
     actor_email: str | None = None,
@@ -700,9 +777,11 @@ async def get_audit_log(
         r = await _query(sql, params)
         r.raise_for_status()
         data = r.json()
+        await audit(current_user, "admin.audit_log.view", "audit_log")
         return {"events": data.get("data", []), "total": data.get("rows", 0)}
     except Exception as e:
         logger.warning("Audit log query failed: %s", e)
+        await audit(current_user, "admin.audit_log.view", "audit_log", detail="query_failed")
         return {"events": [], "total": 0}
 
 
@@ -734,6 +813,12 @@ async def apply_resources(
     )
 
     applied_keys = [k for k in current if k in RESOURCE_SETTINGS_MAP]
+    await audit(
+        current_user,
+        "admin.resources.apply",
+        "resources",
+        detail=json.dumps(applied_keys),
+    )
     return {
         "applied": {k: current[k] for k in applied_keys},
         "message": "ClickHouse resource settings applied",
@@ -750,11 +835,14 @@ async def get_trace_privacy(
 ):
     """Get the trace privacy setting for the current user's organization."""
     if not current_user.org_id:
+        await audit(current_user, "admin.trace_privacy.view", "trace_privacy")
         return {"trace_privacy": False}
     result = await db.execute(select(Organization).where(Organization.id == current_user.org_id))
     org = result.scalar_one_or_none()
     if not org:
+        await audit(current_user, "admin.trace_privacy.view", "trace_privacy")
         return {"trace_privacy": False}
+    await audit(current_user, "admin.trace_privacy.view", "trace_privacy", resource_id=str(org.id))
     return {"trace_privacy": org.trace_privacy}
 
 
@@ -795,6 +883,13 @@ async def set_trace_privacy(
             detail=f"Trace privacy {'enabled' if enabled else 'disabled'}",
         )
     )
+    await audit(
+        current_user,
+        "admin.trace_privacy.update",
+        "trace_privacy",
+        resource_id=str(org.id),
+        detail=json.dumps({"enabled": enabled}),
+    )
     return {"trace_privacy": org.trace_privacy}
 
 
@@ -804,4 +899,5 @@ async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))
     from services.cache import invalidate_all
 
     deleted = await invalidate_all()
+    await audit(current_user, "admin.cache.clear", "cache", detail=json.dumps({"cleared": deleted}))
     return {"cleared": deleted}

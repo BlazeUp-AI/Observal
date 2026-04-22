@@ -16,6 +16,7 @@ from schemas.skill import (
     SkillSubmitRequest,
     SkillUpdateRequest,
 )
+from services.audit_helpers import audit
 
 router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 
@@ -57,6 +58,7 @@ async def submit_skill(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "skill.submit", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
     return SkillListingResponse.model_validate(listing)
 
 
@@ -76,7 +78,9 @@ async def list_skills(
         safe = escape_like(search)
         stmt = stmt.where(SkillListing.name.ilike(f"%{safe}%") | SkillListing.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(SkillListing.created_at.desc()))
-    return [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
+    listings = [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
+    await audit(None, "skill.list", resource_type="skill")
+    return listings
 
 
 @router.get("/my", response_model=list[SkillListingSummary])
@@ -90,7 +94,9 @@ async def my_skills(
         .order_by(SkillListing.created_at.desc())
     )
     result = await db.execute(stmt)
-    return [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
+    listings = [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
+    await audit(current_user, "skill.my_list", resource_type="skill")
+    return listings
 
 
 @router.get("/{listing_id}", response_model=SkillListingResponse)
@@ -101,6 +107,7 @@ async def get_skill(
 ):
     listing = await resolve_listing(SkillListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
+        await audit(current_user, "skill.view", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
         return SkillListingResponse.model_validate(listing)
 
     listing = await resolve_listing(SkillListing, listing_id, db)
@@ -111,6 +118,7 @@ async def get_skill(
         listing.submitted_by == current_user.id
         or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
     ):
+        await audit(current_user, "skill.view", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
         return SkillListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -138,6 +146,7 @@ async def install_skill(
 
     endpoints = derive_endpoints(request)
     config = generate_skill_config(listing, req.ide, server_url=endpoints["api"], scope=req.scope)
+    await audit(current_user, "skill.install", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
     return SkillInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
@@ -172,6 +181,7 @@ async def save_skill_draft(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "skill.draft.create", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
     return SkillListingResponse.model_validate(listing)
 
 
@@ -215,6 +225,7 @@ async def update_skill_draft(
 
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "skill.draft.update", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
     return SkillListingResponse.model_validate(listing)
 
 
@@ -238,6 +249,7 @@ async def submit_skill_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "skill.draft.submit", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
     return SkillListingResponse.model_validate(listing)
 
 
@@ -259,6 +271,8 @@ async def delete_skill(
     for r in (await db.execute(select(SkillDownload).where(SkillDownload.listing_id == listing.id))).scalars().all():
         await db.delete(r)
 
+    listing_name = listing.name
     await db.delete(listing)
     await db.commit()
-    return {"deleted": str(listing.id)}
+    await audit(current_user, "skill.delete", resource_type="skill", resource_id=str(listing_id), resource_name=listing_name)
+    return {"deleted": str(listing_id)}

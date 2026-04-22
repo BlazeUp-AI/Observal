@@ -18,6 +18,7 @@ from models.sandbox import SandboxListing
 from models.skill import SkillListing
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
+from services.audit_helpers import audit
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
@@ -203,10 +204,14 @@ async def list_pending(
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
     if tab == "agents":
-        return await _query_pending_agents(db)
+        result = await _query_pending_agents(db)
+        await audit(current_user, "review.list", detail="tab=agents")
+        return result
 
     if tab == "components":
-        return await _query_pending_components(db, type)
+        result = await _query_pending_components(db, type)
+        await audit(current_user, "review.list", detail=f"tab=components type={type}")
+        return result
 
     # Default: return both agents and components
     agents = await _query_pending_agents(db)
@@ -216,6 +221,7 @@ async def list_pending(
     all_items = agents + components
     all_items.sort(key=lambda x: x["created_at"], reverse=True)
 
+    await audit(current_user, "review.list", detail=f"type={type}")
     return all_items
 
 
@@ -408,6 +414,12 @@ async def get_review(
     except (ValueError, AttributeError):
         pass
 
+    await audit(
+        current_user, "review.view",
+        resource_type=result.get("type", ""),
+        resource_id=result.get("id", ""),
+        resource_name=result.get("name", ""),
+    )
     return result
 
 
@@ -424,6 +436,13 @@ async def approve(
     listing.rejection_reason = None
     await db.commit()
     await db.refresh(listing)
+    await audit(
+        current_user, "review.approve",
+        resource_type="listing",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+        detail=f"listing_type={listing_type}",
+    )
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -441,6 +460,13 @@ async def reject(
     listing.rejection_reason = req.reason
     await db.commit()
     await db.refresh(listing)
+    await audit(
+        current_user, "review.reject",
+        resource_type="listing",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+        detail=f"listing_type={listing_type} reason={req.reason}",
+    )
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -480,6 +506,12 @@ async def approve_agent(
     agent.status = AgentStatus.active
     agent.rejection_reason = None
     await db.commit()
+    await audit(
+        current_user, "review.agent.approve",
+        resource_type="agent",
+        resource_id=str(agent_id),
+        resource_name=agent.name,
+    )
     return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
 
 
@@ -499,6 +531,13 @@ async def reject_agent(
     agent.status = AgentStatus.rejected
     agent.rejection_reason = req.reason
     await db.commit()
+    await audit(
+        current_user, "review.agent.reject",
+        resource_type="agent",
+        resource_id=str(agent_id),
+        resource_name=agent.name,
+        detail=f"reason={req.reason}",
+    )
     return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
 
 
@@ -526,6 +565,13 @@ async def approve_bundle(
             count += 1
 
     await db.commit()
+    await audit(
+        current_user, "review.bundle.approve",
+        resource_type="bundle",
+        resource_id=str(bundle_id),
+        resource_name=bundle.name,
+        detail=f"approved_count={count}",
+    )
     return {"bundle_id": str(bundle_id), "name": bundle.name, "approved_count": count}
 
 
@@ -549,6 +595,13 @@ async def reject_bundle(
             count += 1
 
     await db.commit()
+    await audit(
+        current_user, "review.bundle.reject",
+        resource_type="bundle",
+        resource_id=str(bundle_id),
+        resource_name=bundle.name,
+        detail=f"rejected_count={count} reason={req.reason}",
+    )
     return {"bundle_id": str(bundle_id), "name": bundle.name, "rejected_count": count}
 
 
@@ -591,7 +644,7 @@ async def get_related_skills(
         for u in rows.scalars().all():
             user_map[u.id] = u.name or u.email
 
-    return {
+    result = {
         "skills": [
             {
                 "id": str(s.id),
@@ -609,6 +662,14 @@ async def get_related_skills(
             for s in skills
         ]
     }
+    await audit(
+        current_user, "review.related_skills",
+        resource_type="listing",
+        resource_id=str(listing.id) if listing else listing_id,
+        resource_name=mcp_name if listing else "",
+        detail=f"skill_count={len(skills)}",
+    )
+    return result
 
 
 class McpBulkApproveRequest(BaseModel):
@@ -645,6 +706,13 @@ async def approve_mcp_with_skills(
 
     await db.commit()
     await db.refresh(listing)
+    await audit(
+        current_user, "review.approve_with_skills",
+        resource_type="listing",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+        detail=f"listing_type={listing_type} approved_skills={len(approved_skill_ids)} skill_ids={approved_skill_ids}",
+    )
     return {
         "mcp": {"id": str(listing.id), "name": listing.name, "status": listing.status.value},
         "approved_skills": len(approved_skill_ids),

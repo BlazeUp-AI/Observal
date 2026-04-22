@@ -11,6 +11,7 @@ from models.agent import Agent, AgentGoalTemplate
 from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User, UserRole
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
+from services.audit_helpers import audit
 from services.clickhouse import query_spans
 from services.eval.eval_service import (
     evaluate_trace,
@@ -98,7 +99,9 @@ async def run_evaluation(
 
     await db.commit()
     run = await db.execute(select(EvalRun).where(EvalRun.id == eval_run.id).options(*_eval_run_load))
-    return EvalRunDetailResponse.model_validate(run.scalar_one())
+    result = run.scalar_one()
+    await audit(current_user, "eval.run", resource_type="eval", resource_id=str(eval_run.id), resource_name=agent.name, detail=f"Eval run status={eval_run.status.value}")
+    return EvalRunDetailResponse.model_validate(result)
 
 
 @router.get("/agents/{agent_id}/runs", response_model=list[EvalRunResponse])
@@ -112,7 +115,9 @@ async def list_eval_runs(
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
     result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent.id).order_by(EvalRun.started_at.desc()))
-    return [EvalRunResponse.model_validate(r) for r in result.scalars().all()]
+    runs = result.scalars().all()
+    await audit(current_user, "eval.runs.list", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name)
+    return [EvalRunResponse.model_validate(r) for r in runs]
 
 
 @router.get("/agents/{agent_id}/scorecards", response_model=list[ScorecardResponse])
@@ -130,7 +135,9 @@ async def list_scorecards(
     if version:
         stmt = stmt.where(Scorecard.version == version)
     result = await db.execute(stmt.order_by(Scorecard.evaluated_at.desc()).limit(50))
-    return [ScorecardResponse.model_validate(s) for s in result.scalars().all()]
+    scorecards = result.scalars().all()
+    await audit(current_user, "eval.scorecards.list", resource_type="scorecard", resource_id=str(agent.id), resource_name=agent.name)
+    return [ScorecardResponse.model_validate(s) for s in scorecards]
 
 
 @router.get("/scorecards/{scorecard_id}", response_model=ScorecardResponse)
@@ -145,6 +152,7 @@ async def get_scorecard(
         agent = await db.get(Agent, sc.agent_id)
         if not agent or agent.owner_org_id != current_user.org_id:
             raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    await audit(current_user, "eval.scorecard.view", resource_type="scorecard", resource_id=str(sc.id))
     return ScorecardResponse.model_validate(sc)
 
 
@@ -174,7 +182,9 @@ async def compare_versions(
         row = result.one()
         return {"version": version, "avg_score": round(float(row.avg_overall or 0), 2), "count": row.count}
 
-    return {"version_a": await _avg_scores(version_a), "version_b": await _avg_scores(version_b)}
+    result = {"version_a": await _avg_scores(version_a), "version_b": await _avg_scores(version_b)}
+    await audit(current_user, "eval.compare", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name, detail=f"Compared {version_a} vs {version_b}")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +232,7 @@ async def eval_session(
         eval_run.completed_at = datetime.now(UTC)
         await db.commit()
 
+        await audit(current_user, "eval.session", resource_type="eval", resource_id=str(eval_run.id), detail=f"Session {session_id} evaluated with agent {agent.name}")
         return {
             "session_id": session_id,
             "eval_run_id": str(eval_run.id),
@@ -233,6 +244,7 @@ async def eval_session(
         }
 
     # No agent — return materialized data summary (useful for inspection)
+    await audit(current_user, "eval.session", resource_type="eval", detail=f"Session {session_id} inspected without agent")
     return {
         "session_id": session_id,
         "trace": trace,
@@ -301,6 +313,7 @@ async def eval_agent_in_session(
             eval_run.completed_at = datetime.now(UTC)
             await db.commit()
 
+            await audit(current_user, "eval.agent_session", resource_type="eval", resource_id=str(eval_run.id), resource_name=agent.name, detail=f"Full session eval for agent in session {session_id}")
             return {
                 "session_id": session_id,
                 "agent_id": str(agent.id),
@@ -341,6 +354,7 @@ async def eval_agent_in_session(
     eval_run.completed_at = datetime.now(UTC)
     await db.commit()
 
+    await audit(current_user, "eval.agent_session", resource_type="eval", resource_id=str(eval_run.id), resource_name=agent.name, detail=f"Agent-scoped eval in session {session_id}")
     return {
         "session_id": session_id,
         "agent_id": str(agent.id),
@@ -390,7 +404,9 @@ async def agent_aggregate(
         for sc in scorecards
     ]
     aggregator = ScoreAggregator()
-    return aggregator.compute_agent_aggregate(sc_dicts, window_size=window_size)
+    result = aggregator.compute_agent_aggregate(sc_dicts, window_size=window_size)
+    await audit(current_user, "eval.aggregate", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name)
+    return result
 
 
 @router.get("/scorecards/{scorecard_id}/penalties", response_model=list[dict])
@@ -410,4 +426,6 @@ async def scorecard_penalties(
 
     # Penalties are stored in raw_output
     raw = sc.raw_output or {}
-    return raw.get("penalties", [])
+    penalties = raw.get("penalties", [])
+    await audit(current_user, "eval.scorecard.penalties", resource_type="scorecard", resource_id=str(sc.id))
+    return penalties

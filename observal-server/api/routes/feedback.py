@@ -11,6 +11,7 @@ from models.feedback import Feedback
 from models.mcp import McpListing
 from models.user import User, UserRole
 from schemas.feedback import FeedbackCreateRequest, FeedbackResponse, FeedbackSummary
+from services.audit_helpers import audit
 from services.clickhouse import insert_scores
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
@@ -67,6 +68,7 @@ async def create_feedback(
     except Exception:
         pass  # Don't fail the request if ClickHouse write fails
 
+    await audit(current_user, "feedback.create", resource_type="feedback", resource_id=str(fb.id), detail=f"Rating={req.rating} for {req.listing_type}/{req.listing_id}")
     return FeedbackResponse.model_validate(fb)
 
 
@@ -108,7 +110,9 @@ async def my_feedback_received(
     result = await db.execute(
         select(Feedback).where(Feedback.listing_id.in_(all_ids)).order_by(Feedback.created_at.desc())
     )
-    return [FeedbackResponse.model_validate(f) for f in result.scalars().all()]
+    feedbacks = result.scalars().all()
+    await audit(current_user, "feedback.my_received", resource_type="feedback")
+    return [FeedbackResponse.model_validate(f) for f in feedbacks]
 
 
 @router.get("/summary/{listing_id}", response_model=FeedbackSummary)

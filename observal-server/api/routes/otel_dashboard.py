@@ -14,6 +14,7 @@ from api.deps import require_role
 from config import settings
 from database import async_session
 from models.user import User, UserRole
+from services.audit_helpers import audit
 from services.clickhouse import _query, query_shim_spans_for_window
 from services.redis import publish
 from services.secrets_redactor import redact_secrets
@@ -184,6 +185,7 @@ async def list_sessions(
 
     if status == "active":
         rows = [r for r in rows if r["is_active"]]
+    await audit(current_user, "session.list", "session")
     return rows
 
 
@@ -290,6 +292,7 @@ async def sessions_summary(
         params or None,
     )
     row = rows[0] if rows else {}
+    await audit(current_user, "session.summary", "session")
     return {
         "total_sessions": int(row.get("total", 0)),
         "today_sessions": int(row.get("today_sessions", 0)),
@@ -625,6 +628,7 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     # Merge events from multiple sources (hook + shim + collector)
     events = _merge_session_events(events)
     svc = _normalize_service(events[0]["service_name"]) if events else ""
+    await audit(current_user, "session.view", "session", resource_id=session_id)
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
 
 
@@ -645,6 +649,7 @@ async def list_traces(current_user: User = Depends(require_role(UserRole.admin))
         "ORDER BY Timestamp DESC "
         "LIMIT 100"
     )
+    await audit(current_user, "trace.list", "trace")
     return rows
 
 
@@ -691,6 +696,7 @@ async def get_trace(trace_id: str, current_user: User = Depends(require_role(Use
                 "events": events,
             }
         )
+    await audit(current_user, "trace.view", "trace", resource_id=trace_id)
     return spans
 
 
@@ -718,6 +724,7 @@ async def list_errors(current_user: User = Depends(require_role(UserRole.admin))
         "ORDER BY Timestamp DESC "
         "LIMIT 200"
     )
+    await audit(current_user, "error.list", "error")
     return rows
 
 
@@ -741,6 +748,7 @@ async def otel_stats(current_user: User = Depends(require_role(UserRole.admin)))
     )
     log = log_rows[0] if log_rows else {}
     tr = trace_rows[0] if trace_rows else {}
+    await audit(current_user, "stats.view", "stats")
     return {
         "total_sessions": int(log.get("total_sessions", 0)),
         "total_prompts": int(log.get("total_prompts", 0)),

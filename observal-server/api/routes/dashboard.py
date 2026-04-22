@@ -43,6 +43,7 @@ from schemas.dashboard import (
     TrendPoint,
     UnannotatedTrace,
 )
+from services.audit_helpers import audit
 from services.clickhouse import _query
 
 logger = structlog.get_logger(__name__)
@@ -90,6 +91,7 @@ async def mcp_metrics(
     total_calls = int(r.get("total_calls", 0))
     error_count = int(r.get("error_count", 0))
 
+    await audit(current_user, "dashboard.mcp_metrics", resource_type="dashboard", resource_id=str(listing_id))
     return McpMetrics(
         listing_id=listing_id,
         total_downloads=dl_count,
@@ -152,6 +154,7 @@ async def agent_metrics(
         weakest_dimension = agg.get("weakest_dimension")
         drift_alert = agg.get("drift_alert", False)
 
+    await audit(current_user, "dashboard.agent_metrics", resource_type="dashboard", resource_id=str(agent_id))
     return AgentMetrics(
         agent_id=agent_id,
         total_interactions=total,
@@ -453,7 +456,9 @@ async def trends(
     users = {str(r.day.date()): r.cnt for r in user_rows.all()}
     all_dates = sorted(set(list(submissions.keys()) + list(users.keys())))
 
-    return [TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0)) for d in all_dates]
+    result = [TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0)) for d in all_dates]
+    await audit(current_user, "dashboard.trends", resource_type="dashboard")
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -588,6 +593,7 @@ async def token_stats(
         TokenTimePoint(date=str(r["date"]), input=int(r["input"]), output=int(r["output"])) for r in over_time_rows
     ]
 
+    await audit(current_user, "dashboard.token_stats", resource_type="dashboard")
     return TokenStats(
         total_input=total_input,
         total_output=total_output,
@@ -631,6 +637,7 @@ async def ide_usage(
         )
         for r in rows
     ]
+    await audit(current_user, "dashboard.ide_usage", resource_type="dashboard")
     return IdeUsage(ides=ides)
 
 
@@ -691,6 +698,7 @@ async def sandbox_metrics(
         "GROUP BY date ORDER BY date"
     )
 
+    await audit(current_user, "dashboard.sandbox_metrics", resource_type="dashboard")
     return SandboxStats(
         total_runs=total_runs,
         oom_count=oom_count,
@@ -748,6 +756,7 @@ async def graphrag_metrics(
         "ORDER BY start_time DESC LIMIT 20"
     )
 
+    await audit(current_user, "dashboard.graphrag_metrics", resource_type="dashboard")
     return GraphRagStats(
         total_queries=int(a.get("total_queries", 0)),
         avg_entities=float(a["avg_entities"]) if a.get("avg_entities") else None,
@@ -791,6 +800,7 @@ async def run_graphrag_ragas_eval(
         ground_truths=req.ground_truths,
     )
     avgs = result.get("averages", {})
+    await audit(current_user, "dashboard.graphrag_ragas_eval", resource_type="dashboard", detail=f"RAGAS eval on graphrag_id={req.graphrag_id}")
     return RagasEvalResponse(
         spans_evaluated=result["spans_evaluated"],
         scores=[RagasSpanResult(**s) for s in result["scores"]],
@@ -820,6 +830,7 @@ async def graphrag_ragas_scores(
 
         avgs = await get_ragas_aggregate()
 
+    await audit(current_user, "dashboard.graphrag_ragas_scores", resource_type="dashboard", detail=f"graphrag_id={graphrag_id}" if graphrag_id else "aggregate")
     return RagasScores(
         faithfulness=RagasDimensionScore(**avgs.get("faithfulness", {"avg": None, "count": 0})),
         answer_relevancy=RagasDimensionScore(**avgs.get("answer_relevancy", {"avg": None, "count": 0})),
@@ -857,10 +868,12 @@ async def latency_heatmap(
         ") "
         "GROUP BY name, hour ORDER BY name, hour"
     )
-    return [
+    cells = [
         LatencyCell(name=r["name"], hour=str(r["hour"]), p50=float(r["p50"]), p90=float(r["p90"]), p99=float(r["p99"]))
         for r in rows
     ]
+    await audit(current_user, "dashboard.latency_heatmap", resource_type="dashboard")
+    return cells
 
 
 # ---------------------------------------------------------------------------
@@ -884,7 +897,7 @@ async def unannotated_traces(
         ") "
         "ORDER BY start_time DESC LIMIT 50"
     )
-    return [
+    traces = [
         UnannotatedTrace(
             trace_id=r["trace_id"],
             name=r.get("name") or None,
@@ -895,3 +908,5 @@ async def unannotated_traces(
         )
         for r in rows
     ]
+    await audit(current_user, "dashboard.unannotated_traces", resource_type="dashboard")
+    return traces

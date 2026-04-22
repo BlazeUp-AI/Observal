@@ -16,6 +16,7 @@ from schemas.hook import (
     HookSubmitRequest,
     HookUpdateRequest,
 )
+from services.audit_helpers import audit
 
 router = APIRouter(prefix="/api/v1/hooks", tags=["hooks"])
 
@@ -55,6 +56,7 @@ async def submit_hook(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "hook.submit", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
     return HookListingResponse.model_validate(listing)
 
 
@@ -74,7 +76,9 @@ async def list_hooks(
         safe = escape_like(search)
         stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookListing.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(HookListing.created_at.desc()))
-    return [HookListingSummary.model_validate(r) for r in result.scalars().all()]
+    listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
+    await audit(None, "hook.list", resource_type="hook")
+    return listings
 
 
 @router.get("/my", response_model=list[HookListingSummary])
@@ -86,7 +90,9 @@ async def my_hooks(
         select(HookListing).where(HookListing.submitted_by == current_user.id).order_by(HookListing.created_at.desc())
     )
     result = await db.execute(stmt)
-    return [HookListingSummary.model_validate(r) for r in result.scalars().all()]
+    listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
+    await audit(current_user, "hook.my_list", resource_type="hook")
+    return listings
 
 
 @router.get("/{listing_id}", response_model=HookListingResponse)
@@ -97,6 +103,7 @@ async def get_hook(
 ):
     listing = await resolve_listing(HookListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
+        await audit(current_user, "hook.view", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
         return HookListingResponse.model_validate(listing)
 
     listing = await resolve_listing(HookListing, listing_id, db)
@@ -107,6 +114,7 @@ async def get_hook(
         listing.submitted_by == current_user.id
         or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
     ):
+        await audit(current_user, "hook.view", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
         return HookListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -134,6 +142,7 @@ async def install_hook(
 
     endpoints = derive_endpoints(request)
     config = generate_hook_telemetry_config(listing, req.ide, server_url=endpoints["api"], platform=req.platform)
+    await audit(current_user, "hook.install", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
     return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
@@ -166,6 +175,7 @@ async def save_hook_draft(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "hook.draft.create", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
     return HookListingResponse.model_validate(listing)
 
 
@@ -207,6 +217,7 @@ async def update_hook_draft(
 
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "hook.draft.update", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
     return HookListingResponse.model_validate(listing)
 
 
@@ -230,6 +241,7 @@ async def submit_hook_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
+    await audit(current_user, "hook.draft.submit", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
     return HookListingResponse.model_validate(listing)
 
 
@@ -251,6 +263,8 @@ async def delete_hook(
     for r in (await db.execute(select(HookDownload).where(HookDownload.listing_id == listing.id))).scalars().all():
         await db.delete(r)
 
+    listing_name = listing.name
     await db.delete(listing)
     await db.commit()
-    return {"deleted": str(listing.id)}
+    await audit(current_user, "hook.delete", resource_type="hook", resource_id=str(listing_id), resource_name=listing_name)
+    return {"deleted": str(listing_id)}

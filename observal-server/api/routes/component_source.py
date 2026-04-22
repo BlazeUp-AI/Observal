@@ -16,6 +16,7 @@ from schemas.component_source import (
     ComponentSourceResponse,
     SyncResponse,
 )
+from services.audit_helpers import audit
 from services.git_mirror_service import sync_source
 
 router = APIRouter(prefix="/api/v1/component-sources", tags=["component-sources"])
@@ -50,6 +51,7 @@ async def add_source(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Source with this URL and component type already exists")
 
+    await audit(current_user, "source.add", resource_type="component_source", resource_id=str(source.id), resource_name=source.url)
     return ComponentSourceResponse.model_validate(source)
 
 
@@ -63,7 +65,9 @@ async def list_sources(
     if component_type:
         stmt = stmt.where(ComponentSource.component_type == component_type)
     result = await db.execute(stmt.order_by(ComponentSource.created_at.desc()))
-    return [ComponentSourceResponse.model_validate(s) for s in result.scalars().all()]
+    sources = result.scalars().all()
+    await audit(current_user, "source.list", resource_type="component_source")
+    return [ComponentSourceResponse.model_validate(s) for s in sources]
 
 
 @router.get("/{source_id}", response_model=ComponentSourceResponse)
@@ -75,6 +79,7 @@ async def get_source(
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+    await audit(current_user, "source.view", resource_type="component_source", resource_id=str(source.id), resource_name=source.url)
     return ComponentSourceResponse.model_validate(source)
 
 
@@ -104,6 +109,7 @@ async def trigger_sync(
     await db.commit()
     await db.refresh(source)
 
+    await audit(current_user, "source.sync", resource_type="component_source", resource_id=str(source.id), resource_name=source.url, detail=f"Sync status={source.sync_status}")
     return SyncResponse(
         source_id=source.id,
         status=source.sync_status,
@@ -122,6 +128,8 @@ async def delete_source(
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
+    source_url = source.url
     await db.delete(source)
     await db.commit()
+    await audit(current_user, "source.delete", resource_type="component_source", resource_id=str(source_id), resource_name=source_url)
     return {"deleted": str(source_id)}
