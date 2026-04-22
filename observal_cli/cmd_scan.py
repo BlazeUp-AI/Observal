@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -1151,6 +1152,8 @@ def register_scan(app: typer.Typer):
                 args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
                 if model:
                     args += f" --model {model}"
+                if sys.platform == "win32" and hook_script.is_file():
+                    return f"python {hook_script.resolve().as_posix()} {args}"
                 if hook_script.is_file():
                     return f"cat | python3 {hook_script.resolve().as_posix()} {args}"
                 return f'cat | curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
@@ -1160,6 +1163,8 @@ def register_scan(app: typer.Typer):
                 args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
                 if model:
                     args += f" --model {model}"
+                if sys.platform == "win32" and stop_script.is_file():
+                    return f"python {stop_script.resolve().as_posix()} {args}"
                 if stop_script.is_file():
                     return f"cat | python3 {stop_script.resolve().as_posix()} {args}"
                 return f'cat | curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
