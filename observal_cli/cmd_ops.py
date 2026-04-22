@@ -957,7 +957,7 @@ def admin_create_user(
         output_json(data)
         return
 
-    rprint(f"\n[green]User created successfully.[/green]\n")
+    rprint("\n[green]User created successfully.[/green]\n")
     rprint(f"  [bold]Name:[/bold]     {data['name']}")
     rprint(f"  [bold]Email:[/bold]    {data['email']}")
     if data.get("username"):
