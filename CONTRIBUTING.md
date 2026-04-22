@@ -153,19 +153,23 @@ Keep the subject line under 72 characters, use the imperative mood ("add", not "
 
 All commits must include a `Signed-off-by` line to certify the [Developer Certificate of Origin (DCO)](https://developercertificate.org/). The DCO is a lightweight agreement that confirms you wrote (or have the right to submit) your contribution and that it is licensed under the project's open-source Apache 2.0 license (for all code outside `ee/`).
 
-Add the sign-off automatically with the `-s` flag:
+You can add the sign-off manually to your commit message:
+
+```
+feat(cli): add skill submit command
+
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+Or use the `-s` flag to have Git append it for you:
 
 ```bash
 git commit -s -m "feat(cli): add skill submit command"
 ```
 
-This appends a line like:
+> **Note:** The project does not configure or encourage automatic sign-off (e.g. via Git hooks or aliases). The DCO sign-off is a conscious attestation that you have the right to submit your contribution. If you choose to automate it, that is your responsibility — you are still bound by its terms.
 
-```
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-Make sure your `user.name` and `user.email` in git config match the identity you want to use. A CI check will block PRs that have unsigned commits.
+Make sure your `user.name` and `user.email` in git config match the identity you want to use. A CI check and a pre-push hook will block PRs that have unsigned commits.
 
 ### Changelog
 
