@@ -758,8 +758,8 @@ async def set_trace_privacy(
 ):
     """Toggle trace privacy for the current user's organization.
 
-    When enabled, admins can only see their own traces instead of all
-    traces in the organization.
+    When enabled, all roles below super-admin can only see their own
+    traces.  Super-admins always retain full visibility.
     """
     enabled = bool(req.get("trace_privacy", False))
 

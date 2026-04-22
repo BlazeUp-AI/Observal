@@ -617,9 +617,12 @@ def get_context(
 
 
 def _is_admin(ctx: dict) -> bool:
+    role = ctx.get("user_role")
+    if role == "super_admin":
+        return True
     if ctx.get("trace_privacy"):
         return False
-    return ctx.get("user_role") in ("admin", "super_admin")
+    return role == "admin"
 
 
 async def get_context_dep(request: Request = None) -> dict:

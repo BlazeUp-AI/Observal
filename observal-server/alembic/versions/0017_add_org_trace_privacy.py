@@ -1,7 +1,7 @@
 """Add trace_privacy column to organizations.
 
-When enabled, admins and super-admins can only see their own traces,
-not all traces across the organization.
+When enabled, all roles below super-admin can only see their own
+traces.  Super-admins always retain full visibility.
 
 Revision ID: 0017
 Revises: 0016

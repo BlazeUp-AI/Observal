@@ -323,10 +323,10 @@ export default function SettingsPage() {
           <div className="rounded-md border border-border bg-card px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-sm font-medium">Hide user traces from admins</p>
+                <p className="text-sm font-medium">Restrict trace visibility</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  When enabled, admins and super-admins can only see their own traces.
-                  Users&apos; traces remain private and are not visible to other roles.
+                  When enabled, all users (including admins) can only see their own traces.
+                  Super-admins always retain full visibility across all traces.
                 </p>
               </div>
               <Switch

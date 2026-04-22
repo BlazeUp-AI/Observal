@@ -76,10 +76,11 @@ def _is_admin_user(user: User) -> bool:
 
 
 def _has_admin_trace_access(user: User) -> bool:
-    """Check if user is admin AND their org has not enabled trace privacy.
+    """Check if user has admin-level trace access.
 
-    When trace privacy is on, admins are treated like regular users for
-    trace visibility — they can only see their own traces.
+    Super-admins always have full trace visibility regardless of the
+    trace_privacy setting.  When trace privacy is on, regular admins are
+    treated like normal users — they can only see their own traces.
 
     The trace_privacy flag is resolved once at authentication time (see
     deps._authenticate_via_jwt) and attached to the user object, so this
@@ -87,6 +88,8 @@ def _has_admin_trace_access(user: User) -> bool:
     """
     if not _is_admin_user(user):
         return False
+    if user.role == UserRole.super_admin:
+        return True
     return not getattr(user, "_trace_privacy", False)
 
 
