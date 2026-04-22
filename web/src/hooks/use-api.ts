@@ -286,6 +286,30 @@ export function useAdminSettings() {
   return useQuery({ queryKey: ["admin", "settings"], queryFn: admin.settings });
 }
 
+// ── Audit & Security ────────────────────────────────────────────────
+
+export function useAuditLog(filters?: Record<string, string>) {
+  return useQuery({
+    queryKey: ["admin", "audit-log", filters],
+    queryFn: () => admin.auditLog(filters),
+  });
+}
+
+export function useSecurityEvents(filters?: Record<string, string>) {
+  return useQuery({
+    queryKey: ["admin", "security-events", filters],
+    queryFn: () => admin.securityEvents(filters),
+  });
+}
+
+export function useDiagnostics() {
+  return useQuery({
+    queryKey: ["admin", "diagnostics"],
+    queryFn: admin.diagnostics,
+    refetchInterval: 30_000,
+  });
+}
+
 // ── Telemetry ───────────────────────────────────────────────────────
 
 export function useTelemetryStatus() {
@@ -412,10 +436,10 @@ export function useLeaderboard(window?: LeaderboardWindow, limit?: number, user?
   });
 }
 
-export function useComponentLeaderboard() {
+export function useComponentLeaderboard(window?: LeaderboardWindow, limit?: number) {
   return useQuery({
-    queryKey: ["component-leaderboard"],
-    queryFn: dashboard.componentLeaderboard,
+    queryKey: ["component-leaderboard", window, limit],
+    queryFn: () => dashboard.componentLeaderboard(window, limit),
   });
 }
 

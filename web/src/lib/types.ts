@@ -104,14 +104,18 @@ export interface TopAgentItem {
   average_rating: number | null;
 }
 
-export type LeaderboardItem = TopAgentItem;
+export interface LeaderboardItem extends TopAgentItem {
+  created_by_email?: string;
+}
 export type LeaderboardWindow = "24h" | "7d" | "30d" | "all";
 
 export interface ComponentLeaderboardItem {
-  user: string;
-  username?: string | null;
-  mcp_count: number;
-  total_downloads: number;
+  id: string;
+  name: string;
+  component_type: string;
+  description: string;
+  download_count: number;
+  created_by_email: string;
 }
 
 export interface VersionSuggestions {
@@ -355,6 +359,47 @@ export interface AdminUser {
 export interface AdminSetting {
   key: string;
   value: string;
+}
+
+export interface AuditLogEntry {
+  event_id: string;
+  timestamp: string;
+  actor_id: string;
+  actor_email: string;
+  actor_role: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  resource_name: string;
+  http_method: string;
+  http_path: string;
+  status_code: number;
+  ip_address: string;
+  user_agent: string;
+  detail: string;
+}
+
+export interface SecurityEvent {
+  event_id: string;
+  timestamp: string;
+  event_type: string;
+  severity: string;
+  actor_id: string;
+  actor_email: string;
+  actor_role: string;
+  target_id: string;
+  target_type: string;
+  outcome: string;
+  source_ip: string;
+  user_agent: string;
+  detail: string;
+  org_id: string;
+}
+
+export interface DiagnosticsResponse {
+  status: "ok" | "degraded" | "unhealthy";
+  deployment_mode: string;
+  checks: Record<string, Record<string, unknown>>;
 }
 
 // ── OTel Sessions ───────────────────────────────────────────────────

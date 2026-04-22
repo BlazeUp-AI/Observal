@@ -27,6 +27,9 @@ import type {
   VersionSuggestions,
   BulkResult,
   ComponentLeaderboardItem,
+  AuditLogEntry,
+  SecurityEvent,
+  DiagnosticsResponse,
 } from "./types";
 
 const API = "/api/v1";
@@ -303,8 +306,13 @@ export const dashboard = {
     const qs = params.toString();
     return get<LeaderboardItem[]>(`/overview/leaderboard${qs ? `?${qs}` : ''}`);
   },
-  componentLeaderboard: () =>
-    get<ComponentLeaderboardItem[]>("/overview/component-leaderboard"),
+  componentLeaderboard: (window?: LeaderboardWindow, limit?: number) => {
+    const params = new URLSearchParams();
+    if (window) params.set("window", window);
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return get<ComponentLeaderboardItem[]>(`/overview/component-leaderboard${qs ? `?${qs}` : ''}`);
+  },
   trends: (range?: string) => get<TrendPoint[]>(`/overview/trends${range ? `?range=${range}` : ''}`),
   mcpMetrics: (id: string) => get<unknown>(`/mcps/${id}/metrics`),
   agentMetrics: (id: string) => get<unknown>(`/agents/${id}/metrics`),
@@ -380,6 +388,19 @@ export const admin = {
     get<{ trace_privacy: boolean }>("/admin/org/trace-privacy"),
   setTracePrivacy: (enabled: boolean) =>
     put<{ trace_privacy: boolean }>("/admin/org/trace-privacy", { trace_privacy: enabled }),
+  auditLog: (params?: Record<string, string>) => {
+    const qs = params ? `?${new URLSearchParams(params)}` : "";
+    return get<AuditLogEntry[]>(`/admin/audit-log${qs}`);
+  },
+  auditLogExport: (params?: Record<string, string>) => {
+    const qs = params ? `?${new URLSearchParams(params)}` : "";
+    return get<string>(`/admin/audit-log/export${qs}`);
+  },
+  securityEvents: (params?: Record<string, string>) => {
+    const qs = params ? `?${new URLSearchParams(params)}` : "";
+    return get<{ events: SecurityEvent[]; total: number }>(`/admin/security-events${qs}`);
+  },
+  diagnostics: () => get<DiagnosticsResponse>("/admin/diagnostics"),
 };
 
 // ── Config ─────────────────────────────────────────────────────────
