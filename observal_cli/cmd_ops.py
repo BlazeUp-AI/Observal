@@ -935,6 +935,14 @@ def admin_create_user(
     """Create a new user account. Requires admin privileges.
 
     If no password is provided, a secure random password will be generated.
+
+    Examples:
+
+        observal admin create-user alice@example.com "Alice Smith"
+
+        observal admin create-user bob@example.com "Bob Jones" --role admin
+
+        observal admin create-user carol@example.com "Carol Lee" -u carol -r reviewer -p s3cret
     """
     body: dict = {"email": email, "name": name, "role": role}
     if username:
