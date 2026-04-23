@@ -158,8 +158,8 @@ export default function EvalDetailPage({ params }: { params: Promise<{ agentId: 
                 </h3>
                 <div className="rounded-md border border-border p-5">
                   <ScoreOverview
-                    displayScore={latest.display_score ?? latest.overall_score ?? 0}
-                    grade={latest.grade ?? latest.overall_grade ?? "-"}
+                    displayScore={latest.display_score ?? 0}
+                    grade={latest.grade ?? "-"}
                     dimensionScores={latest.dimension_scores ?? {}}
                     penaltyCount={latest.penalty_count}
                   />

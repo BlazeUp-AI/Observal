@@ -46,8 +46,8 @@ function AgentEvalCard({ agent }: { agent: RegistryItem }) {
 
       {latest?.dimension_scores ? (
         <ScoreOverview
-          displayScore={latest.display_score ?? latest.overall_score ?? 0}
-          grade={latest.grade ?? latest.overall_grade ?? "-"}
+          displayScore={latest.display_score ?? 0}
+          grade={latest.grade ?? "-"}
           dimensionScores={latest.dimension_scores}
           penaltyCount={latest.penalty_count}
           compact

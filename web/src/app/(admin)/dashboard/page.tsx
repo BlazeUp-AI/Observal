@@ -66,7 +66,7 @@ function AgentScoreCard({ agent }: { agent: RegistryItem }) {
   const { data: scorecards } = useEvalScorecards(agent.id);
   const latest = (scorecards ?? [])[0] as Scorecard | undefined;
 
-  if (!latest?.dimension_scores || !latest?.grade) return null;
+  if (!latest?.dimension_scores || !latest?.grade || latest.display_score == null) return null;
 
   return (
     <Link href={`/eval/${agent.id}`} className="block">
@@ -80,8 +80,8 @@ function AgentScoreCard({ agent }: { agent: RegistryItem }) {
           )}
         </div>
         <ScoreOverview
-          displayScore={latest.display_score ?? latest.overall_score ?? 0}
-          grade={latest.grade ?? latest.overall_grade ?? "-"}
+          displayScore={latest.display_score}
+          grade={latest.grade}
           dimensionScores={latest.dimension_scores ?? {}}
           penaltyCount={latest.penalty_count}
           compact

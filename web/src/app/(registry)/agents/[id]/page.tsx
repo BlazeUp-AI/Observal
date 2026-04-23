@@ -45,6 +45,7 @@ import { DetailSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { compactNumber, copyToClipboard } from "@/lib/utils";
+import { DIMENSION_META } from "@/components/dashboard/score-overview";
 
 interface AgentDetail {
   name: string;
@@ -213,30 +214,17 @@ function AnalyticsTab({ agentId }: { agentId: string }) {
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dimension Averages</h4>
           <div className="space-y-2.5">
             {Object.entries(dims).map(([dim, score]) => {
-              const dimLabels: Record<string, string> = {
-                goal_completion: "Goal Completion",
-                tool_efficiency: "Tool Efficiency",
-                tool_failures: "Tool Failures",
-                factual_grounding: "Factual Grounding",
-                thought_process: "Thought Process",
-              };
-              const dimColors: Record<string, string> = {
-                goal_completion: "bg-emerald-500",
-                tool_efficiency: "bg-blue-500",
-                tool_failures: "bg-amber-500",
-                factual_grounding: "bg-violet-500",
-                thought_process: "bg-cyan-500",
-              };
+              const meta = DIMENSION_META[dim];
               const clampedScore = Math.max(0, Math.min(100, Number(score)));
               return (
                 <div key={dim} className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{dimLabels[dim] ?? dim}</span>
+                    <span className="text-xs text-muted-foreground">{meta?.label ?? dim}</span>
                     <span className="text-xs font-mono tabular-nums">{Math.round(clampedScore)}<span className="text-muted-foreground">/100</span></span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all ${dimColors[dim] ?? "bg-primary"}`}
+                      className={`h-full rounded-full transition-all ${meta?.color ?? "bg-primary"}`}
                       style={{ width: `${clampedScore}%` }}
                     />
                   </div>

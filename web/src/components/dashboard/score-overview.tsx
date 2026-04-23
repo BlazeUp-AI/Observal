@@ -10,13 +10,13 @@ interface ScoreOverviewProps {
   compact?: boolean;
 }
 
-const DIMENSION_META: Record<string, { label: string; color: string }> = {
+export const DIMENSION_META: Record<string, { label: string; color: string; hidden?: boolean }> = {
   goal_completion: { label: "Goal Completion", color: "bg-emerald-500" },
   tool_efficiency: { label: "Tool Efficiency", color: "bg-blue-500" },
   tool_failures: { label: "Tool Failures", color: "bg-amber-500" },
   factual_grounding: { label: "Factual Grounding", color: "bg-violet-500" },
   thought_process: { label: "Thought Process", color: "bg-cyan-500" },
-  adversarial_robustness: { label: "Adversarial", color: "bg-rose-500" },
+  adversarial_robustness: { label: "Adversarial", color: "bg-rose-500", hidden: true },
 };
 
 function gradeColor(grade: string): string {
@@ -50,7 +50,7 @@ export function ScoreOverview({
   compact = false,
 }: ScoreOverviewProps) {
   const dims = Object.entries(dimensionScores).filter(
-    ([key, value]) => value !== null && key !== "adversarial_robustness"
+    ([key, value]) => value !== null && !DIMENSION_META[key]?.hidden
   );
 
   if (compact) {

@@ -11,7 +11,7 @@ from models.scoring import DEFAULT_PENALTIES
 from services.clickhouse import _query
 from services.eval.adversarial_scorer import AdversarialScorer
 from services.eval.canary import CanaryConfig, CanaryDetector
-from services.eval.eval_engine import FallbackBackend, get_backend
+from services.eval.eval_engine import FallbackBackend, _build_openai_body, _openai_url_and_headers, get_backend
 from services.eval.eval_watchdog import EvalWatchdog
 from services.eval.sanitizer import TraceSanitizer
 from services.eval.score_aggregator import ScoreAggregator
@@ -136,25 +136,8 @@ async def _call_bedrock(prompt: str, model_id: str) -> dict:
 
 async def _call_openai_compatible(prompt: str, model: str, provider: str = "") -> dict:
     """Call an OpenAI-compatible API."""
-    default_url = "https://api.moonshot.ai/v1" if provider == "moonshot" else "http://localhost:11434/v1"
-    eval_url = getattr(settings, "EVAL_MODEL_URL", "") or default_url
-    eval_key = getattr(settings, "EVAL_MODEL_API_KEY", "") or ""
-
-    headers = {"Content-Type": "application/json"}
-    if eval_key:
-        headers["Authorization"] = f"Bearer {eval_key}"
-
-    body: dict = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1,
-        "response_format": {"type": "json_object"},
-    }
-    if provider == "moonshot":
-        # Kimi defaults to Thinking Mode; disable for deterministic JSON scoring.
-        # Moonshot Instant Mode requires temperature=0.6 — API rejects anything else.
-        body["thinking"] = {"type": "disabled"}
-        body["temperature"] = 0.6
+    eval_url, headers = _openai_url_and_headers(provider)
+    body = _build_openai_body(model, prompt, provider, extra={"response_format": {"type": "json_object"}})
 
     async with httpx.AsyncClient(timeout=120) as client:
         try:
