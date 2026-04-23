@@ -516,6 +516,7 @@ async def revoke_token(request: Request, req: RevokeRequest):
 
 
 @router.put("/profile/password")
+@limiter.limit("5/minute")
 async def change_password(
     request: Request,
     req: ChangePasswordRequest,
