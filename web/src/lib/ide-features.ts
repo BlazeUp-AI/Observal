@@ -32,7 +32,7 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   "claude-code": new Set(["skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   kiro: new Set(["superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"]),
   cursor: new Set(["mcp_servers", "rules"]),
-  "gemini-cli": new Set(["mcp_servers", "rules"]),
+  "gemini-cli": new Set(["hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   codex: new Set(["rules"]),
   copilot: new Set(["mcp_servers", "rules"]),
   opencode: new Set(["mcp_servers", "rules"]),

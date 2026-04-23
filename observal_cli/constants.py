@@ -41,7 +41,7 @@ IDE_FEATURE_MATRIX: dict[str, set[str]] = {
     "claude-code": {"skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
     "kiro": {"superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"},
     "cursor": {"mcp_servers", "rules"},
-    "gemini-cli": {"mcp_servers", "rules"},
+    "gemini-cli": {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
     "codex": {"rules"},
     "copilot": {"mcp_servers", "rules"},
     "opencode": {"mcp_servers", "rules"},
