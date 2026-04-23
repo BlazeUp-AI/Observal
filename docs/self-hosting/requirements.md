@@ -45,6 +45,9 @@ Postgres stays under 500 MB for most deployments — it holds only registry meta
 | Linux / macOS host | any modern | Windows via WSL2 works |
 | Bash / zsh | any | For the CLI install |
 
+> [!IMPORTANT]
+> Homebrew's Docker formula is outdated and may ship an older Compose version. Install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages to get Docker Engine ≥ 24.0 with Compose v2.
+
 For the **CLI** (developer machines, not the server):
 
 * **Standalone binary** (recommended) -- no dependencies, just `curl | bash`
