@@ -22,6 +22,19 @@ GRADE_THRESHOLDS = [
     (0, "F"),
 ]
 
+# Cap how many times the same event_name can contribute to a single dimension's
+# penalty total. Long sessions (100+ tool calls) can accumulate many instances
+# of the same noisy signal — without a cap, those silently collapse the score
+# to 0, destroying severity info between "moderately bad" and "catastrophic".
+# 5 is large enough that realistic worst-case traces (e.g. 4+ missing sections)
+# still score near zero, but small enough to prevent unbounded accumulation.
+MAX_SAME_EVENT_PER_DIMENSION = 5
+
+# Drift detection tuning
+MIN_SAMPLES_FOR_DRIFT = 10
+MIN_DRIFT_DELTA = 5.0  # absolute-point floor so tiny-std baselines don't fire on noise
+MIN_BASELINE_STD = 1.0  # effective std floor so zero-variance baselines can still drift
+
 # Old dimension name mapping for backwards compat with ScorecardDimension
 DIMENSION_DISPLAY_NAMES = {
     ScoringDimension.goal_completion: "goal_completion",
@@ -95,16 +108,31 @@ class ScoreAggregator:
             if dim:
                 by_dimension[dim].append(p)
 
-        # Compute per-dimension scores (None for skipped)
+        # Compute per-dimension scores (None for skipped).
+        # Per-event cap prevents runaway accumulation: the same noisy signal
+        # firing 20 times can't silently zero out the score. Raw sums are
+        # preserved in raw_output for operators who want the uncapped view.
         dimension_scores: dict[str, float | None] = {}
+        raw_penalty_totals: dict[str, float] = {}
         for dim in ScoringDimension:
             if dim.value in skipped:
                 dimension_scores[dim.value] = None
-            else:
-                dim_penalties = by_dimension.get(dim, [])
-                total_penalty = sum(abs(self._get_penalty_amount(p)) for p in dim_penalties)
-                score = max(0, 100 - total_penalty)
-                dimension_scores[dim.value] = score
+                continue
+            dim_penalties = by_dimension.get(dim, [])
+            event_counts: dict[str, int] = {}
+            capped_total = 0.0
+            raw_total = 0.0
+            for p in dim_penalties:
+                amount = abs(self._get_penalty_amount(p))
+                raw_total += amount
+                name = str(p.get("event_name", ""))
+                count = event_counts.get(name, 0)
+                if count < MAX_SAME_EVENT_PER_DIMENSION:
+                    capped_total += amount
+                    event_counts[name] = count + 1
+            score = max(0, 100 - capped_total)
+            dimension_scores[dim.value] = score
+            raw_penalty_totals[dim.value] = raw_total
 
         # Re-weight if dimensions were skipped
         active_dims = [d for d in ScoringDimension if d.value not in skipped]
@@ -148,7 +176,10 @@ class ScoreAggregator:
             overall_grade=_old_grade(display_score),
             recommendations="; ".join(recommendations) if recommendations else None,
             bottleneck=self._find_bottleneck(active_scores),
-            raw_output={"penalties": [_serialize_penalty(p) for p in all_penalties]},
+            raw_output={
+                "penalties": [_serialize_penalty(p) for p in all_penalties],
+                "raw_penalty_totals": raw_penalty_totals,
+            },
             # New fields
             dimension_scores=dimension_scores,
             composite_score=round(composite, 2),
@@ -215,8 +246,12 @@ class ScoreAggregator:
         variance = sum((x - mean) ** 2 for x in composites) / len(composites)
         std = math.sqrt(variance)
 
-        ci_low = max(0, mean - 1.96 * std)
-        ci_high = min(100, mean + 1.96 * std)
+        # Confidence interval for the MEAN uses standard error (std/sqrt(n)),
+        # not the sample std directly. The old formula produced a prediction
+        # interval, which is much wider and misrepresents uncertainty.
+        sem = std / math.sqrt(len(composites)) if composites else 0.0
+        ci_low = max(0, mean - 1.96 * sem)
+        ci_high = min(100, mean + 1.96 * sem)
 
         # Per-dimension averages
         dim_avgs: dict[str, float] = {}
@@ -227,16 +262,26 @@ class ScoreAggregator:
         # Find weakest dimension
         weakest = min(dim_avgs, key=dim_avgs.get) if dim_avgs else None
 
-        # Drift alert: compare recent mean to 30-day baseline
+        # Drift alert: compare recent mean to baseline.
+        # - Require a minimum sample size on both sides (5 samples vs 500 was
+        #   treated identically before; now small samples are ignored).
+        # - Floor the baseline std so a perfectly consistent baseline
+        #   (baseline_std == 0) can still trigger drift instead of being
+        #   blind to every regression.
+        # - Require an absolute minimum shift (MIN_DRIFT_DELTA) so tiny-std
+        #   baselines don't fire on rounding noise.
+        # - Use >= so the boundary case is treated as drift, not ignored.
         drift_alert = False
-        if len(scorecards) > window_size:
+        if len(scorecards) > window_size and len(recent) >= MIN_SAMPLES_FOR_DRIFT:
             baseline = scorecards[window_size : window_size + 50]
-            if baseline:
+            if len(baseline) >= MIN_SAMPLES_FOR_DRIFT:
                 baseline_composites = [s.get("composite_score", 0) for s in baseline]
                 baseline_mean = sum(baseline_composites) / len(baseline_composites)
                 baseline_var = sum((x - baseline_mean) ** 2 for x in baseline_composites) / len(baseline_composites)
                 baseline_std = math.sqrt(baseline_var)
-                if baseline_std > 0 and abs(mean - baseline_mean) > baseline_std:
+                effective_std = max(baseline_std, MIN_BASELINE_STD)
+                delta = abs(mean - baseline_mean)
+                if delta >= effective_std and delta >= MIN_DRIFT_DELTA:
                     drift_alert = True
 
         # Trend data

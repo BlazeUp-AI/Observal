@@ -19,19 +19,28 @@ from services.security_events import (
 
 logger = logging.getLogger(__name__)
 
-# Patterns for evaluator path probing in tool call inputs
+# Patterns for evaluator path probing in tool call inputs.
+#
+# We deliberately target Observal-specific infrastructure plus well-known
+# secret markers. Generic names like `eval_utils.py` or `score_calculator.py`
+# are normal in ML and grading projects and MUST NOT trigger a false positive
+# — the prior `eval[_/]`/`score[_/]` patterns were removed for this reason.
+#
+# `.env` and `config.yaml` now require a path-component boundary (`/` or start
+# of string) so bare mentions in prose or unrelated filenames don't trigger.
 EVAL_PATH_PATTERNS = re.compile(
     r"/observal-server/|"
-    r"eval[_/]|"
-    r"score[_/]|"
-    r"judge[_/]|"
-    r"grade[_/]|"
-    r"penalty[_/]|"
-    r"\.env\b|"
-    r"config\.(?:yaml|json|toml)\b|"
-    r"SECRET_KEY|API_KEY|"
-    r"/etc/observal/",
-    re.IGNORECASE,
+    r"/etc/observal/|"
+    # .env as a path component: "/app/.env", "~/.env", or start-of-input ".env"
+    r"(?:^|[\s/~])\.env\b|"
+    # config file at a path boundary (not bare "config.json" in prose)
+    r"(?:^|/)(?:config|settings|secrets)\.(?:ya?ml|json|toml)\b|"
+    # Specific Observal eval infrastructure modules
+    r"\b(?:structural_scorer|adversarial_scorer|score_aggregator|slm_scorer|"
+    r"eval_engine|eval_service|eval_watchdog|sanitizer\.py|ragas_eval)\b|"
+    # Explicit secret markers
+    r"\b(?:SECRET_KEY|API_KEY|OBSERVAL_JUDGE_KEY|JUDGE_API_KEY)\b",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # Mapping from InjectionAttempt pattern_matched to penalty event_name

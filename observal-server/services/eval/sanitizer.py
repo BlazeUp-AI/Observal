@@ -42,19 +42,30 @@ RE_HTML_EVAL_COMMENT = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-# High severity: text resembling system prompts
+# High severity: text resembling system prompts.
+# "You are a judge" in isolation fires too broadly (game rules, legal writing,
+# fiction). Require instruction context within ~80 chars, OR match directive
+# forms that are themselves unambiguous injection attempts.
 RE_SYSTEM_PROMPT = re.compile(
-    r"(?:You are (?:a |an )?(?:judge|evaluator|scorer|grader))|"
-    r"(?:Score this as)|(?:Rate this as)|"
-    r"(?:SYSTEM:\s)|(?:INSTRUCTION:\s)",
-    re.IGNORECASE,
+    # "You are a judge/..." followed by a judging-context directive
+    r"You are (?:a |an )?(?:judge|evaluator|scorer|grader)"
+    r"(?=.{0,80}?(?:score|rate|evaluat|grad|your task|you (?:must|should|will)|"
+    r"the following|this (?:response|output|trace|agent)))|"
+    # Explicit fake-system markers with content after them
+    r"\bSYSTEM:\s+\S|\bINSTRUCTION:\s+\S|"
+    # Directive forms that require no preamble to be suspicious
+    r"Score this as\b|Rate this as\b|"
+    r"Ignore (?:previous|above|all|the|prior) (?:instructions?|prompts?|rules?)",
+    re.IGNORECASE | re.DOTALL,
 )
 
-# High severity: explicit score assertions
+# High severity: explicit score assertions.
+# The negative lookahead (?!\d) after the digit prevents "score: 85" (a test
+# score, not an evaluator score) from matching as "score: 8".
 RE_SCORE_ASSERTION = re.compile(
-    r"(?:score:\s*(?:10|[0-9](?:\.\d+)?)(?:\s*/\s*10)?)|"
-    r"(?:rating:\s*(?:perfect|excellent|10|[0-9]))|"
-    r'(?:"(?:overall_?score|composite_?score|grade)":\s*)',
+    r"score:\s*(?:10|[0-9](?:\.\d+)?)(?!\d)(?:\s*/\s*10)?|"
+    r"rating:\s*(?:perfect|excellent|(?:10|[0-9](?:\.\d+)?)(?!\d))|"
+    r'"(?:overall_?score|composite_?score|grade)"\s*:\s*',
     re.IGNORECASE,
 )
 

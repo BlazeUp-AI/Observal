@@ -14,15 +14,72 @@ from models.scoring import ScoringDimension
 
 logger = logging.getLogger(__name__)
 
-# Timeout threshold in ms for tool calls
+# Timeout threshold in ms for tool calls (default when no per-tool override set)
 DEFAULT_TIMEOUT_MS = 30_000
+
+# Max spans between two matching tool calls before we stop calling them duplicates
+DUPLICATE_SPAN_WINDOW = 10
+
+# Max spans between error and retry before we stop considering the retry related
+RETRY_SPAN_WINDOW = 10
+
+# Tool names that imply a state change — reads before and after such a tool are
+# not flagged as duplicates because the underlying data may have changed.
+_STATE_CHANGE_PATTERN = re.compile(
+    r"\b(?:write|edit|create|update|delete|patch|modify|save|append|remove|rename|move|exec|run|install|commit|push)\b",
+    re.IGNORECASE,
+)
+
+# Boilerplate tokens that should NOT be treated as distinctive content when
+# checking whether a tool result is referenced later.
+_BOILERPLATE_TOKENS = frozenset(
+    {
+        # license / copyright headers
+        "copyright",
+        "license",
+        "licensed",
+        "apache",
+        "permission",
+        "warranty",
+        "notwithstanding",
+        "liability",
+        # POSIX `ls -l` prefixes
+        "total",
+        "drwx",
+        "drwxr",
+        "rwxr",
+        "rwxrwxr",
+        # common shell / filesystem noise
+        "usr",
+        "bin",
+        "home",
+        "root",
+        "null",
+        "true",
+        "false",
+        "none",
+    }
+)
+
+_RE_DISTINCTIVE_TOKEN = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_\-.]{3,}")
 
 
 class StructuralScorer:
     """Rule-based scorer for tool_efficiency and tool_failures dimensions."""
 
-    def __init__(self, timeout_ms: int = DEFAULT_TIMEOUT_MS):
+    def __init__(
+        self,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        tool_timeouts: dict[str, int] | None = None,
+    ):
         self.timeout_ms = timeout_ms
+        self.tool_timeouts = {k.lower(): v for k, v in (tool_timeouts or {}).items()}
+
+    def _timeout_for(self, tool_name: str) -> int:
+        """Resolve the effective timeout for a given tool name."""
+        if not tool_name:
+            return self.timeout_ms
+        return self.tool_timeouts.get(tool_name.lower(), self.timeout_ms)
 
     def score_tool_efficiency(
         self,
@@ -37,48 +94,56 @@ class StructuralScorer:
         tool_call_spans = [s for s in spans if s.get("type") == "tool_call"]
         non_tool_spans = [s for s in spans if s.get("type") != "tool_call"]
 
-        # Ungrounded claims: agent asserts external state (e.g. file contents,
-        # API responses) without any tool call providing that information.
-        # Detected when non-tool spans contain assertion patterns but the trace
-        # has zero tool calls to back them up.
-        if len(tool_call_spans) == 0 and len(non_tool_spans) > 0:
-            has_assertions = any(_span_asserts_external_state(s) for s in non_tool_spans)
-            if has_assertions:
+        # Ungrounded claims: for each assertion span, check whether ANY tool
+        # call output is referenced. We don't gate on total tool-call count —
+        # one unrelated tool call shouldn't excuse a fabricated assertion.
+        assertion_spans = [s for s in non_tool_spans if _span_asserts_external_state(s)]
+        if assertion_spans:
+            tool_outputs = [str(s.get("output") or "") for s in tool_call_spans if s.get("output")]
+            unsupported = [s for s in assertion_spans if not _assertion_is_grounded(s, tool_outputs)]
+            if unsupported:
                 penalties.append(
                     {
                         "event_name": "ungrounded_claims",
                         "dimension": ScoringDimension.tool_efficiency,
                         "evidence": (
-                            f"Agent {agent_id} made assertions about external state "
-                            f"but trace contains 0 tool call spans to ground them."
+                            f"Agent {agent_id} made {len(unsupported)} assertion(s) about external state "
+                            f"with no supporting tool output (of {len(tool_call_spans)} tool call(s) in trace)."
                         ),
                         "trace_event_index": None,
                     }
                 )
-                return penalties
 
-        # Duplicate tool calls: same tool name + same input hash
-        seen: dict[str, int] = {}
+        # Duplicate tool calls: same tool name + same input hash, within a
+        # short window, with no state-changing tool call in between.
         for idx, span in enumerate(tool_call_spans):
             key = _span_dedup_key(span)
-            if key in seen:
+            # Walk back up to DUPLICATE_SPAN_WINDOW spans looking for an exact match.
+            window_start = max(0, idx - DUPLICATE_SPAN_WINDOW)
+            earlier = tool_call_spans[window_start:idx]
+            for prior_offset, prior in enumerate(earlier):
+                if _span_dedup_key(prior) != key:
+                    continue
+                between = earlier[prior_offset + 1 :]
+                if _has_state_change(between):
+                    continue  # read-write-read is not a duplicate
                 penalties.append(
                     {
                         "event_name": "duplicate_tool_call",
                         "dimension": ScoringDimension.tool_efficiency,
                         "evidence": (
                             f"Duplicate call to '{span.get('name', '')}' with same params. "
-                            f"First at index {seen[key]}, duplicate at index {idx}."
+                            f"First at index {window_start + prior_offset}, duplicate at index {idx}."
                         ),
                         "trace_event_index": idx,
                     }
                 )
-            else:
-                seen[key] = idx
+                break
 
         # Unused tool results: tool output not referenced by any subsequent span.
-        # Each unused call is penalized individually rather than comparing against
-        # an arbitrary median, so the penalty scales with actual waste.
+        # We use multiple distinctive tokens across the output rather than a
+        # single first-50-chars substring, so leading boilerplate (license
+        # headers, `ls -l` permission columns) doesn't produce false positives.
         for idx, span in enumerate(tool_call_spans):
             output = span.get("output") or ""
             if not output:
@@ -87,13 +152,9 @@ class StructuralScorer:
             subsequent = spans[global_idx + 1 :] if global_idx >= 0 else []
             if not subsequent:
                 continue  # last span — nothing can reference it
-            referenced = False
-            for later in subsequent:
-                later_input = later.get("input") or ""
-                if output[:50] in later_input:
-                    referenced = True
-                    break
-            if not referenced:
+            later_texts = [str(later.get("input") or "") + " " + str(later.get("output") or "") for later in subsequent]
+            span_id = str(span.get("span_id") or "")
+            if not _is_output_referenced(output, later_texts, span_id):
                 penalties.append(
                     {
                         "event_name": "unused_tool_result",
@@ -116,19 +177,20 @@ class StructuralScorer:
         penalties: list[dict] = []
         tool_call_spans = [s for s in spans if s.get("type") == "tool_call"]
 
-        failed_spans: list[tuple[int, dict]] = []
+        # First pass: emit timeouts and retry_success; collect errors that still
+        # need classification (so we don't double-penalize with tool_call_error
+        # AND ignored_tool_failure for the same span).
+        unresolved_errors: list[tuple[int, dict]] = []  # (tool_idx, span)
+
         for idx, span in enumerate(tool_call_spans):
             status = span.get("status", "success")
             error = span.get("error")
             latency = int(span.get("latency_ms") or 0)
 
             is_error = status == "error" or (error and str(error).strip())
-            is_timeout = latency > self.timeout_ms
+            tool_timeout_ms = self._timeout_for(span.get("name", ""))
+            is_timeout = latency > tool_timeout_ms
 
-            if is_error or is_timeout:
-                failed_spans.append((idx, span))
-
-            # Timeout detection
             if is_timeout:
                 penalties.append(
                     {
@@ -136,75 +198,104 @@ class StructuralScorer:
                         "dimension": ScoringDimension.tool_failures,
                         "evidence": (
                             f"Tool '{span.get('name', '')}' (span {span.get('span_id', '')}) "
-                            f"took {latency}ms, exceeding {self.timeout_ms}ms threshold."
+                            f"took {latency}ms, exceeding {tool_timeout_ms}ms threshold."
                         ),
                         "trace_event_index": idx,
                     }
                 )
-            elif is_error:
-                # Check for retry success
-                key = _span_dedup_key(span)
-                retried = False
-                for later_idx, later_span in enumerate(tool_call_spans[idx + 1 :], idx + 1):
-                    if _span_dedup_key(later_span) == key:
-                        later_status = later_span.get("status", "success")
-                        if later_status != "error" and not later_span.get("error"):
-                            retried = True
-                            penalties.append(
-                                {
-                                    "event_name": "tool_call_retry_success",
-                                    "dimension": ScoringDimension.tool_failures,
-                                    "evidence": (
-                                        f"Tool '{span.get('name', '')}' failed at index {idx} "
-                                        f"but succeeded on retry at index {later_idx}."
-                                    ),
-                                    "trace_event_index": idx,
-                                }
-                            )
-                            break
-                if not retried:
-                    penalties.append(
-                        {
-                            "event_name": "tool_call_error",
-                            "dimension": ScoringDimension.tool_failures,
-                            "evidence": (
-                                f"Tool '{span.get('name', '')}' (span {span.get('span_id', '')}) "
-                                f"returned error: {str(error or status)[:200]}"
-                            ),
-                            "trace_event_index": idx,
-                        }
-                    )
-
-        # Ignored tool failure: error span followed by non-tool span
-        # (candidate for SLM confirmation)
-        for idx, span in failed_spans:
-            global_idx = spans.index(span) if span in spans else -1
-            if global_idx < 0 or global_idx >= len(spans) - 1:
                 continue
-            next_span = spans[global_idx + 1]
-            if next_span.get("type") != "tool_call":
-                key = _span_dedup_key(span)
-                # Check no retry anywhere later
-                has_retry = any(
-                    _span_dedup_key(s) == key
-                    for s in tool_call_spans[tool_call_spans.index(span) + 1 :]
-                    if s is not span
+
+            if not is_error:
+                continue
+
+            # Retry detection: same tool name with a later SUCCESS within the
+            # window counts as a retry, even if the input differs (e.g. agent
+            # fixed a wrong path). This matches how humans retry — by
+            # adjusting arguments, not by re-running the exact same call.
+            retry_idx = _find_retry_success(tool_call_spans, idx)
+            if retry_idx is not None:
+                penalties.append(
+                    {
+                        "event_name": "tool_call_retry_success",
+                        "dimension": ScoringDimension.tool_failures,
+                        "evidence": (
+                            f"Tool '{span.get('name', '')}' failed at index {idx} "
+                            f"but succeeded on retry at index {retry_idx}."
+                        ),
+                        "trace_event_index": idx,
+                    }
                 )
-                if not has_retry:
-                    penalties.append(
-                        {
-                            "event_name": "ignored_tool_failure",
-                            "dimension": ScoringDimension.tool_failures,
-                            "evidence": (
-                                f"Tool '{span.get('name', '')}' failed at span {span.get('span_id', '')}, "
-                                f"but agent continued with '{next_span.get('type', '')}' span without "
-                                f"retry or acknowledgment. (SLM confirmation recommended)"
-                            ),
-                            "trace_event_index": idx,
-                        }
-                    )
+                continue
+
+            unresolved_errors.append((idx, span))
+
+        # Second pass: classify unresolved errors as ignored_tool_failure (next
+        # span is non-tool and no later retry at all) OR tool_call_error. Each
+        # failure yields exactly one penalty — no double counting.
+        for tool_idx, span in unresolved_errors:
+            global_idx = spans.index(span) if span in spans else -1
+            next_span = spans[global_idx + 1] if 0 <= global_idx < len(spans) - 1 else None
+            followed_by_non_tool = next_span is not None and next_span.get("type") != "tool_call"
+
+            if followed_by_non_tool:
+                penalties.append(
+                    {
+                        "event_name": "ignored_tool_failure",
+                        "dimension": ScoringDimension.tool_failures,
+                        "evidence": (
+                            f"Tool '{span.get('name', '')}' failed at span {span.get('span_id', '')}, "
+                            f"but agent continued with '{next_span.get('type', '')}' span without "
+                            f"retry or acknowledgment. (SLM confirmation recommended)"
+                        ),
+                        "trace_event_index": tool_idx,
+                    }
+                )
+            else:
+                error = span.get("error")
+                status = span.get("status", "success")
+                penalties.append(
+                    {
+                        "event_name": "tool_call_error",
+                        "dimension": ScoringDimension.tool_failures,
+                        "evidence": (
+                            f"Tool '{span.get('name', '')}' (span {span.get('span_id', '')}) "
+                            f"returned error: {str(error or status)[:200]}"
+                        ),
+                        "trace_event_index": tool_idx,
+                    }
+                )
 
         return penalties
+
+
+def _has_state_change(spans_between: list[dict]) -> bool:
+    """True if any span between two matching reads is a state-changing tool call."""
+    for s in spans_between:
+        if s.get("type") != "tool_call":
+            continue
+        name = str(s.get("name") or "")
+        if _STATE_CHANGE_PATTERN.search(name):
+            return True
+    return False
+
+
+def _find_retry_success(tool_call_spans: list[dict], error_idx: int) -> int | None:
+    """Return the index of a successful same-tool-name call within the retry window.
+
+    Accepts retries with different inputs (e.g. corrected path, fixed typo). This
+    is deliberately softer than exact-hash matching so that good agent behavior
+    — fail, reason, retry with adjusted args — is not double-penalized.
+    """
+    error_span = tool_call_spans[error_idx]
+    name = error_span.get("name") or ""
+    window_end = min(len(tool_call_spans), error_idx + 1 + RETRY_SPAN_WINDOW)
+    for later_idx in range(error_idx + 1, window_end):
+        later = tool_call_spans[later_idx]
+        if (later.get("name") or "") != name:
+            continue
+        if later.get("status", "success") != "error" and not later.get("error"):
+            return later_idx
+    return None
 
 
 def _span_asserts_external_state(span: dict) -> bool:
@@ -229,6 +320,59 @@ def _span_asserts_external_state(span: dict) -> bool:
     ]
     text_lower = text.lower()
     return any(marker in text_lower for marker in assertion_markers)
+
+
+def _assertion_is_grounded(assertion_span: dict, tool_outputs: list[str]) -> bool:
+    """True if the assertion text references content from at least one tool output."""
+    if not tool_outputs:
+        return False
+    assertion_text = str(assertion_span.get("input") or "") + " " + str(assertion_span.get("output") or "")
+    if not assertion_text.strip():
+        return False
+    for output in tool_outputs:
+        tokens = _distinctive_tokens(output)
+        if not tokens:
+            continue
+        if any(tok.lower() in assertion_text.lower() for tok in tokens):
+            return True
+    return False
+
+
+def _is_output_referenced(output: str, later_texts: list[str], span_id: str) -> bool:
+    """True if `output` is referenced by any of `later_texts` via a distinctive token or span_id."""
+    if span_id:
+        for t in later_texts:
+            if span_id in t:
+                return True
+    tokens = _distinctive_tokens(output)
+    if not tokens:
+        # Output is all boilerplate/whitespace — treat as implicitly referenced
+        # rather than penalize (there's nothing distinctive to check).
+        return True
+    for t in later_texts:
+        t_lower = t.lower()
+        for tok in tokens:
+            if tok.lower() in t_lower:
+                return True
+    return False
+
+
+def _distinctive_tokens(text: str, max_tokens: int = 8) -> list[str]:
+    """Extract distinctive alphanumeric tokens, skipping common boilerplate."""
+    if not text:
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for m in _RE_DISTINCTIVE_TOKEN.finditer(text):
+        tok = m.group()
+        low = tok.lower()
+        if low in _BOILERPLATE_TOKENS or low in seen:
+            continue
+        seen.add(low)
+        result.append(tok)
+        if len(result) >= max_tokens:
+            break
+    return result
 
 
 def _span_dedup_key(span: dict) -> str:
