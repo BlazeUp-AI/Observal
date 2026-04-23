@@ -26,10 +26,7 @@ class RequestContext(NamedTuple):
 def set_request_context(request) -> None:
     """Populate contextvars from a Starlette/FastAPI Request."""
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-    else:
-        ip = request.client.host if request.client else "127.0.0.1"
+    ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "127.0.0.1")
 
     _request_ip.set(ip)
     _request_user_agent.set(request.headers.get("user-agent", ""))
