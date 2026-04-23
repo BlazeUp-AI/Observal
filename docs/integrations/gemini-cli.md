@@ -1,16 +1,13 @@
 # Gemini CLI
 
-Gemini CLI is supported at the MCP and rules level. Mostly the same shape as [Cursor](cursor.md).
+Gemini CLI is supported at the MCP, rules, hook bridge, and OTLP telemetry level.
 
 ## What you get
 
 * **MCP server instrumentation** — `observal scan --ide gemini-cli`
 * **Rules files** — `AGENTS.md` or `GEMINI.md`
-
-## What you don't get
-
-* No hook bridge
-* No native OTLP
+* **OTLP telemetry** — `observal scan` configures `~/.gemini/settings.json` to export traces via OTLP
+* **Hook bridge** — `observal scan` injects hooks into `~/.gemini/settings.json` to capture prompts, tool I/O, agent responses, and session lifecycle events
 
 ## Setup
 
@@ -34,7 +31,7 @@ Restart Gemini CLI.
 observal pull <agent-id> --ide gemini-cli
 ```
 
-Writes MCP config + rules files. No session lifecycle hooks — telemetry is MCP-traffic-only.
+Writes MCP config + rules files. OTLP telemetry and hooks are configured automatically by `observal scan`.
 
 ## Known issues
 
