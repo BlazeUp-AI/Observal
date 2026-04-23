@@ -29,6 +29,10 @@ _SERVICE_NAME_MAP: dict[str, str] = {
     "kiro-cli": "kiro",
     "observal-hooks": "claude-code",
     "observal-shim": "claude-code",
+    "copilot-cli": "copilot",
+    "github-copilot": "copilot",
+    "gemini-cli": "gemini",
+    "cursor-cli": "cursor",
 }
 
 
@@ -181,7 +185,17 @@ async def list_sessions(
             row["user_name"] = current_user.name
         svc = row.get("service_name", "")
         sid = row.get("session_id", "")
-        row["platform"] = "Kiro" if (svc == "kiro" or sid.startswith("kiro-")) else "Claude Code"
+        _platform_names = {
+            "kiro": "Kiro",
+            "gemini": "Gemini CLI",
+            "cursor": "Cursor",
+            "copilot": "GitHub Copilot",
+            "claude-code": "Claude Code",
+        }
+        if svc == "kiro" or sid.startswith("kiro-"):
+            row["platform"] = "Kiro"
+        else:
+            row["platform"] = _platform_names.get(svc, "Claude Code")
 
     if status == "active":
         rows = [r for r in rows if r["is_active"]]
@@ -436,6 +450,51 @@ def _merge_session_events(events: list[dict]) -> list[dict]:
     return all_events
 
 
+def _annotate_agent_scope(events: list[dict]) -> list[dict]:
+    """Annotate events with agent context from SubagentStart/SubagentStop pairs.
+
+    Works across all IDEs: Claude Code (agent_id/agent_type/agent_name),
+    Copilot (agent_name/agent_type from display name), Gemini
+    (BeforeAgent/AfterAgent brackets).  Scans chronologically and tracks
+    the active agent scope stack so every event between start/stop
+    inherits the agent's identity.
+    """
+    agent_stack: list[dict[str, str]] = []
+
+    for event in events:
+        attrs = event.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+                event["attributes"] = attrs
+            except Exception:
+                continue
+
+        hook_event = attrs.get("hook_event", "")
+
+        if hook_event == "SubagentStart":
+            agent_stack.append(
+                {
+                    "agent_id": attrs.get("agent_id", ""),
+                    "agent_type": attrs.get("agent_type", ""),
+                    "agent_name": attrs.get("agent_name", ""),
+                }
+            )
+        elif hook_event == "SubagentStop" and agent_stack:
+            agent_stack.pop()
+
+        if agent_stack and not attrs.get("agent_id") and not attrs.get("agent_name"):
+            current = agent_stack[-1]
+            if current.get("agent_id"):
+                attrs["agent_id"] = current["agent_id"]
+            if current.get("agent_type"):
+                attrs["agent_type"] = current["agent_type"]
+            if current.get("agent_name"):
+                attrs["agent_name"] = current["agent_name"]
+
+    return events
+
+
 # Shim span type → otel_logs event.name (matches telemetry.py _SHIM_EVENT_NAMES)
 _SHIM_TYPE_TO_EVENT: dict[str, str] = {
     "tool_call": "shim_tool_call",
@@ -627,6 +686,7 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     events = await _sideload_shim_spans(events)
     # Merge events from multiple sources (hook + shim + collector)
     events = _merge_session_events(events)
+    events = _annotate_agent_scope(events)
     svc = _normalize_service(events[0]["service_name"]) if events else ""
     await audit(current_user, "session.view", "session", resource_id=session_id)
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
@@ -810,6 +870,97 @@ _KIRO_FIELD_MAP = {
     "userPrompt": "user_prompt",
 }
 
+# ── Gemini CLI event + field normalization ──
+_GEMINI_TO_CC_EVENT = {
+    "SessionStart": "SessionStart",
+    "BeforeAgent": "SubagentStart",
+    "AfterAgent": "SubagentStop",
+    "BeforeTool": "PreToolUse",
+    "AfterTool": "PostToolUse",
+    "BeforeToolSelection": "PreToolUse",
+    "AfterModel": "Stop",
+    "SessionEnd": "Stop",
+}
+
+_GEMINI_FIELD_MAP = {
+    "hookEventName": "hook_event_name",
+    "hook_event_name": "hook_event_name",
+    "sessionId": "session_id",
+    "session_id": "session_id",
+    "toolName": "tool_name",
+    "tool_name": "tool_name",
+    "toolInput": "tool_input",
+    "toolResponse": "tool_response",
+    "transcriptPath": "transcript_path",
+    "transcript_path": "transcript_path",
+}
+
+# ── Cursor event + field normalization ──
+_CURSOR_TO_CC_EVENT = {
+    "preToolUse": "PreToolUse",
+    "postToolUse": "PostToolUse",
+    "sessionStart": "SessionStart",
+    "sessionEnd": "Stop",
+    "stop": "Stop",
+}
+
+_CURSOR_FIELD_MAP = {
+    "hookEventName": "hook_event_name",
+    "hook_event_name": "hook_event_name",
+    "sessionId": "session_id",
+    "session_id": "session_id",
+    "toolName": "tool_name",
+    "tool_name": "tool_name",
+    "toolInput": "tool_input",
+    "tool_input": "tool_input",
+    "toolOutput": "tool_response",
+    "tool_output": "tool_response",
+    "toolUseId": "tool_use_id",
+    "tool_use_id": "tool_use_id",
+    "agentMessage": "agent_message",
+    "agent_message": "agent_message",
+}
+
+# ── Copilot event + field normalization ──
+_COPILOT_TO_CC_EVENT = {
+    "onPreToolUse": "PreToolUse",
+    "preToolUse": "PreToolUse",
+    "onPostToolUse": "PostToolUse",
+    "postToolUse": "PostToolUse",
+    "onUserPromptSubmitted": "UserPromptSubmit",
+    "onSessionStart": "SessionStart",
+    "sessionStart": "SessionStart",
+    "onSessionEnd": "Stop",
+    "sessionEnd": "Stop",
+    "onErrorOccurred": "StopFailure",
+    "subagent.started": "SubagentStart",
+    "subagent.completed": "SubagentStop",
+    "subagent.failed": "SubagentStop",
+    "subagent.selected": "SubagentStart",
+    "subagent.deselected": "SubagentStop",
+}
+
+_COPILOT_FIELD_MAP = {
+    "hookEventName": "hook_event_name",
+    "hook_event_name": "hook_event_name",
+    "sessionId": "session_id",
+    "session_id": "session_id",
+    "toolName": "tool_name",
+    "tool_name": "tool_name",
+    "toolInput": "tool_input",
+    "tool_input": "tool_input",
+    "toolResponse": "tool_response",
+    "tool_response": "tool_response",
+    "toolCallId": "tool_use_id",
+    "toolUseId": "tool_use_id",
+    "tool_use_id": "tool_use_id",
+    "agentName": "agent_name",
+    "agentDisplayName": "agent_display_name",
+    "agentDescription": "agent_description",
+    "stopReason": "stop_reason",
+    "userPrompt": "user_prompt",
+}
+
 
 # ── IDE-specific extraction helpers ──────────────────────────────────
 
@@ -860,6 +1011,24 @@ def _extract_kiro(body: dict, hook_event: str, attrs: dict[str, str]) -> None:
     if hook_event == "PostToolUseFailure" and body.get("error"):
         attrs["error"] = _truncate(str(body["error"]))
 
+    # Agent / Skill attribution from tool_input (Kiro uses same Agent/Skill
+    # tool schema as Claude Code when running MCP-based agents)
+    tool_name = attrs.get("tool_name", "")
+    if hook_event in ("PreToolUse", "PostToolUse") and tool_input_raw:
+        try:
+            ti = json.loads(tool_input_raw) if isinstance(tool_input_raw, str) else tool_input_raw
+        except (json.JSONDecodeError, TypeError):
+            ti = None
+        if isinstance(ti, dict):
+            if tool_name == "Agent":
+                if ti.get("subagent_type"):
+                    attrs["agent_type"] = ti["subagent_type"]
+                if ti.get("description"):
+                    attrs["agent_name"] = ti["description"]
+            elif tool_name == "Skill":
+                if ti.get("skill"):
+                    attrs["skill_name"] = ti["skill"]
+
     # Enriched fields from kiro_stop_hook.py SQLite extraction
     for enriched_field in (
         "input_tokens",
@@ -909,6 +1078,22 @@ def _extract_claude_code(body: dict, hook_event: str, attrs: dict[str, str]) -> 
             attrs["session_source"] = source
         if source in ("resume", "compact") or body.get("resume"):
             attrs["session_resumed"] = "true"
+
+    # Agent / Skill tool — extract structured metadata for attribution
+    if hook_event in ("PreToolUse", "PostToolUse") and tool_input_raw:
+        try:
+            ti = json.loads(tool_input_raw) if isinstance(tool_input_raw, str) else tool_input_raw
+        except (json.JSONDecodeError, TypeError):
+            ti = None
+        if isinstance(ti, dict):
+            if tool_name == "Agent":
+                if ti.get("subagent_type"):
+                    attrs["agent_type"] = ti["subagent_type"]
+                if ti.get("description"):
+                    attrs["agent_name"] = ti["description"]
+            elif tool_name == "Skill":
+                if ti.get("skill"):
+                    attrs["skill_name"] = ti["skill"]
 
     # SubagentStart / SubagentStop
     if hook_event == "SubagentStart" and body.get("last_assistant_message"):
@@ -972,14 +1157,143 @@ def _extract_claude_code(body: dict, hook_event: str, attrs: dict[str, str]) -> 
                 attrs[key] = _truncate(str(body[field]))
 
 
+def _extract_gemini(body: dict, hook_event: str, attrs: dict[str, str]) -> None:
+    """Extract Gemini CLI-specific fields into *attrs*.
+
+    Gemini CLI hooks receive a minimal base payload (session_id, cwd,
+    transcript_path, timestamp) plus an optional ``llm_request`` with
+    the full message history.  BeforeAgent/AfterAgent bracket agent scope.
+    """
+    tool_input_raw = body.get("tool_input")
+    tool_response_raw = body.get("tool_response")
+
+    if tool_input_raw is not None:
+        attrs["tool_input"] = _truncate(_safe_json(tool_input_raw))
+    if tool_response_raw is not None:
+        attrs["tool_response"] = _truncate(_safe_json(tool_response_raw))
+
+    if hook_event == "SessionStart":
+        attrs["event.name"] = "hook_sessionstart"
+
+    if hook_event in ("SubagentStart", "SubagentStop") and body.get("additional_context"):
+        field = "tool_input" if hook_event == "SubagentStart" else "tool_response"
+        attrs[field] = _truncate(str(body["additional_context"]))
+
+    if hook_event == "PreToolUse":
+        tool_name = body.get("tool_name") or ""
+        if tool_name:
+            attrs["tool_name"] = tool_name
+        llm_req = body.get("llm_request")
+        if isinstance(llm_req, dict):
+            messages = llm_req.get("messages") or []
+            if messages:
+                last_user = None
+                for m in reversed(messages):
+                    if m.get("role") == "user":
+                        last_user = m
+                        break
+                if last_user:
+                    content = last_user.get("content", "")
+                    if isinstance(content, str) and not attrs.get("tool_input"):
+                        attrs["tool_input"] = _truncate(content)
+
+    if hook_event == "Stop" and body.get("stop_reason"):
+        attrs["stop_reason"] = body["stop_reason"]
+
+    if body.get("model"):
+        attrs["model"] = str(body["model"])
+
+
+def _extract_cursor(body: dict, hook_event: str, attrs: dict[str, str]) -> None:
+    """Extract Cursor-specific fields into *attrs*.
+
+    Cursor sends preToolUse/postToolUse via HTTP hooks with tool_input as
+    an object, tool_output as a JSON string, plus ``model``, ``duration``,
+    and ``agent_message``.
+    """
+    tool_input_raw = body.get("tool_input")
+    tool_response_raw = body.get("tool_response") or body.get("tool_output")
+
+    if tool_input_raw is not None:
+        attrs["tool_input"] = _truncate(_safe_json(tool_input_raw))
+    if tool_response_raw is not None:
+        attrs["tool_response"] = _truncate(_safe_json(tool_response_raw))
+
+    if hook_event == "SessionStart":
+        attrs["event.name"] = "hook_sessionstart"
+
+    if hook_event == "PreToolUse" and body.get("agent_message"):
+        attrs["agent_message"] = _truncate(str(body["agent_message"]))
+
+    if hook_event in ("PreToolUse", "PostToolUse") and body.get("duration"):
+        attrs["duration_ms"] = str(body["duration"])
+
+    if hook_event == "Stop" and body.get("stop_reason"):
+        attrs["stop_reason"] = body["stop_reason"]
+
+    if body.get("model"):
+        attrs["model"] = str(body["model"])
+
+
+def _extract_copilot(body: dict, hook_event: str, attrs: dict[str, str]) -> None:
+    """Extract GitHub Copilot-specific fields into *attrs*.
+
+    Copilot has full subagent support: subagent.started/completed/failed
+    events carry ``agentName``, ``agentDisplayName``, ``agentDescription``.
+    Tool events carry ``toolCallId`` for correlation.
+    """
+    tool_input_raw = body.get("tool_input")
+    tool_response_raw = body.get("tool_response")
+
+    if tool_input_raw is not None:
+        attrs["tool_input"] = _truncate(_safe_json(tool_input_raw))
+    if tool_response_raw is not None:
+        attrs["tool_response"] = _truncate(_safe_json(tool_response_raw))
+
+    if hook_event == "SessionStart":
+        attrs["event.name"] = "hook_sessionstart"
+        if body.get("source"):
+            attrs["session_source"] = str(body["source"])
+
+    if hook_event == "UserPromptSubmit":
+        prompt_text = body.get("user_prompt") or body.get("prompt") or ""
+        if prompt_text:
+            attrs["tool_input"] = _truncate(prompt_text)
+            attrs["prompt_length"] = str(len(prompt_text))
+        attrs["tool_name"] = "user_prompt"
+
+    # Subagent events carry rich agent identity
+    if hook_event in ("SubagentStart", "SubagentStop"):
+        if body.get("agent_name"):
+            attrs["agent_name"] = body["agent_name"]
+        if body.get("agent_display_name"):
+            attrs["agent_name"] = body["agent_display_name"]
+        if body.get("agent_description"):
+            attrs["agent_type"] = body["agent_description"][:100]
+        if body.get("tool_use_id"):
+            attrs["tool_use_id"] = body["tool_use_id"]
+        if hook_event == "SubagentStop" and body.get("error"):
+            attrs["error"] = _truncate(str(body["error"]))
+
+    if hook_event == "Stop" and (body.get("stop_reason") or body.get("reason")):
+        attrs["stop_reason"] = body.get("stop_reason") or body.get("reason", "")
+
+    if hook_event == "StopFailure" and body.get("error"):
+        attrs["error"] = _truncate(str(body["error"]))
+
+    if body.get("model"):
+        attrs["model"] = str(body["model"])
+
+
 @router.post("/hooks")
 async def ingest_hook(request: Request):
-    """Ingest hook events from Claude Code / Kiro and store in otel_logs.
+    """Ingest hook events from IDE agents and store in otel_logs.
 
-    This is intentionally unauthenticated because CLI hooks fire
-    from the terminal and can't easily carry auth tokens.  The endpoint only
-    writes to ClickHouse — no destructive operations.
+    Supports Claude Code, Kiro, Gemini CLI, Cursor, and GitHub Copilot.
+    Each IDE's camelCase fields and event names are normalized to a
+    canonical snake_case/PascalCase schema before storage.
 
+    Intentionally unauthenticated — CLI hooks can't easily carry auth tokens.
     Supports ECIES-encrypted payloads via the ``X-Observal-Encrypted`` header.
     """
     encrypted_header = request.headers.get("X-Observal-Encrypted")
@@ -994,22 +1308,37 @@ async def ingest_hook(request: Request):
         body = await request.json()
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
-    # ── Normalize Kiro camelCase fields to snake_case ──
+    # ── Detect IDE early so we pick the right normalization maps ──
+    raw_service = body.get("service_name") or body.get("serviceName") or "claude-code"
+    service_name = _SERVICE_NAME_MAP.get(raw_service, raw_service)
+
+    # ── Normalize camelCase fields to snake_case (per-IDE map) ──
+    field_map = {
+        "kiro": _KIRO_FIELD_MAP,
+        "gemini": _GEMINI_FIELD_MAP,
+        "cursor": _CURSOR_FIELD_MAP,
+        "copilot": _COPILOT_FIELD_MAP,
+    }.get(service_name, _KIRO_FIELD_MAP)
     normalized: dict = {}
     for key, value in body.items():
-        normalized[_KIRO_FIELD_MAP.get(key, key)] = value
+        normalized[field_map.get(key, key)] = value
     body = normalized
 
-    # ── Normalize Kiro camelCase event names to PascalCase ──
+    # ── Normalize event names to canonical PascalCase (per-IDE map) ──
     raw_event = body.get("hook_event_name", "unknown")
-    hook_event = _KIRO_TO_CC_EVENT.get(raw_event, raw_event)
+    event_map = {
+        "kiro": _KIRO_TO_CC_EVENT,
+        "gemini": _GEMINI_TO_CC_EVENT,
+        "cursor": _CURSOR_TO_CC_EVENT,
+        "copilot": _COPILOT_TO_CC_EVENT,
+    }.get(service_name, {})
+    hook_event = event_map.get(raw_event, raw_event)
 
-    # Kiro postToolUse with tool_response.success=false → remap to PostToolUseFailure
+    # Kiro/Cursor postToolUse with tool_response.success=false → PostToolUseFailure
     if hook_event == "PostToolUse":
         tool_resp = body.get("tool_response")
         if isinstance(tool_resp, dict) and tool_resp.get("success") is False:
             hook_event = "PostToolUseFailure"
-            # Extract error info from the failed result
             result = tool_resp.get("result", "")
             if result and not body.get("error"):
                 body["error"] = _truncate(str(result))
@@ -1018,11 +1347,6 @@ async def ingest_hook(request: Request):
 
     session_id = body.get("session_id", "")
     tool_name = body.get("tool_name", "")
-    service_name = body.get("service_name", "claude-code")
-    if service_name == "kiro-cli":
-        service_name = "kiro"
-    if service_name == "observal-hooks":
-        service_name = "claude-code"
 
     # ── Kiro IDE session correlation ──
     # $PPID differs per hook invocation in IDE context. Correlate by cwd.
@@ -1081,13 +1405,14 @@ async def ingest_hook(request: Request):
         attrs["user.name"] = user_name
 
     # ── IDE-specific extraction ──
-    # Detect IDE from service_name, then delegate to the right handler.
-    # This keeps Kiro and Claude Code logic fully isolated so they can't
-    # overwrite each other's fields.
-    if is_kiro:
-        _extract_kiro(body, hook_event, attrs)
-    else:
-        _extract_claude_code(body, hook_event, attrs)
+    _ide_extractors = {
+        "kiro": _extract_kiro,
+        "gemini": _extract_gemini,
+        "cursor": _extract_cursor,
+        "copilot": _extract_copilot,
+    }
+    extractor = _ide_extractors.get(service_name, _extract_claude_code)
+    extractor(body, hook_event, attrs)
 
     # Extra context fields (present on most events, all IDEs)
     if body.get("tool_use_id"):
