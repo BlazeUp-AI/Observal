@@ -100,36 +100,41 @@ class TestConfigValidator:
         assert any("SAML_IDP_X509_CERT" in i for i in issues)
 
 
-class TestEEPlaceholderRoutes:
-    """SAML and SCIM endpoints should return 501 placeholder responses."""
+class TestEERoutes:
+    """SAML and SCIM endpoints require config/auth."""
 
     @pytest.mark.asyncio
-    async def test_saml_login_returns_501(self):
+    async def test_saml_login_returns_404_without_config(self):
+        from unittest.mock import AsyncMock, patch
+
         from fastapi import FastAPI
 
         from ee.observal_server.routes.sso_saml import router
 
         app = FastAPI()
         app.include_router(router)
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            r = await ac.post("/api/v1/sso/saml/login")
-        assert r.status_code == 200  # route exists, returns 501 in body
-        assert r.json()["status"] == 501
+        with patch("ee.observal_server.routes.sso_saml._get_saml_config", new_callable=AsyncMock, return_value=None):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                r = await ac.get("/api/v1/sso/saml/login")
+            assert r.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_saml_metadata_returns_501(self):
+    async def test_saml_metadata_returns_404_without_config(self):
+        from unittest.mock import AsyncMock, patch
+
         from fastapi import FastAPI
 
         from ee.observal_server.routes.sso_saml import router
 
         app = FastAPI()
         app.include_router(router)
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            r = await ac.get("/api/v1/sso/saml/metadata")
-        assert r.json()["status"] == 501
+        with patch("ee.observal_server.routes.sso_saml._get_saml_config", new_callable=AsyncMock, return_value=None):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                r = await ac.get("/api/v1/sso/saml/metadata")
+            assert r.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_scim_list_users_returns_501(self):
+    async def test_scim_list_requires_auth(self):
         from fastapi import FastAPI
 
         from ee.observal_server.routes.scim import router
@@ -138,10 +143,10 @@ class TestEEPlaceholderRoutes:
         app.include_router(router)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get("/api/v1/scim/Users")
-        assert r.json()["status"] == 501
+        assert r.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_scim_create_user_returns_501(self):
+    async def test_scim_create_requires_auth(self):
         from fastapi import FastAPI
 
         from ee.observal_server.routes.scim import router
@@ -149,8 +154,8 @@ class TestEEPlaceholderRoutes:
         app = FastAPI()
         app.include_router(router)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            r = await ac.post("/api/v1/scim/Users")
-        assert r.json()["status"] == 501
+            r = await ac.post("/api/v1/scim/Users", json={})
+        assert r.status_code == 401
 
 
 class TestEnterpriseGuardMiddleware:
@@ -190,6 +195,8 @@ class TestEnterpriseGuardMiddleware:
 
     @pytest.mark.asyncio
     async def test_allows_ee_routes_when_healthy(self):
+        from unittest.mock import AsyncMock, patch
+
         from fastapi import FastAPI
 
         from ee.observal_server.middleware.enterprise_guard import EnterpriseGuardMiddleware
@@ -199,11 +206,11 @@ class TestEnterpriseGuardMiddleware:
         app.include_router(saml_router)
         app.add_middleware(EnterpriseGuardMiddleware, issues=[])
 
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            r = await ac.post("/api/v1/sso/saml/login")
-        # No 503 — passes through to the placeholder 501 response
-        assert r.status_code == 200
-        assert r.json()["status"] == 501
+        with patch("ee.observal_server.routes.sso_saml._get_saml_config", new_callable=AsyncMock, return_value=None):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                r = await ac.get("/api/v1/sso/saml/login")
+            # No 503 from guard -- passes through to endpoint which returns 404 (not configured)
+            assert r.status_code == 404
 
 
 class TestRegisterEnterprise:
