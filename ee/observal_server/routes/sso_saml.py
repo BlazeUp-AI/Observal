@@ -40,6 +40,16 @@ from services.security_events import (
 
 logger = logging.getLogger("observal.ee.saml")
 
+
+def _safe_redirect_path(value: str | None) -> str:
+    """Sanitize a redirect target to prevent open redirects.
+
+    Accepts only relative paths (single leading slash, no protocol-relative URLs).
+    """
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    return value
+
 router = APIRouter(prefix="/api/v1/sso/saml", tags=["enterprise-sso"])
 
 _env_saml_config_cache: object | None = None
@@ -144,10 +154,7 @@ async def saml_login(
     if not config:
         raise HTTPException(status_code=404, detail="SAML SSO is not configured")
 
-    # Validate relay_state is a relative URL to prevent open redirect
-    relay_state = next or "/"
-    if not relay_state.startswith("/"):
-        relay_state = "/"
+    relay_state = _safe_redirect_path(next)
 
     sp_key = _decrypt_sp_key(config)
     request_data = _prepare_saml_request(request)
@@ -344,9 +351,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         detail="SAML SSO login",
     )
 
-    relay_state = request_data["post_data"].get("RelayState", "/")
-    if not relay_state.startswith("/"):
-        relay_state = "/"
+    relay_state = _safe_redirect_path(request_data["post_data"].get("RelayState"))
 
     frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}&next={relay_state}"
     return RedirectResponse(url=frontend_redirect, status_code=302)
@@ -383,7 +388,11 @@ async def saml_sls(request: Request, db: AsyncSession = Depends(get_db)):
     if errors:
         logger.warning("SAML SLO failed: %s", errors)
 
-    redirect_target = url or f"{settings.FRONTEND_URL}/login"
+    login_url = f"{settings.FRONTEND_URL}/login"
+    if url and url.startswith(settings.FRONTEND_URL):
+        redirect_target = url
+    else:
+        redirect_target = login_url
     return RedirectResponse(url=redirect_target, status_code=302)
 
 
