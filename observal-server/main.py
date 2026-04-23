@@ -95,9 +95,7 @@ async def lifespan(app: FastAPI):
     # Ensure default org exists and backfill any users missing one
     async with _session_factory() as db:
         default_org = await get_or_create_default_org(db)
-        await db.execute(
-            update(User).where(User.org_id.is_(None)).values(org_id=default_org.id)
-        )
+        await db.execute(update(User).where(User.org_id.is_(None)).values(org_id=default_org.id))
         await db.commit()
 
     # Seed demo accounts when no real users exist and DEMO_* env vars are set
