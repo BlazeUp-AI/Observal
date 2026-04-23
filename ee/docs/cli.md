@@ -14,6 +14,15 @@ For the core CLI reference, see [docs/cli/README.md](../../docs/cli/README.md). 
 | `OAUTH_CLIENT_ID` | disabled | OAuth/OIDC client ID (required in enterprise mode) |
 | `OAUTH_CLIENT_SECRET` | disabled | OAuth/OIDC client secret |
 | `OAUTH_SERVER_METADATA_URL` | disabled | OIDC discovery URL |
+| `SSO_ONLY` | `false` | When true, disables password auth entirely; only SSO login allowed |
+| `SAML_IDP_ENTITY_ID` | disabled | IdP entity ID for SAML SSO |
+| `SAML_IDP_SSO_URL` | disabled | IdP single sign-on URL |
+| `SAML_IDP_X509_CERT` | disabled | IdP signing certificate (base64) |
+| `SAML_SP_ENTITY_ID` | auto | SP entity ID (derived from FRONTEND_URL if empty) |
+| `SAML_SP_ACS_URL` | auto | SP ACS URL (derived from FRONTEND_URL if empty) |
+| `SAML_JIT_PROVISIONING` | `true` | Auto-create users on first SAML login |
+| `SAML_DEFAULT_ROLE` | `user` | Default role for JIT-provisioned users |
+| `SAML_SP_KEY_ENCRYPTION_PASSWORD` | disabled | Encrypt SP private key at rest |
 
 In enterprise mode, self-registration and password-based login are disabled. All authentication goes through your configured identity provider (IdP).
 
@@ -57,7 +66,7 @@ curl "http://localhost:8000/api/v1/admin/audit-log/export?start_date=2026-01-01"
 
 SCIM endpoints allow your IdP (Okta, Azure AD, etc.) to automatically provision and deprovision users.
 
-> **Status:** Not yet implemented. All endpoints return `501 Not Implemented`.
+Authentication uses a shared bearer token stored as a SHA-256 hash in the scim_tokens table.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -67,19 +76,21 @@ SCIM endpoints allow your IdP (Okta, Azure AD, etc.) to automatically provision 
 | `PUT` | `/api/v1/scim/Users/{id}` | Update a user |
 | `DELETE` | `/api/v1/scim/Users/{id}` | Deprovision a user |
 
+For detailed setup instructions, see [scim-setup.md](scim-setup.md).
+
 ---
 
 ## SAML 2.0 SSO
 
 SAML endpoints for identity providers that don't support OIDC.
 
-> **Status:** Not yet implemented. All endpoints return `501 Not Implemented`.
-
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/sso/saml/login` | Initiate SAML SSO login |
-| `POST` | `/api/v1/sso/saml/acs` | Assertion Consumer Service callback |
-| `GET` | `/api/v1/sso/saml/metadata` | Service Provider metadata XML |
+| `GET` | `/api/v1/sso/saml/login` | SP-initiated login |
+| `POST` | `/api/v1/sso/saml/acs` | Receives IdP response |
+| `GET` | `/api/v1/sso/saml/metadata` | SP metadata XML |
+
+For detailed setup instructions, see [saml-setup.md](saml-setup.md).
 
 ---
 
@@ -87,7 +98,7 @@ SAML endpoints for identity providers that don't support OIDC.
 
 When `DEPLOYMENT_MODE=enterprise`, the following routes are blocked:
 
-- `POST /api/v1/auth/bootstrap` — admin bootstrapping disabled (use IdP)
-- `POST /api/v1/auth/register` — self-registration disabled (use SCIM or IdP)
+- `POST /api/v1/auth/bootstrap`, admin bootstrapping disabled (use IdP)
+- `POST /api/v1/auth/register`, self-registration disabled in enterprise mode and also disabled when SSO_ONLY is true (use SCIM or IdP)
 
 All other routes function normally with SSO-based authentication.
