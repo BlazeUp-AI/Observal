@@ -1239,6 +1239,7 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
     let hookEvents = 0;
     let credits = 0;
     let isKiro = serviceName === "kiro" || sessionId.startsWith("kiro-");
+    const isGemini = serviceName === "gemini";
     const models = new Set<string>();
     const tools: Record<string, number> = {};
 
@@ -1256,6 +1257,10 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
         if (attrs.cache_read_tokens) totalCacheRead += parseInt(attrs.cache_read_tokens, 10);
         if (attrs.cache_creation_tokens) totalCacheWrite += parseInt(attrs.cache_creation_tokens, 10);
         if (attrs.model) models.add(attrs.model);
+      } else if (attrs.input_tokens || attrs.output_tokens) {
+        // Gemini CLI (and others) emit token data on hook_stop/token_usage events
+        if (attrs.input_tokens) totalInputTokens += parseInt(attrs.input_tokens, 10);
+        if (attrs.output_tokens) totalOutputTokens += parseInt(attrs.output_tokens, 10);
       }
 
       // Kiro enriched stop events carry credits and model
@@ -1277,7 +1282,7 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
       }
     }
 
-    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, models, tools };
+    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, models, tools };
   }, [events, sessionId, serviceName]);
 
   const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
@@ -1299,20 +1304,26 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Output Tokens</p>
             <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalOutputTokens)}</p>
           </div>
-          <div className="space-y-1">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Read</p>
-            <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheRead)}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Write</p>
-            <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheWrite)}</p>
-          </div>
+          {!stats.isGemini && (
+            <>
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Read</p>
+                <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheRead)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Cache Write</p>
+                <p className="text-lg font-semibold tabular-nums">{formatTokens(stats.totalCacheWrite)}</p>
+              </div>
+            </>
+          )}
         </>
       )}
-      <div className="space-y-1">
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">API Calls</p>
-        <p className="text-lg font-semibold tabular-nums">{stats.apiCalls}</p>
-      </div>
+      {!stats.isGemini && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">API Calls</p>
+          <p className="text-lg font-semibold tabular-nums">{stats.apiCalls}</p>
+        </div>
+      )}
       <div className="space-y-1">
         <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Tool Calls</p>
         <p className="text-lg font-semibold tabular-nums">{stats.toolCalls}</p>

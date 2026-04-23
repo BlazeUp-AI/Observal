@@ -214,9 +214,7 @@ function buildGeminiSettings(mcps: { id: string; name: string }[]): string {
   }
   const settings: Record<string, unknown> = {
     telemetry: {
-      enabled: true,
-      target: "custom",
-      otlpEndpoint: "http://localhost:4318",
+      enabled: false,
       logPrompts: true,
     },
     mcpServers: servers,
@@ -235,9 +233,7 @@ function generateGemini(
     path: ".gemini/settings.json",
     content: mcps.length > 0 ? buildGeminiSettings(mcps) : JSON.stringify({
       telemetry: {
-        enabled: true,
-        target: "custom",
-        otlpEndpoint: "http://localhost:4318",
+        enabled: false,
         logPrompts: true,
       },
     }, null, 2),
