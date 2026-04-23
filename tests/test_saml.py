@@ -220,3 +220,159 @@ class TestSamlEndpoints:
             ) as ac:
                 r = await ac.post("/api/v1/sso/saml/acs")
             assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_acs_replay_protection_stores_assertion_id(self, saml_app):
+        """First ACS call with a given response ID should store it in Redis."""
+        from api.deps import get_db
+
+        mock_config, private_key = self._make_mock_config()
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        mock_auth = MagicMock()
+        mock_auth.process_response.return_value = None
+        mock_auth.get_errors.return_value = []
+        mock_auth.is_authenticated.return_value = True
+        mock_auth.get_last_message_id.return_value = "saml-response-id-12345"
+        mock_auth.get_nameid.return_value = "user@example.com"
+        mock_auth.get_attributes.return_value = {"displayName": ["Test User"]}
+
+        mock_user = MagicMock()
+        mock_user.id = "user-uuid-1"
+        mock_user.email = "user@example.com"
+        mock_user.name = "Test User"
+        mock_user.role = MagicMock()
+        mock_user.role.value = "user"
+        mock_user.auth_provider = "saml"
+        mock_user.sso_subject_id = "user@example.com"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.commit = AsyncMock()
+
+        async def override_get_db():
+            yield mock_db
+
+        saml_app.dependency_overrides[get_db] = override_get_db
+
+        try:
+            with (
+                patch(
+                    "ee.observal_server.routes.sso_saml._get_saml_config",
+                    new_callable=AsyncMock,
+                    return_value=mock_config,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                    return_value=private_key,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._build_auth",
+                    return_value=mock_auth,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.get_redis",
+                    return_value=mock_redis,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.emit_security_event",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.audit",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.create_access_token",
+                    return_value=("access-tok", 3600),
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.create_refresh_token",
+                    return_value=("refresh-tok", "jti-1"),
+                ),
+            ):
+                async with AsyncClient(
+                    transport=ASGITransport(app=saml_app),
+                    base_url="http://test",
+                    follow_redirects=False,
+                ) as ac:
+                    r = await ac.post(
+                        "/api/v1/sso/saml/acs",
+                        data={"SAMLResponse": "dummybase64"},
+                    )
+                # Should succeed (redirect) and store the assertion ID
+                assert r.status_code == 302
+                mock_redis.get.assert_called_with("saml_assertion:saml-response-id-12345")
+                mock_redis.setex.assert_any_call("saml_assertion:saml-response-id-12345", 300, "1")
+        finally:
+            saml_app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_acs_replay_protection_blocks_replayed_assertion(self, saml_app):
+        """Second ACS call with same response ID should be rejected as replay."""
+        from api.deps import get_db
+
+        mock_config, private_key = self._make_mock_config()
+        mock_redis = AsyncMock()
+        # Simulate that this assertion ID was already seen
+        mock_redis.get = AsyncMock(return_value=b"1")
+
+        mock_auth = MagicMock()
+        mock_auth.process_response.return_value = None
+        mock_auth.get_errors.return_value = []
+        mock_auth.is_authenticated.return_value = True
+        mock_auth.get_last_message_id.return_value = "saml-response-id-12345"
+
+        mock_db = AsyncMock()
+
+        async def override_get_db():
+            yield mock_db
+
+        saml_app.dependency_overrides[get_db] = override_get_db
+
+        try:
+            with (
+                patch(
+                    "ee.observal_server.routes.sso_saml._get_saml_config",
+                    new_callable=AsyncMock,
+                    return_value=mock_config,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                    return_value=private_key,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._build_auth",
+                    return_value=mock_auth,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.get_redis",
+                    return_value=mock_redis,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.emit_security_event",
+                    new_callable=AsyncMock,
+                ) as mock_emit,
+            ):
+                async with AsyncClient(
+                    transport=ASGITransport(app=saml_app),
+                    base_url="http://test",
+                    follow_redirects=False,
+                ) as ac:
+                    r = await ac.post(
+                        "/api/v1/sso/saml/acs",
+                        data={"SAMLResponse": "dummybase64"},
+                    )
+                assert r.status_code == 400
+                assert "already been processed" in r.json()["detail"]
+                # Verify security event was emitted for the replay
+                mock_emit.assert_called()
+                event_arg = mock_emit.call_args[0][0]
+                assert "replay" in event_arg.detail.lower()
+        finally:
+            saml_app.dependency_overrides.clear()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import secrets
@@ -98,6 +99,9 @@ async def _prepare_saml_request_with_body(request: Request) -> dict:
 
 
 def _build_auth(config, sp_private_key: str, request_data: dict) -> OneLogin_Saml2_Auth:
+    sp_slo_url = ""
+    if getattr(config, "idp_slo_url", ""):
+        sp_slo_url = f"{settings.FRONTEND_URL}/api/v1/sso/saml/sls"
     saml_settings = build_saml_settings(
         idp_entity_id=config.idp_entity_id,
         idp_sso_url=config.idp_sso_url,
@@ -107,6 +111,7 @@ def _build_auth(config, sp_private_key: str, request_data: dict) -> OneLogin_Sam
         sp_private_key=sp_private_key,
         sp_x509_cert=config.sp_x509_cert,
         idp_slo_url=config.idp_slo_url or "",
+        sp_slo_url=sp_slo_url,
     )
     return OneLogin_Saml2_Auth(request_data, old_settings=saml_settings)
 
@@ -180,6 +185,36 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
             )
         )
         raise HTTPException(status_code=401, detail="SAML authentication failed")
+
+    # --- SAML assertion replay protection ---
+    response_id = auth.get_last_message_id() if hasattr(auth, "get_last_message_id") else None
+    if not response_id:
+        response_xml = auth.get_last_response_xml() if hasattr(auth, "get_last_response_xml") else None
+        if response_xml:
+            raw = response_xml.encode() if isinstance(response_xml, str) else response_xml
+            response_id = hashlib.sha256(raw).hexdigest()
+
+    if response_id:
+        redis = get_redis()
+        replay_key = f"saml_assertion:{response_id}"
+        existing = await redis.get(replay_key)
+        if existing:
+            logger.warning("SAML assertion replay detected: response_id=%s", response_id)
+            await emit_security_event(
+                SecurityEvent(
+                    event_type=EventType.SSO_FAILURE,
+                    severity=Severity.WARNING,
+                    outcome="failure",
+                    source_ip=source_ip,
+                    user_agent=user_agent,
+                    detail="SAML assertion replay detected",
+                )
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="SAML assertion has already been processed",
+            )
+        await redis.setex(replay_key, 300, "1")
 
     email, attributes = extract_name_id_and_attrs(auth)
     if not email:
@@ -277,6 +312,41 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
 
     frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}"
     return RedirectResponse(url=frontend_redirect, status_code=302)
+
+
+@router.get("/logout")
+async def saml_logout(request: Request, db: AsyncSession = Depends(get_db)):
+    """SP-initiated Single Logout: redirect user to IdP SLO endpoint."""
+    config = await _get_saml_config(db)
+    if not config or not getattr(config, "idp_slo_url", None):
+        # No SLO configured, just redirect to login
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login", status_code=302)
+
+    sp_key = _decrypt_sp_key(config)
+    request_data = _prepare_saml_request(request)
+    auth = _build_auth(config, sp_key, request_data)
+    redirect_url = auth.logout(return_to=f"{settings.FRONTEND_URL}/login")
+    return RedirectResponse(url=redirect_url, status_code=302)
+
+
+@router.get("/sls")
+async def saml_sls(request: Request, db: AsyncSession = Depends(get_db)):
+    """SLO callback: handle LogoutResponse from IdP after logout completes."""
+    config = await _get_saml_config(db)
+    if not config:
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login", status_code=302)
+
+    sp_key = _decrypt_sp_key(config)
+    request_data = _prepare_saml_request(request)
+    auth = _build_auth(config, sp_key, request_data)
+
+    url = auth.process_slo(delete_session_cb=lambda: None)
+    errors = auth.get_errors()
+    if errors:
+        logger.warning("SAML SLO failed: %s", errors)
+
+    redirect_target = url or f"{settings.FRONTEND_URL}/login"
+    return RedirectResponse(url=redirect_target, status_code=302)
 
 
 @router.get("/metadata")
