@@ -4,6 +4,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
+    image: ghcr.io/blazeup-ai/observal-api:latest
     command: ["/app/entrypoint.sh"]
     env_file:
       - ../.env
@@ -34,6 +35,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
+    image: ghcr.io/blazeup-ai/observal-api:latest
     command: ["/app/.venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
     env_file:
       - ../.env
@@ -150,6 +152,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
+    image: ghcr.io/blazeup-ai/observal-api:latest
     command: ["/app/.venv/bin/python", "-c", "import asyncio; asyncio.set_event_loop(asyncio.new_event_loop()); from arq import run_worker; from worker import WorkerSettings; run_worker(WorkerSettings)"]
     env_file:
       - ../.env
@@ -182,6 +185,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
+    image: ghcr.io/blazeup-ai/observal-web:latest
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     environment:

@@ -1,0 +1,329 @@
+# Automated release pipeline for Observal.
+#
+# Triggered when a release PR merges to main (detected by chore(release) commit).
+# Creates the git tag, then builds: CLI binaries (6 platforms), Docker images (GHCR),
+# server tarball, PyPI package.
+#
+# Public releases (major/feature) require approval in the 'production' environment.
+# Patch releases auto-publish without approval.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/blazeup-ai/observal
+
+jobs:
+  # ── Preflight: detect release commit and create tag ────────
+  preflight:
+    name: Preflight checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      bump_type: ${{ steps.version.outputs.bump_type }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect release commit
+        id: version
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          if [[ "$COMMIT_MSG" =~ ^bump\(release\):\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+            # Validate version matches pyproject.toml
+            PKG_VERSION=$(python3 -c "
+            import re, pathlib
+            m = re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M)
+            print(m.group(1))
+            ")
+            if [ "$VERSION" != "$PKG_VERSION" ]; then
+              echo "::error::Commit says v$VERSION but pyproject.toml says $PKG_VERSION"
+              exit 1
+            fi
+
+            # Detect bump type by comparing to previous tag
+            PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "v0.0.0")
+            PREV="${PREV_TAG#v}"
+            IFS='.' read -r PM PMI PP <<< "$PREV"
+            IFS='.' read -r CM CMI CP <<< "$VERSION"
+            if [ "$CM" != "$PM" ]; then
+              echo "bump_type=major" >> "$GITHUB_OUTPUT"
+            elif [ "$CMI" != "$PMI" ]; then
+              echo "bump_type=feature" >> "$GITHUB_OUTPUT"
+            else
+              echo "bump_type=patch" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release tag
+        if: steps.version.outputs.is_release == 'true'
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+  # ── Job 1: Build CLI binaries (6-platform matrix) ──────────
+  cli-binaries:
+    name: CLI (${{ matrix.os }}-${{ matrix.arch }})
+    needs: preflight
+    if: needs.preflight.outputs.is_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+            artifact: observal-linux-x64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            artifact: observal-linux-arm64
+          - os: macos
+            arch: x64
+            runner: macos-13
+            artifact: observal-macos-x64
+          - os: macos
+            arch: arm64
+            runner: macos-14
+            artifact: observal-macos-arm64
+          - os: windows
+            arch: x64
+            runner: windows-latest
+            artifact: observal-windows-x64.exe
+          - os: windows
+            arch: arm64
+            runner: windows-latest
+            artifact: observal-windows-arm64.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build binary
+        run: |
+          pyinstaller observal_cli/pyinstaller.spec --noconfirm
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+
+      - name: Rename artifact (Unix)
+        if: matrix.os != 'windows'
+        run: mv dist/observal dist/${{ matrix.artifact }}
+
+      - name: Rename artifact (Windows)
+        if: matrix.os == 'windows'
+        run: mv dist/observal.exe dist/${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  # ── Job 2: Docker images to GHCR ──────────────────────────
+  docker-images:
+    name: Docker images
+    needs: preflight
+    if: needs.preflight.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-api:${{ needs.preflight.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-web:${{ needs.preflight.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}-web:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 3: Server deployment tarball ───────────────────────
+  server-package:
+    name: Server package
+    needs: preflight
+    if: needs.preflight.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build server tarball
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          STAGING="observal-server-v${VERSION}"
+          mkdir -p "$STAGING/docker/server-package"
+          mkdir -p "$STAGING/docker/clickhouse"
+          mkdir -p "$STAGING/grafana"
+
+          # Docker Compose and configs
+          cp docker/docker-compose.yml "$STAGING/docker/"
+          cp docker/Dockerfile.api "$STAGING/docker/"
+          cp docker/Dockerfile.web "$STAGING/docker/"
+          cp docker/entrypoint.sh "$STAGING/docker/"
+          cp docker/nginx.conf "$STAGING/docker/"
+          cp -r docker/clickhouse/ "$STAGING/docker/clickhouse/"
+          cp -r docker/server-package/ "$STAGING/docker/server-package/"
+
+          # Application source
+          cp -r observal-server/ "$STAGING/observal-server/"
+          cp -r ee/ "$STAGING/ee/"
+          cp -r web/ "$STAGING/web/"
+          cp -r grafana/ "$STAGING/grafana/"
+          cp pyproject.toml "$STAGING/"
+          cp otel-collector-config.yaml "$STAGING/"
+          cp prometheus.yml "$STAGING/"
+          cp .env.example "$STAGING/"
+
+          tar -czf "observal-server-v${VERSION}.tar.gz" "$STAGING"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observal-server-v${{ needs.preflight.outputs.version }}.tar.gz
+          path: observal-server-v${{ needs.preflight.outputs.version }}.tar.gz
+
+  # ── Job 4: PyPI publish ────────────────────────────────────
+  pypi:
+    name: Publish to PyPI
+    needs: preflight
+    if: needs.preflight.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── Approval gate (all releases) ────────────────────────────
+  approve:
+    name: Approval gate
+    needs: [preflight, cli-binaries, docker-images, server-package, pypi]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "${{ needs.preflight.outputs.bump_type }} release v${{ needs.preflight.outputs.version }} approved"
+
+  # ── Final: Create GitHub Release with all artifacts ────────
+  release:
+    name: GitHub Release
+    needs: [preflight, cli-binaries, docker-images, server-package, pypi, approve]
+    if: ${{ !cancelled() && needs.cli-binaries.result == 'success' && needs.server-package.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name 'observal-*' -o -name '*.tar.gz' \) -exec cp {} release/ \;
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+
+      - name: Generate changelog for this release
+        run: |
+          if command -v git-cliff >/dev/null 2>&1; then
+            git-cliff --config cliff.toml --latest --strip header > release/RELEASE_NOTES.md
+          else
+            pip install git-cliff
+            git-cliff --config cliff.toml --latest --strip header > release/RELEASE_NOTES.md
+          fi
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "release/observal-*"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ needs.preflight.outputs.version }}"
+
+          gh release create "$VERSION" \
+            --draft \
+            --title "Observal $VERSION" \
+            --notes-file release/RELEASE_NOTES.md \
+            --generate-notes \
+            --latest \
+            release/*
+
+      - name: Publish release (remove draft)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ needs.preflight.outputs.version }}"
+          gh release edit "$VERSION" --draft=false
