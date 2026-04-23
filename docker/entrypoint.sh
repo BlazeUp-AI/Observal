@@ -34,9 +34,17 @@ CH_PROTO_HOST="http://${CH_HOST}"
 CH_CREATE_RETRIES=15
 CH_CREATE_COUNT=0
 while [ $CH_CREATE_COUNT -lt $CH_CREATE_RETRIES ]; do
-  HTTP_CODE=$(wget -q -O- --user="$CH_USER" --password="$CH_PASS" \
-    --post-data="CREATE DATABASE IF NOT EXISTS ${CH_DB}" \
-    "${CH_PROTO_HOST}/" 2>/dev/null && echo "ok" || echo "fail")
+  HTTP_CODE=$(/app/.venv/bin/python -c "
+import urllib.request, base64, sys
+url = '${CH_PROTO_HOST}/'
+auth = base64.b64encode('${CH_USER}:${CH_PASS}'.encode()).decode()
+req = urllib.request.Request(url, data=b'CREATE DATABASE IF NOT EXISTS ${CH_DB}', headers={'Authorization': 'Basic ' + auth})
+try:
+    urllib.request.urlopen(req, timeout=5)
+    print('ok')
+except Exception:
+    print('fail')
+" 2>/dev/null)
   if [ "$HTTP_CODE" = "ok" ]; then
     echo "ClickHouse database '${CH_DB}' ready"
     break
