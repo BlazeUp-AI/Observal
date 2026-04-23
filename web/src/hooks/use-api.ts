@@ -382,6 +382,28 @@ export function useOtelStats() {
 export function useOtelErrors() {
   return useQuery({ queryKey: ['otel', 'errors'], queryFn: dashboard.otelErrors });
 }
+export interface SessionEfficiencyData {
+  efficiency_rating: number;
+  efficiency_metrics: Record<string, number | null>;
+  interpretation: Record<string, string>;
+  warnings: string[];
+  scorer_version: string;
+  dag?: {
+    nodes: { id: number; action_type: string; action_detail: string; status: "effective" | "reverted" | "waste"; parent_ids: number[]; trace_id: string | null; files_touched: string[]; latency_ms: number; reverted_by: number | null }[];
+    edges: { source: number; target: number; type: "causal" | "cross_trace" }[];
+    stats: { total_nodes: number; effective_nodes: number; reverted_nodes: number; waste_nodes: number };
+  };
+  waste_classifications?: { category: string; steps: number[] }[];
+  error?: string;
+}
+
+export function useSessionEfficiency(sessionId: string | undefined) {
+  return useQuery<SessionEfficiencyData>({
+    queryKey: ["session-efficiency", sessionId],
+    queryFn: () => dashboard.otelSessionEfficiency(sessionId!) as unknown as Promise<SessionEfficiencyData>,
+    enabled: !!sessionId,
+  });
+}
 
 export function useSessionSubscription() {
   const qc = useQueryClient();

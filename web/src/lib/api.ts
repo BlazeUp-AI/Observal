@@ -334,6 +334,7 @@ export const dashboard = {
   otelTrace: (id: string) => get<unknown>(`/otel/traces/${encodeURIComponent(id)}`),
   otelStats: () => get<OtelStats>('/otel/stats'),
   otelErrors: () => get<OtelErrorEvent[]>('/otel/errors'),
+  otelSessionEfficiency: (sessionId: string) => get<Record<string, unknown>>(`/otel/sessions/${encodeURIComponent(sessionId)}/efficiency`),
 };
 
 // ── Feedback ────────────────────────────────────────────────────────

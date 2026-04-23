@@ -692,6 +692,47 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
 
 
+@router.get("/sessions/{session_id}/efficiency")
+async def get_session_efficiency(session_id: str, current_user: User = Depends(require_role(UserRole.user))):
+    """Run kernel efficiency analysis on a session's hook events."""
+    is_admin = _is_admin_user(current_user)
+    params: dict[str, str] = {"param_sid": session_id}
+
+    if not is_admin:
+        params["param_uid"] = str(current_user.id)
+        params["param_uemail"] = current_user.email
+        ownership = await _ch_json(
+            "SELECT 1 FROM otel_logs "
+            "WHERE LogAttributes['session.id'] = {sid:String} "
+            "AND (LogAttributes['user.id'] = {uid:String} "
+            "     OR LogAttributes['user.id'] = {uemail:String}) "
+            "LIMIT 1",
+            params,
+        )
+        if not ownership:
+            return {"error": "Session not found or access denied"}
+
+    events = await _ch_json(
+        "SELECT "
+        "Timestamp AS timestamp, "
+        "LogAttributes['event.name'] AS event_name, "
+        "Body AS body, "
+        "LogAttributes AS attributes, "
+        "ServiceName AS service_name "
+        "FROM otel_logs "
+        "WHERE LogAttributes['session.id'] = {sid:String} "
+        "ORDER BY Timestamp ASC",
+        params,
+    )
+
+    if not events:
+        return {"error": "No events found for session", "session_id": session_id}
+
+    from services.eval.kernel_bridge import analyze_session_efficiency
+
+    return analyze_session_efficiency(events)
+
+
 @router.get("/traces")
 @cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_traces(current_user: User = Depends(require_role(UserRole.admin))):

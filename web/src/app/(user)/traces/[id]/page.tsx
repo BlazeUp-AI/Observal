@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useCallback, useMemo, createElement } from "react";
-import { useOtelSession, useSessionSubscription } from "@/hooks/use-api";
+import { useOtelSession, useSessionSubscription, useSessionEfficiency } from "@/hooks/use-api";
 import type { OtelSessionData, RawOtelEvent } from "@/lib/types";
 import {
   FileText,
@@ -40,6 +40,8 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EfficiencyMetrics } from "@/components/dashboard/efficiency-metrics";
+import { SessionDAG } from "@/components/dashboard/session-dag";
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -1545,6 +1547,7 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEve
 export default function TraceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, isLoading, isError, error, refetch } = useOtelSession(id);
+  const { data: efficiency, isLoading: effLoading } = useSessionEfficiency(id);
   useSessionSubscription();
 
   const session = data as OtelSessionData;
@@ -1671,6 +1674,7 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
               <Tabs defaultValue="traces" className="animate-in stagger-1">
                 <TabsList>
                   <TabsTrigger value="traces">Traces</TabsTrigger>
+                  <TabsTrigger value="efficiency">Efficiency</TabsTrigger>
                   <TabsTrigger value="info">Session Info</TabsTrigger>
                 </TabsList>
                 <TabsContent value="traces" className="space-y-2 mt-4">
@@ -1762,6 +1766,22 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
                         );
                       })}
                     </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="efficiency" className="mt-4">
+                  {effLoading ? (
+                    <DetailSkeleton />
+                  ) : efficiency && !efficiency.error ? (
+                    <div className="space-y-4">
+                      <EfficiencyMetrics data={efficiency} />
+                      {efficiency.dag && <SessionDAG dag={efficiency.dag} />}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Zap}
+                      title="No efficiency data"
+                      description={efficiency?.error || "Efficiency metrics are not available for this session yet."}
+                    />
                   )}
                 </TabsContent>
                 <TabsContent value="info" className="mt-4">
