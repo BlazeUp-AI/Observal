@@ -1172,19 +1172,21 @@ def admin_diagnostics(output: str = typer.Option("table", "--output", "-o")):
     rprint(f"\n  Overall: [{color}]{overall}[/{color}]")
     rprint(f"  Mode:    {data.get('deployment_mode', 'unknown')}")
 
-    db = data.get("database", {})
+    checks = data.get("checks", {})
+
+    db = checks.get("database", {})
     if db:
         db_color = "green" if db.get("status") == "ok" else "red"
         rprint(f"\n  Database: [{db_color}]{db.get('status', 'unknown')}[/{db_color}]")
-        rprint(f"    Users: {db.get('user_count', '?')}")
+        rprint(f"    Users: {db.get('users', '?')}")
 
-    jwt_info = data.get("jwt", {})
+    jwt_info = checks.get("jwt_keys", {})
     if jwt_info:
         jwt_color = "green" if jwt_info.get("status") == "ok" else "red"
         rprint(f"\n  JWT:     [{jwt_color}]{jwt_info.get('status', 'unknown')}[/{jwt_color}]")
         rprint(f"    Algorithm: {jwt_info.get('algorithm', '?')}")
 
-    ee = data.get("enterprise", {})
+    ee = checks.get("enterprise", {})
     if ee:
         issues = ee.get("issues", [])
         if issues:
