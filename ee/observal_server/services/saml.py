@@ -17,7 +17,6 @@ from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger("observal.ee.saml")
 
-_ENCRYPTION_PREFIX_LEGACY = "enc:aesgcm:"
 _ENCRYPTION_PREFIX = "enc:aesgcm:v2:"
 _PBKDF2_ITERATIONS = 600_000
 
@@ -75,18 +74,6 @@ def encrypt_private_key(private_key_pem: str, password: str) -> str:
     return _ENCRYPTION_PREFIX + base64.b64encode(payload).decode()
 
 
-def _decrypt_legacy(encrypted: str, password: str) -> str:
-    """Decrypt keys encrypted with the v1 format (plain SHA-256 KDF)."""
-    payload = base64.b64decode(encrypted[len(_ENCRYPTION_PREFIX_LEGACY) :])
-    nonce = payload[:12]
-    ciphertext = payload[12:]
-    h = hashes.Hash(hashes.SHA256())
-    h.update(password.encode())
-    aes_key = h.finalize()
-    aesgcm = AESGCM(aes_key)
-    return aesgcm.decrypt(nonce, ciphertext, None).decode()
-
-
 def decrypt_private_key(encrypted: str, password: str) -> str:
     if encrypted.startswith(_ENCRYPTION_PREFIX):
         if not password:
@@ -98,11 +85,6 @@ def decrypt_private_key(encrypted: str, password: str) -> str:
         aes_key = _derive_key(password, salt)
         aesgcm = AESGCM(aes_key)
         return aesgcm.decrypt(nonce, ciphertext, None).decode()
-
-    if encrypted.startswith(_ENCRYPTION_PREFIX_LEGACY):
-        if not password:
-            return encrypted
-        return _decrypt_legacy(encrypted, password)
 
     return encrypted
 
