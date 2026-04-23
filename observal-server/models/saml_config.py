@@ -12,7 +12,9 @@ class SamlConfig(Base):
     __tablename__ = "saml_configs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), unique=True, nullable=False)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), unique=True, nullable=False
+    )
     idp_entity_id: Mapped[str] = mapped_column(Text, nullable=False)
     idp_sso_url: Mapped[str] = mapped_column(Text, nullable=False)
     idp_slo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
