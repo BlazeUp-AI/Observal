@@ -45,6 +45,22 @@ router = APIRouter(prefix="/api/v1/scim", tags=["enterprise-scim"])
 SCIM_CONTENT_TYPE = "application/scim+json"
 
 
+async def _get_scoped_user(
+    user_id: str,
+    scim_token: ScimToken,
+    db: AsyncSession,
+) -> User | None:
+    try:
+        uid = _uuid.UUID(user_id)
+    except ValueError:
+        return None
+    q = select(User).where(User.id == uid)
+    if scim_token.org_id:
+        q = q.where(User.org_id == scim_token.org_id)
+    result = await db.execute(q)
+    return result.scalar_one_or_none()
+
+
 async def _verify_scim_token(
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
@@ -101,14 +117,17 @@ async def list_users(
 
         if parsed_filter.attr == "username":
             value = parsed_filter.value.strip().lower()
+            q = select(User)
+            if scim_token.org_id:
+                q = q.where(User.org_id == scim_token.org_id)
             if parsed_filter.op == "eq":
-                result = await db.execute(select(User).where(User.email == value))
+                result = await db.execute(q.where(User.email == value))
             elif parsed_filter.op == "sw":
-                result = await db.execute(select(User).where(User.email.startswith(value)))
+                result = await db.execute(q.where(User.email.startswith(value)))
             elif parsed_filter.op == "co":
-                result = await db.execute(select(User).where(User.email.contains(value)))
+                result = await db.execute(q.where(User.email.contains(value)))
             elif parsed_filter.op == "ne":
-                result = await db.execute(select(User).where(User.email != value))
+                result = await db.execute(q.where(User.email != value))
             else:
                 return JSONResponse(
                     status_code=400,
@@ -218,17 +237,7 @@ async def get_user(
     scim_token: ScimToken = Depends(_verify_scim_token),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        uid = _uuid.UUID(user_id)
-    except ValueError:
-        return JSONResponse(
-            status_code=404,
-            content=format_scim_error(404, "User not found"),
-            media_type=SCIM_CONTENT_TYPE,
-        )
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
+    user = await _get_scoped_user(user_id, scim_token, db)
     if not user:
         return JSONResponse(
             status_code=404,
@@ -250,17 +259,7 @@ async def update_user(
     scim_token: ScimToken = Depends(_verify_scim_token),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        uid = _uuid.UUID(user_id)
-    except ValueError:
-        return JSONResponse(
-            status_code=404,
-            content=format_scim_error(404, "User not found"),
-            media_type=SCIM_CONTENT_TYPE,
-        )
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
+    user = await _get_scoped_user(user_id, scim_token, db)
     if not user:
         return JSONResponse(
             status_code=404,
@@ -279,6 +278,8 @@ async def update_user(
     if not parsed["active"] and user.auth_provider != "deactivated":
         user.password_hash = None
         user.auth_provider = "deactivated"
+    elif parsed["active"] and user.auth_provider == "deactivated":
+        user.auth_provider = "scim"
 
     await db.commit()
     await audit(
@@ -302,15 +303,13 @@ async def delete_user(
     scim_token: ScimToken = Depends(_verify_scim_token),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        uid = _uuid.UUID(user_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
+    user = await _get_scoped_user(user_id, scim_token, db)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        return JSONResponse(
+            status_code=404,
+            content=format_scim_error(404, "User not found"),
+            media_type=SCIM_CONTENT_TYPE,
+        )
 
     email = user.email
     user_id_str = str(user.id)
@@ -385,17 +384,7 @@ async def patch_user(
     scim_token: ScimToken = Depends(_verify_scim_token),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        uid = _uuid.UUID(user_id)
-    except ValueError:
-        return JSONResponse(
-            status_code=404,
-            content=format_scim_error(404, "User not found"),
-            media_type=SCIM_CONTENT_TYPE,
-        )
-
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
+    user = await _get_scoped_user(user_id, scim_token, db)
     if not user:
         return JSONResponse(
             status_code=404,

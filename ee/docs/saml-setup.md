@@ -179,14 +179,64 @@ from metadata.
 
 ---
 
-## 5. SSO Flows
+## 5. Admin API Configuration
+
+As an alternative to environment variables, admins can manage SAML configuration
+through the REST API. This allows runtime changes without restarting the server.
+
+### View Current Config
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  https://observal.example.com/api/v1/admin/saml-config
+```
+
+Returns the current SAML configuration with sensitive fields (private keys,
+certificates) redacted. The `source` field indicates whether config comes from
+`env` (environment variables), `database`, or `none`.
+
+### Create or Update Config
+
+```bash
+curl -X PUT \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "idp_entity_id": "https://idp.example.com/saml",
+    "idp_sso_url": "https://idp.example.com/saml/sso",
+    "idp_slo_url": "https://idp.example.com/saml/slo",
+    "idp_x509_cert": "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
+    "jit_provisioning": true,
+    "default_role": "user"
+  }' \
+  https://observal.example.com/api/v1/admin/saml-config
+```
+
+The SP key pair is auto-generated on first creation. To regenerate the SP key
+pair (e.g., after a key compromise), include `"regenerate_sp_key": true` in the
+request body.
+
+### Delete Config
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer $TOKEN" \
+  https://observal.example.com/api/v1/admin/saml-config
+```
+
+Deleting the SAML config disables SAML SSO immediately. Users who were using
+SAML will need to use password-based login until SAML is reconfigured.
+
+---
+
+## 6. SSO Flows
 
 ### SP-Initiated SSO
 
 In SP-initiated SSO, the user starts at Observal and is redirected to the IdP
 for authentication.
 
-1. The user visits the Observal login page and clicks **Sign in with SSO**.
+1. The user visits the Observal login page and clicks **Sign in with SAML SSO**.
 2. Observal redirects the browser to the IdP's SSO URL with a SAML
    `AuthnRequest`:
    ```
@@ -198,8 +248,8 @@ for authentication.
    ```
    POST /api/v1/sso/saml/acs
    ```
-5. Observal validates the SAML assertion, creates or updates the user session,
-   and redirects to the application.
+5. Observal validates the SAML assertion, checks for replay attacks, creates or
+   updates the user session, and redirects to the application.
 
 ### IdP-Initiated SSO
 
@@ -219,9 +269,37 @@ Both flows use the same ACS endpoint. The difference is that IdP-initiated
 responses do not contain an `InResponseTo` attribute, since there was no
 originating `AuthnRequest`.
 
+### Single Logout (SLO)
+
+When an IdP SLO URL is configured (via `SAML_IDP_SLO_URL` or the admin API),
+Observal supports SP-initiated logout:
+
+```
+GET /api/v1/sso/saml/logout
+```
+
+This endpoint:
+1. Generates a SAML LogoutRequest
+2. Redirects the user to the IdP's SLO endpoint
+3. The IdP terminates the session and redirects back to Observal's SLS callback:
+   ```
+   GET /api/v1/sso/saml/sls
+   ```
+4. Observal processes the LogoutResponse and redirects to the login page
+
+If no SLO URL is configured, the logout endpoint redirects directly to the
+login page (local session only).
+
+### Assertion Replay Protection
+
+Observal tracks SAML assertion IDs in Redis with a 5-minute TTL. If the same
+assertion is submitted twice (e.g., by an attacker replaying a captured SAML
+response), the second attempt is rejected with a 400 error and a security event
+is logged.
+
 ---
 
-## 6. Just-In-Time (JIT) Provisioning
+## 7. Just-In-Time (JIT) Provisioning
 
 When `SAML_JIT_PROVISIONING` is set to `true` (the default), Observal
 automatically creates user accounts on first SAML login. Here is how it works:
@@ -240,7 +318,7 @@ see a 403 Forbidden error.
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 ### 404 Not Found on SAML endpoints
 

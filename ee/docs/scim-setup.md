@@ -17,25 +17,59 @@ Before configuring SCIM, verify the following:
 
 ## Generating a SCIM Bearer Token
 
-Observal authenticates SCIM requests using a bearer token. The raw token is sent by your IdP in the `Authorization` header; only the SHA-256 hash is stored in the database.
+Observal authenticates SCIM requests using a bearer token. The raw token is sent
+by your IdP in the `Authorization` header; only the SHA-256 hash is stored in
+the database.
 
-### Step 1: Generate a random token
+### Option A: Admin API (recommended)
+
+Use the admin API to generate and manage tokens without direct database access:
+
+```bash
+# Create a new SCIM token
+curl -X POST \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"description": "Primary SCIM token for Okta"}' \
+  https://your-observal-instance.example.com/api/v1/admin/scim-tokens
+```
+
+The response includes the plaintext token. **Save it immediately -- it will not
+be shown again.**
+
+```json
+{
+  "id": "a1b2c3d4-...",
+  "token": "oXk9Qm7...",
+  "description": "Primary SCIM token for Okta",
+  "message": "Save this token now. It will not be shown again."
+}
+```
+
+To list active tokens (metadata only, no plaintext):
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://your-observal-instance.example.com/api/v1/admin/scim-tokens
+```
+
+To revoke a token:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://your-observal-instance.example.com/api/v1/admin/scim-tokens/{token-id}
+```
+
+### Option B: Manual Database Insert
+
+For environments without admin API access, you can insert tokens directly:
 
 ```bash
 export SCIM_TOKEN=$(openssl rand -hex 32)
 echo "Save this token securely: $SCIM_TOKEN"
-```
-
-### Step 2: Compute the SHA-256 hash
-
-```bash
 export SCIM_TOKEN_HASH=$(echo -n "$SCIM_TOKEN" | sha256sum | awk '{print $1}')
-echo "Token hash: $SCIM_TOKEN_HASH"
 ```
-
-### Step 3: Insert the token into the database
-
-Replace `YOUR_ORG_ID` with the UUID of your organization from the `organizations` table.
 
 ```sql
 INSERT INTO scim_tokens (id, org_id, token_hash, description, active, created_at)
@@ -49,23 +83,7 @@ VALUES (
 );
 ```
 
-Using `psql`:
-
-```bash
-psql "$DATABASE_URL" -c "
-  INSERT INTO scim_tokens (id, org_id, token_hash, description, active, created_at)
-  VALUES (
-    gen_random_uuid(),
-    'YOUR_ORG_ID',
-    '$SCIM_TOKEN_HASH',
-    'Primary SCIM token for Okta',
-    true,
-    now()
-  );
-"
-```
-
-### Step 4: Verify the token
+### Verify the Token
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
@@ -73,9 +91,11 @@ curl -s -o /dev/null -w "%{http_code}" \
   https://your-observal-instance.example.com/api/v1/scim/Users
 ```
 
-A `200` response confirms the token is valid. A `401` response indicates the token hash does not match any active record.
+A `200` response confirms the token is valid. A `401` response indicates the
+token hash does not match any active record.
 
-> **Important:** Store the raw `$SCIM_TOKEN` value securely. It cannot be recovered from the database, which only stores the hash.
+> **Important:** Store the raw token value securely. It cannot be recovered from
+> the database, which only stores the hash.
 
 ---
 
@@ -165,9 +185,20 @@ GET /api/v1/scim/Users
 
 | Parameter    | Type   | Default | Description                                                        |
 |--------------|--------|---------|--------------------------------------------------------------------|
-| `startIndex` | int    | 1       | 1-based index for pagination                                       |
-| `count`      | int    | 100     | Maximum number of users to return                                  |
-| `filter`     | string | (none)  | SCIM filter expression. Only `userName eq "value"` is supported.   |
+| `startIndex` | int    | 1       | 1-based index for pagination (minimum 1)                           |
+| `count`      | int    | 100     | Maximum number of users to return (maximum 500)                    |
+| `filter`     | string | (none)  | SCIM filter expression (see Filter Support below)                  |
+
+**Filter Support:**
+
+The following filter operators are supported on the `userName` attribute:
+
+| Expression | Description |
+|---|---|
+| `userName eq "alice@example.com"` | Exact match |
+| `userName ne "admin@example.com"` | Not equal |
+| `userName sw "alice"` | Starts with |
+| `userName co "example"` | Contains |
 
 **Example: list all users**
 
@@ -333,6 +364,82 @@ curl -X DELETE \
 
 **Response (404):** Returned if the user ID does not exist.
 
+### Partial Update (PATCH)
+
+```
+PATCH /api/v1/scim/Users/{id}
+```
+
+Performs a partial update using SCIM PatchOp format (RFC 7644 Section 3.5.2).
+This is the preferred update method for Okta and Azure AD.
+
+**Supported operations:**
+
+| Operation | Paths | Description |
+|---|---|---|
+| `replace` | `displayName`, `name.givenName`, `name.familyName`, `userName`, `emails`, `active` | Update a field |
+| `add` | Same as replace | Treated as replace for single-valued attributes |
+| `remove` | (none) | Returns 400 (required fields cannot be removed) |
+
+**Example: update display name**
+
+```bash
+curl -X PATCH \
+  -H "Authorization: Bearer $SCIM_TOKEN" \
+  -H "Content-Type: application/scim+json" \
+  -d '{
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      {"op": "replace", "path": "displayName", "value": "Jane Doe"}
+    ]
+  }' \
+  https://your-observal-instance.example.com/api/v1/scim/Users/{id}
+```
+
+**Example: deactivate a user via PATCH**
+
+```bash
+curl -X PATCH \
+  -H "Authorization: Bearer $SCIM_TOKEN" \
+  -H "Content-Type: application/scim+json" \
+  -d '{
+    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    "Operations": [
+      {"op": "replace", "path": "active", "value": false}
+    ]
+  }' \
+  https://your-observal-instance.example.com/api/v1/scim/Users/{id}
+```
+
+### Discovery Endpoints
+
+These endpoints do not require authentication and are used by IdPs during SCIM
+configuration to discover server capabilities.
+
+**Service Provider Configuration:**
+
+```
+GET /api/v1/scim/ServiceProviderConfig
+```
+
+Returns supported SCIM features (patch, filter, bulk, authentication schemes).
+
+**Schemas:**
+
+```
+GET /api/v1/scim/Schemas
+```
+
+Returns the User schema definition with all supported attributes.
+
+**Resource Types:**
+
+```
+GET /api/v1/scim/ResourceTypes
+```
+
+Returns the list of supported resource types (currently only `User`).
+
 ---
 
 ## How SCIM Works with SAML
@@ -409,14 +516,18 @@ Without SCIM, user accounts are only created via SAML JIT (just-in-time) provisi
 
 ### Revoking a SCIM Token
 
-To immediately revoke a token, set it to inactive:
+**Using the admin API (recommended):**
+
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://your-observal-instance.example.com/api/v1/admin/scim-tokens/{token-id}
+```
+
+**Using direct database access:**
 
 ```sql
 UPDATE scim_tokens SET active = false WHERE id = 'TOKEN_UUID';
 ```
 
-All subsequent requests using that token will receive `401`. To fully remove the token record:
-
-```sql
-DELETE FROM scim_tokens WHERE id = 'TOKEN_UUID';
-```
+All subsequent requests using the revoked token will receive `401`.

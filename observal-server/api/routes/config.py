@@ -1,7 +1,9 @@
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import select
 
+from api.deps import get_db
 from config import settings
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
@@ -38,12 +40,23 @@ async def get_endpoints(request: Request):
 
 
 @router.get("/public")
-async def get_public_config():
+async def get_public_config(db=Depends(get_db)):
     """Public configuration for frontend. No auth required."""
+    saml_enabled = bool(settings.SAML_IDP_ENTITY_ID and settings.SAML_IDP_SSO_URL)
+
+    if not saml_enabled and settings.DEPLOYMENT_MODE == "enterprise":
+        try:
+            from models.saml_config import SamlConfig
+
+            result = await db.execute(select(SamlConfig).where(SamlConfig.active.is_(True)).limit(1))
+            saml_enabled = result.scalar_one_or_none() is not None
+        except Exception:
+            pass
+
     return {
         "deployment_mode": settings.DEPLOYMENT_MODE,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
         "sso_only": settings.SSO_ONLY,
-        "saml_enabled": bool(settings.SAML_IDP_ENTITY_ID and settings.SAML_IDP_SSO_URL),
+        "saml_enabled": saml_enabled,
         "eval_configured": bool(settings.EVAL_MODEL_NAME),
     }

@@ -42,13 +42,20 @@ logger = logging.getLogger("observal.ee.saml")
 
 router = APIRouter(prefix="/api/v1/sso/saml", tags=["enterprise-sso"])
 
+_env_saml_config_cache: object | None = None
+
 
 async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
+    global _env_saml_config_cache
+
     result = await db.execute(select(SamlConfig).where(SamlConfig.active.is_(True)).limit(1))
     config = result.scalar_one_or_none()
     if config:
         return config
     if settings.SAML_IDP_ENTITY_ID and settings.SAML_IDP_SSO_URL:
+        if _env_saml_config_cache is not None:
+            return _env_saml_config_cache
+
         sp_entity_id = settings.SAML_SP_ENTITY_ID or f"{settings.FRONTEND_URL}/api/v1/sso/saml/metadata"
         sp_acs_url = settings.SAML_SP_ACS_URL or f"{settings.FRONTEND_URL}/api/v1/sso/saml/acs"
         enc_password = settings.SAML_SP_KEY_ENCRYPTION_PASSWORD
@@ -71,6 +78,7 @@ async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
                 "org_id": None,
             },
         )()
+        _env_saml_config_cache = env_config
         return env_config
     return None
 
@@ -273,6 +281,23 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         await db.flush()
 
     else:
+        if user.auth_provider == "deactivated":
+            await emit_security_event(
+                SecurityEvent(
+                    event_type=EventType.SSO_FAILURE,
+                    severity=Severity.WARNING,
+                    outcome="failure",
+                    actor_email=email,
+                    source_ip=source_ip,
+                    user_agent=user_agent,
+                    detail="Deactivated user attempted SAML login",
+                )
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Account deactivated. Contact your administrator.",
+            )
+
         if user.auth_provider == "local" and not user.sso_subject_id:
             user.auth_provider = "saml"
             user.sso_subject_id = subject_id
@@ -363,21 +388,14 @@ async def saml_sls(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/metadata")
-async def saml_metadata(db: AsyncSession = Depends(get_db)):
+async def saml_metadata(request: Request, db: AsyncSession = Depends(get_db)):
     """Return SP metadata XML for IdP configuration."""
     config = await _get_saml_config(db)
     if not config:
         raise HTTPException(status_code=404, detail="SAML SSO is not configured")
 
     sp_key = _decrypt_sp_key(config)
-    request_data = {
-        "https": "on",
-        "http_host": "localhost",
-        "server_port": "443",
-        "script_name": "/api/v1/sso/saml/metadata",
-        "get_data": {},
-        "post_data": {},
-    }
+    request_data = _prepare_saml_request(request)
     auth = _build_auth(config, sp_key, request_data)
     metadata = auth.get_settings().get_sp_metadata()
     errors = auth.get_settings().validate_metadata(metadata)
