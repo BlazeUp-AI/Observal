@@ -9,7 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from redis.exceptions import RedisError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -17,7 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
 
-from api.deps import get_db
+from api.deps import get_db, get_or_create_default_org
 from api.graphql import get_context_dep, schema
 from api.middleware.content_type import ContentTypeMiddleware
 from api.middleware.request_id import RequestIDMiddleware
@@ -90,8 +90,17 @@ async def lifespan(app: FastAPI):
         key_password=settings.JWT_KEY_PASSWORD,
     )
 
-    # Seed demo accounts when no real users exist and DEMO_* env vars are set
     from database import async_session as _session_factory
+
+    # Ensure default org exists and backfill any users missing one
+    async with _session_factory() as db:
+        default_org = await get_or_create_default_org(db)
+        await db.execute(
+            update(User).where(User.org_id.is_(None)).values(org_id=default_org.id)
+        )
+        await db.commit()
+
+    # Seed demo accounts when no real users exist and DEMO_* env vars are set
     from services.demo_accounts import seed_demo_accounts
 
     async with _session_factory() as db:
