@@ -283,8 +283,12 @@ export function useDeleteUser() {
 }
 
 export function useResetPassword() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => admin.resetPassword(id, { generate: true }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to reset password");
     },
