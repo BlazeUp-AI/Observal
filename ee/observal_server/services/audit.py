@@ -123,7 +123,10 @@ async def flush_audit_buffer() -> int:
 def register_audit_handlers():
     """Register event bus handlers for audit logging.  Called during enterprise startup."""
     global _flush_task
-    _flush_task = asyncio.get_running_loop().create_task(_periodic_flush())
+    try:
+        _flush_task = asyncio.get_running_loop().create_task(_periodic_flush())
+    except RuntimeError:
+        _flush_task = None
 
     @bus.on(AuditableAction)
     async def _audit_generic(event: AuditableAction):
