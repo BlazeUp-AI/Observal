@@ -7,12 +7,26 @@ dist/
 build/
 .eggs/
 
-# IDE
+# IDE / editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# AI agent / coding tool configs
+.claude/
+CLAUDE.md
+.kiro/
+.cursor/
+.cursorignore
+.cursorindexingignore
+.gemini/
+GEMINI.md
+.opencode/
+.github/copilot-instructions.md
+.copilot/
+.worktrees/
 
 # OS
 .DS_Store
@@ -34,12 +48,6 @@ observal-web/dist/
 docker/data/
 docker/clickhouse/users.d/default-user.xml
 
-# Local config
-.kiro/
-.claude/
-CLAUDE.md
-graphify-out/
-observal-web/tsconfig.tsbuildinfo
-.worktrees/
+# Local / ephemeral
 .playwright-mcp/
 e2e-screenshots/

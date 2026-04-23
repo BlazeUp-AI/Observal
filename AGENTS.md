@@ -369,3 +369,16 @@ NEVER guess or hallucinate library APIs. Lookup docs first to ensure code matche
 - Alert rules support metric threshold monitoring with webhook delivery. The `alert_evaluator.py` service runs periodic checks against ClickHouse metrics and fires webhooks (with HMAC signing via `webhook_signer.py` and delivery retries via `webhook_delivery.py`) when thresholds are breached. SSRF protection prevents webhooks to private IP ranges.
 - Telemetry data is scrubbed by `secrets_redactor.py` before ClickHouse storage. Security events are logged via `security_events.py` for audit trails.
 - Server endpoint discovery (`api/routes/config.py`) eliminates hardcoded URLs — clients derive endpoints from server config at runtime.
+
+### Paths to never commit
+
+The following paths are developer-local AI agent and IDE configurations. They are gitignored but listed here so agents don't try to remove the gitignore entries or create these files in PRs:
+
+- `.claude/`, `CLAUDE.md` — Claude Code
+- `.kiro/` — Kiro
+- `.cursor/`, `.cursorignore`, `.cursorindexingignore` — Cursor
+- `.gemini/`, `GEMINI.md` — Gemini CLI
+- `.opencode/` — OpenCode
+- `.github/copilot-instructions.md`, `.copilot/` — GitHub Copilot
+- `.vscode/` — VS Code
+- `.worktrees/` — Git worktree scratch area
