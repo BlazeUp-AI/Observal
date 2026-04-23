@@ -14,10 +14,19 @@
 
 ---
 
+## Prerequisites
+
+- **Docker Engine ≥ 24.0** with **Compose v2** (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages.
+- Verify: `docker version` and `docker compose version`
+
 ## 1. Environment Setup
 - [ ] `make rebuild-clean`
-- [ ] `uv sync`
-- [ ] Install the CLI: `curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash` or `uv tool install observal-cli`
+- [ ] Install the CLI from source:
+  ```bash
+  git clone https://github.com/BlazeUp-AI/Observal.git
+  cd Observal
+  uv tool install --editable .
+  ```
 - [ ] Verify: `observal --version`
 
 ## 2. Super Admin — User Management
