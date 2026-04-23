@@ -387,19 +387,13 @@ async def exchange_code(req: CodeExchangeRequest, db: AsyncSession = Depends(get
     try:
         redis = get_redis()
         redis_key = f"oauth_code:{req.code}"
-        data = await redis.get(redis_key)
+        data = await redis.getdel(redis_key)
     except RedisError as e:
         logger.warning("Redis unavailable during code exchange: %s", e)
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
 
     if not data:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
-
-    # Delete immediately to enforce single-use
-    try:
-        await redis.delete(redis_key)
-    except RedisError:
-        pass
 
     try:
         payload = json.loads(data)
