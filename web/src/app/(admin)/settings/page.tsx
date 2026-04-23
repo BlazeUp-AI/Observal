@@ -185,7 +185,7 @@ const ALL_DEFAULT_SETTINGS = SETTING_SECTIONS.flatMap((s) => s.settings);
 export default function SettingsPage() {
   const { ready } = useRoleGuard("admin");
   const { data: settings, isLoading, isError, error, refetch } = useAdminSettings();
-  const { deploymentMode, ssoEnabled, evalConfigured } = useDeploymentConfig();
+  const { deploymentMode, ssoEnabled, samlEnabled, evalConfigured } = useDeploymentConfig();
   const [addingKey, setAddingKey] = useState("");
   const [addingValue, setAddingValue] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -294,9 +294,15 @@ export default function SettingsPage() {
               </span>
             </div>
             <div className="flex items-center justify-between py-1 border-t border-border">
-              <span className="text-xs text-muted-foreground">SSO</span>
+              <span className="text-xs text-muted-foreground">SSO (OAuth/OIDC)</span>
               <span className={`text-xs font-medium ${ssoEnabled ? "text-success" : "text-muted-foreground"}`}>
                 {ssoEnabled ? "Enabled" : "Disabled"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-1 border-t border-border">
+              <span className="text-xs text-muted-foreground">SAML SSO</span>
+              <span className={`text-xs font-medium ${samlEnabled ? "text-success" : "text-muted-foreground"}`}>
+                {samlEnabled ? "Configured" : "Not configured"}
               </span>
             </div>
             <div className="flex items-center justify-between py-1 border-t border-border">
