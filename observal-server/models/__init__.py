@@ -14,7 +14,9 @@ from models.hook import HookDownload, HookListing
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
 from models.organization import Organization
 from models.prompt import PromptDownload, PromptListing
+from models.saml_config import SamlConfig
 from models.sandbox import SandboxDownload, SandboxListing
+from models.scim_token import ScimToken
 from models.scoring import (
     DEFAULT_DIMENSION_WEIGHTS,
     DEFAULT_PENALTIES,
@@ -62,8 +64,10 @@ __all__ = [
     "PenaltyTriggerType",
     "PromptDownload",
     "PromptListing",
+    "SamlConfig",
     "SandboxDownload",
     "SandboxListing",
+    "ScimToken",
     "Scorecard",
     "ScorecardDimension",
     "ScoringDimension",
