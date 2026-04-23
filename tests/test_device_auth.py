@@ -7,15 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.ratelimit import limiter
-
-
-@pytest.fixture(autouse=True)
-def _reset_rate_limiter():
-    """Reset the in-memory rate limiter before each test to avoid cross-test pollution."""
-    limiter.reset()
-    yield
-
 
 def _make_mock_user(**overrides):
     from models.user import UserRole

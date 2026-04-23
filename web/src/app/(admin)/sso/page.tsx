@@ -69,7 +69,7 @@ function SamlConfigSection() {
     return <ErrorState message={(error as Error)?.message} onRetry={() => refetch()} />;
   }
 
-  const configured = data?.configured;
+  const configured = !!data?.configured;
   const source = data?.source as string;
 
   return (
@@ -90,7 +90,7 @@ function SamlConfigSection() {
         </div>
         {configured && (
           <CardDescription className="text-xs">
-            Source: {source === "env" ? "environment variables" : source === "database" ? "admin API" : source}
+            Source: {source === "env" ? "environment variables" : source === "database" ? "admin API" : String(source)}
           </CardDescription>
         )}
       </CardHeader>
@@ -102,10 +102,10 @@ function SamlConfigSection() {
               <div className="text-xs font-mono break-all">{String(data?.idp_entity_id || "")}</div>
               <div className="text-xs text-muted-foreground">IdP SSO URL</div>
               <div className="text-xs font-mono break-all">{String(data?.idp_sso_url || "")}</div>
-              {data?.idp_slo_url && (
+              {typeof data?.idp_slo_url === "string" && data.idp_slo_url && (
                 <>
                   <div className="text-xs text-muted-foreground">IdP SLO URL</div>
-                  <div className="text-xs font-mono break-all">{String(data.idp_slo_url)}</div>
+                  <div className="text-xs font-mono break-all">{data.idp_slo_url}</div>
                 </>
               )}
               <div className="text-xs text-muted-foreground">SP Entity ID</div>
