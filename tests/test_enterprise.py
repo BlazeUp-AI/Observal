@@ -80,6 +80,25 @@ class TestConfigValidator:
         issues = validate_enterprise_config(settings)
         assert issues == []
 
+    def test_detects_missing_saml_idp_cert_when_saml_configured(self):
+        from unittest.mock import MagicMock
+
+        from ee.observal_server.services.config_validator import validate_enterprise_config
+
+        settings = MagicMock()
+        settings.SECRET_KEY = "proper-random-secret-key"
+        settings.SSO_ONLY = True
+        settings.OAUTH_CLIENT_ID = "client-id"
+        settings.OAUTH_CLIENT_SECRET = "client-secret"
+        settings.OAUTH_SERVER_METADATA_URL = "https://idp.example.com/.well-known"
+        settings.SAML_IDP_ENTITY_ID = "https://idp.example.com"
+        settings.SAML_IDP_SSO_URL = "https://idp.example.com/sso"
+        settings.SAML_IDP_X509_CERT = ""
+        settings.FRONTEND_URL = "https://app.example.com"
+
+        issues = validate_enterprise_config(settings)
+        assert any("SAML_IDP_X509_CERT" in i for i in issues)
+
 
 class TestEEPlaceholderRoutes:
     """SAML and SCIM endpoints should return 501 placeholder responses."""

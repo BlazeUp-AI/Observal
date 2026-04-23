@@ -27,6 +27,13 @@ def validate_enterprise_config(settings: Settings) -> list[str]:
         if not settings.OAUTH_SERVER_METADATA_URL:
             issues.append("OAUTH_SERVER_METADATA_URL is not set (required when SSO_ONLY=true)")
 
+    saml_entity = getattr(settings, "SAML_IDP_ENTITY_ID", "")
+    saml_sso = getattr(settings, "SAML_IDP_SSO_URL", "")
+    if saml_entity and saml_sso:
+        saml_cert = getattr(settings, "SAML_IDP_X509_CERT", "")
+        if not saml_cert:
+            issues.append("SAML_IDP_X509_CERT is not set (required when SAML IdP is configured)")
+
     if settings.FRONTEND_URL in ("http://localhost:3000", ""):
         issues.append("FRONTEND_URL is localhost or empty")
 
