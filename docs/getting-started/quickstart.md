@@ -1,15 +1,24 @@
 # Quickstart
 
-Go from zero to "my first trace in the Observal dashboard" in about five minutes. This assumes you've [installed the CLI](installation.md) and have Docker running.
+Go from zero to "my first trace in the Observal dashboard" in about five minutes. This assumes you have Docker running.
 
 By the end of this guide you will have:
 
+* The Observal CLI installed
 * An Observal server running locally
 * The CLI logged in as an admin
 * At least one MCP server instrumented
 * A live trace visible in the web UI
 
-## 1. Start the server
+## 1. Install the CLI
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
+```
+
+No Python required. For alternative install methods, see [Installation](installation.md).
+
+## 2. Start the server
 
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git
@@ -41,7 +50,7 @@ curl http://localhost:8000/health
 
 Hitting a port conflict? See [Self-Hosting → Ports and volumes](../self-hosting/ports-and-volumes.md).
 
-## 2. Log in
+## 3. Log in
 
 ```bash
 observal auth login
@@ -69,7 +78,7 @@ observal auth whoami
 # → super@demo.example (super_admin)
 ```
 
-## 3. Instrument your IDE
+## 4. Instrument your IDE
 
 If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, one command wires them all up:
 
@@ -102,7 +111,7 @@ Nothing broke. Your agents still work exactly as before. The only difference: ev
 
 Restart your IDE to pick up the new config. The next MCP call will produce a trace.
 
-## 4. See your first trace
+## 5. See your first trace
 
 Open `http://localhost:3000/traces` in your browser. Trigger anything in your IDE that uses an MCP tool (ask Claude to list files, read a GitHub issue, whatever). Refresh — you'll see the trace appear.
 
@@ -118,7 +127,7 @@ Drill in:
 observal ops spans <trace-id>
 ```
 
-## 5. (Optional) Pull an agent
+## 6. (Optional) Pull an agent
 
 Browse what the community has published:
 

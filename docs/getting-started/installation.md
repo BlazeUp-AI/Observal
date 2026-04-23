@@ -1,21 +1,18 @@
 # Installation
 
-Install the Observal CLI — `observal` — on your machine. The CLI is what you use to log in, instrument IDE configs, pull agents, and query traces.
+Install the Observal CLI on your machine. The CLI is what you use to log in, instrument IDE configs, pull agents, and query traces.
 
-If you also want to **self-host** the Observal server (API + web UI + databases), see [Self-Hosting → Docker Compose setup](../self-hosting/docker-compose.md). You can install the CLI first and point it at any Observal server later.
+If you also want to **self-host** the Observal server (API + web UI + databases), see [Self-Hosting](../self-hosting/docker-compose.md).
 
-## Requirements
+## Install (standalone binary)
 
-* Python **3.11 or newer** (3.11, 3.12, 3.13 are tested)
-* One of: `uv` (recommended), `pipx`, or `pip`
-
-## Install with uv (recommended)
-
-[`uv`](https://docs.astral.sh/uv/) is the fastest way to install Python CLIs. It keeps Observal isolated in its own virtualenv without polluting your system Python.
+The standalone binary is the simplest way to install. No Python required.
 
 ```bash
-uv tool install observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 ```
+
+This downloads the latest release binary for your platform and places it on your `PATH`.
 
 Verify it worked:
 
@@ -23,39 +20,45 @@ Verify it worked:
 observal --version
 ```
 
-## Install with pipx
+## Alternative: install with Python
+
+If you prefer to install via Python, use one of these methods. Requires Python 3.11 or newer.
+
+**uv (recommended):**
+
+```bash
+uv tool install observal-cli
+```
+
+**pipx:**
 
 ```bash
 pipx install observal-cli
 ```
 
-## Install with pip
+**pip:**
 
 ```bash
 pip install --user observal-cli
 ```
 
-## Optional extras
+### Optional extras
 
-Observal ships with two opt-in extras:
+Observal ships with two opt-in extras for the Python install:
 
 | Extra | What it adds | When to install |
 | --- | --- | --- |
-| `sandbox` | Docker SDK (for sandbox execution) | If you'll run agents inside Observal sandboxes |
+| `sandbox` | Docker SDK (for sandbox execution) | If you run agents inside Observal sandboxes |
 | `migrate` | `asyncpg` (for the `observal migrate` command) | If you operate the server and run DB migrations from the CLI |
-| `all` | Both of the above | If you're an operator doing everything |
+| `all` | Both of the above | If you do both |
 
 Install an extra:
 
 ```bash
 uv tool install 'observal-cli[sandbox]'
-uv tool install 'observal-cli[migrate]'
-uv tool install 'observal-cli[all]'
 ```
 
-## Install from source (editable)
-
-If you're contributing or testing an unreleased build:
+## Install from source (for contributors)
 
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git
@@ -65,24 +68,32 @@ uv tool install --editable .
 
 ## What gets installed
 
-Three entry points land on your `PATH`:
+Four entry points land on your `PATH`:
 
 | Command | Purpose |
 | --- | --- |
 | `observal` | The main CLI |
-| `observal-shim` | stdio shim — sits between your IDE and stdio MCP servers |
-| `observal-proxy` | HTTP proxy — sits between your IDE and HTTP/SSE MCP servers |
+| `observal-shim` | stdio shim between your IDE and stdio MCP servers |
+| `observal-proxy` | HTTP proxy between your IDE and HTTP/SSE MCP servers |
 | `observal-sandbox-run` | Sandbox runner invoked by Observal sandboxes |
 
-You will almost never call the shim, proxy, or sandbox runner directly — the CLI wires them into your IDE config for you.
+You will almost never call the shim, proxy, or sandbox runner directly. The CLI wires them into your IDE config for you.
 
-## Upgrade later
+## Upgrade
 
 ```bash
 observal self upgrade
 ```
 
 ## Uninstall
+
+Standalone binary:
+
+```bash
+rm "$(which observal)"
+```
+
+Python install:
 
 ```bash
 uv tool uninstall observal-cli
@@ -98,4 +109,4 @@ rm -rf ~/.observal
 
 ## Next
 
-→ [Quickstart](quickstart.md)
+-> [Quickstart](quickstart.md)

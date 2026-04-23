@@ -14,7 +14,7 @@ VS Code (with MCP-aware extensions) is supported at the MCP and rules level.
 ## Setup
 
 ```bash
-uv tool install observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
 observal scan --ide vscode

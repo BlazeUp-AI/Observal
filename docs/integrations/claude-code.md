@@ -14,7 +14,7 @@ Claude Code is the most complete integration. Native OpenTelemetry traces and lo
 
 ```bash
 # 1. Install and log in to the Observal CLI
-uv tool install observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
 # 2. Instrument any MCP servers you already have

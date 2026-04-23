@@ -60,8 +60,8 @@ Two commands to get them productive:
 
 ```bash
 # The new engineer runs:
-uv tool install observal-cli
-observal auth register --server https://observal.your-company.internal
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
+observal auth login --server https://observal.your-company.internal
 ```
 
 Self-registration is enabled in `DEPLOYMENT_MODE=local`. For enterprise mode (SSO / SCIM), users provision via your IdP — see [Authentication and SSO](../self-hosting/authentication.md).

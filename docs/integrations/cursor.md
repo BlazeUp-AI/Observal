@@ -17,7 +17,7 @@ If these matter, use Claude Code or Kiro instead.
 ## Setup
 
 ```bash
-uv tool install observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
 observal scan --ide cursor

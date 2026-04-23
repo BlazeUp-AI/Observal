@@ -15,7 +15,7 @@ Gemini CLI is supported at the MCP and rules level. Mostly the same shape as [Cu
 ## Setup
 
 ```bash
-uv tool install observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
 observal scan --ide gemini-cli

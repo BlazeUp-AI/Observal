@@ -43,7 +43,7 @@ kiro login
 ### 2. Install the Observal CLI
 
 ```bash
-uv tool install observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 ```
 
@@ -171,8 +171,10 @@ Add at least one MCP server to Kiro first, then re-run `scan`.
 
 ### `observal-shim` not found
 
+Reinstall:
+
 ```bash
-uv tool install --force observal-cli
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 which observal-shim
 ```
 

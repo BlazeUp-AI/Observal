@@ -55,7 +55,7 @@ For local dev, `http://localhost:3000` and `http://localhost:8000` are fine. For
 Log in with the CLI:
 
 ```bash
-uv tool install observal-cli     # if you haven't already
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash   # if you haven't already
 observal auth login              # Email: super@demo.example, Password: super-changeme
 ```
 

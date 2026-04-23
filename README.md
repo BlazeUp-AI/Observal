@@ -39,17 +39,36 @@ See [CHANGELOG.md](CHANGELOG.md) for recent updates.
 
 ## Quick start
 
+**Install the CLI** (standalone binary, no Python required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
+```
+
+Or install via Python: `uv tool install observal-cli` / `pipx install observal-cli` / `pip install --user observal-cli`. See [Installation](docs/getting-started/installation.md) for details.
+
+**Start the server:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install-server.sh | bash
+```
+
+Or manually:
+
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git
 cd Observal
 cp .env.example .env
-
 docker compose -f docker/docker-compose.yml up --build -d
-uv tool install --editable .
+```
+
+**Log in:**
+
+```bash
 observal auth login            # auto-creates admin on fresh server
 ```
 
-Eight services start (API, web UI, Postgres, ClickHouse, Redis, worker, OTEL collector, Grafana). Full walkthrough in [Quickstart](docs/getting-started/quickstart.md); operator guide in [Self-Hosting → Docker Compose setup](docs/self-hosting/docker-compose.md).
+Eight services start (API, web UI, Postgres, ClickHouse, Redis, worker, OTEL collector, Grafana). Full walkthrough in [Quickstart](docs/getting-started/quickstart.md); operator guide in [Self-Hosting](docs/self-hosting/docker-compose.md).
 
 Already have MCP servers in your IDE? Instrument them in one command:
 

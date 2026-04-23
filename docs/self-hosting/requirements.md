@@ -47,8 +47,8 @@ Postgres stays under 500 MB for most deployments — it holds only registry meta
 
 For the **CLI** (developer machines, not the server):
 
-* Python **3.11, 3.12, or 3.13**
-* Any of `uv` (recommended), `pipx`, or `pip`
+* **Standalone binary** (recommended) -- no dependencies, just `curl | bash`
+* Or Python **3.11, 3.12, or 3.13** with `uv`, `pipx`, or `pip`
 
 ## Network
 
