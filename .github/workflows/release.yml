@@ -51,11 +51,7 @@ jobs:
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
             # Validate version matches pyproject.toml
-            PKG_VERSION=$(python3 -c "
-            import re, pathlib
-            m = re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M)
-            print(m.group(1))
-            ")
+            PKG_VERSION=$(python3 -c "import re, pathlib; m = re.search(r'^version\s*=\s*\"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M); print(m.group(1))")
             if [ "$VERSION" != "$PKG_VERSION" ]; then
               echo "::error::Commit says v$VERSION but pyproject.toml says $PKG_VERSION"
               exit 1
