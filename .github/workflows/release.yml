@@ -1,11 +1,8 @@
 # Automated release pipeline for Observal.
 #
-# Triggered when a release PR merges to main (detected by chore(release) commit).
+# Triggered when a release PR merges to main (detected by bump(release) commit).
 # Creates the git tag, then builds: CLI binaries (6 platforms), Docker images (GHCR),
-# server tarball, PyPI package.
-#
-# Public releases (major/feature) require approval in the 'production' environment.
-# Patch releases auto-publish without approval.
+# server tarball, PyPI package. All releases require approval.
 
 name: Release
 
@@ -76,6 +73,8 @@ jobs:
       - name: Create release tag
         if: steps.version.outputs.is_release == 'true'
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           VERSION="v${{ steps.version.outputs.version }}"
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
@@ -232,11 +231,20 @@ jobs:
           name: observal-server-v${{ needs.preflight.outputs.version }}.tar.gz
           path: observal-server-v${{ needs.preflight.outputs.version }}.tar.gz
 
-  # ── Job 4: PyPI publish ────────────────────────────────────
+  # ── Approval gate (all releases) ────────────────────────────
+  approve:
+    name: Approval gate
+    needs: [preflight, cli-binaries, docker-images, server-package]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "${{ needs.preflight.outputs.bump_type }} release v${{ needs.preflight.outputs.version }} approved"
+
+  # ── Job 4: PyPI publish (after approval) ───────────────────
   pypi:
     name: Publish to PyPI
-    needs: preflight
-    if: needs.preflight.outputs.is_release == 'true'
+    needs: [preflight, approve]
+    if: needs.approve.result == 'success'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -254,20 +262,11 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  # ── Approval gate (all releases) ────────────────────────────
-  approve:
-    name: Approval gate
-    needs: [preflight, cli-binaries, docker-images, server-package, pypi]
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - run: echo "${{ needs.preflight.outputs.bump_type }} release v${{ needs.preflight.outputs.version }} approved"
-
   # ── Final: Create GitHub Release with all artifacts ────────
   release:
     name: GitHub Release
     needs: [preflight, cli-binaries, docker-images, server-package, pypi, approve]
-    if: ${{ !cancelled() && needs.cli-binaries.result == 'success' && needs.server-package.result == 'success' }}
+    if: needs.approve.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -289,14 +288,10 @@ jobs:
           cd release
           sha256sum * > checksums.txt
 
-      - name: Generate changelog for this release
+      - name: Generate release notes
         run: |
-          if command -v git-cliff >/dev/null 2>&1; then
-            git-cliff --config cliff.toml --latest --strip header > release/RELEASE_NOTES.md
-          else
-            pip install git-cliff
-            git-cliff --config cliff.toml --latest --strip header > release/RELEASE_NOTES.md
-          fi
+          pip install git-cliff
+          git-cliff --config cliff.toml --latest --strip header > release/RELEASE_NOTES.md
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
@@ -313,7 +308,6 @@ jobs:
             --draft \
             --title "Observal $VERSION" \
             --notes-file release/RELEASE_NOTES.md \
-            --generate-notes \
             --latest \
             release/*
 
