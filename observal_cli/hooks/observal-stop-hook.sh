@@ -42,12 +42,16 @@ trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
 MSG_COUNT=0
 THINK_COUNT=0
+FOUND_ASSISTANT=0
 
 # Use process substitution instead of pipe to avoid subshell variable scoping.
 # Write files from within the loop — they persist on disk regardless.
+# Transcript ends with metadata/attachment entries after the last user message,
+# so we skip user messages until we've seen at least one assistant message.
 while IFS= read -r line; do
   case "$line" in
     *'"type":"assistant"'*)
+      FOUND_ASSISTANT=1
       # Extract text blocks
       TEXT=$(echo "$line" | jq -r \
         '[.message.content[]? | select(.type == "text") | .text] | join("\n")' 2>/dev/null || true)
@@ -65,12 +69,10 @@ while IFS= read -r line; do
       fi
       ;;
     *'"type":"user"'*|*'"type":"human"'*)
-      # Hit a user message — this is the turn boundary, stop collecting
-      break
-      ;;
-    *)
-      # Skip system/tool_result/other non-assistant lines
-      continue
+      # Only break after we've collected at least one assistant message.
+      # Trailing metadata/attachments appear after the last user prompt,
+      # so we must skip past them to reach the assistant turn.
+      [ "$FOUND_ASSISTANT" = "1" ] && break
       ;;
   esac
 done < <(tac "$TRANSCRIPT_PATH" 2>/dev/null || true)
