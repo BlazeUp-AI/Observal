@@ -3,6 +3,9 @@
 import hashlib
 from unittest.mock import MagicMock
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 
 class TestScimService:
     def test_parse_scim_user_resource_extracts_fields(self):
@@ -107,3 +110,45 @@ class TestScimService:
         result = format_scim_error(404, "User not found")
         assert result["status"] == "404"
         assert result["detail"] == "User not found"
+
+
+class TestScimEndpoints:
+    @pytest.fixture
+    def scim_app(self):
+        from fastapi import FastAPI
+
+        from ee.observal_server.routes.scim import router
+
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    @pytest.mark.asyncio
+    async def test_list_users_requires_auth(self, scim_app):
+        async with AsyncClient(transport=ASGITransport(app=scim_app), base_url="http://test") as ac:
+            r = await ac.get("/api/v1/scim/Users")
+        assert r.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_create_user_requires_auth(self, scim_app):
+        async with AsyncClient(transport=ASGITransport(app=scim_app), base_url="http://test") as ac:
+            r = await ac.post("/api/v1/scim/Users", json={"userName": "test@test.com"})
+        assert r.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_get_user_requires_auth(self, scim_app):
+        async with AsyncClient(transport=ASGITransport(app=scim_app), base_url="http://test") as ac:
+            r = await ac.get("/api/v1/scim/Users/550e8400-e29b-41d4-a716-446655440000")
+        assert r.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_update_user_requires_auth(self, scim_app):
+        async with AsyncClient(transport=ASGITransport(app=scim_app), base_url="http://test") as ac:
+            r = await ac.put("/api/v1/scim/Users/550e8400-e29b-41d4-a716-446655440000", json={})
+        assert r.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_delete_user_requires_auth(self, scim_app):
+        async with AsyncClient(transport=ASGITransport(app=scim_app), base_url="http://test") as ac:
+            r = await ac.delete("/api/v1/scim/Users/550e8400-e29b-41d4-a716-446655440000")
+        assert r.status_code == 401
