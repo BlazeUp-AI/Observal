@@ -69,6 +69,12 @@ async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
         sp_entity_id = settings.SAML_SP_ENTITY_ID or f"{settings.FRONTEND_URL}/api/v1/sso/saml/metadata"
         sp_acs_url = settings.SAML_SP_ACS_URL or f"{settings.FRONTEND_URL}/api/v1/sso/saml/acs"
         enc_password = settings.SAML_SP_KEY_ENCRYPTION_PASSWORD
+        if not enc_password:
+            logger.warning(
+                "SAML_SP_KEY_ENCRYPTION_PASSWORD is not set -- "
+                "SP private key will be stored unencrypted. "
+                "Set this variable in production."
+            )
         private_key_pem, cert_pem = generate_sp_key_pair(common_name=sp_entity_id)
         sp_key_enc = encrypt_private_key(private_key_pem, enc_password)
         env_config = type(
