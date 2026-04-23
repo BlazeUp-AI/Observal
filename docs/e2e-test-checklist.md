@@ -17,6 +17,8 @@
 ## 1. Environment Setup
 - [ ] `make rebuild-clean`
 - [ ] `uv sync`
+- [ ] Install the CLI: `curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash` or `uv tool install observal-cli`
+- [ ] Verify: `observal --version`
 
 ## 2. Super Admin — User Management
 - [ ] Log in as super admin
