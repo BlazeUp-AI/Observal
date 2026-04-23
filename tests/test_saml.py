@@ -376,3 +376,120 @@ class TestSamlEndpoints:
                 assert "replay" in event_arg.detail.lower()
         finally:
             saml_app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_logout_redirects_to_idp_when_slo_configured(self, saml_app):
+        """Logout should redirect to IdP SLO endpoint when configured."""
+        mock_config, private_key = self._make_mock_config()
+        mock_config.idp_slo_url = "https://idp.example.com/slo"
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/logout")
+            assert r.status_code == 302
+            location = r.headers.get("location", "")
+            assert "idp.example.com/slo" in location
+
+    @pytest.mark.asyncio
+    async def test_logout_redirects_to_login_when_no_slo(self, saml_app):
+        """Logout should redirect to /login when SLO is not configured."""
+        mock_config, _private_key = self._make_mock_config()
+        mock_config.idp_slo_url = ""
+
+        with patch(
+            "ee.observal_server.routes.sso_saml._get_saml_config",
+            new_callable=AsyncMock,
+            return_value=mock_config,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/logout")
+            assert r.status_code == 302
+            location = r.headers.get("location", "")
+            assert "/login" in location
+
+    @pytest.mark.asyncio
+    async def test_logout_redirects_to_login_when_not_configured(self, saml_app):
+        """Logout should redirect to /login when SAML is not configured at all."""
+        with patch(
+            "ee.observal_server.routes.sso_saml._get_saml_config",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/logout")
+            assert r.status_code == 302
+            assert "/login" in r.headers.get("location", "")
+
+    @pytest.mark.asyncio
+    async def test_sls_handles_callback(self, saml_app):
+        """SLS endpoint should process SLO and redirect to /login."""
+        mock_config, private_key = self._make_mock_config()
+        mock_config.idp_slo_url = "https://idp.example.com/slo"
+
+        mock_auth = MagicMock()
+        mock_auth.process_slo.return_value = None
+        mock_auth.get_errors.return_value = []
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._build_auth",
+                return_value=mock_auth,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/sls?SAMLResponse=dummybase64")
+            assert r.status_code == 302
+            assert "/login" in r.headers.get("location", "")
+            mock_auth.process_slo.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sls_redirects_when_not_configured(self, saml_app):
+        """SLS endpoint should redirect to /login when SAML is not configured."""
+        with patch(
+            "ee.observal_server.routes.sso_saml._get_saml_config",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/sls")
+            assert r.status_code == 302
+            assert "/login" in r.headers.get("location", "")

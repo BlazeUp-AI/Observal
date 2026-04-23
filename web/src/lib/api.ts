@@ -401,6 +401,14 @@ export const admin = {
     return get<{ events: SecurityEvent[]; total: number }>(`/admin/security-events${qs}`);
   },
   diagnostics: () => get<DiagnosticsResponse>("/admin/diagnostics"),
+  samlConfig: () => get<Record<string, unknown>>("/admin/saml-config"),
+  updateSamlConfig: (body: Record<string, unknown>) =>
+    put<Record<string, unknown>>("/admin/saml-config", body),
+  deleteSamlConfig: () => del("/admin/saml-config"),
+  scimTokens: () => get<{ id: string; description: string; active: boolean; created_at: string; token_prefix: string }[]>("/admin/scim-tokens"),
+  createScimToken: (body: { description?: string }) =>
+    post<{ id: string; token: string; description: string; message: string }>("/admin/scim-tokens", body),
+  revokeScimToken: (id: string) => del(`/admin/scim-tokens/${id}`),
 };
 
 // ── Config ─────────────────────────────────────────────────────────
