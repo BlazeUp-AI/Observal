@@ -355,8 +355,8 @@ def _overview(output: str = typer.Option("table", "--output", "-o")):
     rprint(f"  [bold cyan]MCP Servers[/bold cyan]     {data.get('total_mcps', 0)}")
     rprint(f"  [bold magenta]Agents[/bold magenta]          {data.get('total_agents', 0)}")
     rprint(f"  [bold]Users[/bold]           {data.get('total_users', 0)}")
-    rprint(f"  [bold green]Tool calls[/bold green]      {data.get('total_tool_calls_today', 0)} today")
-    rprint(f"  [bold yellow]Interactions[/bold yellow]    {data.get('total_agent_interactions_today', 0)} today")
+    rprint(f"  [bold green]Tool calls[/bold green]      {data.get('total_tool_calls', 0)}")
+    rprint(f"  [bold yellow]Interactions[/bold yellow]    {data.get('total_agent_interactions', 0)}")
     rprint()
 
 

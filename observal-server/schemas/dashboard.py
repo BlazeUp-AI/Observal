@@ -37,8 +37,8 @@ class OverviewStats(BaseModel):
     total_mcps: int
     total_agents: int
     total_users: int
-    total_tool_calls_today: int
-    total_agent_interactions_today: int
+    total_tool_calls: int
+    total_agent_interactions: int
 
 
 class TopItem(BaseModel):

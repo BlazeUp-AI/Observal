@@ -4,8 +4,8 @@ export interface OverviewStats {
   total_mcps: number;
   total_agents: number;
   total_users: number;
-  total_tool_calls_today: number;
-  total_agent_interactions_today: number;
+  total_tool_calls: number;
+  total_agent_interactions: number;
 }
 
 export interface TopItem {

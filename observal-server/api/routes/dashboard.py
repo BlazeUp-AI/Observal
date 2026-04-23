@@ -194,8 +194,8 @@ async def overview_stats(
         total_mcps=total_mcps,
         total_agents=total_agents,
         total_users=total_users,
-        total_tool_calls_today=int(tool_rows[0].get("cnt", 0)) if tool_rows else 0,
-        total_agent_interactions_today=int(agent_rows[0].get("cnt", 0)) if agent_rows else 0,
+        total_tool_calls=int(tool_rows[0].get("cnt", 0)) if tool_rows else 0,
+        total_agent_interactions=int(agent_rows[0].get("cnt", 0)) if agent_rows else 0,
     )
 
 
