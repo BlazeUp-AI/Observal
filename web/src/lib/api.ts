@@ -220,6 +220,8 @@ export const auth = {
   whoami: () => get<{ id: string; email: string; username?: string | null; name: string; role: string }>("/auth/whoami"),
   exchangeCode: (body: { code: string }) =>
     post<AuthResponse>("/auth/exchange", body),
+  deviceConfirm: (userCode: string) =>
+    post<{ message: string }>("/auth/device/confirm", { user_code: userCode }),
 };
 
 // ── Registry (all 8 types) ─────────────────────────────────────────
