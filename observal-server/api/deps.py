@@ -61,12 +61,14 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
 
 
 # Paths that must remain accessible even when must_change_password is set
-_PASSWORD_CHANGE_EXEMPT_PATHS = frozenset({
-    "/api/v1/auth/profile/password",
-    "/api/v1/auth/whoami",
-    "/api/v1/auth/token/refresh",
-    "/api/v1/auth/token/revoke",
-})
+_PASSWORD_CHANGE_EXEMPT_PATHS = frozenset(
+    {
+        "/api/v1/auth/profile/password",
+        "/api/v1/auth/whoami",
+        "/api/v1/auth/token/refresh",
+        "/api/v1/auth/token/revoke",
+    }
+)
 
 
 async def get_current_user(

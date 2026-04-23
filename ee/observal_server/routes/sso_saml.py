@@ -50,6 +50,7 @@ def _safe_redirect_path(value: str | None) -> str:
         return "/"
     return value
 
+
 router = APIRouter(prefix="/api/v1/sso/saml", tags=["enterprise-sso"])
 
 _env_saml_config_cache: object | None = None

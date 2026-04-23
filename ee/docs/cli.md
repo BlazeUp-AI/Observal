@@ -115,6 +115,10 @@ For detailed instructions, see [cli-sso.md](cli-sso.md).
 When `DEPLOYMENT_MODE=enterprise`, the following routes are blocked:
 
 - `POST /api/v1/auth/bootstrap`, admin bootstrapping disabled (use IdP)
-- `POST /api/v1/auth/register`, self-registration disabled in enterprise mode and also disabled when SSO_ONLY is true (use SCIM or IdP)
+
+Self-registration is removed in enterprise mode. Users are provisioned via IdP
+(OIDC or SAML JIT provisioning on first login) or via SCIM for automated
+lifecycle management. In local mode, admins can create users directly through
+the admin panel.
 
 All other routes function normally with SSO-based authentication.
