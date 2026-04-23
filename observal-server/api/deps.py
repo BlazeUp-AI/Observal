@@ -3,14 +3,17 @@ from collections.abc import AsyncGenerator
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from redis.exceptions import RedisError
 from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from config import settings
 from database import async_session
 from models.organization import Organization
 from models.user import User, UserRole
 from services.jwt_service import decode_access_token
+from services.redis import get_redis
 from services.security_events import (
     EventType,
     SecurityEvent,
@@ -57,7 +60,17 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
     return user
 
 
+# Paths that must remain accessible even when must_change_password is set
+_PASSWORD_CHANGE_EXEMPT_PATHS = frozenset({
+    "/api/v1/auth/profile/password",
+    "/api/v1/auth/whoami",
+    "/api/v1/auth/token/refresh",
+    "/api/v1/auth/token/revoke",
+})
+
+
 async def get_current_user(
+    request: Request,
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -67,6 +80,20 @@ async def get_current_user(
     user = await _authenticate_via_jwt(token, db)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Block deactivated users (SCIM sets auth_provider to "deactivated")
+    if user.auth_provider == "deactivated":
+        raise HTTPException(status_code=403, detail="Account deactivated")
+
+    # Enforce must_change_password (fail open if Redis is unavailable)
+    if request.url.path not in _PASSWORD_CHANGE_EXEMPT_PATHS:
+        try:
+            redis = get_redis()
+            if await redis.get(f"must_change_password:{user.id}"):
+                raise HTTPException(status_code=403, detail="Password change required")
+        except RedisError:
+            pass
+
     return user
 
 
@@ -78,7 +105,10 @@ async def optional_current_user(
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.removeprefix("Bearer ").strip()
-    return await _authenticate_via_jwt(token, db)
+    user = await _authenticate_via_jwt(token, db)
+    if user and user.auth_provider == "deactivated":
+        return None
+    return user
 
 
 # Role hierarchy: lower number = higher privilege
