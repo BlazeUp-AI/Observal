@@ -261,6 +261,62 @@ def status():
         pass
 
 
+@auth_app.command(name="change-password")
+def change_password():
+    """Change your password."""
+    cfg = config.load()
+    server_url = cfg.get("server_url")
+    token = cfg.get("access_token")
+    if not server_url or not token:
+        rprint("[red]Not logged in.[/red] Run [bold]observal auth login[/bold] first.")
+        raise typer.Exit(1)
+
+    current = typer.prompt("Current password", hide_input=True)
+    new_pw = typer.prompt("New password", hide_input=True)
+    confirm = typer.prompt("Confirm new password", hide_input=True)
+    if new_pw != confirm:
+        rprint("[red]Passwords do not match.[/red]")
+        raise typer.Exit(1)
+    if len(new_pw) < 8:
+        rprint("[red]Password must be at least 8 characters.[/red]")
+        raise typer.Exit(1)
+
+    try:
+        with spinner("Changing password..."):
+            r = httpx.put(
+                f"{server_url}/api/v1/auth/profile/password",
+                json={"current_password": current, "new_password": new_pw},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            r.raise_for_status()
+        rprint("[green]Password changed successfully.[/green]")
+    except httpx.HTTPStatusError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", e.response.text)
+        except Exception:
+            detail = e.response.text
+        rprint(f"[red]Failed:[/red] {detail}")
+        raise typer.Exit(1)
+
+
+@auth_app.command(name="set-username")
+def set_username(
+    username: str = typer.Argument(..., help="Username (3-32 chars, lowercase alphanumeric and hyphens)"),
+):
+    """Set or update your username."""
+    from observal_cli import client as _client
+
+    try:
+        with spinner("Updating username..."):
+            result = _client.put("/api/v1/auth/profile/username", {"username": username})
+        rprint(f"[green]Username set to @{result.get('username', username)}[/green]")
+    except Exception as e:
+        rprint(f"[red]Failed:[/red] {e}")
+        raise typer.Exit(1)
+
+
 def version_callback():
     """Show CLI version."""
     from importlib.metadata import version as pkg_version

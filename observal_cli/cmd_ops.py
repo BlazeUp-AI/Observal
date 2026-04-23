@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+import httpx
 import typer
 from rich import print as rprint
 from rich.table import Table
@@ -18,6 +19,29 @@ from observal_cli.render import (
     star_rating,
     status_badge,
 )
+
+
+def _require_enterprise():
+    """Check that the server is running in enterprise mode. Exit with a clear message if not."""
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        if not server_url:
+            return
+        r = httpx.get(f"{server_url}/api/v1/config/public", timeout=5)
+        if r.status_code == 200:
+            pub = r.json()
+            if pub.get("deployment_mode") != "enterprise":
+                rprint("[yellow]This feature requires enterprise mode.[/yellow]")
+                rprint("[dim]Set DEPLOYMENT_MODE=enterprise on the server to enable.[/dim]")
+                raise typer.Exit(1)
+    except httpx.ConnectError:
+        pass
+    except typer.Exit:
+        raise
+    except Exception:
+        pass
+
 
 # ═══════════════════════════════════════════════════════════
 # ops_app — Observability / operational commands group
@@ -1129,6 +1153,393 @@ def admin_canary_delete(
     with spinner("Deleting canary..."):
         client.delete(f"/api/v1/admin/canaries/{canary_id}")
     rprint(f"[green]Canary {canary_id[:8]}... deleted.[/green]")
+
+
+# ── Diagnostics ─────────────────────────────────────────
+
+
+@admin_app.command(name="diagnostics")
+def admin_diagnostics(output: str = typer.Option("table", "--output", "-o")):
+    """Show system diagnostics and health status."""
+    with spinner():
+        data = client.get("/api/v1/admin/diagnostics")
+    if output == "json":
+        output_json(data)
+        return
+
+    overall = data.get("status", "unknown")
+    color = {"ok": "green", "degraded": "yellow", "unhealthy": "red"}.get(overall, "white")
+    rprint(f"\n  Overall: [{color}]{overall}[/{color}]")
+    rprint(f"  Mode:    {data.get('deployment_mode', 'unknown')}")
+
+    db = data.get("database", {})
+    if db:
+        db_color = "green" if db.get("status") == "ok" else "red"
+        rprint(f"\n  Database: [{db_color}]{db.get('status', 'unknown')}[/{db_color}]")
+        rprint(f"    Users: {db.get('user_count', '?')}")
+
+    jwt_info = data.get("jwt", {})
+    if jwt_info:
+        jwt_color = "green" if jwt_info.get("status") == "ok" else "red"
+        rprint(f"\n  JWT:     [{jwt_color}]{jwt_info.get('status', 'unknown')}[/{jwt_color}]")
+        rprint(f"    Algorithm: {jwt_info.get('algorithm', '?')}")
+
+    ee = data.get("enterprise", {})
+    if ee:
+        issues = ee.get("issues", [])
+        if issues:
+            rprint("\n  [yellow]Enterprise issues:[/yellow]")
+            for issue in issues:
+                rprint(f"    - {issue}")
+        else:
+            rprint("\n  Enterprise: [green]ok[/green]")
+    rprint()
+
+
+# ── SAML Config ─────────────────────────────────────────
+
+
+@admin_app.command(name="saml-config")
+def admin_saml_config(output: str = typer.Option("table", "--output", "-o")):
+    """View current SAML SSO configuration. (Enterprise only)"""
+    _require_enterprise()
+    with spinner():
+        data = client.get("/api/v1/admin/saml-config")
+    if output == "json":
+        output_json(data)
+        return
+    if not data or not data.get("configured"):
+        rprint("[dim]SAML SSO is not configured.[/dim]")
+        rprint("Use [bold]observal admin saml-config-set[/bold] to configure.")
+        return
+
+    rprint("\n[bold]SAML SSO Configuration[/bold]\n")
+    for key in ("idp_entity_id", "idp_sso_url", "idp_slo_url", "sp_entity_id", "saml_active", "jit_provisioning"):
+        val = data.get(key)
+        if val is not None:
+            display = "[green]Yes[/green]" if val is True else "[red]No[/red]" if val is False else str(val)
+            rprint(f"  {key}: {display}")
+    rprint()
+
+
+@admin_app.command(name="saml-config-set")
+def admin_saml_config_set(
+    idp_entity_id: str = typer.Option(None, "--idp-entity-id", help="IdP Entity ID"),
+    idp_sso_url: str = typer.Option(None, "--idp-sso-url", help="IdP SSO URL"),
+    idp_slo_url: str = typer.Option(None, "--idp-slo-url", help="IdP SLO URL (optional)"),
+    idp_x509_cert: str = typer.Option(None, "--idp-x509-cert", help="IdP X.509 certificate (PEM)"),
+    sp_entity_id: str = typer.Option(None, "--sp-entity-id", help="SP Entity ID"),
+    jit: bool = typer.Option(True, "--jit/--no-jit", help="Enable JIT user provisioning"),
+    active: bool = typer.Option(True, "--active/--inactive", help="Enable SAML SSO"),
+):
+    """Create or update SAML SSO configuration.
+
+    Examples:
+
+        observal admin saml-config-set --idp-entity-id https://idp.example.com \\
+            --idp-sso-url https://idp.example.com/sso \\
+            --idp-x509-cert "$(cat idp-cert.pem)"
+    """
+    _require_enterprise()
+    body: dict = {"saml_active": active, "jit_provisioning": jit}
+    if idp_entity_id:
+        body["idp_entity_id"] = idp_entity_id
+    if idp_sso_url:
+        body["idp_sso_url"] = idp_sso_url
+    if idp_slo_url:
+        body["idp_slo_url"] = idp_slo_url
+    if idp_x509_cert:
+        body["idp_x509_cert"] = idp_x509_cert
+    if sp_entity_id:
+        body["sp_entity_id"] = sp_entity_id
+
+    with spinner("Updating SAML config..."):
+        result = client.put("/api/v1/admin/saml-config", body)
+    rprint("[green]SAML SSO configuration updated.[/green]")
+    if result.get("sp_entity_id"):
+        rprint(f"  SP Entity ID:  {result['sp_entity_id']}")
+    if result.get("sp_acs_url"):
+        rprint(f"  SP ACS URL:    {result['sp_acs_url']}")
+    if result.get("sp_metadata_url"):
+        rprint(f"  SP Metadata:   {result['sp_metadata_url']}")
+
+
+@admin_app.command(name="saml-config-delete")
+def admin_saml_config_delete(
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
+):
+    """Delete SAML SSO configuration. Disables SAML SSO. (Enterprise only)"""
+    _require_enterprise()
+    if not force:
+        typer.confirm("This will disable SAML SSO for all users. Continue?", abort=True)
+    with spinner("Deleting SAML config..."):
+        client.delete("/api/v1/admin/saml-config")
+    rprint("[green]SAML SSO configuration deleted.[/green]")
+
+
+# ── SCIM Tokens ─────────────────────────────────────────
+
+
+@admin_app.command(name="scim-tokens")
+def admin_scim_tokens(output: str = typer.Option("table", "--output", "-o")):
+    """List SCIM provisioning tokens. (Enterprise only)"""
+    _require_enterprise()
+    with spinner():
+        data = client.get("/api/v1/admin/scim-tokens")
+    if output == "json":
+        output_json(data)
+        return
+    if not data:
+        rprint("[dim]No SCIM tokens configured.[/dim]")
+        rprint("Use [bold]observal admin scim-token-create[/bold] to create one.")
+        return
+    table = Table(title="SCIM Tokens", show_lines=False, padding=(0, 1))
+    table.add_column("ID", style="dim", max_width=12)
+    table.add_column("Prefix")
+    table.add_column("Description")
+    table.add_column("Active")
+    table.add_column("Created")
+    for t in data:
+        active = "[green]Yes[/green]" if t.get("active") else "[red]No[/red]"
+        created = t.get("created_at", "")[:10] if t.get("created_at") else "-"
+        table.add_row(
+            str(t.get("id", ""))[:8] + "...",
+            t.get("token_prefix", ""),
+            t.get("description", "-"),
+            active,
+            created,
+        )
+    console.print(table)
+
+
+@admin_app.command(name="scim-token-create")
+def admin_scim_token_create(
+    description: str = typer.Option("", "--description", "-d", help="Token description"),
+):
+    """Create a new SCIM provisioning token.
+
+    The token is shown once on creation. Save it securely. (Enterprise only)
+    """
+    _require_enterprise()
+    body: dict = {}
+    if description:
+        body["description"] = description
+    with spinner("Creating SCIM token..."):
+        result = client.post("/api/v1/admin/scim-tokens", body)
+    rprint("[green]SCIM token created.[/green]")
+    rprint(f"\n[yellow]Token:[/yellow] {result.get('token', '')}")
+    rprint("[dim]Save this -- it will not be shown again.[/dim]")
+    if result.get("description"):
+        rprint(f"  Description: {result['description']}")
+
+
+@admin_app.command(name="scim-token-revoke")
+def admin_scim_token_revoke(
+    token_id: str = typer.Argument(..., help="Token ID to revoke"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
+):
+    """Revoke a SCIM provisioning token. (Enterprise only)"""
+    _require_enterprise()
+    if not force:
+        typer.confirm(f"Revoke SCIM token {token_id[:8]}...?", abort=True)
+    with spinner("Revoking SCIM token..."):
+        client.delete(f"/api/v1/admin/scim-tokens/{token_id}")
+    rprint(f"[green]SCIM token {token_id[:8]}... revoked.[/green]")
+
+
+# ── Security Events ─────────────────────────────────────
+
+
+@admin_app.command(name="security-events")
+def admin_security_events(
+    event_type: str = typer.Option(None, "--type", "-t", help="Filter by event type"),
+    severity: str = typer.Option(None, "--severity", "-s", help="Filter: info, warning, critical"),
+    actor: str = typer.Option(None, "--actor", "-a", help="Filter by actor email"),
+    limit: int = typer.Option(50, "--limit", "-n"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """View security events log."""
+    params: dict = {"limit": str(limit)}
+    if event_type:
+        params["event_type"] = event_type
+    if severity:
+        params["severity"] = severity
+    if actor:
+        params["actor_email"] = actor
+
+    from urllib.parse import urlencode
+
+    qs = f"?{urlencode(params)}" if params else ""
+    with spinner():
+        data = client.get(f"/api/v1/admin/security-events{qs}")
+    events = data.get("events", data) if isinstance(data, dict) else data
+    if output == "json":
+        output_json(data)
+        return
+    if not events:
+        rprint("[dim]No security events found.[/dim]")
+        return
+    table = Table(title=f"Security Events ({len(events)})", show_lines=False, padding=(0, 1))
+    table.add_column("Time", style="dim", max_width=19)
+    table.add_column("Type")
+    table.add_column("Severity")
+    table.add_column("Actor")
+    table.add_column("Outcome")
+    table.add_column("Detail", max_width=40)
+    for ev in events:
+        sev = ev.get("severity", "")
+        sev_color = {"critical": "red", "warning": "yellow", "info": "dim"}.get(sev, "white")
+        outcome = ev.get("outcome", "")
+        outcome_color = "green" if outcome == "success" else "red" if outcome == "failure" else "white"
+        ts = ev.get("timestamp", ev.get("created_at", ""))[:19]
+        table.add_row(
+            ts,
+            ev.get("event_type", ""),
+            f"[{sev_color}]{sev}[/{sev_color}]",
+            ev.get("actor_email", "-"),
+            f"[{outcome_color}]{outcome}[/{outcome_color}]",
+            (ev.get("detail", "") or "")[:40],
+        )
+    console.print(table)
+
+
+# ── Audit Log ───────────────────────────────────────────
+
+
+@admin_app.command(name="audit-log")
+def admin_audit_log(
+    action: str = typer.Option(None, "--action", "-a", help="Filter by action (e.g. auth.login)"),
+    actor: str = typer.Option(None, "--actor", help="Filter by actor email"),
+    resource_type: str = typer.Option(None, "--resource-type", "-r", help="Filter by resource type"),
+    limit: int = typer.Option(50, "--limit", "-n"),
+    output: str = typer.Option("table", "--output", "-o"),
+):
+    """Query the audit log. (Enterprise only)"""
+    _require_enterprise()
+    from urllib.parse import urlencode
+
+    params: dict = {"limit": str(limit)}
+    if action:
+        params["action"] = action
+    if actor:
+        params["actor_email"] = actor
+    if resource_type:
+        params["resource_type"] = resource_type
+
+    qs = f"?{urlencode(params)}" if params else ""
+    with spinner():
+        data = client.get(f"/api/v1/admin/audit-log{qs}")
+    if output == "json":
+        output_json(data)
+        return
+    if not data:
+        rprint("[dim]No audit log entries found.[/dim]")
+        return
+    table = Table(title=f"Audit Log ({len(data)} entries)", show_lines=False, padding=(0, 1))
+    table.add_column("Time", style="dim", max_width=19)
+    table.add_column("Actor")
+    table.add_column("Action", style="bold")
+    table.add_column("Resource")
+    table.add_column("IP", style="dim")
+    table.add_column("Detail", max_width=30)
+    for entry in data:
+        ts = entry.get("timestamp", entry.get("created_at", ""))[:19]
+        resource = entry.get("resource_type", "")
+        if entry.get("resource_name"):
+            resource += f"/{entry['resource_name']}"
+        table.add_row(
+            ts,
+            entry.get("actor_email", "-"),
+            entry.get("action", ""),
+            resource,
+            entry.get("ip_address", "-"),
+            (entry.get("detail", "") or "")[:30],
+        )
+    console.print(table)
+
+
+@admin_app.command(name="audit-log-export")
+def admin_audit_log_export(
+    action: str = typer.Option(None, "--action", "-a", help="Filter by action"),
+    actor: str = typer.Option(None, "--actor", help="Filter by actor email"),
+    file: str = typer.Option(None, "--file", "-f", help="Write output to file"),
+):
+    """Export audit log as CSV. (Enterprise only)"""
+    _require_enterprise()
+    from urllib.parse import urlencode
+
+    params: dict = {}
+    if action:
+        params["action"] = action
+    if actor:
+        params["actor_email"] = actor
+
+    qs = f"?{urlencode(params)}" if params else ""
+    with spinner("Exporting audit log..."):
+        data = client.get(f"/api/v1/admin/audit-log/export{qs}")
+
+    if file:
+        from pathlib import Path
+
+        Path(file).write_text(data if isinstance(data, str) else str(data))
+        rprint(f"[green]Audit log exported to {file}[/green]")
+    else:
+        rprint(data if isinstance(data, str) else str(data))
+
+
+# ── Trace Privacy ───────────────────────────────────────
+
+
+@admin_app.command(name="trace-privacy")
+def admin_trace_privacy():
+    """View trace privacy setting."""
+    with spinner():
+        data = client.get("/api/v1/admin/org/trace-privacy")
+    enabled = data.get("trace_privacy", False)
+    status = "[green]enabled[/green]" if enabled else "[red]disabled[/red]"
+    rprint(f"  Trace privacy: {status}")
+
+
+@admin_app.command(name="trace-privacy-set")
+def admin_trace_privacy_set(
+    enabled: bool = typer.Argument(..., help="true or false"),
+):
+    """Enable or disable trace privacy (redacts sensitive trace data)."""
+    with spinner("Updating trace privacy..."):
+        result = client.put("/api/v1/admin/org/trace-privacy", {"trace_privacy": enabled})
+    status = "[green]enabled[/green]" if result.get("trace_privacy") else "[red]disabled[/red]"
+    rprint(f"  Trace privacy: {status}")
+
+
+# ── Cache ───────────────────────────────────────────────
+
+
+@admin_app.command(name="cache-clear")
+def admin_cache_clear():
+    """Clear all server caches."""
+    with spinner("Clearing caches..."):
+        client.post("/api/v1/admin/cache/clear")
+    rprint("[green]All caches cleared.[/green]")
+
+
+# ── Role Update ─────────────────────────────────────────
+
+
+@admin_app.command(name="set-role")
+def admin_set_role(
+    email: str = typer.Argument(..., help="Email of the user"),
+    role: str = typer.Argument(..., help="New role: super_admin, admin, reviewer, or user"),
+):
+    """Change a user's role."""
+    with spinner("Looking up user..."):
+        users = client.get("/api/v1/admin/users")
+    match = next((u for u in users if u["email"] == email.strip().lower()), None)
+    if not match:
+        rprint(f"[red]User not found:[/red] {email}")
+        raise typer.Exit(1)
+    with spinner("Updating role..."):
+        result = client.put(f"/api/v1/admin/users/{match['id']}/role", {"role": role})
+    rprint(f"[green]{result.get('email', email)} is now {result.get('role', role)}[/green]")
 
 
 # ── Traces / Spans (on ops_app) ─────────────────────────
