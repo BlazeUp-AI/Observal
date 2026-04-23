@@ -1,5 +1,10 @@
 """Tests for SAML service layer."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 
 class TestSamlKeyGeneration:
     def test_generate_sp_key_pair_returns_pem_strings(self):
@@ -94,3 +99,124 @@ class TestSamlHelpers:
 
         pem = "-----BEGIN CERTIFICATE-----\nMIIC\nmzCC\n-----END CERTIFICATE-----\n"
         assert _strip_pem_headers(pem) == "MIICmzCC"
+
+
+class TestSamlEndpoints:
+    @pytest.fixture
+    def saml_app(self):
+        from fastapi import FastAPI
+
+        from ee.observal_server.routes.sso_saml import router
+
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _make_mock_config(self):
+        from ee.observal_server.services.saml import generate_sp_key_pair
+
+        private_key, cert = generate_sp_key_pair("test.example.com")
+        mock_config = MagicMock()
+        mock_config.idp_entity_id = "https://idp.example.com"
+        mock_config.idp_sso_url = "https://idp.example.com/sso"
+        mock_config.idp_slo_url = ""
+        mock_config.idp_x509_cert = cert  # Use a real cert for metadata generation
+        mock_config.sp_entity_id = "https://app.example.com/api/v1/sso/saml/metadata"
+        mock_config.sp_acs_url = "https://app.example.com/api/v1/sso/saml/acs"
+        mock_config.sp_private_key_enc = private_key
+        mock_config.sp_x509_cert = cert
+        mock_config.jit_provisioning = True
+        mock_config.default_role = "user"
+        mock_config.org_id = None
+        return mock_config, private_key
+
+    @pytest.mark.asyncio
+    async def test_metadata_returns_xml_when_configured(self, saml_app):
+        mock_config, private_key = self._make_mock_config()
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/metadata")
+            assert r.status_code == 200
+            assert "xml" in r.headers.get("content-type", "").lower()
+            assert "EntityDescriptor" in r.text
+
+    @pytest.mark.asyncio
+    async def test_metadata_returns_404_when_not_configured(self, saml_app):
+        with patch(
+            "ee.observal_server.routes.sso_saml._get_saml_config",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/metadata")
+            assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_login_returns_redirect_when_configured(self, saml_app):
+        mock_config, private_key = self._make_mock_config()
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/login")
+            assert r.status_code == 302
+            location = r.headers.get("location", "")
+            assert "idp.example.com/sso" in location
+
+    @pytest.mark.asyncio
+    async def test_login_returns_404_when_not_configured(self, saml_app):
+        with patch(
+            "ee.observal_server.routes.sso_saml._get_saml_config",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/login")
+            assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_acs_returns_404_when_not_configured(self, saml_app):
+        with patch(
+            "ee.observal_server.routes.sso_saml._get_saml_config",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+            ) as ac:
+                r = await ac.post("/api/v1/sso/saml/acs")
+            assert r.status_code == 404
