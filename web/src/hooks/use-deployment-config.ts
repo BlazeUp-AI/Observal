@@ -14,6 +14,7 @@ export function useDeploymentConfig() {
   return {
     deploymentMode: data?.deployment_mode ?? "local",
     ssoEnabled: data?.sso_enabled ?? false,
+    ssoOnly: data?.sso_only ?? false,
     samlEnabled: data?.saml_enabled ?? false,
     evalConfigured: data?.eval_configured ?? false,
     loading: isLoading,

@@ -23,6 +23,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ROLE_LABELS, hasMinRole, type Role } from "@/hooks/use-role-guard";
 import { getUserRole } from "@/lib/api";
+import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 
 const ALL_ROLES: Role[] = ["super_admin", "admin", "reviewer", "user"];
 
@@ -62,6 +63,7 @@ export default function UsersPage() {
   const createUser = useCreateUser();
   const deleteUser = useDeleteUser();
   const assignableRoles = useAssignableRoles();
+  const { ssoOnly } = useDeploymentConfig();
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [name, setName] = useState("");
@@ -112,9 +114,11 @@ export default function UsersPage() {
           { label: "Users" },
         ]}
         actionButtonsRight={
-          <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
-            <Plus className="mr-1 h-3.5 w-3.5" /> Add User
-          </Button>
+          !ssoOnly ? (
+            <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
+              <Plus className="mr-1 h-3.5 w-3.5" /> Add User
+            </Button>
+          ) : undefined
         }
       />
       <div className="p-6 w-full mx-auto space-y-4">

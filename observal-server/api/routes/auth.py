@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode
+from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode, require_password_auth
 from api.ratelimit import limiter
 from config import settings
 from models.user import User, UserRole
@@ -200,7 +200,7 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
     )
 
 
-@router.post("/login", response_model=InitResponse)
+@router.post("/login", response_model=InitResponse, dependencies=[Depends(require_password_auth)])
 @limiter.limit("5/minute")
 async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Login with email + password. Returns user info and JWT tokens."""
@@ -427,7 +427,7 @@ async def whoami(current_user: User = Depends(get_current_user)):
 # ── JWT Token Endpoints ────────────────────────────────────
 
 
-@router.post("/token", response_model=TokenResponse)
+@router.post("/token", response_model=TokenResponse, dependencies=[Depends(require_password_auth)])
 @limiter.limit(settings.RATE_LIMIT_AUTH)
 async def issue_token(request: Request, req: TokenRequest, db: AsyncSession = Depends(get_db)):
     """Exchange email+password for JWT access + refresh tokens."""

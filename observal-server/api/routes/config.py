@@ -43,6 +43,7 @@ async def get_public_config():
     return {
         "deployment_mode": settings.DEPLOYMENT_MODE,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
+        "sso_only": settings.SSO_ONLY,
         "saml_enabled": False,  # placeholder for future ee/ SAML
         "eval_configured": bool(settings.EVAL_MODEL_NAME),
     }

@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     # Deployment mode
     DEPLOYMENT_MODE: Literal["local", "enterprise"] = "local"
 
+    # When True, password-based auth is disabled entirely.
+    # Users can only authenticate via SSO (OAuth/OIDC).
+    # Blocks: login, token, register, admin user create, admin password reset.
+    SSO_ONLY: bool = False
+
     # Demo accounts (seeded on first startup if set and no real users exist)
     DEMO_SUPER_ADMIN_EMAIL: str | None = None
     DEMO_SUPER_ADMIN_PASSWORD: str | None = None

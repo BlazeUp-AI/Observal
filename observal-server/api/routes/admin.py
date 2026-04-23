@@ -9,7 +9,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import ROLE_HIERARCHY, get_db, get_or_create_default_org, require_role
+from api.deps import ROLE_HIERARCHY, get_db, get_or_create_default_org, require_password_auth, require_role
 from config import settings
 from models.enterprise_config import EnterpriseConfig
 from models.organization import Organization
@@ -83,15 +83,16 @@ async def diagnostics(
     # Enterprise config
     if settings.DEPLOYMENT_MODE == "enterprise":
         issues: list[str] = []
-        # Check for common misconfigurations
         if settings.SECRET_KEY == "change-me-to-a-random-string":
             issues.append("SECRET_KEY is using default value")
-        if not settings.OAUTH_CLIENT_ID:
-            issues.append("OAUTH_CLIENT_ID is not set")
+        if settings.SSO_ONLY and not settings.OAUTH_CLIENT_ID:
+            issues.append("OAUTH_CLIENT_ID is not set (required for SSO-only mode)")
         if settings.FRONTEND_URL in ("http://localhost:3000", ""):
             issues.append("FRONTEND_URL is localhost")
         diag["checks"]["enterprise"] = {
             "status": "ok" if not issues else "misconfigured",
+            "sso_only": settings.SSO_ONLY,
+            "sso_configured": bool(settings.OAUTH_CLIENT_ID),
             "issues": issues,
         }
         if issues:
@@ -194,7 +195,7 @@ async def list_users(
     return users
 
 
-@router.post("/users", response_model=UserCreateResponse)
+@router.post("/users", response_model=UserCreateResponse, dependencies=[Depends(require_password_auth)])
 async def create_user(
     req: UserCreateRequest,
     db: AsyncSession = Depends(get_db),
@@ -316,7 +317,7 @@ async def update_user_role(
     return UserAdminResponse.model_validate(user)
 
 
-@router.put("/users/{user_id}/password")
+@router.put("/users/{user_id}/password", dependencies=[Depends(require_password_auth)])
 async def reset_user_password(
     user_id: uuid.UUID,
     req: AdminResetPasswordRequest,

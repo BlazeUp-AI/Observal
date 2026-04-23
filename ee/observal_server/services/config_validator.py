@@ -19,14 +19,13 @@ def validate_enterprise_config(settings: Settings) -> list[str]:
     if settings.SECRET_KEY == "change-me-to-a-random-string":
         issues.append("SECRET_KEY is using default value")
 
-    if not settings.OAUTH_CLIENT_ID:
-        issues.append("OAUTH_CLIENT_ID is not set")
-
-    if not settings.OAUTH_CLIENT_SECRET:
-        issues.append("OAUTH_CLIENT_SECRET is not set")
-
-    if not settings.OAUTH_SERVER_METADATA_URL:
-        issues.append("OAUTH_SERVER_METADATA_URL is not set")
+    if settings.SSO_ONLY:
+        if not settings.OAUTH_CLIENT_ID:
+            issues.append("OAUTH_CLIENT_ID is not set (required when SSO_ONLY=true)")
+        if not settings.OAUTH_CLIENT_SECRET:
+            issues.append("OAUTH_CLIENT_SECRET is not set (required when SSO_ONLY=true)")
+        if not settings.OAUTH_SERVER_METADATA_URL:
+            issues.append("OAUTH_SERVER_METADATA_URL is not set (required when SSO_ONLY=true)")
 
     if settings.FRONTEND_URL in ("http://localhost:3000", ""):
         issues.append("FRONTEND_URL is localhost or empty")

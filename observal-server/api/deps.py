@@ -170,6 +170,12 @@ async def require_local_mode() -> None:
         raise HTTPException(status_code=403, detail="Disabled in enterprise mode")
 
 
+async def require_password_auth() -> None:
+    """FastAPI dependency that blocks the endpoint when SSO_ONLY is enabled."""
+    if settings.SSO_ONLY:
+        raise HTTPException(status_code=403, detail="Password authentication is disabled (SSO-only mode)")
+
+
 async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_status=None):
     """Resolve a listing by UUID or name. Returns most recent if duplicates exist."""
 

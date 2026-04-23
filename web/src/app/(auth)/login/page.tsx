@@ -15,8 +15,7 @@ type Mode = "login" | "register";
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { deploymentMode, ssoEnabled } = useDeploymentConfig();
-  const isEnterprise = deploymentMode === "enterprise";
+  const { ssoEnabled, ssoOnly } = useDeploymentConfig();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -85,10 +84,10 @@ function LoginContent() {
 
   // In enterprise mode, force login mode (SSO only)
   useEffect(() => {
-    if (isEnterprise && mode !== "login") {
+    if (ssoOnly && mode !== "login") {
       setMode("login");
     }
-  }, [isEnterprise, mode]);
+  }, [ssoOnly, mode]);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -169,7 +168,7 @@ function LoginContent() {
               className="space-y-4"
             >
               {/* Email + Password mode (login & register) — hidden in enterprise mode */}
-              {(mode === "login" || mode === "register") && !isEnterprise && (
+              {(mode === "login" || mode === "register") && !ssoOnly && (
                 <>
                   <div className="space-y-2 animate-in">
                     <Label htmlFor="email">Email</Label>
@@ -231,7 +230,7 @@ function LoginContent() {
               {/* Submit */}
               <div className="animate-in stagger-2 space-y-3">
                 {/* In enterprise mode, hide all non-SSO submit buttons */}
-                {!isEnterprise && (
+                {!ssoOnly && (
                   <Button type="submit" disabled={loading || ssoLoading} className="w-full">
                     {loading && !ssoLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -244,7 +243,7 @@ function LoginContent() {
                   </Button>
                 )}
 
-                {mode === "login" && !isEnterprise && (
+                {mode === "login" && !ssoOnly && (
                   <div className="relative py-2">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -255,10 +254,10 @@ function LoginContent() {
                   </div>
                 )}
 
-                {mode === "login" && (isEnterprise || ssoEnabled) && (
+                {mode === "login" && (ssoOnly || ssoEnabled) && (
                   <Button
                     type="button"
-                    variant={isEnterprise ? "default" : "outline"}
+                    variant={ssoOnly ? "default" : "outline"}
                     className="w-full"
                     onClick={handleSsoLogin}
                     disabled={loading || ssoLoading}
@@ -275,7 +274,7 @@ function LoginContent() {
 
               {/* Mode switches */}
               <div className="animate-in stagger-3 space-y-2 text-center">
-                {mode === "login" && !isEnterprise && (
+                {mode === "login" && !ssoOnly && (
                   <>
                     <p className="text-sm text-muted-foreground/60">
                       Forgot password? Contact your admin.
@@ -289,7 +288,7 @@ function LoginContent() {
                     </button>
                   </>
                 )}
-                {mode === "register" && !isEnterprise && (
+                {mode === "register" && !ssoOnly && (
                   <button
                     type="button"
                     className="block w-full text-sm text-muted-foreground transition-colors hover:text-foreground"

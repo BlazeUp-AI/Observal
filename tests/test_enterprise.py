@@ -12,22 +12,21 @@ class TestConfigValidator:
 
         settings = MagicMock()
         settings.SECRET_KEY = "change-me-to-a-random-string"
-        settings.OAUTH_CLIENT_ID = "some-id"
-        settings.OAUTH_CLIENT_SECRET = "some-secret"
-        settings.OAUTH_SERVER_METADATA_URL = "https://example.com/.well-known"
+        settings.SSO_ONLY = False
         settings.FRONTEND_URL = "https://app.example.com"
 
         issues = validate_enterprise_config(settings)
         assert any("SECRET_KEY" in i for i in issues)
         assert len(issues) == 1
 
-    def test_detects_missing_oauth(self):
+    def test_detects_missing_oauth_when_sso_only(self):
         from unittest.mock import MagicMock
 
         from ee.observal_server.services.config_validator import validate_enterprise_config
 
         settings = MagicMock()
         settings.SECRET_KEY = "proper-random-secret-key"
+        settings.SSO_ONLY = True
         settings.OAUTH_CLIENT_ID = None
         settings.OAUTH_CLIENT_SECRET = None
         settings.OAUTH_SERVER_METADATA_URL = None
@@ -39,6 +38,22 @@ class TestConfigValidator:
         assert any("OAUTH_CLIENT_SECRET" in i for i in issues)
         assert any("OAUTH_SERVER_METADATA_URL" in i for i in issues)
 
+    def test_no_oauth_issues_when_sso_not_required(self):
+        from unittest.mock import MagicMock
+
+        from ee.observal_server.services.config_validator import validate_enterprise_config
+
+        settings = MagicMock()
+        settings.SECRET_KEY = "proper-random-secret-key"
+        settings.SSO_ONLY = False
+        settings.OAUTH_CLIENT_ID = None
+        settings.OAUTH_CLIENT_SECRET = None
+        settings.OAUTH_SERVER_METADATA_URL = None
+        settings.FRONTEND_URL = "https://app.example.com"
+
+        issues = validate_enterprise_config(settings)
+        assert len(issues) == 0
+
     def test_detects_localhost_frontend(self):
         from unittest.mock import MagicMock
 
@@ -46,9 +61,7 @@ class TestConfigValidator:
 
         settings = MagicMock()
         settings.SECRET_KEY = "proper-random-secret-key"
-        settings.OAUTH_CLIENT_ID = "id"
-        settings.OAUTH_CLIENT_SECRET = "secret"
-        settings.OAUTH_SERVER_METADATA_URL = "https://example.com/.well-known"
+        settings.SSO_ONLY = False
         settings.FRONTEND_URL = "http://localhost:3000"
 
         issues = validate_enterprise_config(settings)
@@ -61,9 +74,7 @@ class TestConfigValidator:
 
         settings = MagicMock()
         settings.SECRET_KEY = "proper-random-secret-key"
-        settings.OAUTH_CLIENT_ID = "id"
-        settings.OAUTH_CLIENT_SECRET = "secret"
-        settings.OAUTH_SERVER_METADATA_URL = "https://login.microsoftonline.com/..."
+        settings.SSO_ONLY = False
         settings.FRONTEND_URL = "https://app.example.com"
 
         issues = validate_enterprise_config(settings)
@@ -187,9 +198,7 @@ class TestRegisterEnterprise:
 
         settings = MagicMock()
         settings.SECRET_KEY = "change-me-to-a-random-string"
-        settings.OAUTH_CLIENT_ID = None
-        settings.OAUTH_CLIENT_SECRET = None
-        settings.OAUTH_SERVER_METADATA_URL = None
+        settings.SSO_ONLY = False
         settings.FRONTEND_URL = "http://localhost:3000"
 
         from services.events import bus

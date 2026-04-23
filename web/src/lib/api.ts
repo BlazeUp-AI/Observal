@@ -407,6 +407,7 @@ export const admin = {
 export type PublicConfig = {
   deployment_mode: "local" | "enterprise";
   sso_enabled: boolean;
+  sso_only: boolean;
   saml_enabled: boolean;
   eval_configured: boolean;
 };
