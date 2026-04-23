@@ -89,6 +89,7 @@ def build_saml_settings(
     sp_private_key: str,
     sp_x509_cert: str,
     idp_slo_url: str = "",
+    sp_slo_url: str = "",
     strict: bool = True,
 ) -> dict[str, Any]:
     sp_cert_clean = _strip_pem_headers(sp_x509_cert)
@@ -125,6 +126,11 @@ def build_saml_settings(
             "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
         },
     }
+    if sp_slo_url:
+        settings_dict["sp"]["singleLogoutService"] = {
+            "url": sp_slo_url,
+            "binding": "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect",
+        }
     if idp_slo_url:
         settings_dict["idp"]["singleLogoutService"] = {
             "url": idp_slo_url,

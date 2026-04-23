@@ -23,7 +23,9 @@ from ee.observal_server.services.scim_service import (
     format_scim_list,
     format_scim_user,
     hash_scim_token,
+    parse_scim_filter,
     parse_scim_user,
+    validate_scim_pagination,
 )
 from models.scim_token import ScimToken
 from models.user import User, UserRole
@@ -86,17 +88,45 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     base_url = str(request.base_url).rstrip("/") + "/api/v1/scim"
+    startIndex, count = validate_scim_pagination(startIndex, count)  # noqa: N806
 
-    if filter and "userName eq" in filter:
-        email = filter.split('"')[1].strip().lower() if '"' in filter else ""
-        if email:
-            result = await db.execute(select(User).where(User.email == email))
-            user = result.scalar_one_or_none()
-            resources = [format_scim_user(user, base_url)] if user else []
+    if filter:
+        parsed_filter = parse_scim_filter(filter)
+        if not parsed_filter:
+            return JSONResponse(
+                status_code=400,
+                content=format_scim_error(400, f"Invalid filter expression: {filter}"),
+                media_type=SCIM_CONTENT_TYPE,
+            )
+
+        if parsed_filter.attr == "username":
+            value = parsed_filter.value.strip().lower()
+            if parsed_filter.op == "eq":
+                result = await db.execute(select(User).where(User.email == value))
+            elif parsed_filter.op == "sw":
+                result = await db.execute(select(User).where(User.email.startswith(value)))
+            elif parsed_filter.op == "co":
+                result = await db.execute(select(User).where(User.email.contains(value)))
+            elif parsed_filter.op == "ne":
+                result = await db.execute(select(User).where(User.email != value))
+            else:
+                return JSONResponse(
+                    status_code=400,
+                    content=format_scim_error(400, f"Unsupported filter operator: {parsed_filter.op}"),
+                    media_type=SCIM_CONTENT_TYPE,
+                )
+            users = list(result.scalars().all())
+            resources = [format_scim_user(u, base_url) for u in users]
             return JSONResponse(
                 content=format_scim_list(resources, len(resources), startIndex),
                 media_type=SCIM_CONTENT_TYPE,
             )
+
+        return JSONResponse(
+            status_code=400,
+            content=format_scim_error(400, f"Unsupported filter attribute: {parsed_filter.attr}"),
+            media_type=SCIM_CONTENT_TYPE,
+        )
 
     base_q = select(User)
     if scim_token.org_id:
