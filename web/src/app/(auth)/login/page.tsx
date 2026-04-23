@@ -15,7 +15,7 @@ type Mode = "login" | "register";
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { ssoEnabled, ssoOnly } = useDeploymentConfig();
+  const { ssoEnabled, ssoOnly, samlEnabled } = useDeploymentConfig();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -268,6 +268,18 @@ function LoginContent() {
                       <RefreshCw className="mr-2 h-4 w-4" />
                     )}
                     Sign in with SSO
+                  </Button>
+                )}
+
+                {mode === "login" && samlEnabled && (
+                  <Button
+                    type="button"
+                    variant={ssoOnly ? "default" : "outline"}
+                    className="w-full"
+                    onClick={() => { window.location.href = "/api/v1/sso/saml/login"; }}
+                    disabled={loading || ssoLoading}
+                  >
+                    Sign in with SAML SSO
                   </Button>
                 )}
               </div>
