@@ -12,7 +12,7 @@ cp .env.example .env
 
 The `.env.example` ships with working defaults for every setting, including demo account credentials. You do not need to edit it for local development.
 
-> [!IMPORTANT]
+> [!NOTE]
 > You need Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
 
 ## 2. Start the stack

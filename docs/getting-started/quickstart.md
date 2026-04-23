@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh
 
 No Python required. For alternative install methods, see [Installation](installation.md).
 
-> [!IMPORTANT]
+> [!NOTE]
 > You need Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
 
 ## 2. Start the server

@@ -16,7 +16,7 @@
 
 ## Prerequisites
 
-> [!IMPORTANT]
+> [!NOTE]
 > You need Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
 
 ## 1. Environment Setup
