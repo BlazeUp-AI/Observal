@@ -493,3 +493,304 @@ class TestSamlEndpoints:
                 r = await ac.get("/api/v1/sso/saml/sls")
             assert r.status_code == 302
             assert "/login" in r.headers.get("location", "")
+
+
+class TestSamlRelayState:
+    """Tests for SAML RelayState (post-login redirect) support."""
+
+    @pytest.fixture
+    def saml_app(self):
+        from fastapi import FastAPI
+
+        from ee.observal_server.routes.sso_saml import router
+
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def _make_mock_config(self):
+        from ee.observal_server.services.saml import generate_sp_key_pair
+
+        private_key, cert = generate_sp_key_pair("test.example.com")
+        mock_config = MagicMock()
+        mock_config.idp_entity_id = "https://idp.example.com"
+        mock_config.idp_sso_url = "https://idp.example.com/sso"
+        mock_config.idp_slo_url = ""
+        mock_config.idp_x509_cert = cert
+        mock_config.sp_entity_id = "https://app.example.com/api/v1/sso/saml/metadata"
+        mock_config.sp_acs_url = "https://app.example.com/api/v1/sso/saml/acs"
+        mock_config.sp_private_key_enc = private_key
+        mock_config.sp_x509_cert = cert
+        mock_config.jit_provisioning = True
+        mock_config.default_role = "user"
+        mock_config.org_id = None
+        return mock_config, private_key
+
+    @pytest.mark.asyncio
+    async def test_login_passes_relay_state(self, saml_app):
+        """Login with ?next= should include RelayState in the redirect URL."""
+        mock_config, private_key = self._make_mock_config()
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/login?next=/sessions/abc")
+            assert r.status_code == 302
+            location = r.headers.get("location", "")
+            assert "idp.example.com/sso" in location
+            # RelayState should be passed to the IdP
+            assert "RelayState" in location
+
+    @pytest.mark.asyncio
+    async def test_login_sanitizes_non_relative_relay_state(self, saml_app):
+        """Login with absolute URL in ?next= should be sanitized to /."""
+        mock_config, private_key = self._make_mock_config()
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/login?next=https://evil.com/phish")
+            assert r.status_code == 302
+            location = r.headers.get("location", "")
+            # Should NOT contain the evil URL in RelayState
+            assert "evil.com" not in location
+
+    @pytest.mark.asyncio
+    async def test_login_defaults_relay_state_to_root(self, saml_app):
+        """Login without ?next= should use / as default RelayState."""
+        mock_config, private_key = self._make_mock_config()
+
+        with (
+            patch(
+                "ee.observal_server.routes.sso_saml._get_saml_config",
+                new_callable=AsyncMock,
+                return_value=mock_config,
+            ),
+            patch(
+                "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                return_value=private_key,
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=saml_app),
+                base_url="http://test",
+                follow_redirects=False,
+            ) as ac:
+                r = await ac.get("/api/v1/sso/saml/login")
+            assert r.status_code == 302
+            location = r.headers.get("location", "")
+            assert "idp.example.com/sso" in location
+
+    @pytest.mark.asyncio
+    async def test_acs_extracts_relay_state_into_redirect(self, saml_app):
+        """ACS should include RelayState from POST data in the frontend redirect."""
+        from api.deps import get_db
+
+        mock_config, private_key = self._make_mock_config()
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        mock_auth = MagicMock()
+        mock_auth.process_response.return_value = None
+        mock_auth.get_errors.return_value = []
+        mock_auth.is_authenticated.return_value = True
+        mock_auth.get_last_message_id.return_value = "saml-response-relay-test"
+        mock_auth.get_nameid.return_value = "user@example.com"
+        mock_auth.get_attributes.return_value = {"displayName": ["Test User"]}
+
+        mock_user = MagicMock()
+        mock_user.id = "user-uuid-1"
+        mock_user.email = "user@example.com"
+        mock_user.name = "Test User"
+        mock_user.role = MagicMock()
+        mock_user.role.value = "user"
+        mock_user.auth_provider = "saml"
+        mock_user.sso_subject_id = "user@example.com"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.commit = AsyncMock()
+
+        async def override_get_db():
+            yield mock_db
+
+        saml_app.dependency_overrides[get_db] = override_get_db
+
+        try:
+            with (
+                patch(
+                    "ee.observal_server.routes.sso_saml._get_saml_config",
+                    new_callable=AsyncMock,
+                    return_value=mock_config,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                    return_value=private_key,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._build_auth",
+                    return_value=mock_auth,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.get_redis",
+                    return_value=mock_redis,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.emit_security_event",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.audit",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.create_access_token",
+                    return_value=("access-tok", 3600),
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.create_refresh_token",
+                    return_value=("refresh-tok", "jti-1"),
+                ),
+            ):
+                async with AsyncClient(
+                    transport=ASGITransport(app=saml_app),
+                    base_url="http://test",
+                    follow_redirects=False,
+                ) as ac:
+                    r = await ac.post(
+                        "/api/v1/sso/saml/acs",
+                        data={
+                            "SAMLResponse": "dummybase64",
+                            "RelayState": "/sessions/abc",
+                        },
+                    )
+                assert r.status_code == 302
+                location = r.headers.get("location", "")
+                assert "code=" in location
+                assert "next=/sessions/abc" in location
+        finally:
+            saml_app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_acs_sanitizes_non_relative_relay_state(self, saml_app):
+        """ACS should sanitize absolute URLs in RelayState to /."""
+        from api.deps import get_db
+
+        mock_config, private_key = self._make_mock_config()
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value=None)
+        mock_redis.setex = AsyncMock()
+
+        mock_auth = MagicMock()
+        mock_auth.process_response.return_value = None
+        mock_auth.get_errors.return_value = []
+        mock_auth.is_authenticated.return_value = True
+        mock_auth.get_last_message_id.return_value = "saml-response-relay-sanitize"
+        mock_auth.get_nameid.return_value = "user@example.com"
+        mock_auth.get_attributes.return_value = {"displayName": ["Test User"]}
+
+        mock_user = MagicMock()
+        mock_user.id = "user-uuid-1"
+        mock_user.email = "user@example.com"
+        mock_user.name = "Test User"
+        mock_user.role = MagicMock()
+        mock_user.role.value = "user"
+        mock_user.auth_provider = "saml"
+        mock_user.sso_subject_id = "user@example.com"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=mock_result)
+        mock_db.commit = AsyncMock()
+
+        async def override_get_db():
+            yield mock_db
+
+        saml_app.dependency_overrides[get_db] = override_get_db
+
+        try:
+            with (
+                patch(
+                    "ee.observal_server.routes.sso_saml._get_saml_config",
+                    new_callable=AsyncMock,
+                    return_value=mock_config,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._decrypt_sp_key",
+                    return_value=private_key,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml._build_auth",
+                    return_value=mock_auth,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.get_redis",
+                    return_value=mock_redis,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.emit_security_event",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.audit",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.create_access_token",
+                    return_value=("access-tok", 3600),
+                ),
+                patch(
+                    "ee.observal_server.routes.sso_saml.create_refresh_token",
+                    return_value=("refresh-tok", "jti-1"),
+                ),
+            ):
+                async with AsyncClient(
+                    transport=ASGITransport(app=saml_app),
+                    base_url="http://test",
+                    follow_redirects=False,
+                ) as ac:
+                    r = await ac.post(
+                        "/api/v1/sso/saml/acs",
+                        data={
+                            "SAMLResponse": "dummybase64",
+                            "RelayState": "https://evil.com/phish",
+                        },
+                    )
+                assert r.status_code == 302
+                location = r.headers.get("location", "")
+                assert "evil.com" not in location
+                assert "next=/" in location
+        finally:
+            saml_app.dependency_overrides.clear()

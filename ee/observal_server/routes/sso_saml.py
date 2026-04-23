@@ -126,16 +126,25 @@ async def _issue_tokens(user: User) -> tuple[str, str, int]:
 
 
 @router.get("/login")
-async def saml_login(request: Request, db: AsyncSession = Depends(get_db)):
+async def saml_login(
+    request: Request,
+    next: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     """SP-initiated SSO: redirect user to IdP login page."""
     config = await _get_saml_config(db)
     if not config:
         raise HTTPException(status_code=404, detail="SAML SSO is not configured")
 
+    # Validate relay_state is a relative URL to prevent open redirect
+    relay_state = next or "/"
+    if not relay_state.startswith("/"):
+        relay_state = "/"
+
     sp_key = _decrypt_sp_key(config)
     request_data = _prepare_saml_request(request)
     auth = _build_auth(config, sp_key, request_data)
-    redirect_url = auth.login()
+    redirect_url = auth.login(return_to=relay_state)
     return RedirectResponse(url=redirect_url, status_code=302)
 
 
@@ -310,7 +319,11 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         detail="SAML SSO login",
     )
 
-    frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}"
+    relay_state = request_data["post_data"].get("RelayState", "/")
+    if not relay_state.startswith("/"):
+        relay_state = "/"
+
+    frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}&next={relay_state}"
     return RedirectResponse(url=frontend_redirect, status_code=302)
 
 

@@ -60,7 +60,9 @@ function LoginContent() {
           setUserName(data.user.name);
           setUserEmail(data.user.email);
           toast.success("Signed in successfully via SSO");
-          router.push("/");
+          const nextPath = searchParams.get("next");
+          const redirectTo = nextPath && nextPath.startsWith("/") ? nextPath : "/";
+          router.push(redirectTo);
         })
         .catch((err) => {
           const msg = err instanceof Error ? err.message : "SSO sign-in failed";
@@ -276,7 +278,13 @@ function LoginContent() {
                     type="button"
                     variant={ssoOnly ? "default" : "outline"}
                     className="w-full"
-                    onClick={() => { window.location.href = "/api/v1/sso/saml/login"; }}
+                    onClick={() => {
+                      const nextParam = searchParams.get("next");
+                      const samlUrl = nextParam && nextParam.startsWith("/")
+                        ? `/api/v1/sso/saml/login?next=${encodeURIComponent(nextParam)}`
+                        : "/api/v1/sso/saml/login";
+                      window.location.href = samlUrl;
+                    }}
                     disabled={loading || ssoLoading}
                   >
                     Sign in with SAML SSO
