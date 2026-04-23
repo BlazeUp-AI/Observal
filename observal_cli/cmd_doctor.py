@@ -291,7 +291,7 @@ def _check_gemini(path: Path, data: dict, issues: list, warnings: list):
             if not isinstance(handlers, list):
                 continue
             for handler_group in handlers:
-                for h in (handler_group.get("hooks") or []):
+                for h in handler_group.get("hooks") or []:
                     cmd = h.get("command", "")
                     if "gemini_hook" in cmd or "gemini_stop_hook" in cmd:
                         has_observal_hook = True
@@ -909,8 +909,6 @@ def doctor_sli(
 
         elif target in ("gemini-cli", "gemini_cli"):
             rprint("[cyan]Gemini CLI[/cyan]")
-            otlp_endpoint = cfg.get("otlp_http_url") or cfg.get("otlp_endpoint", "http://localhost:4318")
-
             gemini_settings = Path.home() / ".gemini" / "settings.json"
             gemini_data: dict = {}
             if gemini_settings.exists():

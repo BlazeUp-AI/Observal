@@ -766,10 +766,7 @@ def inject_gemini_telemetry(otlp_endpoint: str) -> bool:
 
     # Disable native OTLP (gRPC-only, can't reach Observal HTTP endpoint).
     # Keep logPrompts=true so hook payloads include prompt content.
-    needs_update = (
-        telemetry.get("enabled") is not False
-        or telemetry.get("logPrompts") is not True
-    )
+    needs_update = telemetry.get("enabled") is not False or telemetry.get("logPrompts") is not True
 
     if not needs_update:
         return False
@@ -1369,7 +1366,7 @@ def register_scan(app: typer.Typer):
                     rprint(f"\n[green]Disabled native OTLP in {gemini_settings} (gRPC incompatible)[/green]")
                     rprint("[dim]Telemetry is captured via hooks instead.[/dim]")
                 else:
-                    rprint(f"\n[dim]Gemini CLI native OTLP already disabled.[/dim]")
+                    rprint("\n[dim]Gemini CLI native OTLP already disabled.[/dim]")
             except Exception as e:
                 rprint(f"\n[yellow]Could not configure Gemini CLI telemetry: {e}[/yellow]")
                 rprint("[dim]Add telemetry settings manually to ~/.gemini/settings.json.[/dim]")
