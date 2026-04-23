@@ -94,6 +94,22 @@ For detailed setup instructions, see [saml-setup.md](saml-setup.md).
 
 ---
 
+## CLI SSO Authentication
+
+When SSO is the only login method, the CLI uses the OAuth 2.0 Device
+Authorization Grant (RFC 8628) to authenticate through a browser.
+
+```bash
+observal auth login --sso
+```
+
+For CI/CD environments without a browser, set the `OBSERVAL_TOKEN`
+environment variable instead.
+
+For detailed instructions, see [cli-sso.md](cli-sso.md).
+
+---
+
 ## Enterprise Guard Middleware
 
 When `DEPLOYMENT_MODE=enterprise`, the following routes are blocked:
