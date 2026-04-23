@@ -121,23 +121,25 @@ async def list_users(
             if scim_token.org_id:
                 q = q.where(User.org_id == scim_token.org_id)
             if parsed_filter.op == "eq":
-                result = await db.execute(q.where(User.email == value))
+                q = q.where(User.email == value)
             elif parsed_filter.op == "sw":
-                result = await db.execute(q.where(User.email.startswith(value)))
+                q = q.where(User.email.startswith(value))
             elif parsed_filter.op == "co":
-                result = await db.execute(q.where(User.email.contains(value)))
+                q = q.where(User.email.contains(value))
             elif parsed_filter.op == "ne":
-                result = await db.execute(q.where(User.email != value))
+                q = q.where(User.email != value)
             else:
                 return JSONResponse(
                     status_code=400,
                     content=format_scim_error(400, f"Unsupported filter operator: {parsed_filter.op}"),
                     media_type=SCIM_CONTENT_TYPE,
                 )
+            total = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar() or 0
+            result = await db.execute(q.order_by(User.created_at).offset(startIndex - 1).limit(count))
             users = list(result.scalars().all())
             resources = [format_scim_user(u, base_url) for u in users]
             return JSONResponse(
-                content=format_scim_list(resources, len(resources), startIndex),
+                content=format_scim_list(resources, total, startIndex),
                 media_type=SCIM_CONTENT_TYPE,
             )
 
