@@ -4,6 +4,9 @@ Install the Observal CLI on your machine. The CLI is what you use to log in, ins
 
 If you also want to **self-host** the Observal server (API + web UI + databases), see [Self-Hosting](../self-hosting/docker-compose.md).
 
+> [!IMPORTANT]
+> Self-hosting requires Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
+
 ## Install (standalone binary)
 
 The standalone binary is the simplest way to install. No Python required.
