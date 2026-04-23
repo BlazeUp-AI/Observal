@@ -192,7 +192,11 @@ class TestRegisterEnterprise:
         settings.OAUTH_SERVER_METADATA_URL = None
         settings.FRONTEND_URL = "http://localhost:3000"
 
+        from services.events import bus
+
+        bus.clear()
         issues = register_enterprise(app, settings)
         assert len(issues) > 0
         assert app.include_router.called
         assert app.add_middleware.called
+        bus.clear()
