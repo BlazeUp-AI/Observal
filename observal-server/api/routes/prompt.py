@@ -54,7 +54,9 @@ async def submit_prompt(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "prompt.submit", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "prompt.submit", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name
+    )
     return PromptListingResponse.model_validate(listing)
 
 
@@ -100,7 +102,9 @@ async def get_prompt(
 ):
     listing = await resolve_listing(PromptListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(current_user, "prompt.view", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user, "prompt.view", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name
+        )
         return PromptListingResponse.model_validate(listing)
 
     listing = await resolve_listing(PromptListing, listing_id, db)
@@ -111,7 +115,9 @@ async def get_prompt(
         listing.submitted_by == current_user.id
         or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
     ):
-        await audit(current_user, "prompt.view", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user, "prompt.view", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name
+        )
         return PromptListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -132,7 +138,9 @@ async def install_prompt(
     db.add(PromptDownload(listing_id=listing.id, user_id=current_user.id, ide="api"))
     await db.commit()
 
-    await audit(current_user, "prompt.install", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "prompt.install", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name
+    )
     return {
         "listing_id": str(listing.id),
         "config_snippet": {
@@ -192,7 +200,9 @@ async def render_prompt(
     except Exception:
         pass
 
-    await audit(current_user, "prompt.render", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "prompt.render", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name
+    )
     return PromptRenderResponse(listing_id=listing.id, rendered=rendered)
 
 
@@ -220,7 +230,13 @@ async def save_prompt_draft(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "prompt.draft.create", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "prompt.draft.create",
+        resource_type="prompt",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return PromptListingResponse.model_validate(listing)
 
 
@@ -257,7 +273,13 @@ async def update_prompt_draft(
 
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "prompt.draft.update", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "prompt.draft.update",
+        resource_type="prompt",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return PromptListingResponse.model_validate(listing)
 
 
@@ -283,7 +305,13 @@ async def submit_prompt_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "prompt.draft.submit", resource_type="prompt", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "prompt.draft.submit",
+        resource_type="prompt",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return PromptListingResponse.model_validate(listing)
 
 
@@ -308,5 +336,7 @@ async def delete_prompt(
     listing_name = listing.name
     await db.delete(listing)
     await db.commit()
-    await audit(current_user, "prompt.delete", resource_type="prompt", resource_id=str(listing_id), resource_name=listing_name)
+    await audit(
+        current_user, "prompt.delete", resource_type="prompt", resource_id=str(listing_id), resource_name=listing_name
+    )
     return {"deleted": str(listing_id)}

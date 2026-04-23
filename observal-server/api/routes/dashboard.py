@@ -800,7 +800,12 @@ async def run_graphrag_ragas_eval(
         ground_truths=req.ground_truths,
     )
     avgs = result.get("averages", {})
-    await audit(current_user, "dashboard.graphrag_ragas_eval", resource_type="dashboard", detail=f"RAGAS eval on graphrag_id={req.graphrag_id}")
+    await audit(
+        current_user,
+        "dashboard.graphrag_ragas_eval",
+        resource_type="dashboard",
+        detail=f"RAGAS eval on graphrag_id={req.graphrag_id}",
+    )
     return RagasEvalResponse(
         spans_evaluated=result["spans_evaluated"],
         scores=[RagasSpanResult(**s) for s in result["scores"]],
@@ -830,7 +835,12 @@ async def graphrag_ragas_scores(
 
         avgs = await get_ragas_aggregate()
 
-    await audit(current_user, "dashboard.graphrag_ragas_scores", resource_type="dashboard", detail=f"graphrag_id={graphrag_id}" if graphrag_id else "aggregate")
+    await audit(
+        current_user,
+        "dashboard.graphrag_ragas_scores",
+        resource_type="dashboard",
+        detail=f"graphrag_id={graphrag_id}" if graphrag_id else "aggregate",
+    )
     return RagasScores(
         faithfulness=RagasDimensionScore(**avgs.get("faithfulness", {"avg": None, "count": 0})),
         answer_relevancy=RagasDimensionScore(**avgs.get("answer_relevancy", {"avg": None, "count": 0})),

@@ -58,7 +58,9 @@ async def submit_skill(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "skill.submit", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "skill.submit", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name
+    )
     return SkillListingResponse.model_validate(listing)
 
 
@@ -107,7 +109,9 @@ async def get_skill(
 ):
     listing = await resolve_listing(SkillListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(current_user, "skill.view", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user, "skill.view", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name
+        )
         return SkillListingResponse.model_validate(listing)
 
     listing = await resolve_listing(SkillListing, listing_id, db)
@@ -118,7 +122,9 @@ async def get_skill(
         listing.submitted_by == current_user.id
         or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
     ):
-        await audit(current_user, "skill.view", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user, "skill.view", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name
+        )
         return SkillListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -146,7 +152,9 @@ async def install_skill(
 
     endpoints = derive_endpoints(request)
     config = generate_skill_config(listing, req.ide, server_url=endpoints["api"], scope=req.scope)
-    await audit(current_user, "skill.install", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "skill.install", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name
+    )
     return SkillInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
@@ -181,7 +189,13 @@ async def save_skill_draft(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "skill.draft.create", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "skill.draft.create",
+        resource_type="skill",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SkillListingResponse.model_validate(listing)
 
 
@@ -225,7 +239,13 @@ async def update_skill_draft(
 
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "skill.draft.update", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "skill.draft.update",
+        resource_type="skill",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SkillListingResponse.model_validate(listing)
 
 
@@ -249,7 +269,13 @@ async def submit_skill_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "skill.draft.submit", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "skill.draft.submit",
+        resource_type="skill",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SkillListingResponse.model_validate(listing)
 
 
@@ -274,5 +300,7 @@ async def delete_skill(
     listing_name = listing.name
     await db.delete(listing)
     await db.commit()
-    await audit(current_user, "skill.delete", resource_type="skill", resource_id=str(listing_id), resource_name=listing_name)
+    await audit(
+        current_user, "skill.delete", resource_type="skill", resource_id=str(listing_id), resource_name=listing_name
+    )
     return {"deleted": str(listing_id)}

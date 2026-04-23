@@ -323,7 +323,9 @@ async def create_agent(
         metadata={"agent_name": req.name, "version": req.version, "component_count": str(len(req.components))},
     )
 
-    await audit(current_user, "agent.create", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.create", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
 
     return _agent_to_response(
         agent, name_map, created_by_email=current_user.email, created_by_username=current_user.username
@@ -510,7 +512,13 @@ async def version_suggestions(
         raise HTTPException(status_code=404, detail="Agent not found")
     from services.versioning import suggest_versions
 
-    await audit(current_user, "agent.version_suggestions", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user,
+        "agent.version_suggestions",
+        resource_type="agent",
+        resource_id=str(agent.id),
+        resource_name=agent.name,
+    )
     return {"current": agent.version, "suggestions": suggest_versions(agent.version)}
 
 
@@ -672,7 +680,9 @@ async def update_agent(
         resource_name=agent.name,
     )
 
-    await audit(current_user, "agent.update", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.update", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
 
     return _agent_to_response(
         agent, name_map, created_by_email=current_user.email, created_by_username=current_user.username
@@ -760,7 +770,13 @@ async def install_agent(
         metadata={"ide": req.ide},
     )
 
-    await audit(current_user, "agent.install", resource_type="agent", resource_id=str(resolved_agent_id), resource_name=agent.name)
+    await audit(
+        current_user,
+        "agent.install",
+        resource_type="agent",
+        resource_id=str(resolved_agent_id),
+        resource_name=agent.name,
+    )
 
     warnings = snippet.pop("_warnings", [])
     return AgentInstallResponse(agent_id=resolved_agent_id, ide=req.ide, config_snippet=snippet, warnings=warnings)
@@ -785,7 +801,9 @@ async def agent_download_stats(
     from services.download_tracker import get_download_stats
 
     stats = await get_download_stats(agent.id, db)
-    await audit(current_user, "agent.download_stats", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.download_stats", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
     return stats
 
 
@@ -820,7 +838,9 @@ async def get_agent_traces(
         limit=limit,
         offset=offset,
     )
-    await audit(current_user, "agent.traces", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.traces", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
     return {"agent_id": str(agent.id), "traces": traces, "count": len(traces)}
 
 
@@ -841,7 +861,9 @@ async def resolve_agent_components(
     resolved = await resolve_agent(agent, db)
     from services.agent_builder import build_composition_summary
 
-    await audit(current_user, "agent.resolve", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.resolve", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
     return build_composition_summary(resolved)
 
 
@@ -873,7 +895,9 @@ async def get_agent_manifest(
         )
     from services.agent_builder import build_agent_manifest
 
-    await audit(current_user, "agent.manifest", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.manifest", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
     return build_agent_manifest(resolved)
 
 
@@ -985,7 +1009,9 @@ async def archive_agent(
         resource_name=agent.name,
     )
 
-    await audit(current_user, "agent.archive", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.archive", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
 
     return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
 
@@ -1015,7 +1041,9 @@ async def unarchive_agent(
         resource_name=agent.name,
     )
 
-    await audit(current_user, "agent.unarchive", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.unarchive", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
 
     return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
 
@@ -1110,7 +1138,9 @@ async def save_draft(
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
-    await audit(current_user, "agent.draft.create", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.draft.create", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
     return _agent_to_response(agent, created_by_email=current_user.email, created_by_username=current_user.username)
 
 
@@ -1189,7 +1219,9 @@ async def update_draft(
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
-    await audit(current_user, "agent.draft.update", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.draft.update", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
     return _agent_to_response(agent, created_by_email=current_user.email, created_by_username=current_user.username)
 
 
@@ -1243,7 +1275,9 @@ async def submit_draft(
         resource_name=agent.name,
     )
 
-    await audit(current_user, "agent.draft.submit", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "agent.draft.submit", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
+    )
 
     return _agent_to_response(
         agent, name_map, created_by_email=current_user.email, created_by_username=current_user.username

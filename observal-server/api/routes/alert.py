@@ -75,7 +75,9 @@ async def create_alert(
     db.add(rule)
     await db.commit()
     await db.refresh(rule)
-    await audit(current_user, "alert.create", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name)
+    await audit(
+        current_user, "alert.create", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name
+    )
     return AlertRuleResponse.from_rule(rule)
 
 
@@ -104,7 +106,9 @@ async def update_alert(
         rule.webhook_url = body.webhook_url
     await db.commit()
     await db.refresh(rule)
-    await audit(current_user, "alert.update", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name)
+    await audit(
+        current_user, "alert.update", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name
+    )
     return AlertRuleResponse.from_rule(rule)
 
 
@@ -129,7 +133,9 @@ async def delete_alert(
     alert_name = rule.name
     await db.delete(rule)
     await db.commit()
-    await audit(current_user, "alert.delete", resource_type="alert_rule", resource_id=alert_id_str, resource_name=alert_name)
+    await audit(
+        current_user, "alert.delete", resource_type="alert_rule", resource_id=alert_id_str, resource_name=alert_name
+    )
 
 
 @router.get("/{alert_id}/history", response_model=list[AlertHistoryResponse])
@@ -161,7 +167,9 @@ async def get_alert_history(
     )
     result = await db.execute(stmt)
     history = result.scalars().all()
-    await audit(current_user, "alert.history", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name)
+    await audit(
+        current_user, "alert.history", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name
+    )
     return history
 
 
@@ -182,7 +190,14 @@ async def rotate_webhook_secret(
     await db.commit()
     await db.refresh(rule)
 
-    await audit(current_user, "alert.webhook_secret.rotate", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name, detail="Webhook secret rotated")
+    await audit(
+        current_user,
+        "alert.webhook_secret.rotate",
+        resource_type="alert_rule",
+        resource_id=str(alert_id),
+        resource_name=rule.name,
+        detail="Webhook secret rotated",
+    )
     return WebhookSecretRotateResponse(
         webhook_secret_last4=rule.webhook_secret[-4:],
         rotated_at=datetime.now(UTC),
@@ -210,7 +225,14 @@ async def reveal_webhook_secret(
         current_user.id,
     )
 
-    await audit(current_user, "alert.webhook_secret.reveal", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name, detail="Webhook secret revealed")
+    await audit(
+        current_user,
+        "alert.webhook_secret.reveal",
+        resource_type="alert_rule",
+        resource_id=str(alert_id),
+        resource_name=rule.name,
+        detail="Webhook secret revealed",
+    )
     return WebhookSecretResponse(webhook_secret=rule.webhook_secret)
 
 
@@ -253,7 +275,14 @@ async def test_webhook(
         alert_rule_id=rule.id,
     )
 
-    await audit(current_user, "alert.webhook.test", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name, detail=f"Test webhook sent, success={result.success}")
+    await audit(
+        current_user,
+        "alert.webhook.test",
+        resource_type="alert_rule",
+        resource_id=str(alert_id),
+        resource_name=rule.name,
+        detail=f"Test webhook sent, success={result.success}",
+    )
     return WebhookTestResponse(
         success=result.success,
         status_code=result.status_code,

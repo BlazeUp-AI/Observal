@@ -158,7 +158,9 @@ async def submit_mcp(
         background_tasks.add_task(_run_validation_background, str(listing.id))
     # Direct config submissions (no git_url) skip validation — config is user-provided
 
-    await audit(current_user, "mcp.submit", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "mcp.submit", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+    )
     return McpListingResponse.model_validate(listing)
 
 
@@ -200,7 +202,9 @@ async def get_mcp(
 ):
     listing = await resolve_listing(McpListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(current_user, "mcp.view", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user, "mcp.view", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+        )
         return McpListingResponse.model_validate(listing)
 
     listing = await resolve_listing(McpListing, listing_id, db)
@@ -211,7 +215,9 @@ async def get_mcp(
         listing.submitted_by == current_user.id
         or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
     ):
-        await audit(current_user, "mcp.view", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user, "mcp.view", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+        )
         return McpListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -244,7 +250,9 @@ async def install_mcp(
         env_values=req.env_values,
         header_values=req.header_values,
     )
-    await audit(current_user, "mcp.install", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "mcp.install", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+    )
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
 
 
@@ -280,7 +288,9 @@ async def save_mcp_draft(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "mcp.draft.create", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "mcp.draft.create", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+    )
     return McpListingResponse.model_validate(listing)
 
 
@@ -328,7 +338,9 @@ async def update_mcp_draft(
 
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "mcp.draft.update", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "mcp.draft.update", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+    )
     return McpListingResponse.model_validate(listing)
 
 
@@ -354,7 +366,9 @@ async def submit_mcp_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "mcp.draft.submit", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "mcp.draft.submit", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
+    )
     return McpListingResponse.model_validate(listing)
 
 
@@ -387,5 +401,7 @@ async def delete_mcp(
     listing_name = listing.name
     await db.delete(listing)
     await db.commit()
-    await audit(current_user, "mcp.delete", resource_type="mcp", resource_id=str(listing_id), resource_name=listing_name)
+    await audit(
+        current_user, "mcp.delete", resource_type="mcp", resource_id=str(listing_id), resource_name=listing_name
+    )
     return {"deleted": str(listing_id)}

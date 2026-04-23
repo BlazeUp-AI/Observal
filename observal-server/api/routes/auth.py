@@ -138,7 +138,13 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
     await db.refresh(user)
 
     access_token, refresh_token, expires_in = await _issue_tokens(user)
-    await audit(user, "auth.bootstrap", resource_type="auth", resource_id=str(user.id), detail="Bootstrap admin created from localhost")
+    await audit(
+        user,
+        "auth.bootstrap",
+        resource_type="auth",
+        resource_id=str(user.id),
+        detail="Bootstrap admin created from localhost",
+    )
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -347,7 +353,9 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user_agent=user_agent,
         )
     )
-    await audit(user, "auth.oauth_callback", resource_type="session", resource_id=str(user.id), detail="OAuth SSO login")
+    await audit(
+        user, "auth.oauth_callback", resource_type="session", resource_id=str(user.id), detail="OAuth SSO login"
+    )
     frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}"
     return RedirectResponse(url=frontend_redirect)
 
@@ -395,7 +403,13 @@ async def exchange_code(req: CodeExchangeRequest, db: AsyncSession = Depends(get
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
-    await audit(user, "auth.exchange_code", resource_type="session", resource_id=str(user.id), detail="OAuth code exchanged for tokens")
+    await audit(
+        user,
+        "auth.exchange_code",
+        resource_type="session",
+        resource_id=str(user.id),
+        detail="OAuth code exchanged for tokens",
+    )
     return InitResponse(
         user=UserResponse.model_validate(user),
         access_token=access_token,
@@ -551,7 +565,13 @@ async def set_username(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Username already taken")
     await db.refresh(current_user)
-    await audit(current_user, "auth.set_username", resource_type="auth", resource_id=str(current_user.id), detail=f"Username set to {req.username}")
+    await audit(
+        current_user,
+        "auth.set_username",
+        resource_type="auth",
+        resource_id=str(current_user.id),
+        detail=f"Username set to {req.username}",
+    )
     return UserResponse.model_validate(current_user)
 
 
@@ -578,5 +598,11 @@ async def create_hooks_token(current_user: User = Depends(get_current_user)):
             detail="Hooks token created (30-day)",
         )
     )
-    await audit(current_user, "auth.create_hooks_token", resource_type="token", resource_id=str(current_user.id), detail="Hooks token created (30-day)")
+    await audit(
+        current_user,
+        "auth.create_hooks_token",
+        resource_type="token",
+        resource_id=str(current_user.id),
+        detail="Hooks token created (30-day)",
+    )
     return {"access_token": token, "expires_in": expires_in}

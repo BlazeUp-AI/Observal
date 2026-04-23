@@ -68,7 +68,13 @@ async def create_feedback(
     except Exception:
         pass  # Don't fail the request if ClickHouse write fails
 
-    await audit(current_user, "feedback.create", resource_type="feedback", resource_id=str(fb.id), detail=f"Rating={req.rating} for {req.listing_type}/{req.listing_id}")
+    await audit(
+        current_user,
+        "feedback.create",
+        resource_type="feedback",
+        resource_id=str(fb.id),
+        detail=f"Rating={req.rating} for {req.listing_type}/{req.listing_id}",
+    )
     return FeedbackResponse.model_validate(fb)
 
 

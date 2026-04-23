@@ -415,7 +415,8 @@ async def get_review(
         pass
 
     await audit(
-        current_user, "review.view",
+        current_user,
+        "review.view",
         resource_type=result.get("type", ""),
         resource_id=result.get("id", ""),
         resource_name=result.get("name", ""),
@@ -437,7 +438,8 @@ async def approve(
     await db.commit()
     await db.refresh(listing)
     await audit(
-        current_user, "review.approve",
+        current_user,
+        "review.approve",
         resource_type="listing",
         resource_id=str(listing.id),
         resource_name=listing.name,
@@ -461,7 +463,8 @@ async def reject(
     await db.commit()
     await db.refresh(listing)
     await audit(
-        current_user, "review.reject",
+        current_user,
+        "review.reject",
         resource_type="listing",
         resource_id=str(listing.id),
         resource_name=listing.name,
@@ -507,7 +510,8 @@ async def approve_agent(
     agent.rejection_reason = None
     await db.commit()
     await audit(
-        current_user, "review.agent.approve",
+        current_user,
+        "review.agent.approve",
         resource_type="agent",
         resource_id=str(agent_id),
         resource_name=agent.name,
@@ -532,7 +536,8 @@ async def reject_agent(
     agent.rejection_reason = req.reason
     await db.commit()
     await audit(
-        current_user, "review.agent.reject",
+        current_user,
+        "review.agent.reject",
         resource_type="agent",
         resource_id=str(agent_id),
         resource_name=agent.name,
@@ -566,7 +571,8 @@ async def approve_bundle(
 
     await db.commit()
     await audit(
-        current_user, "review.bundle.approve",
+        current_user,
+        "review.bundle.approve",
         resource_type="bundle",
         resource_id=str(bundle_id),
         resource_name=bundle.name,
@@ -596,7 +602,8 @@ async def reject_bundle(
 
     await db.commit()
     await audit(
-        current_user, "review.bundle.reject",
+        current_user,
+        "review.bundle.reject",
         resource_type="bundle",
         resource_id=str(bundle_id),
         resource_name=bundle.name,
@@ -663,7 +670,8 @@ async def get_related_skills(
         ]
     }
     await audit(
-        current_user, "review.related_skills",
+        current_user,
+        "review.related_skills",
         resource_type="listing",
         resource_id=str(listing.id) if listing else listing_id,
         resource_name=mcp_name if listing else "",
@@ -707,7 +715,8 @@ async def approve_mcp_with_skills(
     await db.commit()
     await db.refresh(listing)
     await audit(
-        current_user, "review.approve_with_skills",
+        current_user,
+        "review.approve_with_skills",
         resource_type="listing",
         resource_id=str(listing.id),
         resource_name=listing.name,

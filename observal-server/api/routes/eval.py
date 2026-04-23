@@ -100,7 +100,14 @@ async def run_evaluation(
     await db.commit()
     run = await db.execute(select(EvalRun).where(EvalRun.id == eval_run.id).options(*_eval_run_load))
     result = run.scalar_one()
-    await audit(current_user, "eval.run", resource_type="eval", resource_id=str(eval_run.id), resource_name=agent.name, detail=f"Eval run status={eval_run.status.value}")
+    await audit(
+        current_user,
+        "eval.run",
+        resource_type="eval",
+        resource_id=str(eval_run.id),
+        resource_name=agent.name,
+        detail=f"Eval run status={eval_run.status.value}",
+    )
     return EvalRunDetailResponse.model_validate(result)
 
 
@@ -116,7 +123,9 @@ async def list_eval_runs(
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
     result = await db.execute(select(EvalRun).where(EvalRun.agent_id == agent.id).order_by(EvalRun.started_at.desc()))
     runs = result.scalars().all()
-    await audit(current_user, "eval.runs.list", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "eval.runs.list", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name
+    )
     return [EvalRunResponse.model_validate(r) for r in runs]
 
 
@@ -136,7 +145,13 @@ async def list_scorecards(
         stmt = stmt.where(Scorecard.version == version)
     result = await db.execute(stmt.order_by(Scorecard.evaluated_at.desc()).limit(50))
     scorecards = result.scalars().all()
-    await audit(current_user, "eval.scorecards.list", resource_type="scorecard", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user,
+        "eval.scorecards.list",
+        resource_type="scorecard",
+        resource_id=str(agent.id),
+        resource_name=agent.name,
+    )
     return [ScorecardResponse.model_validate(s) for s in scorecards]
 
 
@@ -183,7 +198,14 @@ async def compare_versions(
         return {"version": version, "avg_score": round(float(row.avg_overall or 0), 2), "count": row.count}
 
     result = {"version_a": await _avg_scores(version_a), "version_b": await _avg_scores(version_b)}
-    await audit(current_user, "eval.compare", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name, detail=f"Compared {version_a} vs {version_b}")
+    await audit(
+        current_user,
+        "eval.compare",
+        resource_type="eval",
+        resource_id=str(agent.id),
+        resource_name=agent.name,
+        detail=f"Compared {version_a} vs {version_b}",
+    )
     return result
 
 
@@ -232,7 +254,13 @@ async def eval_session(
         eval_run.completed_at = datetime.now(UTC)
         await db.commit()
 
-        await audit(current_user, "eval.session", resource_type="eval", resource_id=str(eval_run.id), detail=f"Session {session_id} evaluated with agent {agent.name}")
+        await audit(
+            current_user,
+            "eval.session",
+            resource_type="eval",
+            resource_id=str(eval_run.id),
+            detail=f"Session {session_id} evaluated with agent {agent.name}",
+        )
         return {
             "session_id": session_id,
             "eval_run_id": str(eval_run.id),
@@ -244,7 +272,9 @@ async def eval_session(
         }
 
     # No agent — return materialized data summary (useful for inspection)
-    await audit(current_user, "eval.session", resource_type="eval", detail=f"Session {session_id} inspected without agent")
+    await audit(
+        current_user, "eval.session", resource_type="eval", detail=f"Session {session_id} inspected without agent"
+    )
     return {
         "session_id": session_id,
         "trace": trace,
@@ -313,7 +343,14 @@ async def eval_agent_in_session(
             eval_run.completed_at = datetime.now(UTC)
             await db.commit()
 
-            await audit(current_user, "eval.agent_session", resource_type="eval", resource_id=str(eval_run.id), resource_name=agent.name, detail=f"Full session eval for agent in session {session_id}")
+            await audit(
+                current_user,
+                "eval.agent_session",
+                resource_type="eval",
+                resource_id=str(eval_run.id),
+                resource_name=agent.name,
+                detail=f"Full session eval for agent in session {session_id}",
+            )
             return {
                 "session_id": session_id,
                 "agent_id": str(agent.id),
@@ -354,7 +391,14 @@ async def eval_agent_in_session(
     eval_run.completed_at = datetime.now(UTC)
     await db.commit()
 
-    await audit(current_user, "eval.agent_session", resource_type="eval", resource_id=str(eval_run.id), resource_name=agent.name, detail=f"Agent-scoped eval in session {session_id}")
+    await audit(
+        current_user,
+        "eval.agent_session",
+        resource_type="eval",
+        resource_id=str(eval_run.id),
+        resource_name=agent.name,
+        detail=f"Agent-scoped eval in session {session_id}",
+    )
     return {
         "session_id": session_id,
         "agent_id": str(agent.id),
@@ -405,7 +449,9 @@ async def agent_aggregate(
     ]
     aggregator = ScoreAggregator()
     result = aggregator.compute_agent_aggregate(sc_dicts, window_size=window_size)
-    await audit(current_user, "eval.aggregate", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name)
+    await audit(
+        current_user, "eval.aggregate", resource_type="eval", resource_id=str(agent.id), resource_name=agent.name
+    )
     return result
 
 

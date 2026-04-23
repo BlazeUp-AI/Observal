@@ -54,7 +54,9 @@ async def submit_sandbox(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "sandbox.submit", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user, "sandbox.submit", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name
+    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -100,7 +102,13 @@ async def get_sandbox(
 ):
     listing = await resolve_listing(SandboxListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(current_user, "sandbox.view", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user,
+            "sandbox.view",
+            resource_type="sandbox",
+            resource_id=str(listing.id),
+            resource_name=listing.name,
+        )
         return SandboxListingResponse.model_validate(listing)
 
     listing = await resolve_listing(SandboxListing, listing_id, db)
@@ -111,7 +119,13 @@ async def get_sandbox(
         listing.submitted_by == current_user.id
         or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
     ):
-        await audit(current_user, "sandbox.view", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+        await audit(
+            current_user,
+            "sandbox.view",
+            resource_type="sandbox",
+            resource_id=str(listing.id),
+            resource_name=listing.name,
+        )
         return SandboxListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -139,7 +153,13 @@ async def install_sandbox(
 
     endpoints = derive_endpoints(request)
     config = generate_sandbox_config(listing, req.ide, server_url=endpoints["api"])
-    await audit(current_user, "sandbox.install", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "sandbox.install",
+        resource_type="sandbox",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SandboxInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
@@ -170,7 +190,13 @@ async def save_sandbox_draft(
     db.add(listing)
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "sandbox.draft.create", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "sandbox.draft.create",
+        resource_type="sandbox",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -210,7 +236,13 @@ async def update_sandbox_draft(
 
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "sandbox.draft.update", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "sandbox.draft.update",
+        resource_type="sandbox",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -236,7 +268,13 @@ async def submit_sandbox_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(current_user, "sandbox.draft.submit", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name)
+    await audit(
+        current_user,
+        "sandbox.draft.submit",
+        resource_type="sandbox",
+        resource_id=str(listing.id),
+        resource_name=listing.name,
+    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -263,5 +301,7 @@ async def delete_sandbox(
     listing_name = listing.name
     await db.delete(listing)
     await db.commit()
-    await audit(current_user, "sandbox.delete", resource_type="sandbox", resource_id=str(listing_id), resource_name=listing_name)
+    await audit(
+        current_user, "sandbox.delete", resource_type="sandbox", resource_id=str(listing_id), resource_name=listing_name
+    )
     return {"deleted": str(listing_id)}
