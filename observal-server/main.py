@@ -30,6 +30,7 @@ from api.routes.bulk import router as bulk_router
 from api.routes.component_source import router as component_source_router
 from api.routes.config import router as config_router
 from api.routes.dashboard import router as dashboard_router
+from api.routes.device_auth import router as device_auth_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.hook import router as hook_router
@@ -268,6 +269,7 @@ app.include_router(otlp_router)
 
 # REST (CLI operations, auth, telemetry ingestion)
 app.include_router(auth_router)
+app.include_router(device_auth_router)
 app.include_router(jwks_router)
 app.include_router(mcp_router)
 app.include_router(review_router)

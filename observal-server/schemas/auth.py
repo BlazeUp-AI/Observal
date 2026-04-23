@@ -124,3 +124,28 @@ class UsernameUpdateRequest(BaseModel):
         if result is None:
             raise ValueError("Username is required")
         return result
+
+
+# ── Device Authorization Grant (RFC 8628) ─────────────────
+
+
+class DeviceAuthRequest(BaseModel):
+    client_id: str | None = None
+
+
+class DeviceAuthResponse(BaseModel):
+    device_code: str
+    user_code: str
+    verification_uri: str
+    verification_uri_complete: str
+    expires_in: int
+    interval: int
+
+
+class DeviceTokenRequest(BaseModel):
+    device_code: str
+    grant_type: str
+
+
+class DeviceConfirmRequest(BaseModel):
+    user_code: str
