@@ -1,6 +1,6 @@
 "use client";
 
-import { Stethoscope, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, KeyRound, Building2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, KeyRound, Building2 } from "lucide-react";
 import { useDiagnostics } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
