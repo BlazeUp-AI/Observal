@@ -1184,11 +1184,7 @@ class TestDoctorCopilotCli:
     def test_check_copilot_cli_fn_no_warning_on_shimmed_mcp(self):
         from observal_cli.cmd_doctor import _check_copilot_cli
 
-        data = {
-            "mcpServers": {
-                "my-srv": {"command": "observal-shim", "args": ["--mcp-id", "test", "--", "npx"]}
-            }
-        }
+        data = {"mcpServers": {"my-srv": {"command": "observal-shim", "args": ["--mcp-id", "test", "--", "npx"]}}}
         issues = []
         warnings = []
         _check_copilot_cli(Path("mcp-config.json"), data, issues, warnings)
@@ -1230,9 +1226,7 @@ class TestConfigGeneratorCopilotCli:
     def test_copilot_cli_sse_has_type_sse(self):
         from services.config_generator import generate_config
 
-        cfg = generate_config(
-            self._make_listing(url="http://localhost:3000/sse", transport="sse"), "copilot-cli"
-        )
+        cfg = generate_config(self._make_listing(url="http://localhost:3000/sse", transport="sse"), "copilot-cli")
         server = cfg["mcpServers"]["my-mcp"]
         assert server["type"] == "sse"
         assert server["url"] == "http://localhost:3000/sse"
