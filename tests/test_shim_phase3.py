@@ -346,4 +346,4 @@ class TestAgentConfigGenerator:
         agent = cfg["agent_file"]["content"]
         assert agent["name"] == "test-agent"
         assert agent["mcpServers"]["ext-mcp"]["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
-        assert "@ext-mcp" in agent["tools"]
+        assert "*" in agent["tools"]

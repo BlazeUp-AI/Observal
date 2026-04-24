@@ -309,8 +309,9 @@ class TestGenerateKiro:
         cfg = generate_agent_config(agent, "kiro")
         content = cfg["agent_file"]["content"]
         assert content["name"] == "test-agent"
-        assert content["prompt"] == "You are helpful."
-        assert content["model"] == "claude-sonnet-4"
+        assert "You are helpful." in content["prompt"]
+        assert "Agent Specialization" in content["prompt"]
+        assert content["model"] is None  # Kiro uses auto model selection
         assert "mcpServers" in content
         assert "hooks" in content
 
@@ -338,13 +339,21 @@ class TestGenerateKiro:
         cfg = generate_agent_config(agent, "kiro")
         assert len(cfg["agent_file"]["content"]["description"]) == 200
 
-    def test_tools_include_builtins(self):
+    def test_tools_include_wildcard(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
         tools = cfg["agent_file"]["content"]["tools"]
-        assert "read" in tools
-        assert "write" in tools
-        assert "shell" in tools
+        assert "*" in tools
+
+    def test_kiro_native_schema_fields(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "kiro")
+        content = cfg["agent_file"]["content"]
+        assert content["toolAliases"] == {}
+        assert content["allowedTools"] == []
+        assert content["toolsSettings"] == {}
+        assert isinstance(content["resources"], list)
+        assert any("AGENTS.md" in r for r in content["resources"])
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -645,14 +654,12 @@ class TestBuilderKiro:
         assert "~/.kiro/agents/" in json_file.path
         assert json_file.content["name"] == "test-agent"
 
-    def test_tools_include_builtins(self):
+    def test_tools_include_wildcard(self):
         manifest = _make_manifest()
         result = generate_ide_agent_files(manifest, "kiro")
         json_file = next(f for f in result.files if f.format == "json")
         tools = json_file.content["tools"]
-        assert "read" in tools
-        assert "write" in tools
-        assert "shell" in tools
+        assert "*" in tools
 
 
 class TestBuilderGemini:
@@ -792,15 +799,9 @@ class TestGenerateKiroWin32:
         for cmd in cmds:
             assert "--agent-name my-cool-agent" in cmd
 
-    def test_win32_hooks_include_model_when_present(self):
+    def test_hooks_omit_model_flag(self):
+        """Model is detected from Kiro SQLite at runtime, not baked into hook commands."""
         agent = _make_agent(model_name="claude-sonnet-4")
-        cfg = generate_agent_config(agent, "kiro", platform="win32")
-        cmds = self._all_hook_commands(cfg)
-        for cmd in cmds:
-            assert "--model claude-sonnet-4" in cmd
-
-    def test_win32_hooks_omit_model_when_empty(self):
-        agent = _make_agent(model_name="")
         cfg = generate_agent_config(agent, "kiro", platform="win32")
         cmds = self._all_hook_commands(cfg)
         for cmd in cmds:
@@ -840,14 +841,15 @@ class TestGenerateKiroPreservation:
         cfg_empty = generate_agent_config(agent, "kiro", platform="")
         assert cfg_default == cfg_empty
 
-    def test_unix_hooks_still_use_cat_sed_curl(self):
+    def test_unix_hooks_use_python_hook_scripts(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="linux")
         hooks = cfg["agent_file"]["content"]["hooks"]
         spawn_cmd = hooks["agentSpawn"][0]["command"]
-        assert "cat |" in spawn_cmd
-        assert "sed '" in spawn_cmd
-        assert "curl" in spawn_cmd
+        assert "python3 -m observal_cli.hooks.kiro_hook" in spawn_cmd
+        assert "cat |" not in spawn_cmd
+        assert "sed " not in spawn_cmd
+        assert "curl" not in spawn_cmd
 
     def test_non_kiro_ides_unaffected_by_platform(self):
         agent = _make_agent()

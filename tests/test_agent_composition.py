@@ -1261,11 +1261,12 @@ class TestGenerateIdeAgentFiles:
         assert agent_file.format == "json"
         content = agent_file.content
         assert content["name"] == "test-agent"
-        assert content["prompt"] == "You are a helpful coding assistant."
+        assert "You are a helpful coding assistant." in content["prompt"]
+        assert "Agent Specialization" in content["prompt"]
         assert "mcpServers" in content
         assert "github-mcp" in content["mcpServers"]
-        assert "@github-mcp" in content["tools"]
-        assert content["model"] == "claude-sonnet-4-20250514"
+        assert "*" in content["tools"]
+        assert content["model"] is None  # Kiro uses auto model selection
 
     # ── Codex ──────────────────────────────────────────────────
 
