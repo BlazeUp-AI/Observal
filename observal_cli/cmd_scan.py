@@ -312,6 +312,8 @@ def _scan_kiro_home(
     agents_dir = kiro_dir / "agents"
     if agents_dir.is_dir():
         for agent_file in sorted(agents_dir.glob("*.json")):
+            if agent_file.stem == "kiro_default":
+                continue
             try:
                 data = json.loads(agent_file.read_text())
                 name = data.get("name", agent_file.stem)
