@@ -55,7 +55,7 @@ function isKiroSession(row: Session): boolean {
   return row.service_name === "kiro" || row.session_id.startsWith("kiro-");
 }
 
-function isCopilotCliSession(row: OtelSession): boolean {
+function isCopilotCliSession(row: Session): boolean {
   return (
     row.service_name === "copilot-cli" ||
     row.service_name === "copilot" ||
