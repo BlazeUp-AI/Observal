@@ -20,8 +20,8 @@ How trace data gets from an agent session to ClickHouse.
        ▼                           ▼
 ┌──────────────┐          ┌────────────────┐
 │  /api/v1/    │          │ /api/v1/       │
-│  telemetry/  │          │ otel/hooks     │
-│  ingest      │          │                │
+│  telemetry/  │          │ telemetry/     │
+│  ingest      │          │ hooks          │
 └──────┬───────┘          └────────┬───────┘
        │                           │
        └──────────┬────────────────┘
@@ -62,24 +62,21 @@ Full schema and handler types: [Hooks specification](../reference/hooks-spec.md)
 * Claude Code: `~/.claude/settings.json`
 * Kiro: agent JSON at `.kiro/agents/<name>.json` or `~/.kiro/agents/<name>.json`
 
-## The OTEL Collector
+## OTLP ingestion
 
-`observal-otel-collector` (port 4317 gRPC, 4318 HTTP) accepts native OpenTelemetry traces and logs. It is used by:
+The Observal API accepts OTLP data directly on the same port as all other API traffic (`:8000`). There is no separate OTEL collector — the API handles `/v1/traces`, `/v1/logs`, and `/v1/metrics` natively over HTTP/JSON (OTLP/HTTP).
 
-* **Claude Code** — via `OTEL_EXPORTER_OTLP_ENDPOINT`. Claude Code exports native OTLP traces and logs including token counts and cost.
-* **Any OTEL-instrumented tool** — anything that speaks OTLP can send to port 4317/4318.
+* **Claude Code** — via `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at `http://localhost:8000`. Claude Code exports native OTLP traces and logs including token counts and cost.
+* **Any OTEL-instrumented tool** — anything that speaks OTLP/HTTP can send to the API endpoint.
 
-Kiro does not yet export OTLP natively ([kirodotdev/Kiro#6319](https://github.com/kirodotdev/Kiro/issues/6319)), so Kiro telemetry flows through hooks instead of the collector.
-
-Collector config lives at `otel-collector-config.yaml` at the repo root. It forwards traces to the Observal API's OTLP ingest path.
+Kiro does not yet export OTLP natively ([kirodotdev/Kiro#6319](https://github.com/kirodotdev/Kiro/issues/6319)), so Kiro telemetry flows through hooks instead.
 
 ## High-volume tuning
 
-At high telemetry volume, three hot spots:
+At high telemetry volume, two hot spots:
 
 1. **ClickHouse writes.** Observal batches inserts already. If you see ingest backpressure, bump `CLICKHOUSE_*` memory limits, consider external ClickHouse.
-2. **OTEL collector memory.** Default is 256 MB. Raise if you see drop metrics in the collector logs.
-3. **Redis queue.** `arq` uses Redis for the eval job queue. Redis at 256 MB is fine for most deployments; bump for heavier eval workloads.
+2. **Redis queue.** `arq` uses Redis for the eval job queue. Redis at 256 MB is fine for most deployments; bump for heavier eval workloads.
 
 ## Alert on degraded ingest
 
@@ -91,7 +88,7 @@ Configure in the web UI at `/settings/alerts` or via `POST /api/v1/alerts`.
 
 ## Legacy event endpoints
 
-`/api/v1/telemetry/events` is retained for backward compatibility with earlier hook formats. New integrations should use `/api/v1/telemetry/ingest` (batch traces + spans + scores) and `/api/v1/otel/hooks` (hook events).
+`/api/v1/telemetry/events` is retained for backward compatibility with earlier hook formats. New integrations should use `/api/v1/telemetry/ingest` (batch traces + spans + scores) and `/api/v1/telemetry/hooks` (hook events).
 
 ## Verifying the pipeline
 

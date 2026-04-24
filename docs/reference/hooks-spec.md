@@ -79,7 +79,7 @@ Older installs (pre-metadata) are detected with a fallback heuristic.
         "_observal": { "version": "5", "source": "observal-pull" },
         "matcher": "*",
         "type": "http",
-        "url": "http://localhost:8000/api/v1/otel/hooks",
+        "url": "http://localhost:8000/api/v1/telemetry/hooks",
         "method": "POST",
         "headers": {
           "Authorization": "Bearer ${OBSERVAL_API_KEY}",
@@ -99,11 +99,11 @@ Kiro doesn't support native HTTP hooks, so Observal uses `curl`:
 {
   "name": "my-agent",
   "hooks": {
-    "agentSpawn":       "curl -s -X POST http://localhost:8000/api/v1/otel/hooks -H 'Authorization: Bearer $OBSERVAL_API_KEY' -H 'Content-Type: application/json' -d @-",
-    "userPromptSubmit": "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "preToolUse":       "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "postToolUse":      "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "stop":             "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ..."
+    "agentSpawn":       "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks -H 'Authorization: Bearer $OBSERVAL_API_KEY' -H 'Content-Type: application/json' -d @-",
+    "userPromptSubmit": "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "preToolUse":       "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "postToolUse":      "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "stop":             "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ..."
   }
 }
 ```

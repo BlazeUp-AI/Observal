@@ -40,7 +40,7 @@ Restart Claude Code after `scan` or `pull`.
 
 ## OTLP telemetry
 
-Claude Code exports OpenTelemetry natively. `observal scan` configures `OTEL_EXPORTER_OTLP_ENDPOINT` to point at the Observal OTEL collector (`http://localhost:4318` by default). Resource attributes include session ID, IDE ("claude-code"), and model name.
+Claude Code exports OpenTelemetry natively. `observal scan` configures `OTEL_EXPORTER_OTLP_ENDPOINT` to point at the Observal API (`http://localhost:8000` by default). All OTLP data flows over HTTP/JSON on the same port as the rest of the API — no separate collector. Resource attributes include session ID, IDE ("claude-code"), and model name.
 
 Token counts and cost come through as span attributes — you see them in the trace viewer without any extra work.
 
@@ -102,7 +102,7 @@ This drops a directory into `.claude/skills/` that Claude Code loads on demand.
 
 * **Hooks not firing** — run `observal doctor --ide claude-code --fix`.
 * **MCP traces missing** — confirm the shim is in `~/.claude/settings.json` for each server. `observal doctor` flags unwrapped servers.
-* **OTLP export dropped** — check that the OTEL collector (`observal-otel-collector`) is up and that `OTEL_EXPORTER_OTLP_ENDPOINT` is reachable from where Claude Code runs.
+* **OTLP export dropped** — check that the Observal API is up and that `OTEL_EXPORTER_OTLP_ENDPOINT` (should point at `http://localhost:8000`) is reachable from where Claude Code runs.
 
 ## Related
 

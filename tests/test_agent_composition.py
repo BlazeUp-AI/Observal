@@ -1066,7 +1066,7 @@ class TestPydanticValidation:
                 AgentFile(path=".claude/rules/test.md", content="# Rules", format="markdown"),
                 AgentFile(path=".mcp.json", content={"mcpServers": {}}, format="json"),
             ],
-            env={"OTEL_ENDPOINT": "http://localhost:4318"},
+            env={"OTEL_ENDPOINT": "http://localhost:8000"},
         )
         assert len(config.files) == 2
         assert config.files[0].format == "markdown"

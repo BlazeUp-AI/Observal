@@ -74,6 +74,7 @@ class TestHookIdentification:
         assert is_observal_hook_entry(entry)
 
     def test_http_hook_identified(self):
+        # Legacy HTTP hooks used the old /otel/hooks path — still detected for upgrade
         entry = {"type": "http", "url": "http://localhost:8000/api/v1/otel/hooks"}
         assert is_observal_hook_entry(entry)
 
@@ -98,7 +99,7 @@ class TestHookIdentification:
     def test_desired_hooks_have_metadata(self):
         """get_desired_hooks injects _observal metadata into every matcher group."""
         desired = get_desired_hooks(
-            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/otel/hooks"
+            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/telemetry/hooks"
         )
         for event, groups in desired.items():
             for group in groups:
@@ -113,7 +114,7 @@ class TestReconcileHooks:
     def test_fresh_install_adds_all_events(self):
         """On empty settings, all desired events are added."""
         desired = get_desired_hooks(
-            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/otel/hooks"
+            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/telemetry/hooks"
         )
         merged, changes = reconcile_hooks({}, desired)
 
@@ -127,7 +128,7 @@ class TestReconcileHooks:
         current = {
             "PreToolUse": [foreign_group],
         }
-        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
 
         merged, changes = reconcile_hooks(current, desired)
 
@@ -143,7 +144,7 @@ class TestReconcileHooks:
         current = {
             "SessionStart": [old_http_group],
         }
-        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
 
         merged, changes = reconcile_hooks(current, desired)
 
@@ -160,7 +161,7 @@ class TestReconcileHooks:
         current = {
             "SessionStart": [old_path_group],
         }
-        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
 
         merged, changes = reconcile_hooks(current, desired)
 
@@ -171,7 +172,7 @@ class TestReconcileHooks:
     def test_idempotent_rerun(self):
         """Running reconcile twice with same desired state produces no changes."""
         desired = get_desired_hooks(
-            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/otel/hooks"
+            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/telemetry/hooks"
         )
 
         # First run: everything is new
@@ -187,7 +188,7 @@ class TestReconcileHooks:
         current = {
             "MyCustomEvent": [{"hooks": [{"type": "command", "command": "/custom.sh"}]}],
         }
-        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
 
         merged, _ = reconcile_hooks(current, desired)
 
@@ -197,7 +198,7 @@ class TestReconcileHooks:
     def test_adds_new_events(self):
         """When the spec adds a new event type, it appears after reconcile."""
         # Start with a partial set of events
-        desired_full = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired_full = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
         partial = {k: v for k, v in desired_full.items() if k in ("SessionStart", "Stop")}
 
         merged, _ = reconcile_hooks(partial, desired_full)
@@ -209,7 +210,7 @@ class TestReconcileHooks:
     def test_stop_has_two_hooks(self):
         """Stop event should have both generic and stop-specific handlers in separate matcher groups."""
         desired = get_desired_hooks(
-            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/otel/hooks"
+            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/telemetry/hooks"
         )
         stop_groups = desired["Stop"]
 
@@ -271,7 +272,7 @@ class TestFullReconcile:
     def test_fresh_install_writes_file(self, settings_path, config_path):
         """Full reconcile on empty settings creates the file."""
         desired_hooks = get_desired_hooks(
-            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/otel/hooks"
+            "/path/observal-hook.sh", "/path/observal-stop-hook.sh", "http://localhost:8000/api/v1/telemetry/hooks"
         )
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
@@ -298,7 +299,7 @@ class TestFullReconcile:
             encoding="utf-8",
         )
 
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         reconcile(desired_hooks, desired_env)
@@ -309,7 +310,7 @@ class TestFullReconcile:
 
     def test_dry_run_does_not_write(self, settings_path, config_path):
         """dry_run=True computes changes but doesn't write."""
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         changes = reconcile(desired_hooks, desired_env, dry_run=True)
@@ -319,7 +320,7 @@ class TestFullReconcile:
 
     def test_records_spec_version(self, settings_path, config_path):
         """After reconcile, the applied version is recorded in config."""
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         reconcile(desired_hooks, desired_env)
@@ -329,7 +330,7 @@ class TestFullReconcile:
 
     def test_no_changes_skips_write(self, settings_path, config_path):
         """When already up to date, the file is not rewritten."""
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/otel/hooks")
+        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         # First reconcile

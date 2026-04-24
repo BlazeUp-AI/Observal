@@ -18,23 +18,20 @@ Run Observal entirely on your own infrastructure. No SaaS, no egress, every byte
                   │   observal-db   observal-redis  observal-clickhouse
                   │   (Postgres)    (jobs, pubsub)   (telemetry)   │
                   │                                               │
-                  │   observal-otel-collector  ──►  clickhouse    │
-                  │                                               │
                   │   observal-grafana  ──►  clickhouse (optional)│
                   └───────────────────────────────────────────────┘
 ```
 
-**Eight services:**
+**Seven services:**
 
 | Service | Image | Ports | Purpose |
 | --- | --- | --- | --- |
-| `observal-api` | built from `docker/Dockerfile.api` | 8000 | FastAPI backend |
+| `observal-api` | built from `docker/Dockerfile.api` | 8000 | FastAPI backend + OTLP ingestion |
 | `observal-web` | built from `docker/Dockerfile.web` | 3000 | Next.js web UI |
 | `observal-db` | `postgres:16` | 5432 | Registry, users, config |
 | `observal-clickhouse` | `clickhouse/clickhouse-server:26.3` | 8123 | Traces, spans, scores |
 | `observal-redis` | `redis:7-alpine` | 6379 | Job queue (arq) + pub/sub |
 | `observal-worker` | built from `docker/Dockerfile.api` | (internal) | Background eval + async jobs |
-| `observal-otel-collector` | `otel/opentelemetry-collector-contrib:0.150.1` | 4317, 4318 | OTEL ingestion |
 | `observal-grafana` | `grafana/grafana-oss:11.6.5` | 3001 | Dashboards (optional) |
 
 All services run on a private `observal-net` bridge network. Named volumes (`pgdata`, `chdata`, `redisdata`, `grafanadata`, `apidata`) hold persistent data.

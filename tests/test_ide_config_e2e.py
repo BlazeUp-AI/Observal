@@ -933,7 +933,7 @@ class TestPullGemini:
                         }
                     },
                 },
-                "otlp_env": {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318"},
+                "otlp_env": {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:8000"},
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
@@ -1594,22 +1594,22 @@ class TestGeminiConfigGenerator:
     def test_gemini_settings_disables_native_otlp(self):
         from services.config_generator import _gemini_settings
 
-        settings = _gemini_settings("http://custom-host:4318")
+        settings = _gemini_settings("http://custom-host:8000")
         assert settings["telemetry"]["enabled"] is False
         assert settings["telemetry"]["logPrompts"] is True
 
     def test_gemini_settings_no_target(self):
         from services.config_generator import _gemini_settings
 
-        settings = _gemini_settings("http://localhost:4318")
+        settings = _gemini_settings("http://localhost:8000")
         assert "target" not in settings["telemetry"]
         assert "otlpEndpoint" not in settings["telemetry"]
 
     def test_gemini_otlp_env_uses_observal_url(self):
         from services.config_generator import _gemini_otlp_env
 
-        env = _gemini_otlp_env("http://custom-host:4318")
-        assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://custom-host:4318"
+        env = _gemini_otlp_env("http://custom-host:8000")
+        assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://custom-host:8000"
 
     def test_gemini_settings_snippet_in_agent_config(self):
         agent = _make_agent()

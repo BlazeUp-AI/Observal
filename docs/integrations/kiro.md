@@ -110,7 +110,7 @@ Observal installs shell hooks into each Kiro agent JSON. They fire at these even
 | `postToolUse` | Tool response (after the call) |
 | `stop` | Session end, credit usage, resolved model ID |
 
-Each hook is a `curl` call to `http://localhost:8000/api/v1/otel/hooks` (or your Observal server URL).
+Each hook is a `curl` call to `http://localhost:8000/api/v1/telemetry/hooks` (or your Observal server URL).
 
 ### Example agent JSON
 
@@ -118,11 +118,11 @@ Each hook is a `curl` call to `http://localhost:8000/api/v1/otel/hooks` (or your
 {
   "name": "my-agent",
   "hooks": {
-    "agentSpawn":       "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "userPromptSubmit": "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "preToolUse":       "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "postToolUse":      "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ...",
-    "stop":             "curl -s -X POST http://localhost:8000/api/v1/otel/hooks ..."
+    "agentSpawn":       "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "userPromptSubmit": "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "preToolUse":       "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "postToolUse":      "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ...",
+    "stop":             "curl -s -X POST http://localhost:8000/api/v1/telemetry/hooks ..."
   }
 }
 ```

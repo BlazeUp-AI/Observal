@@ -114,7 +114,7 @@ def _claude_code_snippet() -> dict:
             "mcp_config": {"observal-mcp": {"command": "observal-mcp", "args": ["--agent", "abc"]}},
             "mcp_setup_commands": [["claude", "mcp", "add", "observal-mcp", "--", "observal-mcp", "--agent", "abc"]],
             "otlp_env": {
-                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:8000",
                 "OTEL_SERVICE_NAME": "my-agent",
             },
         }

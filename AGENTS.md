@@ -53,7 +53,7 @@ Deprecated root-level aliases exist for backward compatibility (e.g. `observal s
 ## Commands
 
 ```bash
-# Docker stack (11 services: init, api, db, clickhouse, redis, worker, web, lb, otel-collector, prometheus, grafana)
+# Docker stack (10 services: init, api, db, clickhouse, redis, worker, web, lb, prometheus, grafana)
 make up                  # start
 make down                # stop
 make rebuild             # rebuild and restart
@@ -197,7 +197,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 
 ### Docker (`docker/`)
 
-- `docker-compose.yml` : 11 services: init (migrations), api (8000), db (PostgreSQL 16), clickhouse (8123), redis (6379), worker (arq), web (3000), lb (nginx reverse proxy), otel-collector (4317/4318), prometheus (9090), grafana (3001)
+- `docker-compose.yml` : 10 services: init (migrations), api (8000, also serves OTLP ingestion), db (PostgreSQL 16), clickhouse (8123), redis (6379), worker (arq), web (3000), lb (nginx reverse proxy), prometheus (9090), grafana (3001)
 - `Dockerfile.api` : uv-based Python build
 - `Dockerfile.web` : Node 24-alpine, multi-stage build with standalone output
 

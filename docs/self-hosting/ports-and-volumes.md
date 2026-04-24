@@ -6,13 +6,11 @@ Every exposed port and persistent volume, at a glance.
 
 | Service | Host port | Env var (to remap) | Protocol |
 | --- | --- | --- | --- |
-| API | 8000 | `API_HOST_PORT` | HTTP / WebSocket |
+| API (+ OTLP ingestion) | 8000 | `API_HOST_PORT` | HTTP / WebSocket |
 | Web UI | 3000 | `WEB_HOST_PORT` | HTTP |
 | Postgres | 5432 | `POSTGRES_HOST_PORT` | TCP |
 | ClickHouse | 8123 | `CLICKHOUSE_HOST_PORT` | HTTP |
 | Redis | 6379 | `REDIS_HOST_PORT` | TCP |
-| OTEL Collector (gRPC) | 4317 | `OTEL_GRPC_HOST_PORT` | gRPC |
-| OTEL Collector (HTTP) | 4318 | `OTEL_HTTP_HOST_PORT` | HTTP |
 | Grafana | 3001 | `GRAFANA_HOST_PORT` | HTTP |
 
 The worker has no exposed port — it talks to Redis and ClickHouse internally only.
@@ -53,7 +51,7 @@ All volumes are named and managed by Docker — they survive `docker compose dow
 
 The stack uses hardened defaults out of the box:
 
-* **Read-only root filesystem** on `observal-api`, `observal-worker`, `observal-web`, `observal-otel-collector` (tmpfs for `/tmp`).
+* **Read-only root filesystem** on `observal-api`, `observal-worker`, `observal-web` (tmpfs for `/tmp`).
 * **`no-new-privileges`** on every service.
 * **Memory limits** on all services (see [Requirements](requirements.md#hardware)).
 * **Health checks** on Postgres, ClickHouse, Redis, API.

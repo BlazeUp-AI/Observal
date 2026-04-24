@@ -31,17 +31,16 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-That's it. The `.env.example` ships with working defaults. Eight containers come up:
+That's it. The `.env.example` ships with working defaults. Seven containers come up:
 
 | Service | URL |
 | --- | --- |
-| API (FastAPI) | `http://localhost:8000` |
+| API (FastAPI + OTLP ingestion) | `http://localhost:8000` |
 | Web UI (Next.js) | `http://localhost:3000` |
 | Postgres | `localhost:5432` |
 | ClickHouse | `localhost:8123` |
 | Redis | `localhost:6379` |
 | Worker | internal |
-| OTEL Collector | `localhost:4317` (gRPC), `4318` (HTTP) |
 | Grafana | `http://localhost:3001` |
 
 The API waits for Postgres, ClickHouse, and Redis to pass health checks before starting — expect 15–30 seconds. Confirm it is up:

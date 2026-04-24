@@ -37,6 +37,6 @@ Source of truth: [`observal_cli/constants.py`](https://github.com/BlazeUp-AI/Obs
 Two paths:
 
 * **If it supports MCP** — `observal scan` will probably work. Open an issue noting the IDE and its MCP config path.
-* **If it supports OTEL** — point `OTEL_EXPORTER_OTLP_ENDPOINT` at `http://localhost:4318` and traces should flow via the OTEL collector.
+* **If it supports OTEL** — point `OTEL_EXPORTER_OTLP_ENDPOINT` at `http://localhost:8000` and traces will flow directly to the API over HTTP/JSON.
 
 Either way, [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions) is the place to surface it.
