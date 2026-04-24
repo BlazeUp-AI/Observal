@@ -336,10 +336,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: observal-*
 
       - name: Flatten artifacts
         run: |
