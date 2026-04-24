@@ -9,9 +9,257 @@ import typer
 from rich import print as rprint
 
 from observal_cli import config, settings_reconciler
-from observal_cli.hooks_spec import get_desired_env, get_desired_hooks
+from observal_cli.hooks_spec import MANAGED_ENV_KEYS, OBSERVAL_METADATA_KEY, get_desired_env, get_desired_hooks
 
 doctor_app = typer.Typer(help="Diagnose IDE settings for Observal compatibility")
+
+
+# ── Markers that identify Observal-injected content ──────
+
+_OBSERVAL_HOOK_MARKERS = (
+    "observal-hook",
+    "observal-stop-hook",
+    "observal_cli",
+    "otel/hooks",
+    "telemetry/hooks",
+    "kiro_hook",
+    "kiro_stop_hook",
+    "gemini_hook",
+    "gemini_stop_hook",
+)
+
+
+def _is_observal_hook_entry(entry: dict) -> bool:
+    cmd = entry.get("command", "")
+    url = entry.get("url", "")
+    return any(m in cmd or m in url for m in _OBSERVAL_HOOK_MARKERS)
+
+
+def _is_observal_matcher_group(group: dict) -> bool:
+    if OBSERVAL_METADATA_KEY in group:
+        return True
+    return any(_is_observal_hook_entry(h) for h in group.get("hooks", []))
+
+
+@doctor_app.command(name="cleanup")
+def doctor_cleanup(
+    ide: str = typer.Option(
+        None,
+        "--ide",
+        "-i",
+        help="Target IDE only (claude-code, kiro, gemini-cli). Default: all.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be removed without doing it"),
+):
+    """Remove ALL Observal hooks, env vars, and telemetry config from IDEs.
+
+    Strips Observal-managed hooks from Claude Code, Kiro, and Gemini CLI
+    settings. Removes OTEL env vars, shim wrappers, and hook entries.
+    Leaves non-Observal hooks and settings untouched.
+    """
+    targets = [ide] if ide else ["claude-code", "kiro", "gemini-cli"]
+    any_changes = False
+
+    rprint("[bold]Observal Doctor — Cleanup[/bold]\n")
+
+    for target in targets:
+        if target in ("claude-code", "claude_code"):
+            changed = _cleanup_claude_code(dry_run)
+            any_changes = any_changes or changed
+
+        elif target in ("kiro", "kiro-cli"):
+            changed = _cleanup_kiro(dry_run)
+            any_changes = any_changes or changed
+
+        elif target in ("gemini-cli", "gemini_cli"):
+            changed = _cleanup_gemini(dry_run)
+            any_changes = any_changes or changed
+
+        else:
+            rprint(f"[yellow]Unknown IDE: {target}[/yellow]")
+
+    if any_changes and not dry_run:
+        rprint("\n[green]✓ Cleanup complete.[/green] Restart your IDE sessions to take effect.")
+    elif not any_changes:
+        rprint("\n[dim]Nothing to clean up — no Observal artifacts found.[/dim]")
+
+
+def _cleanup_claude_code(dry_run: bool) -> bool:
+    rprint("[cyan]Claude Code[/cyan]")
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.exists():
+        rprint("  [dim]No settings.json found — skipping[/dim]")
+        return False
+
+    try:
+        data = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        rprint(f"  [red]Failed to read settings: {e}[/red]")
+        return False
+
+    changed = False
+
+    # Remove Observal-managed env vars
+    env = data.get("env", {})
+    removed_env = []
+    for key in list(env):
+        if key in MANAGED_ENV_KEYS:
+            removed_env.append(key)
+            if not dry_run:
+                del env[key]
+            changed = True
+    if removed_env:
+        verb = "Would remove" if dry_run else "Removed"
+        rprint(f"  {verb} env vars: {', '.join(removed_env)}")
+
+    # Remove Observal hooks from each event
+    hooks = data.get("hooks", {})
+    removed_events = []
+    for event, groups in list(hooks.items()):
+        if not isinstance(groups, list):
+            continue
+        cleaned = [g for g in groups if not _is_observal_matcher_group(g)]
+        if len(cleaned) < len(groups):
+            removed_events.append(f"{event} ({len(groups) - len(cleaned)} removed)")
+            if not dry_run:
+                if cleaned:
+                    hooks[event] = cleaned
+                else:
+                    del hooks[event]
+            changed = True
+    if removed_events:
+        verb = "Would remove" if dry_run else "Removed"
+        rprint(f"  {verb} hooks: {', '.join(removed_events)}")
+
+    if changed and not dry_run:
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+        rprint(f"  [green]Written {settings_path}[/green]")
+
+    if not changed:
+        rprint("  [dim]No Observal artifacts found[/dim]")
+
+    return changed
+
+
+def _cleanup_kiro(dry_run: bool) -> bool:
+    rprint("[cyan]Kiro[/cyan]")
+    agents_dir = Path.home() / ".kiro" / "agents"
+    if not agents_dir.is_dir():
+        rprint("  [dim]No ~/.kiro/agents/ found — skipping[/dim]")
+        return False
+
+    changed = False
+    for agent_file in sorted(agents_dir.glob("*.json")):
+        if agent_file.name in ("kiro_default.json", "agent_config.json.example"):
+            continue
+        try:
+            agent_data = json.loads(agent_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        agent_changed = False
+
+        # Remove hooks that reference Observal
+        hooks = agent_data.get("hooks", {})
+        if isinstance(hooks, dict):
+            for event, entries in list(hooks.items()):
+                if not isinstance(entries, list):
+                    continue
+                cleaned = [e for e in entries if not _is_observal_hook_entry(e)]
+                if len(cleaned) < len(entries):
+                    agent_changed = True
+                    if not dry_run:
+                        if cleaned:
+                            hooks[event] = cleaned
+                        else:
+                            del hooks[event]
+
+        # Remove Observal MCP shim entries
+        mcps = agent_data.get("mcpServers", {})
+        if isinstance(mcps, dict):
+            for name, cfg in list(mcps.items()):
+                cmd = cfg.get("command", "")
+                args = " ".join(cfg.get("args", []))
+                if "observal-shim" in cmd or "observal-shim" in args:
+                    agent_changed = True
+                    if not dry_run:
+                        del mcps[name]
+
+        if agent_changed:
+            changed = True
+            verb = "Would clean" if dry_run else "Cleaned"
+            rprint(f"  {verb} {agent_file.name}")
+            if not dry_run:
+                agent_file.write_text(json.dumps(agent_data, indent=2) + "\n")
+
+    if not changed:
+        rprint("  [dim]No Observal artifacts found in Kiro agents[/dim]")
+
+    return changed
+
+
+def _cleanup_gemini(dry_run: bool) -> bool:
+    rprint("[cyan]Gemini CLI[/cyan]")
+    settings_path = Path.home() / ".gemini" / "settings.json"
+    if not settings_path.exists():
+        rprint("  [dim]No settings.json found — skipping[/dim]")
+        return False
+
+    try:
+        data = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        rprint(f"  [red]Failed to read settings: {e}[/red]")
+        return False
+
+    changed = False
+
+    # Remove Observal env vars
+    env = data.get("env", {})
+    removed_env = []
+    for key in list(env):
+        if key.startswith("OBSERVAL_") or key in MANAGED_ENV_KEYS:
+            removed_env.append(key)
+            if not dry_run:
+                del env[key]
+            changed = True
+    if removed_env:
+        verb = "Would remove" if dry_run else "Removed"
+        rprint(f"  {verb} env vars: {', '.join(removed_env)}")
+
+    # Remove Observal hooks
+    hooks = data.get("hooks", {})
+    removed_events = []
+    for event, groups in list(hooks.items()):
+        if not isinstance(groups, list):
+            continue
+        cleaned = []
+        for g in groups:
+            hook_entries = g.get("hooks", [g] if "command" in g else [])
+            is_observal = any(_is_observal_hook_entry(h) for h in hook_entries)
+            if not is_observal:
+                cleaned.append(g)
+        if len(cleaned) < len(groups):
+            removed_events.append(f"{event} ({len(groups) - len(cleaned)} removed)")
+            if not dry_run:
+                if cleaned:
+                    hooks[event] = cleaned
+                else:
+                    del hooks[event]
+            changed = True
+    if removed_events:
+        verb = "Would remove" if dry_run else "Removed"
+        rprint(f"  {verb} hooks: {', '.join(removed_events)}")
+
+    if changed and not dry_run:
+        data.pop("env", None) if not data.get("env") else None
+        data.pop("hooks", None) if not data.get("hooks") else None
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+        rprint(f"  [green]Written {settings_path}[/green]")
+
+    if not changed:
+        rprint("  [dim]No Observal artifacts found[/dim]")
+
+    return changed
 
 
 # ── IDE config locations ─────────────────────────────────
