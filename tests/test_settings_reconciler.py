@@ -299,7 +299,9 @@ class TestFullReconcile:
             encoding="utf-8",
         )
 
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
+        desired_hooks = get_desired_hooks(
+            "/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks"
+        )
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         reconcile(desired_hooks, desired_env)
@@ -310,7 +312,9 @@ class TestFullReconcile:
 
     def test_dry_run_does_not_write(self, settings_path, config_path):
         """dry_run=True computes changes but doesn't write."""
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
+        desired_hooks = get_desired_hooks(
+            "/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks"
+        )
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         changes = reconcile(desired_hooks, desired_env, dry_run=True)
@@ -320,7 +324,9 @@ class TestFullReconcile:
 
     def test_records_spec_version(self, settings_path, config_path):
         """After reconcile, the applied version is recorded in config."""
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
+        desired_hooks = get_desired_hooks(
+            "/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks"
+        )
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         reconcile(desired_hooks, desired_env)
@@ -330,7 +336,9 @@ class TestFullReconcile:
 
     def test_no_changes_skips_write(self, settings_path, config_path):
         """When already up to date, the file is not rewritten."""
-        desired_hooks = get_desired_hooks("/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks")
+        desired_hooks = get_desired_hooks(
+            "/path/observal-hook.sh", None, "http://localhost:8000/api/v1/telemetry/hooks"
+        )
         desired_env = get_desired_env("http://localhost:8000", "test-key")
 
         # First reconcile
