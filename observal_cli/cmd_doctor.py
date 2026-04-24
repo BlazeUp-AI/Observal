@@ -65,6 +65,16 @@ IDE_CONFIGS = {
         ],
         "mcp": [],
     },
+    "copilot-cli": {
+        "user_settings": [
+            Path.home() / ".copilot" / "config.json",
+            Path.home() / ".copilot" / "mcp-config.json",
+        ],
+        "project_settings": [
+            Path(".mcp.json"),
+        ],
+        "mcp": [],
+    },
     "opencode": {
         "user_settings": [
             Path.home() / ".config" / "opencode" / "opencode.json",
@@ -356,6 +366,101 @@ def _check_copilot(path: Path, data: dict, issues: list, warnings: list):
             )
 
 
+def _check_copilot_cli(path: Path, data: dict, issues: list, warnings: list):
+    """Check Copilot CLI settings for Observal conflicts."""
+    path_name = path.name
+
+    if path_name == "config.json":
+        # Check hooks configuration
+        if data.get("disableAllHooks"):
+            issues.append(f"{path}: `disableAllHooks` is true. Observal hook telemetry will not fire.")
+
+        hooks = data.get("hooks", {})
+        if not hooks:
+            warnings.append(
+                f"{path}: No Observal hooks configured for Copilot CLI. "
+                "Run `observal scan --ide copilot-cli --home` to inject hook bridge."
+            )
+        else:
+            has_observal_hook = False
+            for _evt, handlers in hooks.items():
+                if not isinstance(handlers, list):
+                    continue
+                for h in handlers:
+                    if isinstance(h, dict) and "otel/hooks" in h.get("bash", ""):
+                        has_observal_hook = True
+                        break
+                if has_observal_hook:
+                    break
+            if not has_observal_hook:
+                warnings.append(
+                    f"{path}: Hooks block exists but no Observal hooks found. "
+                    "Run `observal scan --ide copilot-cli --home` to inject hook bridge."
+                )
+
+    elif path_name == "mcp-config.json":
+        servers = data.get("mcpServers", {})
+        for name, srv_cfg in servers.items():
+            if not isinstance(srv_cfg, dict):
+                continue
+            if "url" in srv_cfg:
+                continue
+            cmd = srv_cfg.get("command", "")
+            args = srv_cfg.get("args", [])
+            full_cmd = f"{cmd} {' '.join(str(a) for a in args)}"
+            if "observal-shim" not in full_cmd and "observal-proxy" not in full_cmd:
+                warnings.append(
+                    f"{path}: MCP server `{name}` is not wrapped with observal-shim. "
+                    "Run `observal scan --ide copilot-cli --home` to wrap them."
+                )
+
+
+def _check_copilot_cli_installation(issues: list, warnings: list):
+    """Check Copilot CLI installation and hook configuration."""
+    if not shutil.which("copilot"):
+        warnings.append(
+            "`copilot` CLI not found in PATH. "
+            "Install with: curl -fsSL https://gh.io/copilot-install | bash"
+        )
+
+    copilot_config = Path.home() / ".copilot" / "config.json"
+    if copilot_config.exists():
+        data = _load_json(copilot_config)
+        if data:
+            hooks = data.get("hooks", {})
+            has_observal = any(
+                "otel/hooks" in h.get("bash", "")
+                for handlers in hooks.values()
+                if isinstance(handlers, list)
+                for h in handlers
+                if isinstance(h, dict)
+            )
+            if not has_observal:
+                warnings.append(
+                    "Copilot CLI config exists but no Observal hooks found. "
+                    "Run `observal scan --ide copilot-cli --home` to inject hooks."
+                )
+
+    mcp_path = Path.home() / ".copilot" / "mcp-config.json"
+    if mcp_path.exists():
+        data = _load_json(mcp_path)
+        if data:
+            servers = data.get("mcpServers", {})
+            unwrapped = [
+                n
+                for n, c in servers.items()
+                if isinstance(c, dict)
+                and "observal-shim" not in c.get("command", "")
+                and "observal-proxy" not in c.get("command", "")
+                and "url" not in c
+            ]
+            if unwrapped:
+                warnings.append(
+                    f"Copilot CLI MCP servers not wrapped with observal-shim: {', '.join(unwrapped)}. "
+                    "Run `observal scan --ide copilot-cli --home` to wrap them."
+                )
+
+
 def _check_opencode(path: Path, data: dict, issues: list, warnings: list):
     """Check OpenCode config for Observal conflicts."""
     mcp = data.get("mcp", {})
@@ -522,7 +627,7 @@ def _check_environment(issues: list, warnings: list):
 def doctor(
     ctx: typer.Context,
     ide: str = typer.Option(
-        None, help="Check specific IDE only (claude-code, kiro, cursor, gemini-cli, copilot, opencode, codex)"
+        None, help="Check specific IDE only (claude-code, kiro, cursor, gemini-cli, copilot, copilot-cli, opencode, codex)"
     ),
     fix: bool = typer.Option(False, help="Show suggested fixes"),
 ):
@@ -552,7 +657,12 @@ def doctor(
         rprint("[cyan]Checking Gemini CLI installation...[/cyan]")
         _check_gemini_installation(issues, warnings)
 
-    # 3c. Codex-specific installation checks
+    # 3c. Copilot CLI-specific installation checks
+    if not ide or ide == "copilot-cli":
+        rprint("[cyan]Checking Copilot CLI installation...[/cyan]")
+        _check_copilot_cli_installation(issues, warnings)
+
+    # 3d. Codex-specific installation checks
     if not ide or ide == "codex":
         rprint("[cyan]Checking Codex installation...[/cyan]")
         _check_codex_installation(issues, warnings)
@@ -574,6 +684,7 @@ def doctor(
             "cursor": _check_cursor,
             "gemini-cli": _check_gemini,
             "copilot": _check_copilot,
+            "copilot-cli": _check_copilot_cli,
             "opencode": _check_opencode,
         }.get(ide_name)
 
@@ -843,17 +954,96 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
     return changes, changed
 
 
+def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
+    """Install Observal hooks into ~/.copilot/config.json.
+
+    Returns (messages, changed) where changed is True if the file was modified.
+    """
+    import sys
+
+    changes: list[str] = []
+    changed = False
+
+    hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+
+    hook_py = Path(__file__).parent / "hooks" / "copilot_cli_hook.py"
+    stop_py = Path(__file__).parent / "hooks" / "copilot_cli_stop_hook.py"
+
+    if not hook_py.is_file() or not stop_py.is_file():
+        return ["[red]Cannot find copilot_cli_hook.py / copilot_cli_stop_hook.py — reinstall Observal CLI[/red]"], False
+
+    if sys.platform == "win32":
+        bash_cmd = f"python {hook_py.resolve().as_posix()} --url {hooks_url}"
+        bash_stop = f"python {stop_py.resolve().as_posix()} --url {hooks_url}"
+    else:
+        bash_cmd = f"cat | python3 {hook_py.resolve().as_posix()} --url {hooks_url}"
+        bash_stop = f"cat | python3 {stop_py.resolve().as_posix()} --url {hooks_url}"
+    ps_cmd = f"python {hook_py.resolve().as_posix()} --url {hooks_url}"
+    ps_stop = f"python {stop_py.resolve().as_posix()} --url {hooks_url}"
+
+    def _hook_entry(bash: str, ps: str) -> dict:
+        return {"type": "command", "bash": bash, "powershell": ps, "timeoutSec": 10}
+
+    desired_hooks = {
+        "sessionStart": [_hook_entry(bash_cmd, ps_cmd)],
+        "userPromptSubmitted": [_hook_entry(bash_cmd, ps_cmd)],
+        "preToolUse": [_hook_entry(bash_cmd, ps_cmd)],
+        "postToolUse": [_hook_entry(bash_cmd, ps_cmd)],
+        "sessionEnd": [_hook_entry(bash_stop, ps_stop)],
+        "errorOccurred": [_hook_entry(bash_cmd, ps_cmd)],
+    }
+
+    copilot_config = Path.home() / ".copilot" / "config.json"
+    try:
+        data: dict = {}
+        if copilot_config.exists():
+            data = json.loads(copilot_config.read_text())
+
+        existing = data.get("hooks", {})
+
+        for evt, entries in desired_hooks.items():
+            cur = existing.get(evt, [])
+            has_obs = any("otel/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
+            if not has_obs:
+                existing[evt] = cur + entries
+                changed = True
+                changes.append(f"+ {evt}: added Observal hook")
+            else:
+                # Check if URL matches
+                obs_bash = next(
+                    (h.get("bash", "") for h in cur if isinstance(h, dict) and "otel/hooks" in h.get("bash", "")),
+                    "",
+                )
+                if hooks_url not in obs_bash:
+                    existing[evt] = [
+                        h for h in cur if not isinstance(h, dict) or "otel/hooks" not in h.get("bash", "")
+                    ] + entries
+                    changed = True
+                    changes.append(f"~ {evt}: updated Observal hook URL")
+                else:
+                    changes.append(f"[dim]  {evt}: already configured[/dim]")
+
+        if changed:
+            data["hooks"] = existing
+            copilot_config.parent.mkdir(parents=True, exist_ok=True)
+            copilot_config.write_text(json.dumps(data, indent=2) + "\n")
+    except Exception as e:
+        return [f"[red]Error updating {copilot_config}: {e}[/red]"], False
+
+    return changes, changed
+
+
 @doctor_app.command(name="sli")
 def doctor_sli(
     ide: str = typer.Option(
         None,
         "--ide",
         "-i",
-        help="Target IDE only (claude-code, kiro, gemini-cli). Default: all.",
+        help="Target IDE only (claude-code, kiro, copilot-cli, gemini-cli). Default: all.",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show changes without applying"),
 ):
-    """Re-install Observal telemetry hooks into Claude Code, Kiro, and/or Gemini CLI.
+    """Re-install Observal telemetry hooks into Claude Code, Kiro, Copilot CLI, and/or Gemini CLI.
 
     Repairs missing or outdated hooks non-destructively — your existing
     hooks and settings are preserved.
@@ -866,7 +1056,7 @@ def doctor_sli(
         rprint("[red]Not configured. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    targets = [ide] if ide else ["claude-code", "kiro", "gemini-cli"]
+    targets = [ide] if ide else ["claude-code", "kiro", "copilot-cli", "gemini-cli"]
     any_changes = False
 
     for target in targets:
@@ -907,6 +1097,23 @@ def doctor_sli(
             for c in messages:
                 rprint(f"  {c}")
 
+        elif target in ("copilot-cli", "copilot_cli"):
+            rprint("[cyan]Copilot CLI[/cyan]")
+            copilot_dir = Path.home() / ".copilot"
+            if not copilot_dir.is_dir() and not shutil.which("copilot"):
+                rprint("[dim]Copilot CLI not detected — skipping[/dim]")
+                continue
+
+            if dry_run:
+                rprint("  [yellow]Dry run not supported for Copilot CLI — use without --dry-run[/yellow]")
+                continue
+
+            messages, ccli_changed = _install_copilot_cli_hooks(server_url)
+            if ccli_changed:
+                any_changes = True
+            for c in messages:
+                rprint(f"  {c}")
+
         elif target in ("gemini-cli", "gemini_cli"):
             rprint("[cyan]Gemini CLI[/cyan]")
             gemini_settings = Path.home() / ".gemini" / "settings.json"
@@ -942,7 +1149,7 @@ def doctor_sli(
                 rprint("  [dim]Gemini native OTLP already disabled[/dim]")
 
         else:
-            rprint(f"[yellow]Unknown IDE: {target}. Use 'claude-code', 'kiro', or 'gemini-cli'.[/yellow]")
+            rprint(f"[yellow]Unknown IDE: {target}. Use 'claude-code', 'kiro', 'copilot-cli', or 'gemini-cli'.[/yellow]")
 
     if any_changes:
         rprint("\n[green]✓ Hooks installed.[/green] Restart your IDE session to pick up changes.")
