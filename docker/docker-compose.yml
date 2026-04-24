@@ -223,27 +223,6 @@ services:
     networks:
       - observal-net
 
-  observal-otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.150.1
-    command: ["--config", "/etc/otelcol/config.yaml"]
-    restart: on-failure
-    ports:
-      - "${OTEL_GRPC_HOST_PORT:-4317}:4317"
-      - "${OTEL_HTTP_HOST_PORT:-4318}:4318"
-    volumes:
-      - ../otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
-    depends_on:
-      observal-clickhouse:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: ${OTEL_MEMORY_LIMIT:-512M}
-    networks:
-      - observal-net
-
   observal-prometheus:
     image: prom/prometheus:v3.4.2
     ports:
