@@ -29,10 +29,10 @@ def _resolve_hooks_url() -> str:
             cfg = json.loads(cfg_path.read_text())
             server = cfg.get("server_url", "")
             if server:
-                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+                return f"{server.rstrip('/')}/api/v1/telemetry/hooks"
         except Exception:
             pass
-    return "http://localhost:8000/api/v1/otel/hooks"
+    return ""
 
 
 def _post(url: str, payload: dict) -> None:
@@ -83,6 +83,10 @@ def main() -> None:
     _inject_user_metadata(payload)
 
     url = _resolve_hooks_url()
+    if not url:
+        print('{"continue":true}')
+        return
+
     session_id = payload.get("session_id", "")
     hook_event = payload.get("hook_event_name", "")
 

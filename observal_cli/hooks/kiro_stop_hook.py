@@ -10,8 +10,8 @@ When a Kiro agent's ``stop`` hook fires, this script:
 4. Merges the enriched fields into the payload and POSTs to Observal.
 
 Usage (in a Kiro agent hook):
-    Unix:    cat | python3 /path/to/kiro_stop_hook.py --url http://localhost:8000/api/v1/otel/hooks
-    Windows: python -m observal_cli.hooks.kiro_stop_hook --url http://localhost:8000/api/v1/otel/hooks --agent-name my-agent
+    Unix:    cat | python3 /path/to/kiro_stop_hook.py --url http://host/api/v1/telemetry/hooks
+    Windows: python -m observal_cli.hooks.kiro_stop_hook --url http://host/api/v1/telemetry/hooks --agent-name my-agent
 """
 
 from __future__ import annotations
@@ -156,10 +156,10 @@ def _resolve_hooks_url() -> str:
             cfg = json.loads(cfg_path.read_text())
             server = cfg.get("server_url", "")
             if server:
-                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+                return f"{server.rstrip('/')}/api/v1/telemetry/hooks"
         except Exception:
             pass
-    return "http://localhost:8000/api/v1/otel/hooks"
+    return ""
 
 
 def main():
@@ -178,6 +178,8 @@ def main():
             model = args[i + 1]
     if not url:
         url = _resolve_hooks_url()
+    if not url:
+        sys.exit(0)
 
     # Read hook payload from stdin
     try:

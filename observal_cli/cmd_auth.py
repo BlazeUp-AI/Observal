@@ -97,8 +97,7 @@ def login(
                 "user_name": user.get("name", ""),
             }
             if endpoints:
-                cfg_data["otlp_http_url"] = endpoints.get("otlp_http", "")
-                cfg_data["otlp_grpc_url"] = endpoints.get("otlp_grpc", "")
+                cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
                 cfg_data["web_url"] = endpoints.get("web", "")
             config.save(cfg_data)
 
@@ -325,7 +324,7 @@ def version_callback():
 def _fetch_endpoints(server_url: str) -> dict:
     """Fetch service endpoint URLs from the discovery endpoint.
 
-    Returns a dict with api, otlp_http, otlp_grpc, web URLs.
+    Returns a dict with api, otlp_http, web URLs.
     Falls back to sensible defaults if the endpoint is unavailable.
     """
     try:
@@ -400,8 +399,7 @@ def _do_password_login(server_url: str, email: str, password: str):
             "user_name": user.get("name", ""),
         }
         if endpoints:
-            cfg_data["otlp_http_url"] = endpoints.get("otlp_http", "")
-            cfg_data["otlp_grpc_url"] = endpoints.get("otlp_grpc", "")
+            cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
             cfg_data["web_url"] = endpoints.get("web", "")
         config.save(cfg_data)
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
@@ -502,8 +500,7 @@ def _do_device_flow_login(server_url: str):
                     "user_name": user.get("name", ""),
                 }
                 if endpoints:
-                    cfg_data["otlp_http_url"] = endpoints.get("otlp_http", "")
-                    cfg_data["otlp_grpc_url"] = endpoints.get("otlp_grpc", "")
+                    cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
                     cfg_data["web_url"] = endpoints.get("web", "")
                 config.save(cfg_data)
 
@@ -999,13 +996,7 @@ def _configure_codex(server_url: str):
             return
 
         cfg = config.load()
-        otlp_base = cfg.get("otlp_http_url", "")
-        if not otlp_base:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(server_url)
-            scheme = "http" if parsed.hostname in ("localhost", "127.0.0.1") else "https"
-            otlp_base = f"{scheme}://{parsed.hostname}:4318"
+        otlp_base = cfg.get("otlp_url", "") or cfg.get("server_url", "")
 
         codex_config = codex_dir / "config.toml"
 
@@ -1173,8 +1164,7 @@ def _configure_claude_code(server_url: str, access_token: str):
         user_name = cfg.get("user_name", "")
 
         desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-        otlp_grpc_url = cfg.get("otlp_grpc_url", "")
-        desired_env = get_desired_env(server_url, hooks_token, user_id, user_name, otlp_grpc_url=otlp_grpc_url)
+        desired_env = get_desired_env(server_url, hooks_token, user_id, user_name)
 
         # Reconcile: non-destructive merge preserving foreign hooks/env
         changes = settings_reconciler.reconcile(desired_hooks, desired_env)

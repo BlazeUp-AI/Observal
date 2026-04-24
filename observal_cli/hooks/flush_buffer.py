@@ -33,14 +33,17 @@ def _resolve_hooks_url() -> str:
             cfg = json.loads(cfg_path.read_text())
             server = cfg.get("server_url", "")
             if server:
-                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+                return f"{server.rstrip('/')}/api/v1/telemetry/hooks"
         except Exception:
             pass
-    return "http://localhost:8000/api/v1/otel/hooks"
+    return ""
 
 
 def main() -> None:
     hooks_url = _resolve_hooks_url()
+    if not hooks_url:
+        return
+
     user_id = os.environ.get("OBSERVAL_USER_ID", "")
 
     if not DB_PATH.exists():

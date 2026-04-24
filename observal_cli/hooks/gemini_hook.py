@@ -30,10 +30,10 @@ def _resolve_hooks_url() -> str:
             cfg = json.loads(cfg_path.read_text())
             server = cfg.get("server_url", "")
             if server:
-                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+                return f"{server.rstrip('/')}/api/v1/telemetry/hooks"
         except Exception:
             pass
-    return "http://localhost:8000/api/v1/otel/hooks"
+    return ""
 
 
 def _inject_user_metadata(payload: dict) -> None:
@@ -161,11 +161,17 @@ def main() -> None:
             token_event["model"] = payload["model"]
         _inject_user_metadata(token_event)
         url = _resolve_hooks_url()
+        if not url:
+            print('{"continue":true}')
+            return
         _post(url, token_event)
         print('{"continue":true}')
         return
 
     url = _resolve_hooks_url()
+    if not url:
+        print('{"continue":true}')
+        return
 
     if _post(url, payload):
         _flush_buffer(url)
