@@ -152,6 +152,8 @@ def generate_config(
             }
         if ide == "copilot":
             return {"mcpServers": {name: {**config, "type": transport_type}}}
+        if ide == "copilot-cli":
+            return {"mcpServers": {name: {**config, "type": transport_type, "tools": ["*"]}}}
         if ide == "opencode":
             opencode_config: dict = {"type": "remote", "url": listing.url}
             if header_values:
@@ -195,6 +197,8 @@ def generate_config(
             }
         if ide == "copilot":
             return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env}}}
+        if ide == "copilot-cli":
+            return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env, "tools": ["*"]}}}
         if ide == "opencode":
             return {"mcp": {name: {"type": "remote", "url": proxy_url, "env": server_env}}}
         return {"mcpServers": {name: {"url": proxy_url, "env": server_env}}}
@@ -249,6 +253,20 @@ def generate_config(
                     "command": "observal-shim",
                     "args": shim_args,
                     "env": server_env,
+                    **auto_approve_fields,
+                }
+            },
+        }
+
+    if ide == "copilot-cli":
+        return {
+            "mcpServers": {
+                name: {
+                    "type": "stdio",
+                    "command": "observal-shim",
+                    "args": shim_args,
+                    "env": server_env,
+                    "tools": ["*"],
                     **auto_approve_fields,
                 }
             },

@@ -349,8 +349,9 @@ async def telemetry_status(current_user: User = Depends(require_role(UserRole.ad
     )
 
 
-# Kiro CLI uses camelCase event names; normalize to PascalCase
+# Kiro CLI and Copilot CLI use camelCase event names; normalize to PascalCase
 _KIRO_EVENT_MAP = {
+    # Kiro events
     "agentSpawn": "SessionStart",
     "userPromptSubmit": "UserPromptSubmit",
     "promptSubmit": "UserPromptSubmit",
@@ -358,12 +359,17 @@ _KIRO_EVENT_MAP = {
     "postToolUse": "PostToolUse",
     "stop": "Stop",
     "agentStop": "Stop",
+    # Copilot CLI events
+    "sessionStart": "SessionStart",
+    "sessionEnd": "Stop",
+    "userPromptSubmitted": "UserPromptSubmit",
+    "errorOccurred": "StopFailure",
 }
 
 
 @router.post("/hooks")
 async def ingest_hook(request: Request, current_user: User = Depends(require_role(UserRole.user))):
-    """Ingest raw hook JSON from Claude Code/Kiro."""
+    """Ingest raw hook JSON from Claude Code/Kiro/Copilot CLI."""
     project_id = get_project_id(current_user)
     body = await request.json()
 
@@ -407,7 +413,7 @@ async def ingest_hook(request: Request, current_user: User = Depends(require_rol
         "end_time": now,
         "latency_ms": None,
         "status": "success",
-        "ide": "",
+        "ide": body.get("service_name", ""),
         "environment": "default",
         "metadata": {},
         "token_count_input": None,

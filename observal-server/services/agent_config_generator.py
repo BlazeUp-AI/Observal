@@ -452,6 +452,32 @@ def generate_agent_config(
             result["_warnings"] = compatibility_warnings
         return result
 
+    if ide == "copilot-cli":
+        copilot_cli_configs = {}
+        for k, v in mcp_configs.items():
+            if v.get("url"):
+                transport_type = v.get("type", "sse")
+                copilot_cli_configs[k] = {"type": transport_type, "url": v["url"], "tools": ["*"]}
+                if "env" in v:
+                    copilot_cli_configs[k]["env"] = v["env"]
+            else:
+                copilot_cli_configs[k] = {
+                    "type": "stdio",
+                    "command": v["command"],
+                    "args": v.get("args", []),
+                    "tools": ["*"],
+                }
+                if "env" in v:
+                    copilot_cli_configs[k]["env"] = v["env"]
+        result = {
+            "rules_file": {"path": ".github/copilot-instructions.md", "content": rules_content},
+            "mcp_config": {"path": ".mcp.json", "content": {"mcpServers": copilot_cli_configs}},
+            "scope": "project",
+        }
+        if compatibility_warnings:
+            result["_warnings"] = compatibility_warnings
+        return result
+
     if ide == "opencode":
         opencode_configs = {}
         for k, v in mcp_configs.items():
