@@ -102,7 +102,7 @@ jobs:
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
 
-  # ── Job 1: Build CLI binaries (6-platform matrix) ──────────
+  # ── Job 1: Build CLI binaries (5-platform matrix) ──────────
   cli-binaries:
     name: CLI (${{ matrix.os }}-${{ matrix.arch }})
     needs: preflight
@@ -120,12 +120,8 @@ jobs:
             runner: ubuntu-24.04-arm
             artifact: observal-linux-arm64
           - os: macos
-            arch: x64
-            runner: macos-13
-            artifact: observal-macos-x64
-          - os: macos
             arch: arm64
-            runner: macos-14
+            runner: macos-15
             artifact: observal-macos-arm64
           - os: windows
             arch: x64
@@ -168,12 +164,24 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}
 
-  # ── Job 2: Docker images to GHCR ──────────────────────────
-  docker-images:
-    name: Docker images
+  # ── Job 2: Docker images to GHCR (native per-arch builds) ──
+  docker-build:
+    name: Docker (${{ matrix.image }}-${{ matrix.arch }})
     needs: preflight
     if: needs.preflight.outputs.is_release == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [api, web]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -185,31 +193,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push API image
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.api
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-api:${{ needs.preflight.outputs.version }}
-            ${{ env.IMAGE_PREFIX }}-api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          file: docker/Dockerfile.${{ matrix.image }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }},mode=max
 
-      - name: Build and push Web image
-        uses: docker/build-push-action@v6
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: docker/Dockerfile.web
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-web:${{ needs.preflight.outputs.version }}
-            ${{ env.IMAGE_PREFIX }}-web:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: docker-digest-${{ matrix.image }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-merge:
+    name: Docker manifest (${{ matrix.image }})
+    needs: [preflight, docker-build]
+    if: needs.preflight.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: [api, web]
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: docker-digest-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        run: |
+          IMAGE="${{ env.IMAGE_PREFIX }}-${{ matrix.image }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
+          docker buildx imagetools create \
+            -t "$IMAGE:$VERSION" \
+            -t "$IMAGE:latest" \
+            $(printf "$IMAGE@sha256:%s " $(ls /tmp/digests/))
 
   # ── Job 3: Server deployment tarball ───────────────────────
   server-package:
@@ -257,7 +296,7 @@ jobs:
   # ── Approval gate (all releases) ────────────────────────────
   approve:
     name: Approval gate
-    needs: [preflight, cli-binaries, docker-images, server-package]
+    needs: [preflight, cli-binaries, docker-merge, server-package]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -288,7 +327,7 @@ jobs:
   # ── Final: Create GitHub Release with all artifacts ────────
   release:
     name: GitHub Release
-    needs: [preflight, cli-binaries, docker-images, server-package, pypi, approve]
+    needs: [preflight, cli-binaries, docker-merge, server-package, pypi, approve]
     if: needs.approve.result == 'success'
     runs-on: ubuntu-latest
     steps:
