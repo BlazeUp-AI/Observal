@@ -14,7 +14,7 @@ from __future__ import annotations
 # Bump this when hook definitions change (new events, different scripts,
 # additional handlers, etc.).  Stored in ~/.observal/config.json so we
 # can detect when an upgrade is needed without re-reading all hooks.
-HOOKS_SPEC_VERSION = "5"
+HOOKS_SPEC_VERSION = "6"
 
 # Metadata key injected into every Observal matcher group.
 # Primary identification method — the reconciler checks this first.
@@ -59,13 +59,10 @@ def get_desired_hooks(
     """
     meta = {OBSERVAL_METADATA_KEY: {"version": HOOKS_SPEC_VERSION}}
 
-    if hook_script:
-        generic = {"type": "command", "command": hook_script}
-    else:
-        # Fallback to HTTP if scripts aren't found
-        generic = {"type": "http", "url": hooks_url}
-        if user_id:
-            generic["headers"] = {"X-Observal-User-Id": user_id}
+    if hook_script is None:
+        raise ValueError("hook_script is required — hooks must use shell commands, not HTTP")
+
+    generic = {"type": "command", "command": hook_script}
 
     generic_group: list[dict] = [{**meta, "hooks": [generic]}]
 
@@ -108,26 +105,16 @@ def get_desired_env(
     hooks_token: str,
     user_id: str = "",
     user_name: str = "",
-    otlp_grpc_url: str = "",
 ) -> dict[str, str]:
     """Return the desired Observal env vars for Claude Code settings."""
-    if otlp_grpc_url:
-        otel_endpoint = otlp_grpc_url
-    else:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(server_url)
-        scheme = parsed.scheme or ("http" if parsed.hostname in ("localhost", "127.0.0.1") else "https")
-        otel_endpoint = f"{scheme}://{parsed.hostname}:4317"
-
     env: dict[str, str] = {
         "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
         "OTEL_METRICS_EXPORTER": "otlp",
         "OTEL_LOGS_EXPORTER": "otlp",
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
         "OTEL_EXPORTER_OTLP_HEADERS": f"Authorization=Bearer {hooks_token}",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": otel_endpoint,
-        "OBSERVAL_HOOKS_URL": f"{server_url.rstrip('/')}/api/v1/otel/hooks",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": server_url.rstrip("/"),
+        "OBSERVAL_HOOKS_URL": f"{server_url.rstrip('/')}/api/v1/telemetry/hooks",
     }
     env["OBSERVAL_HOOKS_SPEC_VERSION"] = HOOKS_SPEC_VERSION
     if user_id:
