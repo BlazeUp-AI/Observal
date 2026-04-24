@@ -101,7 +101,10 @@ IDE_CONFIGS = {
 
 def _load_json(path: Path) -> dict | None:
     try:
-        return json.loads(path.read_text())
+        text = path.read_text()
+        # Strip // line comments (JSONC format used by Copilot CLI and others)
+        stripped = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
+        return json.loads(stripped)
     except Exception:
         return None
 
@@ -419,8 +422,7 @@ def _check_copilot_cli_installation(issues: list, warnings: list):
     """Check Copilot CLI installation and hook configuration."""
     if not shutil.which("copilot"):
         warnings.append(
-            "`copilot` CLI not found in PATH. "
-            "Install with: curl -fsSL https://gh.io/copilot-install | bash"
+            "`copilot` CLI not found in PATH. Install with: curl -fsSL https://gh.io/copilot-install | bash"
         )
 
     copilot_config = Path.home() / ".copilot" / "config.json"
@@ -627,7 +629,8 @@ def _check_environment(issues: list, warnings: list):
 def doctor(
     ctx: typer.Context,
     ide: str = typer.Option(
-        None, help="Check specific IDE only (claude-code, kiro, cursor, gemini-cli, copilot, copilot-cli, opencode, codex)"
+        None,
+        help="Check specific IDE only (claude-code, kiro, cursor, gemini-cli, copilot, copilot-cli, opencode, codex)",
     ),
     fix: bool = typer.Option(False, help="Show suggested fixes"),
 ):
@@ -972,32 +975,32 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
     if not hook_py.is_file() or not stop_py.is_file():
         return ["[red]Cannot find copilot_cli_hook.py / copilot_cli_stop_hook.py — reinstall Observal CLI[/red]"], False
 
-    if sys.platform == "win32":
-        bash_cmd = f"python {hook_py.resolve().as_posix()} --url {hooks_url}"
-        bash_stop = f"python {stop_py.resolve().as_posix()} --url {hooks_url}"
-    else:
-        bash_cmd = f"cat | python3 {hook_py.resolve().as_posix()} --url {hooks_url}"
-        bash_stop = f"cat | python3 {stop_py.resolve().as_posix()} --url {hooks_url}"
-    ps_cmd = f"python {hook_py.resolve().as_posix()} --url {hooks_url}"
-    ps_stop = f"python {stop_py.resolve().as_posix()} --url {hooks_url}"
+    hook_path = hook_py.resolve().as_posix()
+    stop_path = stop_py.resolve().as_posix()
 
-    def _hook_entry(bash: str, ps: str) -> dict:
+    def _hook_entry(event: str, is_stop: bool = False) -> dict:
+        script = stop_path if is_stop else hook_path
+        if sys.platform == "win32":
+            bash = f"python {script} --url {hooks_url} --event-name {event}"
+        else:
+            bash = f"cat | python3 {script} --url {hooks_url} --event-name {event}"
+        ps = f"python {script} --url {hooks_url} --event-name {event}"
         return {"type": "command", "bash": bash, "powershell": ps, "timeoutSec": 10}
 
     desired_hooks = {
-        "sessionStart": [_hook_entry(bash_cmd, ps_cmd)],
-        "userPromptSubmitted": [_hook_entry(bash_cmd, ps_cmd)],
-        "preToolUse": [_hook_entry(bash_cmd, ps_cmd)],
-        "postToolUse": [_hook_entry(bash_cmd, ps_cmd)],
-        "sessionEnd": [_hook_entry(bash_stop, ps_stop)],
-        "errorOccurred": [_hook_entry(bash_cmd, ps_cmd)],
+        "sessionStart": [_hook_entry("sessionStart")],
+        "userPromptSubmitted": [_hook_entry("userPromptSubmitted")],
+        "preToolUse": [_hook_entry("preToolUse")],
+        "postToolUse": [_hook_entry("postToolUse")],
+        "sessionEnd": [_hook_entry("sessionEnd", is_stop=True)],
+        "errorOccurred": [_hook_entry("errorOccurred")],
     }
 
     copilot_config = Path.home() / ".copilot" / "config.json"
     try:
         data: dict = {}
         if copilot_config.exists():
-            data = json.loads(copilot_config.read_text())
+            data = _load_json(copilot_config) or {}
 
         existing = data.get("hooks", {})
 
@@ -1149,7 +1152,9 @@ def doctor_sli(
                 rprint("  [dim]Gemini native OTLP already disabled[/dim]")
 
         else:
-            rprint(f"[yellow]Unknown IDE: {target}. Use 'claude-code', 'kiro', 'copilot-cli', or 'gemini-cli'.[/yellow]")
+            rprint(
+                f"[yellow]Unknown IDE: {target}. Use 'claude-code', 'kiro', 'copilot-cli', or 'gemini-cli'.[/yellow]"
+            )
 
     if any_changes:
         rprint("\n[green]✓ Hooks installed.[/green] Restart your IDE session to pick up changes.")
