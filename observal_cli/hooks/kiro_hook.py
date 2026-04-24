@@ -109,6 +109,8 @@ def _auto_inject_hooks(url: str):
         return
 
     for af in agents_dir.glob("*.json"):
+        if af.stem == "kiro_default":
+            continue
         try:
             data = json.loads(af.read_text())
             hooks = data.get("hooks", {})

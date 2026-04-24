@@ -1248,26 +1248,12 @@ def register_scan(app: typer.Typer):
 
             kiro_agent_files = sorted(kiro_agents_dir.glob("*.json"))
 
-            # Create kiro_default agent config if it doesn't exist, so hooks attach
-            # to the built-in kiro_default agent instead of a separate workspace agent.
-            default_agent_path = kiro_agents_dir / "kiro_default.json"
-            if not default_agent_path.exists():
-                default_agent_path.write_text(
-                    json.dumps(
-                        {
-                            "name": "kiro_default",
-                            "hooks": _kiro_hooks_block("kiro_default", ""),
-                        },
-                        indent=2,
-                    )
-                    + "\n"
-                )
-                rprint("[green]Created kiro_default agent with Observal hooks[/green]")
-                kiro_agent_files = sorted(kiro_agents_dir.glob("*.json"))
-
             if kiro_agent_files:
                 injected_count = 0
                 for agent_file in kiro_agent_files:
+                    # Skip kiro_default — only trace explicitly registered agents
+                    if agent_file.stem == "kiro_default":
+                        continue
                     try:
                         agent_data = json.loads(agent_file.read_text())
                         existing = agent_data.get("hooks", {})
@@ -1309,48 +1295,43 @@ def register_scan(app: typer.Typer):
                 else:
                     rprint(f"\n[dim]Kiro agent hooks already configured -> {kiro_hooks_url}[/dim]")
 
-            # ── Global IDE-format hooks in ~/.kiro/hooks/ ─────────
-            # These fire for ALL Kiro sessions (including agentless chat)
+            # Strip Observal hooks from kiro_default if previously instrumented
+            default_agent_path = kiro_agents_dir / "kiro_default.json"
+            if default_agent_path.exists():
+                try:
+                    da = json.loads(default_agent_path.read_text())
+                    hooks = da.get("hooks", {})
+                    if any(
+                        "otel/hooks" in h.get("command", "")
+                        for hs in hooks.values()
+                        if isinstance(hs, list)
+                        for h in hs
+                    ):
+                        for evt, handlers in list(hooks.items()):
+                            hooks[evt] = [h for h in handlers if "otel/hooks" not in h.get("command", "")]
+                            if not hooks[evt]:
+                                del hooks[evt]
+                        da["hooks"] = hooks
+                        default_agent_path.write_text(json.dumps(da, indent=2) + "\n")
+                        rprint("[green]Removed Observal hooks from kiro_default[/green]")
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            # Clean up any previously installed global hooks (older Observal versions
+            # traced all Kiro sessions; we now only trace registered agents).
             kiro_global_hooks_dir = Path.home() / ".kiro" / "hooks"
-            kiro_global_hooks_dir.mkdir(parents=True, exist_ok=True)
-
-            global_hook_cmd = _kiro_hook_cmd("global", "")
-            global_stop_cmd = _kiro_stop_cmd("global", "")
-
-            _ide_hook_defs = [
-                ("observal-prompt-submit", "promptSubmit", global_hook_cmd),
-                ("observal-pre-tool-use", "preToolUse", global_hook_cmd),
-                ("observal-post-tool-use", "postToolUse", global_hook_cmd),
-                ("observal-agent-stop", "agentStop", global_stop_cmd),
-            ]
-
-            global_injected = 0
-            for hook_id, event_type, cmd in _ide_hook_defs:
-                hook_file = kiro_global_hooks_dir / f"{hook_id}.json"
-                hook_json = {
-                    "id": hook_id,
-                    "name": f"Observal: {event_type}",
-                    "comment": "Auto-injected by Observal for telemetry collection",
-                    "when": {"type": event_type},
-                    "then": {"type": "runCommand", "command": cmd},
-                }
-                # Only write if missing or stale (different URL)
-                if hook_file.exists():
+            if kiro_global_hooks_dir.is_dir():
+                removed = 0
+                for hook_file in kiro_global_hooks_dir.glob("observal-*.json"):
                     try:
-                        existing_hook = json.loads(hook_file.read_text())
-                        if kiro_hooks_url in existing_hook.get("then", {}).get("command", ""):
-                            continue
-                    except (json.JSONDecodeError, OSError):
+                        hook_file.unlink()
+                        removed += 1
+                    except OSError:
                         pass
-                    _backup_config(hook_file)
-                hook_file.write_text(json.dumps(hook_json, indent=2) + "\n")
-                global_injected += 1
-
-            if global_injected:
-                rprint(f"[green]Installed {global_injected} global Kiro hooks in ~/.kiro/hooks/[/green]")
-                rprint("[dim]These capture all Kiro sessions, including agentless chat.[/dim]")
-            else:
-                rprint("[dim]Global Kiro hooks already configured.[/dim]")
+                if removed:
+                    rprint(
+                        f"[green]Removed {removed} global Kiro hooks (only registered agents are now traced)[/green]"
+                    )
 
         # ── Auto-inject telemetry into ~/.gemini/settings.json ──
         if scan_gemini:
