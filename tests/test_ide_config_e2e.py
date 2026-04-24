@@ -98,15 +98,24 @@ class TestConstants:
         assert "opencode" in IDE_FEATURE_MATRIX
         assert IDE_FEATURE_MATRIX["opencode"] == {"mcp_servers", "rules"}
 
+    def test_copilot_cli_in_valid_ides(self):
+        assert "copilot-cli" in VALID_IDES
+
+    def test_copilot_cli_feature_matrix(self):
+        assert "copilot-cli" in IDE_FEATURE_MATRIX
+        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "rules", "hook_bridge"}
+
     def test_ide_project_configs_include_all_new_ides(self):
         assert "codex" in _IDE_PROJECT_CONFIGS
         assert "copilot" in _IDE_PROJECT_CONFIGS
+        assert "copilot-cli" in _IDE_PROJECT_CONFIGS
         assert "gemini-cli" in _IDE_PROJECT_CONFIGS
         assert "opencode" in _IDE_PROJECT_CONFIGS
 
     def test_ide_project_config_paths(self):
         assert _IDE_PROJECT_CONFIGS["codex"] == ".codex/config.toml"
         assert _IDE_PROJECT_CONFIGS["copilot"] == ".vscode/mcp.json"
+        assert _IDE_PROJECT_CONFIGS["copilot-cli"] == ".mcp.json"
         assert _IDE_PROJECT_CONFIGS["gemini-cli"] == ".gemini/settings.json"
         assert _IDE_PROJECT_CONFIGS["opencode"] == "opencode.json"
 
@@ -233,6 +242,73 @@ class TestGenerateCopilotConfig:
         servers = cfg["mcp_config"]["content"]["servers"]
         assert servers["srv-a"]["type"] == "stdio"
         assert servers["srv-b"]["type"] == "stdio"
+
+
+class TestGenerateCopilotCliConfig:
+    def test_rules_path(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot-cli")
+        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+
+    def test_mcp_config_path(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot-cli")
+        assert cfg["mcp_config"]["path"] == ".mcp.json"
+
+    def test_mcp_config_root_key_is_mcpServers(self):
+        ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
+        agent = _make_agent(external_mcps=ext)
+        cfg = generate_agent_config(agent, "copilot-cli")
+        assert "mcpServers" in cfg["mcp_config"]["content"]
+        assert "servers" not in cfg["mcp_config"]["content"]
+        assert "my-server" in cfg["mcp_config"]["content"]["mcpServers"]
+
+    def test_copilot_cli_entries_have_type_stdio(self):
+        ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
+        agent = _make_agent(external_mcps=ext)
+        cfg = generate_agent_config(agent, "copilot-cli")
+        entry = cfg["mcp_config"]["content"]["mcpServers"]["my-server"]
+        assert entry["type"] == "stdio"
+        assert entry["command"] == "observal-shim"
+        assert isinstance(entry["args"], list)
+        assert entry["tools"] == ["*"]
+
+    def test_copilot_cli_preserves_env_vars(self):
+        ext = [{"name": "my-server", "command": "npx", "args": [], "env": {"API_KEY": "secret"}}]
+        agent = _make_agent(external_mcps=ext)
+        cfg = generate_agent_config(agent, "copilot-cli")
+        entry = cfg["mcp_config"]["content"]["mcpServers"]["my-server"]
+        assert entry["env"]["API_KEY"] == "secret"
+        assert entry["env"]["OBSERVAL_AGENT_ID"] == str(agent.id)
+
+    def test_scope_is_project(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot-cli")
+        assert cfg["scope"] == "project"
+
+    def test_rules_content_not_empty(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot-cli")
+        assert len(cfg["rules_file"]["content"]) > 0
+
+    def test_empty_mcp_configs_still_produces_valid_structure(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "copilot-cli")
+        assert "mcp_config" in cfg
+        assert "mcpServers" in cfg["mcp_config"]["content"]
+
+    def test_multiple_mcps_all_get_type_stdio(self):
+        ext = [
+            {"name": "srv-a", "command": "npx", "args": ["-y", "a"]},
+            {"name": "srv-b", "command": "node", "args": ["b.js"]},
+        ]
+        agent = _make_agent(external_mcps=ext)
+        cfg = generate_agent_config(agent, "copilot-cli")
+        servers = cfg["mcp_config"]["content"]["mcpServers"]
+        assert servers["srv-a"]["type"] == "stdio"
+        assert servers["srv-b"]["type"] == "stdio"
+        assert servers["srv-a"]["tools"] == ["*"]
+        assert servers["srv-b"]["tools"] == ["*"]
 
 
 class TestGenerateOpenCodeConfig:
@@ -404,6 +480,18 @@ class TestIdeCompatibilityWarnings:
         agent.required_ide_features = ["mcp_servers", "rules"]
         warnings = _check_ide_compatibility(agent, "copilot")
         assert len(warnings) == 0
+
+    def test_copilot_cli_supports_hook_bridge(self):
+        agent = _make_agent()
+        agent.required_ide_features = ["mcp_servers", "rules", "hook_bridge"]
+        warnings = _check_ide_compatibility(agent, "copilot-cli")
+        assert len(warnings) == 0
+
+    def test_copilot_cli_warns_on_unsupported_features(self):
+        agent = _make_agent()
+        agent.required_ide_features = ["skills", "otlp_telemetry"]
+        warnings = _check_ide_compatibility(agent, "copilot-cli")
+        assert len(warnings) == 2
 
     def test_codex_warns_on_skills_requirement(self):
         agent = _make_agent()
@@ -1027,6 +1115,201 @@ class TestDoctorCopilot:
         warnings = []
         _check_copilot(Path(".vscode/mcp.json"), data, issues, warnings)
         assert len(warnings) > 0
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 10b. DOCTOR — Copilot CLI IDE config checks
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestDoctorCopilotCli:
+    def test_copilot_cli_in_ide_configs(self):
+        from observal_cli.cmd_doctor import IDE_CONFIGS
+
+        assert "copilot-cli" in IDE_CONFIGS
+        assert IDE_CONFIGS["copilot-cli"]["user_settings"] != []
+        assert IDE_CONFIGS["copilot-cli"]["project_settings"] != []
+
+    def test_copilot_cli_user_settings_paths(self):
+        from observal_cli.cmd_doctor import IDE_CONFIGS
+
+        paths = IDE_CONFIGS["copilot-cli"]["user_settings"]
+        assert any("config.json" in str(p) for p in paths)
+        assert any("mcp-config.json" in str(p) for p in paths)
+
+    def test_check_copilot_cli_fn_warns_on_missing_hooks(self):
+        from observal_cli.cmd_doctor import _check_copilot_cli
+
+        data = {}
+        issues = []
+        warnings = []
+        _check_copilot_cli(Path("config.json"), data, issues, warnings)
+        assert len(warnings) > 0
+        assert any("hooks" in w.lower() for w in warnings)
+
+    def test_check_copilot_cli_fn_warns_on_disable_all_hooks(self):
+        from observal_cli.cmd_doctor import _check_copilot_cli
+
+        data = {"disableAllHooks": True}
+        issues = []
+        warnings = []
+        _check_copilot_cli(Path("config.json"), data, issues, warnings)
+        assert len(issues) > 0
+        assert any("disableAllHooks" in i for i in issues)
+
+    def test_check_copilot_cli_fn_no_warning_with_observal_hooks(self):
+        from observal_cli.cmd_doctor import _check_copilot_cli
+
+        data = {
+            "hooks": {
+                "sessionStart": [{"type": "command", "bash": "cat | python3 /path/to/otel/hooks"}],
+            }
+        }
+        issues = []
+        warnings = []
+        _check_copilot_cli(Path("config.json"), data, issues, warnings)
+        assert len(warnings) == 0
+        assert len(issues) == 0
+
+    def test_check_copilot_cli_fn_warns_on_unwrapped_mcp(self):
+        from observal_cli.cmd_doctor import _check_copilot_cli
+
+        data = {"mcpServers": {"my-srv": {"command": "npx", "args": ["-y", "my-srv"]}}}
+        issues = []
+        warnings = []
+        _check_copilot_cli(Path("mcp-config.json"), data, issues, warnings)
+        assert len(warnings) > 0
+        assert any("observal-shim" in w for w in warnings)
+
+    def test_check_copilot_cli_fn_no_warning_on_shimmed_mcp(self):
+        from observal_cli.cmd_doctor import _check_copilot_cli
+
+        data = {
+            "mcpServers": {
+                "my-srv": {"command": "observal-shim", "args": ["--mcp-id", "test", "--", "npx"]}
+            }
+        }
+        issues = []
+        warnings = []
+        _check_copilot_cli(Path("mcp-config.json"), data, issues, warnings)
+        assert len(warnings) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 10c. CONFIG GENERATOR — Copilot CLI explicit branch
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestConfigGeneratorCopilotCli:
+    def _make_listing(self, name="my-mcp", listing_id="abc-123", **kw):
+        from unittest.mock import MagicMock
+
+        listing = MagicMock()
+        listing.name = name
+        listing.id = listing_id
+        listing.docker_image = kw.get("docker_image")
+        listing.framework = kw.get("framework")
+        listing.environment_variables = kw.get("environment_variables", [])
+        listing.command = kw.get("command")
+        listing.args = kw.get("args")
+        listing.url = kw.get("url")
+        listing.transport = kw.get("transport")
+        listing.auto_approve = kw.get("auto_approve")
+        return listing
+
+    def test_copilot_cli_stdio_has_type_stdio(self):
+        from services.config_generator import generate_config
+
+        cfg = generate_config(self._make_listing(), "copilot-cli")
+        server = cfg["mcpServers"]["my-mcp"]
+        assert server["type"] == "stdio"
+        assert server["command"] == "observal-shim"
+        assert "--mcp-id" in server["args"]
+        assert server["tools"] == ["*"]
+
+    def test_copilot_cli_sse_has_type_sse(self):
+        from services.config_generator import generate_config
+
+        cfg = generate_config(
+            self._make_listing(url="http://localhost:3000/sse", transport="sse"), "copilot-cli"
+        )
+        server = cfg["mcpServers"]["my-mcp"]
+        assert server["type"] == "sse"
+        assert server["url"] == "http://localhost:3000/sse"
+        assert server["tools"] == ["*"]
+
+    def test_copilot_cli_proxy_has_tools(self):
+        from services.config_generator import generate_config
+
+        cfg = generate_config(self._make_listing(), "copilot-cli", proxy_port=9999)
+        server = cfg["mcpServers"]["my-mcp"]
+        assert server["type"] == "sse"
+        assert server["tools"] == ["*"]
+
+    def test_copilot_cli_env_vars_preserved(self):
+        from services.config_generator import generate_config
+
+        cfg = generate_config(
+            self._make_listing(environment_variables=[{"name": "API_KEY", "required": True}]),
+            "copilot-cli",
+            env_values={"API_KEY": "secret"},
+        )
+        server = cfg["mcpServers"]["my-mcp"]
+        assert server["env"]["API_KEY"] == "secret"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 10d. SCAN — Copilot CLI parse and scan
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestParseCopilotCliMcpServers:
+    def test_copilot_cli_extracts_mcpservers(self):
+        config = {"mcpServers": {"my-srv": {"type": "stdio", "command": "npx", "args": ["-y", "my-srv"]}}}
+        result = _parse_project_mcp_servers(config, "copilot-cli")
+        assert "my-srv" in result
+
+    def test_copilot_cli_ignores_servers_key(self):
+        config = {"servers": {"my-srv": {"command": "npx"}}, "mcpServers": {"real-srv": {"command": "node"}}}
+        result = _parse_project_mcp_servers(config, "copilot-cli")
+        assert "real-srv" in result
+        assert "my-srv" not in result
+
+
+class TestScanCopilotCliHome:
+    def test_scan_copilot_cli_home_finds_mcp_servers(self, tmp_path):
+        from observal_cli.cmd_scan import _scan_copilot_cli_home
+
+        copilot_dir = tmp_path / ".copilot"
+        copilot_dir.mkdir()
+        mcp_config = copilot_dir / "mcp-config.json"
+        mcp_config.write_text(
+            json.dumps({"mcpServers": {"my-server": {"type": "stdio", "command": "npx", "args": ["-y", "srv"]}}})
+        )
+        mcps, skills, hooks, agents = _scan_copilot_cli_home(copilot_dir)
+        assert len(mcps) == 1
+        assert mcps[0].name == "my-server"
+        assert mcps[0].source == "copilot-cli:global"
+
+    def test_scan_copilot_cli_home_empty_dir(self, tmp_path):
+        from observal_cli.cmd_scan import _scan_copilot_cli_home
+
+        copilot_dir = tmp_path / ".copilot"
+        copilot_dir.mkdir()
+        mcps, skills, hooks, agents = _scan_copilot_cli_home(copilot_dir)
+        assert len(mcps) == 0
+
+    def test_scan_copilot_cli_home_no_skills_or_agents(self, tmp_path):
+        from observal_cli.cmd_scan import _scan_copilot_cli_home
+
+        copilot_dir = tmp_path / ".copilot"
+        copilot_dir.mkdir()
+        mcp_config = copilot_dir / "mcp-config.json"
+        mcp_config.write_text(json.dumps({"mcpServers": {"srv": {"command": "echo"}}}))
+        mcps, skills, hooks, agents = _scan_copilot_cli_home(copilot_dir)
+        assert len(skills) == 0
+        assert len(hooks) == 0
+        assert len(agents) == 0
 
 
 # ═══════════════════════════════════════════════════════════════════
