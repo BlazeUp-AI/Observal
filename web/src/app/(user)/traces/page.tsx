@@ -55,6 +55,15 @@ function isKiroSession(row: OtelSession): boolean {
   return row.service_name === "kiro" || row.session_id.startsWith("kiro-");
 }
 
+function isCopilotCliSession(row: OtelSession): boolean {
+  return (
+    row.service_name === "copilot-cli" ||
+    row.service_name === "copilot" ||
+    row.service_name === "GitHub Copilot" ||
+    row.session_id.startsWith("copilot-cli-")
+  );
+}
+
 function fmtTokens(n: number | string | undefined): string {
   if (n == null) return "0";
   const num = typeof n === "string" ? parseInt(n, 10) : n;
@@ -115,7 +124,9 @@ function shortModel(raw?: string): string {
 
 function derivePlatform(row: OtelSession): string {
   if (row.platform) return row.platform;
-  return isKiroSession(row) ? "Kiro" : "Claude Code";
+  if (isKiroSession(row)) return "Kiro";
+  if (isCopilotCliSession(row)) return "Copilot CLI";
+  return "Claude Code";
 }
 
 function sessionLabel(row: OtelSession): string {
@@ -167,6 +178,11 @@ const columns: ColumnDef<OtelSession>[] = [
     accessorFn: (row) => row.total_input_tokens ?? 0,
     cell: ({ row }) => {
       const r = row.original;
+      if (isCopilotCliSession(r)) {
+        return (
+          <span className="text-[13px] text-muted-foreground">{"\u2014"}</span>
+        );
+      }
       if (isKiroSession(r)) {
         return (
           <span className="text-[13px] font-mono tabular-nums text-orange-400">
@@ -365,6 +381,7 @@ export default function TracesPage() {
                 <SelectContent>
                   <SelectItem value="all">All platforms</SelectItem>
                   <SelectItem value="claude-code">Claude Code</SelectItem>
+                  <SelectItem value="copilot-cli">Copilot CLI</SelectItem>
                   <SelectItem value="kiro">Kiro</SelectItem>
                 </SelectContent>
               </Select>

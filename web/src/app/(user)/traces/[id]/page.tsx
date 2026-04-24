@@ -1240,6 +1240,7 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
     let credits = 0;
     let isKiro = serviceName === "kiro" || sessionId.startsWith("kiro-");
     const isGemini = serviceName === "gemini";
+    const isCopilotCli = isCopilotCliService(serviceName ?? "", sessionId);
     const models = new Set<string>();
     const tools: Record<string, number> = {};
 
@@ -1282,7 +1283,7 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
       }
     }
 
-    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, models, tools };
+    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, isCopilotCli, models, tools };
   }, [events, sessionId, serviceName]);
 
   const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
@@ -1294,7 +1295,7 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Credits</p>
           <p className="text-lg font-semibold tabular-nums text-orange-500">{formatCredits(stats.credits)}</p>
         </div>
-      ) : (
+      ) : !stats.isCopilotCli ? (
         <>
           <div className="space-y-1">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Input Tokens</p>
@@ -1317,8 +1318,8 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
             </>
           )}
         </>
-      )}
-      {!stats.isGemini && (
+      ) : null}
+      {!stats.isGemini && !stats.isCopilotCli && (
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">API Calls</p>
           <p className="text-lg font-semibold tabular-nums">{stats.apiCalls}</p>
@@ -1334,12 +1335,14 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent
           <p className="text-lg font-semibold tabular-nums text-orange-500">{stats.hookEvents}</p>
         </div>
       )}
-      <div className="space-y-1">
-        <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Models</p>
-        <div className="flex flex-wrap gap-1">
-          {[...stats.models].map((m) => <Badge key={m}>{m.replace("claude-", "")}</Badge>)}
+      {!stats.isCopilotCli && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Models</p>
+          <div className="flex flex-wrap gap-1">
+            {[...stats.models].map((m) => <Badge key={m}>{m.replace("claude-", "")}</Badge>)}
+          </div>
         </div>
-      </div>
+      )}
       {Object.keys(stats.tools).length > 0 && (
         <div className="col-span-full space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Tools Used</p>
@@ -1422,17 +1425,47 @@ const KIRO_HOOK_CAPABILITIES: HookCapGroup[] = [
   },
 ];
 
+const COPILOT_CLI_HOOK_CAPABILITIES: HookCapGroup[] = [
+  {
+    category: "Capture",
+    hooks: [
+      { event: "hook_userpromptsubmit", label: "User Prompts", description: "Captures prompts submitted by the user" },
+    ],
+  },
+  {
+    category: "Tool Use",
+    hooks: [
+      { event: "hook_pretooluse", label: "Pre Tool Use", description: "Fires before each tool call" },
+      { event: "hook_posttooluse", label: "Post Tool Use", description: "Captures tool results after execution" },
+    ],
+  },
+  {
+    category: "Lifecycle",
+    hooks: [
+      { event: "hook_sessionstart", label: "Session Start", description: "Fires when a session begins" },
+      { event: "hook_stop", label: "Session End", description: "Fires when the session ends" },
+      { event: "hook_stopfailure", label: "Error", description: "Fires when an error occurs during the session" },
+    ],
+  },
+];
+
 function isKiroService(serviceName: string, sessionId: string): boolean {
   return serviceName === "kiro" || sessionId.startsWith("kiro-");
 }
 
+function isCopilotCliService(serviceName: string, sessionId: string): boolean {
+  return serviceName === "copilot-cli" || serviceName === "copilot" || serviceName === "GitHub Copilot" || sessionId.startsWith("copilot-cli-");
+}
+
 function getHookCapabilities(serviceName: string, sessionId: string): HookCapGroup[] {
   if (isKiroService(serviceName, sessionId)) return KIRO_HOOK_CAPABILITIES;
+  if (isCopilotCliService(serviceName, sessionId)) return COPILOT_CLI_HOOK_CAPABILITIES;
   return CLAUDE_CODE_HOOK_CAPABILITIES;
 }
 
 function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEvent[]; sessionId: string; serviceName: string }) {
   const isKiro = isKiroService(serviceName, sessionId);
+  const isCopilotCli = isCopilotCliService(serviceName, sessionId);
   const hookCapabilities = useMemo(() => getHookCapabilities(serviceName, sessionId), [serviceName, sessionId]);
 
   // Derive active hooks from events actually present in this session
@@ -1513,6 +1546,8 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEve
           Hook types detected in this session.{" "}
           {isKiro
             ? "Kiro supports 5 native hook events. Missing hooks mean those event types were not captured."
+            : isCopilotCli
+            ? "Copilot CLI supports 6 hook events. Token usage and model info are not available."
             : "Missing hooks mean those event types were not captured — check your hook configuration."}
         </p>
         <div className="space-y-4">

@@ -33,6 +33,8 @@ const IDE_BADGE_STYLES: Record<string, string> = {
   vscode: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
   codex: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
   copilot: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  "copilot-cli": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  "GitHub Copilot": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
 };
 
 const IDE_LABELS: Record<string, string> = {
@@ -43,6 +45,8 @@ const IDE_LABELS: Record<string, string> = {
   vscode: "VS Code",
   codex: "Codex",
   copilot: "Copilot",
+  "copilot-cli": "Copilot CLI",
+  "GitHub Copilot": "Copilot CLI",
 };
 
 const TRACE_TYPES = [
@@ -65,6 +69,7 @@ const IDES = [
   "vscode",
   "codex",
   "copilot",
+  "copilot-cli",
 ];
 
 export function TraceList() {
