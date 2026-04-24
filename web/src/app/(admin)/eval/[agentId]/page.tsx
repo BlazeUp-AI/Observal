@@ -28,7 +28,7 @@ function gradeColor(grade: string | undefined): string {
   return "text-destructive";
 }
 
-function gradeBg(grade: string | undefined): string {
+function _gradeBg(grade: string | undefined): string {
   if (!grade) return "bg-muted";
   const g = grade.toUpperCase();
   if (g.startsWith("A")) return "bg-success/10";
