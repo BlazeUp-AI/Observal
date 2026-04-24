@@ -1761,24 +1761,24 @@ def analyze_session(
         try:
             span_stats = _aggregate_span_stats(span_metadata, config)
             metrics.update(span_stats)
-        except Exception as e:
-            warnings.append(f"Span stats aggregation failed: {e}")
+        except Exception:
+            warnings.append("Span stats aggregation failed")
             malformed_count += 1
 
         try:
             dup_findings, dup_count = _detect_duplicates(span_metadata)
             findings.extend(dup_findings)
             metrics["duplicate_tool_call_count"] = dup_count
-        except Exception as e:
-            warnings.append(f"Duplicate detection failed: {e}")
+        except Exception:
+            warnings.append("Duplicate detection failed")
             malformed_count += 1
 
         try:
             retry_findings, retry_stats = _detect_retry_patterns(span_metadata, config)
             findings.extend(retry_findings)
             metrics.update(retry_stats)
-        except Exception as e:
-            warnings.append(f"Retry pattern detection failed: {e}")
+        except Exception:
+            warnings.append("Retry pattern detection failed")
             malformed_count += 1
 
         try:
@@ -1786,8 +1786,8 @@ def analyze_session(
             findings.extend(adv_findings)
             metrics.update(adv_stats)
             warnings.extend(adv_warnings)
-        except Exception as e:
-            warnings.append(f"Adversarial scan failed: {e}")
+        except Exception:
+            warnings.append("Adversarial scan failed")
             malformed_count += 1
 
         # MCP-specific analysis
