@@ -255,7 +255,7 @@ class TestGenerateCopilotCliConfig:
         cfg = generate_agent_config(agent, "copilot-cli")
         assert cfg["mcp_config"]["path"] == ".mcp.json"
 
-    def test_mcp_config_root_key_is_mcpServers(self):
+    def test_mcp_config_root_key_is_mcp_servers(self):
         ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
         agent = _make_agent(external_mcps=ext)
         cfg = generate_agent_config(agent, "copilot-cli")
