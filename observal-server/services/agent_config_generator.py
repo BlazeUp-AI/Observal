@@ -291,12 +291,12 @@ def generate_agent_config(
             # No cat/sed/curl/$PPID/$TERM/$SHELL — those don't exist in PowerShell.
             hook_cmd = (
                 f"python -m observal_cli.hooks.kiro_hook "
-                f"--url {observal_url}/api/v1/otel/hooks "
+                f"--url {observal_url}/api/v1/telemetry/hooks "
                 f"--agent-name {safe_name}"
             )
             stop_cmd = (
                 f"python -m observal_cli.hooks.kiro_stop_hook "
-                f"--url {observal_url}/api/v1/otel/hooks "
+                f"--url {observal_url}/api/v1/telemetry/hooks "
                 f"--agent-name {safe_name}"
             )
             spawn_cmd = hook_cmd  # Windows: Python script handles session IDs
@@ -304,12 +304,12 @@ def generate_agent_config(
             # Unix: use the same Python hook scripts as Windows.
             hook_cmd = (
                 f"python3 -m observal_cli.hooks.kiro_hook "
-                f"--url {observal_url}/api/v1/otel/hooks "
+                f"--url {observal_url}/api/v1/telemetry/hooks "
                 f"--agent-name {safe_name}"
             )
             stop_cmd = (
                 f"python3 -m observal_cli.hooks.kiro_stop_hook "
-                f"--url {observal_url}/api/v1/otel/hooks "
+                f"--url {observal_url}/api/v1/telemetry/hooks "
                 f"--agent-name {safe_name}"
             )
             spawn_cmd = hook_cmd  # Python script handles session IDs
