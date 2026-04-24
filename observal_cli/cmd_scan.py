@@ -1023,15 +1023,8 @@ def register_scan(app: typer.Typer):
         if total == 0 and not home:
             rprint("[dim]No components in project directory. Scanning IDE home dirs...[/dim]")
             home = True
-            scan_claude = True
-            scan_kiro = True
-            scan_gemini = True
-            scan_codex = True
-            scan_copilot = True
-            scan_copilot_cli = True
-            scan_opencode = True
 
-            for _ide_name, _dir_path, _scan_fn, _label in [
+            _fallback_ides = [
                 ("claude-code", Path.home() / ".claude", _scan_claude_home, "~/.claude"),
                 ("kiro", Path.home() / ".kiro", _scan_kiro_home, "~/.kiro"),
                 ("gemini-cli", Path.home() / ".gemini", _scan_gemini_home, "~/.gemini"),
@@ -1039,7 +1032,11 @@ def register_scan(app: typer.Typer):
                 ("copilot", Path.home() / ".vscode", _scan_copilot_home, "~/.vscode"),
                 ("copilot-cli", Path.home() / ".copilot", _scan_copilot_cli_home, "~/.copilot"),
                 ("opencode", Path.home() / ".config" / "opencode", _scan_opencode_home, "~/.config/opencode"),
-            ]:
+            ]
+
+            for _ide_name, _dir_path, _scan_fn, _label in _fallback_ides:
+                if ide and _ide_name != ide:
+                    continue
                 if _dir_path.is_dir():
                     with spinner(f"Scanning {_label}..."):
                         h_mcps, h_skills, h_hooks, h_agents = _scan_fn(_dir_path)
@@ -1048,6 +1045,22 @@ def register_scan(app: typer.Typer):
                     all_hooks.extend(h_hooks)
                     all_agents.extend(h_agents)
                     scanned_ides.append(_ide_name)
+
+            # Set scan flags so hook injection runs for the right IDEs
+            if not ide or ide == "claude-code":
+                scan_claude = True
+            if not ide or ide == "kiro":
+                scan_kiro = True
+            if not ide or ide == "gemini-cli":
+                scan_gemini = True
+            if not ide or ide == "codex":
+                scan_codex = True
+            if not ide or ide == "copilot":
+                scan_copilot = True
+            if not ide or ide == "copilot-cli":
+                scan_copilot_cli = True
+            if not ide or ide == "opencode":
+                scan_opencode = True
 
             if root != Path.home():
                 _do_project_scan(Path.home())
