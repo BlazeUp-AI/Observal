@@ -1,8 +1,8 @@
 "use client";
 
 import { use, useState, useCallback, useMemo, createElement } from "react";
-import { useOtelSession, useSessionSubscription, useSessionEfficiency } from "@/hooks/use-api";
-import type { OtelSessionData, RawOtelEvent } from "@/lib/types";
+import { useSessionDetail, useSessionSubscription, useSessionEfficiency } from "@/hooks/use-api";
+import type { SessionData, RawSessionEvent } from "@/lib/types";
 import {
   FileText,
   ChevronDown,
@@ -90,7 +90,7 @@ function isShimEvent(eventName: string): boolean {
   return eventName.startsWith("shim_");
 }
 
-function getEventName(evt: RawOtelEvent): string {
+function getEventName(evt: RawSessionEvent): string {
   return evt.attributes?.["event.name"] || evt.event_name;
 }
 
@@ -171,24 +171,24 @@ const FILTER_CATEGORIES: FilterCategory[] = [
 interface AgentScope {
   agentId: string;
   agentType: string;
-  startEvent?: RawOtelEvent;
-  stopEvent?: RawOtelEvent;
-  events: RawOtelEvent[];
+  startEvent?: RawSessionEvent;
+  stopEvent?: RawSessionEvent;
+  events: RawSessionEvent[];
 }
 
 interface Turn {
-  promptEvent?: RawOtelEvent;           // The user prompt that started this turn
-  responseEvent?: RawOtelEvent;         // The assistant response text
-  thinkingEvents: RawOtelEvent[];       // Assistant thinking/reasoning blocks
-  stopEvent?: RawOtelEvent;             // The stop/end event
-  topLevelEvents: RawOtelEvent[];       // Events not inside any subagent
+  promptEvent?: RawSessionEvent;           // The user prompt that started this turn
+  responseEvent?: RawSessionEvent;         // The assistant response text
+  thinkingEvents: RawSessionEvent[];       // Assistant thinking/reasoning blocks
+  stopEvent?: RawSessionEvent;             // The stop/end event
+  topLevelEvents: RawSessionEvent[];       // Events not inside any subagent
   agents: AgentScope[];                 // Subagent scopes with their events
-  allEvents: RawOtelEvent[];            // All events in this turn (for counting)
+  allEvents: RawSessionEvent[];            // All events in this turn (for counting)
 }
 
 /* ── Dedup + Tree builder ────────────────────────────────── */
 
-function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
+function deduplicateEvents(events: RawSessionEvent[]): RawSessionEvent[] {
   // Check if we have hook data at all
   const hasHooks = events.some((e) => isHookEvent(getEventName(e)));
   if (!hasHooks) return events;
@@ -199,11 +199,11 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
   // Merge strategy: match by tool_name + timestamp proximity (within 50ms).
 
   // Index OTEL tool_result events by tool_name for proximity matching
-  const otelToolResults: { ts: number; attrs: Record<string, string>; matched: boolean }[] = [];
+  const sessionToolResults: { ts: number; attrs: Record<string, string>; matched: boolean }[] = [];
   for (const evt of events) {
     const eName = getEventName(evt);
     if (eName === "tool_result") {
-      otelToolResults.push({
+      sessionToolResults.push({
         ts: new Date(evt.timestamp).getTime(),
         attrs: evt.attributes ?? {},
         matched: false,
@@ -211,7 +211,7 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
     }
   }
 
-  const result: RawOtelEvent[] = [];
+  const result: RawSessionEvent[] = [];
   for (const evt of events) {
     const eName = getEventName(evt);
 
@@ -236,8 +236,8 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
 
       let bestIdx = -1;
       let bestDiff = Infinity;
-      for (let i = 0; i < otelToolResults.length; i++) {
-        const o = otelToolResults[i];
+      for (let i = 0; i < sessionToolResults.length; i++) {
+        const o = sessionToolResults[i];
         if (o.matched) continue;
         if (o.attrs.tool_name !== hookTool) continue;
         const diff = Math.abs(o.ts - hookTs);
@@ -248,11 +248,11 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
       }
 
       if (bestIdx >= 0) {
-        otelToolResults[bestIdx].matched = true;
-        const otelAttrs = otelToolResults[bestIdx].attrs;
+        sessionToolResults[bestIdx].matched = true;
+        const sessionAttrs = sessionToolResults[bestIdx].attrs;
         // Merge OTEL fields the hook doesn't have (don't overwrite hook's richer content)
         const merged = { ...evt.attributes };
-        for (const [k, v] of Object.entries(otelAttrs)) {
+        for (const [k, v] of Object.entries(sessionAttrs)) {
           if (!merged[k] || merged[k] === "") merged[k] = v;
         }
         result.push({ ...evt, attributes: merged });
@@ -266,10 +266,10 @@ function deduplicateEvents(events: RawOtelEvent[]): RawOtelEvent[] {
   return result;
 }
 
-function buildEventTree(events: RawOtelEvent[]): { turns: Turn[]; preSessionEvents: RawOtelEvent[] } {
+function buildEventTree(events: RawSessionEvent[]): { turns: Turn[]; preSessionEvents: RawSessionEvent[] } {
   const deduped = deduplicateEvents(events);
   const turns: Turn[] = [];
-  const preSessionEvents: RawOtelEvent[] = [];
+  const preSessionEvents: RawSessionEvent[] = [];
 
   let currentTurn: Turn | null = null;
   // Track open agent scopes by agent_id
@@ -373,7 +373,7 @@ function buildEventTree(events: RawOtelEvent[]): { turns: Turn[]; preSessionEven
 
 /* ── Search helper ───────────────────────────────────────── */
 
-function eventMatchesSearch(evt: RawOtelEvent, q: string): boolean {
+function eventMatchesSearch(evt: RawSessionEvent, q: string): boolean {
   const attrs = evt.attributes ?? {};
   const eName = getEventName(evt);
   return (
@@ -389,7 +389,7 @@ function eventMatchesSearch(evt: RawOtelEvent, q: string): boolean {
   );
 }
 
-function eventMatchesFilter(evt: RawOtelEvent, activeFilters: Set<string>): boolean {
+function eventMatchesFilter(evt: RawSessionEvent, activeFilters: Set<string>): boolean {
   if (activeFilters.size === 0) return true;
   const eName = getEventName(evt);
   const activeCategories = FILTER_CATEGORIES.filter((c) => activeFilters.has(c.key));
@@ -405,7 +405,7 @@ function turnMatchesFilters(turn: Turn, activeFilters: Set<string>, searchQuery:
   });
 }
 
-function filterTurnEvents(events: RawOtelEvent[], activeFilters: Set<string>, searchQuery: string): RawOtelEvent[] {
+function filterTurnEvents(events: RawSessionEvent[], activeFilters: Set<string>, searchQuery: string): RawSessionEvent[] {
   const q = searchQuery.toLowerCase();
   return events.filter((evt) => {
     if (!eventMatchesFilter(evt, activeFilters)) return false;
@@ -416,7 +416,7 @@ function filterTurnEvents(events: RawOtelEvent[], activeFilters: Set<string>, se
 
 /* ── Event inline summary (shown without expanding) ────── */
 
-function EventSummary({ event }: { event: RawOtelEvent }) {
+function EventSummary({ event }: { event: RawSessionEvent }) {
   const attrs = event.attributes ?? {};
   const eName = getEventName(event);
 
@@ -747,7 +747,7 @@ function ContentBlock({ label, content }: { label: string; content: string }) {
 
 /* ── Event detail (shown when expanded) ────────────────── */
 
-function EventDetail({ event }: { event: RawOtelEvent }) {
+function EventDetail({ event }: { event: RawSessionEvent }) {
   const attrs = event.attributes ?? {};
   const eName = getEventName(event);
 
@@ -848,7 +848,7 @@ function HookMetaGrid({ attrs }: { attrs: Record<string, string> }) {
 
 /* ── Assistant response block ──────────────────────────────── */
 
-function AssistantResponseBlock({ event }: { event: RawOtelEvent }) {
+function AssistantResponseBlock({ event }: { event: RawSessionEvent }) {
   const [expanded, setExpanded] = useState(false);
   const attrs = event.attributes ?? {};
   const fullResponse = attrs.tool_response || "";
@@ -890,7 +890,7 @@ function AssistantResponseBlock({ event }: { event: RawOtelEvent }) {
 
 /* ── Thinking block (chain-of-thought) ────────────────────── */
 
-function ThinkingBlock({ event }: { event: RawOtelEvent }) {
+function ThinkingBlock({ event }: { event: RawSessionEvent }) {
   const [expanded, setExpanded] = useState(false);
   const attrs = event.attributes ?? {};
   const fullText = attrs.tool_response || "";
@@ -932,7 +932,7 @@ function ThinkingBlock({ event }: { event: RawOtelEvent }) {
 
 /* ── Friendly event label ────────────────────────────────── */
 
-function eventLabel(evt: RawOtelEvent): string {
+function eventLabel(evt: RawSessionEvent): string {
   const eName = getEventName(evt);
   const attrs = evt.attributes ?? {};
   if (eName === "hook_posttooluse" || eName === "hook_pretooluse") return attrs.tool_name || "tool";
@@ -961,7 +961,7 @@ function eventLabel(evt: RawOtelEvent): string {
 /* ── Leaf event row (used inside tree) ───────────────────── */
 
 function LeafEvent({ event, isExpanded, onToggle, depth = 0 }: {
-  event: RawOtelEvent;
+  event: RawSessionEvent;
   isExpanded: boolean;
   onToggle: () => void;
   depth?: number;
@@ -1228,7 +1228,7 @@ function TurnNode({ turn, index, expandedSet, onToggleEvent, activeFilters, sear
 
 /* ── Session summary stats ─────────────────────────────── */
 
-function SessionStats({ events, sessionId, serviceName }: { events: RawOtelEvent[]; sessionId: string; serviceName?: string }) {
+function SessionStats({ events, sessionId, serviceName }: { events: RawSessionEvent[]; sessionId: string; serviceName?: string }) {
   const stats = useMemo(() => {
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
@@ -1463,7 +1463,7 @@ function getHookCapabilities(serviceName: string, sessionId: string): HookCapGro
   return CLAUDE_CODE_HOOK_CAPABILITIES;
 }
 
-function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEvent[]; sessionId: string; serviceName: string }) {
+function SessionInfoTab({ events, sessionId, serviceName }: { events: RawSessionEvent[]; sessionId: string; serviceName: string }) {
   const isKiro = isKiroService(serviceName, sessionId);
   const isCopilotCli = isCopilotCliService(serviceName, sessionId);
   const hookCapabilities = useMemo(() => getHookCapabilities(serviceName, sessionId), [serviceName, sessionId]);
@@ -1592,12 +1592,12 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawOtelEve
 
 export default function TraceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data, isLoading, isError, error, refetch } = useOtelSession(id);
+  const { data, isLoading, isError, error, refetch } = useSessionDetail(id);
   const { data: efficiency, isLoading: effLoading } = useSessionEfficiency(id);
   useSessionSubscription();
 
-  const session = data as OtelSessionData;
-  const events: RawOtelEvent[] = useMemo(() => session?.events ?? [], [session]);
+  const session = data as SessionData;
+  const events: RawSessionEvent[] = useMemo(() => session?.events ?? [], [session]);
 
   const [expandedSet, setExpandedSet] = useState<Set<string>>(new Set());
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());

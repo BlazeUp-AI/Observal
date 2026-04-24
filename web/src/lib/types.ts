@@ -20,9 +20,9 @@ export interface TrendPoint {
   users: number;
 }
 
-// ── OTel ────────────────────────────────────────────────────────────
+// ── Sessions ────────────────────────────────────────────────────────
 
-export interface OtelStats {
+export interface SessionsStats {
   total_sessions: number;
   total_prompts: number;
   total_api_requests: number;
@@ -33,7 +33,7 @@ export interface OtelStats {
   total_spans: number;
 }
 
-export interface OtelTrace {
+export interface SessionTrace {
   trace_id: string;
   span_name: string;
   service_name?: string;
@@ -43,14 +43,14 @@ export interface OtelTrace {
   timestamp?: string;
 }
 
-export interface OtelSessionData {
+export interface SessionData {
   session_id: string;
-  events: RawOtelEvent[];
+  events: RawSessionEvent[];
   traces: unknown[];
   service_name: string;
 }
 
-export interface RawOtelEvent {
+export interface RawSessionEvent {
   timestamp: string;
   event_name: string;
   body?: string;
@@ -402,9 +402,9 @@ export interface DiagnosticsResponse {
   checks: Record<string, Record<string, unknown>>;
 }
 
-// ── OTel Sessions ───────────────────────────────────────────────────
+// ── Sessions ────────────────────────────────────────────────────────
 
-export interface OtelSession {
+export interface Session {
   session_id: string;
   first_event_time: string;
   last_event_time: string;
@@ -426,12 +426,12 @@ export interface OtelSession {
   tools_used?: string;
 }
 
-export interface OtelSessionsSummary {
+export interface SessionsSummary {
   total_sessions: number;
   today_sessions: number;
 }
 
-export interface OtelErrorEvent {
+export interface SessionErrorEvent {
   timestamp: string;
   event_name: string;
   body: string;

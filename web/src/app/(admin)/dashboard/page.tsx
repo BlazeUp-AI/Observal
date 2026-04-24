@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { Bot, Activity, TrendingUp, TrendingDown, Minus, Download, FlaskConical } from "lucide-react";
-import { useOverviewStats, useRegistryList, useTopAgents, useOtelSessions, useEvalScorecards } from "@/hooks/use-api";
-import type { RegistryItem, OtelSession, TopAgentItem, Scorecard } from "@/lib/types";
+import { useOverviewStats, useRegistryList, useTopAgents, useSessions2, useEvalScorecards } from "@/hooks/use-api";
+import type { RegistryItem, Session, TopAgentItem, Scorecard } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -95,7 +95,7 @@ export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErr, refetch: refetchStats } = useOverviewStats();
   const { data: agents, isLoading: agentsLoading, isError: agentsError, error: agentsErr, refetch: refetchAgents } = useRegistryList("agents");
   const { data: topAgents } = useTopAgents();
-  const { data: sessions, isLoading: sessionsLoading } = useOtelSessions();
+  const { data: sessions, isLoading: sessionsLoading } = useSessions2();
 
   const recentSessions = (sessions ?? []).slice(0, 8);
   const totalDownloads = topAgents?.reduce((s: number, a: { download_count: number }) => s + a.download_count, 0) ?? 0;
@@ -212,7 +212,7 @@ export default function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {recentSessions.map((s: OtelSession) => (
+                      {recentSessions.map((s: Session) => (
                         <TableRow key={s.session_id} className="group">
                           <TableCell className="py-1.5">
                             <Link

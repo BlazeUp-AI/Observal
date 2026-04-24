@@ -12,8 +12,8 @@ import {
   BarChart3,
 } from "lucide-react";
 import {
-  useOtelSessions,
-  useOtelSessionsSummary,
+  useSessions2,
+  useSessionsSummary,
   useSessionSubscription,
 } from "@/hooks/use-api";
 import {
@@ -47,11 +47,11 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
-import type { OtelSession } from "@/lib/types";
+import type { Session } from "@/lib/types";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function isKiroSession(row: OtelSession): boolean {
+function isKiroSession(row: Session): boolean {
   return row.service_name === "kiro" || row.session_id.startsWith("kiro-");
 }
 
@@ -122,14 +122,14 @@ function shortModel(raw?: string): string {
     .replace(/-\d{8}$/, "");
 }
 
-function derivePlatform(row: OtelSession): string {
+function derivePlatform(row: Session): string {
   if (row.platform) return row.platform;
   if (isKiroSession(row)) return "Kiro";
   if (isCopilotCliSession(row)) return "Copilot CLI";
   return "Claude Code";
 }
 
-function sessionLabel(row: OtelSession): string {
+function sessionLabel(row: Session): string {
   const model = shortModel(row.model);
   const count = row.prompt_count ?? 0;
   const suffix = count === 1 ? "prompt" : "prompts";
@@ -139,7 +139,7 @@ function sessionLabel(row: OtelSession): string {
 
 // ── Column Definitions ───────────────────────────────────────────────
 
-const columns: ColumnDef<OtelSession>[] = [
+const columns: ColumnDef<Session>[] = [
   {
     accessorKey: "session_id",
     header: "Session",
@@ -279,18 +279,18 @@ export default function TracesPage() {
   const daysParam = timeRange !== "all" ? parseInt(timeRange, 10) : undefined;
   const platformParam = platform !== "all" ? platform : undefined;
 
-  const { data: sessions, isLoading, isError, error, refetch } = useOtelSessions({
+  const { data: sessions, isLoading, isError, error, refetch } = useSessions2({
     refetchInterval: 30_000,
     platform: platformParam,
     days: daysParam,
   });
-  const { data: summary } = useOtelSessionsSummary();
+  const { data: summary } = useSessionsSummary();
   useSessionSubscription();
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
 
-  const allSessions = useMemo(() => (sessions ?? []) as OtelSession[], [sessions]);
+  const allSessions = useMemo(() => (sessions ?? []) as Session[], [sessions]);
   const activeCount = useMemo(() => allSessions.filter((s) => s.is_active).length, [allSessions]);
   const data = useMemo(
     () => (tab === "active" ? allSessions.filter((s) => s.is_active) : allSessions),
