@@ -1,5 +1,5 @@
 [project]
-name = "observal"
+name = "observal-cli"
 version = "0.3.2"
 description = "Observal MCP Server Registry & Agent Registry CLI"
 readme = "README.md"
