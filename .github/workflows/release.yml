@@ -200,6 +200,7 @@ jobs:
           context: .
           file: docker/Dockerfile.${{ matrix.image }}
           platforms: ${{ matrix.platform }}
+          provenance: false
           outputs: type=image,name=${{ env.IMAGE_PREFIX }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
           cache-to: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }},mode=max
