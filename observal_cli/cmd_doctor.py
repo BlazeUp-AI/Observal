@@ -817,7 +817,7 @@ def _find_hook_script(name: str) -> str | None:
 
 def _install_claude_code_hooks(server_url: str, api_key: str) -> list[str]:
     """Reconcile Claude Code hooks into ~/.claude/settings.json."""
-    hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+    hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
     hook_script = _find_hook_script("observal-hook.sh")
     stop_script = _find_hook_script("observal-stop-hook.sh")
     cfg = config.load()
@@ -842,7 +842,7 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
 
     agent_files = list(agents_dir.glob("*.json"))
 
-    hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+    hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
     # Locate the Kiro hook scripts
     hook_py = Path(__file__).parent / "hooks" / "kiro_hook.py"
@@ -860,7 +860,7 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
         try:
             od = json.loads(old_default.read_text())
             if od.get("name") == "default" and any(
-                "otel/hooks" in h.get("command", "")
+                "telemetry/hooks" in h.get("command", "")
                 for hs in od.get("hooks", {}).values()
                 if isinstance(hs, list)
                 for h in hs
@@ -916,7 +916,7 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             existing = current_hooks.get(kiro_event, [])
             # Check if Observal hook already present
             has_observal = any(
-                "observal" in h.get("command", "") or "otel/hooks" in h.get("command", "") for h in existing
+                "observal" in h.get("command", "") or "telemetry/hooks" in h.get("command", "") for h in existing
             )
             if not has_observal:
                 # Append our hooks, keep existing ones
@@ -1048,7 +1048,7 @@ def doctor_sli(
 
             rprint("[cyan]Claude Code[/cyan]")
             if dry_run:
-                hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+                hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
                 hook_script = _find_hook_script("observal-hook.sh")
                 stop_script = _find_hook_script("observal-stop-hook.sh")
                 user_id = cfg.get("user_id", "")

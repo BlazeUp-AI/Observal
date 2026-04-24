@@ -115,7 +115,7 @@ def _auto_inject_hooks(url: str):
             data = json.loads(af.read_text())
             hooks = data.get("hooks", {})
             if any(
-                "telemetry/hooks" in h.get("command", "") or "otel/hooks" in h.get("command", "")
+                "telemetry/hooks" in h.get("command", "") or "telemetry/hooks" in h.get("command", "")
                 for hs in hooks.values()
                 if isinstance(hs, list)
                 for h in hs

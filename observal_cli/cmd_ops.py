@@ -285,7 +285,7 @@ def ops_sync():
         return
 
     cfg = config.load()
-    hooks_url = cfg.get("server_url", "http://localhost:8000").rstrip("/") + "/api/v1/otel/hooks"
+    hooks_url = cfg.get("server_url", "http://localhost:8000").rstrip("/") + "/api/v1/telemetry/hooks"
     user_id = cfg.get("user_id", "")
 
     total_sent = 0

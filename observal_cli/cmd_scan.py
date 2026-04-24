@@ -1170,7 +1170,7 @@ def register_scan(app: typer.Typer):
 
             cfg = _load_config()
             server_url = cfg.get("server_url", "http://localhost:8000").rstrip("/")
-            hooks_url = f"{server_url}/api/v1/otel/hooks"
+            hooks_url = f"{server_url}/api/v1/telemetry/hooks"
             hook_def: dict = {"type": "http", "url": hooks_url}
             if cfg.get("user_id"):
                 hook_def["headers"] = {"X-Observal-User-Id": cfg["user_id"]}
@@ -1257,7 +1257,7 @@ def register_scan(app: typer.Typer):
 
             kcfg = _load_kiro_config()
             kiro_server_url = kcfg.get("server_url", "http://localhost:8000").rstrip("/")
-            kiro_hooks_url = f"{kiro_server_url}/api/v1/otel/hooks"
+            kiro_hooks_url = f"{kiro_server_url}/api/v1/telemetry/hooks"
 
             hooks_dir = Path(__file__).parent / "hooks"
             hook_script = hooks_dir / "kiro_hook.py"
@@ -1305,7 +1305,7 @@ def register_scan(app: typer.Typer):
                 try:
                     od = json.loads(old_default.read_text())
                     if od.get("name") == "default" and any(
-                        "otel/hooks" in h.get("command", "")
+                        "telemetry/hooks" in h.get("command", "")
                         for hs in od.get("hooks", {}).values()
                         if isinstance(hs, list)
                         for h in hs
@@ -1358,7 +1358,7 @@ def register_scan(app: typer.Typer):
                         merged = dict(existing)
                         for evt, handlers in desired.items():
                             cur = merged.get(evt, [])
-                            has_obs = any("otel/hooks" in h.get("command", "") for h in cur)
+                            has_obs = any("telemetry/hooks" in h.get("command", "") for h in cur)
                             if not has_obs:
                                 merged[evt] = cur + handlers
                         agent_data["hooks"] = merged
@@ -1380,13 +1380,13 @@ def register_scan(app: typer.Typer):
                     da = json.loads(default_agent_path.read_text())
                     hooks = da.get("hooks", {})
                     if any(
-                        "otel/hooks" in h.get("command", "")
+                        "telemetry/hooks" in h.get("command", "")
                         for hs in hooks.values()
                         if isinstance(hs, list)
                         for h in hs
                     ):
                         for evt, handlers in list(hooks.items()):
-                            hooks[evt] = [h for h in handlers if "otel/hooks" not in h.get("command", "")]
+                            hooks[evt] = [h for h in handlers if "telemetry/hooks" not in h.get("command", "")]
                             if not hooks[evt]:
                                 del hooks[evt]
                         da["hooks"] = hooks
@@ -1519,7 +1519,7 @@ def register_scan(app: typer.Typer):
 
             ghcfg = _load_gemini_hooks_config()
             gemini_server_url = ghcfg.get("server_url", "http://localhost:8000").rstrip("/")
-            gemini_hooks_url = f"{gemini_server_url}/api/v1/otel/hooks"
+            gemini_hooks_url = f"{gemini_server_url}/api/v1/telemetry/hooks"
 
             gemini_hooks_dir = Path(__file__).parent / "hooks"
             gemini_hook_script = gemini_hooks_dir / "gemini_hook.py"

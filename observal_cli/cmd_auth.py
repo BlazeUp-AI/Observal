@@ -739,7 +739,7 @@ def _configure_kiro(server_url: str):
         ):
             return
 
-        hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
         hook_py = _find_hook_script("kiro_hook.py")
         stop_py = _find_hook_script("kiro_stop_hook.py")
@@ -767,7 +767,7 @@ def _configure_kiro(server_url: str):
             try:
                 od = _json.loads(old_default.read_text())
                 if od.get("name") == "default" and any(
-                    "otel/hooks" in h.get("command", "")
+                    "telemetry/hooks" in h.get("command", "")
                     for hs in od.get("hooks", {}).values()
                     if isinstance(hs, list)
                     for h in hs
@@ -796,7 +796,7 @@ def _configure_kiro(server_url: str):
                 data = _json.loads(af.read_text())
                 existing = data.get("hooks", {})
                 already = any(
-                    "otel/hooks" in h.get("command", "")
+                    "telemetry/hooks" in h.get("command", "")
                     for handlers in existing.values()
                     if isinstance(handlers, list)
                     for h in handlers
@@ -816,7 +816,7 @@ def _configure_kiro(server_url: str):
                 merged = dict(existing)
                 for evt, handlers in desired.items():
                     cur = merged.get(evt, [])
-                    has_obs = any("otel/hooks" in h.get("command", "") for h in cur)
+                    has_obs = any("telemetry/hooks" in h.get("command", "") for h in cur)
                     if not has_obs:
                         merged[evt] = cur + handlers
                 data["hooks"] = merged
@@ -904,7 +904,7 @@ def _configure_gemini_cli(server_url: str):
             changes += 1
 
         # 2. Inject hooks for telemetry capture
-        hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
         hooks_dir = Path(__file__).parent / "hooks"
         hook_script = hooks_dir / "gemini_hook.py"
         stop_script = hooks_dir / "gemini_stop_hook.py"
@@ -1156,7 +1156,7 @@ def _configure_claude_code(server_url: str, access_token: str):
         hooks_token = _fetch_hooks_token(server_url, access_token)
 
         # Build desired state from the declarative spec
-        hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
         hook_script = _find_hook_script("observal-hook.sh")
         stop_script = _find_hook_script("observal-stop-hook.sh")
         cfg = config.load()

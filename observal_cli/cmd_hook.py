@@ -219,7 +219,7 @@ def hook_sync(
         rprint("[red]Not authenticated. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+    hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
     hook_script = _find_hook_script("observal-hook.sh")
     stop_script = _find_hook_script("observal-stop-hook.sh")
     user_id = cfg.get("user_id", "")
