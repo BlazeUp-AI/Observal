@@ -1,7 +1,7 @@
 import json
 import uuid as _uuid
 
-import structlog
+import logging
 from fastapi import APIRouter, Depends, Query
 from fastapi_cache.decorator import cache
 from sqlalchemy import or_, select
@@ -13,7 +13,7 @@ from models.user import User, UserRole
 from services.audit_helpers import audit
 from services.clickhouse import _query, query_shim_spans_for_window
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 # Normalize legacy ServiceName values to canonical IDE names.
@@ -54,7 +54,7 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
         if r.status_code == 200:
             return r.json().get("data", [])
     except Exception as e:
-        logger.warning("clickhouse_query_failed", error=str(e))
+        logger.warning("clickhouse_query_failed: %s", e)
     return []
 
 
