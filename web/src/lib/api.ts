@@ -3,9 +3,9 @@ import type {
   TopItem,
   TopAgentItem,
   TrendPoint,
-  OtelStats,
-  OtelTrace,
-  OtelSessionData,
+  SessionsStats,
+  SessionTrace,
+  SessionData,
   TokenStats,
   FeedbackItem,
   FeedbackSummary,
@@ -15,9 +15,9 @@ import type {
   IdeUsageData,
   AdminUser,
   AdminSetting,
-  OtelSession,
-  OtelSessionsSummary,
-  OtelErrorEvent,
+  Session,
+  SessionsSummary,
+  SessionErrorEvent,
   TelemetryStatus,
   ReviewItem,
   RegistryItem,
@@ -320,21 +320,21 @@ export const dashboard = {
   agentMetrics: (id: string) => get<unknown>(`/agents/${id}/metrics`),
   tokenStats: (range?: string) => get<TokenStats>(`/dashboard/tokens${range ? `?range=${range}` : ''}`),
   ideUsage: () => get<IdeUsageData>('/dashboard/ide-usage'),
-  otelSessions: (params?: { status?: string; platform?: string; days?: number }) => {
+  sessions: (params?: { status?: string; platform?: string; days?: number }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set("status", params.status);
     if (params?.platform) qs.set("platform", params.platform);
     if (params?.days) qs.set("days", String(params.days));
     const suffix = qs.toString() ? `?${qs}` : "";
-    return get<OtelSession[]>(`/otel/sessions${suffix}`);
+    return get<Session[]>(`/sessions${suffix}`);
   },
-  otelSessionsSummary: () => get<OtelSessionsSummary>('/otel/sessions/summary'),
-  otelSession: (id: string) => get<OtelSessionData>(`/otel/sessions/${encodeURIComponent(id)}`),
-  otelTraces: () => get<OtelTrace[]>('/otel/traces'),
-  otelTrace: (id: string) => get<unknown>(`/otel/traces/${encodeURIComponent(id)}`),
-  otelStats: () => get<OtelStats>('/otel/stats'),
-  otelErrors: () => get<OtelErrorEvent[]>('/otel/errors'),
-  otelSessionEfficiency: (sessionId: string) => get<Record<string, unknown>>(`/otel/sessions/${encodeURIComponent(sessionId)}/efficiency`),
+  sessionsSummary: () => get<SessionsSummary>('/sessions/summary'),
+  session: (id: string) => get<SessionData>(`/sessions/${encodeURIComponent(id)}`),
+  traces: () => get<SessionTrace[]>('/sessions/traces'),
+  trace: (id: string) => get<unknown>(`/sessions/traces/${encodeURIComponent(id)}`),
+  sessionsStats: () => get<SessionsStats>('/sessions/stats'),
+  sessionsErrors: () => get<SessionErrorEvent[]>('/sessions/errors'),
+  sessionEfficiency: (sessionId: string) => get<Record<string, unknown>>(`/sessions/${encodeURIComponent(sessionId)}/efficiency`),
 };
 
 // ── Feedback ────────────────────────────────────────────────────────

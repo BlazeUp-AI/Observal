@@ -3,8 +3,8 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AlertTriangle, Search, ChevronDown, ChevronRight, Wrench, Bot, Square } from "lucide-react";
-import { useOtelErrors } from "@/hooks/use-api";
-import type { OtelErrorEvent } from "@/lib/types";
+import { useSessionErrors } from "@/hooks/use-api";
+import type { SessionErrorEvent } from "@/lib/types";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 
 type ErrorType = "tool_failure" | "stop_failure" | "api_error";
 
-function classifyError(event: OtelErrorEvent): ErrorType {
+function classifyError(event: SessionErrorEvent): ErrorType {
   if (event.event_name === "hook_posttoolusefailure") return "tool_failure";
   if (event.event_name === "hook_stopfailure") return "stop_failure";
   return "api_error";
@@ -47,7 +47,7 @@ function ErrorIcon({ type }: { type: ErrorType }) {
 
 /* ── Error row ───────────────────────────────────────────── */
 
-function ErrorRow({ event }: { event: OtelErrorEvent }) {
+function ErrorRow({ event }: { event: SessionErrorEvent }) {
   const [expanded, setExpanded] = useState(false);
   const type = classifyError(event);
   const colorCls = errorTypeColor(type);
@@ -139,7 +139,7 @@ function ErrorRow({ event }: { event: OtelErrorEvent }) {
 /* ── Page ─────────────────────────────────────────────────── */
 
 export default function ErrorsPage() {
-  const { data: errors, isLoading, isError, error, refetch } = useOtelErrors();
+  const { data: errors, isLoading, isError, error, refetch } = useSessionErrors();
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ErrorType | "all">("all");

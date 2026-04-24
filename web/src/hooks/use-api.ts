@@ -340,17 +340,17 @@ export function useTokenStats(range?: string) {
 export function useIdeUsage() {
   return useQuery({ queryKey: ['dashboard', 'ide-usage'], queryFn: dashboard.ideUsage });
 }
-// ── OTel ────────────────────────────────────────────────────────────
+// ── Sessions ───────────────────────────────────────────────────────
 
-export function useOtelSessions(options?: {
+export function useSessions2(options?: {
   refetchInterval?: number | false;
   platform?: string;
   days?: number;
 }) {
   return useQuery({
-    queryKey: ['otel', 'sessions', options?.platform, options?.days],
+    queryKey: ['sessions', 'list', options?.platform, options?.days],
     queryFn: () =>
-      dashboard.otelSessions({
+      dashboard.sessions({
         platform: options?.platform,
         days: options?.days,
       }),
@@ -359,28 +359,28 @@ export function useOtelSessions(options?: {
     staleTime: 0,
   });
 }
-export function useOtelSessionsSummary() {
+export function useSessionsSummary() {
   return useQuery({
-    queryKey: ['otel', 'sessions', 'summary'],
-    queryFn: dashboard.otelSessionsSummary,
+    queryKey: ['sessions', 'summary'],
+    queryFn: dashboard.sessionsSummary,
     refetchOnMount: "always",
     staleTime: 0,
   });
 }
-export function useOtelSession(id: string | undefined) {
-  return useQuery({ queryKey: ['otel', 'session', id], queryFn: () => dashboard.otelSession(id!), enabled: !!id });
+export function useSessionDetail(id: string | undefined) {
+  return useQuery({ queryKey: ['sessions', 'detail', id], queryFn: () => dashboard.session(id!), enabled: !!id });
 }
-export function useOtelTraces() {
-  return useQuery({ queryKey: ['otel', 'traces'], queryFn: dashboard.otelTraces });
+export function useSessionTraces() {
+  return useQuery({ queryKey: ['sessions', 'traces'], queryFn: dashboard.traces });
 }
-export function useOtelTrace(id: string | undefined) {
-  return useQuery({ queryKey: ['otel', 'trace', id], queryFn: () => dashboard.otelTrace(id!), enabled: !!id });
+export function useSessionTrace(id: string | undefined) {
+  return useQuery({ queryKey: ['sessions', 'trace', id], queryFn: () => dashboard.trace(id!), enabled: !!id });
 }
-export function useOtelStats() {
-  return useQuery({ queryKey: ['otel', 'stats'], queryFn: dashboard.otelStats });
+export function useSessionsStats() {
+  return useQuery({ queryKey: ['sessions', 'stats'], queryFn: dashboard.sessionsStats });
 }
-export function useOtelErrors() {
-  return useQuery({ queryKey: ['otel', 'errors'], queryFn: dashboard.otelErrors });
+export function useSessionErrors() {
+  return useQuery({ queryKey: ['sessions', 'errors'], queryFn: dashboard.sessionsErrors });
 }
 export interface SessionEfficiencyData {
   efficiency_rating: number;
@@ -400,7 +400,7 @@ export interface SessionEfficiencyData {
 export function useSessionEfficiency(sessionId: string | undefined) {
   return useQuery<SessionEfficiencyData>({
     queryKey: ["session-efficiency", sessionId],
-    queryFn: () => dashboard.otelSessionEfficiency(sessionId!) as unknown as Promise<SessionEfficiencyData>,
+    queryFn: () => dashboard.sessionEfficiency(sessionId!) as unknown as Promise<SessionEfficiencyData>,
     enabled: !!sessionId,
   });
 }
@@ -417,10 +417,10 @@ export function useSessionSubscription() {
         // Debounce the list refetch (many events → one list refresh)
         clearTimeout(listDebounceRef.current);
         listDebounceRef.current = setTimeout(() => {
-          qc.invalidateQueries({ queryKey: ["otel", "sessions"] });
+          qc.invalidateQueries({ queryKey: ["sessions", "list"] });
         }, 300);
         // Session detail: invalidate immediately so new turns appear
-        qc.invalidateQueries({ queryKey: ["otel", "session", sessionId] });
+        qc.invalidateQueries({ queryKey: ["sessions", "detail", sessionId] });
       });
     });
 
