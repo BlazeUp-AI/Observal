@@ -19,6 +19,13 @@ from observal_cli.render import console, spinner
 _OBSERVAL_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
+def _load_jsonc(path: Path) -> dict:
+    """Load a JSON file that may contain // line comments (JSONC)."""
+    text = path.read_text()
+    stripped = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
+    return json.loads(stripped)
+
+
 def _deterministic_mcp_id(name: str) -> str:
     """Generate a stable UUID for an MCP based on its name."""
     return str(uuid.uuid5(_OBSERVAL_NS, name))
@@ -1417,37 +1424,37 @@ def register_scan(app: typer.Typer):
             ccli_stop_script = hooks_dir / "copilot_cli_stop_hook.py"
 
             if ccli_hook_script.is_file() and ccli_stop_script.is_file():
-                if sys.platform == "win32":
-                    bash_cmd = f"python {ccli_hook_script.resolve().as_posix()} --url {ccli_hooks_url}"
-                    bash_stop = f"python {ccli_stop_script.resolve().as_posix()} --url {ccli_hooks_url}"
-                else:
-                    bash_cmd = f"cat | python3 {ccli_hook_script.resolve().as_posix()} --url {ccli_hooks_url}"
-                    bash_stop = f"cat | python3 {ccli_stop_script.resolve().as_posix()} --url {ccli_hooks_url}"
-                ps_cmd = f"python {ccli_hook_script.resolve().as_posix()} --url {ccli_hooks_url}"
-                ps_stop = f"python {ccli_stop_script.resolve().as_posix()} --url {ccli_hooks_url}"
+                hook_path = ccli_hook_script.resolve().as_posix()
+                stop_path = ccli_stop_script.resolve().as_posix()
 
-                def _copilot_hook_entry(bash: str, ps: str) -> dict:
+                def _copilot_hook_entry(event: str, is_stop: bool = False) -> dict:
+                    script = stop_path if is_stop else hook_path
+                    if sys.platform == "win32":
+                        bash = f"python {script} --url {ccli_hooks_url} --event-name {event}"
+                    else:
+                        bash = f"cat | python3 {script} --url {ccli_hooks_url} --event-name {event}"
+                    ps = f"python {script} --url {ccli_hooks_url} --event-name {event}"
                     return {"type": "command", "bash": bash, "powershell": ps, "timeoutSec": 10}
 
                 desired_hooks = {
-                    "sessionStart": [_copilot_hook_entry(bash_cmd, ps_cmd)],
-                    "userPromptSubmitted": [_copilot_hook_entry(bash_cmd, ps_cmd)],
-                    "preToolUse": [_copilot_hook_entry(bash_cmd, ps_cmd)],
-                    "postToolUse": [_copilot_hook_entry(bash_cmd, ps_cmd)],
-                    "sessionEnd": [_copilot_hook_entry(bash_stop, ps_stop)],
-                    "errorOccurred": [_copilot_hook_entry(bash_cmd, ps_cmd)],
+                    "sessionStart": [_copilot_hook_entry("sessionStart")],
+                    "userPromptSubmitted": [_copilot_hook_entry("userPromptSubmitted")],
+                    "preToolUse": [_copilot_hook_entry("preToolUse")],
+                    "postToolUse": [_copilot_hook_entry("postToolUse")],
+                    "sessionEnd": [_copilot_hook_entry("sessionEnd", is_stop=True)],
+                    "errorOccurred": [_copilot_hook_entry("errorOccurred")],
                 }
 
                 copilot_config_path = Path.home() / ".copilot" / "config.json"
                 try:
                     copilot_data: dict = {}
                     if copilot_config_path.exists():
-                        copilot_data = json.loads(copilot_config_path.read_text())
+                        copilot_data = _load_jsonc(copilot_config_path)
 
                     existing_hooks = copilot_data.get("hooks", {})
                     needs_update = False
 
-                    for event_name, entries in desired_hooks.items():
+                    for event_name, _entries in desired_hooks.items():
                         if event_name not in existing_hooks:
                             needs_update = True
                             break
