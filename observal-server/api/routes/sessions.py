@@ -14,7 +14,7 @@ from services.audit_helpers import audit
 from services.clickhouse import _query, query_shim_spans_for_window
 
 logger = structlog.get_logger(__name__)
-router = APIRouter(prefix="/api/v1/otel", tags=["otel-dashboard"])
+router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 # Normalize legacy ServiceName values to canonical IDE names.
 # Old events in ClickHouse may still carry these; normalization at query

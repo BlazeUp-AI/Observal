@@ -36,11 +36,11 @@ from api.routes.feedback import router as feedback_router
 from api.routes.hook import router as hook_router
 from api.routes.jwks import router as jwks_router
 from api.routes.mcp import router as mcp_router
-from api.routes.otel_dashboard import router as otel_dashboard_router
 from api.routes.otlp import router as otlp_router
 from api.routes.prompt import router as prompt_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
+from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
 from config import settings
@@ -291,7 +291,7 @@ app.include_router(feedback_router)
 app.include_router(eval_router)
 app.include_router(admin_router)
 app.include_router(alert_router)
-app.include_router(otel_dashboard_router)
+app.include_router(sessions_router)
 app.include_router(component_source_router)
 app.include_router(bulk_router)
 app.include_router(config_router)

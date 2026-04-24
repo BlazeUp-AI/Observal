@@ -139,7 +139,7 @@ _SHIM_TYPE_TO_EVENT: dict[str, str] = {
 async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
     """Side-load shim spans from spans table into otel_logs event list.
 
-    Same strategy as otel_dashboard._sideload_shim_spans() but for the
+    Same strategy as sessions._sideload_shim_spans() but for the
     eval pipeline.  Extracts user_id + time bounds from events, queries
     the spans table, and synthesizes otel_logs-shaped events.
     """
