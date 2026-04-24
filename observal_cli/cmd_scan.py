@@ -31,6 +31,7 @@ _IDE_PROJECT_CONFIGS = {
     "kiro": ".kiro/settings/mcp.json",
     "vscode": ".vscode/mcp.json",
     "copilot": ".vscode/mcp.json",
+    "copilot-cli": ".mcp.json",
     "gemini-cli": ".gemini/settings.json",
     "opencode": "opencode.json",
     "codex": ".codex/config.toml",
@@ -511,6 +512,38 @@ def _scan_copilot_home(
     return mcps, skills, hooks, agents
 
 
+def _scan_copilot_cli_home(
+    copilot_dir: Path,
+) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
+    """Scan ~/.copilot for MCP servers from mcp-config.json."""
+    mcps: list[DiscoveredMcp] = []
+    skills: list[DiscoveredSkill] = []
+    hooks: list[DiscoveredHook] = []
+    agents: list[DiscoveredAgent] = []
+
+    mcp_file = copilot_dir / "mcp-config.json"
+    if mcp_file.exists():
+        try:
+            data = json.loads(mcp_file.read_text())
+            servers = data.get("mcpServers", {})
+            for srv_name, srv_config in servers.items():
+                if isinstance(srv_config, dict):
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=srv_name,
+                            command=srv_config.get("command"),
+                            args=srv_config.get("args", []),
+                            url=srv_config.get("url"),
+                            description=f"Copilot CLI MCP: {srv_name}",
+                            source="copilot-cli:global",
+                        )
+                    )
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return mcps, skills, hooks, agents
+
+
 def _scan_opencode_home(
     opencode_dir: Path,
 ) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
@@ -664,6 +697,8 @@ def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
     """Extract MCP servers dict from project-level IDE config."""
     if ide in ("vscode", "copilot"):
         return config.get("servers", config.get("mcpServers", {}))
+    if ide == "copilot-cli":
+        return config.get("mcpServers", {})
     if ide == "opencode":
         return config.get("mcp", {})
     if ide == "codex":
@@ -829,6 +864,7 @@ def register_scan(app: typer.Typer):
         scan_gemini = False
         scan_codex = False
         scan_copilot = False
+        scan_copilot_cli = False
         scan_opencode = False
 
         if all_ides:
@@ -838,6 +874,7 @@ def register_scan(app: typer.Typer):
             scan_gemini = True
             scan_codex = True
             scan_copilot = True
+            scan_copilot_cli = True
             scan_opencode = True
         elif home:
             if ide == "kiro":
@@ -848,6 +885,8 @@ def register_scan(app: typer.Typer):
                 scan_codex = True
             elif ide == "copilot":
                 scan_copilot = True
+            elif ide == "copilot-cli":
+                scan_copilot_cli = True
             elif ide == "opencode":
                 scan_opencode = True
             elif ide == "claude-code" or ide is None:
@@ -857,6 +896,7 @@ def register_scan(app: typer.Typer):
                     scan_gemini = True
                     scan_codex = True
                     scan_copilot = True
+                    scan_copilot_cli = True
                     scan_opencode = True
 
         # ── Scan ~/.claude ─────────────────────────────
@@ -929,6 +969,20 @@ def register_scan(app: typer.Typer):
             elif not all_ides:
                 rprint("[yellow]~/.vscode directory not found.[/yellow]")
 
+        # ── Scan ~/.copilot (Copilot CLI) ────────────
+        if scan_copilot_cli:
+            copilot_cli_dir = Path.home() / ".copilot"
+            if copilot_cli_dir.is_dir():
+                with spinner("Scanning ~/.copilot..."):
+                    ccli_mcps, ccli_skills, ccli_hooks, ccli_agents = _scan_copilot_cli_home(copilot_cli_dir)
+                all_mcps.extend(ccli_mcps)
+                all_skills.extend(ccli_skills)
+                all_hooks.extend(ccli_hooks)
+                all_agents.extend(ccli_agents)
+                scanned_ides.append("copilot-cli")
+            elif not all_ides:
+                rprint("[yellow]~/.copilot directory not found.[/yellow]")
+
         # ── Scan ~/.config/opencode ──────────────────
         if scan_opencode:
             opencode_dir = Path.home() / ".config" / "opencode"
@@ -974,6 +1028,7 @@ def register_scan(app: typer.Typer):
             scan_gemini = True
             scan_codex = True
             scan_copilot = True
+            scan_copilot_cli = True
             scan_opencode = True
 
             for _ide_name, _dir_path, _scan_fn, _label in [
@@ -982,6 +1037,7 @@ def register_scan(app: typer.Typer):
                 ("gemini-cli", Path.home() / ".gemini", _scan_gemini_home, "~/.gemini"),
                 ("codex", Path.home() / ".codex", _scan_codex_home, "~/.codex"),
                 ("copilot", Path.home() / ".vscode", _scan_copilot_home, "~/.vscode"),
+                ("copilot-cli", Path.home() / ".copilot", _scan_copilot_cli_home, "~/.copilot"),
                 ("opencode", Path.home() / ".config" / "opencode", _scan_opencode_home, "~/.config/opencode"),
             ]:
                 if _dir_path.is_dir():
@@ -1352,6 +1408,89 @@ def register_scan(app: typer.Typer):
             else:
                 rprint("[dim]Global Kiro hooks already configured.[/dim]")
 
+        # ── Auto-inject hooks into ~/.copilot/config.json ─────
+        if scan_copilot_cli:
+            from observal_cli.config import load as _load_copilot_cli_config
+
+            ccli_cfg = _load_copilot_cli_config()
+            ccli_server_url = ccli_cfg.get("server_url", "http://localhost:8000").rstrip("/")
+            ccli_hooks_url = f"{ccli_server_url}/api/v1/otel/hooks"
+
+            hooks_dir = Path(__file__).parent / "hooks"
+            ccli_hook_script = hooks_dir / "copilot_cli_hook.py"
+            ccli_stop_script = hooks_dir / "copilot_cli_stop_hook.py"
+
+            if ccli_hook_script.is_file() and ccli_stop_script.is_file():
+                if sys.platform == "win32":
+                    bash_cmd = f"python {ccli_hook_script.resolve().as_posix()} --url {ccli_hooks_url}"
+                    bash_stop = f"python {ccli_stop_script.resolve().as_posix()} --url {ccli_hooks_url}"
+                else:
+                    bash_cmd = f"cat | python3 {ccli_hook_script.resolve().as_posix()} --url {ccli_hooks_url}"
+                    bash_stop = f"cat | python3 {ccli_stop_script.resolve().as_posix()} --url {ccli_hooks_url}"
+                ps_cmd = f"python {ccli_hook_script.resolve().as_posix()} --url {ccli_hooks_url}"
+                ps_stop = f"python {ccli_stop_script.resolve().as_posix()} --url {ccli_hooks_url}"
+
+                def _copilot_hook_entry(bash: str, ps: str) -> dict:
+                    return {"type": "command", "bash": bash, "powershell": ps, "timeoutSec": 10}
+
+                desired_hooks = {
+                    "sessionStart": [_copilot_hook_entry(bash_cmd, ps_cmd)],
+                    "userPromptSubmitted": [_copilot_hook_entry(bash_cmd, ps_cmd)],
+                    "preToolUse": [_copilot_hook_entry(bash_cmd, ps_cmd)],
+                    "postToolUse": [_copilot_hook_entry(bash_cmd, ps_cmd)],
+                    "sessionEnd": [_copilot_hook_entry(bash_stop, ps_stop)],
+                    "errorOccurred": [_copilot_hook_entry(bash_cmd, ps_cmd)],
+                }
+
+                copilot_config_path = Path.home() / ".copilot" / "config.json"
+                try:
+                    copilot_data: dict = {}
+                    if copilot_config_path.exists():
+                        copilot_data = json.loads(copilot_config_path.read_text())
+
+                    existing_hooks = copilot_data.get("hooks", {})
+                    needs_update = False
+
+                    for event_name, entries in desired_hooks.items():
+                        if event_name not in existing_hooks:
+                            needs_update = True
+                            break
+                        existing_bash = ""
+                        try:
+                            existing_bash = existing_hooks[event_name][0].get("bash", "")
+                        except (IndexError, TypeError, AttributeError):
+                            pass
+                        if "otel/hooks" not in existing_bash:
+                            needs_update = True
+                            break
+
+                    if needs_update:
+                        if copilot_config_path.exists():
+                            _backup_config(copilot_config_path)
+                        # Merge non-destructively: preserve user hooks on events we don't own
+                        merged_hooks = dict(existing_hooks)
+                        for evt, entries in desired_hooks.items():
+                            cur = merged_hooks.get(evt, [])
+                            has_obs = any("otel/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
+                            if not has_obs:
+                                merged_hooks[evt] = cur + entries
+                            else:
+                                # Update existing Observal hook entry
+                                merged_hooks[evt] = [
+                                    h for h in cur if not isinstance(h, dict) or "otel/hooks" not in h.get("bash", "")
+                                ] + entries
+                        copilot_data["hooks"] = merged_hooks
+                        copilot_config_path.parent.mkdir(parents=True, exist_ok=True)
+                        copilot_config_path.write_text(json.dumps(copilot_data, indent=2) + "\n")
+                        rprint(f"\n[green]Injected hooks config into {copilot_config_path}[/green]")
+                        rprint(f"[dim]Hooks endpoint: {ccli_hooks_url}[/dim]")
+                        rprint("[dim]Captures: session lifecycle, prompts, tool I/O, errors[/dim]")
+                    else:
+                        rprint(f"\n[dim]Copilot CLI hooks already configured -> {ccli_hooks_url}[/dim]")
+                except Exception as e:
+                    rprint(f"\n[yellow]Could not auto-inject Copilot CLI hooks: {e}[/yellow]")
+                    rprint("[dim]Add hooks manually to ~/.copilot/config.json — see docs.[/dim]")
+
         # ── Auto-inject telemetry into ~/.gemini/settings.json ──
         if scan_gemini:
             from observal_cli.config import load as _load_gemini_config
@@ -1464,6 +1603,13 @@ def register_scan(app: typer.Typer):
             _auto_shim_home_config(
                 Path.home() / ".vscode" / "mcp.json",
                 "copilot",
+            )
+
+        # ── Auto-shim Copilot CLI home MCP servers ──
+        if scan_copilot_cli:
+            _auto_shim_home_config(
+                Path.home() / ".copilot" / "mcp-config.json",
+                "copilot-cli",
             )
 
         # ── Auto-shim OpenCode home MCP servers ──
