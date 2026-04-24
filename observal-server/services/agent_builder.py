@@ -100,7 +100,6 @@ class AgentManifest(BaseModel):
     model_name: str = ""
     components: ManifestComponents = Field(default_factory=ManifestComponents)
     errors: list[ManifestError] = Field(default_factory=list)
-    otlp_http_url: str = ""
 
     def model_dump_compact(self) -> dict:
         """Clean manifest output (no empty lists, no None values)."""
@@ -399,6 +398,14 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
 
     skill_files = _build_skill_files(manifest, "claude-code")
 
+    env: dict[str, str] = {
+        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+    }
+    otlp_url = getattr(manifest, "_otlp_http_url", "") or ""
+    if otlp_url:
+        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_url
+
     return IdeAgentConfig(
         ide="claude-code",
         files=[
@@ -410,11 +417,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
             *skill_files,
         ],
         mcp_servers=mcp_entries,
-        env={
-            "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-            "OTEL_EXPORTER_OTLP_ENDPOINT": manifest.otlp_http_url or "http://localhost:4318",
-            "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-        },
+        env=env,
         setup_commands=setup_commands,
     )
 
@@ -477,7 +480,7 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Gemini CLI agent config (GEMINI.md + .gemini/settings.json)."""
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
-    otlp_url = manifest.otlp_http_url or "http://localhost:4318"
+    otlp_url = getattr(manifest, "_otlp_http_url", "") or ""
 
     settings: dict = {
         "telemetry": {
@@ -487,6 +490,12 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     }
     if mcp_entries:
         settings["mcpServers"] = mcp_entries
+
+    env: dict[str, str] = {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
+    }
+    if otlp_url:
+        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_url
 
     return IdeAgentConfig(
         ide="gemini-cli",
@@ -503,10 +512,7 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
             ),
         ],
         mcp_servers=mcp_entries,
-        env={
-            "OTEL_EXPORTER_OTLP_ENDPOINT": otlp_url,
-            "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-        },
+        env=env,
     )
 
 
@@ -554,36 +560,41 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
 def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Codex agent config (AGENTS.md + ~/.codex/config.toml)."""
     rules_content = _build_rules_markdown(manifest)
-    otlp_url = manifest.otlp_http_url or "http://localhost:4318"
+    otlp_url = getattr(manifest, "_otlp_http_url", "") or ""
 
-    toml_snippet = (
-        "[otel]\n"
-        'environment = "production"\n'
-        "log_user_prompt = true\n"
-        "\n"
-        "[otel.exporter.otlp-http]\n"
-        f'endpoint = "{otlp_url}/v1/logs"\n'
-        'protocol = "http"\n'
-        "\n"
-        "[otel.trace_exporter.otlp-http]\n"
-        f'endpoint = "{otlp_url}/v1/traces"\n'
-        'protocol = "http"\n'
-    )
+    files = [
+        AgentFile(
+            path="AGENTS.md",
+            content=rules_content,
+            format="markdown",
+        ),
+    ]
 
-    return IdeAgentConfig(
-        ide="codex",
-        files=[
-            AgentFile(
-                path="AGENTS.md",
-                content=rules_content,
-                format="markdown",
-            ),
+    if otlp_url:
+        toml_snippet = (
+            "[otel]\n"
+            'environment = "production"\n'
+            "log_user_prompt = true\n"
+            "\n"
+            "[otel.exporter.otlp-http]\n"
+            f'endpoint = "{otlp_url}/v1/logs"\n'
+            'protocol = "http"\n'
+            "\n"
+            "[otel.trace_exporter.otlp-http]\n"
+            f'endpoint = "{otlp_url}/v1/traces"\n'
+            'protocol = "http"\n'
+        )
+        files.append(
             AgentFile(
                 path="~/.codex/config.toml",
                 content=toml_snippet,
                 format="toml",
             ),
-        ],
+        )
+
+    return IdeAgentConfig(
+        ide="codex",
+        files=files,
     )
 
 
@@ -616,45 +627,6 @@ def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
 
     return IdeAgentConfig(
         ide="copilot",
-        files=files,
-        mcp_servers=mcp_entries,
-    )
-
-
-def _generate_copilot_cli(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate Copilot CLI agent config (.github/copilot-instructions.md + .mcp.json)."""
-    mcp_entries = _build_mcp_entries(manifest)
-    rules_content = _build_rules_markdown(manifest)
-
-    files = [
-        AgentFile(
-            path=".github/copilot-instructions.md",
-            content=rules_content,
-            format="markdown",
-        ),
-    ]
-
-    if mcp_entries:
-        copilot_cli_mcp_entries = {}
-        for k, v in mcp_entries.items():
-            copilot_cli_mcp_entries[k] = {
-                "type": "stdio",
-                "command": v["command"],
-                "args": v.get("args", []),
-                "tools": ["*"],
-            }
-            if v.get("env"):
-                copilot_cli_mcp_entries[k]["env"] = v["env"]
-        files.append(
-            AgentFile(
-                path=".mcp.json",
-                content={"mcpServers": copilot_cli_mcp_entries},
-                format="json",
-            ),
-        )
-
-    return IdeAgentConfig(
-        ide="copilot-cli",
         files=files,
         mcp_servers=mcp_entries,
     )
@@ -707,8 +679,6 @@ _IDE_GENERATORS = {
     "kiro": _generate_kiro,
     "codex": _generate_codex,
     "copilot": _generate_copilot,
-    "copilot-cli": _generate_copilot_cli,
-    "copilot_cli": _generate_copilot_cli,
     "opencode": _generate_opencode,
 }
 
@@ -721,7 +691,6 @@ SUPPORTED_IDES = list(
         "kiro",
         "codex",
         "copilot",
-        "copilot-cli",
         "opencode",
     }
 )
@@ -738,5 +707,5 @@ def generate_ide_agent_files(manifest: AgentManifest, ide: str, otlp_http_url: s
         raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")
     # Thread the OTLP URL to generators that need it
     if otlp_http_url:
-        manifest.otlp_http_url = otlp_http_url
+        manifest._otlp_http_url = otlp_http_url  # type: ignore[attr-defined]
     return generator(manifest)
