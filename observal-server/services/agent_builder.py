@@ -402,7 +402,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
         "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
         "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
     }
-    otlp_url = getattr(manifest, "_otlp_http_url", "") or ""
+    otlp_url = getattr(manifest, "_observal_url", "") or ""
     if otlp_url:
         env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_url
 
@@ -480,7 +480,7 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Gemini CLI agent config (GEMINI.md + .gemini/settings.json)."""
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
-    otlp_url = getattr(manifest, "_otlp_http_url", "") or ""
+    otlp_url = getattr(manifest, "_observal_url", "") or ""
 
     settings: dict = {
         "telemetry": {
@@ -516,10 +516,29 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     )
 
 
+def _build_kiro_hooks(safe_name: str, observal_url: str, platform: str = "") -> dict:
+    """Build Kiro hook commands for telemetry collection."""
+    if not observal_url:
+        return {}
+    hooks_path = f"{observal_url}/api/v1/telemetry/hooks"
+    py = "python" if platform == "win32" else "python3"
+    hook_cmd = f"{py} -m observal_cli.hooks.kiro_hook --url {hooks_path} --agent-name {safe_name}"
+    stop_cmd = f"{py} -m observal_cli.hooks.kiro_stop_hook --url {hooks_path} --agent-name {safe_name}"
+    return {
+        "agentSpawn": [{"command": hook_cmd}],
+        "userPromptSubmit": [{"command": hook_cmd}],
+        "preToolUse": [{"matcher": "*", "command": hook_cmd}],
+        "postToolUse": [{"matcher": "*", "command": hook_cmd}],
+        "stop": [{"command": stop_cmd}],
+    }
+
+
 def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Kiro agent config (~/.kiro/agents/<name>.json)."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
+    observal_url = getattr(manifest, "_observal_url", "") or ""
+    platform = getattr(manifest, "_platform", "") or ""
 
     kiro_agent = {
         "name": safe_name,
@@ -535,10 +554,10 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
             "skill://.kiro/skills/*/SKILL.md",
             "skill://~/.kiro/skills/*/SKILL.md",
         ],
-        "hooks": {},
+        "hooks": _build_kiro_hooks(safe_name, observal_url, platform),
         "toolsSettings": {},
         "includeMcpJson": True,
-        "model": None,  # Kiro uses "auto" model selection; actual model captured via SQLite in hooks
+        "model": None,
     }
 
     skill_files = _build_skill_files(manifest, "kiro")
@@ -560,7 +579,7 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
 def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Codex agent config (AGENTS.md + ~/.codex/config.toml)."""
     rules_content = _build_rules_markdown(manifest)
-    otlp_url = getattr(manifest, "_otlp_http_url", "") or ""
+    otlp_url = getattr(manifest, "_observal_url", "") or ""
 
     files = [
         AgentFile(
@@ -696,7 +715,12 @@ SUPPORTED_IDES = list(
 )
 
 
-def generate_ide_agent_files(manifest: AgentManifest, ide: str, otlp_http_url: str = "") -> IdeAgentConfig:
+def generate_ide_agent_files(
+    manifest: AgentManifest,
+    ide: str,
+    observal_url: str = "",
+    platform: str = "",
+) -> IdeAgentConfig:
     """Generate IDE-specific agent files from a portable agent manifest.
 
     This is the universal entry point — takes a Pydantic AgentManifest
@@ -705,7 +729,9 @@ def generate_ide_agent_files(manifest: AgentManifest, ide: str, otlp_http_url: s
     generator = _IDE_GENERATORS.get(ide)
     if generator is None:
         raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")
-    # Thread the OTLP URL to generators that need it
-    if otlp_http_url:
-        manifest._otlp_http_url = otlp_http_url  # type: ignore[attr-defined]
+    if observal_url:
+        manifest._otlp_http_url = observal_url  # type: ignore[attr-defined]
+        manifest._observal_url = observal_url  # type: ignore[attr-defined]
+    if platform:
+        manifest._platform = platform  # type: ignore[attr-defined]
     return generator(manifest)
