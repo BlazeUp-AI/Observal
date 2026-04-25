@@ -1162,7 +1162,12 @@ class TestDoctorCopilotCli:
 
         data = {
             "hooks": {
-                "sessionStart": [{"type": "command", "bash": "python3 -m observal_cli.hooks.copilot_cli_hook --url http://localhost:8000/api/v1/telemetry/hooks --event-name sessionStart"}],
+                "sessionStart": [
+                    {
+                        "type": "command",
+                        "bash": "python3 -m observal_cli.hooks.copilot_cli_hook --url http://localhost:8000/api/v1/telemetry/hooks --event-name sessionStart",
+                    }
+                ],
             }
         }
         issues = []
