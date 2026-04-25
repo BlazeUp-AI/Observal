@@ -115,9 +115,7 @@ def _enrich(payload: dict) -> dict:
     # --- Credit usage ---
     utm = conv.get("user_turn_metadata", {})
     usage_info = utm.get("usage_info", [])
-    total_credits = 0.0
-    for u in usage_info:
-        total_credits += u.get("value", 0.0)
+    total_credits = sum(u.get("value", 0.0) for u in usage_info) if usage_info else None
 
     # --- Resolve the actual model used ---
     # If model_id is "auto", try to use per-turn model_ids
@@ -132,7 +130,8 @@ def _enrich(payload: dict) -> dict:
     if resolved_model and not payload.get("model"):
         payload["model"] = resolved_model
     payload["turn_count"] = str(turn_count)
-    payload["credits"] = f"{total_credits:.6f}"
+    if total_credits is not None:
+        payload["credits"] = f"{total_credits:.6f}"
 
     if tools_used:
         # Deduplicate while preserving order

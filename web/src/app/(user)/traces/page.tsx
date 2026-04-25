@@ -73,10 +73,10 @@ function fmtTokens(n: number | string | undefined): string {
   return `${num}`;
 }
 
-function fmtCredits(c: string | undefined): string {
-  if (!c) return "0.00";
+function fmtCredits(c: string | undefined): string | null {
+  if (!c) return null;
   const num = parseFloat(c);
-  if (isNaN(num)) return "0.00";
+  if (isNaN(num)) return null;
   return num < 0.01 && num > 0 ? num.toFixed(4) : num.toFixed(2);
 }
 
@@ -184,9 +184,15 @@ const columns: ColumnDef<Session>[] = [
         );
       }
       if (isKiroSession(r)) {
+        const cr = fmtCredits(r.credits);
+        if (cr === null) {
+          return (
+            <span className="text-[13px] text-muted-foreground">{"\u2014"}</span>
+          );
+        }
         return (
           <span className="text-[13px] font-mono tabular-nums text-orange-400">
-            {fmtCredits(r.credits)} cr
+            {cr} cr
           </span>
         );
       }
