@@ -1514,9 +1514,7 @@ def register_scan(app: typer.Typer):
 
             def _gemini_hook_cmd(script: Path) -> str:
                 """Build the Gemini hook command string for a given script."""
-                if sys.platform == "win32":
-                    return f"python {script.resolve().as_posix()}"
-                return f"python3 {script.resolve().as_posix()}"
+                return f"{sys.executable} {script.resolve().as_posix()}"
 
             def _gemini_hook_entry(script: Path) -> list:
                 return [{"hooks": [{"type": "command", "command": _gemini_hook_cmd(script)}]}]

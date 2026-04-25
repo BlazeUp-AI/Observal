@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json as _json
 import shutil
+import sys
 from pathlib import Path
 
 import httpx
@@ -741,18 +742,11 @@ def _configure_kiro(server_url: str):
 
         hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
-        hook_py = _find_hook_script("kiro_hook.py")
-        stop_py = _find_hook_script("kiro_stop_hook.py")
-
         def _hook_cmd(agent_name: str) -> str:
-            if hook_py:
-                return f"cat | python3 {hook_py} --url {hooks_url} --agent-name {agent_name}"
-            return f'cat | curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
+            return f"{sys.executable} -m observal_cli.hooks.kiro_hook --url {hooks_url} --agent-name {agent_name}"
 
         def _stop_cmd(agent_name: str) -> str:
-            if stop_py:
-                return f"cat | python3 {stop_py} --url {hooks_url} --agent-name {agent_name}"
-            return f'cat | curl -sf -X POST {hooks_url} -H "Content-Type: application/json" -d @-'
+            return f"{sys.executable} -m observal_cli.hooks.kiro_stop_hook --url {hooks_url} --agent-name {agent_name}"
 
         changes = 0
 
@@ -876,8 +870,6 @@ def _configure_gemini_cli(server_url: str):
     HTTP/JSON endpoint). We disable native OTLP and inject command-type hooks
     into ~/.gemini/settings.json for telemetry capture.
     """
-    import sys
-
     gemini_dir = Path.home() / ".gemini"
 
     try:
@@ -910,9 +902,7 @@ def _configure_gemini_cli(server_url: str):
         stop_script = hooks_dir / "gemini_stop_hook.py"
 
         def _hook_cmd(script: Path) -> str:
-            if sys.platform == "win32":
-                return f"python {script.resolve().as_posix()}"
-            return f"python3 {script.resolve().as_posix()}"
+            return f"{sys.executable} {script.resolve().as_posix()}"
 
         def _hook_entry(script: Path) -> list:
             return [{"hooks": [{"type": "command", "command": _hook_cmd(script)}]}]

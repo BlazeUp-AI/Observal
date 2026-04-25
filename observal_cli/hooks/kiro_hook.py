@@ -7,8 +7,7 @@ the full enrichment in ``kiro_stop_hook.py`` — it only reads the
 conversation_id column, not the multi-MB conversation JSON.
 
 Usage (in a Kiro agent hook):
-    Unix:    cat | python3 /path/to/kiro_hook.py --url http://host/api/v1/telemetry/hooks
-    Windows: python -m observal_cli.hooks.kiro_hook --url http://host/api/v1/telemetry/hooks --agent-name my-agent
+    python -m observal_cli.hooks.kiro_hook --url http://host/api/v1/telemetry/hooks --agent-name my-agent
 """
 
 from __future__ import annotations
@@ -122,12 +121,8 @@ def _auto_inject_hooks(url: str):
             ):
                 continue
             name = data.get("name") or af.stem
-            if sys.platform == "win32":
-                cmd = f"python -m observal_cli.hooks.kiro_hook --url {url} --agent-name {name}"
-                stop_cmd = f"python -m observal_cli.hooks.kiro_stop_hook --url {url} --agent-name {name}"
-            else:
-                cmd = f"cat | python3 {hook_py} --url {url} --agent-name {name}"
-                stop_cmd = f"cat | python3 {stop_py} --url {url} --agent-name {name}"
+            cmd = f"{sys.executable} -m observal_cli.hooks.kiro_hook --url {url} --agent-name {name}"
+            stop_cmd = f"{sys.executable} -m observal_cli.hooks.kiro_stop_hook --url {url} --agent-name {name}"
             desired = {
                 "agentSpawn": [{"command": cmd}],
                 "userPromptSubmit": [{"command": cmd}],

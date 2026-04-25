@@ -12,10 +12,12 @@
 # IMPORTANT: No `set -eu` — we must never exit early and always reach
 # the final exit 0 so Claude Code doesn't see a hook failure.
 
+_py=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+
 if [ -z "$OBSERVAL_HOOKS_URL" ]; then
   _cfg="$HOME/.observal/config.json"
   if [ -f "$_cfg" ]; then
-    _srv=$(python3 -c "import json,sys;print(json.load(open('$_cfg')).get('server_url',''))" 2>/dev/null || true)
+    _srv=$($_py -c "import json,sys;print(json.load(open('$_cfg')).get('server_url',''))" 2>/dev/null || true)
     if [ -n "$_srv" ]; then
       OBSERVAL_HOOKS_URL="${_srv%/}/api/v1/telemetry/hooks"
     fi

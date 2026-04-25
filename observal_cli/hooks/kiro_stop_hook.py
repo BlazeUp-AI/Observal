@@ -10,8 +10,7 @@ When a Kiro agent's ``stop`` hook fires, this script:
 4. Merges the enriched fields into the payload and POSTs to Observal.
 
 Usage (in a Kiro agent hook):
-    Unix:    cat | python3 /path/to/kiro_stop_hook.py --url http://host/api/v1/telemetry/hooks
-    Windows: python -m observal_cli.hooks.kiro_stop_hook --url http://host/api/v1/telemetry/hooks --agent-name my-agent
+    python -m observal_cli.hooks.kiro_stop_hook --url http://host/api/v1/telemetry/hooks --agent-name my-agent
 """
 
 from __future__ import annotations

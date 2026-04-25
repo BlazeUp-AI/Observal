@@ -9,8 +9,7 @@ Currently identical to copilot_cli_hook.py — the split exists to
 mirror the Kiro pattern and provide a clear extension point.
 
 Usage (in ~/.copilot/config.json hooks):
-    Unix:    cat | python3 /path/to/copilot_cli_stop_hook.py --url http://localhost:8000/api/v1/telemetry/hooks
-    Windows: python -m observal_cli.hooks.copilot_cli_stop_hook --url http://localhost:8000/api/v1/telemetry/hooks
+    python -m observal_cli.hooks.copilot_cli_stop_hook --url http://host/api/v1/telemetry/hooks
 """
 
 from __future__ import annotations
