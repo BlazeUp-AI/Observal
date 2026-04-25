@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json as _json
 import shutil
-import sys
 from pathlib import Path
 
 import httpx
@@ -13,7 +12,7 @@ from rich import print as rprint
 
 from observal_cli import client, config, settings_reconciler
 from observal_cli.branding import welcome_banner
-from observal_cli.claude_code_spec import get_desired_env, get_desired_hooks
+from observal_cli.ide_specs.claude_code_hooks_spec import get_desired_env, get_desired_hooks
 from observal_cli.render import console, kv_panel, spinner, status_badge
 
 # ── Auth subgroup ───────────────────────────────────────────
@@ -740,13 +739,9 @@ def _configure_kiro(server_url: str):
         ):
             return
 
+        from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
+
         hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
-
-        def _hook_cmd(agent_name: str) -> str:
-            return f"{sys.executable} -m observal_cli.hooks.kiro_hook --url {hooks_url} --agent-name {agent_name}"
-
-        def _stop_cmd(agent_name: str) -> str:
-            return f"{sys.executable} -m observal_cli.hooks.kiro_stop_hook --url {hooks_url} --agent-name {agent_name}"
 
         changes = 0
 
@@ -798,15 +793,7 @@ def _configure_kiro(server_url: str):
                 if already:
                     continue
                 name = data.get("name") or af.stem
-                cmd = _hook_cmd(name)
-                stop = _stop_cmd(name)
-                desired = {
-                    "agentSpawn": [{"command": cmd}],
-                    "userPromptSubmit": [{"command": cmd}],
-                    "preToolUse": [{"matcher": "*", "command": cmd}],
-                    "postToolUse": [{"matcher": "*", "command": cmd}],
-                    "stop": [{"command": stop}],
-                }
+                desired = build_kiro_hooks(hooks_url, name)
                 merged = dict(existing)
                 for evt, handlers in desired.items():
                     cur = merged.get(evt, [])
@@ -822,8 +809,10 @@ def _configure_kiro(server_url: str):
         # 2. Install global IDE-format hooks for agentless chat
         global_hooks_dir = kiro_dir / "hooks"
         global_hooks_dir.mkdir(parents=True, exist_ok=True)
-        g_cmd = _hook_cmd("global")
-        g_stop = _stop_cmd("global")
+        from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hook_cmd, build_kiro_stop_cmd
+
+        g_cmd = build_kiro_hook_cmd(hooks_url, "global")
+        g_stop = build_kiro_stop_cmd(hooks_url, "global")
         for hook_id, event_type, cmd in [
             ("observal-prompt-submit", "promptSubmit", g_cmd),
             ("observal-pre-tool-use", "preToolUse", g_cmd),
@@ -896,30 +885,14 @@ def _configure_gemini_cli(server_url: str):
             changes += 1
 
         # 2. Inject hooks for telemetry capture
+        from observal_cli.ide_specs.gemini_hooks_spec import build_gemini_hooks
+
         hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
         hooks_dir = Path(__file__).parent / "hooks"
         hook_script = hooks_dir / "gemini_hook.py"
         stop_script = hooks_dir / "gemini_stop_hook.py"
 
-        def _hook_cmd(script: Path) -> str:
-            return f"{sys.executable} {script.resolve().as_posix()}"
-
-        def _hook_entry(script: Path) -> list:
-            return [{"hooks": [{"type": "command", "command": _hook_cmd(script)}]}]
-
-        cmd_hook = _hook_entry(hook_script)
-        stop_hook = _hook_entry(stop_script)
-
-        gemini_hooks_block = {
-            "SessionStart": cmd_hook,
-            "BeforeAgent": cmd_hook,
-            "AfterAgent": stop_hook,
-            "AfterModel": cmd_hook,
-            "BeforeTool": cmd_hook,
-            "AfterTool": cmd_hook,
-            "SessionEnd": stop_hook,
-            "Notification": cmd_hook,
-        }
+        gemini_hooks_block = build_gemini_hooks(hook_script, stop_script)
 
         gdata: dict = {}
         if gemini_settings.exists():

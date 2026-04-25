@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -1259,30 +1258,7 @@ def register_scan(app: typer.Typer):
             kiro_server_url = kcfg.get("server_url", "http://localhost:8000").rstrip("/")
             kiro_hooks_url = f"{kiro_server_url}/api/v1/telemetry/hooks"
 
-            def _kiro_hook_cmd(agent_name: str, model: str) -> str:
-                py = sys.executable
-                args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
-                if model:
-                    args += f" --model {model}"
-                return f"{py} -m observal_cli.hooks.kiro_hook {args}"
-
-            def _kiro_stop_cmd(agent_name: str, model: str) -> str:
-                py = sys.executable
-                args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
-                if model:
-                    args += f" --model {model}"
-                return f"{py} -m observal_cli.hooks.kiro_stop_hook {args}"
-
-            def _kiro_hooks_block(agent_name: str, model: str) -> dict:
-                cmd = _kiro_hook_cmd(agent_name, model)
-                stop_cmd = _kiro_stop_cmd(agent_name, model)
-                return {
-                    "agentSpawn": [{"command": cmd}],
-                    "userPromptSubmit": [{"command": cmd}],
-                    "preToolUse": [{"matcher": "*", "command": cmd}],
-                    "postToolUse": [{"matcher": "*", "command": cmd}],
-                    "stop": [{"command": stop_cmd}],
-                }
+            from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
 
             kiro_agents_dir = Path.home() / ".kiro" / "agents"
             kiro_agents_dir.mkdir(parents=True, exist_ok=True)
@@ -1342,7 +1318,7 @@ def register_scan(app: typer.Typer):
 
                         # Backup and merge (preserve existing user hooks)
                         _backup_config(agent_file)
-                        desired = _kiro_hooks_block(agent_name, agent_model)
+                        desired = build_kiro_hooks(kiro_hooks_url, agent_name, agent_model)
                         merged = dict(existing)
                         for evt, handlers in desired.items():
                             cur = merged.get(evt, [])
@@ -1407,28 +1383,14 @@ def register_scan(app: typer.Typer):
             ccli_server_url = ccli_cfg.get("server_url", "http://localhost:8000").rstrip("/")
             ccli_hooks_url = f"{ccli_server_url}/api/v1/telemetry/hooks"
 
+            from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+
             hooks_dir = Path(__file__).parent / "hooks"
             ccli_hook_script = hooks_dir / "copilot_cli_hook.py"
             ccli_stop_script = hooks_dir / "copilot_cli_stop_hook.py"
 
             if ccli_hook_script.is_file() and ccli_stop_script.is_file():
-
-                def _copilot_hook_entry(event: str, is_stop: bool = False) -> dict:
-                    module = (
-                        "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
-                    )
-                    py = sys.executable
-                    cmd = f"{py} -m {module} --url {ccli_hooks_url} --event-name {event}"
-                    return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
-
-                desired_hooks = {
-                    "sessionStart": [_copilot_hook_entry("sessionStart")],
-                    "userPromptSubmitted": [_copilot_hook_entry("userPromptSubmitted")],
-                    "preToolUse": [_copilot_hook_entry("preToolUse")],
-                    "postToolUse": [_copilot_hook_entry("postToolUse")],
-                    "sessionEnd": [_copilot_hook_entry("sessionEnd", is_stop=True)],
-                    "errorOccurred": [_copilot_hook_entry("errorOccurred")],
-                }
+                desired_hooks = build_copilot_cli_hooks(ccli_hooks_url)
 
                 copilot_config_path = Path.home() / ".copilot" / "config.json"
                 try:
@@ -1508,30 +1470,13 @@ def register_scan(app: typer.Typer):
             gemini_server_url = ghcfg.get("server_url", "http://localhost:8000").rstrip("/")
             gemini_hooks_url = f"{gemini_server_url}/api/v1/telemetry/hooks"
 
+            from observal_cli.ide_specs.gemini_hooks_spec import build_gemini_hooks
+
             gemini_hooks_dir = Path(__file__).parent / "hooks"
             gemini_hook_script = gemini_hooks_dir / "gemini_hook.py"
             gemini_stop_script = gemini_hooks_dir / "gemini_stop_hook.py"
 
-            def _gemini_hook_cmd(script: Path) -> str:
-                """Build the Gemini hook command string for a given script."""
-                return f"{sys.executable} {script.resolve().as_posix()}"
-
-            def _gemini_hook_entry(script: Path) -> list:
-                return [{"hooks": [{"type": "command", "command": _gemini_hook_cmd(script)}]}]
-
-            cmd_hook = _gemini_hook_entry(gemini_hook_script)
-            stop_hook = _gemini_hook_entry(gemini_stop_script)
-
-            gemini_hooks_block = {
-                "SessionStart": cmd_hook,
-                "BeforeAgent": cmd_hook,
-                "AfterAgent": stop_hook,
-                "AfterModel": cmd_hook,
-                "BeforeTool": cmd_hook,
-                "AfterTool": cmd_hook,
-                "SessionEnd": stop_hook,
-                "Notification": cmd_hook,
-            }
+            gemini_hooks_block = build_gemini_hooks(gemini_hook_script, gemini_stop_script)
 
             gemini_settings = Path.home() / ".gemini" / "settings.json"
             try:

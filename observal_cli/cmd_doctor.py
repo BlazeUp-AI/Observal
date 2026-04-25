@@ -3,14 +3,18 @@
 import json
 import os
 import shutil
-import sys
 from pathlib import Path
 
 import typer
 from rich import print as rprint
 
 from observal_cli import config, settings_reconciler
-from observal_cli.claude_code_spec import MANAGED_ENV_KEYS, OBSERVAL_METADATA_KEY, get_desired_env, get_desired_hooks
+from observal_cli.ide_specs.claude_code_hooks_spec import (
+    MANAGED_ENV_KEYS,
+    OBSERVAL_METADATA_KEY,
+    get_desired_env,
+    get_desired_hooks,
+)
 
 doctor_app = typer.Typer(help="Diagnose IDE settings for Observal compatibility")
 
@@ -1133,22 +1137,9 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             changes.append(f"[yellow]⚠ {agent_name}: could not parse, skipped[/yellow]")
             continue
 
-        py = sys.executable
-        generic_cmd = f"{py} -m observal_cli.hooks.kiro_hook --url {hooks_url} --agent-name {agent_name}"
-        stop_cmd = f"{py} -m observal_cli.hooks.kiro_stop_hook --url {hooks_url} --agent-name {agent_name}"
+        from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
 
-        desired_kiro_hooks: dict[str, list[dict]] = {}
-        for event in _ALL_EVENTS:
-            kiro_event = _KIRO_EVENT_MAP.get(event)
-            if not kiro_event:
-                continue
-            if kiro_event == "stop":
-                desired_kiro_hooks[kiro_event] = [{"command": stop_cmd}]
-            else:
-                entry: dict = {"command": generic_cmd}
-                if kiro_event in ("preToolUse", "postToolUse"):
-                    entry["matcher"] = "*"
-                desired_kiro_hooks[kiro_event] = [entry]
+        desired_kiro_hooks = build_kiro_hooks(hooks_url, agent_name)
 
         current_hooks = data.get("hooks", {})
         updated = False
@@ -1180,27 +1171,14 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
 
     Returns (messages, changed) where changed is True if the file was modified.
     """
-    import sys
+    from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
 
     changes: list[str] = []
     changed = False
 
     hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
-    def _hook_entry(event: str, is_stop: bool = False) -> dict:
-        module = "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
-        py = sys.executable
-        cmd = f"{py} -m {module} --url {hooks_url} --event-name {event}"
-        return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
-
-    desired_hooks = {
-        "sessionStart": [_hook_entry("sessionStart")],
-        "userPromptSubmitted": [_hook_entry("userPromptSubmitted")],
-        "preToolUse": [_hook_entry("preToolUse")],
-        "postToolUse": [_hook_entry("postToolUse")],
-        "sessionEnd": [_hook_entry("sessionEnd", is_stop=True)],
-        "errorOccurred": [_hook_entry("errorOccurred")],
-    }
+    desired_hooks = build_copilot_cli_hooks(hooks_url)
 
     copilot_config = Path.home() / ".copilot" / "config.json"
     try:

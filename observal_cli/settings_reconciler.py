@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 
 from observal_cli import config
-from observal_cli.claude_code_spec import (
+from observal_cli.ide_specs.claude_code_hooks_spec import (
     HOOKS_SPEC_VERSION,
     MANAGED_ENV_KEYS,
     is_observal_matcher_group,
