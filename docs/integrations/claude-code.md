@@ -7,7 +7,7 @@ Claude Code is the most complete integration. Native OpenTelemetry traces and lo
 * **Full OTLP telemetry** — token counts, cost, latency, model name
 * **HTTP hooks** — no shell-command bridging required
 * **Skill installation** — drop `SKILL.md` files into `.claude/skills/`
-* **MCP server instrumentation** — `observal scan` wraps your existing config
+* **MCP server instrumentation** — `observal doctor patch --shim` wraps your existing config
 * **Agent sub-config** — per-agent model choice, tool allowlists, project vs user scope
 
 ## Setup
@@ -17,17 +17,20 @@ Claude Code is the most complete integration. Native OpenTelemetry traces and lo
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
-# 2. Instrument any MCP servers you already have
+# 2. Discover what MCP servers you have
 observal scan --ide claude-code
 
-# 3. (Optional) pull an agent from the registry
+# 3. Instrument them (hooks + shims + OTel)
+observal doctor patch --all --ide claude-code
+
+# 4. (Optional) pull an agent from the registry
 observal pull <agent-id> --ide claude-code
 
-# 4. Verify
+# 5. Verify
 observal doctor --ide claude-code
 ```
 
-Restart Claude Code after `scan` or `pull`.
+Restart Claude Code after `doctor patch` or `pull`.
 
 ## Where things live
 
@@ -40,7 +43,7 @@ Restart Claude Code after `scan` or `pull`.
 
 ## OTLP telemetry
 
-Claude Code exports OpenTelemetry natively. `observal scan` configures `OTEL_EXPORTER_OTLP_ENDPOINT` to point at the Observal API (`http://localhost:8000` by default). All OTLP data flows over HTTP/JSON on the same port as the rest of the API — no separate collector. Resource attributes include session ID, IDE ("claude-code"), and model name.
+Claude Code exports OpenTelemetry natively. `observal doctor patch --all` configures `OTEL_EXPORTER_OTLP_ENDPOINT` to point at the Observal API (`http://localhost:8000` by default). All OTLP data flows over HTTP/JSON on the same port as the rest of the API — no separate collector. Resource attributes include session ID, IDE ("claude-code"), and model name.
 
 Token counts and cost come through as span attributes — you see them in the trace viewer without any extra work.
 
@@ -100,7 +103,7 @@ This drops a directory into `.claude/skills/` that Claude Code loads on demand.
 
 ## Troubleshooting
 
-* **Hooks not firing** — run `observal doctor --ide claude-code --fix`.
+* **Hooks not firing** — run `observal doctor patch --hook --ide claude-code` or `observal doctor --ide claude-code --fix`.
 * **MCP traces missing** — confirm the shim is in `~/.claude/settings.json` for each server. `observal doctor` flags unwrapped servers.
 * **OTLP export dropped** — check that the Observal API is up and that `OTEL_EXPORTER_OTLP_ENDPOINT` (should point at `http://localhost:8000`) is reachable from where Claude Code runs.
 

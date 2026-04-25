@@ -235,6 +235,12 @@ def _extract_kiro(body: dict, hook_event: str, attrs: dict[str, str]) -> None:
             attrs["stop_reason"] = body["stop_reason"]
         if body.get("assistant_response"):
             attrs["tool_response"] = _truncate(str(body["assistant_response"]))
+            attrs["event.name"] = "hook_assistant_response"
+        tool_name_stop = attrs.get("tool_name", "")
+        if tool_name_stop == "assistant_response":
+            attrs["event.name"] = "hook_assistant_response"
+        elif tool_name_stop == "assistant_thinking":
+            attrs["event.name"] = "hook_assistant_thinking"
 
     if hook_event == "PostToolUseFailure" and body.get("error"):
         attrs["error"] = _truncate(str(body["error"]))

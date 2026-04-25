@@ -70,14 +70,15 @@ observal auth login            # auto-creates admin on fresh server
 
 Eight services start (API, web UI, Postgres, ClickHouse, Redis, worker, OTEL collector, Grafana). Full walkthrough in [Quickstart](docs/getting-started/quickstart.md); operator guide in [Self-Hosting](docs/self-hosting/docker-compose.md).
 
-Already have MCP servers in your IDE? Instrument them in one command:
+Already have MCP servers in your IDE? Discover and instrument them:
 
 ```bash
-observal scan                       # auto-detect, register, and instrument everything
-observal pull <agent> --ide cursor  # install a complete agent
+observal scan                                # discover what's installed across your IDEs
+observal doctor patch --all --all-ides       # instrument everything (hooks + shims + OTel)
+observal pull <agent> --ide cursor           # install a complete agent
 ```
 
-This detects MCP servers from your IDE config files and wraps them with `observal-shim` for telemetry without breaking your existing setup. A timestamped backup is created automatically. Everything happens locally — nothing is uploaded to the server.
+`scan` is read-only -- it shows what you have without modifying anything. `doctor patch` does the actual instrumentation: wrapping MCP servers with `observal-shim` for telemetry, installing hooks, and configuring OTel export. A timestamped backup is created automatically before any file is modified.
 
 ## Supported IDEs
 

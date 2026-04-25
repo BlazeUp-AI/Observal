@@ -32,13 +32,17 @@ curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh
 observal auth login
 ```
 
-### 3. Instrument Copilot CLI
+### 3. Discover and instrument Copilot CLI
 
 ```bash
-observal scan --ide copilot-cli --home
+# See what MCP servers are configured
+observal scan --ide copilot-cli
+
+# Instrument them (hooks + shims + OTel)
+observal doctor patch --all --ide copilot-cli
 ```
 
-This does three things:
+`doctor patch --all` does three things:
 
 1. **Wraps MCP servers** in `~/.copilot/mcp-config.json` with `observal-shim`
 2. **Injects hooks** into `~/.copilot/config.json` for session lifecycle telemetry
@@ -67,7 +71,7 @@ observal doctor --ide copilot-cli
 ### 6. Repair hooks
 
 ```bash
-observal doctor sli --ide copilot-cli
+observal doctor patch --hook --ide copilot-cli
 ```
 
 Then restart Copilot CLI.
@@ -119,7 +123,7 @@ Each hook runs a Python script that reads stdin JSON, injects Observal metadata 
 }
 ```
 
-You don't write these by hand — `observal scan --ide copilot-cli --home` generates them.
+You don't write these by hand -- `observal doctor patch --all --ide copilot-cli` generates them.
 
 ## View your traces
 
@@ -141,9 +145,9 @@ observal ops traces --limit 20
    ```
 2. Verify `disableAllHooks` is not `true` in the config.
 3. Confirm the URL in the hook commands matches your server.
-4. Re-inject hooks: `observal doctor sli --ide copilot-cli`
+4. Re-inject hooks: `observal doctor patch --hook --ide copilot-cli`
 
-### `observal scan` wraps 0 servers
+### `observal doctor patch` wraps 0 servers
 
 Your Copilot CLI MCP config may be empty. Check:
 
@@ -152,7 +156,7 @@ cat ~/.copilot/mcp-config.json    # user-level
 cat .mcp.json                      # project-level
 ```
 
-Add at least one MCP server first, then re-run `scan`.
+Add at least one MCP server first, then re-run `doctor patch`.
 
 ### `observal-shim` not found
 

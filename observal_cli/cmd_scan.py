@@ -1,12 +1,10 @@
-"""observal scan: auto-detect IDE configs and wrap with telemetry shims."""
+"""observal scan: read-only inventory of local IDE setup."""
 
 from __future__ import annotations
 
 import json
 import re
-import shutil
 import uuid
-from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -134,26 +132,21 @@ def _scan_claude_home(
         for plugin_key in active_plugins:
             if plugin_key in plugin_paths:
                 continue
-            # Parse "name@marketplace" format
             parts = plugin_key.split("@", 1)
             name = parts[0]
             marketplace = parts[1] if len(parts) > 1 else ""
-            # Try to find in cache
             market_dir = cache_dir / marketplace / name if marketplace else cache_dir / name / name
             if market_dir.exists():
-                # Pick latest version directory
                 versions = sorted(market_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
                 if versions:
                     plugin_paths[plugin_key] = versions[0]
 
-    # Scan each active plugin directory
     for plugin_key, plugin_dir in plugin_paths.items():
         if not plugin_dir.is_dir():
             continue
 
         plugin_name = plugin_key.split("@")[0]
 
-        # Read plugin metadata
         plugin_desc = f"Plugin: {plugin_name}"
         plugin_json = plugin_dir / ".claude-plugin" / "plugin.json"
         if plugin_json.exists():
@@ -163,7 +156,6 @@ def _scan_claude_home(
             except (json.JSONDecodeError, OSError):
                 pass
 
-        # ── Discover MCPs ───────────────────────────
         mcp_file = plugin_dir / ".mcp.json"
         if mcp_file.exists():
             try:
@@ -183,16 +175,13 @@ def _scan_claude_home(
             except (json.JSONDecodeError, OSError):
                 pass
 
-        # ── Discover Skills ─────────────────────────
         for skill_md in plugin_dir.rglob("SKILL.md"):
             skill_name_part = skill_md.parent.name
-            # Unique name: plugin/skill
             full_name = f"{plugin_name}/{skill_name_part}"
             desc = ""
             try:
                 content = skill_md.read_text()
                 desc = _parse_frontmatter_field(content, "description") or ""
-                # If no description in frontmatter, use first non-empty line after frontmatter
                 if not desc:
                     desc = _first_content_line(content)
             except OSError:
@@ -205,7 +194,6 @@ def _scan_claude_home(
                 )
             )
 
-        # ── Discover Hooks ──────────────────────────
         for hooks_file in plugin_dir.rglob("hooks.json"):
             try:
                 hooks_data = json.loads(hooks_file.read_text())
@@ -234,7 +222,6 @@ def _scan_claude_home(
             except (json.JSONDecodeError, OSError):
                 pass
 
-    # ── Discover standalone skills from ~/.claude/skills/ ──
     skills_dir = claude_dir / "skills"
     if skills_dir.is_dir():
         for skill_md in sorted(skills_dir.rglob("SKILL.md")):
@@ -258,7 +245,6 @@ def _scan_claude_home(
                 )
             )
 
-    # ── Discover Agents from ~/.claude/agents/ ──────
     agents_dir = claude_dir / "agents"
     if agents_dir.is_dir():
         for agent_md in sorted(agents_dir.glob("*.md")):
@@ -295,7 +281,6 @@ def _scan_kiro_home(
     hooks: list[DiscoveredHook] = []
     agents: list[DiscoveredAgent] = []
 
-    # ── Global MCP servers from ~/.kiro/settings/mcp.json ──
     mcp_file = kiro_dir / "settings" / "mcp.json"
     if mcp_file.exists():
         try:
@@ -315,7 +300,6 @@ def _scan_kiro_home(
         except (json.JSONDecodeError, OSError):
             pass
 
-    # ── Agents from ~/.kiro/agents/*.json ──
     agents_dir = kiro_dir / "agents"
     if agents_dir.is_dir():
         for agent_file in sorted(agents_dir.glob("*.json")):
@@ -338,7 +322,6 @@ def _scan_kiro_home(
                     )
                 )
 
-                # ── Agent-level MCP servers ──
                 agent_mcps = data.get("mcpServers", {})
                 for srv_name, srv_config in agent_mcps.items():
                     if isinstance(srv_config, dict):
@@ -353,7 +336,6 @@ def _scan_kiro_home(
                             )
                         )
 
-                # ── Agent-level hooks ──
                 agent_hooks = data.get("hooks", {})
                 for event_name, event_handlers in agent_hooks.items():
                     hook_name = f"kiro:{name}/{event_name}"
@@ -373,7 +355,6 @@ def _scan_kiro_home(
             except (json.JSONDecodeError, OSError):
                 pass
 
-    # Skills from ~/.kiro/skills/*/SKILL.md
     skills_dir = kiro_dir / "skills"
     if skills_dir.is_dir():
         for skill_md in sorted(skills_dir.rglob("SKILL.md")):
@@ -405,7 +386,6 @@ def _scan_kiro_home(
                 )
             )
 
-    # Deduplicate MCPs by name (global + agent-level may overlap)
     seen: set[str] = set()
     deduped: list[DiscoveredMcp] = []
     for m in mcps:
@@ -592,14 +572,9 @@ def _scan_opencode_home(
 
 
 def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
-    """Extract server entries from .mcp.json, handling both formats.
-
-    Format 1 (bare): {"server-name": {"command": "...", "args": [...]}}
-    Format 2 (wrapped): {"mcpServers": {"server-name": {"command": "...", "args": [...]}}}
-    """
+    """Extract server entries from .mcp.json, handling both formats."""
     if "mcpServers" in mcp_data:
         return mcp_data["mcpServers"]
-    # Bare format: every top-level key is a server name
     servers = {}
     for key, val in mcp_data.items():
         if isinstance(val, dict) and ("command" in val or "url" in val or "type" in val):
@@ -650,8 +625,8 @@ def _first_content_line(content: str) -> str:
 # ── Project-dir scanner (Cursor, VS Code, Kiro, Gemini) ────
 
 
-def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[str, str, DiscoveredMcp, Path]]:
-    """Scan project directory for IDE MCP configs. Returns (ide, name, mcp, config_path) tuples."""
+def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[str, str, DiscoveredMcp, Path, bool]]:
+    """Scan project directory for IDE MCP configs. Returns (ide, name, mcp, config_path, shimmed) tuples."""
     found = []
     for ide, rel in _IDE_PROJECT_CONFIGS.items():
         if ide_filter and ide != ide_filter:
@@ -681,8 +656,7 @@ def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[s
 
         servers = _parse_project_mcp_servers(config, ide)
         for name, entry in servers.items():
-            if _is_already_shimmed(entry):
-                continue
+            shimmed = _is_already_shimmed(entry)
             found.append(
                 (
                     ide,
@@ -696,6 +670,7 @@ def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[s
                         source=f"ide:{ide}",
                     ),
                     config_path,
+                    shimmed,
                 )
             )
     return found
@@ -711,7 +686,6 @@ def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
         return config.get("mcp", {})
     if ide == "codex":
         return config.get("mcp", {}).get("servers", {})
-    # cursor, kiro, gemini-cli all use mcpServers at top level
     return config.get("mcpServers", config.get("servers", {}))
 
 
@@ -724,107 +698,161 @@ def _is_already_shimmed(entry: dict) -> bool:
     return bool(any("observal-shim" in str(a) for a in args))
 
 
-def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
-    """Wrap an MCP server entry with observal-shim for telemetry."""
-    if entry.get("url"):
-        return entry
+# ── Hook status detection ─────────────────────────────────────
 
-    original_cmd = entry.get("command", "")
-    original_args = entry.get("args", [])
-
-    shimmed = dict(entry)
-    shimmed["command"] = "observal-shim"
-    shimmed["args"] = ["--mcp-id", mcp_id, "--", original_cmd, *original_args]
-    return shimmed
-
-
-def _backup_config(config_path: Path) -> Path:
-    """Create a timestamped backup of the config file."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = config_path.with_suffix(f".pre-observal.{ts}.bak")
-    shutil.copy2(config_path, backup)
-    return backup
+_OBSERVAL_HOOK_MARKERS = (
+    "observal-hook",
+    "observal-stop-hook",
+    "observal_cli",
+    "telemetry/hooks",
+    "otel/hooks",
+    "kiro_hook",
+    "kiro_stop_hook",
+    "gemini_hook",
+    "gemini_stop_hook",
+    "copilot_cli_hook",
+    "copilot_cli_stop_hook",
+)
 
 
-def _auto_shim_home_config(config_path: Path, ide: str):
-    """Auto-wrap un-shimmed MCP servers in a home-directory config file.
-
-    For IDEs without native hook/telemetry systems (Codex, Copilot, OpenCode),
-    wrapping MCP servers with observal-shim is the primary telemetry path.
-    Uses the MCP server name as the shim correlation key.
-    """
-    if not config_path.exists():
-        return
-
+def _has_observal_hooks_claude(claude_dir: Path) -> str:
+    """Return hook status for Claude Code: 'installed', 'partial', or 'missing'."""
+    settings = claude_dir / "settings.json"
+    if not settings.exists():
+        return "missing"
     try:
-        if config_path.suffix == ".toml":
-            try:
-                import tomllib as toml
-            except ImportError:
-                try:
-                    import tomli as toml  # type: ignore[no-redef]
-                except ImportError:
-                    return
-            data = toml.loads(config_path.read_text()) if hasattr(toml, "loads") else toml.load(config_path.open("rb"))  # type: ignore[call-arg]
-        else:
-            data = json.loads(config_path.read_text())
-
-        servers = _parse_project_mcp_servers(data, ide)
-        shimmed = 0
-        for name, entry in servers.items():
-            if not _is_already_shimmed(entry):
-                servers[name] = _wrap_with_shim(entry, name)
-                shimmed += 1
-
-        if shimmed:
-            _backup_config(config_path)
-            config_path.write_text(json.dumps(data, indent=2) + "\n")
-            rprint(f"\n[green]Shimmed {shimmed} MCP entries in {config_path}[/green]")
-            rprint("[dim]Telemetry will be collected via observal-shim.[/dim]")
-    except Exception as e:
-        rprint(f"\n[yellow]Could not auto-shim {config_path}: {e}[/yellow]")
+        data = json.loads(settings.read_text())
+    except (json.JSONDecodeError, OSError):
+        return "missing"
+    hooks = data.get("hooks", {})
+    if not hooks:
+        return "missing"
+    found = 0
+    for _evt, groups in hooks.items():
+        if not isinstance(groups, list):
+            continue
+        for g in groups:
+            for h in g.get("hooks", []):
+                cmd = h.get("command", "")
+                url = h.get("url", "")
+                if any(m in cmd or m in url for m in _OBSERVAL_HOOK_MARKERS):
+                    found += 1
+                    break
+    return "installed" if found >= 3 else ("partial" if found > 0 else "missing")
 
 
-def inject_gemini_telemetry(otlp_endpoint: str) -> bool:
-    """Disable Gemini CLI's native OTLP telemetry (uses gRPC, incompatible).
+def _has_observal_hooks_kiro(kiro_dir: Path) -> str:
+    """Return hook status for Kiro agents."""
+    agents_dir = kiro_dir / "agents"
+    if not agents_dir.is_dir():
+        return "missing"
+    agent_files = [f for f in agents_dir.glob("*.json") if f.stem != "kiro_default"]
+    if not agent_files:
+        return "missing"
+    hooked = 0
+    for af in agent_files:
+        try:
+            data = json.loads(af.read_text())
+            hooks = data.get("hooks", {})
+            for _evt, entries in hooks.items():
+                if isinstance(entries, list) and any(
+                    any(m in h.get("command", "") for m in _OBSERVAL_HOOK_MARKERS)
+                    for h in entries
+                    if isinstance(h, dict)
+                ):
+                    hooked += 1
+                    break
+        except (json.JSONDecodeError, OSError):
+            pass
+    if hooked == len(agent_files):
+        return "installed"
+    return "partial" if hooked > 0 else "missing"
 
-    Gemini CLI hardcodes GrpcExporterTransport which can't connect to
-    Observal's HTTP/JSON OTLP endpoint. Telemetry is captured via the
-    hook bridge instead. This disables native OTLP to suppress gRPC
-    error noise.
 
-    Non-destructive: preserves all existing keys, only updates the `telemetry`
-    block. Creates a timestamped backup before any write.
+def _has_observal_hooks_gemini(gemini_dir: Path) -> str:
+    """Return hook status for Gemini CLI."""
+    settings = gemini_dir / "settings.json"
+    if not settings.exists():
+        return "missing"
+    try:
+        data = json.loads(settings.read_text())
+    except (json.JSONDecodeError, OSError):
+        return "missing"
+    hooks = data.get("hooks", {})
+    if not hooks:
+        return "missing"
+    for _evt, groups in hooks.items():
+        if not isinstance(groups, list):
+            continue
+        for g in groups:
+            for h in g.get("hooks", []):
+                if any(m in h.get("command", "") for m in _OBSERVAL_HOOK_MARKERS):
+                    return "installed"
+    return "missing"
 
-    Returns True if a write was performed, False if already up to date.
-    """
-    gemini_settings = Path.home() / ".gemini" / "settings.json"
-    gemini_data: dict = {}
-    if gemini_settings.exists():
-        gemini_data = json.loads(gemini_settings.read_text())
 
-    telemetry = gemini_data.get("telemetry", {})
-    if not isinstance(telemetry, dict):
-        telemetry = {}
+def _has_observal_hooks_copilot_cli(copilot_dir: Path) -> str:
+    """Return hook status for Copilot CLI."""
+    config = copilot_dir / "config.json"
+    if not config.exists():
+        return "missing"
+    try:
+        data = json.loads(config.read_text())
+    except (json.JSONDecodeError, OSError):
+        return "missing"
+    hooks = data.get("hooks", {})
+    if not hooks:
+        return "missing"
+    for _evt, entries in hooks.items():
+        if isinstance(entries, list):
+            for h in entries:
+                if isinstance(h, dict) and "telemetry/hooks" in h.get("bash", ""):
+                    return "installed"
+    return "missing"
 
-    # Disable native OTLP (gRPC-only, can't reach Observal HTTP endpoint).
-    # Keep logPrompts=true so hook payloads include prompt content.
-    needs_update = telemetry.get("enabled") is not False or telemetry.get("logPrompts") is not True
 
-    if not needs_update:
-        return False
+def _mcp_shim_status(mcps: list[DiscoveredMcp], project_entries: list) -> str:
+    """Return shim summary like '3 of 5 shimmed' or 'all shimmed'."""
+    total = 0
+    shimmed = 0
+    for m in mcps:
+        if m.url:
+            continue
+        total += 1
+        cmd = m.command or ""
+        args_str = " ".join(str(a) for a in m.args)
+        if "observal-shim" in cmd or "observal-shim" in args_str:
+            shimmed += 1
+    for _ide, _name, _mcp, _path, is_shimmed in project_entries:
+        if _mcp.url:
+            continue
+        total += 1
+        if is_shimmed:
+            shimmed += 1
+    if total == 0:
+        return "n/a"
+    if shimmed == total:
+        return "all shimmed"
+    if shimmed == 0:
+        return "no shims"
+    return f"{shimmed} of {total} shimmed"
 
-    if gemini_settings.exists():
-        _backup_config(gemini_settings)
-    gemini_data.setdefault("telemetry", {})
-    gemini_data["telemetry"]["enabled"] = False
-    gemini_data["telemetry"]["logPrompts"] = True
-    # Remove stale OTLP fields that would only apply if native OTLP worked
-    gemini_data["telemetry"].pop("target", None)
-    gemini_data["telemetry"].pop("otlpEndpoint", None)
-    gemini_settings.parent.mkdir(parents=True, exist_ok=True)
-    gemini_settings.write_text(json.dumps(gemini_data, indent=2) + "\n")
-    return True
+
+def _otel_status_gemini(gemini_dir: Path) -> str:
+    """Check if Gemini native OTLP is properly disabled."""
+    settings = gemini_dir / "settings.json"
+    if not settings.exists():
+        return "n/a"
+    try:
+        data = json.loads(settings.read_text())
+    except (json.JSONDecodeError, OSError):
+        return "unknown"
+    telemetry = data.get("telemetry", {})
+    if isinstance(telemetry, dict) and telemetry.get("enabled") is False:
+        return "ok (native OTLP disabled)"
+    if isinstance(telemetry, dict) and telemetry.get("enabled", False):
+        return "needs fix (native OTLP enabled)"
+    return "ok"
 
 
 # ── CLI command ─────────────────────────────────────────────
@@ -833,269 +861,126 @@ def inject_gemini_telemetry(otlp_endpoint: str) -> bool:
 def register_scan(app: typer.Typer):
     @app.command(name="scan")
     def scan(
-        project_dir: str = typer.Argument(".", help="Project directory to scan"),
-        ide: str | None = typer.Option(None, "--ide", "-i", help="Target IDE (auto-detected if omitted)"),
-        home: bool = typer.Option(False, "--home", help="Scan IDE home directories for plugins, agents, skills, hooks"),
-        all_ides: bool = typer.Option(False, "--all-ides", help="Scan home directories for ALL supported IDEs"),
-        dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show discovered components without instrumenting"),
-        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-        shim: bool = typer.Option(
-            False, "--shim", help="Rewrite project IDE configs to route MCPs through observal-shim"
-        ),
+        ide: str | None = typer.Option(None, "--ide", "-i", help="Filter to a specific IDE"),
     ):
-        """Discover IDE components and instrument for telemetry.
+        """Show a read-only inventory of your local IDE setup.
 
-        By default, scans the current project directory. If nothing is found,
-        automatically falls back to scanning IDE home directories (~/.claude,
-        ~/.kiro, ~/.gemini, etc.).
+        Scans all IDE home directories and the current project directory to
+        discover agents, MCP servers, skills, and hooks. Shows what's
+        instrumented (hooks/shims) and what's missing.
 
-        Use --home to explicitly scan home directories, --ide to target a
-        specific IDE (e.g. --home --ide kiro), or --all-ides to scan all at once.
+        Use --ide to filter to a specific IDE (e.g. --ide kiro).
 
-        With --all-ides, scans ~/.claude, ~/.kiro, ~/.gemini, ~/.codex,
-        ~/.vscode, and ~/.config/opencode to discover all agents, MCP servers,
-        skills, and hooks across every IDE you use.
-
-        Components are NOT published to the registry. Use 'observal registry <type>
-        submit' to explicitly publish when ready.
+        This command never modifies files. To instrument, run:
+          observal doctor patch --all --all-ides
         """
         all_mcps: list[DiscoveredMcp] = []
         all_skills: list[DiscoveredSkill] = []
         all_hooks: list[DiscoveredHook] = []
         all_agents: list[DiscoveredAgent] = []
-        project_mcp_entries: list[tuple[str, str, DiscoveredMcp, Path]] = []
-        scanned_ides: list[str] = []
+        project_mcp_entries: list[tuple[str, str, DiscoveredMcp, Path, bool]] = []
+        ide_status: list[tuple[str, str, str, str]] = []  # (name, hooks, shims, otel)
 
-        # ── Determine which IDE home dirs to scan ──
-        scan_claude = False
-        scan_kiro = False
-        scan_gemini = False
-        scan_codex = False
-        scan_copilot = False
-        scan_copilot_cli = False
-        scan_opencode = False
+        home_scanners = [
+            ("claude-code", Path.home() / ".claude", _scan_claude_home, "~/.claude"),
+            ("kiro", Path.home() / ".kiro", _scan_kiro_home, "~/.kiro"),
+            ("gemini-cli", Path.home() / ".gemini", _scan_gemini_home, "~/.gemini"),
+            ("codex", Path.home() / ".codex", _scan_codex_home, "~/.codex"),
+            ("copilot", Path.home() / ".vscode", _scan_copilot_home, "~/.vscode"),
+            ("copilot-cli", Path.home() / ".copilot", _scan_copilot_cli_home, "~/.copilot"),
+            ("opencode", Path.home() / ".config" / "opencode", _scan_opencode_home, "~/.config/opencode"),
+        ]
 
-        if all_ides:
-            home = True  # --all-ides implies --home
-            scan_claude = True
-            scan_kiro = True
-            scan_gemini = True
-            scan_codex = True
-            scan_copilot = True
-            scan_copilot_cli = True
-            scan_opencode = True
-        elif home:
-            if ide == "kiro":
-                scan_kiro = True
-            elif ide == "gemini-cli":
-                scan_gemini = True
-            elif ide == "codex":
-                scan_codex = True
-            elif ide == "copilot":
-                scan_copilot = True
-            elif ide == "copilot-cli":
-                scan_copilot_cli = True
-            elif ide == "opencode":
-                scan_opencode = True
-            elif ide == "claude-code" or ide is None:
-                scan_claude = True
-                if ide is None:
-                    scan_kiro = True
-                    scan_gemini = True
-                    scan_codex = True
-                    scan_copilot = True
-                    scan_copilot_cli = True
-                    scan_opencode = True
+        hook_checkers = {
+            "claude-code": lambda: _has_observal_hooks_claude(Path.home() / ".claude"),
+            "kiro": lambda: _has_observal_hooks_kiro(Path.home() / ".kiro"),
+            "gemini-cli": lambda: _has_observal_hooks_gemini(Path.home() / ".gemini"),
+            "copilot-cli": lambda: _has_observal_hooks_copilot_cli(Path.home() / ".copilot"),
+        }
 
-        # ── Scan ~/.claude ─────────────────────────────
-        if scan_claude:
-            claude_dir = Path.home() / ".claude"
-            if claude_dir.is_dir():
-                with spinner("Scanning ~/.claude..."):
-                    h_mcps, h_skills, h_hooks, h_agents = _scan_claude_home(claude_dir)
-                all_mcps.extend(h_mcps)
-                all_skills.extend(h_skills)
-                all_hooks.extend(h_hooks)
-                all_agents.extend(h_agents)
-                scanned_ides.append("claude-code")
-            elif not all_ides:
-                rprint("[yellow]~/.claude directory not found.[/yellow]")
+        for ide_name, dir_path, scan_fn, label in home_scanners:
+            if ide and ide_name != ide:
+                continue
+            if not dir_path.is_dir():
+                continue
+            with spinner(f"Scanning {label}..."):
+                h_mcps, h_skills, h_hooks, h_agents = scan_fn(dir_path)
+            all_mcps.extend(h_mcps)
+            all_skills.extend(h_skills)
+            all_hooks.extend(h_hooks)
+            all_agents.extend(h_agents)
 
-        # ── Scan ~/.kiro ───────────────────────────────
-        if scan_kiro:
-            kiro_dir = Path.home() / ".kiro"
-            if kiro_dir.is_dir():
-                with spinner("Scanning ~/.kiro..."):
-                    k_mcps, k_skills, k_hooks, k_agents = _scan_kiro_home(kiro_dir)
-                all_mcps.extend(k_mcps)
-                all_skills.extend(k_skills)
-                all_hooks.extend(k_hooks)
-                all_agents.extend(k_agents)
-                scanned_ides.append("kiro")
-            elif not all_ides:
-                rprint("[yellow]~/.kiro directory not found.[/yellow]")
+            # Determine status for this IDE
+            hook_check = hook_checkers.get(ide_name)
+            hook_status = hook_check() if hook_check else "n/a"
+            shim_status = _mcp_shim_status(h_mcps, [])
+            otel = _otel_status_gemini(dir_path) if ide_name == "gemini-cli" else "n/a"
+            ide_status.append((ide_name, hook_status, shim_status, otel))
 
-        # ── Scan ~/.gemini ────────────────────────────
-        if scan_gemini:
-            gemini_dir = Path.home() / ".gemini"
-            if gemini_dir.is_dir():
-                with spinner("Scanning ~/.gemini..."):
-                    g_mcps, g_skills, g_hooks, g_agents = _scan_gemini_home(gemini_dir)
-                all_mcps.extend(g_mcps)
-                all_skills.extend(g_skills)
-                all_hooks.extend(g_hooks)
-                all_agents.extend(g_agents)
-                scanned_ides.append("gemini-cli")
-            elif not all_ides:
-                rprint("[yellow]~/.gemini directory not found.[/yellow]")
+        # Scan project directory
+        root = Path(".").resolve()
+        project_mcp_entries = _scan_project_dir(root, ide)
+        seen_names = {m.name for m in all_mcps}
+        for _ide_name, _name, mcp, _config_path, _shimmed in project_mcp_entries:
+            if mcp.name not in seen_names:
+                all_mcps.append(mcp)
+                seen_names.add(mcp.name)
 
-        # ── Scan ~/.codex ────────────────────────────
-        if scan_codex:
-            codex_dir = Path.home() / ".codex"
-            if codex_dir.is_dir():
-                with spinner("Scanning ~/.codex..."):
-                    cx_mcps, cx_skills, cx_hooks, cx_agents = _scan_codex_home(codex_dir)
-                all_mcps.extend(cx_mcps)
-                all_skills.extend(cx_skills)
-                all_hooks.extend(cx_hooks)
-                all_agents.extend(cx_agents)
-                scanned_ides.append("codex")
-            elif not all_ides:
-                rprint("[yellow]~/.codex directory not found.[/yellow]")
-
-        # ── Scan ~/.vscode (Copilot) ─────────────────
-        if scan_copilot:
-            vscode_dir = Path.home() / ".vscode"
-            if vscode_dir.is_dir():
-                with spinner("Scanning ~/.vscode..."):
-                    cp_mcps, cp_skills, cp_hooks, cp_agents = _scan_copilot_home(vscode_dir)
-                all_mcps.extend(cp_mcps)
-                all_skills.extend(cp_skills)
-                all_hooks.extend(cp_hooks)
-                all_agents.extend(cp_agents)
-                scanned_ides.append("copilot")
-            elif not all_ides:
-                rprint("[yellow]~/.vscode directory not found.[/yellow]")
-
-        # ── Scan ~/.copilot (Copilot CLI) ────────────
-        if scan_copilot_cli:
-            copilot_cli_dir = Path.home() / ".copilot"
-            if copilot_cli_dir.is_dir():
-                with spinner("Scanning ~/.copilot..."):
-                    ccli_mcps, ccli_skills, ccli_hooks, ccli_agents = _scan_copilot_cli_home(copilot_cli_dir)
-                all_mcps.extend(ccli_mcps)
-                all_skills.extend(ccli_skills)
-                all_hooks.extend(ccli_hooks)
-                all_agents.extend(ccli_agents)
-                scanned_ides.append("copilot-cli")
-            elif not all_ides:
-                rprint("[yellow]~/.copilot directory not found.[/yellow]")
-
-        # ── Scan ~/.config/opencode ──────────────────
-        if scan_opencode:
-            opencode_dir = Path.home() / ".config" / "opencode"
-            if opencode_dir.is_dir():
-                with spinner("Scanning ~/.config/opencode..."):
-                    oc_mcps, oc_skills, oc_hooks, oc_agents = _scan_opencode_home(opencode_dir)
-                all_mcps.extend(oc_mcps)
-                all_skills.extend(oc_skills)
-                all_hooks.extend(oc_hooks)
-                all_agents.extend(oc_agents)
-                scanned_ides.append("opencode")
-            elif not all_ides:
-                rprint("[yellow]~/.config/opencode directory not found.[/yellow]")
-
-        # ── Scan project directory (or home) ────────
-        # If --home is passed, we should also scan the home directory using _IDE_PROJECT_CONFIGS
-        # (which maps to ~/.gemini, ~/.codex, etc.)
-        root = Path(project_dir).resolve()
-
-        def _do_project_scan(target: Path):
-            if not target.is_dir():
-                return
-            entries = _scan_project_dir(target, ide)
-            seen_names = {m.name for m in all_mcps}
-            for _ide, _name, mcp, config_path in entries:
-                project_mcp_entries.append((_ide, _name, mcp, config_path))
-                if mcp.name not in seen_names:
-                    all_mcps.append(mcp)
-                    seen_names.add(mcp.name)
-
-        _do_project_scan(root)
-
-        if home and root != Path.home():
-            _do_project_scan(Path.home())
+        if root != Path.home():
+            home_project = _scan_project_dir(Path.home(), ide)
+            for entry in home_project:
+                if entry[2].name not in seen_names:
+                    project_mcp_entries.append(entry)
+                    all_mcps.append(entry[2])
+                    seen_names.add(entry[2].name)
 
         total = len(all_mcps) + len(all_skills) + len(all_hooks) + len(all_agents)
 
-        if total == 0 and not home:
-            rprint("[dim]No components in project directory. Scanning IDE home dirs...[/dim]")
-            home = True
-
-            _fallback_ides = [
-                ("claude-code", Path.home() / ".claude", _scan_claude_home, "~/.claude"),
-                ("kiro", Path.home() / ".kiro", _scan_kiro_home, "~/.kiro"),
-                ("gemini-cli", Path.home() / ".gemini", _scan_gemini_home, "~/.gemini"),
-                ("codex", Path.home() / ".codex", _scan_codex_home, "~/.codex"),
-                ("copilot", Path.home() / ".vscode", _scan_copilot_home, "~/.vscode"),
-                ("copilot-cli", Path.home() / ".copilot", _scan_copilot_cli_home, "~/.copilot"),
-                ("opencode", Path.home() / ".config" / "opencode", _scan_opencode_home, "~/.config/opencode"),
-            ]
-
-            for _ide_name, _dir_path, _scan_fn, _label in _fallback_ides:
-                if ide and _ide_name != ide:
-                    continue
-                if _dir_path.is_dir():
-                    with spinner(f"Scanning {_label}..."):
-                        h_mcps, h_skills, h_hooks, h_agents = _scan_fn(_dir_path)
-                    all_mcps.extend(h_mcps)
-                    all_skills.extend(h_skills)
-                    all_hooks.extend(h_hooks)
-                    all_agents.extend(h_agents)
-                    scanned_ides.append(_ide_name)
-
-            # Set scan flags so hook injection runs for the right IDEs
-            if not ide or ide == "claude-code":
-                scan_claude = True
-            if not ide or ide == "kiro":
-                scan_kiro = True
-            if not ide or ide == "gemini-cli":
-                scan_gemini = True
-            if not ide or ide == "codex":
-                scan_codex = True
-            if not ide or ide == "copilot":
-                scan_copilot = True
-            if not ide or ide == "copilot-cli":
-                scan_copilot_cli = True
-            if not ide or ide == "opencode":
-                scan_opencode = True
-
-            if root != Path.home():
-                _do_project_scan(Path.home())
-
-            total = len(all_mcps) + len(all_skills) + len(all_hooks) + len(all_agents)
-
-        if total == 0 and not home:
-            rprint("[yellow]No components found.[/yellow]")
+        if total == 0 and not ide_status:
+            rprint("[yellow]No IDE configurations found.[/yellow]")
             raise typer.Exit(1)
-        elif total == 0:
-            rprint("[dim]No MCP/skill/hook components found, but configuring IDE telemetry...[/dim]")
 
-        # ── Display discovery results ───────────────
-        rprint(f"\n[bold]Discovered {total} components[/bold]\n")
+        rprint(f"\n[bold]Observal Scan[/bold] — {total} components discovered\n")
 
+        # ── IDEs Detected table ──
+        if ide_status:
+            tbl = Table(title="IDEs Detected", show_lines=False, padding=(0, 1))
+            tbl.add_column("IDE", style="bold")
+            tbl.add_column("Hooks", style="cyan")
+            tbl.add_column("Shims", style="cyan")
+            tbl.add_column("OTel", style="dim")
+            for name, hooks_s, shims_s, otel_s in ide_status:
+                hooks_style = "green" if hooks_s == "installed" else ("yellow" if hooks_s == "partial" else "red")
+                shims_style = (
+                    "green"
+                    if shims_s == "all shimmed"
+                    else ("yellow" if "of" in shims_s else ("dim" if shims_s == "n/a" else "red"))
+                )
+                tbl.add_row(
+                    name,
+                    f"[{hooks_style}]{hooks_s}[/{hooks_style}]",
+                    f"[{shims_style}]{shims_s}[/{shims_style}]",
+                    otel_s,
+                )
+            console.print(tbl)
+            rprint()
+
+        # ── MCP Servers table ──
         if all_mcps:
             tbl = Table(title=f"MCP Servers ({len(all_mcps)})", show_lines=False, padding=(0, 1))
             tbl.add_column("Name", style="bold")
             tbl.add_column("Command/URL", style="dim")
             tbl.add_column("Source", style="cyan")
+            tbl.add_column("Shimmed", style="cyan")
             for m in all_mcps:
-                tbl.add_row(m.name, m.display_cmd(), m.source)
+                is_shimmed = _is_already_shimmed({"command": m.command or "", "args": m.args})
+                shimmed_label = "[green]yes[/green]" if is_shimmed else ("[dim]n/a[/dim]" if m.url else "[red]no[/red]")
+                tbl.add_row(m.name, m.display_cmd(), m.source, shimmed_label)
             console.print(tbl)
             rprint()
 
+        # ── Skills summary ──
         if all_skills:
-            # Show summary for skills (can be hundreds)
             by_plugin: dict[str, int] = {}
             for s in all_skills:
                 by_plugin[s.source] = by_plugin.get(s.source, 0) + 1
@@ -1107,6 +992,7 @@ def register_scan(app: typer.Typer):
             console.print(tbl)
             rprint()
 
+        # ── Hooks table ──
         if all_hooks:
             tbl = Table(title=f"Hooks ({len(all_hooks)})", show_lines=False, padding=(0, 1))
             tbl.add_column("Name", style="bold")
@@ -1117,6 +1003,7 @@ def register_scan(app: typer.Typer):
             console.print(tbl)
             rprint()
 
+        # ── Agents table ──
         if all_agents:
             tbl = Table(title=f"Agents ({len(all_agents)})", show_lines=False, padding=(0, 1))
             tbl.add_column("Name", style="bold")
@@ -1127,433 +1014,82 @@ def register_scan(app: typer.Typer):
             console.print(tbl)
             rprint()
 
-        if dry_run:
-            rprint("[yellow]Dry run — no changes made.[/yellow]")
-            rprint(
-                "[dim]Tip: Use 'observal registry <type> submit <git_url>' to publish components."
-                " Only submit if you are the creator or point-of-contact.[/dim]"
-            )
-            return
+        # ── Unregistered components (if authenticated) ──
+        try:
+            from observal_cli import config as obs_config
 
-        if total > 0 and not yes and not typer.confirm("Instrument these components for telemetry?"):
-            raise typer.Abort()
+            cfg = obs_config.load()
+            if cfg.get("access_token") and cfg.get("server_url"):
+                import httpx
 
-        # ── Optionally shim project MCP configs ─────
-        if shim and project_mcp_entries:
-            shimmed_count = 0
-            configs_to_update: dict[str, dict] = {}
+                server_url = cfg["server_url"].rstrip("/")
+                headers = {"Authorization": f"Bearer {cfg['access_token']}"}
 
-            for ide_name, name, _mcp, config_path in project_mcp_entries:
-                path_str = str(config_path)
-                if path_str not in configs_to_update:
-                    configs_to_update[path_str] = json.loads(config_path.read_text())
+                registered_mcps: set[str] = set()
+                registered_skills: set[str] = set()
+                registered_agents: set[str] = set()
 
-                config = configs_to_update[path_str]
-                servers = _parse_project_mcp_servers(config, ide_name)
-                if name in servers and not _is_already_shimmed(servers[name]):
-                    servers[name] = _wrap_with_shim(servers[name], name)
-                    shimmed_count += 1
-
-            for path_str, config in configs_to_update.items():
-                config_path = Path(path_str)
-                backup = _backup_config(config_path)
-                config_path.write_text(json.dumps(config, indent=2) + "\n")
-                rprint(f"  [dim]Backup: {backup.name}[/dim]")
-
-            if shimmed_count:
-                rprint(f"[green]Shimmed {shimmed_count} MCP entries for telemetry.[/green]")
-
-        # ── Auto-inject hooks into ~/.claude/settings.json ─────
-        if scan_claude:
-            from observal_cli.config import load as _load_config
-
-            cfg = _load_config()
-            server_url = cfg.get("server_url", "http://localhost:8000").rstrip("/")
-            hooks_url = f"{server_url}/api/v1/telemetry/hooks"
-            hook_def: dict = {"type": "http", "url": hooks_url}
-            if cfg.get("user_id"):
-                hook_def["headers"] = {"X-Observal-User-Id": cfg["user_id"]}
-            http_hook = [{"hooks": [hook_def]}]
-
-            # Stop uses a command hook to read transcript for Claude's response
-            stop_script = Path(__file__).parent / "hooks" / "observal-stop-hook.sh"
-            stop_hook = (
-                [{"hooks": [{"type": "command", "command": stop_script.resolve().as_posix()}]}]
-                if stop_script.is_file()
-                else http_hook
-            )
-
-            hooks_block = {
-                "SessionStart": http_hook,
-                "UserPromptSubmit": http_hook,
-                "PreToolUse": http_hook,
-                "PostToolUse": http_hook,
-                "PostToolUseFailure": http_hook,
-                "SubagentStart": http_hook,
-                "SubagentStop": http_hook,
-                "Stop": stop_hook,
-                "StopFailure": http_hook,
-                "Notification": http_hook,
-                "TaskCreated": http_hook,
-                "TaskCompleted": http_hook,
-                "PreCompact": http_hook,
-                "PostCompact": http_hook,
-                "WorktreeCreate": http_hook,
-                "WorktreeRemove": http_hook,
-                "Elicitation": http_hook,
-                "ElicitationResult": http_hook,
-            }
-
-            claude_settings = Path.home() / ".claude" / "settings.json"
-            try:
-                settings: dict = {}
-                if claude_settings.exists():
-                    settings = json.loads(claude_settings.read_text())
-
-                existing_hooks = settings.get("hooks", {})
-                needs_update = False
-
-                # Check if hooks already point to the right URL
-                for event_name, _entry in hooks_block.items():
-                    if event_name not in existing_hooks:
-                        needs_update = True
-                        break
-                    # Check URL or command matches
-                    existing_target = ""
-                    try:
-                        h = existing_hooks[event_name][0]["hooks"][0]
-                        existing_target = h.get("url") or h.get("command", "")
-                    except (KeyError, IndexError, TypeError):
-                        pass
-                    expected_target = hooks_block[event_name][0]["hooks"][0].get("url") or hooks_block[event_name][0][
-                        "hooks"
-                    ][0].get("command", "")
-                    if existing_target != expected_target:
-                        needs_update = True
-                        break
-
-                if needs_update:
-                    settings["hooks"] = {**existing_hooks, **hooks_block}
-                    # Ensure the stop hook env var is set
-                    if "env" not in settings:
-                        settings["env"] = {}
-                    settings["env"]["OBSERVAL_HOOKS_URL"] = hooks_url
-                    if cfg.get("user_id"):
-                        settings["env"]["OBSERVAL_USER_ID"] = cfg["user_id"]
-                    claude_settings.write_text(json.dumps(settings, indent=2) + "\n")
-                    rprint(f"\n[green]Injected hooks config into {claude_settings}[/green]")
-                    rprint(f"[dim]Hooks endpoint: {hooks_url}[/dim]")
-                    rprint("[dim]Captures: prompts, tool I/O, MCP responses, subagents, elicitations[/dim]")
-                else:
-                    rprint(f"\n[dim]Hooks already configured -> {hooks_url}[/dim]")
-            except Exception as e:
-                rprint(f"\n[yellow]Could not auto-inject hooks: {e}[/yellow]")
-                rprint("[dim]Add hooks manually — see docs.[/dim]")
-
-        # ── Auto-inject hooks into ~/.kiro/agents/*.json ──────
-        if scan_kiro:
-            from observal_cli.config import load as _load_kiro_config
-
-            kcfg = _load_kiro_config()
-            kiro_server_url = kcfg.get("server_url", "http://localhost:8000").rstrip("/")
-            kiro_hooks_url = f"{kiro_server_url}/api/v1/telemetry/hooks"
-
-            from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
-
-            kiro_agents_dir = Path.home() / ".kiro" / "agents"
-            kiro_agents_dir.mkdir(parents=True, exist_ok=True)
-
-            # Migrate: remove old default.json created by earlier Observal versions.
-            old_default = kiro_agents_dir / "default.json"
-            if old_default.exists():
                 try:
-                    od = json.loads(old_default.read_text())
-                    if od.get("name") == "default" and any(
-                        "telemetry/hooks" in h.get("command", "")
-                        for hs in od.get("hooks", {}).values()
-                        if isinstance(hs, list)
-                        for h in hs
-                    ):
-                        old_default.unlink()
-                        kiro_bin = shutil.which("kiro-cli") or shutil.which("kiro") or shutil.which("kiro-cli-chat")
-                        if kiro_bin:
-                            import subprocess
-
-                            subprocess.run(
-                                [kiro_bin, "agent", "set-default", "kiro_default"],
-                                capture_output=True,
-                                timeout=10,
-                            )
-                        rprint("[green]Removed old default agent (migrated to kiro_default)[/green]")
-                except (ValueError, OSError):
+                    r = httpx.get(f"{server_url}/api/v1/mcp", headers=headers, timeout=5)
+                    if r.status_code == 200:
+                        for item in r.json():
+                            registered_mcps.add(item.get("name", ""))
+                except Exception:
+                    pass
+                try:
+                    r = httpx.get(f"{server_url}/api/v1/skills", headers=headers, timeout=5)
+                    if r.status_code == 200:
+                        for item in r.json():
+                            registered_skills.add(item.get("name", ""))
+                except Exception:
+                    pass
+                try:
+                    r = httpx.get(f"{server_url}/api/v1/agents", headers=headers, timeout=5)
+                    if r.status_code == 200:
+                        for item in r.json():
+                            registered_agents.add(item.get("name", ""))
+                except Exception:
                     pass
 
-            kiro_agent_files = sorted(kiro_agents_dir.glob("*.json"))
+                unregistered: list[tuple[str, str]] = []
+                for m in all_mcps:
+                    if m.name not in registered_mcps:
+                        unregistered.append(("mcp", m.name))
+                for s in all_skills:
+                    if s.name not in registered_skills:
+                        unregistered.append(("skill", s.name))
+                for a in all_agents:
+                    if a.name not in registered_agents:
+                        unregistered.append(("agent", a.name))
 
-            if kiro_agent_files:
-                injected_count = 0
-                for agent_file in kiro_agent_files:
-                    # Skip kiro_default — only trace explicitly registered agents
-                    if agent_file.stem == "kiro_default":
-                        continue
-                    try:
-                        agent_data = json.loads(agent_file.read_text())
-                        existing = agent_data.get("hooks", {})
-
-                        # Check if already pointing to correct URL
-                        already_configured = False
-                        for _evt, handlers in existing.items():
-                            if isinstance(handlers, list) and handlers:
-                                cmd = handlers[0].get("command", "")
-                                if kiro_hooks_url in cmd:
-                                    already_configured = True
-                                    break
-
-                        if already_configured:
-                            continue
-
-                        # Extract agent metadata for per-agent hook enrichment
-                        agent_name = agent_data.get("name", agent_file.stem)
-                        agent_model = agent_data.get("model") or ""
-
-                        # Backup and merge (preserve existing user hooks)
-                        _backup_config(agent_file)
-                        desired = build_kiro_hooks(kiro_hooks_url, agent_name, agent_model)
-                        merged = dict(existing)
-                        for evt, handlers in desired.items():
-                            cur = merged.get(evt, [])
-                            has_obs = any("telemetry/hooks" in h.get("command", "") for h in cur)
-                            if not has_obs:
-                                merged[evt] = cur + handlers
-                        agent_data["hooks"] = merged
-                        agent_file.write_text(json.dumps(agent_data, indent=2) + "\n")
-                        injected_count += 1
-                    except (json.JSONDecodeError, OSError) as e:
-                        rprint(f"  [yellow]Skipped {agent_file.name}: {e}[/yellow]")
-
-                if injected_count:
-                    rprint(f"\n[green]Injected Observal hooks into {injected_count} Kiro agents[/green]")
-                    rprint(f"[dim]Hooks endpoint: {kiro_hooks_url}[/dim]")
-                else:
-                    rprint(f"\n[dim]Kiro agent hooks already configured -> {kiro_hooks_url}[/dim]")
-
-            # Strip Observal hooks from kiro_default if previously instrumented
-            default_agent_path = kiro_agents_dir / "kiro_default.json"
-            if default_agent_path.exists():
-                try:
-                    da = json.loads(default_agent_path.read_text())
-                    hooks = da.get("hooks", {})
-                    if any(
-                        "telemetry/hooks" in h.get("command", "")
-                        for hs in hooks.values()
-                        if isinstance(hs, list)
-                        for h in hs
-                    ):
-                        for evt, handlers in list(hooks.items()):
-                            hooks[evt] = [h for h in handlers if "telemetry/hooks" not in h.get("command", "")]
-                            if not hooks[evt]:
-                                del hooks[evt]
-                        da["hooks"] = hooks
-                        default_agent_path.write_text(json.dumps(da, indent=2) + "\n")
-                        rprint("[green]Removed Observal hooks from kiro_default[/green]")
-                except (json.JSONDecodeError, OSError):
-                    pass
-
-            # Clean up any previously installed global hooks (older Observal versions
-            # traced all Kiro sessions; we now only trace registered agents).
-            kiro_global_hooks_dir = Path.home() / ".kiro" / "hooks"
-            if kiro_global_hooks_dir.is_dir():
-                removed = 0
-                for hook_file in kiro_global_hooks_dir.glob("observal-*.json"):
-                    try:
-                        hook_file.unlink()
-                        removed += 1
-                    except OSError:
-                        pass
-                if removed:
-                    rprint(
-                        f"[green]Removed {removed} global Kiro hooks (only registered agents are now traced)[/green]"
+                if unregistered:
+                    tbl = Table(
+                        title=f"Unregistered Components ({len(unregistered)})", show_lines=False, padding=(0, 1)
                     )
+                    tbl.add_column("Type", style="yellow")
+                    tbl.add_column("Name", style="bold")
+                    for comp_type, comp_name in unregistered[:30]:
+                        tbl.add_row(comp_type, comp_name)
+                    if len(unregistered) > 30:
+                        tbl.add_row("...", f"and {len(unregistered) - 30} more")
+                    console.print(tbl)
+                    rprint()
+        except Exception:
+            pass
 
-        # ── Auto-inject hooks into ~/.copilot/config.json ─────
-        if scan_copilot_cli:
-            from observal_cli.config import load as _load_copilot_cli_config
+        # ── Footer with suggestions ──
+        missing_hooks = any(h == "missing" or h == "partial" for _, h, _, _ in ide_status)
+        missing_shims = any(s not in ("all shimmed", "n/a") for _, _, s, _ in ide_status)
 
-            ccli_cfg = _load_copilot_cli_config()
-            ccli_server_url = ccli_cfg.get("server_url", "http://localhost:8000").rstrip("/")
-            ccli_hooks_url = f"{ccli_server_url}/api/v1/telemetry/hooks"
+        suggestions = []
+        if missing_hooks and missing_shims:
+            suggestions.append("Run [bold]observal doctor patch --all --all-ides[/bold] to instrument everything")
+        elif missing_hooks:
+            suggestions.append("Run [bold]observal doctor patch --hook --all-ides[/bold] to install telemetry hooks")
+        elif missing_shims:
+            suggestions.append("Run [bold]observal doctor patch --shim --all-ides[/bold] to wrap MCP servers")
 
-            from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+        suggestions.append("Use [bold]observal registry <type> submit[/bold] to publish components to the registry")
 
-            hooks_dir = Path(__file__).parent / "hooks"
-            ccli_hook_script = hooks_dir / "copilot_cli_hook.py"
-            ccli_stop_script = hooks_dir / "copilot_cli_stop_hook.py"
-
-            if ccli_hook_script.is_file() and ccli_stop_script.is_file():
-                desired_hooks = build_copilot_cli_hooks(ccli_hooks_url)
-
-                copilot_config_path = Path.home() / ".copilot" / "config.json"
-                try:
-                    copilot_data: dict = {}
-                    if copilot_config_path.exists():
-                        copilot_data = _load_jsonc(copilot_config_path)
-
-                    existing_hooks = copilot_data.get("hooks", {})
-                    needs_update = False
-
-                    for event_name, _entries in desired_hooks.items():
-                        if event_name not in existing_hooks:
-                            needs_update = True
-                            break
-                        existing_bash = ""
-                        try:
-                            existing_bash = existing_hooks[event_name][0].get("bash", "")
-                        except (IndexError, TypeError, AttributeError):
-                            pass
-                        if "telemetry/hooks" not in existing_bash:
-                            needs_update = True
-                            break
-
-                    if needs_update:
-                        if copilot_config_path.exists():
-                            _backup_config(copilot_config_path)
-                        # Merge non-destructively: preserve user hooks on events we don't own
-                        merged_hooks = dict(existing_hooks)
-                        for evt, entries in desired_hooks.items():
-                            cur = merged_hooks.get(evt, [])
-                            has_obs = any("telemetry/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
-                            if not has_obs:
-                                merged_hooks[evt] = cur + entries
-                            else:
-                                # Update existing Observal hook entry
-                                merged_hooks[evt] = [
-                                    h
-                                    for h in cur
-                                    if not isinstance(h, dict) or "telemetry/hooks" not in h.get("bash", "")
-                                ] + entries
-                        copilot_data["hooks"] = merged_hooks
-                        copilot_config_path.parent.mkdir(parents=True, exist_ok=True)
-                        copilot_config_path.write_text(json.dumps(copilot_data, indent=2) + "\n")
-                        rprint(f"\n[green]Injected hooks config into {copilot_config_path}[/green]")
-                        rprint(f"[dim]Hooks endpoint: {ccli_hooks_url}[/dim]")
-                        rprint("[dim]Captures: session lifecycle, prompts, tool I/O, errors[/dim]")
-                    else:
-                        rprint(f"\n[dim]Copilot CLI hooks already configured -> {ccli_hooks_url}[/dim]")
-                except Exception as e:
-                    rprint(f"\n[yellow]Could not auto-inject Copilot CLI hooks: {e}[/yellow]")
-                    rprint("[dim]Add hooks manually to ~/.copilot/config.json — see docs.[/dim]")
-
-        # ── Auto-inject telemetry into ~/.gemini/settings.json ──
-        if scan_gemini:
-            from observal_cli.config import load as _load_gemini_config
-
-            gcfg = _load_gemini_config()
-            otlp_endpoint = gcfg.get("server_url", "http://localhost:8000")
-            gemini_settings = Path.home() / ".gemini" / "settings.json"
-
-            try:
-                written = inject_gemini_telemetry(otlp_endpoint)
-                if written:
-                    rprint(f"\n[green]Disabled native OTLP in {gemini_settings} (gRPC incompatible)[/green]")
-                    rprint("[dim]Telemetry is captured via hooks instead.[/dim]")
-                else:
-                    rprint("\n[dim]Gemini CLI native OTLP already disabled.[/dim]")
-            except Exception as e:
-                rprint(f"\n[yellow]Could not configure Gemini CLI telemetry: {e}[/yellow]")
-                rprint("[dim]Add telemetry settings manually to ~/.gemini/settings.json.[/dim]")
-
-        # ── Auto-inject hooks into ~/.gemini/settings.json ─────
-        if scan_gemini:
-            from observal_cli.config import load as _load_gemini_hooks_config
-
-            ghcfg = _load_gemini_hooks_config()
-            gemini_server_url = ghcfg.get("server_url", "http://localhost:8000").rstrip("/")
-            gemini_hooks_url = f"{gemini_server_url}/api/v1/telemetry/hooks"
-
-            from observal_cli.ide_specs.gemini_hooks_spec import build_gemini_hooks
-
-            gemini_hooks_dir = Path(__file__).parent / "hooks"
-            gemini_hook_script = gemini_hooks_dir / "gemini_hook.py"
-            gemini_stop_script = gemini_hooks_dir / "gemini_stop_hook.py"
-
-            gemini_hooks_block = build_gemini_hooks(gemini_hook_script, gemini_stop_script)
-
-            gemini_settings = Path.home() / ".gemini" / "settings.json"
-            try:
-                gdata: dict = {}
-                if gemini_settings.exists():
-                    gdata = json.loads(gemini_settings.read_text())
-
-                existing_ghooks = gdata.get("hooks", {})
-                ghooks_needs_update = False
-
-                for event_name, entry in gemini_hooks_block.items():
-                    if event_name not in existing_ghooks:
-                        ghooks_needs_update = True
-                        break
-                    # Check if command matches
-                    existing_cmd = ""
-                    try:
-                        existing_cmd = existing_ghooks[event_name][0]["hooks"][0].get("command", "")
-                    except (KeyError, IndexError, TypeError):
-                        pass
-                    expected_cmd = entry[0]["hooks"][0].get("command", "")
-                    if existing_cmd != expected_cmd:
-                        ghooks_needs_update = True
-                        break
-
-                if ghooks_needs_update:
-                    _backup_config(gemini_settings)
-                    gdata["hooks"] = {**existing_ghooks, **gemini_hooks_block}
-                    # Set env vars so hook scripts can resolve the endpoint
-                    if "env" not in gdata:
-                        gdata["env"] = {}
-                    gdata["env"]["OBSERVAL_HOOKS_URL"] = gemini_hooks_url
-                    if ghcfg.get("user_id"):
-                        gdata["env"]["OBSERVAL_USER_ID"] = ghcfg["user_id"]
-                    if ghcfg.get("user_name"):
-                        gdata["env"]["OBSERVAL_USERNAME"] = ghcfg["user_name"]
-                    gemini_settings.parent.mkdir(parents=True, exist_ok=True)
-                    gemini_settings.write_text(json.dumps(gdata, indent=2) + "\n")
-                    rprint(f"\n[green]Injected hooks config into {gemini_settings}[/green]")
-                    rprint(f"[dim]Hooks endpoint: {gemini_hooks_url}[/dim]")
-                    rprint("[dim]Captures: prompts, tool I/O, agent responses, session lifecycle[/dim]")
-                else:
-                    rprint(f"\n[dim]Gemini hooks already configured -> {gemini_hooks_url}[/dim]")
-            except Exception as e:
-                rprint(f"\n[yellow]Could not auto-inject Gemini hooks: {e}[/yellow]")
-                rprint("[dim]Add hooks manually to ~/.gemini/settings.json — see docs.[/dim]")
-
-        # ── Auto-shim Codex home MCP servers ──
-        if scan_codex:
-            _auto_shim_home_config(
-                Path.home() / ".codex" / "config.toml",
-                "codex",
-            )
-
-        # ── Auto-shim Copilot home MCP servers ──
-        if scan_copilot:
-            _auto_shim_home_config(
-                Path.home() / ".vscode" / "mcp.json",
-                "copilot",
-            )
-
-        # ── Auto-shim Copilot CLI home MCP servers ──
-        if scan_copilot_cli:
-            _auto_shim_home_config(
-                Path.home() / ".copilot" / "mcp-config.json",
-                "copilot-cli",
-            )
-
-        # ── Auto-shim OpenCode home MCP servers ──
-        if scan_opencode:
-            _auto_shim_home_config(
-                Path.home() / ".config" / "opencode" / "opencode.json",
-                "opencode",
-            )
-
-        rprint()
-        rprint(
-            "[dim]Tip: Use 'observal registry <type> submit <git_url>' to publish components to the shared registry."
-            " Only submit if you are the creator or point-of-contact.[/dim]"
-        )
+        if suggestions:
+            rprint("[dim]" + " | ".join(suggestions) + "[/dim]")

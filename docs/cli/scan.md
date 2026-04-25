@@ -1,13 +1,13 @@
 # observal scan
 
-Auto-detect MCP servers in your IDE configs, register them with Observal, and wrap them with `observal-shim` for telemetry. A timestamped backup is created automatically before any file is modified.
+Discover MCP servers, hooks, and telemetry configuration across your IDE configs. `scan` is **read-only** -- it shows what you have without modifying any files.
 
-If you only do one thing with Observal, this is it.
+To actually instrument your IDEs (wrap MCP servers with `observal-shim`, install hooks, configure OTel), use [`observal doctor patch`](doctor.md).
 
 ## Synopsis
 
 ```bash
-observal scan [--ide <ide>] [--all-ides] [--home] [--dry-run]
+observal scan [--ide <ide>]
 ```
 
 ## Options
@@ -15,9 +15,6 @@ observal scan [--ide <ide>] [--all-ides] [--home] [--dry-run]
 | Option | Description |
 | --- | --- |
 | `--ide <ide>` | Scope to one IDE: `claude-code`, `kiro`, `cursor`, `vscode`, `gemini-cli`, `codex`, `copilot` |
-| `--all-ides` | Scan every IDE Observal knows about |
-| `--home` | For Kiro: scan the global `~/.kiro/settings/mcp.json` (default is project-local `.kiro/settings/mcp.json`) |
-| `--dry-run` | Print what would be changed without writing |
 
 If you run `observal scan` with no flags, it auto-detects every installed IDE and scans each in turn.
 
@@ -29,9 +26,11 @@ If you run `observal scan` with no flags, it auto-detects every installed IDE an
    * Cursor: `.cursor/mcp.json`
    * VS Code: `.vscode/mcp.json`
    * Gemini CLI: `.gemini/settings.json`
-2. For each MCP server found, calls `POST /api/v1/scan` to register it with Observal (idempotent — running scan twice won't duplicate).
-3. Rewrites the config so each server is invoked via `observal-shim` (stdio) or `observal-proxy` (HTTP/SSE). The wrapper is inserted as the new `command`, and the original command + args become wrapper arguments.
-4. Saves a timestamped `.bak` next to each modified file — e.g. `.kiro/settings/mcp.json.20260421_143055.bak`.
+   * Copilot CLI: `~/.copilot/mcp-config.json`
+2. Lists every MCP server found, its transport type, and whether it is already wrapped by `observal-shim`.
+3. Reports any installed telemetry hooks and OTel configuration.
+
+No files are written. No servers are contacted. No registration happens.
 
 ## Example
 
@@ -42,52 +41,51 @@ observal scan
 Output:
 
 ```
-Scanning Claude Code config...
-  ✓ filesystem        wrapped  (was: npx @modelcontextprotocol/server-filesystem)
-  ✓ github            wrapped  (was: npx @modelcontextprotocol/server-github)
+Claude Code (~/.claude/settings.json)
+  filesystem        npx @modelcontextprotocol/server-filesystem   not wrapped
+  github            npx @modelcontextprotocol/server-github       not wrapped
 
-Scanning Kiro config (.kiro/settings/mcp.json)...
-  ✓ mcp-obsidian      wrapped
+Kiro (.kiro/settings/mcp.json)
+  mcp-obsidian      mcp-obsidian                                  not wrapped
 
-Backups saved:
-  ~/.claude/settings.json.20260421_143055.bak
-  .kiro/settings/mcp.json.20260421_143055.bak
-
-3 server(s) instrumented across 2 IDE(s).
+2 IDE(s) found, 3 MCP server(s) total, 0 wrapped.
 ```
 
-Restart your IDE to pick up the new config.
-
-## Dry-run first (recommended)
+## Scoping to a single IDE
 
 ```bash
-observal scan --dry-run
+observal scan --ide claude-code
 ```
 
-Prints what would change without touching any files. Useful for reviewing unfamiliar configs.
+## What to do next
 
-## Re-running is safe
+Once you see what's installed, instrument it:
 
-`scan` is idempotent. A server already wrapped by `observal-shim` is detected and skipped. You can run it after every new MCP install to bring the new server into telemetry.
+```bash
+# Instrument everything (hooks + shims + OTel config) across all IDEs
+observal doctor patch --all --all-ides
+
+# Or target a specific IDE
+observal doctor patch --all --ide kiro
+
+# Or only install hooks
+observal doctor patch --hook --ide claude-code
+
+# Preview changes without writing anything
+observal doctor patch --all --all-ides --dry-run
+```
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | At least one server instrumented or everything already instrumented |
+| 0 | At least one IDE config found |
 | 1 | Server unreachable / auth failed |
 | 3 | No IDE configs found |
 
-## Undo
-
-Each modified file has a `.bak`. Restore manually:
-
-```bash
-mv ~/.claude/settings.json.20260421_143055.bak ~/.claude/settings.json
-```
-
 ## Related
 
+* [`observal doctor patch`](doctor.md) — instrument your IDEs (hooks, shims, OTel)
 * [`observal pull`](pull.md) — install a full agent (also wires up MCP servers)
-* [`observal doctor`](doctor.md) — verify instrumentation end-to-end
-* [Use Cases → Observe MCP traffic](../use-cases/observe-mcp-traffic.md) — narrative walkthrough
+* [`observal doctor`](doctor.md) — diagnose instrumentation end-to-end
+* [Use Cases -- Observe MCP traffic](../use-cases/observe-mcp-traffic.md) — narrative walkthrough

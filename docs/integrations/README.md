@@ -19,7 +19,7 @@ Observal supports seven IDEs / AI coding tools. The depth of support varies — 
 | **Skills** | Installable skill packages from the registry — Claude Code's SKILL.md format |
 | **Superpowers** | Kiro's equivalent — bundled extensions (`.kiro/skills/`, steering, hooks) |
 | **Hook bridge** | IDE fires lifecycle events that Observal consumes (via HTTP or shell `curl`) |
-| **MCP servers** | IDE supports MCP; `observal scan` can instrument them |
+| **MCP servers** | IDE supports MCP; `observal doctor patch --shim` can instrument them |
 | **Rules** | IDE loads a text file for system instructions (`AGENTS.md` / `CLAUDE.md`) |
 | **Steering files** | Kiro's expanded form — YAML-frontmatter markdown with inclusion modes |
 | **OTLP telemetry** | IDE natively exports OpenTelemetry traces and logs |
@@ -36,7 +36,7 @@ Source of truth: [`observal_cli/constants.py`](https://github.com/BlazeUp-AI/Obs
 
 Two paths:
 
-* **If it supports MCP** — `observal scan` will probably work. Open an issue noting the IDE and its MCP config path.
+* **If it supports MCP** — `observal scan` will discover it and `observal doctor patch --shim` will instrument it. Open an issue noting the IDE and its MCP config path.
 * **If it supports OTEL** — point `OTEL_EXPORTER_OTLP_ENDPOINT` at `http://localhost:8000` and traces will flow directly to the API over HTTP/JSON.
 
 Either way, [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions) is the place to surface it.

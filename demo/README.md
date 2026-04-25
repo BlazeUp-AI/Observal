@@ -12,8 +12,11 @@ End-to-end integration tests that run against your **real local setup** — your
 ## Quick Start
 
 ```bash
-# Scan your real ~/.claude setup and register everything with Observal
-observal scan --home --yes
+# Discover what's in your real ~/.claude setup
+observal scan
+
+# Instrument everything (hooks + shims + OTel)
+observal doctor patch --all --all-ides
 
 # Or run the full E2E demo
 cd demo

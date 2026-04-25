@@ -23,7 +23,8 @@ This installs four entry points:
 
 ```bash
 observal auth login                  # connect to your Observal server
-observal scan                        # discover and register IDE components
+observal scan                        # discover what's installed across your IDEs (read-only)
+observal doctor patch --all --all-ides  # instrument everything (hooks + shims + OTel)
 observal pull my-agent --ide cursor  # fetch agent config for Cursor
 observal doctor                      # check IDE compatibility
 ```
@@ -82,13 +83,15 @@ observal ops metrics <id>          # metrics for an MCP or agent
 ### Utilities
 
 ```
-observal pull <agent> --ide <ide>  # write agent config to IDE files
-observal scan [--shim] [--all-ides]  # discover components, optionally wrap with shim
-observal use <profile>             # swap IDE config from a profile
-observal doctor                    # diagnose IDE/Observal issues
-observal doctor sli                # reinstall telemetry hooks
-observal config show               # show current config
-observal uninstall                 # tear down Docker, remove config
+observal pull <agent> --ide <ide>                   # write agent config to IDE files
+observal scan [--ide <ide>]                          # discover what's installed (read-only)
+observal doctor patch --all --all-ides               # instrument everything (hooks + shims + OTel)
+observal doctor patch --hook --ide <ide>             # install hooks for a specific IDE
+observal doctor patch --shim --ide <ide>             # wrap MCP servers for a specific IDE
+observal use <profile>                               # swap IDE config from a profile
+observal doctor                                      # diagnose IDE/Observal issues
+observal config show                                 # show current config
+observal uninstall                                   # tear down Docker, remove config
 ```
 
 ## Supported IDEs
@@ -115,7 +118,7 @@ All CLI state lives in `~/.observal/`:
 
 ## Telemetry
 
-When `observal scan --shim` wraps an MCP server, tool calls flow through `observal-shim` which records usage events. If the server is unreachable, events are buffered locally in `telemetry_buffer.db` and flushed on the next `observal ops sync`.
+When `observal doctor patch --shim` wraps an MCP server, tool calls flow through `observal-shim` which records usage events. If the server is unreachable, events are buffered locally in `telemetry_buffer.db` and flushed on the next `observal ops sync`.
 
 Hook scripts in `observal_cli/hooks/` capture IDE-level events (prompts, tool use, subagent spawning) and forward them to the server.
 

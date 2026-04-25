@@ -1,6 +1,6 @@
 # Hooks specification
 
-The schema Observal uses for hook definitions — both the registry hook type (`observal registry hook`) and hooks wired into IDE configs by `observal pull` / `observal scan`.
+The schema Observal uses for hook definitions -- both the registry hook type (`observal registry hook`) and hooks wired into IDE configs by `observal pull` / `observal doctor patch`.
 
 Current version: `HOOKS_SPEC_VERSION = "5"` (see `observal_cli/hooks_spec.py`).
 
@@ -9,7 +9,7 @@ Current version: `HOOKS_SPEC_VERSION = "5"` (see `observal_cli/hooks_spec.py`).
 Two distinct things share the name "hook":
 
 1. **Registry hooks** — packaged, versioned hook definitions in the Observal registry. Install them via `observal registry hook install`.
-2. **IDE hooks** — entries in `~/.claude/settings.json`, `.kiro/agents/<name>.json`, etc. These are written by `observal pull` and `observal scan --home`.
+2. **IDE hooks** -- entries in `~/.claude/settings.json`, `.kiro/agents/<name>.json`, etc. These are written by `observal pull` and `observal doctor patch --hook`.
 
 Both use the same event vocabulary.
 
@@ -54,7 +54,7 @@ Source: `observal_cli/constants.py:VALID_HOOK_EXECUTION_MODES`.
 
 ## Metadata marker
 
-Observal writes a `_observal` key into hook matcher groups so subsequent runs of `scan` / `pull` can find and update only Observal-managed hooks without stomping on user-authored ones.
+Observal writes a `_observal` key into hook matcher groups so subsequent runs of `doctor patch` / `pull` can find and update only Observal-managed hooks without stomping on user-authored ones.
 
 ```json
 {

@@ -264,7 +264,8 @@ Perform the following actions and verify each generates an audit log entry:
 - [ ] `observal auth login` — verify it opens browser for SSO (not password prompt)
 - [ ] After SSO login, verify CLI is authenticated
 - [ ] `observal self doctor` — verify diagnostics pass
-- [ ] `observal scan` — verify IDE detection works
+- [ ] `observal scan` -- verify IDE discovery works (read-only)
+- [ ] `observal doctor patch --all --all-ides` -- verify instrumentation works
 - [ ] `observal pull <agent>` — verify agent pull works with SSO auth token
 - [ ] `observal admin review list` — verify review list works (admin only)
 

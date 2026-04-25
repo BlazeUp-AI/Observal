@@ -623,7 +623,7 @@ class TestScanProjectDir:
         assert "copilot" in ide_names
         assert "gemini-cli" not in ide_names
 
-    def test_skips_already_shimmed(self, tmp_path):
+    def test_includes_already_shimmed_with_flag(self, tmp_path):
         vscode_dir = tmp_path / ".vscode"
         vscode_dir.mkdir()
         mcp_file = vscode_dir / "mcp.json"
@@ -642,7 +642,9 @@ class TestScanProjectDir:
         )
         entries = _scan_project_dir(tmp_path, "copilot")
         srv_names = [e[1] for e in entries]
-        assert "shimmed-srv" not in srv_names
+        assert "shimmed-srv" in srv_names
+        shimmed_entry = next(e for e in entries if e[1] == "shimmed-srv")
+        assert shimmed_entry[4] is True  # shimmed flag
 
 
 # ═══════════════════════════════════════════════════════════════════

@@ -70,7 +70,7 @@ Observal intercepts MCP traffic without modifying it. Two flavors:
 | `observal-shim` | stdio | The default for most MCP servers. Wraps the MCP server process and forwards stdin/stdout. |
 | `observal-proxy` | HTTP / SSE / streamable-HTTP | Used when an MCP server speaks HTTP instead of stdio. |
 
-You rarely call either one directly. `observal scan` rewrites your IDE config to route MCP servers through the appropriate one.
+You rarely call either one directly. `observal doctor patch --shim` (or `--all`) rewrites your IDE config to route MCP servers through the appropriate one.
 
 Interception is **transparent**: nothing is changed on the wire. If Observal is unreachable, the tool call still succeeds — the telemetry is queued locally (see [Telemetry buffer](#telemetry-buffer) below) and flushed later.
 

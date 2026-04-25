@@ -97,7 +97,7 @@ Use anywhere that accepts `<id-or-name>` by prefixing with `@`.
 
 ## Backups
 
-Every config modification by `observal scan`, `observal pull`, or `observal use` creates a timestamped `.bak` file next to the original:
+Every config modification by `observal doctor patch`, `observal pull`, or `observal use` creates a timestamped `.bak` file next to the original:
 
 ```
 ~/.claude/settings.json.20260421_143055.bak

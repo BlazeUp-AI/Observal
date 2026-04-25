@@ -4,10 +4,10 @@ Gemini CLI is supported at the MCP, rules, hook bridge, and OTLP telemetry level
 
 ## What you get
 
-* **MCP server instrumentation** — `observal scan --ide gemini-cli`
+* **MCP server instrumentation** — `observal doctor patch --shim --ide gemini-cli`
 * **Rules files** — `AGENTS.md` or `GEMINI.md`
-* **OTLP telemetry** — `observal scan` configures `~/.gemini/settings.json` to export traces via OTLP
-* **Hook bridge** — `observal scan` injects hooks into `~/.gemini/settings.json` to capture prompts, tool I/O, agent responses, and session lifecycle events
+* **OTLP telemetry** — `observal doctor patch --all` configures `~/.gemini/settings.json` to export traces via OTLP
+* **Hook bridge** — `observal doctor patch --hook` injects hooks into `~/.gemini/settings.json` to capture prompts, tool I/O, agent responses, and session lifecycle events
 
 ## Setup
 
@@ -15,8 +15,9 @@ Gemini CLI is supported at the MCP, rules, hook bridge, and OTLP telemetry level
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
-observal scan --ide gemini-cli
-observal doctor --ide gemini-cli
+observal scan --ide gemini-cli                     # see what's there
+observal doctor patch --all --ide gemini-cli        # instrument it
+observal doctor --ide gemini-cli                    # verify
 ```
 
 Restart Gemini CLI.
@@ -31,7 +32,7 @@ Restart Gemini CLI.
 observal pull <agent-id> --ide gemini-cli
 ```
 
-Writes MCP config + rules files. OTLP telemetry and hooks are configured automatically by `observal scan`.
+Writes MCP config + rules files. OTLP telemetry and hooks are configured automatically by `observal doctor patch --all`.
 
 ## Known issues
 

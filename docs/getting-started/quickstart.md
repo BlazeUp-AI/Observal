@@ -80,9 +80,9 @@ observal auth whoami
 # → super@demo.example (super_admin)
 ```
 
-## 4. Instrument your IDE
+## 4. Discover and instrument your IDE
 
-If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, one command wires them all up:
+If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, first see what's there:
 
 ```bash
 observal scan
@@ -91,22 +91,47 @@ observal scan
 Expected output:
 
 ```
-Scanning Claude Code config...
-  ✓ filesystem        wrapped  (was: npx @modelcontextprotocol/server-filesystem)
-  ✓ github            wrapped  (was: npx @modelcontextprotocol/server-github)
+Claude Code (~/.claude/settings.json)
+  filesystem        npx @modelcontextprotocol/server-filesystem   not wrapped
+  github            npx @modelcontextprotocol/server-github       not wrapped
 
-Scanning Kiro config...
-  ✓ mcp-obsidian      wrapped
+Kiro (.kiro/settings/mcp.json)
+  mcp-obsidian      mcp-obsidian                                  not wrapped
 
-Backup saved: ~/.claude/settings.json.20260421_143055.bak
-3 server(s) instrumented across 2 IDE(s).
+2 IDE(s) found, 3 MCP server(s) total, 0 wrapped.
 ```
 
-What `scan` did:
+`scan` is read-only -- it shows what you have without modifying anything. Now instrument everything:
+
+```bash
+observal doctor patch --all --all-ides
+```
+
+Expected output:
+
+```
+Patching Claude Code...
+  ✓ filesystem        wrapped  (was: npx @modelcontextprotocol/server-filesystem)
+  ✓ github            wrapped  (was: npx @modelcontextprotocol/server-github)
+  ✓ Telemetry hooks installed
+
+Patching Kiro...
+  ✓ mcp-obsidian      wrapped
+  ✓ Telemetry hooks installed
+
+Backups saved:
+  ~/.claude/settings.json.20260421_143055.bak
+  .kiro/settings/mcp.json.20260421_143055.bak
+
+3 server(s) instrumented, hooks installed across 2 IDE(s).
+```
+
+What `doctor patch --all` did:
 
 * Found your existing MCP config files (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, etc.)
-* Registered each MCP server with Observal
-* Rewrote the config so every server runs through `observal-shim` (transparent — no behavior change)
+* Rewrote the config so every MCP server runs through `observal-shim` (transparent -- no behavior change)
+* Installed telemetry hooks for session lifecycle events
+* Configured OTel export where supported
 * Saved a timestamped `.bak` next to every file it touched
 
 Nothing broke. Your agents still work exactly as before. The only difference: every tool call now generates a span.

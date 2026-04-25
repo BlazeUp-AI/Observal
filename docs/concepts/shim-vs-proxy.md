@@ -24,7 +24,7 @@ Two transports, two binaries:
 | `observal-shim` | stdio | The MCP server is invoked as a subprocess (most Python / Node MCPs) |
 | `observal-proxy` | HTTP, SSE, streamable-HTTP | The MCP server speaks HTTP |
 
-Both are installed as entry points when you install the CLI. You rarely invoke them by hand — `observal scan` rewrites IDE configs to route through the appropriate one based on the transport field.
+Both are installed as entry points when you install the CLI. You rarely invoke them by hand -- `observal doctor patch --shim` (or `--all`) rewrites IDE configs to route through the appropriate one based on the transport field.
 
 ## Why two
 
@@ -102,6 +102,7 @@ The tradeoff: we can't observe things that don't go through MCP. For those, Obse
 
 ## Related
 
-* [`observal scan`](../cli/scan.md) — the command that wires the shim/proxy in
+* [`observal doctor patch`](../cli/doctor.md) -- the command that wires the shim/proxy in
+* [`observal scan`](../cli/scan.md) -- read-only discovery of what's installed
 * [Data model](data-model.md) — what a span looks like after the shim records it
 * [Telemetry pipeline](../self-hosting/telemetry-pipeline.md) — the rest of the path from span to ClickHouse

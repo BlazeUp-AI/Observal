@@ -21,7 +21,7 @@ The CLI is organized into nested command groups:
 ```
 observal
 ├── pull                     # install complete agent (primary workflow)
-├── scan                     # detect and instrument IDE configs
+├── scan                     # discover what's installed across IDEs (read-only)
 ├── use / profile            # swap IDE configs from git-hosted profiles
 ├── uninstall                # tear down Docker stack, remove repo and config
 ├── auth                     # init, login, logout, whoami, status
@@ -45,7 +45,7 @@ observal
 │   └── eval                 #   run, scorecards, show, compare, aggregate
 ├── migrate                  # ClickHouse telemetry migration tools
 ├── self                     # upgrade, downgrade
-└── doctor                   # diagnose IDE settings compatibility
+└── doctor                   # diagnose IDE settings; `doctor patch` applies instrumentation
 ```
 
 Deprecated root-level aliases exist for backward compatibility (e.g. `observal submit` → `observal registry mcp submit`, `observal upgrade` → `observal self upgrade`). These are hidden from `--help` and print deprecation warnings.
@@ -181,11 +181,11 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `cmd_hook.py` : `hook_app` subgroup: submit, list, show, install, delete
 - `cmd_prompt.py` : `prompt_app` subgroup: submit, list, show, install, render, delete
 - `cmd_sandbox.py` : `sandbox_app` subgroup: submit, list, show, install, delete
-- `cmd_scan.py` : `observal scan`: auto-detect IDE configs (Claude Code, Cursor, Kiro, VS Code, Gemini CLI, Codex CLI), bulk-register MCPs, wrap with observal-shim; `--dry-run`, `--ide`, `--yes` flags. Auto-detects home dirs when project dir empty.
+- `cmd_scan.py` : `observal scan`: read-only discovery of IDE configs (Claude Code, Cursor, Kiro, VS Code, Gemini CLI, Codex CLI); `--ide` filter flag. Shows what's installed without modifying files.
 - `cmd_pull.py` : `observal pull`: fetch agent config from server, write IDE files (rules, MCP config, agent files) to disk; `--dry-run`, `--dir` flags; merges MCP configs with existing files
 - `cmd_profile.py` : `observal use` + `observal profile`: swap IDE configs from git-hosted profiles; clones/caches profiles, backs up current config, restores via `observal use default`
 - `cmd_ops.py` : `ops_app` subgroup: overview, metrics (--watch), top, traces, spans, rate, feedback, sync. Contains `telemetry_app` (status, test). Also `admin_app` subgroup: settings, set, users, penalties, penalty-set, weights, weight-set, canaries, canary-add, canary-reports, canary-delete. Contains `review_app` (list, show, approve, reject) and `eval_app` (run, scorecards, show, compare, aggregate). Also `self_app` subgroup: upgrade, downgrade
-- `cmd_doctor.py` : `doctor_app`: diagnose IDE settings for Observal compatibility; checks Observal config, server connectivity, IDE configs (Claude Code, Kiro, Cursor, Gemini CLI, Codex CLI, Copilot, OpenCode), env vars, Docker availability, entry points; `--ide` to target specific IDE, `--fix` to show suggested fixes
+- `cmd_doctor.py` : `doctor_app`: diagnose IDE settings for Observal compatibility; checks Observal config, server connectivity, IDE configs (Claude Code, Kiro, Cursor, Gemini CLI, Codex CLI, Copilot, OpenCode), env vars, Docker availability, entry points; `--ide` to target specific IDE, `--fix` to show suggested fixes. `doctor patch` subcommand applies instrumentation: `--hook` (install telemetry hooks), `--shim` (wrap MCP servers), `--all` (hooks + shims + OTel), `--all-ides` / `--ide <name>` (target IDEs), `--dry-run` (preview)
 - `cmd_migrate.py` : `migrate_app`: ClickHouse telemetry migration tools for PostgreSQL shallow-copy migrations
 - `cmd_uninstall.py` : `observal uninstall`: tear down Docker stack, remove repo and config files
 - `client.py` : httpx wrapper with get/post/put/delete/health; contextual error messages per status code
@@ -351,13 +351,13 @@ NEVER guess or hallucinate library APIs. Lookup docs first to ensure code matche
 - ClickHouse uses ReplacingMergeTree with bloom filter indexes. Queries go through the HTTP interface, not a native driver. The `_query` helper in `clickhouse.py` handles parameterized queries.
 - The shim is the core telemetry collection mechanism. It sits between the IDE and the MCP server, completely transparent. It never modifies messages: only observes. Telemetry is fire-and-forget via async POST; if the server is down, spans are silently dropped.
 - Config generators automatically wrap MCP commands with `observal-shim` for stdio transport or point to `observal-proxy` for HTTP transport. This is how telemetry collection is opt-in per install.
-- The `observal scan` command reads existing IDE config files and rewrites configs to wrap commands with `observal-shim`. It creates timestamped backups before modifying any file. HTTP-transport MCPs are registered but not shimmed (they would need `observal-proxy`). Supports Claude Code, Cursor, Kiro, VS Code, Gemini CLI, and Codex CLI. Auto-detects home dirs when project dir is empty. Scan is fully local — no server calls.
+- The `observal scan` command is read-only: it discovers IDE config files and lists MCP servers, hooks, and OTel configuration without modifying anything. The `observal doctor patch` command does the actual instrumentation: `--shim` wraps MCP commands with `observal-shim`, `--hook` installs telemetry hooks, `--all` does both plus OTel config. It creates timestamped backups before modifying any file. HTTP-transport MCPs are registered but not shimmed (they would need `observal-proxy`). Supports Claude Code, Cursor, Kiro, VS Code, Gemini CLI, Codex CLI, and Copilot CLI. Registration of components is manual via `observal registry <type> submit`.
 - GraphQL is the read layer for telemetry data. REST still exists for auth, CRUD, feedback, eval, admin. The GraphQL layer uses DataLoaders to batch ClickHouse queries.
 - Redis serves two purposes: pub/sub for GraphQL subscriptions (live trace/span events) and arq job queue for background eval runs.
 - The eval engine is pluggable. `LLMJudgeBackend` calls Bedrock or OpenAI-compatible endpoints. `FallbackBackend` returns deterministic scores when no LLM is configured. The 6 managed templates are prompt strings, not code.
 - Feedback dual-writes: when a user rates an MCP/agent, it writes to PostgreSQL (for the feedback API) AND ClickHouse scores table (for unified analytics). The ClickHouse write is best-effort.
 - Auth is API key based. Keys are SHA-256 hashed before storage. The `X-API-Key` header is checked on every authenticated request via `get_current_user` dependency. User onboarding uses self-registration (`observal auth register`) or SSO. Fresh servers auto-bootstrap an admin account on first `observal auth login` (zero prompts, localhost-only). The `/health` endpoint returns `initialized: bool` so the CLI knows whether to bootstrap or prompt for credentials. All auth endpoints are rate-limited via slowapi (backed by Redis). OAuth uses a one-time auth code exchange pattern: the callback stores credentials in Redis with a 30s TTL and redirects with an opaque code instead of the raw API key. JWT signing and verification available via `jwt_service.py` with JWKS endpoint for public key distribution.
-- Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. This lets `observal scan` work. Items are auto-registered as pending and immediately usable by the submitter.
+- Install routes use an owner fallback: try approved first, then allow the submitter to install their own pending/rejected items. Items are registered via `observal registry <type> submit` and immediately usable by the submitter.
 - The CLI stores config in `~/.observal/config.json`. Aliases are in `~/.observal/aliases.json`. Both are plain JSON. All API path parameters accept UUID or name; the server resolves names via `resolve_listing()` in `deps.py`.
 - All CLI list/show commands support `--output table|json|plain`. Use `--output json` for scripting. Use `--raw` on install commands to pipe config directly to files.
 - The CLI uses nested Typer subgroups: `auth`, `registry` (mcp/skill/hook/prompt/sandbox), `agent`, `ops` (telemetry), `admin` (review/eval), `self`, `config`, `doctor`, `migrate`. Root-level convenience commands: `pull`, `scan`, `uninstall`, `use`, `profile`.

@@ -4,7 +4,7 @@ VS Code (with MCP-aware extensions) is supported at the MCP and rules level.
 
 ## What you get
 
-* **MCP server instrumentation** — `observal scan --ide vscode`
+* **MCP server instrumentation** — `observal doctor patch --shim --ide vscode`
 * **Rules files** — `AGENTS.md` at workspace root
 
 ## What you don't get
@@ -17,8 +17,9 @@ VS Code (with MCP-aware extensions) is supported at the MCP and rules level.
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
-observal scan --ide vscode
-observal doctor --ide vscode
+observal scan --ide vscode                         # see what's there
+observal doctor patch --all --ide vscode            # instrument it
+observal doctor --ide vscode                        # verify
 ```
 
 Reload your VS Code window.

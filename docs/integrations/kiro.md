@@ -47,23 +47,24 @@ curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh
 observal auth login
 ```
 
-### 3. Instrument Kiro MCP servers
+### 3. Discover and instrument Kiro MCP servers
 
 ```bash
-# Project-level (.kiro/settings/mcp.json in current directory)
+# See what MCP servers are configured
 observal scan --ide kiro
 
-# Global (~/.kiro/settings/mcp.json)
-observal scan --ide kiro --home
+# Instrument them (hooks + shims + OTel)
+observal doctor patch --all --ide kiro
 ```
 
-Expected output:
+Expected output from `doctor patch`:
 
 ```
-Scanning Kiro config...
+Patching Kiro...
   ✓ filesystem-server   wrapped
   ✓ github-mcp          wrapped
   ✓ mcp-obsidian        wrapped
+  ✓ Telemetry hooks installed
 
 Backup saved: .kiro/settings/mcp.json.20260421_143055.bak
 3 server(s) instrumented.
@@ -149,7 +150,7 @@ observal config set server_url http://localhost:8000
 observal auth login
 ```
 
-### `observal scan` wraps 0 servers
+### `observal doctor patch` wraps 0 servers
 
 Your Kiro MCP config may be empty or in an unexpected location. Check:
 
@@ -158,7 +159,7 @@ cat .kiro/settings/mcp.json        # project
 cat ~/.kiro/settings/mcp.json      # global
 ```
 
-Add at least one MCP server to Kiro first, then re-run `scan`.
+Add at least one MCP server to Kiro first, then re-run `doctor patch`.
 
 ### Hooks not firing — sessions not appearing in the dashboard
 
@@ -180,9 +181,10 @@ which observal-shim
 
 ### `observal doctor` reports issues but `--fix` doesn't resolve
 
-Run with verbose output:
+Try `doctor patch` or run with verbose output:
 
 ```bash
+observal doctor patch --all --ide kiro
 observal doctor --ide kiro --fix
 observal auth status
 ```

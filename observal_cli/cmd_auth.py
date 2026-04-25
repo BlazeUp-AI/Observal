@@ -10,9 +10,8 @@ import httpx
 import typer
 from rich import print as rprint
 
-from observal_cli import client, config, settings_reconciler
+from observal_cli import client, config
 from observal_cli.branding import welcome_banner
-from observal_cli.ide_specs.claude_code_hooks_spec import get_desired_env, get_desired_hooks
 from observal_cli.render import console, kv_panel, spinner, status_badge
 
 # ── Auth subgroup ───────────────────────────────────────────
@@ -618,18 +617,6 @@ def register_config(app: typer.Typer):
     app.add_typer(config_app, name="config")
 
 
-def _find_hook_script(name: str) -> str | None:
-    """Locate a hook script by filename."""
-    candidates = [
-        Path(__file__).parent / "hooks" / name,
-        Path(shutil.which(name) or ""),
-    ]
-    for p in candidates:
-        if p.is_file():
-            return p.resolve().as_posix()
-    return None
-
-
 def _post_auth_onboarding():
     """Detect local IDE configs and show what was found."""
     try:
@@ -718,10 +705,31 @@ def _post_auth_onboarding():
                 parts.append(f"{mcps} MCP{'s' if mcps != 1 else ''}")
             rprint(f"  [bold]{label}[/bold] — {', '.join(parts)} found")
         rprint()
-        rprint("[dim]Run `observal scan --all-ides` to wrap MCP servers with telemetry shims.[/dim]")
+        rprint("[dim]Run `observal doctor patch --all --all-ides` to instrument telemetry.[/dim]")
 
     except Exception:
         pass
+
+
+def _run_doctor_patch(ide_name: str):
+    """Run 'observal doctor patch --all --ide <name>' as a subprocess."""
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--ide", ide_name],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.stdout:
+            rprint(result.stdout.rstrip())
+        if result.returncode != 0 and result.stderr:
+            rprint(f"[yellow]{result.stderr.rstrip()}[/yellow]")
+    except Exception as e:
+        rprint(f"[yellow]Could not run doctor patch: {e}[/yellow]")
+        rprint(f"Run [bold]observal doctor patch --all --ide {ide_name}[/bold] manually.")
 
 
 def _configure_kiro(server_url: str):
@@ -739,126 +747,15 @@ def _configure_kiro(server_url: str):
         ):
             return
 
-        from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
-
-        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
-
-        changes = 0
-
-        # 1. Inject into agent JSON files (merge, preserve existing hooks)
-        agents_dir = kiro_dir / "agents"
-        agents_dir.mkdir(parents=True, exist_ok=True)
-
-        # Migrate: remove old default.json created by earlier Observal versions.
-        # It shadowed the built-in kiro_default agent.
-        old_default = agents_dir / "default.json"
-        if old_default.exists():
-            try:
-                od = _json.loads(old_default.read_text())
-                if od.get("name") == "default" and any(
-                    "telemetry/hooks" in h.get("command", "")
-                    for hs in od.get("hooks", {}).values()
-                    if isinstance(hs, list)
-                    for h in hs
-                ):
-                    old_default.unlink()
-                    import subprocess
-
-                    kiro_bin = shutil.which("kiro-cli") or shutil.which("kiro") or shutil.which("kiro-cli-chat")
-                    if kiro_bin:
-                        subprocess.run(
-                            [kiro_bin, "agent", "set-default", "kiro_default"],
-                            capture_output=True,
-                            timeout=10,
-                        )
-                    changes += 1
-            except (ValueError, OSError):
-                pass
-
-        agent_files = sorted(agents_dir.glob("*.json"))
-
-        for af in agent_files:
-            # Skip kiro_default — only trace registered agents
-            if af.stem == "kiro_default":
-                continue
-            try:
-                data = _json.loads(af.read_text())
-                existing = data.get("hooks", {})
-                already = any(
-                    "telemetry/hooks" in h.get("command", "")
-                    for handlers in existing.values()
-                    if isinstance(handlers, list)
-                    for h in handlers
-                )
-                if already:
-                    continue
-                name = data.get("name") or af.stem
-                desired = build_kiro_hooks(hooks_url, name)
-                merged = dict(existing)
-                for evt, handlers in desired.items():
-                    cur = merged.get(evt, [])
-                    has_obs = any("telemetry/hooks" in h.get("command", "") for h in cur)
-                    if not has_obs:
-                        merged[evt] = cur + handlers
-                data["hooks"] = merged
-                af.write_text(_json.dumps(data, indent=2) + "\n")
-                changes += 1
-            except (ValueError, OSError):
-                pass
-
-        # 2. Install global IDE-format hooks for agentless chat
-        global_hooks_dir = kiro_dir / "hooks"
-        global_hooks_dir.mkdir(parents=True, exist_ok=True)
-        from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hook_cmd, build_kiro_stop_cmd
-
-        g_cmd = build_kiro_hook_cmd(hooks_url, "global")
-        g_stop = build_kiro_stop_cmd(hooks_url, "global")
-        for hook_id, event_type, cmd in [
-            ("observal-prompt-submit", "promptSubmit", g_cmd),
-            ("observal-pre-tool-use", "preToolUse", g_cmd),
-            ("observal-post-tool-use", "postToolUse", g_cmd),
-            ("observal-agent-stop", "agentStop", g_stop),
-        ]:
-            hf = global_hooks_dir / f"{hook_id}.json"
-            if hf.exists():
-                try:
-                    ex = _json.loads(hf.read_text())
-                    if hooks_url in ex.get("then", {}).get("command", ""):
-                        continue
-                except (ValueError, OSError):
-                    pass
-            hf.write_text(
-                _json.dumps(
-                    {
-                        "id": hook_id,
-                        "name": f"Observal: {event_type}",
-                        "comment": "Auto-injected by Observal for telemetry collection",
-                        "when": {"type": event_type},
-                        "then": {"type": "runCommand", "command": cmd},
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
-            changes += 1
-
-        if changes:
-            rprint(f"[green]Configured Kiro telemetry ({changes} hooks updated)[/green]")
-        else:
-            rprint("[dim]Kiro hooks already configured.[/dim]")
+        _run_doctor_patch("kiro")
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Kiro automatically: {e}[/yellow]")
-        rprint("Run [bold]observal scan --ide kiro --home[/bold] to set up manually.")
+        rprint("Run [bold]observal doctor patch --all --ide kiro[/bold] to set up manually.")
 
 
 def _configure_gemini_cli(server_url: str):
-    """Check for Gemini CLI and configure hooks + disable native OTLP.
-
-    Gemini CLI hardcodes gRPC for OTLP export (incompatible with Observal's
-    HTTP/JSON endpoint). We disable native OTLP and inject command-type hooks
-    into ~/.gemini/settings.json for telemetry capture.
-    """
+    """Check for Gemini CLI and configure telemetry via doctor patch."""
     gemini_dir = Path.home() / ".gemini"
 
     try:
@@ -872,79 +769,15 @@ def _configure_gemini_cli(server_url: str):
         ):
             return
 
-        from observal_cli.cmd_scan import inject_gemini_telemetry
-
-        cfg = config.load()
-        gemini_settings = gemini_dir / "settings.json"
-        changes = 0
-
-        # 1. Disable native OTLP (gRPC-only, incompatible with Observal)
-        written = inject_gemini_telemetry("")
-        if written:
-            rprint(f"[green]Disabled native OTLP in {gemini_settings} (gRPC incompatible)[/green]")
-            changes += 1
-
-        # 2. Inject hooks for telemetry capture
-        from observal_cli.ide_specs.gemini_hooks_spec import build_gemini_hooks
-
-        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
-        hooks_dir = Path(__file__).parent / "hooks"
-        hook_script = hooks_dir / "gemini_hook.py"
-        stop_script = hooks_dir / "gemini_stop_hook.py"
-
-        gemini_hooks_block = build_gemini_hooks(hook_script, stop_script)
-
-        gdata: dict = {}
-        if gemini_settings.exists():
-            gdata = _json.loads(gemini_settings.read_text())
-
-        existing_hooks = gdata.get("hooks", {})
-        hooks_need_update = False
-
-        for event_name, entry in gemini_hooks_block.items():
-            if event_name not in existing_hooks:
-                hooks_need_update = True
-                break
-            existing_cmd = ""
-            try:
-                existing_cmd = existing_hooks[event_name][0]["hooks"][0].get("command", "")
-            except (KeyError, IndexError, TypeError):
-                pass
-            expected_cmd = entry[0]["hooks"][0].get("command", "")
-            if existing_cmd != expected_cmd:
-                hooks_need_update = True
-                break
-
-        if hooks_need_update:
-            gdata["hooks"] = {**existing_hooks, **gemini_hooks_block}
-            if "env" not in gdata:
-                gdata["env"] = {}
-            gdata["env"]["OBSERVAL_HOOKS_URL"] = hooks_url
-            if cfg.get("user_id"):
-                gdata["env"]["OBSERVAL_USER_ID"] = cfg["user_id"]
-            if cfg.get("user_name"):
-                gdata["env"]["OBSERVAL_USERNAME"] = cfg["user_name"]
-            gemini_settings.parent.mkdir(parents=True, exist_ok=True)
-            gemini_settings.write_text(_json.dumps(gdata, indent=2) + "\n")
-            rprint(f"[green]Injected hooks into {gemini_settings}[/green]")
-            rprint(f"[dim]Hooks endpoint: {hooks_url}[/dim]")
-            changes += 1
-
-        if changes == 0:
-            rprint("[dim]Gemini CLI already configured for Observal.[/dim]")
+        _run_doctor_patch("gemini-cli")
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Gemini CLI automatically: {e}[/yellow]")
-        rprint("Run [bold]observal scan --ide gemini-cli --home[/bold] to set up manually.")
+        rprint("Run [bold]observal doctor patch --all --ide gemini-cli[/bold] to set up manually.")
 
 
 def _configure_codex(server_url: str):
-    """Check for Codex CLI and offer to configure its OTLP telemetry.
-
-    Appends [otel] / [otel.exporter.otlp-http] / [otel.trace_exporter.otlp-http]
-    blocks to ~/.codex/config.toml when they are not already present.
-    A timestamped backup is created before any write.
-    """
+    """Check for Codex CLI and configure telemetry via doctor patch."""
     codex_dir = Path.home() / ".codex"
 
     try:
@@ -958,149 +791,58 @@ def _configure_codex(server_url: str):
         ):
             return
 
-        cfg = config.load()
-        otlp_base = cfg.get("otlp_url", "") or cfg.get("server_url", "")
-
-        codex_config = codex_dir / "config.toml"
-
-        # Load existing TOML (best-effort) to check if already configured.
-        existing_content = ""
-        already_configured = False
-        if codex_config.exists():
-            existing_content = codex_config.read_text()
-            # Consider configured if both OTLP exporter sections are present.
-            if (
-                "[otel.exporter.otlp-http]" in existing_content
-                and "[otel.trace_exporter.otlp-http]" in existing_content
-            ):
-                already_configured = True
-
-        if already_configured:
-            rprint("[dim]Codex OTLP telemetry already configured.[/dim]")
-            return
-
-        toml_block = f"""
-[otel]
-environment = "production"
-log_user_prompt = true
-
-[otel.exporter.otlp-http]
-endpoint = "{otlp_base}/v1/logs"
-protocol = "http"
-
-[otel.trace_exporter.otlp-http]
-endpoint = "{otlp_base}/v1/traces"
-protocol = "http"
-"""
-
-        if codex_config.exists():
-            from datetime import datetime
-
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup = codex_config.with_suffix(f".pre-observal.{ts}.bak")
-            import shutil as _shutil
-
-            _shutil.copy2(codex_config, backup)
-
-        codex_dir.mkdir(parents=True, exist_ok=True)
-        with codex_config.open("a") as f:
-            f.write(toml_block)
-
-        rprint(f"[green]Configured Codex OTLP telemetry in {codex_config}[/green]")
-        rprint(f"[dim]OTLP endpoint: {otlp_base}[/dim]")
+        _run_doctor_patch("codex")
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Codex automatically: {e}[/yellow]")
-        rprint("Add OTLP settings manually to ~/.codex/config.toml.")
+        rprint("Run [bold]observal doctor patch --all --ide codex[/bold] manually.")
 
 
 def _configure_copilot(server_url: str):
-    """Check for GitHub Copilot (VS Code) and auto-shim existing MCP servers.
-
-    Copilot uses .vscode/mcp.json for MCP servers; telemetry collection
-    requires wrapping individual MCP servers with observal-shim at install time.
-    This function detects existing configs and auto-shims un-shimmed servers.
-    """
+    """Check for GitHub Copilot (VS Code) and configure telemetry via doctor patch."""
     try:
         vscode_dir = Path.home() / ".vscode"
-        home_mcp = vscode_dir / "mcp.json"
-        project_mcp = Path.cwd() / ".vscode" / "mcp.json"
-        has_copilot = vscode_dir.is_dir() or home_mcp.exists() or project_mcp.exists() or shutil.which("code")
+        has_copilot = vscode_dir.is_dir() or shutil.which("code")
         if not has_copilot:
             return
 
-        from observal_cli.cmd_scan import _auto_shim_home_config
-
-        shimmed_any = False
-        for mcp_path in (home_mcp, project_mcp):
-            if mcp_path.exists():
-                _auto_shim_home_config(mcp_path, "copilot")
-                shimmed_any = True
-
-        if not shimmed_any:
-            rprint(
-                "\n[bold]Detected VS Code / GitHub Copilot.[/bold] "
-                "Install MCPs via [bold]observal install <id> --ide copilot[/bold] to enable telemetry."
-            )
+        _run_doctor_patch("copilot")
 
     except Exception:
         pass
 
 
 def _configure_copilot_cli(server_url: str):
-    """Check for Copilot CLI and auto-shim existing MCP servers.
-
-    Copilot CLI uses ~/.copilot/mcp-config.json for MCP servers; telemetry
-    collection requires wrapping servers with observal-shim at install time.
-    """
-    copilot_cli_config = Path.home() / ".copilot" / "mcp-config.json"
-
+    """Check for Copilot CLI and configure telemetry via doctor patch."""
     try:
-        if not copilot_cli_config.exists():
+        copilot_dir = Path.home() / ".copilot"
+        if not copilot_dir.is_dir() and not shutil.which("copilot"):
             return
 
-        from observal_cli.cmd_scan import _auto_shim_home_config
-
-        _auto_shim_home_config(copilot_cli_config, "copilot-cli")
+        _run_doctor_patch("copilot-cli")
 
     except Exception:
         pass
 
 
 def _configure_opencode(server_url: str):
-    """Check for OpenCode and auto-shim existing MCP servers.
-
-    OpenCode has no global telemetry/OTLP settings block; telemetry collection
-    requires wrapping individual MCP servers with observal-shim at install time.
-    This function detects existing configs and auto-shims un-shimmed servers.
-    """
-    opencode_config = Path.home() / ".config" / "opencode" / "opencode.json"
-
+    """Check for OpenCode and configure telemetry via doctor patch."""
     try:
-        opencode_exists = opencode_config.exists() or shutil.which("opencode")
-        if not opencode_exists:
+        opencode_config = Path.home() / ".config" / "opencode" / "opencode.json"
+        if not opencode_config.exists() and not shutil.which("opencode"):
             return
 
-        if opencode_config.exists():
-            from observal_cli.cmd_scan import _auto_shim_home_config
-
-            _auto_shim_home_config(opencode_config, "opencode")
-        else:
-            rprint(
-                "\n[bold]Detected OpenCode.[/bold] "
-                "Install MCPs via [bold]observal install <id> --ide opencode[/bold] to enable telemetry."
-            )
+        _run_doctor_patch("opencode")
 
     except Exception:
-        pass  # Detection is best-effort; never block login
+        pass
 
 
 def _configure_claude_code(server_url: str, access_token: str):
-    """Check for Claude Code and offer to configure its telemetry.
+    """Check for Claude Code and configure telemetry via doctor patch.
 
-    Uses declarative reconciliation: computes desired state from claude_code_hooks_spec,
-    diffs against current ~/.claude/settings.json, and applies minimal changes.
-    Non-Observal hooks and env vars are preserved untouched.
+    Fetches a long-lived hooks token first (needed by the patch command),
+    then delegates to 'observal doctor patch --all --ide claude-code'.
     """
     claude_dir = Path.home() / ".claude"
 
@@ -1115,33 +857,18 @@ def _configure_claude_code(server_url: str, access_token: str):
         ):
             return
 
-        # Fetch a long-lived hooks token for OTEL env vars
+        # Fetch a long-lived hooks token and save to config before patching
         hooks_token = _fetch_hooks_token(server_url, access_token)
+        if hooks_token:
+            cfg = config.load()
+            cfg["api_key"] = hooks_token
+            config.save(cfg)
 
-        # Build desired state from the declarative spec
-        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
-        hook_script = _find_hook_script("observal-hook.sh")
-        stop_script = _find_hook_script("observal-stop-hook.sh")
-        cfg = config.load()
-        user_id = cfg.get("user_id", "")
-        user_name = cfg.get("user_name", "")
-
-        desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-        desired_env = get_desired_env(server_url, hooks_token, user_id, user_name)
-
-        # Reconcile: non-destructive merge preserving foreign hooks/env
-        changes = settings_reconciler.reconcile(desired_hooks, desired_env)
-
-        if changes:
-            rprint(f"Updated [dim]{settings_reconciler.CLAUDE_SETTINGS_PATH}[/dim]:")
-            for change in changes:
-                rprint(f"  {change}")
-        else:
-            rprint("[dim]Claude Code settings already up to date.[/dim]")
+        _run_doctor_patch("claude-code")
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Claude Code automatically: {e}[/yellow]")
-        rprint("See documentation for manual configuration.")
+        rprint("Run [bold]observal doctor patch --all --ide claude-code[/bold] manually.")
 
 
 def _fetch_hooks_token(server_url: str, access_token: str) -> str:

@@ -57,7 +57,7 @@ Events sent per lifecycle event:
 
 Full schema and handler types: [Hooks specification](../reference/hooks-spec.md).
 
-`observal pull` and `observal scan --home` wire hooks into the appropriate file:
+`observal pull` and `observal doctor patch --hook` wire hooks into the appropriate file:
 
 * Claude Code: `~/.claude/settings.json`
 * Kiro: agent JSON at `.kiro/agents/<name>.json` or `~/.kiro/agents/<name>.json`
