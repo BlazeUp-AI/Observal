@@ -94,10 +94,17 @@ def _maybe_auto_inject(url: str):
         pass
 
 
+def _is_observal_hook(h: dict) -> bool:
+    """Return True if a hook entry belongs to Observal."""
+    cmd = h.get("command", "")
+    return "observal_cli" in cmd or "telemetry/hooks" in cmd
+
+
 def _auto_inject_hooks(url: str):
     """Inject Observal hooks into any Kiro agent configs that lack them.
 
     Runs only on agentSpawn events so new agents get hooks on first use.
+    Replaces any existing Observal hooks to avoid duplicates.
     """
     agents_dir = Path.home() / ".kiro" / "agents"
     if not agents_dir.is_dir():
@@ -113,13 +120,6 @@ def _auto_inject_hooks(url: str):
         try:
             data = json.loads(af.read_text())
             hooks = data.get("hooks", {})
-            if any(
-                "telemetry/hooks" in h.get("command", "") or "telemetry/hooks" in h.get("command", "")
-                for hs in hooks.values()
-                if isinstance(hs, list)
-                for h in hs
-            ):
-                continue
             name = data.get("name") or af.stem
             cmd = f"{sys.executable} -m observal_cli.hooks.kiro_hook --url {url} --agent-name {name}"
             stop_cmd = f"{sys.executable} -m observal_cli.hooks.kiro_stop_hook --url {url} --agent-name {name}"
@@ -132,7 +132,8 @@ def _auto_inject_hooks(url: str):
             }
             merged = dict(hooks)
             for evt, entries in desired.items():
-                merged.setdefault(evt, []).extend(entries)
+                existing = [h for h in merged.get(evt, []) if not _is_observal_hook(h)]
+                merged[evt] = existing + entries
             data["hooks"] = merged
             af.write_text(json.dumps(data, indent=2) + "\n")
         except Exception:

@@ -1144,15 +1144,15 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
         current_hooks = data.get("hooks", {})
         updated = False
 
+        def _is_observal_hook(h: dict) -> bool:
+            cmd = h.get("command", "")
+            return "observal_cli" in cmd or "telemetry/hooks" in cmd
+
         for kiro_event, desired_entries in desired_kiro_hooks.items():
             existing = current_hooks.get(kiro_event, [])
-            # Check if Observal hook already present
-            has_observal = any(
-                "observal" in h.get("command", "") or "telemetry/hooks" in h.get("command", "") for h in existing
-            )
-            if not has_observal:
-                # Append our hooks, keep existing ones
-                current_hooks[kiro_event] = existing + desired_entries
+            cleaned = [h for h in existing if not _is_observal_hook(h)]
+            current_hooks[kiro_event] = cleaned + desired_entries
+            if current_hooks[kiro_event] != existing:
                 updated = True
 
         if updated:
