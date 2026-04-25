@@ -152,7 +152,7 @@ def _cleanup_kiro(dry_run: bool) -> bool:
 
     changed = False
     for agent_file in sorted(agents_dir.glob("*.json")):
-        if agent_file.name in ("kiro_default.json", "agent_config.json.example"):
+        if agent_file.name == "agent_config.json.example":
             continue
         try:
             agent_data = json.loads(agent_file.read_text())
