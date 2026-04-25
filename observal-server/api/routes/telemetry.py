@@ -1135,16 +1135,18 @@ def _extract_otel_log_rows(body: dict) -> list[dict]:
 
                     all_attrs = {**res_attrs, **log_attrs}
 
-                    rows.append({
-                        "Timestamp": ts,
-                        "Body": body_text,
-                        "LogAttributes": all_attrs,
-                        "ServiceName": ide or all_attrs.get("service.name", ""),
-                        "SeverityText": rec.get("severityText", "INFO"),
-                        "SeverityNumber": rec.get("severityNumber", 9),
-                        "TraceId": rec.get("traceId", ""),
-                        "SpanId": rec.get("spanId", ""),
-                    })
+                    rows.append(
+                        {
+                            "Timestamp": ts,
+                            "Body": body_text,
+                            "LogAttributes": all_attrs,
+                            "ServiceName": ide or all_attrs.get("service.name", ""),
+                            "SeverityText": rec.get("severityText", "INFO"),
+                            "SeverityNumber": rec.get("severityNumber", 9),
+                            "TraceId": rec.get("traceId", ""),
+                            "SpanId": rec.get("spanId", ""),
+                        }
+                    )
                 except Exception:
                     logger.warning("Failed to extract OTLP log record for otel_logs", exc_info=True)
     return rows

@@ -1412,8 +1412,11 @@ def register_scan(app: typer.Typer):
             ccli_stop_script = hooks_dir / "copilot_cli_stop_hook.py"
 
             if ccli_hook_script.is_file() and ccli_stop_script.is_file():
+
                 def _copilot_hook_entry(event: str, is_stop: bool = False) -> dict:
-                    module = "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
+                    module = (
+                        "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
+                    )
                     py = "python" if sys.platform == "win32" else "python3"
                     cmd = f"{py} -m {module} --url {ccli_hooks_url} --event-name {event}"
                     return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
@@ -1462,7 +1465,9 @@ def register_scan(app: typer.Typer):
                             else:
                                 # Update existing Observal hook entry
                                 merged_hooks[evt] = [
-                                    h for h in cur if not isinstance(h, dict) or "telemetry/hooks" not in h.get("bash", "")
+                                    h
+                                    for h in cur
+                                    if not isinstance(h, dict) or "telemetry/hooks" not in h.get("bash", "")
                                 ] + entries
                         copilot_data["hooks"] = merged_hooks
                         copilot_config_path.parent.mkdir(parents=True, exist_ok=True)
