@@ -1106,6 +1106,51 @@ async def _resolve_project_id(request: Request) -> str:
 
 
 # ---------------------------------------------------------------------------
+# OTLP raw log passthrough (replaces what the OTEL collector did)
+# ---------------------------------------------------------------------------
+
+
+def _extract_otel_log_rows(body: dict) -> list[dict]:
+    """Extract raw OTLP log records into otel_logs-shaped rows.
+
+    The OTEL collector wrote every log record directly to the otel_logs
+    table. Now that the API handles OTLP ingestion, we replicate that
+    behavior so the sessions page can read token counts and other
+    native OTLP attributes.
+    """
+    rows: list[dict] = []
+    for rl in body.get("resourceLogs", []):
+        res_attrs = _extract_attrs(rl.get("resource", {}).get("attributes", []))
+        ide = _detect_ide(res_attrs)
+
+        for sl in rl.get("scopeLogs", []):
+            for rec in sl.get("logRecords", []):
+                try:
+                    log_attrs = _extract_attrs(rec.get("attributes", []))
+                    time_nano = rec.get("timeUnixNano", "0")
+                    ts = _nanos_to_dt(time_nano) if int(time_nano) > 0 else _now_ms()
+
+                    body_val = rec.get("body", {})
+                    body_text = body_val.get("stringValue", "") if isinstance(body_val, dict) else str(body_val)
+
+                    all_attrs = {**res_attrs, **log_attrs}
+
+                    rows.append({
+                        "Timestamp": ts,
+                        "Body": body_text,
+                        "LogAttributes": all_attrs,
+                        "ServiceName": ide or all_attrs.get("service.name", ""),
+                        "SeverityText": rec.get("severityText", "INFO"),
+                        "SeverityNumber": rec.get("severityNumber", 9),
+                        "TraceId": rec.get("traceId", ""),
+                        "SpanId": rec.get("spanId", ""),
+                    })
+                except Exception:
+                    logger.warning("Failed to extract OTLP log record for otel_logs", exc_info=True)
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # OTLP Trace conversion
 # ---------------------------------------------------------------------------
 
@@ -1636,6 +1681,16 @@ async def otlp_logs(request: Request):
         except Exception:
             logger.exception("OTLP: insert_spans from logs failed")
             errors += len(span_rows)
+
+    # Also write raw OTLP log records to otel_logs so the sessions
+    # page can read token counts, prompts, and other native OTLP data.
+    # This replicates what the OTEL collector's ClickHouse exporter did.
+    try:
+        otel_rows = _extract_otel_log_rows(body)
+        if otel_rows:
+            await insert_otel_logs(otel_rows)
+    except Exception:
+        logger.exception("OTLP: insert_otel_logs from /v1/logs failed")
 
     if errors:
         return Response(
