@@ -20,12 +20,14 @@ _OBSERVAL_HOOK_MARKERS = (
     "observal-hook",
     "observal-stop-hook",
     "observal_cli",
-    "otel/hooks",
     "telemetry/hooks",
+    "otel/hooks",
     "kiro_hook",
     "kiro_stop_hook",
     "gemini_hook",
     "gemini_stop_hook",
+    "copilot_cli_hook",
+    "copilot_cli_stop_hook",
 )
 
 
@@ -638,7 +640,7 @@ def _check_copilot_cli(path: Path, data: dict, issues: list, warnings: list):
                 if not isinstance(handlers, list):
                     continue
                 for h in handlers:
-                    if isinstance(h, dict) and "otel/hooks" in h.get("bash", ""):
+                    if isinstance(h, dict) and "telemetry/hooks" in h.get("bash", ""):
                         has_observal_hook = True
                         break
                 if has_observal_hook:
@@ -679,7 +681,7 @@ def _check_copilot_cli_installation(issues: list, warnings: list):
         if data:
             hooks = data.get("hooks", {})
             has_observal = any(
-                "otel/hooks" in h.get("bash", "")
+                "telemetry/hooks" in h.get("bash", "")
                 for handlers in hooks.values()
                 if isinstance(handlers, list)
                 for h in handlers
@@ -1192,7 +1194,7 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
     changes: list[str] = []
     changed = False
 
-    hooks_url = f"{server_url.rstrip('/')}/api/v1/otel/hooks"
+    hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
     hook_py = Path(__file__).parent / "hooks" / "copilot_cli_hook.py"
     stop_py = Path(__file__).parent / "hooks" / "copilot_cli_stop_hook.py"
@@ -1231,7 +1233,7 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
 
         for evt, entries in desired_hooks.items():
             cur = existing.get(evt, [])
-            has_obs = any("otel/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
+            has_obs = any("telemetry/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
             if not has_obs:
                 existing[evt] = cur + entries
                 changed = True
@@ -1239,12 +1241,12 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
             else:
                 # Check if URL matches
                 obs_bash = next(
-                    (h.get("bash", "") for h in cur if isinstance(h, dict) and "otel/hooks" in h.get("bash", "")),
+                    (h.get("bash", "") for h in cur if isinstance(h, dict) and "telemetry/hooks" in h.get("bash", "")),
                     "",
                 )
                 if hooks_url not in obs_bash:
                     existing[evt] = [
-                        h for h in cur if not isinstance(h, dict) or "otel/hooks" not in h.get("bash", "")
+                        h for h in cur if not isinstance(h, dict) or "telemetry/hooks" not in h.get("bash", "")
                     ] + entries
                     changed = True
                     changes.append(f"~ {evt}: updated Observal hook URL")

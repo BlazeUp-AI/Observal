@@ -1417,7 +1417,7 @@ def register_scan(app: typer.Typer):
 
             ccli_cfg = _load_copilot_cli_config()
             ccli_server_url = ccli_cfg.get("server_url", "http://localhost:8000").rstrip("/")
-            ccli_hooks_url = f"{ccli_server_url}/api/v1/otel/hooks"
+            ccli_hooks_url = f"{ccli_server_url}/api/v1/telemetry/hooks"
 
             hooks_dir = Path(__file__).parent / "hooks"
             ccli_hook_script = hooks_dir / "copilot_cli_hook.py"
@@ -1463,7 +1463,7 @@ def register_scan(app: typer.Typer):
                             existing_bash = existing_hooks[event_name][0].get("bash", "")
                         except (IndexError, TypeError, AttributeError):
                             pass
-                        if "otel/hooks" not in existing_bash:
+                        if "telemetry/hooks" not in existing_bash:
                             needs_update = True
                             break
 
@@ -1474,13 +1474,13 @@ def register_scan(app: typer.Typer):
                         merged_hooks = dict(existing_hooks)
                         for evt, entries in desired_hooks.items():
                             cur = merged_hooks.get(evt, [])
-                            has_obs = any("otel/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
+                            has_obs = any("telemetry/hooks" in h.get("bash", "") for h in cur if isinstance(h, dict))
                             if not has_obs:
                                 merged_hooks[evt] = cur + entries
                             else:
                                 # Update existing Observal hook entry
                                 merged_hooks[evt] = [
-                                    h for h in cur if not isinstance(h, dict) or "otel/hooks" not in h.get("bash", "")
+                                    h for h in cur if not isinstance(h, dict) or "telemetry/hooks" not in h.get("bash", "")
                                 ] + entries
                         copilot_data["hooks"] = merged_hooks
                         copilot_config_path.parent.mkdir(parents=True, exist_ok=True)

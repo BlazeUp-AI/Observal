@@ -6,8 +6,8 @@ Reads the hook JSON payload from stdin, injects Observal metadata
 Observal hooks endpoint.
 
 Usage (in ~/.copilot/config.json hooks):
-    Unix:    cat | python3 /path/to/copilot_cli_hook.py --url http://localhost:8000/api/v1/otel/hooks
-    Windows: python -m observal_cli.hooks.copilot_cli_hook --url http://localhost:8000/api/v1/otel/hooks
+    Unix:    cat | python3 /path/to/copilot_cli_hook.py --url http://localhost:8000/api/v1/telemetry/hooks
+    Windows: python -m observal_cli.hooks.copilot_cli_hook --url http://localhost:8000/api/v1/telemetry/hooks
 """
 
 from __future__ import annotations
@@ -70,10 +70,10 @@ def _resolve_hooks_url() -> str:
             cfg = json.loads(cfg_path.read_text())
             server = cfg.get("server_url", "")
             if server:
-                return f"{server.rstrip('/')}/api/v1/otel/hooks"
+                return f"{server.rstrip('/')}/api/v1/telemetry/hooks"
         except Exception:
             pass
-    return "http://localhost:8000/api/v1/otel/hooks"
+    return ""
 
 
 def main():
