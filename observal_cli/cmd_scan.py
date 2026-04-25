@@ -1260,14 +1260,14 @@ def register_scan(app: typer.Typer):
             kiro_hooks_url = f"{kiro_server_url}/api/v1/telemetry/hooks"
 
             def _kiro_hook_cmd(agent_name: str, model: str) -> str:
-                py = "python" if sys.platform == "win32" else "python3"
+                py = sys.executable
                 args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
                 if model:
                     args += f" --model {model}"
                 return f"{py} -m observal_cli.hooks.kiro_hook {args}"
 
             def _kiro_stop_cmd(agent_name: str, model: str) -> str:
-                py = "python" if sys.platform == "win32" else "python3"
+                py = sys.executable
                 args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
                 if model:
                     args += f" --model {model}"
@@ -1417,7 +1417,7 @@ def register_scan(app: typer.Typer):
                     module = (
                         "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
                     )
-                    py = "python" if sys.platform == "win32" else "python3"
+                    py = sys.executable
                     cmd = f"{py} -m {module} --url {ccli_hooks_url} --event-name {event}"
                     return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
 

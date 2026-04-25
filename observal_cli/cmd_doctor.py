@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import typer
@@ -1132,8 +1133,9 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             changes.append(f"[yellow]⚠ {agent_name}: could not parse, skipped[/yellow]")
             continue
 
-        generic_cmd = f"python3 -m observal_cli.hooks.kiro_hook --url {hooks_url} --agent-name {agent_name}"
-        stop_cmd = f"python3 -m observal_cli.hooks.kiro_stop_hook --url {hooks_url} --agent-name {agent_name}"
+        py = sys.executable
+        generic_cmd = f"{py} -m observal_cli.hooks.kiro_hook --url {hooks_url} --agent-name {agent_name}"
+        stop_cmd = f"{py} -m observal_cli.hooks.kiro_stop_hook --url {hooks_url} --agent-name {agent_name}"
 
         desired_kiro_hooks: dict[str, list[dict]] = {}
         for event in _ALL_EVENTS:
@@ -1187,7 +1189,7 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
 
     def _hook_entry(event: str, is_stop: bool = False) -> dict:
         module = "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
-        py = "python" if sys.platform == "win32" else "python3"
+        py = sys.executable
         cmd = f"{py} -m {module} --url {hooks_url} --event-name {event}"
         return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
 
