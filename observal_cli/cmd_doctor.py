@@ -1094,16 +1094,6 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
 
     hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
-    # Locate the Kiro hook scripts
-    hook_py = Path(__file__).parent / "hooks" / "kiro_hook.py"
-    stop_py = Path(__file__).parent / "hooks" / "kiro_stop_hook.py"
-
-    if not hook_py.is_file() or not stop_py.is_file():
-        return ["[red]Cannot find kiro_hook.py / kiro_stop_hook.py — reinstall Observal CLI[/red]"], False
-
-    hook_py_str = str(hook_py.resolve())
-    stop_py_str = str(stop_py.resolve())
-
     # Migrate: remove old default.json created by earlier Observal versions.
     old_default = agents_dir / "default.json"
     if old_default.exists():
@@ -1142,9 +1132,8 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             changes.append(f"[yellow]⚠ {agent_name}: could not parse, skipped[/yellow]")
             continue
 
-        # Build per-agent hook command (kiro_hook.py handles all metadata natively)
-        generic_cmd = "cat | python3 " + hook_py_str + " --url " + hooks_url + " --agent-name " + agent_name
-        stop_cmd = "cat | python3 " + stop_py_str + " --url " + hooks_url + " --agent-name " + agent_name
+        generic_cmd = f"python3 -m observal_cli.hooks.kiro_hook --url {hooks_url} --agent-name {agent_name}"
+        stop_cmd = f"python3 -m observal_cli.hooks.kiro_stop_hook --url {hooks_url} --agent-name {agent_name}"
 
         desired_kiro_hooks: dict[str, list[dict]] = {}
         for event in _ALL_EVENTS:
@@ -1196,23 +1185,11 @@ def _install_copilot_cli_hooks(server_url: str) -> tuple[list[str], bool]:
 
     hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
 
-    hook_py = Path(__file__).parent / "hooks" / "copilot_cli_hook.py"
-    stop_py = Path(__file__).parent / "hooks" / "copilot_cli_stop_hook.py"
-
-    if not hook_py.is_file() or not stop_py.is_file():
-        return ["[red]Cannot find copilot_cli_hook.py / copilot_cli_stop_hook.py — reinstall Observal CLI[/red]"], False
-
-    hook_path = hook_py.resolve().as_posix()
-    stop_path = stop_py.resolve().as_posix()
-
     def _hook_entry(event: str, is_stop: bool = False) -> dict:
-        script = stop_path if is_stop else hook_path
-        if sys.platform == "win32":
-            bash = f"python {script} --url {hooks_url} --event-name {event}"
-        else:
-            bash = f"cat | python3 {script} --url {hooks_url} --event-name {event}"
-        ps = f"python {script} --url {hooks_url} --event-name {event}"
-        return {"type": "command", "bash": bash, "powershell": ps, "timeoutSec": 10}
+        module = "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
+        py = "python" if sys.platform == "win32" else "python3"
+        cmd = f"{py} -m {module} --url {hooks_url} --event-name {event}"
+        return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
 
     desired_hooks = {
         "sessionStart": [_hook_entry("sessionStart")],

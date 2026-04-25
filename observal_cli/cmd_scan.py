@@ -1259,31 +1259,19 @@ def register_scan(app: typer.Typer):
             kiro_server_url = kcfg.get("server_url", "http://localhost:8000").rstrip("/")
             kiro_hooks_url = f"{kiro_server_url}/api/v1/telemetry/hooks"
 
-            hooks_dir = Path(__file__).parent / "hooks"
-            hook_script = hooks_dir / "kiro_hook.py"
-            stop_script = hooks_dir / "kiro_stop_hook.py"
-
             def _kiro_hook_cmd(agent_name: str, model: str) -> str:
-                """Build a per-agent hook command (kiro_hook.py handles metadata natively)."""
+                py = "python" if sys.platform == "win32" else "python3"
                 args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
                 if model:
                     args += f" --model {model}"
-                if sys.platform == "win32" and hook_script.is_file():
-                    return f"python {hook_script.resolve().as_posix()} {args}"
-                if hook_script.is_file():
-                    return f"cat | python3 {hook_script.resolve().as_posix()} {args}"
-                return f'cat | curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
+                return f"{py} -m observal_cli.hooks.kiro_hook {args}"
 
             def _kiro_stop_cmd(agent_name: str, model: str) -> str:
-                """Build the stop hook command with full SQLite enrichment."""
+                py = "python" if sys.platform == "win32" else "python3"
                 args = f"--url {kiro_hooks_url} --agent-name {agent_name}"
                 if model:
                     args += f" --model {model}"
-                if sys.platform == "win32" and stop_script.is_file():
-                    return f"python {stop_script.resolve().as_posix()} {args}"
-                if stop_script.is_file():
-                    return f"cat | python3 {stop_script.resolve().as_posix()} {args}"
-                return f'cat | curl -sf -X POST {kiro_hooks_url} -H "Content-Type: application/json" -d @-'
+                return f"{py} -m observal_cli.hooks.kiro_stop_hook {args}"
 
             def _kiro_hooks_block(agent_name: str, model: str) -> dict:
                 cmd = _kiro_hook_cmd(agent_name, model)
@@ -1424,17 +1412,11 @@ def register_scan(app: typer.Typer):
             ccli_stop_script = hooks_dir / "copilot_cli_stop_hook.py"
 
             if ccli_hook_script.is_file() and ccli_stop_script.is_file():
-                hook_path = ccli_hook_script.resolve().as_posix()
-                stop_path = ccli_stop_script.resolve().as_posix()
-
                 def _copilot_hook_entry(event: str, is_stop: bool = False) -> dict:
-                    script = stop_path if is_stop else hook_path
-                    if sys.platform == "win32":
-                        bash = f"python {script} --url {ccli_hooks_url} --event-name {event}"
-                    else:
-                        bash = f"cat | python3 {script} --url {ccli_hooks_url} --event-name {event}"
-                    ps = f"python {script} --url {ccli_hooks_url} --event-name {event}"
-                    return {"type": "command", "bash": bash, "powershell": ps, "timeoutSec": 10}
+                    module = "observal_cli.hooks.copilot_cli_stop_hook" if is_stop else "observal_cli.hooks.copilot_cli_hook"
+                    py = "python" if sys.platform == "win32" else "python3"
+                    cmd = f"{py} -m {module} --url {ccli_hooks_url} --event-name {event}"
+                    return {"type": "command", "bash": cmd, "powershell": cmd, "timeoutSec": 10}
 
                 desired_hooks = {
                     "sessionStart": [_copilot_hook_entry("sessionStart")],
