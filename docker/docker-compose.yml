@@ -223,25 +223,6 @@ services:
     networks:
       - observal-net
 
-  observal-prometheus:
-    image: prom/prometheus:v3.4.2
-    ports:
-      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
-    volumes:
-      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      observal-api:
-        condition: service_healthy
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    networks:
-      - observal-net
-
   observal-grafana:
     image: grafana/grafana-oss:11.6.5
     ports:
@@ -258,10 +239,58 @@ services:
     depends_on:
       observal-clickhouse:
         condition: service_healthy
+      observal-prometheus:
+        condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:
         limits:
+          memory: 512M
+    networks:
+      - observal-net
+
+  observal-prometheus:
+    image: prom/prometheus:v3.1.0  # Stable LTS release, tested in production
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    # Explicit command flags for data persistence and web console
+    # --storage.tsdb.path: Critical for data persistence across container restarts
+    # --config.file: Explicit config location for clarity
+    # --web.console.*: Enables built-in Prometheus web console for debugging
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      # Config file: Scrape configuration for observal-api metrics endpoint
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro
+      # Data volume: Persists metrics data across container restarts (critical)
+      - prometheusdata:/prometheus
+    depends_on:
+      observal-api:
+        condition: service_healthy
+    restart: unless-stopped
+    # Health check: Ensures Prometheus is ready before Grafana connects
+    # Prevents connection failures during startup
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    # Security: Prevent privilege escalation (production best practice)
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          # Memory: 512M (increased from 256M) to handle:
+          # - Base Prometheus: ~150MB
+          # - Metric storage: ~50MB
+          # - Alert rules (9): ~20MB
+          # - Query cache: ~100MB
+          # - Headroom: ~192MB for growth
           memory: 512M
     networks:
       - observal-net
@@ -272,6 +301,7 @@ volumes:
   redisdata:
   grafanadata:
   apidata:
+  prometheusdata:
 
 networks:
   observal-net:
