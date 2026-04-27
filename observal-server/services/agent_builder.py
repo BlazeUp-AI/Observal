@@ -18,6 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from schemas.ide_registry import IDE_REGISTRY, get_valid_ides
 from services.agent_config_generator import _wrap_kiro_prompt
 from services.agent_resolver import ResolvedAgent, ResolvedComponent
 
@@ -300,34 +301,30 @@ def _build_mcp_entries(manifest: AgentManifest) -> dict:
 
 def _build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
     """Generate IDE-specific skill files from manifest skills."""
+    ide_key = ide.replace("_", "-")
+    spec = IDE_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skill_file")
+    if not skill_paths:
+        return []
+
     files: list[AgentFile] = []
+    skill_format = spec.get("skill_format")
     for skill in manifest.components.skills:
         name = _sanitize_name(skill.name)
         desc = skill.description or ""
+        path = next(iter(skill_paths.values())).format(name=name)
 
-        if ide in ("claude-code", "claude_code"):
+        if skill_format == "yaml_frontmatter":
             content = f"---\nname: {name}\n"
             if desc:
                 content += f'description: "{desc}"\n'
-            if skill.slash_command:
+            if skill.slash_command and ide_key == "claude-code":
                 content += f"command: /{skill.slash_command}\n"
             content += f"---\n\n{desc}\n"
-            files.append(AgentFile(path=f".claude/skills/{name}/SKILL.md", content=content, format="markdown"))
-
-        elif ide == "kiro":
-            content = f"---\nname: {name}\n"
-            if desc:
-                content += f'description: "{desc}"\n'
-            content += f"---\n\n{desc}\n"
-            files.append(AgentFile(path=f".kiro/skills/{name}/SKILL.md", content=content, format="markdown"))
-
-        elif ide == "cursor":
+        else:
             content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-            files.append(AgentFile(path=f".cursor/rules/{name}.md", content=content, format="markdown"))
 
-        elif ide == "vscode":
-            content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-            files.append(AgentFile(path=f".vscode/rules/{name}.md", content=content, format="markdown"))
+        files.append(AgentFile(path=path, content=content, format="markdown"))
 
     return files
 
@@ -701,18 +698,7 @@ _IDE_GENERATORS = {
     "opencode": _generate_opencode,
 }
 
-SUPPORTED_IDES = list(
-    {
-        "claude-code",
-        "cursor",
-        "vscode",
-        "gemini-cli",
-        "kiro",
-        "codex",
-        "copilot",
-        "opencode",
-    }
-)
+SUPPORTED_IDES = [ide for ide in get_valid_ides() if ide in _IDE_GENERATORS or ide.replace("-", "_") in _IDE_GENERATORS]
 
 
 def generate_ide_agent_files(

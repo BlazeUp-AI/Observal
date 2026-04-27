@@ -2,31 +2,27 @@
 
 Mirror of ``observal-server/schemas/constants.py``.
 A sync test (``tests/test_constants_sync.py``) ensures these stay in lockstep.
+
+IDE-specific data is defined in ``observal_cli/ide_registry.py``
+(mirror of ``observal-server/schemas/ide_registry.py``).
 """
 
 from __future__ import annotations
 
 import re
 
+from observal_cli.ide_registry import get_ide_feature_matrix, get_valid_ides
+
 # ── Name validation ───────────────────────────────────────────
 AGENT_NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # ── IDE / client names (hyphen-canonical) ───────────────────
-VALID_IDES: list[str] = [
-    "cursor",
-    "kiro",
-    "claude-code",
-    "gemini-cli",
-    "vscode",
-    "codex",
-    "copilot",
-    "copilot-cli",
-    "opencode",
-]
+# Derived from IDE_REGISTRY key order.
+VALID_IDES: list[str] = get_valid_ides()
 
 # ── IDE feature capabilities ──────────────────────────────────
-# Mirror of observal-server/schemas/constants.py — kept in sync by
-# tests/test_constants_sync.py.
+# IDE_FEATURES defines the vocabulary of possible features.
+# IDE_FEATURE_MATRIX is derived from the registry.
 
 IDE_FEATURES: list[str] = [
     "skills",
@@ -38,17 +34,7 @@ IDE_FEATURES: list[str] = [
     "otlp_telemetry",
 ]
 
-IDE_FEATURE_MATRIX: dict[str, set[str]] = {
-    "claude-code": {"skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
-    "kiro": {"superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"},
-    "cursor": {"mcp_servers", "rules"},
-    "gemini-cli": {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
-    "codex": {"rules"},
-    "copilot": {"mcp_servers", "rules"},
-    "copilot-cli": {"mcp_servers", "rules", "hook_bridge"},
-    "opencode": {"mcp_servers", "rules"},
-    "vscode": {"mcp_servers", "rules"},
-}
+IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()
 
 # ── MCP servers ─────────────────────────────────────────────
 VALID_MCP_CATEGORIES: list[str] = [

@@ -9,6 +9,7 @@ import typer
 from rich import print as rprint
 
 from observal_cli import config, settings_reconciler
+from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
     OBSERVAL_METADATA_KEY,
@@ -1252,16 +1253,17 @@ def _backup_config(config_path: Path) -> Path:
 
 
 def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
-    """Extract MCP servers dict from IDE config."""
-    if ide in ("vscode", "copilot"):
+    """Extract MCP servers dict from IDE config using registry-defined key."""
+    key = get_mcp_servers_key(ide)
+    if key == "mcp.servers":
+        return config_data.get("mcp", {}).get("servers", {})
+    if key == "mcp":
+        return config_data.get("mcp", {})
+    if key == "servers" or ide == "vscode":
         return config_data.get("servers", config_data.get("mcpServers", {}))
     if ide == "copilot-cli":
         return config_data.get("mcpServers", {})
-    if ide == "opencode":
-        return config_data.get("mcp", {})
-    if ide == "codex":
-        return config_data.get("mcp", {}).get("servers", {})
-    return config_data.get("mcpServers", config_data.get("servers", {}))
+    return config_data.get(key, config_data.get("servers", {}))
 
 
 def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
@@ -1332,18 +1334,9 @@ def auto_shim_home_config(config_path: Path, ide: str):
         rprint(f"  [green]Shimmed {shimmed} MCP entries in {config_path}[/green]")
 
 
-# ── IDE home-dir MCP config paths for shimming ──
+# ── IDE home-dir MCP config paths for shimming (derived from registry) ──
 
-_SHIM_TARGETS: dict[str, Path] = {
-    "claude-code": Path.home() / ".mcp.json",
-    "kiro": Path.home() / ".kiro" / "settings" / "mcp.json",
-    "gemini-cli": Path.home() / ".gemini" / "settings.json",
-    "codex": Path.home() / ".codex" / "config.toml",
-    "copilot": Path.home() / ".vscode" / "mcp.json",
-    "copilot-cli": Path.home() / ".copilot" / "mcp-config.json",
-    "opencode": Path.home() / ".config" / "opencode" / "opencode.json",
-    "cursor": Path.home() / ".cursor" / "mcp.json",
-}
+_SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items()}
 
 _VALID_IDES = list(_SHIM_TARGETS.keys())
 

@@ -1,6 +1,9 @@
 /**
  * IDE feature capability matrix — TypeScript mirror of
- * observal-server/schemas/constants.py.
+ * observal-server/schemas/ide_registry.py (IDE_REGISTRY).
+ *
+ * When adding or changing IDE entries, update IDE_REGISTRY in
+ * observal-server/schemas/ide_registry.py first, then mirror here.
  */
 
 export const VALID_IDES = [

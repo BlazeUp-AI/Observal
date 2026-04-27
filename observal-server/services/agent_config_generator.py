@@ -2,6 +2,7 @@ import re
 
 from models.agent import Agent
 from schemas.constants import IDE_FEATURE_MATRIX
+from schemas.ide_registry import IDE_REGISTRY
 from services.config_generator import (
     _build_run_command,
     _claude_otlp_env,
@@ -180,38 +181,29 @@ def _generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict:
     Returns a dict with 'path' and 'content' keys, or None for
     monolithic IDEs (Gemini, Codex, Copilot) that inline skills into rules.
     """
+    ide_key = ide.replace("_", "-")
+    spec = IDE_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skill_file")
+    if not skill_paths:
+        return None
+
     name = skill["name"]
     desc = skill.get("description", "")
     slash_cmd = skill.get("slash_command")
+    path = skill_paths.get(scope, next(iter(skill_paths.values()))).format(name=name)
 
-    if ide in ("claude-code", "claude_code"):
+    skill_format = spec.get("skill_format")
+    if skill_format == "yaml_frontmatter":
         content = f"---\nname: {name}\n"
         if desc:
             content += f'description: "{desc}"\n'
-        if slash_cmd:
+        if slash_cmd and ide_key == "claude-code":
             content += f"command: /{slash_cmd}\n"
         content += f"---\n\n{desc}\n"
-        prefix = "~/.claude" if scope == "user" else ".claude"
-        return {"path": f"{prefix}/skills/{name}/SKILL.md", "content": content}
-
-    if ide == "kiro":
-        content = f"---\nname: {name}\n"
-        if desc:
-            content += f'description: "{desc}"\n'
-        content += f"---\n\n{desc}\n"
-        return {"path": f".kiro/skills/{name}/SKILL.md", "content": content}
-
-    if ide == "cursor":
-        prefix = "~/.cursor" if scope == "user" else ".cursor"
+    else:
         content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-        return {"path": f"{prefix}/rules/{name}.md", "content": content}
 
-    if ide == "vscode":
-        content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-        return {"path": f".vscode/rules/{name}.md", "content": content}
-
-    # Monolithic IDEs (gemini, codex, copilot) — no separate file
-    return None
+    return {"path": path, "content": content}
 
 
 def _build_rules_content(agent: Agent, component_names: dict | None = None) -> str:
@@ -320,8 +312,9 @@ def generate_agent_config(
             "postToolUse": [{"matcher": "*", "command": hook_cmd}],
             "stop": [{"command": stop_cmd}],
         }
-        kiro_scope = options.get("scope", "user")  # Kiro historically defaults to user-level
-        agent_path = f"~/.kiro/agents/{safe_name}.json" if kiro_scope == "user" else f".kiro/agents/{safe_name}.json"
+        kiro_spec = IDE_REGISTRY["kiro"]
+        kiro_scope = options.get("scope", kiro_spec["default_scope"])
+        agent_path = kiro_spec["rules_file"][kiro_scope].format(name=safe_name)
         result: dict = {
             "agent_file": {
                 "path": agent_path,
@@ -366,7 +359,7 @@ def generate_agent_config(
             claude_mcps[name] = {"command": cmd, "args": args, "env": cfg.get("env", {})}
 
         # IDE-specific options
-        scope = options.get("scope", "project")  # "project" or "user"
+        scope = options.get("scope", IDE_REGISTRY["claude-code"]["default_scope"])
         model_choice = options.get("model", "")  # "", "inherit", "sonnet", "opus", "haiku"
         tools = options.get("tools", "")  # comma-separated whitelist
         color = options.get("color", "")
@@ -391,8 +384,7 @@ def generate_agent_config(
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
-        # Path: project-level (.claude/agents/) or user-level (~/.claude/agents/)
-        agent_path = f"~/.claude/agents/{safe_name}.md" if scope == "user" else f".claude/agents/{safe_name}.md"
+        agent_path = IDE_REGISTRY["claude-code"]["rules_file"][scope].format(name=safe_name)
 
         skill_files = [_generate_skill_file(s, ide, scope) for s in skill_configs]
         skill_files = [f for f in skill_files if f]
@@ -412,9 +404,10 @@ def generate_agent_config(
         return result
 
     if ide in ("gemini-cli", "gemini_cli"):
-        gemini_scope = options.get("scope", "project")
-        rules_path = "~/.gemini/GEMINI.md" if gemini_scope == "user" else "GEMINI.md"
-        mcp_path = "~/.gemini/settings.json" if gemini_scope == "user" else ".gemini/settings.json"
+        gemini_spec = IDE_REGISTRY["gemini-cli"]
+        gemini_scope = options.get("scope", gemini_spec["default_scope"])
+        rules_path = gemini_spec["rules_file"][gemini_scope]
+        mcp_path = gemini_spec["mcp_config_path"][gemini_scope]
         result = {
             "rules_file": {"path": rules_path, "content": rules_content},
             "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
@@ -427,10 +420,12 @@ def generate_agent_config(
         return result
 
     if ide == "codex":
+        codex_spec = IDE_REGISTRY["codex"]
+        codex_scope = codex_spec["default_scope"]
         result = {
-            "rules_file": {"path": "AGENTS.md", "content": rules_content},
-            "mcp_config": {"path": "~/.codex/config.toml", "content": {"mcp.servers": mcp_configs}},
-            "scope": "user",
+            "rules_file": {"path": codex_spec["rules_file"][codex_scope], "content": rules_content},
+            "mcp_config": {"path": codex_spec["mcp_config_path"][codex_scope], "content": {"mcp.servers": mcp_configs}},
+            "scope": codex_scope,
         }
         if compatibility_warnings:
             result["_warnings"] = compatibility_warnings
@@ -448,10 +443,14 @@ def generate_agent_config(
                 copilot_configs[k] = {"type": "stdio", "command": v["command"], "args": v.get("args", [])}
                 if "env" in v:
                     copilot_configs[k]["env"] = v["env"]
+        copilot_spec = IDE_REGISTRY["copilot"]
         result = {
-            "rules_file": {"path": ".github/copilot-instructions.md", "content": rules_content},
-            "mcp_config": {"path": ".vscode/mcp.json", "content": {"servers": copilot_configs}},
-            "scope": "project",
+            "rules_file": {"path": copilot_spec["rules_file"]["project"], "content": rules_content},
+            "mcp_config": {
+                "path": copilot_spec["mcp_config_path"]["project"],
+                "content": {copilot_spec["mcp_servers_key"]: copilot_configs},
+            },
+            "scope": copilot_spec["default_scope"],
         }
         if compatibility_warnings:
             result["_warnings"] = compatibility_warnings
@@ -474,41 +473,48 @@ def generate_agent_config(
                 }
                 if "env" in v:
                     copilot_cli_configs[k]["env"] = v["env"]
+        copilot_cli_spec = IDE_REGISTRY["copilot-cli"]
         result = {
-            "rules_file": {"path": ".github/copilot-instructions.md", "content": rules_content},
-            "mcp_config": {"path": ".mcp.json", "content": {"mcpServers": copilot_cli_configs}},
-            "scope": "project",
+            "rules_file": {"path": copilot_cli_spec["rules_file"]["project"], "content": rules_content},
+            "mcp_config": {
+                "path": copilot_cli_spec["mcp_config_path"]["project"],
+                "content": {copilot_cli_spec["mcp_servers_key"]: copilot_cli_configs},
+            },
+            "scope": copilot_cli_spec["default_scope"],
         }
         if compatibility_warnings:
             result["_warnings"] = compatibility_warnings
         return result
 
     if ide == "opencode":
+        opencode_spec = IDE_REGISTRY["opencode"]
+        opencode_scope = options.get("scope", opencode_spec["default_scope"])
         opencode_configs = {}
         for k, v in mcp_configs.items():
             cmd_array = [v["command"], *v.get("args", [])]
             opencode_configs[k] = {"type": "local", "command": cmd_array}
             if "env" in v:
                 opencode_configs[k]["env"] = v["env"]
+        rules_path = opencode_spec["rules_file"].get(opencode_scope, "AGENTS.md")
+        mcp_path = opencode_spec["mcp_config_path"].get(
+            opencode_scope, next(iter(opencode_spec["mcp_config_path"].values()))
+        )
         result = {
-            "rules_file": {"path": "AGENTS.md", "content": rules_content},
-            "mcp_config": {"path": "~/.config/opencode/opencode.json", "content": {"mcp": opencode_configs}},
-            "scope": "user",
+            "rules_file": {"path": rules_path, "content": rules_content},
+            "mcp_config": {"path": mcp_path, "content": {opencode_spec["mcp_servers_key"]: opencode_configs}},
+            "scope": opencode_scope,
         }
         if compatibility_warnings:
             result["_warnings"] = compatibility_warnings
         return result
 
-    # cursor, vscode: rules file + mcp.json — telemetry via observal-shim
-    ide_scope = options.get("scope", "project")
-    ide_paths = {
-        "cursor": (
-            "~/.cursor/rules/{name}.md" if ide_scope == "user" else ".cursor/rules/{name}.md",
-            "~/.cursor/mcp.json" if ide_scope == "user" else ".cursor/mcp.json",
-        ),
-        "vscode": (".vscode/rules/{name}.md", ".vscode/mcp.json"),
-    }
-    rules_path, mcp_path = ide_paths.get(ide, (f".rules/{safe_name}.md", ".mcp.json"))
+    # cursor, vscode (and any future IDE with standard rules+mcp pattern)
+    spec = IDE_REGISTRY.get(ide, {})
+    ide_scope = options.get("scope", spec.get("default_scope", "project"))
+    rules_paths = spec.get("rules_file", {})
+    rules_path = rules_paths.get(ide_scope, next(iter(rules_paths.values()), f".rules/{safe_name}.md"))
+    mcp_paths = spec.get("mcp_config_path", {})
+    mcp_path = mcp_paths.get(ide_scope, next(iter(mcp_paths.values()), ".mcp.json"))
     skill_files = [_generate_skill_file(s, ide, ide_scope) for s in skill_configs]
     skill_files = [f for f in skill_files if f]
     result = {

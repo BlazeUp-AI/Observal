@@ -11,6 +11,7 @@ import typer
 from rich import print as rprint
 
 from observal_cli import client, config
+from observal_cli.ide_registry import get_scope_aware_ides
 from observal_cli.render import spinner
 
 
@@ -159,14 +160,8 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
     return resolved
 
 
-# IDEs that support a project vs user install scope
-_SCOPE_AWARE_IDES = {
-    "claude-code": ("project (.claude/agents/)", "user (~/.claude/agents/)"),
-    "kiro": ("project (.kiro/agents/)", "user (~/.kiro/agents/)"),
-    "gemini-cli": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
-    "cursor": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
-    "opencode": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
-}
+# IDEs that support a project vs user install scope (derived from registry)
+_SCOPE_AWARE_IDES = get_scope_aware_ides()
 
 
 def _collect_install_options(

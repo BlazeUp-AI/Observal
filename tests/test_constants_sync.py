@@ -1,4 +1,4 @@
-"""Verify that observal_cli.constants stays in sync with schemas.constants."""
+"""Verify that observal_cli.constants and ide_registry stay in sync with server."""
 
 import importlib
 
@@ -43,3 +43,22 @@ def test_ide_feature_matrix_match():
         assert server_val[ide] == cli_val[ide], (
             f"IDE_FEATURE_MATRIX[{ide!r}] mismatch: server={server_val[ide]!r}, cli={cli_val[ide]!r}"
         )
+
+
+def test_ide_registry_match():
+    """IDE_REGISTRY must be identical between server and CLI."""
+    server_reg = importlib.import_module("schemas.ide_registry")
+    cli_reg = importlib.import_module("observal_cli.ide_registry")
+    assert server_reg.IDE_REGISTRY.keys() == cli_reg.IDE_REGISTRY.keys(), (
+        f"IDE_REGISTRY key mismatch: "
+        f"server={sorted(server_reg.IDE_REGISTRY.keys())}, "
+        f"cli={sorted(cli_reg.IDE_REGISTRY.keys())}"
+    )
+    for ide in server_reg.IDE_REGISTRY:
+        server_spec = server_reg.IDE_REGISTRY[ide]
+        cli_spec = cli_reg.IDE_REGISTRY[ide]
+        for key in server_spec:
+            assert key in cli_spec, f"IDE_REGISTRY[{ide!r}] missing key {key!r} in CLI"
+            assert server_spec[key] == cli_spec[key], (
+                f"IDE_REGISTRY[{ide!r}][{key!r}] mismatch: server={server_spec[key]!r}, cli={cli_spec[key]!r}"
+            )
