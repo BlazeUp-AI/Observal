@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Settings, SunMoon } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { ChevronsUpDown } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -69,14 +69,10 @@ export function NavUser({ user }: NavUserProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings">
+          <Link href="/account">
             <Settings className="mr-2 h-4 w-4" />
             Account Settings
           </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled>
-          <SunMoon className="mr-2 h-4 w-4" />
-          Theme
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
