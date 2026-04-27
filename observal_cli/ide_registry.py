@@ -78,7 +78,7 @@ IDE_REGISTRY: dict[str, dict] = {
             "user": "~/.claude/skills/{name}/SKILL.md",
         },
         "skill_format": "yaml_frontmatter",
-        "home_mcp_config": "~/.mcp.json",
+        "home_mcp_config": "~/.claude.json",
         "hook_type": "http",
         "config_dir": ".claude",
     },
@@ -117,7 +117,7 @@ IDE_REGISTRY: dict[str, dict] = {
         "mcp_config_path": {
             "project": ".vscode/mcp.json",
         },
-        "mcp_servers_key": "mcpServers",
+        "mcp_servers_key": "servers",
         "skill_file": {
             "project": ".vscode/rules/{name}.md",
         },

@@ -519,7 +519,7 @@ def generate_agent_config(
     skill_files = [f for f in skill_files if f]
     result = {
         "rules_file": {"path": rules_path.format(name=safe_name), "content": rules_content},
-        "mcp_config": {"path": mcp_path, "content": {"mcpServers": mcp_configs}},
+        "mcp_config": {"path": mcp_path, "content": {spec.get("mcp_servers_key", "mcpServers"): mcp_configs}},
         "scope": ide_scope,
     }
     if skill_files:

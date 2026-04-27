@@ -464,7 +464,7 @@ def _generate_vscode(manifest: AgentManifest) -> IdeAgentConfig:
             ),
             AgentFile(
                 path=".vscode/mcp.json",
-                content={"mcpServers": mcp_entries},
+                content={"servers": mcp_entries},
                 format="json",
             ),
             *skill_files,
