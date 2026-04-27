@@ -126,8 +126,8 @@ export function TraceDetail({ trace, isLoading }: { trace?: Trace; isLoading: bo
                   </Card>
                 )}
                 {selectedSpan.error && (
-                  <Card className="border-red-200"><CardHeader className="py-2 px-4"><CardTitle className="text-sm text-red-600">Error</CardTitle></CardHeader>
-                    <CardContent className="px-4 pb-3 text-sm text-red-700 font-mono whitespace-pre-wrap">{selectedSpan.error}</CardContent>
+                  <Card className="border-destructive/20"><CardHeader className="py-2 px-4"><CardTitle className="text-sm text-destructive">Error</CardTitle></CardHeader>
+                    <CardContent className="px-4 pb-3 text-sm text-destructive font-mono whitespace-pre-wrap">{selectedSpan.error}</CardContent>
                   </Card>
                 )}
                 {selectedSpan.metadata && Object.keys(selectedSpan.metadata).length > 0 && (

@@ -781,8 +781,8 @@ function AgentBuilderInner() {
       <div className="p-6 lg:p-8 w-full mx-auto">
         {/* Restore draft banner */}
         {showRestoreBanner && (
-          <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3">
-            <p className="flex-1 text-sm text-blue-700 dark:text-blue-300">
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-info/20 bg-info/5 px-4 py-3">
+            <p className="flex-1 text-sm text-info">
               You have an unsaved draft.
             </p>
             <Button variant="outline" size="sm" onClick={restoreLocalDraft}>

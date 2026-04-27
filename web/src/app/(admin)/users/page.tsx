@@ -240,7 +240,7 @@ export default function UsersPage() {
                     {createdPassword}
                   </code>
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={handleCopyPassword}>
-                    {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               </div>
@@ -329,7 +329,7 @@ export default function UsersPage() {
                     {resetResult}
                   </code>
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={handleCopyResetPassword}>
-                    {resetCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {resetCopied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               </div>

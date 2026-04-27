@@ -199,7 +199,7 @@ function UnarchiveAgentButton({ agent }: { agent: RegistryItem }) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-green-600"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-success"
               onClick={(e) => {
                 e.stopPropagation();
                 setConfirmOpen(true);
@@ -269,7 +269,7 @@ const columns: ColumnDef<RegistryItem>[] = [
             {row.original.name}
           </Link>
           {row.original.status && row.original.status !== "active" && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-600 dark:text-yellow-400 ring-1 ring-yellow-500/20">
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning ring-1 ring-warning/20">
               <Clock className="h-2.5 w-2.5" />
               Pending Review
             </span>
@@ -597,9 +597,9 @@ function AgentListContent() {
         )}
 
         {pendingCount > 0 && (
-          <div className="flex items-start gap-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-            <Clock className="h-4 w-4 mt-0.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
-            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+          <div className="flex items-start gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3">
+            <Clock className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+            <p className="text-sm text-warning">
               You have {pendingCount} agent{pendingCount > 1 ? "s" : ""} pending review.
               An admin must approve {pendingCount > 1 ? "them" : "it"} before {pendingCount > 1 ? "they become" : "it becomes"} visible to other users.
             </p>

@@ -31,9 +31,9 @@ function errorTypeLabel(t: ErrorType): string {
 
 function errorTypeColor(t: ErrorType): string {
   switch (t) {
-    case "tool_failure": return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
-    case "stop_failure": return "bg-red-500/10 text-red-500 border-red-500/20";
-    case "api_error": return "bg-rose-500/10 text-rose-500 border-rose-500/20";
+    case "tool_failure": return "bg-warning/10 text-warning border-warning/20";
+    case "stop_failure": return "bg-destructive/10 text-destructive border-destructive/20";
+    case "api_error": return "bg-destructive/10 text-destructive border-destructive/20";
   }
 }
 
@@ -90,7 +90,7 @@ function ErrorRow({ event }: { event: SessionErrorEvent }) {
           {event.error && (
             <div className="space-y-1">
               <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Error</span>
-              <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-all bg-red-500/5 border border-red-500/20 rounded-md p-2.5 max-h-[200px] overflow-auto text-red-600 dark:text-red-400">
+              <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-all bg-destructive/5 border border-destructive/20 rounded-md p-2.5 max-h-[200px] overflow-auto text-destructive">
                 {event.error}
               </pre>
             </div>

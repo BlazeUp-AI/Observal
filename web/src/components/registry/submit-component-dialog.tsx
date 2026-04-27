@@ -556,7 +556,7 @@ export function SubmitComponentDialog({
                         <span className="flex items-center gap-2">
                           {mcp.name}
                           {mcp.status === "pending" && (
-                            <span className="text-[10px] rounded bg-yellow-500/15 text-yellow-500 px-1.5 py-0.5">
+                            <span className="text-[10px] rounded bg-warning/15 text-warning px-1.5 py-0.5">
                               pending
                             </span>
                           )}
