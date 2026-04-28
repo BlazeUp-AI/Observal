@@ -273,13 +273,13 @@ class TestGenerateCursorVscode:
     def test_cursor_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
-        assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.md"
+        assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.mdc"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
 
     def test_vscode_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "vscode")
-        assert cfg["rules_file"]["path"] == ".vscode/rules/test-agent.md"
+        assert cfg["rules_file"]["path"] == ".github/instructions/test-agent.instructions.md"
         assert cfg["mcp_config"]["path"] == ".vscode/mcp.json"
 
     def test_rules_content_not_empty(self):

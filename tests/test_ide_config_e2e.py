@@ -103,7 +103,7 @@ class TestConstants:
 
     def test_copilot_cli_feature_matrix(self):
         assert "copilot-cli" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "rules", "hook_bridge"}
+        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "rules", "hook_bridge", "skills"}
 
     def test_ide_project_configs_include_all_new_ides(self):
         assert "codex" in _IDE_PROJECT_CONFIGS
@@ -315,6 +315,11 @@ class TestGenerateOpenCodeConfig:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "opencode")
+        assert cfg["rules_file"]["path"] == "~/.config/opencode/AGENTS.md"
+
+    def test_rules_path_project_scope(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "opencode", options={"scope": "project"})
         assert cfg["rules_file"]["path"] == "AGENTS.md"
 
     def test_mcp_config_path(self):
@@ -489,7 +494,7 @@ class TestIdeCompatibilityWarnings:
 
     def test_copilot_cli_warns_on_unsupported_features(self):
         agent = _make_agent()
-        agent.required_ide_features = ["skills", "otlp_telemetry"]
+        agent.required_ide_features = ["otlp_telemetry", "superpowers"]
         warnings = _check_ide_compatibility(agent, "copilot-cli")
         assert len(warnings) == 2
 

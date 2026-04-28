@@ -15,8 +15,8 @@ IDE_REGISTRY: dict[str, dict] = {
         "default_scope": "project",
         "scope_labels": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
         "rules_file": {
-            "project": ".cursor/rules/{name}.md",
-            "user": "~/.cursor/rules/{name}.md",
+            "project": ".cursor/rules/{name}.mdc",
+            "user": "~/.cursor/rules/{name}.mdc",
         },
         "rules_format": "markdown_frontmatter",
         "mcp_config_path": {
@@ -25,8 +25,8 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "mcp_servers_key": "mcpServers",
         "skill_file": {
-            "project": ".cursor/rules/{name}.md",
-            "user": "~/.cursor/rules/{name}.md",
+            "project": ".cursor/rules/{name}.mdc",
+            "user": "~/.cursor/rules/{name}.mdc",
         },
         "skill_format": "markdown_frontmatter",
         "home_mcp_config": "~/.cursor/mcp.json",
@@ -98,8 +98,11 @@ IDE_REGISTRY: dict[str, dict] = {
             "user": "~/.gemini/settings.json",
         },
         "mcp_servers_key": "mcpServers",
-        "skill_file": None,
-        "skill_format": None,
+        "skill_file": {
+            "project": ".gemini/skills/{name}/SKILL.md",
+            "user": "~/.gemini/skills/{name}/SKILL.md",
+        },
+        "skill_format": "markdown",
         "home_mcp_config": "~/.gemini/settings.json",
         "hook_type": "command",
         "config_dir": ".gemini",
@@ -111,7 +114,7 @@ IDE_REGISTRY: dict[str, dict] = {
         "default_scope": "project",
         "scope_labels": None,
         "rules_file": {
-            "project": ".vscode/rules/{name}.md",
+            "project": ".github/instructions/{name}.instructions.md",
         },
         "rules_format": "markdown_frontmatter",
         "mcp_config_path": {
@@ -119,7 +122,7 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "mcp_servers_key": "servers",
         "skill_file": {
-            "project": ".vscode/rules/{name}.md",
+            "project": ".github/instructions/{name}.instructions.md",
         },
         "skill_format": "markdown_frontmatter",
         "home_mcp_config": None,
@@ -168,7 +171,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "copilot-cli": {
         "display_name": "Copilot CLI",
-        "features": {"mcp_servers", "rules", "hook_bridge"},
+        "features": {"mcp_servers", "rules", "hook_bridge", "skills"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -180,8 +183,11 @@ IDE_REGISTRY: dict[str, dict] = {
             "project": ".mcp.json",
         },
         "mcp_servers_key": "mcpServers",
-        "skill_file": None,
-        "skill_format": None,
+        "skill_file": {
+            "project": ".agents/skills/{name}/SKILL.md",
+            "user": "~/.copilot/skills/{name}/SKILL.md",
+        },
+        "skill_format": "markdown",
         "home_mcp_config": "~/.copilot/mcp-config.json",
         "hook_type": "command",
         "config_dir": ".copilot",
@@ -194,15 +200,18 @@ IDE_REGISTRY: dict[str, dict] = {
         "scope_labels": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
         "rules_file": {
             "project": "AGENTS.md",
-            "user": "AGENTS.md",
+            "user": "~/.config/opencode/AGENTS.md",
         },
         "rules_format": "markdown",
         "mcp_config_path": {
             "user": "~/.config/opencode/opencode.json",
         },
         "mcp_servers_key": "mcp",
-        "skill_file": None,
-        "skill_format": None,
+        "skill_file": {
+            "project": ".opencode/skills/{name}/SKILL.md",
+            "user": "~/.config/opencode/skills/{name}/SKILL.md",
+        },
+        "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.config/opencode/opencode.json",
         "hook_type": None,
         "config_dir": ".config/opencode",
