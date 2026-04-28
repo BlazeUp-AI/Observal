@@ -68,16 +68,16 @@ else:
     class _NoOpCounter:
         """silently discards all metric operations when metrics are disabled."""
 
-        def inc(self, amount: float = 1) -> None:  
+        def inc(self, amount: float = 1) -> None:
             pass
 
         def labels(self, **_kwargs) -> "_NoOpCounter":
             return self
 
-    traces_ingested = _NoOpCounter() 
-    spans_ingested = _NoOpCounter() 
+    traces_ingested = _NoOpCounter()
+    spans_ingested = _NoOpCounter()
     ingestion_errors = _NoOpCounter()
-    token_usage = _NoOpCounter() 
+    token_usage = _NoOpCounter()
 
 otlp_router = APIRouter(prefix="", tags=["otlp"])
 

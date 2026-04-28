@@ -30,17 +30,17 @@ else:
     class _NoOpMetric:
         """silently discards all metric operations when metrics are disabled."""
 
-        def observe(self, amount: float) -> None: 
+        def observe(self, amount: float) -> None:
             pass
 
-        def inc(self, amount: float = 1) -> None: 
+        def inc(self, amount: float = 1) -> None:
             pass
 
         def labels(self, **_kwargs) -> "_NoOpMetric":
             return self
 
-    clickhouse_query_duration = _NoOpMetric()  
-    clickhouse_query_errors = _NoOpMetric() 
+    clickhouse_query_duration = _NoOpMetric()
+    clickhouse_query_errors = _NoOpMetric()
 
 
 async def _invalidate_cache():
