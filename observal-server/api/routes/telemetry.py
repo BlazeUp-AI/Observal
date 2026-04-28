@@ -8,10 +8,10 @@ from datetime import UTC, datetime
 
 import jwt
 from fastapi import APIRouter, Depends, Header, Request, Response
-from prometheus_client import Counter
 from sqlalchemy import select
 
 from api.deps import get_project_id, require_role
+from config import settings
 from database import async_session
 from models.user import User, UserRole
 from schemas.telemetry import (
@@ -40,25 +40,44 @@ from services.security_events import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
 
-# Prometheus metrics for telemetry ingestion
-traces_ingested = Counter(
-    "observal_traces_ingested_total",
-    "Total number of traces ingested",
-)
-spans_ingested = Counter(
-    "observal_spans_ingested_total",
-    "Total number of spans ingested",
-)
-ingestion_errors = Counter(
-    "observal_ingestion_errors_total",
-    "Total number of ingestion errors",
-    ["type"],
-)
-token_usage = Counter(
-    "observal_token_usage_total",
-    "Total token usage",
-    ["type"],
-)
+# Prometheus metrics for telemetry ingestion — only created when metrics are enabled
+
+if settings.METRICS_ENABLED:
+    from prometheus_client import Counter
+
+    traces_ingested = Counter(
+        "observal_traces_ingested_total",
+        "Total number of traces ingested",
+    )
+    spans_ingested = Counter(
+        "observal_spans_ingested_total",
+        "Total number of spans ingested",
+    )
+    ingestion_errors = Counter(
+        "observal_ingestion_errors_total",
+        "Total number of ingestion errors",
+        ["type"],
+    )
+    token_usage = Counter(
+        "observal_token_usage_total",
+        "Total token usage",
+        ["type"],
+    )
+else:
+
+    class _NoOpCounter:
+        """silently discards all metric operations when metrics are disabled."""
+
+        def inc(self, amount: float = 1) -> None:  
+            pass
+
+        def labels(self, **_kwargs) -> "_NoOpCounter":
+            return self
+
+    traces_ingested = _NoOpCounter() 
+    spans_ingested = _NoOpCounter() 
+    ingestion_errors = _NoOpCounter()
+    token_usage = _NoOpCounter() 
 
 otlp_router = APIRouter(prefix="", tags=["otlp"])
 
@@ -585,12 +604,6 @@ async def ingest(
         try:
             rows = []
             for s in batch.spans:
-                # Track token usage
-                if s.token_count_input:
-                    token_usage.labels(type="input").inc(s.token_count_input)
-                if s.token_count_output:
-                    token_usage.labels(type="output").inc(s.token_count_output)
-
                 rows.append(
                     {
                         "span_id": s.span_id,
@@ -647,8 +660,13 @@ async def ingest(
                 )
             await insert_spans(rows)
             ingested += len(rows)
-            # Count successfully persisted span rows.
+            # Count successfully persisted span rows and their token usage.
             spans_ingested.inc(len(rows))
+            for s in batch.spans:
+                if s.token_count_input:
+                    token_usage.labels(type="input").inc(s.token_count_input)
+                if s.token_count_output:
+                    token_usage.labels(type="output").inc(s.token_count_output)
         except Exception:
             logger.exception("Failed to insert spans")
             errors += len(batch.spans)

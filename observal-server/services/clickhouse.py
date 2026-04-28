@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
-from prometheus_client import Counter, Histogram
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config import settings
@@ -13,16 +12,35 @@ from config import settings
 logger = structlog.get_logger(__name__)
 
 # Prometheus metrics for ClickHouse operations
-clickhouse_query_duration = Histogram(
-    "clickhouse_query_duration_seconds",
-    "ClickHouse query duration in seconds",
-    ["operation"],
-)
-clickhouse_query_errors = Counter(
-    "clickhouse_query_errors_total",
-    "Total number of ClickHouse query errors",
-    ["operation"],
-)
+if settings.METRICS_ENABLED:
+    from prometheus_client import Counter, Histogram
+
+    clickhouse_query_duration = Histogram(
+        "clickhouse_query_duration_seconds",
+        "ClickHouse query duration in seconds",
+        ["operation"],
+    )
+    clickhouse_query_errors = Counter(
+        "clickhouse_query_errors_total",
+        "Total number of ClickHouse query errors",
+        ["operation"],
+    )
+else:
+
+    class _NoOpMetric:
+        """silently discards all metric operations when metrics are disabled."""
+
+        def observe(self, amount: float) -> None: 
+            pass
+
+        def inc(self, amount: float = 1) -> None: 
+            pass
+
+        def labels(self, **_kwargs) -> "_NoOpMetric":
+            return self
+
+    clickhouse_query_duration = _NoOpMetric()  
+    clickhouse_query_errors = _NoOpMetric() 
 
 
 async def _invalidate_cache():
