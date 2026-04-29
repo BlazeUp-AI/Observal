@@ -358,7 +358,7 @@ jobs:
           git-cliff --config cliff.toml --latest --strip header > release/RELEASE_NOTES.md
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: "release/observal-*"
 
