@@ -10,11 +10,11 @@ from api.deps import get_db, require_role, resolve_prefix_id
 from api.sanitize import escape_like
 from models.agent import Agent, AgentStatus, AgentVersion
 from models.component_bundle import ComponentBundle
-from models.hook import HookListing
-from models.mcp import ListingStatus, McpListing
-from models.prompt import PromptListing
-from models.sandbox import SandboxListing
-from models.skill import SkillListing
+from models.hook import HookListing, HookVersion
+from models.mcp import ListingStatus, McpListing, McpVersion
+from models.prompt import PromptListing, PromptVersion
+from models.sandbox import SandboxListing, SandboxVersion
+from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
 from services.audit_helpers import audit
@@ -27,6 +27,14 @@ LISTING_MODELS = {
     "hook": HookListing,
     "prompt": PromptListing,
     "sandbox": SandboxListing,
+}
+
+VERSION_MODELS = {
+    "mcp": McpVersion,
+    "skill": SkillVersion,
+    "hook": HookVersion,
+    "prompt": PromptVersion,
+    "sandbox": SandboxVersion,
 }
 
 
@@ -73,9 +81,16 @@ async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple
     blocking: list[dict] = []
     for comp_type, ids in by_type.items():
         model = LISTING_MODELS.get(comp_type)
-        if not model:
+        version_model = VERSION_MODELS.get(comp_type)
+        if not model or not version_model:
             continue
-        rows = (await db.execute(select(model.id, model.name, model.status).where(model.id.in_(ids)))).all()
+        rows = (
+            await db.execute(
+                select(model.id, model.name, version_model.status)
+                .join(version_model, model.latest_version_id == version_model.id)
+                .where(model.id.in_(ids))
+            )
+        ).all()
         for row in rows:
             if row.status != ListingStatus.approved:
                 blocking.append(
@@ -133,8 +148,12 @@ async def _query_pending_components(db: AsyncSession, type_filter: str | None = 
     items = []
     user_ids: set[uuid.UUID] = set()
     for listing_type, model in models_to_query.items():
+        version_model = VERSION_MODELS[listing_type]
         result = await db.execute(
-            select(model).where(model.status == ListingStatus.pending).order_by(model.created_at.desc())
+            select(model)
+            .join(version_model, model.latest_version_id == version_model.id)
+            .where(version_model.status == ListingStatus.pending)
+            .order_by(model.created_at.desc())
         )
         for r in result.scalars().all():
             user_ids.add(r.submitted_by)
@@ -627,12 +646,13 @@ async def get_related_skills(
 
     stmt = (
         select(SkillListing)
+        .join(SkillVersion, SkillListing.latest_version_id == SkillVersion.id)
         .where(
-            SkillListing.status == ListingStatus.pending,
-            SkillListing.mcp_server_config.isnot(None),
+            SkillVersion.status == ListingStatus.pending,
+            SkillVersion.mcp_server_config.isnot(None),
             or_(
-                cast(SkillListing.mcp_server_config, String).contains(escape_like(mcp_name)),
-                cast(SkillListing.mcp_server_config, String).contains(escape_like(mcp_id)),
+                cast(SkillVersion.mcp_server_config, String).contains(escape_like(mcp_name)),
+                cast(SkillVersion.mcp_server_config, String).contains(escape_like(mcp_id)),
             ),
         )
         .order_by(SkillListing.created_at.desc())

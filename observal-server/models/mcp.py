@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import UTC, datetime
@@ -19,33 +21,12 @@ class ListingStatus(str, enum.Enum):
 
 class McpListing(Base):
     __tablename__ = "mcp_listings"
-    __table_args__ = (
-        Index("ix_mcp_listings_status", "status"),
-        Index("ix_mcp_listings_submitted_by", "submitted_by"),
-    )
+    __table_args__ = (Index("ix_mcp_listings_submitted_by", "submitted_by"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[str] = mapped_column(String(50), nullable=False)
-    git_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    git_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
-    transport: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    framework: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    docker_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    command: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    args: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    headers: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    auto_approve: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    mcp_validated: Mapped[bool] = mapped_column(Boolean, default=False)
-    tools_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    environment_variables: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    supported_ides: Mapped[list] = mapped_column(JSON, default=list)
-    setup_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
-    changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
@@ -53,10 +34,7 @@ class McpListing(Base):
     bundle_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("component_bundles.id"), nullable=True
     )
-    status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.pending)
-    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    download_count: Mapped[int] = mapped_column(Integer, default=0)
     unique_agents: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -71,15 +49,197 @@ class McpListing(Base):
         nullable=True,
     )
 
-    validation_results: Mapped[list["McpValidationResult"]] = relationship(
+    validation_results: Mapped[list[McpValidationResult]] = relationship(
         back_populates="listing", lazy="selectin", cascade="all, delete-orphan"
     )
-    versions: Mapped[list["McpVersion"]] = relationship(
+    versions: Mapped[list[McpVersion]] = relationship(
         back_populates="listing",
         lazy="selectin",
         cascade="all, delete-orphan",
         foreign_keys="McpVersion.listing_id",
     )
+    latest_version: Mapped[McpVersion | None] = relationship(
+        foreign_keys=[latest_version_id], lazy="selectin", uselist=False
+    )
+
+    # ------------------------------------------------------------------
+    # Deprecated compatibility properties — delegate to latest_version.
+    # These allow existing route/service code to keep working until the
+    # version-aware API endpoints replace them.
+    # ------------------------------------------------------------------
+    @property
+    def version(self) -> str:
+        return self.latest_version.version if self.latest_version else "0.0.0"
+
+    @property
+    def description(self) -> str:
+        return self.latest_version.description if self.latest_version else ""
+
+    @property
+    def status(self) -> ListingStatus:
+        return self.latest_version.status if self.latest_version else ListingStatus.draft
+
+    @status.setter
+    def status(self, value: ListingStatus) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set status")
+        self.latest_version.status = value
+
+    @property
+    def rejection_reason(self) -> str | None:
+        return self.latest_version.rejection_reason if self.latest_version else None
+
+    @rejection_reason.setter
+    def rejection_reason(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set rejection_reason")
+        self.latest_version.rejection_reason = value
+
+    @property
+    def download_count(self) -> int:
+        return self.latest_version.download_count if self.latest_version else 0
+
+    @property
+    def supported_ides(self) -> list:
+        return self.latest_version.supported_ides if self.latest_version else []
+
+    @property
+    def changelog(self) -> str | None:
+        return self.latest_version.changelog if self.latest_version else None
+
+    @property
+    def transport(self) -> str | None:
+        return self.latest_version.transport if self.latest_version else None
+
+    @transport.setter
+    def transport(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set transport")
+        self.latest_version.transport = value
+
+    @property
+    def framework(self) -> str | None:
+        return self.latest_version.framework if self.latest_version else None
+
+    @framework.setter
+    def framework(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set framework")
+        self.latest_version.framework = value
+
+    @property
+    def docker_image(self) -> str | None:
+        return self.latest_version.docker_image if self.latest_version else None
+
+    @docker_image.setter
+    def docker_image(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set docker_image")
+        self.latest_version.docker_image = value
+
+    @property
+    def command(self) -> str | None:
+        return self.latest_version.command if self.latest_version else None
+
+    @command.setter
+    def command(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set command")
+        self.latest_version.command = value
+
+    @property
+    def args(self) -> list | None:
+        return self.latest_version.args if self.latest_version else None
+
+    @args.setter
+    def args(self, value: list | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set args")
+        self.latest_version.args = value
+
+    @property
+    def url(self) -> str | None:
+        return self.latest_version.url if self.latest_version else None
+
+    @url.setter
+    def url(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set url")
+        self.latest_version.url = value
+
+    @property
+    def headers(self) -> list | None:
+        return self.latest_version.headers if self.latest_version else None
+
+    @headers.setter
+    def headers(self, value: list | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set headers")
+        self.latest_version.headers = value
+
+    @property
+    def auto_approve(self) -> list | None:
+        return self.latest_version.auto_approve if self.latest_version else None
+
+    @auto_approve.setter
+    def auto_approve(self, value: list | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set auto_approve")
+        self.latest_version.auto_approve = value
+
+    @property
+    def mcp_validated(self) -> bool:
+        return self.latest_version.mcp_validated if self.latest_version else False
+
+    @mcp_validated.setter
+    def mcp_validated(self, value: bool) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set mcp_validated")
+        self.latest_version.mcp_validated = value
+
+    @property
+    def tools_schema(self) -> dict | None:
+        return self.latest_version.tools_schema if self.latest_version else None
+
+    @property
+    def environment_variables(self) -> list | None:
+        return self.latest_version.environment_variables if self.latest_version else None
+
+    @environment_variables.setter
+    def environment_variables(self, value: list | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set environment_variables")
+        self.latest_version.environment_variables = value
+
+    @property
+    def setup_instructions(self) -> str | None:
+        return self.latest_version.setup_instructions if self.latest_version else None
+
+    @setup_instructions.setter
+    def setup_instructions(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set setup_instructions")
+        self.latest_version.setup_instructions = value
+
+    @property
+    def git_url(self) -> str | None:
+        return self.latest_version.source_url if self.latest_version else None
+
+    @git_url.setter
+    def git_url(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set git_url")
+        self.latest_version.source_url = value
+
+    @property
+    def git_ref(self) -> str | None:
+        return self.latest_version.source_ref if self.latest_version else None
+
+    @git_ref.setter
+    def git_ref(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set git_ref")
+        self.latest_version.source_ref = value
 
 
 class McpDownload(Base):
@@ -102,7 +262,7 @@ class McpValidationResult(Base):
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    listing: Mapped["McpListing"] = relationship(back_populates="validation_results")
+    listing: Mapped[McpListing] = relationship(back_populates="validation_results")
 
 
 class McpVersion(Base):
@@ -145,4 +305,4 @@ class McpVersion(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    listing: Mapped["McpListing"] = relationship(back_populates="versions", foreign_keys=[listing_id])
+    listing: Mapped[McpListing] = relationship(back_populates="versions", foreign_keys=[listing_id])

@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
 from api.sanitize import escape_like
 from models.mcp import ListingStatus
-from models.sandbox import SandboxDownload, SandboxListing
+from models.sandbox import SandboxDownload, SandboxListing, SandboxVersion
 from models.user import User, UserRole
 from schemas.sandbox import (
     SandboxDraftRequest,
@@ -35,9 +37,17 @@ async def submit_sandbox(
 
     listing = SandboxListing(
         name=req.name,
+        owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = SandboxVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner,
         runtime_type=req.runtime_type,
         image=req.image,
         dockerfile_url=req.dockerfile_url,
@@ -48,10 +58,13 @@ async def submit_sandbox(
         entrypoint=req.entrypoint,
         supported_ides=req.supported_ides,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -66,12 +79,16 @@ async def list_sandboxes(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(SandboxListing).where(SandboxListing.status == ListingStatus.approved)
+    stmt = (
+        select(SandboxListing)
+        .join(SandboxVersion, SandboxListing.latest_version_id == SandboxVersion.id)
+        .where(SandboxVersion.status == ListingStatus.approved)
+    )
     if runtime_type:
-        stmt = stmt.where(SandboxListing.runtime_type == runtime_type)
+        stmt = stmt.where(SandboxVersion.runtime_type == runtime_type)
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(SandboxListing.name.ilike(f"%{safe}%") | SandboxListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(SandboxListing.name.ilike(f"%{safe}%") | SandboxVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(SandboxListing.created_at.desc()))
     listings = [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "sandbox.list", resource_type="sandbox")
@@ -171,9 +188,17 @@ async def save_sandbox_draft(
 ):
     listing = SandboxListing(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = SandboxVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
         runtime_type=req.runtime_type,
         image=req.image,
         dockerfile_url=req.dockerfile_url,
@@ -184,10 +209,13 @@ async def save_sandbox_draft(
         entrypoint=req.entrypoint,
         supported_ides=req.supported_ides,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(

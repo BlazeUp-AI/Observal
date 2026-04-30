@@ -104,64 +104,78 @@ class TestComponentTableUpdates:
         assert "owner_org_id" in cols, f"{model_name} missing owner_org_id"
 
     @pytest.mark.parametrize(
-        "model_path,model_name",
+        "model_path,version_name",
         [
-            ("models.mcp", "McpListing"),
-            ("models.skill", "SkillListing"),
-            ("models.hook", "HookListing"),
-            ("models.prompt", "PromptListing"),
-            ("models.sandbox", "SandboxListing"),
+            ("models.mcp", "McpVersion"),
+            ("models.skill", "SkillVersion"),
+            ("models.hook", "HookVersion"),
+            ("models.prompt", "PromptVersion"),
+            ("models.sandbox", "SandboxVersion"),
         ],
     )
-    def test_component_has_download_counts(self, model_path, model_name):
+    def test_version_has_download_count(self, model_path, version_name):
         import importlib
 
         mod = importlib.import_module(model_path)
-        cls = getattr(mod, model_name)
+        cls = getattr(mod, version_name)
         cols = {c.name for c in cls.__table__.columns}
-        assert "download_count" in cols, f"{model_name} missing download_count"
-        assert "unique_agents" in cols, f"{model_name} missing unique_agents"
+        assert "download_count" in cols, f"{version_name} missing download_count"
 
     @pytest.mark.parametrize(
-        "model_path,model_name",
+        "model_path,version_name",
         [
-            ("models.mcp", "McpListing"),
-            ("models.skill", "SkillListing"),
-            ("models.hook", "HookListing"),
-            ("models.prompt", "PromptListing"),
-            ("models.sandbox", "SandboxListing"),
+            ("models.mcp", "McpVersion"),
+            ("models.sandbox", "SandboxVersion"),
         ],
     )
-    def test_component_has_git_url(self, model_path, model_name):
+    def test_version_has_source_url(self, model_path, version_name):
+        """Only MCP and sandbox have source_url (external git repos)."""
         import importlib
 
         mod = importlib.import_module(model_path)
-        cls = getattr(mod, model_name)
+        cls = getattr(mod, version_name)
         cols = {c.name for c in cls.__table__.columns}
-        assert "git_url" in cols, f"{model_name} missing git_url"
+        assert "source_url" in cols, f"{version_name} missing source_url"
 
     @pytest.mark.parametrize(
-        "model_path,model_name",
+        "model_path,version_name",
         [
-            ("models.mcp", "McpListing"),
-            ("models.skill", "SkillListing"),
-            ("models.hook", "HookListing"),
-            ("models.prompt", "PromptListing"),
-            ("models.sandbox", "SandboxListing"),
+            ("models.mcp", "McpVersion"),
+            ("models.sandbox", "SandboxVersion"),
         ],
     )
-    def test_component_has_git_ref(self, model_path, model_name):
+    def test_version_has_source_ref(self, model_path, version_name):
+        """Only MCP and sandbox have source_ref (external git repos)."""
         import importlib
 
         mod = importlib.import_module(model_path)
-        cls = getattr(mod, model_name)
+        cls = getattr(mod, version_name)
         cols = {c.name for c in cls.__table__.columns}
-        assert "git_ref" in cols, f"{model_name} missing git_ref"
+        assert "source_ref" in cols, f"{version_name} missing source_ref"
 
-    def test_mcp_has_mcp_validated(self):
-        from models.mcp import McpListing
+    @pytest.mark.parametrize(
+        "model_path,version_name",
+        [
+            ("models.skill", "SkillVersion"),
+            ("models.hook", "HookVersion"),
+            ("models.prompt", "PromptVersion"),
+        ],
+    )
+    def test_inline_versions_no_source_fields(self, model_path, version_name):
+        """Skills, hooks, and prompts are inline — no git source fields."""
+        import importlib
 
-        cols = {c.name for c in McpListing.__table__.columns}
+        mod = importlib.import_module(model_path)
+        cls = getattr(mod, version_name)
+        cols = {c.name for c in cls.__table__.columns}
+        assert "source_url" not in cols, f"{version_name} should not have source_url"
+        assert "source_ref" not in cols, f"{version_name} should not have source_ref"
+        assert "resolved_sha" not in cols, f"{version_name} should not have resolved_sha"
+
+    def test_mcp_version_has_mcp_validated(self):
+        from models.mcp import McpVersion
+
+        cols = {c.name for c in McpVersion.__table__.columns}
         assert "mcp_validated" in cols
 
     def test_skill_link_table_removed(self):
@@ -486,9 +500,9 @@ class TestMcpValidationField:
         assert hasattr(McpListing, "mcp_validated")
 
     def test_mcp_validated_defaults_false(self):
-        from models.mcp import McpListing
+        from models.mcp import McpVersion
 
-        col = McpListing.__table__.columns["mcp_validated"]
+        col = McpVersion.__table__.columns["mcp_validated"]
         # default is False
         assert col.default.arg is False
 

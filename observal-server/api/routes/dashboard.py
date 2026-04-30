@@ -13,7 +13,7 @@ from api.sanitize import escape_like
 from config import settings
 from models.agent import Agent, AgentStatus, AgentVersion
 from models.download import AgentDownloadRecord
-from models.mcp import ListingStatus, McpDownload, McpListing
+from models.mcp import ListingStatus, McpDownload, McpListing, McpVersion
 from models.user import User, UserRole
 from schemas.dashboard import (
     AgentMetrics,
@@ -175,7 +175,12 @@ async def overview_stats(
     db: AsyncSession = Depends(get_db),
 ):
     total_mcps = (
-        await db.scalar(select(func.count(McpListing.id)).where(McpListing.status == ListingStatus.approved)) or 0
+        await db.scalar(
+            select(func.count(McpListing.id))
+            .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
+            .where(McpVersion.status == ListingStatus.approved)
+        )
+        or 0
     )
     total_agents = (
         await db.scalar(
@@ -400,11 +405,12 @@ async def component_leaderboard(
             McpDownload.listing_id,
             func.count(McpDownload.id).label("cnt"),
             McpListing.name,
-            McpListing.description,
+            McpVersion.description,
             McpListing.submitted_by,
         )
         .join(McpListing, McpDownload.listing_id == McpListing.id)
-        .where(McpListing.status == ListingStatus.approved)
+        .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
+        .where(McpVersion.status == ListingStatus.approved)
     )
     if user:
         stmt = stmt.join(User, McpListing.submitted_by == User.id).where(User.email.ilike(f"%{escape_like(user)}%"))
@@ -412,7 +418,7 @@ async def component_leaderboard(
         days = _RANGE_MAP.get(window, 7)
         stmt = stmt.where(McpDownload.downloaded_at >= dt.now(UTC) - timedelta(days=days))
     stmt = (
-        stmt.group_by(McpDownload.listing_id, McpListing.name, McpListing.description, McpListing.submitted_by)
+        stmt.group_by(McpDownload.listing_id, McpListing.name, McpVersion.description, McpListing.submitted_by)
         .order_by(func.count(McpDownload.id).desc())
         .limit(limit)
     )

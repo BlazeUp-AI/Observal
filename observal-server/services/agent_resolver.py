@@ -38,8 +38,8 @@ class ResolvedComponent(BaseModel):
     component_id: uuid.UUID
     name: str
     version: str
-    git_url: str
-    git_ref: str = ""
+    git_url: str | None = None
+    git_ref: str | None = None
     description: str = ""
     order_index: int = 0
     config_override: dict | None = None
@@ -178,8 +178,8 @@ async def resolve_agent(
                 component_id=comp.component_id,
                 name=listing.name,
                 version=listing.version,
-                git_url=listing.git_url,
-                git_ref=listing.git_ref or "",
+                git_url=getattr(listing, "git_url", None),
+                git_ref=getattr(listing, "git_ref", None),
                 description=listing.description,
                 order_index=comp.order_index,
                 config_override=comp.config_override,

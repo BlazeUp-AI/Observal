@@ -27,7 +27,7 @@ from models.agent import (
 )
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
-from models.mcp import ListingStatus, McpListing
+from models.mcp import ListingStatus, McpListing, McpVersion
 from models.skill import SkillListing
 from models.user import User, UserRole
 from schemas.agent import (
@@ -211,7 +211,9 @@ async def _validate_mcp_ids(mcp_ids: list[uuid.UUID], db: AsyncSession) -> list[
     listings = []
     for mid in mcp_ids:
         result = await db.execute(
-            select(McpListing).where(McpListing.id == mid, McpListing.status == ListingStatus.approved)
+            select(McpListing)
+            .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
+            .where(McpListing.id == mid, McpVersion.status == ListingStatus.approved)
         )
         listing = result.scalar_one_or_none()
         if not listing:

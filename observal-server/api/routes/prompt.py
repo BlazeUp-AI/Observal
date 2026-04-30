@@ -1,5 +1,6 @@
 import re
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
 from api.sanitize import escape_like
 from models.mcp import ListingStatus
-from models.prompt import PromptDownload, PromptListing
+from models.prompt import PromptDownload, PromptListing, PromptVersion
 from models.user import User, UserRole
 from schemas.prompt import (
     PromptDraftRequest,
@@ -38,9 +39,17 @@ async def submit_prompt(
 
     listing = PromptListing(
         name=req.name,
+        owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = PromptVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner,
         category=req.category,
         template=req.template,
         variables=req.variables,
@@ -48,10 +57,13 @@ async def submit_prompt(
         tags=req.tags,
         supported_ides=req.supported_ides,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -66,12 +78,16 @@ async def list_prompts(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(PromptListing).where(PromptListing.status == ListingStatus.approved)
+    stmt = (
+        select(PromptListing)
+        .join(PromptVersion, PromptListing.latest_version_id == PromptVersion.id)
+        .where(PromptVersion.status == ListingStatus.approved)
+    )
     if category:
-        stmt = stmt.where(PromptListing.category == category)
+        stmt = stmt.where(PromptVersion.category == category)
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(PromptListing.name.ilike(f"%{safe}%") | PromptListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(PromptListing.name.ilike(f"%{safe}%") | PromptVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(PromptListing.created_at.desc()))
     listings = [PromptListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "prompt.list", resource_type="prompt")
@@ -171,8 +187,6 @@ async def render_prompt(
     for key, value in req.variables.items():
         rendered = re.sub(r"\{\{\s*" + re.escape(key) + r"\s*\}\}", value, rendered)
 
-    from datetime import UTC, datetime
-
     from services.clickhouse import insert_spans
 
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -214,9 +228,17 @@ async def save_prompt_draft(
 ):
     listing = PromptListing(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = PromptVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
         category=req.category,
         template=req.template,
         variables=req.variables,
@@ -224,10 +246,13 @@ async def save_prompt_draft(
         tags=req.tags,
         supported_ides=req.supported_ides,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(

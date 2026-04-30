@@ -1,10 +1,12 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
 from api.sanitize import escape_like
-from models.hook import HookDownload, HookListing
+from models.hook import HookDownload, HookListing, HookVersion
 from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.hook import (
@@ -35,9 +37,17 @@ async def submit_hook(
 
     listing = HookListing(
         name=req.name,
+        owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = HookVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner,
         event=req.event,
         execution_mode=req.execution_mode,
         priority=req.priority,
@@ -50,10 +60,13 @@ async def submit_hook(
         file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -69,14 +82,18 @@ async def list_hooks(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(HookListing).where(HookListing.status == ListingStatus.approved)
+    stmt = (
+        select(HookListing)
+        .join(HookVersion, HookListing.latest_version_id == HookVersion.id)
+        .where(HookVersion.status == ListingStatus.approved)
+    )
     if event:
-        stmt = stmt.where(HookListing.event == event)
+        stmt = stmt.where(HookVersion.event == event)
     if scope:
-        stmt = stmt.where(HookListing.scope == scope)
+        stmt = stmt.where(HookVersion.scope == scope)
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(HookListing.created_at.desc()))
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "hook.list", resource_type="hook")
@@ -162,9 +179,17 @@ async def save_hook_draft(
 ):
     listing = HookListing(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = HookVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
         event=req.event,
         execution_mode=req.execution_mode,
         priority=req.priority,
@@ -177,10 +202,13 @@ async def save_hook_draft(
         file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(

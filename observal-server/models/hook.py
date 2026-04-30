@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, datetime
 
@@ -11,19 +13,11 @@ from models.mcp import ListingStatus
 
 class HookListing(Base):
     __tablename__ = "hook_listings"
-    __table_args__ = (
-        Index("ix_hook_listings_status", "status"),
-        Index("ix_hook_listings_submitted_by", "submitted_by"),
-    )
+    __table_args__ = (Index("ix_hook_listings_submitted_by", "submitted_by"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[str] = mapped_column(String(50), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
-    git_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    git_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
-    supported_ides: Mapped[list] = mapped_column(JSON, default=list)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
@@ -31,10 +25,7 @@ class HookListing(Base):
     bundle_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("component_bundles.id"), nullable=True
     )
-    status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.pending)
-    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    download_count: Mapped[int] = mapped_column(Integer, default=0)
     unique_agents: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -42,28 +33,160 @@ class HookListing(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
-    event: Mapped[str] = mapped_column(String(50), nullable=False)
-    execution_mode: Mapped[str] = mapped_column(String(10), default="async")
-    priority: Mapped[int] = mapped_column(Integer, default=100)
-    handler_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    handler_config: Mapped[dict] = mapped_column(JSON, default=dict)
-    input_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    output_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    scope: Mapped[str] = mapped_column(String(20), default="agent")
-    tool_filter: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    file_pattern: Mapped[list | None] = mapped_column(JSON, nullable=True)
     latest_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("hook_versions.id", use_alter=True, ondelete="SET NULL"),
         nullable=True,
     )
 
-    versions: Mapped[list["HookVersion"]] = relationship(
+    versions: Mapped[list[HookVersion]] = relationship(
         back_populates="listing",
         lazy="selectin",
         cascade="all, delete-orphan",
         foreign_keys="HookVersion.listing_id",
     )
+    latest_version: Mapped[HookVersion | None] = relationship(
+        foreign_keys=[latest_version_id], lazy="selectin", uselist=False
+    )
+
+    # ------------------------------------------------------------------
+    # Deprecated compatibility properties — delegate to latest_version.
+    # ------------------------------------------------------------------
+    @property
+    def version(self) -> str:
+        return self.latest_version.version if self.latest_version else "0.0.0"
+
+    @property
+    def description(self) -> str:
+        return self.latest_version.description if self.latest_version else ""
+
+    @property
+    def status(self) -> ListingStatus:
+        return self.latest_version.status if self.latest_version else ListingStatus.draft
+
+    @status.setter
+    def status(self, value: ListingStatus) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set status")
+        self.latest_version.status = value
+
+    @property
+    def rejection_reason(self) -> str | None:
+        return self.latest_version.rejection_reason if self.latest_version else None
+
+    @rejection_reason.setter
+    def rejection_reason(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set rejection_reason")
+        self.latest_version.rejection_reason = value
+
+    @property
+    def download_count(self) -> int:
+        return self.latest_version.download_count if self.latest_version else 0
+
+    @property
+    def supported_ides(self) -> list:
+        return self.latest_version.supported_ides if self.latest_version else []
+
+    @property
+    def event(self) -> str:
+        return self.latest_version.event if self.latest_version else ""
+
+    @event.setter
+    def event(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set event")
+        self.latest_version.event = value
+
+    @property
+    def execution_mode(self) -> str:
+        return self.latest_version.execution_mode if self.latest_version else "async"
+
+    @execution_mode.setter
+    def execution_mode(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set execution_mode")
+        self.latest_version.execution_mode = value
+
+    @property
+    def priority(self) -> int:
+        return self.latest_version.priority if self.latest_version else 100
+
+    @priority.setter
+    def priority(self, value: int) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set priority")
+        self.latest_version.priority = value
+
+    @property
+    def handler_type(self) -> str:
+        return self.latest_version.handler_type if self.latest_version else ""
+
+    @handler_type.setter
+    def handler_type(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set handler_type")
+        self.latest_version.handler_type = value
+
+    @property
+    def handler_config(self) -> dict:
+        return self.latest_version.handler_config if self.latest_version else {}
+
+    @handler_config.setter
+    def handler_config(self, value: dict) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set handler_config")
+        self.latest_version.handler_config = value
+
+    @property
+    def input_schema(self) -> dict | None:
+        return self.latest_version.input_schema if self.latest_version else None
+
+    @input_schema.setter
+    def input_schema(self, value: dict | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set input_schema")
+        self.latest_version.input_schema = value
+
+    @property
+    def output_schema(self) -> dict | None:
+        return self.latest_version.output_schema if self.latest_version else None
+
+    @output_schema.setter
+    def output_schema(self, value: dict | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set output_schema")
+        self.latest_version.output_schema = value
+
+    @property
+    def scope(self) -> str:
+        return self.latest_version.scope if self.latest_version else "agent"
+
+    @scope.setter
+    def scope(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set scope")
+        self.latest_version.scope = value
+
+    @property
+    def tool_filter(self) -> dict | None:
+        return self.latest_version.tool_filter if self.latest_version else None
+
+    @tool_filter.setter
+    def tool_filter(self, value: dict | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set tool_filter")
+        self.latest_version.tool_filter = value
+
+    @property
+    def file_pattern(self) -> list | None:
+        return self.latest_version.file_pattern if self.latest_version else None
+
+    @file_pattern.setter
+    def file_pattern(self, value: list | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set file_pattern")
+        self.latest_version.file_pattern = value
 
 
 class HookDownload(Base):
@@ -91,9 +214,6 @@ class HookVersion(Base):
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    resolved_sha: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[ListingStatus] = mapped_column(Enum(ListingStatus), default=ListingStatus.pending)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     download_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -114,4 +234,4 @@ class HookVersion(Base):
     tool_filter: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     file_pattern: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
-    listing: Mapped["HookListing"] = relationship(back_populates="versions", foreign_keys=[listing_id])
+    listing: Mapped[HookListing] = relationship(back_populates="versions", foreign_keys=[listing_id])

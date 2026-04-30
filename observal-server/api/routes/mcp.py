@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import delete, select
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
 from api.sanitize import escape_like
 from database import async_session
-from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
+from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult, McpVersion
 from models.user import User, UserRole
 from schemas.mcp import (
     ClientAnalysis,
@@ -125,11 +126,19 @@ async def submit_mcp(
 
     listing = McpListing(
         name=req.name,
-        version=req.version,
-        git_url=req.git_url,
-        description=req.description,
         category=req.category,
         owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = McpVersion(
+        listing_id=listing.id,
+        version=req.version,
+        description=req.description,
+        transport=req.transport or ("sse" if req.url and not req.command else "stdio" if req.command else None),
         framework=req.framework,
         docker_image=req.docker_image,
         command=req.command,
@@ -137,16 +146,19 @@ async def submit_mcp(
         url=req.url,
         headers=[h.model_dump() for h in req.headers] if req.headers else None,
         auto_approve=req.auto_approve,
-        transport=req.transport or ("sse" if req.url and not req.command else "stdio" if req.command else None),
-        supported_ides=req.supported_ides,
         environment_variables=[ev.model_dump() for ev in req.environment_variables],
+        supported_ides=req.supported_ides,
         setup_instructions=req.setup_instructions,
         changelog=req.changelog,
+        source_url=req.git_url,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
 
@@ -170,12 +182,16 @@ async def list_mcps(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(McpListing).where(McpListing.status == ListingStatus.approved)
+    stmt = (
+        select(McpListing)
+        .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
+        .where(McpVersion.status == ListingStatus.approved)
+    )
     if category:
         stmt = stmt.where(McpListing.category == category)
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(McpListing.name.ilike(f"%{safe}%") | McpListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(McpListing.name.ilike(f"%{safe}%") | McpVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(McpListing.created_at.desc()))
     listings = [McpListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "mcp.list", resource_type="mcp")
@@ -264,11 +280,19 @@ async def save_mcp_draft(
 ):
     listing = McpListing(
         name=req.name,
-        version=req.version,
-        git_url=req.git_url,
-        description=req.description,
         category=req.category,
         owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = McpVersion(
+        listing_id=listing.id,
+        version=req.version,
+        description=req.description,
+        transport=req.transport or ("sse" if req.url and not req.command else "stdio" if req.command else None),
         framework=req.framework,
         docker_image=req.docker_image,
         command=req.command,
@@ -276,16 +300,19 @@ async def save_mcp_draft(
         url=req.url,
         headers=[h.model_dump() for h in req.headers] if req.headers else None,
         auto_approve=req.auto_approve,
-        transport=req.transport or ("sse" if req.url and not req.command else "stdio" if req.command else None),
-        supported_ides=req.supported_ides,
         environment_variables=[ev.model_dump() for ev in req.environment_variables],
+        supported_ides=req.supported_ides,
         setup_instructions=req.setup_instructions,
         changelog=req.changelog,
+        source_url=req.git_url,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(

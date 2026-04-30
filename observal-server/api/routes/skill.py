@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
 from api.sanitize import escape_like
 from models.mcp import ListingStatus
-from models.skill import SkillDownload, SkillListing
+from models.skill import SkillDownload, SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.skill import (
     SkillDraftRequest,
@@ -35,10 +37,17 @@ async def submit_skill(
 
     listing = SkillListing(
         name=req.name,
+        owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = SkillVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner,
-        git_url=req.git_url,
         skill_path=req.skill_path,
         target_agents=req.target_agents,
         task_type=req.task_type,
@@ -52,10 +61,13 @@ async def submit_skill(
         mcp_server_config=req.mcp_server_config,
         activation_keywords=req.activation_keywords,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -71,14 +83,18 @@ async def list_skills(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(SkillListing).where(SkillListing.status == ListingStatus.approved)
+    stmt = (
+        select(SkillListing)
+        .join(SkillVersion, SkillListing.latest_version_id == SkillVersion.id)
+        .where(SkillVersion.status == ListingStatus.approved)
+    )
     if task_type:
-        stmt = stmt.where(SkillListing.task_type == task_type)
+        stmt = stmt.where(SkillVersion.task_type == task_type)
     if target_agent:
-        stmt = stmt.where(SkillListing.target_agents.cast(str).ilike(f"%{escape_like(target_agent)}%"))
+        stmt = stmt.where(SkillVersion.target_agents.cast(str).ilike(f"%{escape_like(target_agent)}%"))
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(SkillListing.name.ilike(f"%{safe}%") | SkillListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(SkillListing.name.ilike(f"%{safe}%") | SkillVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(SkillListing.created_at.desc()))
     listings = [SkillListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "skill.list", resource_type="skill")
@@ -166,10 +182,17 @@ async def save_skill_draft(
 ):
     listing = SkillListing(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = SkillVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
-        git_url=req.git_url,
         skill_path=req.skill_path,
         target_agents=req.target_agents,
         task_type=req.task_type,
@@ -183,10 +206,13 @@ async def save_skill_draft(
         mcp_server_config=req.mcp_server_config,
         activation_keywords=req.activation_keywords,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -219,7 +245,6 @@ async def update_skill_draft(
         "version",
         "description",
         "owner",
-        "git_url",
         "skill_path",
         "target_agents",
         "task_type",
