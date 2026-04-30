@@ -258,6 +258,8 @@ export const registry = {
     post<RegistryItem>(`/${type ?? "agents"}/draft`, body),
   updateDraft: (id: string, body: unknown, type?: RegistryType) =>
     put<RegistryItem>(`/${type ?? "agents"}/${id}/draft`, body),
+  updateAgent: (id: string, body: unknown) =>
+    put<RegistryItem>(`/agents/${id}`, body),
   submitDraft: (id: string, type?: RegistryType) =>
     post(`/${type ?? "agents"}/${id}/submit`),
   submit: (type: RegistryType, body: unknown) =>

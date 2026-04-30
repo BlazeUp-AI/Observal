@@ -11,7 +11,7 @@ from models.user import UserRole
 ALGORITHM = "HS256"
 
 
-def create_access_token(user_id: uuid.UUID, role: UserRole, expires_in_minutes: int | None = None) -> tuple[str, int]:
+def create_access_token(user_id: uuid.UUID, role: UserRole, expires_in_minutes: int | None = None, groups: list[str] | None = None) -> tuple[str, int]:
     """Create a short-lived access token.
 
     Returns (encoded_token, expires_in_seconds).
@@ -23,6 +23,7 @@ def create_access_token(user_id: uuid.UUID, role: UserRole, expires_in_minutes: 
         "sub": str(user_id),
         "role": role.value,
         "type": "access",
+        "groups": groups or [],
         "jti": str(uuid.uuid4()),
         "iat": now,
         "exp": now + expires_delta,
@@ -31,7 +32,7 @@ def create_access_token(user_id: uuid.UUID, role: UserRole, expires_in_minutes: 
     return token, expires_in
 
 
-def create_refresh_token(user_id: uuid.UUID, role: UserRole) -> tuple[str, str]:
+def create_refresh_token(user_id: uuid.UUID, role: UserRole, groups: list[str] | None = None) -> tuple[str, str]:
     """Create a long-lived refresh token.
 
     Returns (encoded_token, jti).
@@ -43,6 +44,7 @@ def create_refresh_token(user_id: uuid.UUID, role: UserRole) -> tuple[str, str]:
         "sub": str(user_id),
         "role": role.value,
         "type": "refresh",
+        "groups": groups or [],
         "jti": jti,
         "iat": now,
         "exp": now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),

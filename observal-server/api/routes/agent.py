@@ -6,9 +6,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_prefix_id
+from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_prefix_id, get_effective_agent_permission, get_user_groups
 from api.sanitize import escape_like
-from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
+from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus, AgentTeamAccess, AgentVisibility
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
 from models.mcp import ListingStatus, McpListing
@@ -40,6 +40,7 @@ router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 _agent_load_options = [
     selectinload(Agent.components),
     selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections),
+    selectinload(Agent.team_accesses),
 ]
 
 
@@ -100,6 +101,7 @@ def _agent_to_response(
     *,
     created_by_email: str = "",
     created_by_username: str | None = None,
+    user_permission: str | None = None,
 ) -> AgentResponse:
     name_map = name_map or {}
     # Build mcp_links from components with component_type='mcp' (backwards compat)
@@ -138,8 +140,14 @@ def _agent_to_response(
     agent_dict["mcp_links"] = mcp_links
     agent_dict["component_links"] = component_links
     agent_dict["goal_template"] = goal_template
+    agent_dict["visibility"] = agent.visibility
+    agent_dict["team_accesses"] = [
+        {"group_name": acc.group_name, "permission": acc.permission}
+        for acc in getattr(agent, "team_accesses", [])
+    ]
     agent_dict["created_by_email"] = created_by_email
     agent_dict["created_by_username"] = created_by_username
+    agent_dict["user_permission"] = user_permission
     return AgentResponse(**agent_dict)
 
 
@@ -231,11 +239,21 @@ async def create_agent(
         model_config_json=req.model_config_json,
         external_mcps=[m.model_dump() for m in req.external_mcps],
         supported_ides=req.supported_ides,
+        visibility=req.visibility,
         created_by=current_user.id,
         owner_org_id=current_user.org_id,
     )
     db.add(agent)
     await db.flush()
+
+    for acc in req.team_accesses:
+        db.add(
+            AgentTeamAccess(
+                agent_id=agent.id,
+                group_name=acc.group_name,
+                permission=acc.permission
+            )
+        )
 
     # Legacy: mcp_server_ids → AgentComponent(type=mcp)
     order = 0
@@ -343,7 +361,21 @@ async def list_agents(
 ):
     from models.feedback import Feedback
 
+    visibility_filter = Agent.visibility == AgentVisibility.public
+    is_admin = False
+    if current_user:
+        user_role_level = ROLE_HIERARCHY.get(current_user.role, 999)
+        if user_role_level <= ROLE_HIERARCHY[UserRole.admin]:
+            is_admin = True
+        else:
+            user_groups = get_user_groups(current_user)
+            visibility_filter = visibility_filter | (Agent.created_by == current_user.id)
+            if user_groups:
+                visibility_filter = visibility_filter | Agent.team_accesses.any(AgentTeamAccess.group_name.in_(user_groups))
+
     base_filter = Agent.status == AgentStatus.active
+    if not is_admin:
+        base_filter = base_filter & visibility_filter
     search_filter = None
     if search:
         safe = escape_like(search)
@@ -412,6 +444,7 @@ async def list_agents(
             created_by_username=username_map.get(a.created_by),
             created_at=a.created_at,
             updated_at=a.updated_at,
+            visibility=a.visibility,
         )
         for a in agents
     ]
@@ -462,6 +495,7 @@ async def my_agents(
             created_by_username=current_user.username,
             created_at=a.created_at,
             updated_at=a.updated_at,
+            visibility=a.visibility,
         )
         for a in agents
     ]
@@ -483,6 +517,9 @@ async def get_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view this agent")
     name_map = await _resolve_component_names(agent.components, db)
     user_row = (await db.execute(select(User.email, User.username).where(User.id == agent.created_by))).first()
     await audit(current_user, "agent.view", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
@@ -491,6 +528,7 @@ async def get_agent(
         name_map,
         created_by_email=user_row[0] if user_row else "",
         created_by_username=user_row[1] if user_row else None,
+        user_permission=perm,
     )
 
 
@@ -510,6 +548,8 @@ async def version_suggestions(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if get_effective_agent_permission(agent, current_user) == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view this agent")
     from services.versioning import suggest_versions
 
     await audit(
@@ -534,8 +574,10 @@ async def update_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not the agent owner")
+    
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm not in ("owner", "edit"):
+        raise HTTPException(status_code=403, detail="Not the agent owner or editor")
 
     if req.version_bump_type and req.version is None:
         from services.versioning import bump_version
@@ -551,10 +593,24 @@ async def update_agent(
         "model_name",
         "model_config_json",
         "supported_ides",
+        "visibility",
     ):
         val = getattr(req, field)
         if val is not None:
             setattr(agent, field, val)
+            
+    if req.team_accesses is not None:
+        old_accesses = (await db.execute(select(AgentTeamAccess).where(AgentTeamAccess.agent_id == agent.id))).scalars().all()
+        for old_acc in old_accesses:
+            await db.delete(old_acc)
+        for acc in req.team_accesses:
+            db.add(
+                AgentTeamAccess(
+                    agent_id=agent.id,
+                    group_name=acc.group_name,
+                    permission=acc.permission
+                )
+            )
 
     if req.external_mcps is not None:
         agent.external_mcps = [m.model_dump() for m in req.external_mcps]
@@ -710,6 +766,8 @@ async def install_agent(
             raise HTTPException(status_code=404, detail="Agent not found or not active")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if get_effective_agent_permission(agent, current_user) == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to install this agent")
 
     # Pre-load MCP listings for config generation
     mcp_comp_ids = [c.component_id for c in agent.components if c.component_type == "mcp"]
@@ -798,6 +856,8 @@ async def agent_download_stats(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if get_effective_agent_permission(agent, current_user) == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view stats for this agent")
     from services.download_tracker import get_download_stats
 
     stats = await get_download_stats(agent.id, db)
@@ -856,6 +916,8 @@ async def resolve_agent_components(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if get_effective_agent_permission(agent, current_user) == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to resolve this agent")
     from services.agent_resolver import resolve_agent
 
     resolved = await resolve_agent(agent, db)
@@ -879,6 +941,8 @@ async def get_agent_manifest(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if get_effective_agent_permission(agent, current_user) == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view this agent's manifest")
     from services.agent_resolver import resolve_agent
 
     resolved = await resolve_agent(agent, db)
@@ -945,7 +1009,8 @@ async def delete_agent(
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
     is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
-    if agent.created_by != current_user.id and not is_admin:
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm != "owner" and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
     if agent.status == AgentStatus.active and not is_admin:
         raise HTTPException(status_code=400, detail="Cannot delete an approved listing. Contact an admin.")
@@ -1157,8 +1222,9 @@ async def update_draft(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not the agent owner")
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm not in ("owner", "edit"):
+        raise HTTPException(status_code=403, detail="Not the agent owner or editor")
     if agent.status not in (AgentStatus.draft, AgentStatus.rejected):
         raise HTTPException(status_code=400, detail="Agent is not a draft")
 
@@ -1237,8 +1303,9 @@ async def submit_draft(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.created_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Not the agent owner")
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm not in ("owner", "edit"):
+        raise HTTPException(status_code=403, detail="Not the agent owner or editor")
     if agent.status not in (AgentStatus.draft, AgentStatus.rejected):
         raise HTTPException(status_code=400, detail="Agent is not a draft")
     if not agent.description:

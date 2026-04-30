@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from models.agent import AgentStatus
+from models.agent import AgentStatus, AgentVisibility
 from schemas.constants import AGENT_NAME_REGEX, make_name_validator
 from services.versioning import validate_semver
 
@@ -41,6 +41,17 @@ class ComponentRef(BaseModel):
     config_override: dict | None = None
 
 
+class TeamAccessRequest(BaseModel):
+    group_name: str
+    permission: Literal["view", "edit"]
+
+
+class TeamAccessResponse(BaseModel):
+    group_name: str
+    permission: str
+    model_config = {"from_attributes": True}
+
+
 class AgentCreateRequest(BaseModel):
     name: str
     version: str
@@ -54,6 +65,8 @@ class AgentCreateRequest(BaseModel):
     components: list[ComponentRef] = []  # new: all component types
     external_mcps: list[ExternalMcp] = []
     goal_template: GoalTemplateRequest
+    visibility: AgentVisibility = AgentVisibility.private
+    team_accesses: list[TeamAccessRequest] = []
 
     _validate_name = field_validator("name")(make_name_validator("name"))
 
@@ -79,6 +92,8 @@ class AgentUpdateRequest(BaseModel):
     components: list[ComponentRef] | None = None  # new: all component types
     external_mcps: list[ExternalMcp] | None = None
     goal_template: GoalTemplateRequest | None = None
+    visibility: AgentVisibility | None = None
+    team_accesses: list[TeamAccessRequest] | None = None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -158,6 +173,9 @@ class AgentResponse(BaseModel):
     mcp_links: list[McpLinkResponse] = []
     component_links: list[ComponentLinkResponse] = []
     goal_template: GoalTemplateResponse | None = None
+    visibility: AgentVisibility
+    team_accesses: list[TeamAccessResponse] = []
+    user_permission: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -183,6 +201,7 @@ class AgentSummary(BaseModel):
     updated_at: datetime | None = None
     components_ready: bool = True
     blocking_components: list = []
+    visibility: AgentVisibility
     model_config = {"from_attributes": True}
 
 
