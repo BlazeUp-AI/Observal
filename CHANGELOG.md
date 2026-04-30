@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added — Support Bundle (`observal support`)
+
+New `observal support` CLI command group for generating and reviewing portable diagnostic archives. Operators can attach these to support tickets or GitHub issues to help debug deployment problems without exposing secrets or customer data.
+
+- **`observal support bundle`** — collects version info, sanitized config, health probes, aggregate table counts, recent error fingerprints, redacted structured logs, and optional system metrics into a `.tar.gz` archive
+  - All values pass through a single **Redaction Layer** before being written: JWTs, AWS keys, URL credentials, high-entropy tokens, and sensitive JSON keys are replaced with `<REDACTED>`
+  - Config filtering uses an explicit **allowlist** — keys not on the list are omitted entirely, not just redacted
+  - Server-side collectors run via `POST /api/v1/support/collect`; local collectors (system info, config filtering) run in parallel on the operator's machine
+  - Individual collector failures produce partial bundles (exit 0); total failure exits with code 1
+  - Archive permissions set to `0o600` (owner read/write only)
+  - Bundle manifest (`bundle_manifest.json`) includes schema version, collector results, redaction counts, and SHA-256 file inventory for tamper detection
+- **`observal support inspect <bundle.tar.gz>`** — opens a bundle read-only (never extracts to disk) and displays the manifest, a Rich file tree with human-readable sizes, and optionally prints a single file via `--show`
+  - Schema version warnings for bundles from newer CLI versions
+  - Path traversal protection on tar member filtering
+- No customer row data is ever included — only aggregate counts
+- GitHub issue template updated to ask for a support bundle attachment
+
 ## [0.4.0] - 2026-04-28
 
 ### Added

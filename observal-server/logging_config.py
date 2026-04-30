@@ -2,10 +2,36 @@
 
 import logging
 import sys
+from datetime import UTC, datetime
 
 import structlog
 
 from config import settings
+
+
+def _ring_buffer_processor(
+    logger: structlog.types.WrappedLogger,
+    method_name: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
+    """Capture structured log entries into the in-memory ring buffer.
+
+    This processor stores a copy of each log event so the support
+    bundle ``logs`` collector can return recent entries without
+    touching the filesystem.
+    """
+    try:
+        from services.log_buffer import get_log_buffer
+
+        buf = get_log_buffer()
+        entry = dict(event_dict)
+        if "timestamp" not in entry:
+            entry["timestamp"] = datetime.now(UTC).isoformat()
+        buf.append(entry)
+    except Exception:
+        # Never let the ring buffer break logging
+        pass
+    return event_dict
 
 
 def setup_logging() -> None:
@@ -17,6 +43,7 @@ def setup_logging() -> None:
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
+        _ring_buffer_processor,
     ]
 
     if settings.LOG_FORMAT == "json":
