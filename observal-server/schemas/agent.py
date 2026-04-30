@@ -234,3 +234,27 @@ class AgentInstallResponse(BaseModel):
     ide: str
     config_snippet: dict
     warnings: list[str] = []
+
+
+class AgentVersionCreateRequest(BaseModel):
+    version: str
+    description: str = ""
+    prompt: str = ""
+    model_name: str
+    model_config_json: dict = {}
+    external_mcps: list[ExternalMcp] = []
+    supported_ides: list[str] = []
+    components: list[ComponentRef] = []
+    goal_template: GoalTemplateRequest | None = None
+
+    @field_validator("version")
+    @classmethod
+    def _validate_version(cls, v: str) -> str:
+        if not validate_semver(v):
+            raise ValueError(f"Invalid version '{v}'. Must be semver format: x.y.z (e.g. 1.0.0)")
+        return v
+
+
+class AgentVersionReviewRequest(BaseModel):
+    action: Literal["approve", "reject"]
+    reason: str | None = None
