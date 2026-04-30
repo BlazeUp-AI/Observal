@@ -797,14 +797,10 @@ def agent_release(
     dir_path = Path(directory)
     data = _load_agent_yaml(dir_path)
 
-    # Resolve agent by name search (same pattern as agent_publish --update)
+    resolved = config.resolve_alias(name)
     with spinner("Looking up agent..."):
-        results = client.get("/api/v1/agents", params={"search": data["name"]})
-    match = next((a for a in results if a["name"] == data["name"]), None)
-    if not match:
-        rprint(f"[red]Error:[/red] No agent found with name '{data['name']}'")
-        raise typer.Exit(code=1)
-    agent_id = match["id"]
+        agent = client.get(f"/api/v1/agents/{resolved}")
+    agent_id = agent["id"]
 
     # Fetch version suggestions
     with spinner("Fetching version suggestions..."):
@@ -818,8 +814,12 @@ def agent_release(
 
     rprint(f"[dim]→[/dim] Bumping version: [bold]{current}[/bold] → [bold cyan]{new_version}[/bold cyan]")
 
-    # Build release payload from YAML
+    # Update version in data BEFORE capturing snapshot
+    data["version"] = new_version
+    _save_agent_yaml(dir_path, data)
     raw_yaml = (dir_path / YAML_FILE).read_text()
+
+    # Build release payload from YAML
     payload = {
         "version": new_version,
         "description": data.get("description", ""),
@@ -839,13 +839,8 @@ def agent_release(
 
     rprint(f"[green]✓ Version {new_version} submitted for review[/green]")
 
-    pending_count = result.get("pending_version_count", 0)
-    if pending_count and pending_count > 0:
-        rprint(f"[yellow]⚠ This agent already has {pending_count} pending version(s)[/yellow]")
-
-    # Update local YAML version field
-    data["version"] = new_version
-    _save_agent_yaml(dir_path, data)
+    for warning in result.get("warnings", []):
+        rprint(f"[yellow]⚠ {warning}[/yellow]")
 
 
 @agent_app.command(name="versions")
@@ -930,7 +925,10 @@ def agent_pull(
     if files:
         written = 0
         for rel_path, content in files.items():
-            abs_path = dir_path / rel_path
+            abs_path = (dir_path / rel_path).resolve()
+            if not abs_path.is_relative_to(dir_path.resolve()):
+                rprint(f"  [red]⚠ Skipping unsafe path: {rel_path}[/red]")
+                continue
             abs_path.parent.mkdir(parents=True, exist_ok=True)
             abs_path.write_text(content if isinstance(content, str) else _json.dumps(content, indent=2))
             rprint(f"  [green]✓[/green] created {rel_path}")

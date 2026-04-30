@@ -51,7 +51,6 @@ def test_agent_release_bumps_version(agent_yaml_dir: Path) -> None:
     version_result = {
         "version": "1.3.0",
         "status": "pending",
-        "pending_version_count": 0,
     }
 
     with (
@@ -59,10 +58,10 @@ def test_agent_release_bumps_version(agent_yaml_dir: Path) -> None:
         patch("observal_cli.client.get") as mock_get,
         patch("observal_cli.client.post", return_value=version_result) as mock_post,
     ):
-        # GET /agents?search=my-agent → list result
+        # GET /agents/{id} → single agent dict
         # GET /agents/{id}/version-suggestions → suggestions
         mock_get.side_effect = [
-            [{"id": agent_id, "name": "my-agent"}],
+            {"id": agent_id, "name": "my-agent"},
             suggestions,
         ]
 
@@ -90,7 +89,7 @@ def test_agent_release_updates_local_yaml(agent_yaml_dir: Path) -> None:
         "current": "1.2.0",
         "suggestions": {"patch": "1.2.1", "minor": "1.3.0", "major": "2.0.0"},
     }
-    version_result = {"version": "1.2.1", "status": "pending", "pending_version_count": 0}
+    version_result = {"version": "1.2.1", "status": "pending"}
 
     with (
         patch("observal_cli.config.resolve_alias", return_value=agent_id),
@@ -98,7 +97,7 @@ def test_agent_release_updates_local_yaml(agent_yaml_dir: Path) -> None:
         patch("observal_cli.client.post", return_value=version_result),
     ):
         mock_get.side_effect = [
-            [{"id": agent_id, "name": "my-agent"}],
+            {"id": agent_id, "name": "my-agent"},
             suggestions,
         ]
         result = runner.invoke(
@@ -112,13 +111,17 @@ def test_agent_release_updates_local_yaml(agent_yaml_dir: Path) -> None:
 
 
 def test_agent_release_shows_pending_warning(agent_yaml_dir: Path) -> None:
-    """release shows a warning when pending_version_count > 0."""
+    """release shows a warning when the server returns warnings."""
     agent_id = "agent-uuid-9999"
     suggestions = {
         "current": "1.2.0",
         "suggestions": {"patch": "1.2.1", "minor": "1.3.0", "major": "2.0.0"},
     }
-    version_result = {"version": "1.3.0", "status": "pending", "pending_version_count": 2}
+    version_result = {
+        "version": "1.3.0",
+        "status": "pending",
+        "warnings": ["This agent already has 2 pending version(s)"],
+    }
 
     with (
         patch("observal_cli.config.resolve_alias", return_value=agent_id),
@@ -126,7 +129,7 @@ def test_agent_release_shows_pending_warning(agent_yaml_dir: Path) -> None:
         patch("observal_cli.client.post", return_value=version_result),
     ):
         mock_get.side_effect = [
-            [{"id": agent_id, "name": "my-agent"}],
+            {"id": agent_id, "name": "my-agent"},
             suggestions,
         ]
         result = runner.invoke(
@@ -135,8 +138,7 @@ def test_agent_release_shows_pending_warning(agent_yaml_dir: Path) -> None:
         )
 
     assert result.exit_code == 0, result.output
-    assert "pending" in result.output.lower()
-    assert "2" in result.output
+    assert "This agent already has 2 pending version(s)" in result.output
 
 
 # ── agent versions ─────────────────────────────────────────────
@@ -312,3 +314,30 @@ def test_agent_pull_raw_config_fallback(tmp_path: Path) -> None:
     # A fallback file should have been written
     written = list(tmp_path.rglob("*"))
     assert any(f.is_file() for f in written), "Expected at least one file to be written"
+
+
+def test_agent_pull_path_traversal_rejected(tmp_path: Path) -> None:
+    """pull rejects file paths containing directory traversal."""
+    agent_id = "agent-uuid-evil"
+    agent_detail = {"id": agent_id, "name": "evil-agent", "latest_approved_version": "1.0.0"}
+    ide_config = {
+        "files": {
+            "../../etc/evil.txt": "pwned",
+            ".claude/safe.json": '{"ok": true}',
+        }
+    }
+    with (
+        patch("observal_cli.config.resolve_alias", return_value=agent_id),
+        patch("observal_cli.client.get") as mock_get,
+    ):
+        mock_get.side_effect = [agent_detail, ide_config]
+        result = runner.invoke(
+            app,
+            ["agent", "pull", "evil-agent", "--ide", "claude-code", "--dir", str(tmp_path)],
+        )
+    assert result.exit_code == 0
+    # The traversal path must NOT exist outside tmp_path
+    assert not (tmp_path / ".." / ".." / "etc" / "evil.txt").resolve().exists()
+    # Safe file should exist
+    assert (tmp_path / ".claude" / "safe.json").exists()
+    assert "unsafe" in result.output.lower() or "Skipping" in result.output
