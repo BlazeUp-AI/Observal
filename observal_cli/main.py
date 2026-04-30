@@ -63,6 +63,7 @@ from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import sandbox_app
 from observal_cli.cmd_scan import register_scan
 from observal_cli.cmd_skill import skill_app
+from observal_cli.cmd_support import support_app
 from observal_cli.cmd_uninstall import register_uninstall
 
 # ═══════════════════════════════════════════════════════════
@@ -98,6 +99,7 @@ app.add_typer(ops_app, name="ops")
 app.add_typer(admin_app, name="admin")
 app.add_typer(self_app, name="self")
 app.add_typer(doctor_app, name="doctor")
+app.add_typer(support_app, name="support")
 app.add_typer(migrate_app, name="migrate")
 
 

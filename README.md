@@ -34,6 +34,7 @@ Every interaction generates traces, spans, and sessions that flow into a telemet
 | Instrument your existing MCP servers | [Observe MCP traffic](docs/use-cases/observe-mcp-traffic.md) |
 | Run Observal on your infrastructure | [Self-Hosting](docs/self-hosting/README.md) |
 | Look up a CLI command | [CLI Reference](docs/cli/README.md) |
+| Report a bug with diagnostics | [Reporting Issues](#reporting-issues) |
 
 See [CHANGELOG.md](CHANGELOG.md) for recent updates.
 
@@ -133,6 +134,20 @@ All tests mock external services. No Docker needed.
 Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions; open Issues for confirmed bugs and concrete feature requests.
 
 Join the [Observal Discord](https://discord.observal.io) to chat directly with the maintainers and other community members.
+
+## Reporting issues
+
+When filing a bug report, please attach a support bundle so maintainers can diagnose the problem quickly:
+
+```bash
+observal support bundle
+```
+
+This produces a `.tar.gz` archive containing version info, sanitized configuration, health probes, aggregate table counts, and optional system metrics. All values pass through a redaction layer — no customer data, row contents, or credentials are included. Review the bundle before sharing:
+
+```bash
+observal support inspect observal-support-*.tar.gz
+```
 
 ## Security
 
