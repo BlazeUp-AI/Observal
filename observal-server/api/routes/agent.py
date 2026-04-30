@@ -892,6 +892,8 @@ async def get_agent_traces(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user is not None and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if get_effective_agent_permission(agent, current_user) == "none":
+        raise HTTPException(status_code=403, detail="Insufficient permissions to view this agent")
     from services.clickhouse import query_traces
 
     uid = None

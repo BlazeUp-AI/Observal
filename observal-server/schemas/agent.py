@@ -42,7 +42,7 @@ class ComponentRef(BaseModel):
 
 
 class TeamAccessRequest(BaseModel):
-    group_name: str
+    group_name: str = Field(min_length=1, max_length=255)
     permission: Literal["view", "edit"]
 
 
