@@ -1407,3 +1407,8 @@ async def submit_draft(
     return _agent_to_response(
         agent, name_map, created_by_email=current_user.email, created_by_username=current_user.username
     )
+
+
+from api.routes.agent_versions import agent_version_router  # noqa: E402
+
+router.include_router(agent_version_router)
