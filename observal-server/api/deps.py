@@ -40,7 +40,6 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
 
     user_id = payload.get("sub")
 
-    print(payload)
     if not user_id:
         return None
 

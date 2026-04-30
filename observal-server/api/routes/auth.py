@@ -255,8 +255,6 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     name = userinfo.get("name") or userinfo.get("preferred_username") or "SSO User"
     groups = userinfo.get("groups", [])
 
-    print("Token received:")
-    print(token)
     if not email:
         raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
 
