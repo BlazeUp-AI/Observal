@@ -53,7 +53,7 @@ def _app_with(user=None, db=None):
     return app, db, user
 
 
-def _agent_mock(status=AgentStatus.active, created_by=None, **extra):
+def _agent_mock(status=AgentStatus.approved, created_by=None, **extra):
     m = MagicMock()
     m.id = extra.get("id", uuid.uuid4())
     m.name = extra.get("name", "test-agent")

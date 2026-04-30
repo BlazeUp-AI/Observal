@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.deps import get_db, require_role, resolve_prefix_id
-from models.agent import Agent, AgentGoalTemplate
+from models.agent import Agent
 from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User, UserRole
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
@@ -44,7 +44,7 @@ async def run_evaluation(
         Agent,
         agent_id,
         db,
-        load_options=[selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)],
+        load_options=[selectinload(Agent.team_accesses)],
     )
 
     # Org-scope check: verify agent belongs to user's org
@@ -290,7 +290,7 @@ async def eval_session(
             Agent,
             agent_id,
             db,
-            load_options=[selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)],
+            load_options=[selectinload(Agent.team_accesses)],
         )
         # Org-scope check: verify agent belongs to user's org
         if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:

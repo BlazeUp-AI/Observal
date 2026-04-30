@@ -105,8 +105,8 @@ class TestAgentApprove:
             r = await ac.post(f"/api/v1/review/agents/{agent.id}/approve")
 
         assert r.status_code == 200
-        assert agent.status == AgentStatus.active
-        assert r.json()["status"] == "active"
+        assert agent.status == AgentStatus.approved
+        assert r.json()["status"] == "approved"
         db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -154,7 +154,7 @@ class TestAgentApprove:
         data = r.json()
         assert data["name"] == "my-agent"
         assert data["id"] == str(agent.id)
-        assert data["status"] == "active"
+        assert data["status"] == "approved"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -188,7 +188,7 @@ class TestAgentReject:
     async def test_reject_active_agent(self):
         """An active agent can also be rejected."""
         app, db, _ = _app_with()
-        agent = _agent_mock(status=AgentStatus.active)
+        agent = _agent_mock(status=AgentStatus.approved)
         db.execute = AsyncMock(return_value=_result_with_agent(agent))
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

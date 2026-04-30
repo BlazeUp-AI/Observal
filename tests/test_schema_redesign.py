@@ -185,24 +185,27 @@ class TestAgentModelUpdate:
         assert "visibility" in cols
         assert "owner_org_id" in cols
 
-    def test_agent_has_git_url(self):
+    def test_agent_has_version_fields(self):
         from models.agent import Agent
 
         cols = {c.name for c in Agent.__table__.columns}
-        assert "git_url" in cols
+        assert "latest_version_id" in cols
+        assert "co_maintainers" in cols
 
-    def test_agent_has_download_metrics(self):
-        from models.agent import Agent
+    def test_agent_version_has_download_metrics(self):
+        from models.agent import AgentVersion
 
-        cols = {c.name for c in Agent.__table__.columns}
+        cols = {c.name for c in AgentVersion.__table__.columns}
         assert "download_count" in cols
-        assert "unique_users" in cols
 
-    def test_agent_git_url_is_nullable(self):
+    def test_agent_is_identity_only(self):
         from models.agent import Agent
 
-        git_col = Agent.__table__.c.git_url
-        assert git_col.nullable is True
+        cols = {c.name for c in Agent.__table__.columns}
+        # These moved to AgentVersion
+        assert "prompt" not in cols
+        assert "model_name" not in cols
+        assert "description" not in cols
 
     def test_agent_mcp_link_removed(self):
         """AgentMcpLink should no longer exist — replaced by AgentComponent."""
@@ -223,10 +226,11 @@ class TestAgentComponentModel:
         cols = {c.name for c in AgentComponent.__table__.columns}
         required = {
             "id",
-            "agent_id",
+            "agent_version_id",
             "component_type",
             "component_id",
-            "version_ref",
+            "component_name",
+            "resolved_version",
             "order_index",
             "config_override",
             "created_at",
@@ -239,7 +243,7 @@ class TestAgentComponentModel:
         table = AgentComponent.__table__
         unique_constraints = [uc for uc in table.constraints if hasattr(uc, "columns") and len(uc.columns) == 3]
         col_sets = [frozenset(c.name for c in uc.columns) for uc in unique_constraints]
-        assert frozenset({"agent_id", "component_type", "component_id"}) in col_sets
+        assert frozenset({"agent_version_id", "component_type", "component_id"}) in col_sets
 
     def test_agent_component_no_fk_on_component_id(self):
         """component_id should NOT have a FK constraint (polymorphic, future flexibility)."""
@@ -443,15 +447,11 @@ class TestDownloadTracking:
         # Only the PK constraint, no multi-column uniques
         assert len(unique_constraints) == 0
 
-    def test_agent_has_download_count_fields(self):
-        from models.agent import Agent
+    def test_agent_version_has_download_count_field(self):
+        from models.agent import AgentVersion
 
-        assert hasattr(Agent, "download_count")
-        assert hasattr(Agent, "unique_users")
-        col_dl = Agent.__table__.columns["download_count"]
-        col_uu = Agent.__table__.columns["unique_users"]
+        col_dl = AgentVersion.__table__.columns["download_count"]
         assert col_dl.default.arg == 0
-        assert col_uu.default.arg == 0
 
     def test_download_tracker_module_exists(self):
         from services.download_tracker import (

@@ -5,11 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from api.deps import get_db, require_role, resolve_prefix_id
 from api.sanitize import escape_like
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.component_bundle import ComponentBundle
 from models.hook import HookListing
 from models.mcp import ListingStatus, McpListing
@@ -93,8 +92,8 @@ async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple
 async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     result = await db.execute(
         select(Agent)
-        .where(Agent.status == AgentStatus.pending)
-        .options(selectinload(Agent.components))
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(AgentVersion.status == AgentStatus.pending)
         .order_by(Agent.created_at.desc())
     )
     agents = result.scalars().all()
@@ -367,9 +366,7 @@ async def get_review(
             agent_uuid = uuid.UUID(listing_id)
         except ValueError:
             raise HTTPException(status_code=404, detail="Listing not found")
-        agent = (
-            await db.execute(select(Agent).where(Agent.id == agent_uuid).options(selectinload(Agent.components)))
-        ).scalar_one_or_none()
+        agent = (await db.execute(select(Agent).where(Agent.id == agent_uuid))).scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=404, detail="Listing not found")
         components_ready, blocking = await _check_agent_components_ready(agent, db)
@@ -488,9 +485,7 @@ async def approve_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
-    agent = (
-        await db.execute(select(Agent).where(Agent.id == agent_id).options(selectinload(Agent.components)))
-    ).scalar_one_or_none()
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.status != AgentStatus.pending:
@@ -506,7 +501,7 @@ async def approve_agent(
             },
         )
 
-    agent.status = AgentStatus.active
+    agent.status = AgentStatus.approved
     agent.rejection_reason = None
     await db.commit()
     await audit(
@@ -529,7 +524,7 @@ async def reject_agent(
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.status not in (AgentStatus.pending, AgentStatus.active):
+    if agent.status not in (AgentStatus.pending, AgentStatus.approved):
         raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', cannot reject")
 
     agent.status = AgentStatus.rejected

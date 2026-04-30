@@ -14,7 +14,7 @@ import pytest
 from fastapi import HTTPException
 
 from api.deps import get_project_id, optional_current_user, require_org_scope, require_role
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.organization import Organization
 from models.user import User, UserRole
 
@@ -49,18 +49,30 @@ def _make_agent(
     name: str = "test-agent",
     org: Organization | None = None,
 ) -> Agent:
-    return Agent(
-        id=uuid.uuid4(),
-        name=name,
+    agent_id = uuid.uuid4()
+    version_id = uuid.uuid4()
+    version = AgentVersion(
+        id=version_id,
+        agent_id=agent_id,
         version="1.0.0",
         description="A test agent",
-        owner="test-owner",
         prompt="You are a test agent.",
         model_name="claude-sonnet-4-5-20250514",
+        status=AgentStatus.approved,
+        released_by=user.id,
+    )
+    agent = Agent(
+        id=agent_id,
+        name=name,
+        owner="test-owner",
         created_by=user.id,
         owner_org_id=org.id if org else user.org_id,
-        status=AgentStatus.active,
+        latest_version_id=version_id,
     )
+    # Wire up the relationship for in-memory access
+    agent.latest_version = version
+    agent.versions = [version]
+    return agent
 
 
 # ---------------------------------------------------------------------------

@@ -328,7 +328,7 @@ class TestDraftSubmitNotDraft:
         """Submitting an active agent returns 400."""
         user = _user()
         app, db, _ = _app_with(user=user)
-        agent = _agent_mock(status=AgentStatus.active, created_by=user.id)
+        agent = _agent_mock(status=AgentStatus.approved, created_by=user.id)
         mock_load.return_value = agent
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

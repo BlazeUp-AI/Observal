@@ -22,6 +22,7 @@ from models.agent import (
     AgentGoalTemplate,
     AgentStatus,
     AgentTeamAccess,
+    AgentVersion,
     AgentVisibility,
 )
 from models.agent_component import AgentComponent
@@ -51,10 +52,9 @@ from services.registry_telemetry import emit_registry_event
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
-# Eager-load options for Agent queries to avoid MissingGreenlet in async
+# Eager-load options for Agent queries to avoid MissingGreenlet in async.
+# Agent.latest_version (selectin) auto-loads AgentVersion.components and .goal_template.
 _agent_load_options = [
-    selectinload(Agent.components),
-    selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections),
     selectinload(Agent.team_accesses),
 ]
 
@@ -98,7 +98,12 @@ async def _load_agent(
             return mine
 
     # Fall back to global name lookup — only active, org-scoped agents
-    stmt = select(Agent).where(Agent.name == agent_id, Agent.status == AgentStatus.active).options(*_agent_load_options)
+    stmt = (
+        select(Agent)
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(Agent.name == agent_id, AgentVersion.status == AgentStatus.approved)
+        .options(*_agent_load_options)
+    )
     if extra_conditions:
         stmt = stmt.where(*extra_conditions)
     if org_id is not None:
@@ -135,7 +140,7 @@ def _agent_to_response(
             component_type=comp.component_type,
             component_id=comp.component_id,
             component_name=name_map.get(str(comp.component_id), ""),
-            version_ref=comp.version_ref,
+            version_ref=comp.resolved_version,
             order=comp.order_index,
             config_override=comp.config_override,
         )
@@ -151,7 +156,22 @@ def _agent_to_response(
         ]
         goal_template = GoalTemplateResponse(description=agent.goal_template.description, sections=sections)
 
+    # Build agent_dict from table columns (identity fields) plus version-delegate properties.
     agent_dict = {c.key: getattr(agent, c.key) for c in Agent.__table__.columns}
+    for field in (
+        "version",
+        "description",
+        "prompt",
+        "model_name",
+        "model_config_json",
+        "external_mcps",
+        "supported_ides",
+        "required_ide_features",
+        "inferred_supported_ides",
+        "status",
+        "rejection_reason",
+    ):
+        agent_dict[field] = getattr(agent, field)
     agent_dict["mcp_links"] = mcp_links
     agent_dict["component_links"] = component_links
     agent_dict["goal_template"] = goal_template
@@ -245,14 +265,7 @@ async def create_agent(
 
     agent = Agent(
         name=req.name,
-        version=req.version,
-        description=req.description,
         owner=req.owner or current_user.username or current_user.email,
-        prompt=req.prompt,
-        model_name=req.model_name,
-        model_config_json=req.model_config_json,
-        external_mcps=[m.model_dump() for m in req.external_mcps],
-        supported_ides=req.supported_ides,
         visibility=req.visibility,
         created_by=current_user.id,
         owner_org_id=current_user.org_id,
@@ -263,15 +276,33 @@ async def create_agent(
     for acc in req.team_accesses:
         db.add(AgentTeamAccess(agent_id=agent.id, group_name=acc.group_name, permission=acc.permission))
 
+    version = AgentVersion(
+        agent_id=agent.id,
+        version=req.version,
+        description=req.description,
+        prompt=req.prompt,
+        model_name=req.model_name,
+        model_config_json=req.model_config_json,
+        external_mcps=[m.model_dump() for m in req.external_mcps],
+        supported_ides=req.supported_ides,
+        status=AgentStatus.pending,
+        released_by=current_user.id,
+    )
+    db.add(version)
+    await db.flush()
+
+    agent.latest_version_id = version.id
+
     # Legacy: mcp_server_ids → AgentComponent(type=mcp)
     order = 0
     for mid, listing in zip(req.mcp_server_ids, mcp_listings, strict=False):
         db.add(
             AgentComponent(
-                agent_id=agent.id,
+                agent_version_id=version.id,
                 component_type="mcp",
                 component_id=mid,
-                version_ref=listing.version,
+                component_name="",
+                resolved_version=listing.version,
                 order_index=order,
             )
         )
@@ -281,17 +312,18 @@ async def create_agent(
     for cref in req.components:
         db.add(
             AgentComponent(
-                agent_id=agent.id,
+                agent_version_id=version.id,
                 component_type=cref.component_type,
                 component_id=cref.component_id,
-                version_ref="latest",
+                component_name="",
+                resolved_version="latest",
                 order_index=order,
                 config_override=cref.config_override,
             )
         )
         order += 1
 
-    goal = AgentGoalTemplate(agent_id=agent.id, description=req.goal_template.description)
+    goal = AgentGoalTemplate(agent_version_id=version.id, description=req.goal_template.description)
     db.add(goal)
     await db.flush()
 
@@ -320,10 +352,10 @@ async def create_agent(
     # Build a lightweight stand-in so the inference function can iterate components
     class _AgentProxy:
         components = all_crefs
-        external_mcps = agent.external_mcps
+        external_mcps = version.external_mcps
 
-    agent.required_ide_features = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map)
-    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+    version.required_ide_features = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map)
+    version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
 
     try:
         await db.commit()
@@ -383,21 +415,23 @@ async def list_agents(
                     AgentTeamAccess.group_name.in_(user_groups)
                 )
 
-    base_filter = Agent.status == AgentStatus.active
+    base_filter = AgentVersion.status == AgentStatus.approved
     if not is_admin:
         base_filter = base_filter & visibility_filter
     search_filter = None
     if search:
         safe = escape_like(search)
-        search_filter = Agent.name.ilike(f"%{safe}%") | Agent.description.ilike(f"%{safe}%")
+        search_filter = Agent.name.ilike(f"%{safe}%") | AgentVersion.description.ilike(f"%{safe}%")
 
     # Org-scoping: when the caller belongs to an org, only show agents owned by that org
     org_filter = None
     if current_user is not None and current_user.org_id is not None:
         org_filter = Agent.owner_org_id == current_user.org_id
 
-    # Total count for pagination header (cheap: no joins, no eager loads)
-    count_stmt = select(func.count(Agent.id)).where(base_filter)
+    # Total count for pagination header
+    count_stmt = (
+        select(func.count(Agent.id)).join(AgentVersion, Agent.latest_version_id == AgentVersion.id).where(base_filter)
+    )
     if search_filter is not None:
         count_stmt = count_stmt.where(search_filter)
     if org_filter is not None:
@@ -405,7 +439,12 @@ async def list_agents(
     total = (await db.execute(count_stmt)).scalar_one()
     response.headers["X-Total-Count"] = str(total)
 
-    stmt = select(Agent).where(base_filter).options(selectinload(Agent.components))
+    stmt = (
+        select(Agent)
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(base_filter)
+        .options(*_agent_load_options)
+    )
     if search_filter is not None:
         stmt = stmt.where(search_filter)
     if org_filter is not None:
@@ -470,7 +509,7 @@ async def my_agents(
     stmt = (
         select(Agent)
         .where(Agent.created_by == current_user.id)
-        .options(selectinload(Agent.components))
+        .options(*_agent_load_options)
         .order_by(Agent.created_at.desc())
     )
     agents = (await db.execute(stmt)).scalars().all()
@@ -762,14 +801,13 @@ async def install_agent(
     agent = await _load_agent(
         db,
         agent_id,
-        extra_conditions=[Agent.status == AgentStatus.active],
         prefer_user_id=current_user.id,
         org_id=current_user.org_id,
     )
-    if not agent:
-        agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
-        if not agent or agent.created_by != current_user.id:
+    if not agent or (agent.status != AgentStatus.approved and agent.created_by != current_user.id):
+        if not agent:
             raise HTTPException(status_code=404, detail="Agent not found or not active")
+        raise HTTPException(status_code=404, detail="Agent not found or not active")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
     if get_effective_agent_permission(agent, current_user) == "none":
@@ -1020,7 +1058,7 @@ async def delete_agent(
     perm = get_effective_agent_permission(agent, current_user)
     if perm != "owner" and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
-    if agent.status == AgentStatus.active and not is_admin:
+    if agent.status == AgentStatus.approved and not is_admin:
         raise HTTPException(status_code=400, detail="Cannot delete an approved listing. Contact an admin.")
 
     # Delete related records with correct type filters
@@ -1102,7 +1140,7 @@ async def unarchive_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.status != AgentStatus.archived:
         raise HTTPException(status_code=400, detail="Agent is not archived")
-    agent.status = AgentStatus.active
+    agent.status = AgentStatus.approved
     await db.commit()
 
     emit_registry_event(
@@ -1135,20 +1173,30 @@ async def save_draft(
     """Create an agent as a draft (relaxed validation, not submitted for review)."""
     agent = Agent(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        visibility=req.visibility,
+        created_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(agent)
+    await db.flush()
+
+    version = AgentVersion(
+        agent_id=agent.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
         prompt=req.prompt,
         model_name=req.model_name,
         model_config_json=req.model_config_json,
         external_mcps=[m.model_dump() for m in req.external_mcps],
         supported_ides=req.supported_ides,
-        created_by=current_user.id,
-        owner_org_id=current_user.org_id,
         status=AgentStatus.draft,
+        released_by=current_user.id,
     )
-    db.add(agent)
+    db.add(version)
     await db.flush()
+
+    agent.latest_version_id = version.id
 
     # Legacy: mcp_server_ids -> AgentComponent(type=mcp)
     order = 0
@@ -1156,10 +1204,11 @@ async def save_draft(
         for mid in req.mcp_server_ids:
             db.add(
                 AgentComponent(
-                    agent_id=agent.id,
+                    agent_version_id=version.id,
                     component_type="mcp",
                     component_id=mid,
-                    version_ref="latest",
+                    component_name="",
+                    resolved_version="latest",
                     order_index=order,
                 )
             )
@@ -1169,16 +1218,17 @@ async def save_draft(
     for cref in req.components:
         db.add(
             AgentComponent(
-                agent_id=agent.id,
+                agent_version_id=version.id,
                 component_type=cref.component_type,
                 component_id=cref.component_id,
-                version_ref="latest",
+                component_name="",
+                resolved_version="latest",
                 order_index=order,
                 config_override=cref.config_override,
             )
         )
         order += 1
-    goal = AgentGoalTemplate(agent_id=agent.id, description=req.goal_template.description)
+    goal = AgentGoalTemplate(agent_version_id=version.id, description=req.goal_template.description)
     db.add(goal)
     await db.flush()
     for i, sec in enumerate(req.goal_template.sections):
@@ -1204,10 +1254,10 @@ async def save_draft(
 
     class _DraftProxy:
         components = all_crefs_draft
-        external_mcps = agent.external_mcps
+        external_mcps = version.external_mcps
 
-    agent.required_ide_features = infer_required_features(_DraftProxy(), skill_listings=skill_listings_map_draft)
-    agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+    version.required_ide_features = infer_required_features(_DraftProxy(), skill_listings=skill_listings_map_draft)
+    version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))

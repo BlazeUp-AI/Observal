@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_db, require_role
 from api.sanitize import escape_like
 from config import settings
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.download import AgentDownloadRecord
 from models.mcp import ListingStatus, McpDownload, McpListing
 from models.user import User, UserRole
@@ -177,7 +177,14 @@ async def overview_stats(
     total_mcps = (
         await db.scalar(select(func.count(McpListing.id)).where(McpListing.status == ListingStatus.approved)) or 0
     )
-    total_agents = await db.scalar(select(func.count(Agent.id)).where(Agent.status == AgentStatus.active)) or 0
+    total_agents = (
+        await db.scalar(
+            select(func.count(Agent.id))
+            .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+            .where(AgentVersion.status == AgentStatus.approved)
+        )
+        or 0
+    )
     total_users = await db.scalar(select(func.count(User.id))) or 0
 
     days = _range_days(range_)
@@ -223,13 +230,14 @@ async def top_agents(
             AgentDownloadRecord.agent_id,
             func.count(AgentDownloadRecord.id).label("cnt"),
             Agent.name,
-            Agent.description,
+            AgentVersion.description,
             Agent.owner,
-            Agent.version,
+            AgentVersion.version,
         )
         .join(Agent, AgentDownloadRecord.agent_id == Agent.id)
-        .where(Agent.status == AgentStatus.active)
-        .group_by(AgentDownloadRecord.agent_id, Agent.name, Agent.description, Agent.owner, Agent.version)
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(AgentVersion.status == AgentStatus.approved)
+        .group_by(AgentDownloadRecord.agent_id, Agent.name, AgentVersion.description, Agent.owner, AgentVersion.version)
         .order_by(func.count(AgentDownloadRecord.id).desc())
         .limit(limit)
     )
@@ -278,13 +286,14 @@ async def agent_leaderboard(
             AgentDownloadRecord.agent_id,
             func.count(AgentDownloadRecord.id).label("cnt"),
             Agent.name,
-            Agent.description,
+            AgentVersion.description,
             Agent.owner,
-            Agent.version,
+            AgentVersion.version,
             Agent.created_by,
         )
         .join(Agent, AgentDownloadRecord.agent_id == Agent.id)
-        .where(Agent.status == AgentStatus.active)
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(AgentVersion.status == AgentStatus.approved)
     )
     if user:
         stmt = stmt.join(User, Agent.created_by == User.id).where(User.email.ilike(f"%{escape_like(user)}%"))
@@ -294,9 +303,9 @@ async def agent_leaderboard(
     group_cols = [
         AgentDownloadRecord.agent_id,
         Agent.name,
-        Agent.description,
+        AgentVersion.description,
         Agent.owner,
-        Agent.version,
+        AgentVersion.version,
         Agent.created_by,
     ]
     stmt = stmt.group_by(*group_cols).order_by(func.count(AgentDownloadRecord.id).desc()).limit(limit)
@@ -325,7 +334,11 @@ async def agent_leaderboard(
     # Also include agents with no downloads if window=all and we have fewer than limit
     if window == "all" and len(rows) < limit:
         existing_ids = {r.agent_id for r in rows}
-        extra_stmt = select(Agent).where(Agent.status == AgentStatus.active, Agent.id.notin_(existing_ids))
+        extra_stmt = (
+            select(Agent)
+            .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+            .where(AgentVersion.status == AgentStatus.approved, Agent.id.notin_(existing_ids))
+        )
         if user:
             extra_stmt = extra_stmt.join(User, Agent.created_by == User.id).where(
                 User.email.ilike(f"%{escape_like(user)}%")
