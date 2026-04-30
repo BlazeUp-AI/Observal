@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
+from api.routes.component_versions import create_version_router
 from api.sanitize import escape_like
 from models.hook import HookDownload, HookListing, HookVersion
 from models.mcp import ListingStatus
@@ -312,3 +313,7 @@ async def delete_hook(
         current_user, "hook.delete", resource_type="hook", resource_id=str(listing_id), resource_name=listing_name
     )
     return {"deleted": str(listing_id)}
+
+
+# --- Version sub-routes ---
+router.include_router(create_version_router("hook", HookListing, HookVersion))

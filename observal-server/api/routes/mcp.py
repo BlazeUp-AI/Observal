@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
+from api.routes.component_versions import create_version_router
 from api.sanitize import escape_like
 from database import async_session
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult, McpVersion
@@ -432,3 +433,7 @@ async def delete_mcp(
         current_user, "mcp.delete", resource_type="mcp", resource_id=str(listing_id), resource_name=listing_name
     )
     return {"deleted": str(listing_id)}
+
+
+# --- Version sub-routes ---
+router.include_router(create_version_router("mcp", McpListing, McpVersion))
