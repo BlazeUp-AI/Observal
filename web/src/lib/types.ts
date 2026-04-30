@@ -125,6 +125,29 @@ export interface VersionSuggestions {
   major: string;
 }
 
+export interface AgentVersionSummary {
+  id: string;
+  agent_id: string;
+  version: string;
+  description: string;
+  status: string;
+  is_prerelease: boolean;
+  download_count: number;
+  supported_ides: string[];
+  released_by: string;
+  released_at: string | null;
+  created_at: string | null;
+  rejection_reason: string | null;
+  component_count: number;
+}
+
+export interface AgentVersionsResponse {
+  items: AgentVersionSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface BulkResultItem {
   name: string;
   status: "created" | "skipped" | "error";

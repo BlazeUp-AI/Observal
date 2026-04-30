@@ -25,6 +25,7 @@ import type {
   LeaderboardWindow,
   ValidationResult,
   VersionSuggestions,
+  AgentVersionsResponse,
   BulkResult,
   ComponentLeaderboardItem,
   AuditLogEntry,
@@ -266,6 +267,10 @@ export const registry = {
     post<RegistryItem>(`/${type}/submit`, body),
   versionSuggestions: (id: string) =>
     get<VersionSuggestions>(`/agents/${id}/version-suggestions`),
+  listVersions: (agentId: string, page = 1, pageSize = 50) =>
+    get<AgentVersionsResponse>(`/agents/${agentId}/versions?page=${page}&page_size=${pageSize}`),
+  getVersion: (agentId: string, version: string) =>
+    get<unknown>(`/agents/${agentId}/versions/${version}`),
 };
 
 // ── Review ──────────────────────────────────────────────────────────
