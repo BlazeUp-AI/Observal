@@ -57,14 +57,14 @@ if settings.OAUTH_CLIENT_ID and settings.OAUTH_CLIENT_SECRET and settings.OAUTH_
     )
 
 
-async def _issue_tokens(user: User) -> tuple[str, str, int]:
+async def _issue_tokens(user: User, groups: list[str] | None = None) -> tuple[str, str, int]:
     """Issue JWT access + refresh tokens for a user, storing refresh JTI in Redis.
 
     Returns (access_token, refresh_token, expires_in).
     Fails open: tokens are still returned if Redis is temporarily unreachable.
     """
-    access_token, expires_in = create_access_token(user.id, user.role)
-    refresh_token, jti = create_refresh_token(user.id, user.role)
+    access_token, expires_in = create_access_token(user.id, user.role, groups=groups)
+    refresh_token, jti = create_refresh_token(user.id, user.role, groups=groups)
 
     try:
         redis = get_redis()
@@ -253,7 +253,10 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
     email = userinfo.get("email")
     name = userinfo.get("name") or userinfo.get("preferred_username") or "SSO User"
+    groups = userinfo.get("groups", [])
 
+    print("Token received:")
+    print(token)
     if not email:
         raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
 
@@ -285,7 +288,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
                 raise HTTPException(status_code=500, detail="Failed to create or find user")
 
     # Issue JWT tokens for the OAuth login
-    access_token, refresh_token, expires_in = await _issue_tokens(user)
+    access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
     await db.commit()
 
     # Generate a short-lived opaque code instead of exposing tokens in the URL.
@@ -475,8 +478,9 @@ async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession 
         raise HTTPException(status_code=401, detail="User no longer exists")
 
     # Issue new token pair
-    access_token, expires_in = create_access_token(user.id, user.role)
-    new_refresh_token, new_jti = create_refresh_token(user.id, user.role)
+    groups = payload.get("groups", [])
+    access_token, expires_in = create_access_token(user.id, user.role, groups=groups)
+    new_refresh_token, new_jti = create_refresh_token(user.id, user.role, groups=groups)
 
     try:
         refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
@@ -584,6 +588,7 @@ async def create_hooks_token(current_user: User = Depends(get_current_user)):
         current_user.id,
         current_user.role,
         expires_in_minutes=settings.JWT_HOOKS_TOKEN_EXPIRE_MINUTES,
+        groups=getattr(current_user, "_groups", []),
     )
     await emit_security_event(
         SecurityEvent(

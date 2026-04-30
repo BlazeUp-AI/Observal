@@ -568,6 +568,21 @@ export function useUpdateDraft() {
   });
 }
 
+export function useUpdateAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; body: unknown }) => registry.updateAgent(vars.id, vars.body),
+    onSuccess: (data: any, vars: { id: string }) => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      qc.invalidateQueries({ queryKey: ["registry", "agents", vars.id] });
+      toast.success("Agent updated successfully");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update agent");
+    },
+  });
+}
+
 export function useSubmitDraft() {
   const qc = useQueryClient();
   return useMutation({

@@ -17,6 +17,24 @@ class AgentStatus(str, enum.Enum):
     archived = "archived"
 
 
+class AgentVisibility(str, enum.Enum):
+    public = "public"
+    private = "private"
+
+
+class AgentTeamAccess(Base):
+    __tablename__ = "agent_team_access"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
+    )
+    group_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    permission: Mapped[str] = mapped_column(String(50), nullable=False)  # 'view', 'edit'
+
+    agent: Mapped["Agent"] = relationship(back_populates="team_accesses")
+
+
 class Agent(Base):
     __tablename__ = "agents"
     __table_args__ = (UniqueConstraint("name", "created_by", name="uq_agents_name_created_by"),)
@@ -34,7 +52,7 @@ class Agent(Base):
     supported_ides: Mapped[list] = mapped_column(JSON, default=list)
     required_ide_features: Mapped[list] = mapped_column(JSON, default=list)
     inferred_supported_ides: Mapped[list] = mapped_column(JSON, default=list)
-    is_private: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    visibility: Mapped[AgentVisibility] = mapped_column(Enum(AgentVisibility), default=AgentVisibility.private)
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
@@ -55,6 +73,9 @@ class Agent(Base):
     )
     goal_template: Mapped["AgentGoalTemplate | None"] = relationship(
         back_populates="agent", lazy="selectin", uselist=False, cascade="all, delete-orphan"
+    )
+    team_accesses: Mapped[list["AgentTeamAccess"]] = relationship(
+        back_populates="agent", lazy="selectin", cascade="all, delete-orphan"
     )
 
 

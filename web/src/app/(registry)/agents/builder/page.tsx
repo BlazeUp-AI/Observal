@@ -38,6 +38,7 @@ import { useAuthGuard } from "@/hooks/use-auth";
 import { registry, type RegistryType } from "@/lib/api";
 import type { RegistryItem } from "@/lib/types";
 import type { ValidationResult } from "@/lib/types";
+import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 
 const DRAFT_STORAGE_KEY = "observal_agent_draft";
 
@@ -325,6 +326,7 @@ function AgentBuilderInner() {
   const draftParam = searchParams.get("draft");
   const isEditMode = !!editId;
 
+  const { deploymentMode } = useDeploymentConfig();
   const { data: whoami } = useWhoami();
   const { data: existingAgent } = useRegistryItem("agents", editId ?? draftParam ?? undefined);
 
@@ -333,6 +335,8 @@ function AgentBuilderInner() {
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1.0.0");
   const [modelName, setModelName] = useState("");
+  const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [teamAccesses, setTeamAccesses] = useState<{ group_name: string; permission: "view" | "edit" }[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState<RegistryType>("mcps");
 
@@ -386,6 +390,10 @@ function AgentBuilderInner() {
     if (typeof agentVersion === "string") setVersion(agentVersion);
     const agentModel = (existingAgent as Record<string, unknown>).model_name;
     if (typeof agentModel === "string") setModelName(agentModel);
+    const agentVisibility = (existingAgent as Record<string, unknown>).visibility;
+    if (agentVisibility === "public" || agentVisibility === "private") setVisibility(agentVisibility as "public" | "private");
+    const agentTeamAccesses = (existingAgent as Record<string, unknown>).team_accesses;
+    if (Array.isArray(agentTeamAccesses)) setTeamAccesses(agentTeamAccesses as { group_name: string; permission: "view" | "edit" }[]);
 
     if (draftParam) setDraftId(draftParam);
 
@@ -498,7 +506,7 @@ function AgentBuilderInner() {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     autoSaveTimerRef.current = setTimeout(() => {
-      const hasContent = name || description || modelName || version !== "1.0.0" ||
+      const hasContent = name || description || modelName || version !== "1.0.0" || visibility !== "private" || teamAccesses.length > 0 ||
         Object.values(selectedComponents).some((items) => items.length > 0) ||
         goalSections.some((s) => s.title || s.content) ||
         customPrompts.some((p) => p.title || p.content);
@@ -511,6 +519,8 @@ function AgentBuilderInner() {
           description,
           version,
           model_name: modelName,
+          visibility,
+          team_accesses: teamAccesses,
           components: selectedComponents,
           goal_sections: goalSections,
           custom_prompts: customPrompts,
@@ -526,7 +536,7 @@ function AgentBuilderInner() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [name, description, version, modelName, selectedComponents, goalSections, customPrompts, draftId, isEditMode]);
+  }, [name, description, version, modelName, visibility, teamAccesses, selectedComponents, goalSections, customPrompts, draftId, isEditMode]);
 
   function restoreLocalDraft() {
     try {
@@ -537,6 +547,8 @@ function AgentBuilderInner() {
       if (draft.description) setDescription(draft.description);
       if (draft.version) setVersion(draft.version);
       if (draft.model_name) setModelName(draft.model_name);
+      if (draft.visibility) setVisibility(draft.visibility);
+      if (draft.team_accesses) setTeamAccesses(draft.team_accesses);
       if (draft.components) setSelectedComponents(draft.components);
       if (draft.goal_sections) setGoalSections(draft.goal_sections);
       if (Array.isArray(draft.custom_prompts)) setCustomPrompts(draft.custom_prompts);
@@ -697,6 +709,8 @@ function AgentBuilderInner() {
       version: (versionOverride ?? version).trim() || "1.0.0",
       description: description.trim(),
       owner: whoami?.name || whoami?.email || "unknown",
+      visibility,
+      team_accesses: teamAccesses,
       prompt: promptParts.join("\n\n"),
       model_name: modelName,
       components: components.length > 0 ? components : [],
@@ -1085,6 +1099,103 @@ function AgentBuilderInner() {
                 ))}
               </div>
             </section>
+
+            <Separator />
+
+            {/* Visibility & Access */}
+            {deploymentMode === "enterprise" && (
+              <section className="space-y-4 animate-in stagger-2">
+                <div>
+                  <h3 className="text-sm font-medium font-[family-name:var(--font-display)]">
+                  Visibility & Access
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Determine who can discover and install this agent.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={visibility}
+                  onChange={(e) => setVisibility(e.target.value as "public" | "private")}
+                >
+                  <option value="private">Private (Team Access Only)</option>
+                  <option value="public">Public (Visible to All)</option>
+                </select>
+
+                {visibility === "private" && (
+                  <div className="mt-4 space-y-3 rounded-md border p-4 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Team Permissions</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setTeamAccesses([
+                            ...teamAccesses,
+                            { group_name: "", permission: "view" },
+                          ])
+                        }
+                        className="h-8"
+                      >
+                        <Plus className="mr-1 h-3.5 w-3.5" />
+                        Add Group
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {teamAccesses.map((access, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input
+                            placeholder="Group name (e.g. engineering)"
+                            value={access.group_name}
+                            onChange={(e) => {
+                              const newAccess = [...teamAccesses];
+                              newAccess[i].group_name = e.target.value;
+                              setTeamAccesses(newAccess);
+                            }}
+                            className="h-8 flex-1 text-sm"
+                          />
+                          <select
+                            className="flex h-8 w-28 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={access.permission}
+                            onChange={(e) => {
+                              const newAccess = [...teamAccesses];
+                              newAccess[i].permission = e.target.value as "view" | "edit";
+                              setTeamAccesses(newAccess);
+                            }}
+                          >
+                            <option value="view">View</option>
+                            <option value="edit">Edit</option>
+                          </select>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const newAccess = [...teamAccesses];
+                              newAccess.splice(i, 1);
+                              setTeamAccesses(newAccess);
+                            }}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                      {teamAccesses.length === 0 && (
+                        <p className="text-xs text-muted-foreground pt-1">
+                          No groups configured. Only you can view or edit this agent.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
             <Separator />
 

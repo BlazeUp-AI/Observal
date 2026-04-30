@@ -1,4 +1,4 @@
-from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
+from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus, AgentTeamAccess, AgentVisibility
 from models.agent_component import AgentComponent
 from models.alert import AlertRule
 from models.alert_history import AlertHistory
@@ -40,6 +40,8 @@ __all__ = [
     "AgentGoalSection",
     "AgentGoalTemplate",
     "AgentStatus",
+    "AgentTeamAccess",
+    "AgentVisibility",
     "AlertHistory",
     "AlertRule",
     "Base",

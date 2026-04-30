@@ -182,7 +182,7 @@ class TestAgentModelUpdate:
         from models.agent import Agent
 
         cols = {c.name for c in Agent.__table__.columns}
-        assert "is_private" in cols
+        assert "visibility" in cols
         assert "owner_org_id" in cols
 
     def test_agent_has_git_url(self):
