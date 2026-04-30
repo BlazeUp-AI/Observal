@@ -805,8 +805,6 @@ async def install_agent(
         org_id=current_user.org_id,
     )
     if not agent or (agent.status != AgentStatus.approved and agent.created_by != current_user.id):
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found or not active")
         raise HTTPException(status_code=404, detail="Agent not found or not active")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")

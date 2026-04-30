@@ -345,7 +345,7 @@ async def agent_leaderboard(
             )
         extra_stmt = extra_stmt.order_by(Agent.created_at.desc()).limit(limit - len(rows))
         extra = (await db.execute(extra_stmt)).scalars().all()
-        missing_ids = {a.created_by for a in extra} - set(email_map.keys())
+        missing_ids = {a.created_by for a in extra} - set(email_map)
         if missing_ids:
             extra_user_rows = await db.execute(
                 select(User.id, User.email, User.username).where(User.id.in_(missing_ids))
@@ -467,7 +467,7 @@ async def trends(
 
     submissions = {str(r.day.date()): r.cnt for r in mcp_rows.all()}
     users = {str(r.day.date()): r.cnt for r in user_rows.all()}
-    all_dates = sorted(set(list(submissions.keys()) + list(users.keys())))
+    all_dates = sorted(set(submissions) | set(users))
 
     result = [TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0)) for d in all_dates]
     await audit(current_user, "dashboard.trends", resource_type="dashboard")
