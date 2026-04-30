@@ -31,12 +31,14 @@ import {
   useEvalAggregate,
   useWhoami,
   useUpdateAgent,
+  useAgentVersions,
 } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
 import { hasMinRole } from "@/hooks/use-role-guard";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
+import { VersionDropdown } from "@/components/registry/version-dropdown";
 import { StatusBadge } from "@/components/registry/status-badge";
 import { IdeBadges } from "@/components/registry/ide-badges";
 import { FEATURE_LABELS, type IdeFeature } from "@/lib/ide-features";
@@ -471,6 +473,8 @@ export default function AgentDetailPage({
     useFeedbackSummary(id);
 
   const { data: whoami } = useWhoami();
+  const { data: versionsData } = useAgentVersions(id);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
 
   const storeSub = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);
@@ -488,7 +492,11 @@ export default function AgentDetailPage({
   );
 
   const a = agent as unknown as AgentDetail | undefined;
+  const versions = versionsData?.items ?? [];
+  const latestApprovedVersion = versions.find((v) => v.status === "approved")?.version;
+  const effectiveVersion = selectedVersion ?? latestApprovedVersion ?? a?.version;
   const canDelete = isAdmin || (whoami?.id && a?.created_by && whoami.id === String(a.created_by));
+  const canEdit = isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit";
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
   const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);
@@ -534,11 +542,17 @@ export default function AgentDetailPage({
                     {a.name}
                   </h1>
                   {a.status && <StatusBadge status={a.status} />}
-                  {a.version && (
+                  {versions.length > 0 ? (
+                    <VersionDropdown
+                      versions={versions}
+                      currentVersion={effectiveVersion ?? ""}
+                      onSelect={setSelectedVersion}
+                    />
+                  ) : a?.version ? (
                     <Badge variant="secondary" className="text-xs">
                       {a.version}
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
 
                 {a.owner && (
@@ -598,6 +612,7 @@ export default function AgentDetailPage({
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="install">Install</TabsTrigger>
+                  {canEdit && <TabsTrigger value="edit">Edit</TabsTrigger>}
                   {isAdmin && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
                 </TabsList>
 
@@ -820,6 +835,15 @@ export default function AgentDetailPage({
                   </div>
                 </TabsContent>
 
+                {canEdit && (
+                  <TabsContent value="edit" className="mt-6">
+                    <EmptyState
+                      icon={Edit}
+                      title="Agent Editor"
+                      description="Form-based editing coming soon. Use the CLI to make changes: observal agent release"
+                    />
+                  </TabsContent>
+                )}
                 {isAdmin && (
                   <TabsContent value="analytics" className="mt-6">
                     <AnalyticsTab agentId={id} />
