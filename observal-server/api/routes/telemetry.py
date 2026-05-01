@@ -898,6 +898,24 @@ async def ingest_hook(request: Request):
     if body.get("permission_mode"):
         attrs["permission_mode"] = body["permission_mode"]
 
+    # ── Registered-agents-only gate ──
+    # When enabled, drop unregistered agent spans entirely (no ClickHouse write).
+    from services.agent_registry_cache import is_registered, is_toggle_enabled, resolve_user_org
+
+    if user_id:
+        _org_id = await resolve_user_org(user_id)
+        if _org_id and is_toggle_enabled(_org_id):
+            _agent_name = attrs.get("agent_name", "")
+            _should_drop = False
+            if _agent_name:
+                if not is_registered(_org_id, _agent_name):
+                    _should_drop = True
+            else:
+                # No agent identity — can't verify registration, drop conservatively
+                _should_drop = True
+            if _should_drop:
+                return {"ingested": 0, "filtered": "unregistered_agent"}
+
     # Build the Body as a readable summary
     agent_prefix = f"[{attrs.get('agent_type', '')}] " if attrs.get("agent_id") else ""
     if hook_event in ("PostToolUse", "PreToolUse"):
