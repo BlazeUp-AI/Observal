@@ -15,7 +15,7 @@ jobs:
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request == null &&
-      github.event.comment.body == '/take'
+      contains(github.event.comment.body, '/take')
     runs-on: ubuntu-latest
     steps:
       - name: Check labels and assign
@@ -24,6 +24,9 @@ jobs:
           script: |
             const issue = context.payload.issue;
             const commenter = context.payload.comment.user.login;
+
+            // Ensure the trimmed comment is exactly "/take"
+            if (context.payload.comment.body.trim() !== '/take') return;
 
             const labels = issue.labels.map(l => l.name.toLowerCase());
 
@@ -99,7 +102,7 @@ jobs:
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request == null &&
-      github.event.comment.body == '/drop'
+      contains(github.event.comment.body, '/drop')
     runs-on: ubuntu-latest
     steps:
       - name: Unassign commenter
@@ -108,6 +111,9 @@ jobs:
           script: |
             const issue = context.payload.issue;
             const commenter = context.payload.comment.user.login;
+
+            // Ensure the trimmed comment is exactly "/drop"
+            if (context.payload.comment.body.trim() !== '/drop') return;
 
             const isAssigned = issue.assignees.some(a => a.login === commenter);
 
