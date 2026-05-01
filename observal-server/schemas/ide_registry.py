@@ -14,7 +14,7 @@ from __future__ import annotations
 IDE_REGISTRY: dict[str, dict] = {
     "cursor": {
         "display_name": "Cursor",
-        "features": {"mcp_servers", "rules"},
+        "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project", "user"],
         "default_scope": "project",
         "scope_labels": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
@@ -34,7 +34,7 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "skill_format": "markdown_frontmatter",
         "home_mcp_config": "~/.cursor/mcp.json",
-        "hook_type": "http",
+        "hook_type": "command",
         "config_dir": ".cursor",
     },
     "kiro": {
@@ -83,7 +83,7 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.claude.json",
-        "hook_type": "http",
+        "hook_type": "command",
         "config_dir": ".claude",
     },
     "gemini-cli": {
@@ -113,7 +113,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "vscode": {
         "display_name": "VS Code",
-        "features": {"mcp_servers", "rules"},
+        "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -130,7 +130,7 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "skill_format": "markdown_frontmatter",
         "home_mcp_config": None,
-        "hook_type": None,
+        "hook_type": "command",
         "config_dir": ".vscode",
     },
     "codex": {
@@ -155,7 +155,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "copilot": {
         "display_name": "Copilot",
-        "features": {"mcp_servers", "rules"},
+        "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -170,7 +170,7 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_file": None,
         "skill_format": None,
         "home_mcp_config": "~/.vscode/mcp.json",
-        "hook_type": None,
+        "hook_type": "command",
         "config_dir": ".vscode",
     },
     "copilot-cli": {
@@ -198,7 +198,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "opencode": {
         "display_name": "OpenCode",
-        "features": {"mcp_servers", "rules"},
+        "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project", "user"],
         "default_scope": "user",
         "scope_labels": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
@@ -217,7 +217,7 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.config/opencode/opencode.json",
-        "hook_type": None,
+        "hook_type": "plugin",
         "config_dir": ".config/opencode",
     },
 }
