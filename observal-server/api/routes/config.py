@@ -1,3 +1,4 @@
+from importlib.metadata import version as pkg_version
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
@@ -7,6 +8,22 @@ from api.deps import get_db
 from config import settings
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
+
+
+def _server_version() -> str:
+    try:
+        return pkg_version("observal-server")
+    except Exception:
+        return "dev"
+
+
+@router.get("/version")
+async def get_version():
+    """Server version and minimum compatible CLI version. No auth required."""
+    return {
+        "server_version": _server_version(),
+        "min_cli_version": settings.MIN_CLI_VERSION,
+    }
 
 
 def derive_endpoints(request: Request | None = None) -> dict[str, str]:

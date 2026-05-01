@@ -264,3 +264,41 @@ def health() -> tuple[bool, float]:
         return r.status_code == 200, latency
     except Exception:
         return False, 0
+
+
+def check_version_compatibility(server_url: str) -> None:
+    """Warn if CLI version is older than server's minimum requirement."""
+    from importlib.metadata import version as pkg_version
+
+    try:
+        cli_ver_str = pkg_version("observal-cli")
+    except Exception:
+        return  # dev install, skip check
+
+    try:
+        r = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/version", timeout=5)
+        if r.status_code != 200:
+            return
+        data = r.json()
+    except Exception:
+        return  # server doesn't support this endpoint yet, skip
+
+    min_cli = data.get("min_cli_version")
+    server_ver = data.get("server_version", "unknown")
+    if not min_cli:
+        return
+
+    try:
+        cli_tuple = tuple(int(x) for x in cli_ver_str.split("."))
+        min_tuple = tuple(int(x) for x in min_cli.split("."))
+        if cli_tuple < min_tuple:
+            rprint(
+                f"\n[bold yellow]⚠ CLI version {cli_ver_str} is older than the server requires "
+                f"(minimum {min_cli}).[/bold yellow]\n"
+                f"  Server version: {server_ver}\n"
+                f"  Please upgrade:\n\n"
+                f"    [cyan]uv tool upgrade observal-cli[/cyan]    "
+                f"[dim]# or: pip install --upgrade observal-cli[/dim]\n"
+            )
+    except (ValueError, TypeError):
+        pass

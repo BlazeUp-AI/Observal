@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     SAML_DEFAULT_ROLE: str = "user"
     SAML_SP_KEY_ENCRYPTION_PASSWORD: str = ""
 
+    # Minimum CLI version the server is compatible with.
+    # CLI will warn users to upgrade if their version is older.
+    MIN_CLI_VERSION: str = "0.4.0"
+
     # Demo accounts (seeded on first startup if set and no real users exist)
     DEMO_SUPER_ADMIN_EMAIL: str | None = None
     DEMO_SUPER_ADMIN_PASSWORD: str | None = None

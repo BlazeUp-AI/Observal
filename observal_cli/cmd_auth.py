@@ -61,6 +61,9 @@ def login(
 
     initialized = health_data.get("initialized", True)
 
+    # Check CLI/server version compatibility
+    client.check_version_compatibility(server_url)
+
     # 2. Fresh server → prompt for admin credentials and initialize
     if not initialized:
         rprint("[green]Connected.[/green] No users yet — let's set up your admin account.\n")
@@ -229,6 +232,7 @@ def status():
     if ok:
         color = "green" if latency < 200 else "yellow" if latency < 1000 else "red"
         rprint(f"  Health:  [{color}]ok[/{color}] ({latency:.0f}ms)")
+        client.check_version_compatibility(url)
     else:
         rprint("  Health:  [red]unreachable[/red]")
 
