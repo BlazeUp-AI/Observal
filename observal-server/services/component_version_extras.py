@@ -68,6 +68,44 @@ ALLOWED_FIELDS: dict[str, set[str]] = {
     "sandbox": SANDBOX_FIELDS,
 }
 
+# Expected types for each field. Fields not listed accept any type.
+FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
+    # str fields
+    "event": str,
+    "execution_mode": str,
+    "handler_type": str,
+    "scope": str,
+    "skill_path": str,
+    "task_type": str,
+    "slash_command": str,
+    "power_md": str,
+    "category": str,
+    "template": str,
+    "source_url": str,
+    "source_ref": str,
+    "resolved_sha": str,
+    # int fields
+    "priority": int,
+    # bool fields — must come before int since bool is a subclass of int
+    "has_scripts": bool,
+    "has_templates": bool,
+    "is_power": bool,
+    # dict fields
+    "handler_config": dict,
+    "input_schema": dict,
+    "output_schema": dict,
+    "mcp_server_config": dict,
+    "model_hints": dict,
+    # list fields
+    "tool_filter": list,
+    "file_pattern": list,
+    "target_agents": list,
+    "triggers": list,
+    "activation_keywords": list,
+    "tags": list,
+    "variables": list,
+}
+
 
 def validate_and_extract(component_type: str, extra: dict | None) -> dict:
     """Validate extra fields for a component type and return clean field dict.
@@ -97,12 +135,44 @@ def validate_and_extract(component_type: str, extra: dict | None) -> dict:
             detail=f"Unknown fields for {component_type}: {', '.join(sorted(unknown))}",
         )
 
-    # Check required fields
+    # Check required fields are present
     missing = required - set(extra.keys())
     if missing:
         raise HTTPException(
             status_code=422,
             detail=f"Missing required fields for {component_type}: {', '.join(sorted(missing))}",
         )
+
+    # Check required fields have non-empty/non-null values
+    for field in required:
+        value = extra.get(field)
+        if value is None or value == "":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Required field {field!r} cannot be empty",
+            )
+
+    # Check field types
+    for field, value in extra.items():
+        if value is None:
+            continue
+        expected = FIELD_TYPES.get(field)
+        if expected is None:
+            continue
+        # bool check must happen before int check (bool is subclass of int)
+        if expected is int and isinstance(value, bool):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Field {field!r} must be an integer, got {type(value).__name__}",
+            )
+        if not isinstance(value, expected):
+            _type_names = {int: "integer", str: "str", bool: "bool", dict: "dict", list: "list"}
+            expected_name = _type_names.get(
+                expected, expected.__name__ if isinstance(expected, type) else str(expected)
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Field {field!r} must be a {expected_name}, got {type(value).__name__}",
+            )
 
     return {k: v for k, v in extra.items() if k in allowed}

@@ -20,7 +20,7 @@ from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.component_version import VersionPublishRequest, VersionReviewRequest  # noqa: TC001
 from services.audit_helpers import audit
-from services.component_version_extras import validate_and_extract
+from services.component_version_extras import ALLOWED_FIELDS, validate_and_extract
 
 # Semver pattern: X.Y.Z or X.Y.Z-prerelease
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$")
@@ -32,7 +32,7 @@ def _parse_semver(v: str) -> tuple[int, ...]:
     return tuple(int(p) for p in base.split("."))
 
 
-def _version_to_dict(v) -> dict:
+def _version_to_dict(v, component_type: str) -> dict:
     """Serialize a version ORM object to a plain dict for API responses."""
     d = {
         "id": str(v.id),
@@ -48,43 +48,7 @@ def _version_to_dict(v) -> dict:
         "released_at": v.released_at,
         "created_at": v.created_at,
     }
-    # Optional fields present on MCP and Sandbox versions
-    for attr in ("source_url", "source_ref", "resolved_sha"):
-        if hasattr(v, attr):
-            d[attr] = getattr(v, attr)
-    # Hook fields
-    for attr in (
-        "event",
-        "execution_mode",
-        "priority",
-        "handler_type",
-        "handler_config",
-        "input_schema",
-        "output_schema",
-        "scope",
-        "tool_filter",
-        "file_pattern",
-    ):
-        if hasattr(v, attr):
-            d[attr] = getattr(v, attr)
-    # Skill fields
-    for attr in (
-        "skill_path",
-        "target_agents",
-        "task_type",
-        "triggers",
-        "slash_command",
-        "has_scripts",
-        "has_templates",
-        "is_power",
-        "power_md",
-        "mcp_server_config",
-        "activation_keywords",
-    ):
-        if hasattr(v, attr):
-            d[attr] = getattr(v, attr)
-    # Prompt fields
-    for attr in ("category", "template", "variables", "model_hints", "tags"):
+    for attr in ALLOWED_FIELDS.get(component_type, set()):
         if hasattr(v, attr):
             d[attr] = getattr(v, attr)
     return d
@@ -101,6 +65,7 @@ async def _list_versions(
     page_size: int,
     listing_model,
     version_model,
+    component_type: str,
     db: AsyncSession,
     current_user: User,
 ) -> dict:
@@ -123,7 +88,7 @@ async def _list_versions(
     total = (await db.execute(count_stmt)).scalar() or 0
 
     return {
-        "items": [_version_to_dict(v) for v in versions],
+        "items": [_version_to_dict(v, component_type) for v in versions],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -135,6 +100,7 @@ async def _get_version(
     version: str,
     listing_model,
     version_model,
+    component_type: str,
     db: AsyncSession,
     current_user: User,
 ) -> dict:
@@ -151,7 +117,7 @@ async def _get_version(
     if not ver:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    return _version_to_dict(ver)
+    return _version_to_dict(ver, component_type)
 
 
 async def _publish_version(
@@ -208,7 +174,7 @@ async def _publish_version(
         detail=req.version,
     )
 
-    return _version_to_dict(ver)
+    return _version_to_dict(ver, component_type)
 
 
 async def _version_suggestions(
@@ -315,6 +281,7 @@ def create_version_router(
             page_size=page_size,
             listing_model=listing_model,
             version_model=version_model,
+            component_type=component_type,
             db=db,
             current_user=current_user,
         )
@@ -331,6 +298,7 @@ def create_version_router(
             version=version,
             listing_model=listing_model,
             version_model=version_model,
+            component_type=component_type,
             db=db,
             current_user=current_user,
         )

@@ -108,11 +108,18 @@ def test_semver_pattern_rejects_invalid():
 def _db_with_versions(versions: list):
     """Return an async DB mock that returns *versions* for the versions query."""
     db = AsyncMock()
+
+    # First call: versions query (scalars().all())
     scalars = MagicMock()
     scalars.all.return_value = versions
-    result = MagicMock()
-    result.scalars.return_value = scalars
-    db.execute = AsyncMock(return_value=result)
+    versions_result = MagicMock()
+    versions_result.scalars.return_value = scalars
+
+    # Second call: count query (.scalar())
+    count_result = MagicMock()
+    count_result.scalar.return_value = len(versions)
+
+    db.execute = AsyncMock(side_effect=[versions_result, count_result])
     db.commit = AsyncMock()
     return db
 
@@ -160,6 +167,7 @@ async def test_list_versions_empty():
             page_size=20,
             listing_model=McpListing,
             version_model=McpVersion,
+            component_type="mcp",
             db=db,
             current_user=_make_user(),
         )
@@ -189,6 +197,7 @@ async def test_list_versions_with_data():
             page_size=20,
             listing_model=McpListing,
             version_model=McpVersion,
+            component_type="mcp",
             db=db,
             current_user=_make_user(),
         )
@@ -220,6 +229,7 @@ async def test_get_version_found():
             version=SEMVER_VALID,
             listing_model=McpListing,
             version_model=McpVersion,
+            component_type="mcp",
             db=db,
             current_user=_make_user(),
         )
@@ -250,6 +260,7 @@ async def test_get_version_not_found():
             version="9.9.9",
             listing_model=McpListing,
             version_model=McpVersion,
+            component_type="mcp",
             db=db,
             current_user=_make_user(),
         )
@@ -606,7 +617,7 @@ def test_factory_creates_router(component_type, listing_cls, version_cls):
 
     # Should have 4 routes (list, get, publish, review)
     routes = router.routes
-    assert len(routes) == 4
+    assert len(routes) == 5
 
 
 def test_factory_route_paths():
