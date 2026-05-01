@@ -300,8 +300,8 @@ def register_pull(app: typer.Typer):
         if rules:
             p = _resolve_path(rules["path"], target_dir, allow_home=is_user_scope)
             content = rules["content"]
-            # Resolve hook script placeholders to absolute paths (Claude Code)
-            if ide in ("claude-code", "claude_code") and isinstance(content, str):
+            # Resolve hook script placeholders to absolute paths
+            if ide in ("claude-code", "claude_code", "copilot", "copilot-cli") and isinstance(content, str):
                 content = _resolve_hook_paths(content)
             if dry_run:
                 written.append((str(p), "would write"))
