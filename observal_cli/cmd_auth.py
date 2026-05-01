@@ -311,7 +311,7 @@ def version_callback():
     from importlib.metadata import version as pkg_version
 
     try:
-        v = pkg_version("observal")
+        v = pkg_version("observal-cli")
     except Exception:
         v = "dev"
     rprint(f"observal [bold]{v}[/bold]")
