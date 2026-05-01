@@ -708,6 +708,48 @@ export function useComponentDelete(type: RegistryType) {
   });
 }
 
+// ── Component Versions ─────────────────────────────────────────────
+
+export function useComponentVersions(type: RegistryType | undefined, listingId: string | undefined) {
+  return useQuery({
+    queryKey: ["component-versions", type, listingId],
+    enabled: !!type && !!listingId,
+    queryFn: () => registry.listComponentVersions(type!, listingId!),
+  });
+}
+
+export function useComponentVersionDetail(type: RegistryType | undefined, listingId: string | undefined, version: string | null) {
+  return useQuery({
+    queryKey: ["component-version-detail", type, listingId, version],
+    enabled: !!type && !!listingId && !!version,
+    queryFn: () => registry.getComponentVersion(type!, listingId!, version!),
+  });
+}
+
+export function usePublishComponentVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, listingId, body }: { type: RegistryType; listingId: string; body: unknown }) =>
+      registry.publishComponentVersion(type, listingId, body),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["component-versions", variables.type, variables.listingId] });
+      qc.invalidateQueries({ queryKey: ["registry", variables.type, variables.listingId] });
+      toast.success("Version published successfully");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to publish version");
+    },
+  });
+}
+
+export function useComponentVersionSuggestions(type: RegistryType | undefined, listingId: string | undefined) {
+  return useQuery({
+    queryKey: ["component-version-suggestions", type, listingId],
+    enabled: !!type && !!listingId,
+    queryFn: () => registry.componentVersionSuggestions(type!, listingId!),
+  });
+}
+
 // ── Version ────────────────────────────────────────────────────────
 
 export function useCreateAgentVersion() {

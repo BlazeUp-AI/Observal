@@ -43,10 +43,11 @@ import {
   useUpdateAgent,
   useVersionSuggestions,
 } from "@/hooks/use-api";
-import type { RegistryItem, ValidationResult, VersionSuggestions } from "@/lib/types";
+import type { RegistryItem, ValidationResult } from "@/lib/types";
 import type { RegistryType } from "@/lib/api";
 import { SortableComponentList } from "@/components/builder/sortable-component-list";
 import { ValidationPanel } from "@/components/builder/validation-panel";
+import { VersionBumpDialog } from "@/components/registry/version-bump-dialog";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -131,127 +132,6 @@ const REVERSE_TYPE_MAP: Record<string, string> = {
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
-}
-
-type BumpType = "patch" | "minor" | "major";
-
-function bumpVersion(current: string, type: BumpType): string {
-  const parts = current.split(".").map(Number);
-  if (parts.length !== 3 || parts.some(isNaN)) return current;
-  if (type === "major") return `${parts[0] + 1}.0.0`;
-  if (type === "minor") return `${parts[0]}.${parts[1] + 1}.0`;
-  return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
-}
-
-// ── Version Bump Dialog ───────────────────────────────────────────
-
-function VersionBumpDialog({
-  open,
-  onOpenChange,
-  currentVersion,
-  suggestions,
-  onConfirm,
-  publishing,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  currentVersion: string;
-  suggestions: VersionSuggestions | undefined;
-  onConfirm: (version: string) => void;
-  publishing: boolean;
-}) {
-  const [selection, setSelection] = useState<BumpType>("patch");
-
-  const previewVersion = useMemo(() => {
-    if (suggestions) return suggestions.suggestions[selection];
-    return bumpVersion(currentVersion, selection);
-  }, [currentVersion, selection, suggestions]);
-
-  const options: { value: BumpType; label: string; description: string }[] =
-    useMemo(
-      () => [
-        {
-          value: "patch",
-          label: "Patch",
-          description: `${currentVersion} → ${suggestions?.suggestions.patch ?? bumpVersion(currentVersion, "patch")}`,
-        },
-        {
-          value: "minor",
-          label: "Minor",
-          description: `${currentVersion} → ${suggestions?.suggestions.minor ?? bumpVersion(currentVersion, "minor")}`,
-        },
-        {
-          value: "major",
-          label: "Major",
-          description: `${currentVersion} → ${suggestions?.suggestions.major ?? bumpVersion(currentVersion, "major")}`,
-        },
-      ],
-      [currentVersion, suggestions],
-    );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Release New Version</DialogTitle>
-          <DialogDescription>
-            Choose how to bump the version for this release.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-2 py-2">
-          {options.map((opt) => (
-            <label
-              key={opt.value}
-              className={`flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 transition-colors ${
-                selection === opt.value
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:bg-muted/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="version-bump"
-                value={opt.value}
-                checked={selection === opt.value}
-                onChange={() => setSelection(opt.value)}
-                className="h-4 w-4 accent-primary"
-              />
-              <span className="flex-1">
-                <span className="block text-sm font-medium">{opt.label}</span>
-                <span className="block font-mono text-xs text-muted-foreground">
-                  {opt.description}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-
-        <div className="rounded-md bg-muted/50 px-4 py-2.5 text-center">
-          <span className="text-xs text-muted-foreground">New version: </span>
-          <span className="font-mono text-sm font-semibold">{previewVersion}</span>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={publishing}
-          >
-            Cancel
-          </Button>
-          <Button onClick={() => onConfirm(previewVersion)} disabled={publishing}>
-            {publishing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowRight className="mr-2 h-4 w-4" />
-            )}
-            Release
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 // ── Component Picker ──────────────────────────────────────────────

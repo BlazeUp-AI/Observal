@@ -26,6 +26,8 @@ import type {
   ValidationResult,
   VersionSuggestions,
   AgentVersionsResponse,
+  ComponentVersionsResponse,
+  ComponentVersionDetail,
   VersionDiff,
   BulkResult,
   ComponentLeaderboardItem,
@@ -282,6 +284,16 @@ export const registry = {
     post<unknown>(`/agents/${agentId}/versions`, body),
   getVersionDiff: (agentId: string, v1: string, v2: string) =>
     get<VersionDiff>(`/agents/${agentId}/versions/${v1}/diff/${v2}`),
+
+  // Component versions
+  listComponentVersions: (type: RegistryType, listingId: string, page = 1, pageSize = 50) =>
+    get<ComponentVersionsResponse>(`/${type}/${listingId}/versions?page=${page}&page_size=${pageSize}`),
+  getComponentVersion: (type: RegistryType, listingId: string, version: string) =>
+    get<ComponentVersionDetail>(`/${type}/${listingId}/versions/${version}`),
+  publishComponentVersion: (type: RegistryType, listingId: string, body: unknown) =>
+    post<ComponentVersionDetail>(`/${type}/${listingId}/versions`, body),
+  componentVersionSuggestions: (type: RegistryType, listingId: string) =>
+    get<VersionSuggestions>(`/${type}/${listingId}/version-suggestions`),
 };
 
 // ── Review ──────────────────────────────────────────────────────────
