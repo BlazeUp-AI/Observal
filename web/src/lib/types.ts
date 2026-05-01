@@ -150,6 +150,65 @@ export interface AgentVersionsResponse {
   page_size: number;
 }
 
+// ── Component Versions ─────────────────────────────────────────────
+
+export interface ComponentVersionSummary {
+  id: string;
+  listing_id: string;
+  version: string;
+  description: string;
+  changelog: string | null;
+  status: string;
+  rejection_reason: string | null;
+  download_count: number;
+  supported_ides: string[];
+  released_by: string;
+  released_at: string | null;
+  created_at: string | null;
+  // Hook fields
+  event?: string;
+  execution_mode?: string;
+  priority?: number;
+  handler_type?: string;
+  handler_config?: Record<string, unknown>;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  scope?: string;
+  tool_filter?: Record<string, unknown>;
+  file_pattern?: string[];
+  // Skill fields
+  skill_path?: string;
+  target_agents?: string[];
+  task_type?: string;
+  triggers?: Record<string, unknown>;
+  slash_command?: string;
+  has_scripts?: boolean;
+  has_templates?: boolean;
+  is_power?: boolean;
+  power_md?: string;
+  mcp_server_config?: Record<string, unknown>;
+  activation_keywords?: string[];
+  // Prompt fields
+  category?: string;
+  template?: string;
+  variables?: unknown[];
+  model_hints?: Record<string, unknown>;
+  tags?: string[];
+  // MCP/Sandbox fields
+  source_url?: string;
+  source_ref?: string;
+  resolved_sha?: string;
+}
+
+export interface ComponentVersionsResponse {
+  items: ComponentVersionSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export type ComponentVersionDetail = ComponentVersionSummary;
+
 export interface BulkResultItem {
   name: string;
   status: "created" | "skipped" | "error";

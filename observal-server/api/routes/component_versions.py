@@ -20,6 +20,7 @@ from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.component_version import VersionPublishRequest, VersionReviewRequest  # noqa: TC001
 from services.audit_helpers import audit
+from services.component_version_extras import validate_and_extract
 
 # Semver pattern: X.Y.Z or X.Y.Z-prerelease
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$")
@@ -49,6 +50,21 @@ def _version_to_dict(v) -> dict:
     }
     # Optional fields present on MCP and Sandbox versions
     for attr in ("source_url", "source_ref", "resolved_sha"):
+        if hasattr(v, attr):
+            d[attr] = getattr(v, attr)
+    # Hook fields
+    for attr in ("event", "execution_mode", "priority", "handler_type", "handler_config",
+                 "input_schema", "output_schema", "scope", "tool_filter", "file_pattern"):
+        if hasattr(v, attr):
+            d[attr] = getattr(v, attr)
+    # Skill fields
+    for attr in ("skill_path", "target_agents", "task_type", "triggers", "slash_command",
+                 "has_scripts", "has_templates", "is_power", "power_md", "mcp_server_config",
+                 "activation_keywords"):
+        if hasattr(v, attr):
+            d[attr] = getattr(v, attr)
+    # Prompt fields
+    for attr in ("category", "template", "variables", "model_hints", "tags"):
         if hasattr(v, attr):
             d[attr] = getattr(v, attr)
     return d
@@ -146,11 +162,7 @@ async def _publish_version(
     if dup_result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Version {req.version!r} already exists for this listing")
 
-    # TODO(#621): type-specific fields (transport, event, template, etc.) are not
-    # populated here. The existing submit/draft routes handle initial version
-    # creation with full fields. This endpoint currently supports metadata-only
-    # subsequent versions. Full type-specific field support requires per-type
-    # validation of req.extra — planned for the CLI release flow (#625).
+    extra_fields = validate_and_extract(component_type, req.extra)
     now = datetime.now(UTC)
     ver = version_model(
         listing_id=listing.id,
@@ -162,6 +174,8 @@ async def _publish_version(
         released_by=current_user.id,
         released_at=now,
     )
+    for field_name, value in extra_fields.items():
+        setattr(ver, field_name, value)
     db.add(ver)
     await db.commit()
 
@@ -175,6 +189,22 @@ async def _publish_version(
     )
 
     return _version_to_dict(ver)
+
+
+async def _version_suggestions(
+    listing_id: str,
+    listing_model,
+    db: AsyncSession,
+    current_user: User,
+) -> dict:
+    listing = await resolve_listing(listing_model, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    from services.versioning import suggest_versions
+
+    current = listing.latest_version.version if listing.latest_version else "0.0.0"
+    return {"current": current, "suggestions": suggest_versions(current)}
 
 
 async def _review_version(
@@ -317,6 +347,19 @@ def create_version_router(
             listing_model=listing_model,
             version_model=version_model,
             component_type=component_type,
+            db=db,
+            current_user=current_user,
+        )
+
+    @router.get("/{listing_id}/version-suggestions")
+    async def version_suggestions(
+        listing_id: str,
+        db: AsyncSession = Depends(get_db),
+        current_user: User = Depends(require_role(UserRole.user)),
+    ):
+        return await _version_suggestions(
+            listing_id=listing_id,
+            listing_model=listing_model,
             db=db,
             current_user=current_user,
         )

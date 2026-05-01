@@ -79,6 +79,7 @@ def main(
 
 from observal_cli.cmd_agent import agent_app
 from observal_cli.cmd_auth import auth_app, register_config
+from observal_cli.cmd_component import component_app
 from observal_cli.cmd_doctor import doctor_app
 from observal_cli.cmd_hook import hook_app
 from observal_cli.cmd_mcp import mcp_app
@@ -127,6 +128,7 @@ register_pull(agent_app)
 # ── Subgroups ─────────────────────────────────────────────
 app.add_typer(registry_app, name="registry")
 app.add_typer(agent_app, name="agent")
+app.add_typer(component_app, name="component")
 app.add_typer(ops_app, name="ops")
 app.add_typer(admin_app, name="admin")
 app.add_typer(self_app, name="self")
