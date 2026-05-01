@@ -25,6 +25,7 @@ from schemas.mcp import (
 )
 from services.audit_helpers import audit
 from services.config_generator import generate_config
+from services.editing_lock import acquire_edit_lock, release_edit_lock
 from services.mcp_validator import analyze_repo, run_validation
 
 router = APIRouter(prefix="/api/v1/mcps", tags=["mcp"])
@@ -366,6 +367,7 @@ async def update_mcp_draft(
     if req.environment_variables is not None:
         ver.environment_variables = [ev.model_dump() for ev in req.environment_variables]
 
+    release_edit_lock(ver, current_user.id, force=True)
     await db.flush()
 
     for field in ("name", "category", "owner"):
@@ -383,6 +385,46 @@ async def update_mcp_draft(
         action = "mcp.draft.update"
     await audit(current_user, action, resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
     return McpListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/start-edit")
+async def start_edit_mcp(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(McpListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    if ver.status not in (ListingStatus.pending, ListingStatus.draft, ListingStatus.rejected):
+        raise HTTPException(status_code=400, detail=f"Cannot edit: listing is '{ver.status.value}'")
+    acquire_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "locked"}
+
+
+@router.post("/{listing_id}/cancel-edit")
+async def cancel_edit_mcp(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(McpListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    release_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "unlocked"}
 
 
 @router.post("/{listing_id}/submit", response_model=McpListingResponse)

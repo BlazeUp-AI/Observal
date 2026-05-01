@@ -328,5 +328,8 @@ class McpVersion(Base):
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    is_editing: Mapped[bool] = mapped_column(Boolean, default=False)
+    editing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    editing_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     listing: Mapped[McpListing] = relationship(back_populates="versions", foreign_keys=[listing_id])

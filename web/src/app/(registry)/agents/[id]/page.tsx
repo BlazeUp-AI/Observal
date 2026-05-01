@@ -507,7 +507,8 @@ export default function AgentDetailPage({
   const versionRequiredFeatures = (vd?.required_ide_features as string[]) ?? a?.required_ide_features;
   const versionInferredIdes = (vd?.inferred_supported_ides as string[]) ?? a?.inferred_supported_ides;
   const canDelete = isAdmin || (whoami?.id && a?.created_by && whoami.id === String(a.created_by));
-  const canEdit = isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit";
+  const agentStatus = a?.status as string | undefined;
+  const canEdit = (isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit") && agentStatus === "approved";
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
   const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);

@@ -19,6 +19,7 @@ from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
 from services.audit_helpers import audit
+from services.editing_lock import is_actively_editing
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
@@ -117,10 +118,11 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     if not pending_versions:
         return []
 
-    # Group by agent_id, take the newest pending version per agent
+    # Group by agent_id, take the newest pending version per agent.
+    # Skip versions that are actively being edited by their owner.
     seen_agents: dict[uuid.UUID, AgentVersion] = {}
     for v in pending_versions:
-        if v.agent_id not in seen_agents:
+        if v.agent_id not in seen_agents and not is_actively_editing(v):
             seen_agents[v.agent_id] = v
 
     # Load the agents
@@ -174,6 +176,8 @@ async def _query_pending_components(db: AsyncSession, type_filter: str | None = 
             .order_by(model.created_at.desc())
         )
         for r in result.scalars().all():
+            if r.latest_version and is_actively_editing(r.latest_version):
+                continue
             user_ids.add(r.submitted_by)
             item: dict = {
                 "type": listing_type,
@@ -467,6 +471,8 @@ async def approve(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.latest_version and is_actively_editing(listing.latest_version):
+        raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this item")
     listing.status = ListingStatus.approved
     listing.rejection_reason = None
     await db.commit()
@@ -492,6 +498,8 @@ async def reject(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.latest_version and is_actively_editing(listing.latest_version):
+        raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this item")
     listing.status = ListingStatus.rejected
     listing.rejection_reason = req.reason
     await db.commit()
@@ -522,25 +530,33 @@ async def approve_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    from services.versioning import parse_semver
+
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Find the newest pending version — it may not be latest_version yet
-    # (new versions are published as pending and only become latest on approval).
-    pending_ver = (
-        await db.execute(
-            select(AgentVersion)
-            .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
-            .order_by(AgentVersion.created_at.desc())
-            .limit(1)
+    pending_versions = (
+        (
+            await db.execute(
+                select(AgentVersion)
+                .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+                .order_by(AgentVersion.created_at.desc())
+            )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
 
-    if not pending_ver:
-        raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', not pending")
+    if not pending_versions:
+        raise HTTPException(status_code=400, detail=f"Agent has no pending versions (latest is '{agent.status.value}')")
 
-    components_ready, blocking = await _check_agent_components_ready(pending_ver.components, db)
+    for pv in pending_versions:
+        if is_actively_editing(pv):
+            raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this agent")
+
+    newest_pending = pending_versions[0]
+    components_ready, blocking = await _check_agent_components_ready(newest_pending.components, db)
     if not components_ready:
         raise HTTPException(
             status_code=422,
@@ -550,21 +566,21 @@ async def approve_agent(
             },
         )
 
-    pending_ver.status = AgentStatus.approved
-    pending_ver.rejection_reason = None
-    pending_ver.reviewed_by = current_user.id
-    pending_ver.reviewed_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    for pv in pending_versions:
+        pv.status = AgentStatus.approved
+        pv.rejection_reason = None
+        pv.reviewed_by = current_user.id
+        pv.reviewed_at = now
+
+    # Flush version changes first to avoid CircularDependencyError
     await db.flush()
 
-    # Promote to latest if this version is newer than the current latest.
-    # Flush first to break the circular dependency (Agent ↔ AgentVersion).
-    from services.versioning import parse_semver
-
     current_latest = agent.latest_version
-    new_parsed = parse_semver(pending_ver.version)
+    new_parsed = parse_semver(newest_pending.version)
     current_parsed = parse_semver(current_latest.version) if current_latest else None
     if not current_latest or (new_parsed is not None and current_parsed is not None and new_parsed >= current_parsed):
-        agent.latest_version_id = pending_ver.id
+        agent.latest_version_id = newest_pending.id
 
     await db.commit()
     await audit(
@@ -574,7 +590,7 @@ async def approve_agent(
         resource_id=str(agent_id),
         resource_name=agent.name,
     )
-    return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": pending_ver.version}
+    return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": newest_pending.version}
 
 
 @router.post("/agents/{agent_id}/reject")
@@ -588,23 +604,35 @@ async def reject_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Find the newest pending version to reject
-    pending_ver = (
-        await db.execute(
-            select(AgentVersion)
-            .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
-            .order_by(AgentVersion.created_at.desc())
-            .limit(1)
+    pending_versions = (
+        (
+            await db.execute(
+                select(AgentVersion)
+                .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+                .order_by(AgentVersion.created_at.desc())
+            )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
 
-    if not pending_ver:
-        raise HTTPException(status_code=400, detail="Agent has no pending version to reject")
+    if not pending_versions:
+        if agent.status not in (AgentStatus.pending, AgentStatus.approved):
+            raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', cannot reject")
+        agent.status = AgentStatus.rejected
+        agent.rejection_reason = req.reason
+    else:
+        for pv in pending_versions:
+            if is_actively_editing(pv):
+                raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this agent")
+        now = datetime.now(UTC)
+        for pv in pending_versions:
+            pv.status = AgentStatus.rejected
+            pv.rejection_reason = req.reason
+            pv.reviewed_by = current_user.id
+            pv.reviewed_at = now
+        await db.flush()
 
-    pending_ver.status = AgentStatus.rejected
-    pending_ver.rejection_reason = req.reason
-    pending_ver.reviewed_by = current_user.id
-    pending_ver.reviewed_at = datetime.now(UTC)
     await db.commit()
     await audit(
         current_user,
@@ -636,6 +664,11 @@ async def approve_bundle(
     for model in LISTING_MODELS.values():
         result = await db.execute(select(model).where(model.bundle_id == bundle_id))
         for listing in result.scalars().all():
+            if listing.latest_version and is_actively_editing(listing.latest_version):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot approve: '{listing.name}' is currently being edited by its owner",
+                )
             listing.status = ListingStatus.approved
             listing.rejection_reason = None
             count += 1
@@ -667,6 +700,11 @@ async def reject_bundle(
     for model in LISTING_MODELS.values():
         result = await db.execute(select(model).where(model.bundle_id == bundle_id))
         for listing in result.scalars().all():
+            if listing.latest_version and is_actively_editing(listing.latest_version):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot reject: '{listing.name}' is currently being edited by its owner",
+                )
             listing.status = ListingStatus.rejected
             listing.rejection_reason = req.reason
             count += 1

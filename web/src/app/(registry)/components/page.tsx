@@ -26,6 +26,8 @@ import {
   useComponentSubmitDraft,
   useComponentUpdateDraft,
   useComponentDelete,
+  useStartEdit,
+  useCancelEdit,
 } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import type { RegistryType } from "@/lib/api";
@@ -187,6 +189,33 @@ export default function ComponentsPage() {
   const submitDraftMutation = useComponentSubmitDraft(activeType);
   const updateDraftMutation = useComponentUpdateDraft(activeType);
   const deleteMutation = useComponentDelete(activeType);
+  const startEditMutation = useStartEdit(activeType);
+  const cancelEditMutation = useCancelEdit(activeType);
+
+  const editItemRef = useRef(editItem);
+  editItemRef.current = editItem;
+  const activeTypeRef = useRef(activeType);
+  activeTypeRef.current = activeType;
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const item = editItemRef.current;
+      if (item?.status === "pending") {
+        const type = activeTypeRef.current;
+        const token = localStorage.getItem("observal_access_token");
+        fetch(`/api/v1/${type}/${item.id}/cancel-edit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          keepalive: true,
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const items = useMemo(() => data ?? [], [data]);
 
@@ -402,7 +431,16 @@ export default function ComponentsPage() {
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs"
-                        onClick={() => { setEditItem(item); setSubmitOpen(true); }}
+                        disabled={startEditMutation.isPending}
+                        onClick={() => {
+                          if (item.status === "pending") {
+                            startEditMutation.mutate(item.id, {
+                              onSuccess: () => { setEditItem(item); setSubmitOpen(true); },
+                            });
+                          } else {
+                            setEditItem(item); setSubmitOpen(true);
+                          }
+                        }}
                       >
                         <FileEdit className="h-3 w-3 mr-1" />
                         Edit
@@ -440,7 +478,13 @@ export default function ComponentsPage() {
       <SubmitComponentDialog
         key={editItem?.id ?? "new"}
         open={submitOpen}
-        onOpenChange={(v) => { setSubmitOpen(v); if (!v) setEditItem(null); }}
+        onOpenChange={(v) => {
+          if (!v && editItem?.status === "pending") {
+            cancelEditMutation.mutate(editItem.id);
+          }
+          setSubmitOpen(v);
+          if (!v) setEditItem(null);
+        }}
         type={activeType}
         editItem={editItem as Record<string, unknown> | null}
         onSubmit={(body) => {

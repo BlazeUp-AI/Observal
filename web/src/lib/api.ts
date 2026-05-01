@@ -177,7 +177,16 @@ async function request<T = unknown>(
     }
 
     const text = await response.text().catch(() => response.statusText);
-    throw new Error(`${response.status}: ${text}`);
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.detail) detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+    } catch {
+      // not JSON — use raw text
+    }
+    const err = new Error(detail);
+    (err as Error & { status: number }).status = response.status;
+    throw err;
   }
 
   if (response.status === 204) return undefined as T;
@@ -294,6 +303,10 @@ export const registry = {
     post<ComponentVersionDetail>(`/${type}/${listingId}/versions`, body),
   componentVersionSuggestions: (type: RegistryType, listingId: string) =>
     get<VersionSuggestions>(`/${type}/${listingId}/version-suggestions`),
+  startEdit: (id: string, type?: RegistryType) =>
+    post<{ status: string }>(`/${type ?? "agents"}/${id}/start-edit`),
+  cancelEdit: (id: string, type?: RegistryType) =>
+    post<{ status: string }>(`/${type ?? "agents"}/${id}/cancel-edit`),
 };
 
 // ── Review ──────────────────────────────────────────────────────────

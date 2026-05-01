@@ -33,7 +33,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/layouts/page-header";
-import { useRegistryList, useRegistryItem, useAgentValidation, useWhoami, useSaveDraft, useUpdateDraft } from "@/hooks/use-api";
+import { useRegistryList, useRegistryItem, useAgentValidation, useWhoami, useSaveDraft, useUpdateDraft, useStartEdit } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import { registry, type RegistryType } from "@/lib/api";
 import type { RegistryItem } from "@/lib/types";
@@ -444,6 +444,41 @@ function AgentBuilderInner() {
       if (loaded.length > 0) setCustomPrompts(loaded);
     }
   }, [existingAgent, draftParam]);
+
+  // Edit lock for pending agents — acquire on mount, release on unmount
+  const agentIdParam = editId ?? draftParam;
+  const startEdit = useStartEdit("agents");
+  const editLockAcquiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!agentIdParam || !existingAgent) return;
+    if ((existingAgent as Record<string, unknown>).status !== "pending") return;
+    if (editLockAcquiredRef.current) return;
+    editLockAcquiredRef.current = true;
+
+    startEdit.mutate(agentIdParam, {
+      onError: () => { editLockAcquiredRef.current = false; },
+    });
+
+    const releaseLock = () => {
+      const token = localStorage.getItem("observal_access_token");
+      fetch(`/api/v1/agents/${agentIdParam}/cancel-edit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        keepalive: true,
+      });
+    };
+
+    window.addEventListener("beforeunload", releaseLock);
+    return () => {
+      window.removeEventListener("beforeunload", releaseLock);
+      releaseLock();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentIdParam, existingAgent]);
 
   // Compute selected IDs for quick lookup
   const selectedIds = useMemo(() => {

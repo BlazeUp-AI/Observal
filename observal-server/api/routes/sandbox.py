@@ -20,6 +20,7 @@ from schemas.sandbox import (
     SandboxUpdateRequest,
 )
 from services.audit_helpers import audit
+from services.editing_lock import acquire_edit_lock, release_edit_lock
 
 router = APIRouter(prefix="/api/v1/sandboxes", tags=["sandboxes"])
 
@@ -265,6 +266,7 @@ async def update_sandbox_draft(
         if val is not None:
             setattr(ver, field, val)
 
+    release_edit_lock(ver, current_user.id, force=True)
     await db.flush()
 
     for field in ("name", "owner"):
@@ -288,6 +290,46 @@ async def update_sandbox_draft(
         resource_name=listing.name,
     )
     return SandboxListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/start-edit")
+async def start_edit_sandbox(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(SandboxListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    if ver.status not in (ListingStatus.pending, ListingStatus.draft, ListingStatus.rejected):
+        raise HTTPException(status_code=400, detail=f"Cannot edit: listing is '{ver.status.value}'")
+    acquire_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "locked"}
+
+
+@router.post("/{listing_id}/cancel-edit")
+async def cancel_edit_sandbox(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(SandboxListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    release_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "unlocked"}
 
 
 @router.post("/{listing_id}/submit", response_model=SandboxListingResponse)

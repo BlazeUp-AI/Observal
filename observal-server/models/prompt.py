@@ -194,5 +194,8 @@ class PromptVersion(Base):
     variables: Mapped[list] = mapped_column(JSON, default=list)
     model_hints: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list)
+    is_editing: Mapped[bool] = mapped_column(Boolean, default=False)
+    editing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    editing_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     listing: Mapped[PromptListing] = relationship(back_populates="versions", foreign_keys=[listing_id])

@@ -47,6 +47,7 @@ from schemas.agent import (
 )
 from services.agent_config_generator import generate_agent_config
 from services.audit_helpers import audit
+from services.editing_lock import acquire_edit_lock, release_edit_lock
 from services.ide_feature_inference import compute_supported_ides, infer_required_features
 from services.registry_telemetry import emit_registry_event
 
@@ -1400,6 +1401,7 @@ async def update_draft(
         )
         version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
 
+    release_edit_lock(version, current_user.id, force=True)
     await db.flush()
 
     for field in ("name", "owner"):
@@ -1417,6 +1419,48 @@ async def update_draft(
         action = "agent.draft.update"
     await audit(current_user, action, resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
     return _agent_to_response(agent, created_by_email=current_user.email, created_by_username=current_user.username)
+
+
+@router.post("/{agent_id}/start-edit")
+async def start_edit_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm not in ("owner", "edit"):
+        raise HTTPException(status_code=403, detail="Not the agent owner or editor")
+    version = agent.latest_version
+    if not version:
+        raise HTTPException(status_code=400, detail="Agent has no version")
+    if version.status not in (AgentStatus.pending, AgentStatus.draft, AgentStatus.rejected):
+        raise HTTPException(status_code=400, detail=f"Cannot edit: agent version is '{version.status.value}'")
+    acquire_edit_lock(version, current_user.id)
+    await db.commit()
+    return {"status": "locked"}
+
+
+@router.post("/{agent_id}/cancel-edit")
+async def cancel_edit_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm not in ("owner", "edit"):
+        raise HTTPException(status_code=403, detail="Not the agent owner or editor")
+    version = agent.latest_version
+    if not version:
+        raise HTTPException(status_code=400, detail="Agent has no version")
+    release_edit_lock(version, current_user.id)
+    await db.commit()
+    return {"status": "unlocked"}
 
 
 @router.post("/{agent_id}/submit", response_model=AgentResponse)

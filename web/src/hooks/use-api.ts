@@ -694,6 +694,32 @@ export function useComponentSubmitDraft(type: RegistryType) {
   });
 }
 
+export function useStartEdit(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.startEdit(id, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to start editing");
+    },
+  });
+}
+
+export function useCancelEdit(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.cancelEdit(id, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to cancel editing");
+    },
+  });
+}
+
 export function useComponentDelete(type: RegistryType) {
   const qc = useQueryClient();
   return useMutation({

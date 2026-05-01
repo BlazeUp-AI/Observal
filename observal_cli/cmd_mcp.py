@@ -1103,9 +1103,21 @@ def edit_mcp(
         rprint("[yellow]No changes specified.[/yellow] Use --from-file or field options (--name, --description, etc.)")
         raise typer.Exit(code=1)
 
-    with spinner("Saving changes..."):
-        result = client.put(f"/api/v1/mcps/{resolved}/draft", updates)
-    rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
+    try:
+        client.post(f"/api/v1/mcps/{resolved}/start-edit")
+    except Exception:
+        pass
+    try:
+        with spinner("Saving changes..."):
+            result = client.put(f"/api/v1/mcps/{resolved}/draft", updates)
+        rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
+    except Exception as exc:
+        try:
+            client.post(f"/api/v1/mcps/{resolved}/cancel-edit")
+        except Exception:
+            pass
+        rprint(f"[red]Failed to update:[/red] {exc}")
+        raise typer.Exit(code=1)
 
 
 @mcp_app.command(name="delete")

@@ -251,5 +251,8 @@ class HookVersion(Base):
     scope: Mapped[str] = mapped_column(String(20), default="agent")
     tool_filter: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     file_pattern: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    is_editing: Mapped[bool] = mapped_column(Boolean, default=False)
+    editing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    editing_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     listing: Mapped[HookListing] = relationship(back_populates="versions", foreign_keys=[listing_id])
