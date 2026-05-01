@@ -88,7 +88,7 @@ class TestConstants:
 
     def test_copilot_feature_matrix(self):
         assert "copilot" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot"] == {"mcp_servers", "rules"}
+        assert IDE_FEATURE_MATRIX["copilot"] == {"hook_bridge", "mcp_servers", "rules"}
 
     def test_gemini_cli_feature_matrix(self):
         assert "gemini-cli" in IDE_FEATURE_MATRIX
@@ -96,7 +96,7 @@ class TestConstants:
 
     def test_opencode_feature_matrix(self):
         assert "opencode" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["opencode"] == {"mcp_servers", "rules"}
+        assert IDE_FEATURE_MATRIX["opencode"] == {"hook_bridge", "mcp_servers", "rules"}
 
     def test_copilot_cli_in_valid_ides(self):
         assert "copilot-cli" in VALID_IDES
@@ -185,7 +185,7 @@ class TestGenerateCopilotConfig:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_path(self):
         agent = _make_agent()
@@ -248,7 +248,7 @@ class TestGenerateCopilotCliConfig:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot-cli")
-        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_path(self):
         agent = _make_agent()
@@ -470,7 +470,8 @@ class TestIdeCompatibilityWarnings:
         agent = _make_agent()
         agent.required_ide_features = ["skills", "hook_bridge"]
         warnings = _check_ide_compatibility(agent, "opencode")
-        assert len(warnings) == 2
+        # opencode now supports hook_bridge (via plugins), only "skills" is unsupported
+        assert len(warnings) == 1
 
     def test_no_warnings_for_supported_features(self):
         agent = _make_agent()
