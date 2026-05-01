@@ -120,9 +120,11 @@ export interface ComponentLeaderboardItem {
 
 export interface VersionSuggestions {
   current: string;
-  patch: string;
-  minor: string;
-  major: string;
+  suggestions: {
+    patch: string;
+    minor: string;
+    major: string;
+  };
 }
 
 export interface AgentVersionSummary {

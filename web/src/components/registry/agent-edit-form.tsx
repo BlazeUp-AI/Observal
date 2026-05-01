@@ -41,8 +41,9 @@ import {
   useAgentValidation,
   useCreateAgentVersion,
   useUpdateAgent,
+  useVersionSuggestions,
 } from "@/hooks/use-api";
-import type { RegistryItem, ValidationResult } from "@/lib/types";
+import type { RegistryItem, ValidationResult, VersionSuggestions } from "@/lib/types";
 import type { RegistryType } from "@/lib/api";
 import { SortableComponentList } from "@/components/builder/sortable-component-list";
 import { ValidationPanel } from "@/components/builder/validation-panel";
@@ -148,47 +149,44 @@ function VersionBumpDialog({
   open,
   onOpenChange,
   currentVersion,
+  suggestions,
   onConfirm,
   publishing,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentVersion: string;
+  suggestions: VersionSuggestions | undefined;
   onConfirm: (version: string) => void;
   publishing: boolean;
 }) {
-  const [selection, setSelection] = useState<BumpType | "keep">("patch");
+  const [selection, setSelection] = useState<BumpType>("patch");
 
   const previewVersion = useMemo(() => {
-    if (selection === "keep") return currentVersion;
+    if (suggestions) return suggestions.suggestions[selection];
     return bumpVersion(currentVersion, selection);
-  }, [currentVersion, selection]);
+  }, [currentVersion, selection, suggestions]);
 
-  const options: { value: BumpType | "keep"; label: string; description: string }[] =
+  const options: { value: BumpType; label: string; description: string }[] =
     useMemo(
       () => [
         {
           value: "patch",
           label: "Patch",
-          description: `${currentVersion} → ${bumpVersion(currentVersion, "patch")}`,
+          description: `${currentVersion} → ${suggestions?.suggestions.patch ?? bumpVersion(currentVersion, "patch")}`,
         },
         {
           value: "minor",
           label: "Minor",
-          description: `${currentVersion} → ${bumpVersion(currentVersion, "minor")}`,
+          description: `${currentVersion} → ${suggestions?.suggestions.minor ?? bumpVersion(currentVersion, "minor")}`,
         },
         {
           value: "major",
           label: "Major",
-          description: `${currentVersion} → ${bumpVersion(currentVersion, "major")}`,
-        },
-        {
-          value: "keep",
-          label: "Keep current",
-          description: currentVersion,
+          description: `${currentVersion} → ${suggestions?.suggestions.major ?? bumpVersion(currentVersion, "major")}`,
         },
       ],
-      [currentVersion],
+      [currentVersion, suggestions],
     );
 
   return (
@@ -385,66 +383,80 @@ export function AgentEditForm({
   // ── Mutations ─────────────────────────────────────────────────
   const createVersion = useCreateAgentVersion();
   const updateAgent = useUpdateAgent();
+  const { data: versionSuggestions } = useVersionSuggestions(agentId);
 
   // ── Initialize form from agent data ──────────────────────────
-  const initializedRef = useRef(false);
+  const fingerprint = useMemo(
+    () =>
+      JSON.stringify([
+        agent.name,
+        currentVersion,
+        versionDetail?.description,
+        versionDetail?.prompt,
+      ]),
+    [agent.name, currentVersion, versionDetail],
+  );
+
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+    // Reset description / modelName from latest props
+    setDescription(initialDescription);
+    setModelName(initialModelName);
 
     // Load components from component_links / mcp_links
     const links: ComponentLink[] = agent.component_links ?? agent.mcp_links ?? [];
-    if (links.length > 0) {
-      const grouped: Record<string, RegistryItem[]> = {
-        mcps: [], skills: [], hooks: [], prompts: [], sandboxes: [],
-      };
-      for (const comp of links) {
-        const singularType = comp.component_type ?? "mcp";
-        const pluralType = REVERSE_TYPE_MAP[singularType] ?? singularType;
-        const compId = comp.component_id ?? comp.mcp_id;
-        const compName = comp.component_name ?? comp.mcp_name ?? comp.name ?? compId ?? "";
-        if (grouped[pluralType] && compId) {
-          grouped[pluralType].push({ id: compId, name: compName });
-        }
+    const grouped: Record<string, RegistryItem[]> = {
+      mcps: [], skills: [], hooks: [], prompts: [], sandboxes: [],
+    };
+    for (const comp of links) {
+      const singularType = comp.component_type ?? "mcp";
+      const pluralType = REVERSE_TYPE_MAP[singularType] ?? singularType;
+      const compId = comp.component_id ?? comp.mcp_id;
+      const compName = comp.component_name ?? comp.mcp_name ?? comp.name ?? compId ?? "";
+      if (grouped[pluralType] && compId) {
+        grouped[pluralType].push({ id: compId, name: compName });
       }
-      setSelectedComponents(grouped);
-      initialStateRef.current.selectedComponents = grouped;
     }
+    setSelectedComponents(grouped);
 
     // Load goal template sections
     const gt = agent.goal_template;
+    let loadedGoalSections: GoalSection[];
     if (gt?.sections && gt.sections.length > 0) {
-      const loaded = gt.sections.map((s) => ({
+      loadedGoalSections = gt.sections.map((s) => ({
         id: generateId(),
         title: s.name ?? "",
         content: s.description ?? "",
       }));
-      setGoalSections(loaded);
-      initialStateRef.current.goalSections = loaded;
+    } else {
+      loadedGoalSections = [{ id: generateId(), title: "", content: "" }];
     }
+    setGoalSections(loadedGoalSections);
 
     // Load custom prompts from prompt string
-    const promptField = initialPrompt;
-    if (promptField.trim()) {
-      const parts = promptField.split(/\n## /).filter(Boolean);
-      const loaded: CustomPrompt[] = parts.map((part) => {
-        const lines = part.startsWith("## ")
-          ? part.slice(3).split("\n")
-          : part.split("\n");
-        const title = lines[0]?.trim() ?? "";
-        const content = lines.slice(1).join("\n").trim();
-        return {
-          id: generateId(),
-          title: title && content ? title : "",
-          content: title && content ? content : (part.startsWith("## ") ? part.slice(3).trim() : part.trim()),
-        };
+    let loadedPrompts: CustomPrompt[] = [];
+    if (initialPrompt.trim()) {
+      const parts = initialPrompt.split(/\n\n(?=## )/).filter(Boolean);
+      loadedPrompts = parts.map((part) => {
+        const match = part.match(/^## (.+)\n([\s\S]*)$/);
+        if (match) {
+          return { id: generateId(), title: match[1].trim(), content: match[2].trim() };
+        }
+        return { id: generateId(), title: "", content: part.trim() };
       });
-      if (loaded.length > 0) {
-        setCustomPrompts(loaded);
-        initialStateRef.current.customPrompts = loaded;
-      }
     }
-  }, [agent, initialPrompt]);
+    setCustomPrompts(loadedPrompts);
+
+    // Sync initial state ref so dirty detection works correctly after re-init
+    initialStateRef.current = {
+      description: initialDescription,
+      modelName: initialModelName,
+      customPrompts: loadedPrompts,
+      goalSections: loadedGoalSections,
+      selectedComponents: grouped,
+    };
+    setIsDirty(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint]);
 
   // ── Dirty detection ───────────────────────────────────────────
   useEffect(() => {
@@ -642,15 +654,52 @@ export function AgentEditForm({
   async function handleSaveDraft() {
     setSavingDraft(true);
     try {
+      const components: { component_type: string; component_id: string }[] = [];
+      for (const [type, items] of Object.entries(selectedComponents)) {
+        const singularType = TYPE_MAP[type] ?? type;
+        for (const item of items) {
+          components.push({ component_type: singularType, component_id: item.id });
+        }
+      }
+
+      const sections = goalSections
+        .filter((s) => s.title.trim())
+        .map((s) => ({
+          name: s.title.trim(),
+          description: s.content.trim() || null,
+        }));
+
+      const promptParts = customPrompts
+        .filter((p) => p.content.trim())
+        .map((p) =>
+          p.title.trim()
+            ? `## ${p.title.trim()}\n${p.content.trim()}`
+            : p.content.trim(),
+        );
+
       await updateAgent.mutateAsync({
         id: agentId,
         body: {
           description: description.trim(),
           model_name: modelName,
+          prompt: promptParts.join("\n\n"),
+          components: components.length > 0 ? components : [],
+          goal_template: {
+            description: description.trim() || agent.name,
+            sections:
+              sections.length > 0
+                ? sections
+                : [{ name: "Default", description: description.trim() || agent.name }],
+          },
         },
       });
-      initialStateRef.current.description = description;
-      initialStateRef.current.modelName = modelName;
+      initialStateRef.current = {
+        description,
+        modelName,
+        customPrompts,
+        goalSections,
+        selectedComponents,
+      };
       setIsDirty(false);
     } catch {
       // toast handled by mutation
@@ -932,7 +981,7 @@ export function AgentEditForm({
       <div className="flex items-center gap-3">
         <Button
           onClick={() => setShowVersionDialog(true)}
-          disabled={publishing || savingDraft}
+          disabled={publishing || savingDraft || !isDirty}
           className="min-w-[160px]"
         >
           {publishing ? (
@@ -973,6 +1022,7 @@ export function AgentEditForm({
         open={showVersionDialog}
         onOpenChange={setShowVersionDialog}
         currentVersion={currentVersion}
+        suggestions={versionSuggestions}
         onConfirm={handleRelease}
         publishing={publishing}
       />
