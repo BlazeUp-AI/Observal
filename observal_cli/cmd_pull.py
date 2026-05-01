@@ -239,7 +239,14 @@ def register_pull(app: typer.Typer):
         Calls the server to generate an install config for the specified IDE,
         then writes rules files, MCP configs, and agent files into the target
         directory.  Use --dry-run to preview without writing.
+
+        .. deprecated::
+            Use ``observal agent pull`` instead for version-aware pulling.
         """
+        rprint(
+            "[yellow]⚠ Deprecation:[/yellow] [dim]`observal pull` is deprecated. "
+            "Use [bold]observal agent pull[/bold] instead for version-aware config pulling.[/dim]\n"
+        )
         resolved = config.resolve_alias(agent_id)
         target_dir = Path(directory).resolve()
 
