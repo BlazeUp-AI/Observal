@@ -1360,18 +1360,24 @@ async def update_draft(
         agent.external_mcps = [m.model_dump() for m in req.external_mcps]
 
     if req.components is not None:
+        if not agent.latest_version:
+            raise HTTPException(status_code=400, detail="Agent has no version to update components on")
+        version_id = agent.latest_version.id
         old_comps = (
-            (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == version_id)))
+            .scalars()
+            .all()
         )
         for comp in old_comps:
             await db.delete(comp)
         for i, cref in enumerate(req.components):
             db.add(
                 AgentComponent(
-                    agent_id=agent.id,
+                    agent_version_id=version_id,
                     component_type=cref.component_type,
                     component_id=cref.component_id,
-                    version_ref="latest",
+                    component_name="",
+                    resolved_version="latest",
                     order_index=i,
                     config_override=cref.config_override,
                 )
@@ -1379,8 +1385,12 @@ async def update_draft(
 
     # Re-infer IDE features only when components or external_mcps changed
     if req.components is not None or req.external_mcps is not None:
+        if not agent.latest_version:
+            raise HTTPException(status_code=400, detail="Agent has no version to update features on")
         current_comps_draft = (
-            (await db.execute(select(AgentComponent).where(AgentComponent.agent_id == agent.id))).scalars().all()
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == agent.latest_version.id)))
+            .scalars()
+            .all()
         )
         skill_comp_ids = [c.component_id for c in current_comps_draft if c.component_type == "skill"]
         skill_listings_map_draft_update: dict = {}
