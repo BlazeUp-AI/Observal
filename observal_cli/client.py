@@ -251,6 +251,75 @@ def delete(path: str) -> dict:
         _handle_connect()
 
 
+def get_registered_agents_only() -> bool:
+    """Check if the org has registered-agents-only mode enabled.
+
+    Returns False on any error (fail-open, silent — no printed messages).
+    """
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return False
+        r = httpx.get(
+            f"{server_url}/api/v1/admin/org/registered-agents-only",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return r.json().get("registered_agents_only", False)
+        return False
+    except Exception:
+        return False
+
+
+def get_registered_agent_names() -> set[str]:
+    """Fetch the set of registered (approved) agent names from the server.
+
+    Returns empty set on any error (fail-open).
+    """
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return set()
+        r = httpx.get(
+            f"{server_url}/api/v1/agents",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return {item.get("name", "") for item in r.json() if item.get("name")}
+    except Exception:
+        pass
+    return set()
+
+
+def get_registered_mcp_names() -> set[str]:
+    """Fetch the set of registered (approved) MCP names from the server.
+
+    Returns empty set on any error (fail-open).
+    """
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return set()
+        r = httpx.get(
+            f"{server_url}/api/v1/mcp",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return {item.get("name", "") for item in r.json() if item.get("name")}
+    except Exception:
+        pass
+    return set()
+
+
 def health() -> tuple[bool, float]:
     """Check server health. Returns (ok, latency_ms)."""
     cfg = config.load()

@@ -1127,6 +1127,25 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             pass
     agent_files = list(agents_dir.glob("*.json"))
 
+    # Check if registered-agents-only mode is enabled
+    from observal_cli import client as obs_client
+
+    registered_agents_only = obs_client.get_registered_agents_only()
+    registered_agents: set[str] = set()
+    if registered_agents_only:
+        registered_agents = obs_client.get_registered_agent_names()
+        # Filter agent files to only registered ones (skip silently)
+        eligible_files = [af for af in agent_files if af.stem != "kiro_default" and af.stem in registered_agents]
+        if not eligible_files:
+            skipped_count = sum(1 for af in agent_files if af.stem != "kiro_default")
+            if skipped_count:
+                changes.append(
+                    f"[dim]  {skipped_count} unregistered agent(s) skipped. "
+                    "Register agents via [bold]observal agent create[/bold] to enable tracing.[/dim]"
+                )
+            return changes, changed
+        agent_files = eligible_files
+
     for af in agent_files:
         agent_name = af.stem
         # Skip kiro_default — only trace registered agents
@@ -1266,8 +1285,11 @@ def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
     return config_data.get(key, config_data.get("servers", {}))
 
 
-def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
-    """Wrap un-shimmed MCP servers in a config file with observal-shim. Returns count of shimmed entries."""
+def _shim_config_file(config_path: Path, ide: str, dry_run: bool, *, registered_mcps: set[str] | None = None) -> int:
+    """Wrap un-shimmed MCP servers in a config file with observal-shim. Returns count of shimmed entries.
+
+    When registered_mcps is provided, only MCPs in that set are shimmed (registered-agents-only mode).
+    """
     if not config_path.exists():
         return 0
     try:
@@ -1289,6 +1311,9 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
     shimmed = 0
     for name, entry in servers.items():
         if not _is_already_shimmed(entry) and not entry.get("url"):
+            # Skip unregistered MCPs when registered-agents-only mode is ON
+            if registered_mcps is not None and name not in registered_mcps:
+                continue
             if not dry_run:
                 servers[name] = _wrap_with_shim(entry, name)
             shimmed += 1
@@ -1499,12 +1524,20 @@ def doctor_patch(
             shim_path = _SHIM_TARGETS.get(target)
             if shim_path and shim_path.exists():
                 rprint(f"[cyan]{target} — shims[/cyan]")
-                count = _shim_config_file(shim_path, target, dry_run)
+                # Check if registered-agents-only mode is enabled for MCP shim filtering
+                from observal_cli import client as obs_client
+
+                _reg_only = obs_client.get_registered_agents_only()
+                _reg_mcps = obs_client.get_registered_mcp_names() if _reg_only else None
+                count = _shim_config_file(shim_path, target, dry_run, registered_mcps=_reg_mcps)
                 if count:
                     any_changes = True
                     rprint(f"  {verb}: shimmed {count} MCP entries in {shim_path}")
                 else:
-                    rprint("  [dim]All MCP servers already shimmed[/dim]")
+                    if _reg_only:
+                        rprint("  [dim]All MCP servers already shimmed or unregistered[/dim]")
+                    else:
+                        rprint("  [dim]All MCP servers already shimmed[/dim]")
 
         # ── OTel config ──
         if do_otel and target in ("gemini-cli", "gemini_cli"):
