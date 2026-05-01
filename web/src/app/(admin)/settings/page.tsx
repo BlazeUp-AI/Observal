@@ -5,9 +5,9 @@ import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info, Database, Activ
 import { toast } from "sonner";
 import { useAdminSettings } from "@/hooks/use-api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
-import { useRoleGuard } from "@/hooks/use-role-guard";
+import { useRoleGuard, hasMinRole } from "@/hooks/use-role-guard";
 import type { AdminSetting } from "@/lib/types";
-import { admin } from "@/lib/api";
+import { admin, getUserRole } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -194,12 +194,23 @@ export default function SettingsPage() {
   const [tracePrivacy, setTracePrivacy] = useState(false);
   const [tracePrivacyLoading, setTracePrivacyLoading] = useState(true);
   const [tracePrivacyToggling, setTracePrivacyToggling] = useState(false);
+  const [registeredAgentsOnly, setRegisteredAgentsOnly] = useState(false);
+  const [registeredAgentsOnlyLoading, setRegisteredAgentsOnlyLoading] = useState(true);
+  const [registeredAgentsOnlyToggling, setRegisteredAgentsOnlyToggling] = useState(false);
 
   useEffect(() => {
     admin.getTracePrivacy()
       .then((res) => setTracePrivacy(res.trace_privacy))
       .catch(() => {})
       .finally(() => setTracePrivacyLoading(false));
+    if (hasMinRole(getUserRole(), "super_admin")) {
+      admin.getRegisteredAgentsOnly()
+        .then((res) => setRegisteredAgentsOnly(res.registered_agents_only))
+        .catch(() => {})
+        .finally(() => setRegisteredAgentsOnlyLoading(false));
+    } else {
+      setRegisteredAgentsOnlyLoading(false);
+    }
   }, []);
 
   const handleTracePrivacyToggle = useCallback(async (checked: boolean) => {
@@ -212,6 +223,19 @@ export default function SettingsPage() {
       toast.error(e instanceof Error ? e.message : "Failed to update trace privacy");
     } finally {
       setTracePrivacyToggling(false);
+    }
+  }, []);
+
+  const handleRegisteredAgentsOnlyToggle = useCallback(async (checked: boolean) => {
+    setRegisteredAgentsOnlyToggling(true);
+    try {
+      const res = await admin.setRegisteredAgentsOnly(checked);
+      setRegisteredAgentsOnly(res.registered_agents_only);
+      toast.success(`Registered agents only ${res.registered_agents_only ? "enabled" : "disabled"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update setting");
+    } finally {
+      setRegisteredAgentsOnlyToggling(false);
     }
   }, []);
 
@@ -343,6 +367,32 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* Registered Agents Only — super_admin only */}
+        {hasMinRole(getUserRole(), "super_admin") && (
+        <section className="animate-in">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <Shield className="h-3.5 w-3.5" />
+            Registered Agents Only
+          </h3>
+          <div className="rounded-md border border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Only trace registered agents</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  When enabled, only registered agents are traced. Unregistered agent
+                  telemetry is stored as metadata-only (no content payloads).
+                </p>
+              </div>
+              <Switch
+                checked={registeredAgentsOnly}
+                onCheckedChange={handleRegisteredAgentsOnlyToggle}
+                disabled={registeredAgentsOnlyLoading || registeredAgentsOnlyToggling}
+              />
+            </div>
+          </div>
+        </section>
+        )}
 
         {isLoading ? (
           <TableSkeleton rows={5} cols={2} />
