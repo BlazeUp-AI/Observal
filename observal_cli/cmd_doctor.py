@@ -1419,6 +1419,11 @@ def doctor_patch(
 
     rprint("[bold]Observal Doctor — Patch[/bold]\n")
 
+    # Fetch toggle once for all IDEs (avoid repeated HTTP round-trips)
+    from observal_cli import client as obs_client
+
+    reg_only = obs_client.get_registered_agents_only()
+
     for target in targets:
         # ── Hooks ──
         if do_hooks:
@@ -1427,10 +1432,6 @@ def doctor_patch(
                 if not claude_dir.is_dir() and not shutil.which("claude"):
                     continue
                 rprint("[cyan]Claude Code — hooks[/cyan]")
-
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
 
                 if reg_only:
                     # Registered-agents-only mode: hooks live in agent frontmatter,
@@ -1489,10 +1490,6 @@ def doctor_patch(
             elif target in ("kiro", "kiro-cli"):
                 rprint("[cyan]Kiro — hooks[/cyan]")
 
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
-
                 if reg_only:
                     # Kiro hooks are always per-agent (in agent JSON files),
                     # so in reg-only mode they're already scoped correctly via pull.
@@ -1514,10 +1511,6 @@ def doctor_patch(
                     continue
                 rprint("[cyan]Copilot CLI — hooks[/cyan]")
 
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
-
                 if reg_only:
                     rprint(
                         "  [dim]Registered-agents-only mode: skipping global hooks "
@@ -1534,10 +1527,6 @@ def doctor_patch(
 
             elif target in ("gemini-cli", "gemini_cli"):
                 rprint("[cyan]Gemini CLI — hooks[/cyan]")
-
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
 
                 if reg_only:
                     rprint(
@@ -1600,10 +1589,6 @@ def doctor_patch(
                     continue
                 rprint("[cyan]Cursor — hooks[/cyan]")
 
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
-
                 if reg_only:
                     rprint(
                         "  [dim]Registered-agents-only mode: skipping global hooks "
@@ -1638,10 +1623,6 @@ def doctor_patch(
 
             elif target in ("vscode", "copilot"):
                 rprint(f"[cyan]{target.title()} — hooks[/cyan]")
-
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
 
                 if reg_only:
                     rprint(
@@ -1678,10 +1659,6 @@ def doctor_patch(
             elif target == "opencode":
                 rprint("[cyan]OpenCode — plugin hooks[/cyan]")
 
-                from observal_cli import client as obs_client
-
-                reg_only = obs_client.get_registered_agents_only()
-
                 if reg_only:
                     rprint(
                         "  [dim]Registered-agents-only mode: skipping global plugin "
@@ -1716,17 +1693,13 @@ def doctor_patch(
             shim_path = _SHIM_TARGETS.get(target)
             if shim_path and shim_path.exists():
                 rprint(f"[cyan]{target} — shims[/cyan]")
-                # Check if registered-agents-only mode is enabled for MCP shim filtering
-                from observal_cli import client as obs_client
-
-                _reg_only = obs_client.get_registered_agents_only()
-                _reg_mcps = obs_client.get_registered_mcp_names() if _reg_only else None
+                _reg_mcps = obs_client.get_registered_mcp_names() if reg_only else None
                 count = _shim_config_file(shim_path, target, dry_run, registered_mcps=_reg_mcps)
                 if count:
                     any_changes = True
                     rprint(f"  {verb}: shimmed {count} MCP entries in {shim_path}")
                 else:
-                    if _reg_only:
+                    if reg_only:
                         rprint("  [dim]All MCP servers already shimmed or unregistered[/dim]")
                     else:
                         rprint("  [dim]All MCP servers already shimmed[/dim]")

@@ -5,6 +5,7 @@ Refreshes every 60 seconds and supports immediate invalidation via Redis pub/sub
 """
 
 import asyncio
+import time
 import uuid
 
 import structlog
@@ -20,18 +21,24 @@ logger = structlog.get_logger(__name__)
 
 INVALIDATION_CHANNEL = "observal:registry_invalidate"
 _REFRESH_INTERVAL = 60  # seconds
+_USER_ORG_TTL = 300  # seconds — evict stale user->org mappings
+_USER_ORG_MAX_SIZE = 10_000  # max entries before forced eviction
 
-# In-memory caches
+# In-memory caches — replaced atomically (never mutated in-place)
 _registered_agents: dict[uuid.UUID, set[str]] = {}  # org_id -> {agent_names}
 _org_toggle: dict[uuid.UUID, bool] = {}  # org_id -> registered_agents_only
-_user_org_map: dict[str, uuid.UUID | None] = {}  # user_id string -> org_id
+_user_org_map: dict[str, tuple[uuid.UUID | None, float]] = {}  # user_id -> (org_id, timestamp)
 
 _refresh_task: asyncio.Task | None = None
 _subscriber_task: asyncio.Task | None = None
 
 
 async def _refresh_all() -> None:
-    """Refresh all caches from Postgres."""
+    """Refresh all caches from Postgres.
+
+    Uses atomic reference swaps so concurrent readers never see an empty dict.
+    """
+    global _org_toggle, _registered_agents
     try:
         async with async_session() as session:
             # 1. Refresh org toggle settings
@@ -39,8 +46,6 @@ async def _refresh_all() -> None:
             new_toggle: dict[uuid.UUID, bool] = {}
             for org_id, enabled in result.all():
                 new_toggle[org_id] = enabled
-            _org_toggle.clear()
-            _org_toggle.update(new_toggle)
 
             # 2. Refresh registered agent names per org
             # An agent is "registered" when its latest version is approved
@@ -53,8 +58,10 @@ async def _refresh_all() -> None:
             new_agents: dict[uuid.UUID, set[str]] = {}
             for org_id, name in result.all():
                 new_agents.setdefault(org_id, set()).add(name)
-            _registered_agents.clear()
-            _registered_agents.update(new_agents)
+
+        # Atomic swap — readers see old or new, never empty
+        _org_toggle = new_toggle
+        _registered_agents = new_agents
 
         logger.debug(
             "registry_cache_refreshed",
@@ -114,9 +121,20 @@ def is_registered(org_id: uuid.UUID, agent_name: str) -> bool:
 
 
 async def resolve_user_org(user_id: str) -> uuid.UUID | None:
-    """Resolve user_id to org_id, with in-memory + Redis caching."""
-    if user_id in _user_org_map:
-        return _user_org_map[user_id]
+    """Resolve user_id to org_id, with in-memory + Redis caching.
+
+    In-memory entries expire after _USER_ORG_TTL seconds and the map is
+    bounded to _USER_ORG_MAX_SIZE entries (oldest evicted on overflow).
+    """
+    global _user_org_map
+
+    now = time.monotonic()
+    cached_entry = _user_org_map.get(user_id)
+    if cached_entry is not None:
+        org_id, ts = cached_entry
+        if now - ts < _USER_ORG_TTL:
+            return org_id
+        # Expired — fall through to refresh
 
     # Try Redis cache first
     r = get_redis()
@@ -125,7 +143,7 @@ async def resolve_user_org(user_id: str) -> uuid.UUID | None:
         cached = await r.get(cache_key)
         if cached is not None:
             org_id = uuid.UUID(cached) if cached else None
-            _user_org_map[user_id] = org_id
+            _user_org_put(user_id, org_id, now)
             return org_id
     except Exception:
         pass
@@ -141,13 +159,24 @@ async def resolve_user_org(user_id: str) -> uuid.UUID | None:
         pass
 
     # Cache in Redis (5 min TTL) and in-memory
-    _user_org_map[user_id] = org_id
+    _user_org_put(user_id, org_id, now)
     try:
         await r.setex(cache_key, 300, str(org_id) if org_id else "")
     except Exception:
         pass
 
     return org_id
+
+
+def _user_org_put(user_id: str, org_id: uuid.UUID | None, now: float) -> None:
+    """Insert into _user_org_map, evicting oldest entries if at capacity."""
+    global _user_org_map
+    _user_org_map[user_id] = (org_id, now)
+    if len(_user_org_map) > _USER_ORG_MAX_SIZE:
+        # Evict oldest 20% by timestamp
+        entries = sorted(_user_org_map.items(), key=lambda kv: kv[1][1])
+        cutoff = len(entries) // 5
+        _user_org_map = dict(entries[cutoff:])
 
 
 async def invalidate() -> None:
