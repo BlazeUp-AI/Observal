@@ -409,6 +409,10 @@ export const admin = {
     get<{ trace_privacy: boolean }>("/admin/org/trace-privacy"),
   setTracePrivacy: (enabled: boolean) =>
     put<{ trace_privacy: boolean }>("/admin/org/trace-privacy", { trace_privacy: enabled }),
+  getRegisteredAgentsOnly: () =>
+    get<{ registered_agents_only: boolean }>("/admin/org/registered-agents-only"),
+  setRegisteredAgentsOnly: (enabled: boolean) =>
+    put<{ registered_agents_only: boolean }>("/admin/org/registered-agents-only", { registered_agents_only: enabled }),
   auditLog: (params?: Record<string, string>) => {
     const qs = params ? `?${new URLSearchParams(params)}` : "";
     return get<AuditLogEntry[]>(`/admin/audit-log${qs}`);
