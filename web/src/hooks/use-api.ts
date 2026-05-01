@@ -129,6 +129,14 @@ export function useAgentVersions(agentId: string | undefined) {
   });
 }
 
+export function useAgentVersionDetail(agentId: string | undefined, version: string | null) {
+  return useQuery({
+    queryKey: ["agent-version-detail", agentId, version],
+    enabled: !!agentId && !!version,
+    queryFn: () => registry.getVersion(agentId!, version!),
+  });
+}
+
 // ── Review ──────────────────────────────────────────────────────────
 
 export function useReviewList(typeFilter?: string) {

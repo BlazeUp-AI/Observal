@@ -32,6 +32,7 @@ import {
   useWhoami,
   useUpdateAgent,
   useAgentVersions,
+  useAgentVersionDetail,
 } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
 import { hasMinRole } from "@/hooks/use-role-guard";
@@ -475,6 +476,7 @@ export default function AgentDetailPage({
   const { data: whoami } = useWhoami();
   const { data: versionsData } = useAgentVersions(id);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const { data: versionDetail } = useAgentVersionDetail(id, selectedVersion);
 
   const storeSub = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);
@@ -495,6 +497,14 @@ export default function AgentDetailPage({
   const versions = versionsData?.items ?? [];
   const latestApprovedVersion = versions.find((v) => v.status === "approved")?.version;
   const effectiveVersion = selectedVersion ?? latestApprovedVersion ?? a?.version;
+  // Overlay version-specific fields when viewing a non-default version
+  const vd = versionDetail as Record<string, unknown> | undefined;
+  const versionDescription = (vd?.description as string) ?? a?.description;
+  const versionPrompt = (vd?.prompt as string) ?? a?.prompt;
+  const versionModelName = (vd?.model_name as string) ?? a?.model_name;
+  const versionSupportedIdes = (vd?.supported_ides as string[]) ?? a?.supported_ides;
+  const versionRequiredFeatures = (vd?.required_ide_features as string[]) ?? a?.required_ide_features;
+  const versionInferredIdes = (vd?.inferred_supported_ides as string[]) ?? a?.inferred_supported_ides;
   const canDelete = isAdmin || (whoami?.id && a?.created_by && whoami.id === String(a.created_by));
   const canEdit = isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit";
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
@@ -559,9 +569,9 @@ export default function AgentDetailPage({
                   <p className="text-sm text-muted-foreground">{a.owner}</p>
                 )}
 
-                {a.description && (
+                {versionDescription && (
                   <p className="text-sm text-foreground/80 leading-relaxed max-w-2xl">
-                    {a.description}
+                    {versionDescription}
                   </p>
                 )}
               </div>
@@ -617,24 +627,24 @@ export default function AgentDetailPage({
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6 mt-6">
-                  {a.description && (
+                  {versionDescription && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold font-display">
                         About
                       </h3>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        {a.description}
+                        {versionDescription}
                       </p>
                     </div>
                   )}
 
-                  {a.model_name && (
+                  {versionModelName && (
                     <div className="space-y-1">
                       <h3 className="text-sm font-semibold font-display">
                         Model
                       </h3>
                       <p className="text-sm text-muted-foreground font-mono">
-                        {a.model_name}
+                        {versionModelName}
                       </p>
                     </div>
                   )}
@@ -666,7 +676,7 @@ export default function AgentDetailPage({
                     </div>
                   )}
 
-                  {!a.description && !goalTemplate && (
+                  {!versionDescription && !goalTemplate && (
                     <p className="text-sm text-muted-foreground">
                       No additional details provided for this agent.
                     </p>
@@ -676,7 +686,7 @@ export default function AgentDetailPage({
                 <TabsContent value="components" className="mt-6">
                   <div className="min-h-[300px]">
                   {components.length === 0 ? (
-                    a.prompt ? (
+                    versionPrompt ? (
                       <div className="space-y-3">
                         <p className="text-xs text-muted-foreground">
                           This agent was registered via scan and uses an inline system prompt instead of linked components.
@@ -684,7 +694,7 @@ export default function AgentDetailPage({
                         <div className="rounded-md border border-border bg-muted/20 p-4">
                           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">System Prompt</h4>
                           <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words text-foreground/80 leading-relaxed max-h-[400px] overflow-y-auto">
-                            {String(a.prompt)}
+                            {String(versionPrompt)}
                           </pre>
                         </div>
                       </div>
@@ -906,11 +916,11 @@ export default function AgentDetailPage({
                       {components.length}
                     </span>
                   </div>
-                  {a.model_name && (
+                  {versionModelName && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Model</span>
                       <span className="font-mono text-xs truncate max-w-[140px]">
-                        {a.model_name}
+                        {versionModelName}
                       </span>
                     </div>
                   )}
@@ -922,17 +932,17 @@ export default function AgentDetailPage({
                   IDE Compatibility
                 </h3>
                 <IdeBadges
-                  supportedIdes={a.supported_ides}
-                  inferredSupportedIdes={a.inferred_supported_ides}
+                  supportedIdes={versionSupportedIdes}
+                  inferredSupportedIdes={versionInferredIdes}
                   max={7}
                 />
-                {a.required_ide_features && a.required_ide_features.length > 0 && (
+                {versionRequiredFeatures && versionRequiredFeatures.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
                       Required features
                     </p>
                     <div className="flex flex-wrap gap-1">
-                      {a.required_ide_features.map((f: string) => (
+                      {versionRequiredFeatures.map((f: string) => (
                         <span key={f} className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                           {FEATURE_LABELS[f as IdeFeature] ?? f}
                         </span>
