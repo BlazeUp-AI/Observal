@@ -642,7 +642,8 @@ async def reject_agent(
         resource_name=agent.name,
         detail=f"reason={req.reason}",
     )
-    return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": pending_ver.version}
+    rejected_version = pending_versions[0].version if pending_versions else ""
+    return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": rejected_version}
 
 
 # ---------------------------------------------------------------------------

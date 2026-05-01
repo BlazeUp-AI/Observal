@@ -221,10 +221,10 @@ class TestDraftUpdate:
     @pytest.mark.asyncio
     @patch("api.routes.agent._load_agent")
     async def test_rejects_update_on_non_draft(self, mock_load):
-        """Updating a non-draft agent returns 400."""
+        """Updating an approved agent returns 400."""
         user = _user()
         app, db, _ = _app_with(user=user)
-        agent = _agent_mock(status=AgentStatus.pending, created_by=user.id)
+        agent = _agent_mock(status=AgentStatus.approved, created_by=user.id)
         mock_load.return_value = agent
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

@@ -50,8 +50,12 @@ def release_edit_lock(
 
 def is_actively_editing(version) -> bool:
     """Return True if the version is locked and the lock has not expired."""
-    return bool(
-        version.is_editing
-        and version.editing_by is not None
-        and not _is_lock_expired(version.editing_since)
-    )
+    if not getattr(version, "is_editing", False):
+        return False
+    editing_by = getattr(version, "editing_by", None)
+    if editing_by is None:
+        return False
+    editing_since = getattr(version, "editing_since", None)
+    if not isinstance(editing_since, datetime):
+        return False
+    return not _is_lock_expired(editing_since)
