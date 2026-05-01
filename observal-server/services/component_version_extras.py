@@ -6,26 +6,50 @@ from fastapi import HTTPException
 
 # Fields allowed in extra dict per component type
 HOOK_FIELDS = {
-    "event", "execution_mode", "priority", "handler_type", "handler_config",
-    "input_schema", "output_schema", "scope", "tool_filter", "file_pattern",
+    "event",
+    "execution_mode",
+    "priority",
+    "handler_type",
+    "handler_config",
+    "input_schema",
+    "output_schema",
+    "scope",
+    "tool_filter",
+    "file_pattern",
 }
 
 SKILL_FIELDS = {
-    "skill_path", "target_agents", "task_type", "triggers", "slash_command",
-    "has_scripts", "has_templates", "is_power", "power_md", "mcp_server_config",
+    "skill_path",
+    "target_agents",
+    "task_type",
+    "triggers",
+    "slash_command",
+    "has_scripts",
+    "has_templates",
+    "is_power",
+    "power_md",
+    "mcp_server_config",
     "activation_keywords",
 }
 
 PROMPT_FIELDS = {
-    "category", "template", "variables", "model_hints", "tags",
+    "category",
+    "template",
+    "variables",
+    "model_hints",
+    "tags",
 }
 
 MCP_FIELDS = {
-    "source_url", "source_ref", "resolved_sha",
+    "source_url",
+    "source_ref",
+    "resolved_sha",
 }
 
 SANDBOX_FIELDS = {
-    "source_url", "source_ref", "resolved_sha",
+    "source_url",
+    "source_ref",
+    "resolved_sha",
 }
 
 REQUIRED_FIELDS: dict[str, set[str]] = {

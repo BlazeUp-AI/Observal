@@ -53,14 +53,34 @@ def _version_to_dict(v) -> dict:
         if hasattr(v, attr):
             d[attr] = getattr(v, attr)
     # Hook fields
-    for attr in ("event", "execution_mode", "priority", "handler_type", "handler_config",
-                 "input_schema", "output_schema", "scope", "tool_filter", "file_pattern"):
+    for attr in (
+        "event",
+        "execution_mode",
+        "priority",
+        "handler_type",
+        "handler_config",
+        "input_schema",
+        "output_schema",
+        "scope",
+        "tool_filter",
+        "file_pattern",
+    ):
         if hasattr(v, attr):
             d[attr] = getattr(v, attr)
     # Skill fields
-    for attr in ("skill_path", "target_agents", "task_type", "triggers", "slash_command",
-                 "has_scripts", "has_templates", "is_power", "power_md", "mcp_server_config",
-                 "activation_keywords"):
+    for attr in (
+        "skill_path",
+        "target_agents",
+        "task_type",
+        "triggers",
+        "slash_command",
+        "has_scripts",
+        "has_templates",
+        "is_power",
+        "power_md",
+        "mcp_server_config",
+        "activation_keywords",
+    ):
         if hasattr(v, attr):
             d[attr] = getattr(v, attr)
     # Prompt fields
