@@ -1,0 +1,56 @@
+name: Deploy Dev to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy to EC2 (dev)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST_DEV }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY_DEV }}
+          script: |
+            set -e
+            cd ~/Observal
+            git fetch origin main
+            git reset --hard origin/main
+
+            cd docker
+            docker compose up -d --build --remove-orphans
+
+            echo "Waiting for API container to start..."
+            for i in $(seq 1 60); do
+              if docker compose exec -T observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/livez')" 2>/dev/null; then
+                echo "API process is alive"
+                break
+              fi
+              echo "Waiting for API process... ($i/60)"
+              sleep 5
+            done
+
+            docker compose restart observal-lb
+            sleep 3
+
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "API is healthy"
+                exit 0
+              fi
+              echo "Waiting for health check... ($i/30)"
+              sleep 5
+            done
+
+            echo "API failed health check"
+            docker compose logs observal-api observal-init observal-lb observal-db observal-clickhouse --tail 20
+            exit 1
