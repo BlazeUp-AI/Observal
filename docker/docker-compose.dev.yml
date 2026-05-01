@@ -1,0 +1,10 @@
+services:
+  observal-web:
+    environment:
+      - NEXT_PUBLIC_API_URL=http://dev.observal.io
+
+  observal-lb:
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
