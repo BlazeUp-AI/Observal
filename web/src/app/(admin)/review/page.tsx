@@ -66,7 +66,7 @@ function ReviewCard({ item, onApprove, onReject, onDelete, onItemClick, disableA
         </div>
         {item.type && (
           <Badge variant="outline" className="text-[10px] shrink-0">
-            {item.type ?? item.listing_type ?? "-"}
+            {item.type}
           </Badge>
         )}
       </div>
@@ -222,7 +222,7 @@ function ReviewRow({ item, onApprove, onReject, onDelete, onItemClick, disableAp
             </button>
             {item.type && (
               <Badge variant="outline" className="text-[10px] shrink-0">
-                {item.type ?? item.listing_type ?? "-"}
+                {item.type}
               </Badge>
             )}
             {item.version && (

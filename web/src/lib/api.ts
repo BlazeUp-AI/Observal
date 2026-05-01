@@ -36,55 +36,61 @@ import type {
 
 const API = "/api/v1";
 
+const STORAGE_KEY_ACCESS_TOKEN = "observal_access_token";
+const STORAGE_KEY_REFRESH_TOKEN = "observal_refresh_token";
+const STORAGE_KEY_USER_ROLE = "observal_user_role";
+const STORAGE_KEY_USER_NAME = "observal_user_name";
+const STORAGE_KEY_USER_EMAIL = "observal_user_email";
+
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_access_token");
+  return localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
 }
 
 function getRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_refresh_token");
+  return localStorage.getItem(STORAGE_KEY_REFRESH_TOKEN);
 }
 
 export function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem("observal_access_token", accessToken);
-  localStorage.setItem("observal_refresh_token", refreshToken);
+  localStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, accessToken);
+  localStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshToken);
 }
 
 export function clearSession() {
-  localStorage.removeItem("observal_access_token");
-  localStorage.removeItem("observal_refresh_token");
+  localStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
+  localStorage.removeItem(STORAGE_KEY_REFRESH_TOKEN);
   localStorage.removeItem("observal_api_key"); // clean up legacy
-  localStorage.removeItem("observal_user_role");
-  localStorage.removeItem("observal_user_name");
-  localStorage.removeItem("observal_user_email");
+  localStorage.removeItem(STORAGE_KEY_USER_ROLE);
+  localStorage.removeItem(STORAGE_KEY_USER_NAME);
+  localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
 }
 
 export function setUserRole(role: string) {
-  localStorage.setItem("observal_user_role", role);
+  localStorage.setItem(STORAGE_KEY_USER_ROLE, role);
 }
 
 export function getUserRole(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_user_role");
+  return localStorage.getItem(STORAGE_KEY_USER_ROLE);
 }
 
 export function setUserName(name: string) {
-  localStorage.setItem("observal_user_name", name);
+  localStorage.setItem(STORAGE_KEY_USER_NAME, name);
 }
 
 export function getUserName(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_user_name");
+  return localStorage.getItem(STORAGE_KEY_USER_NAME);
 }
 
 export function setUserEmail(email: string) {
-  localStorage.setItem("observal_user_email", email);
+  localStorage.setItem(STORAGE_KEY_USER_EMAIL, email);
 }
 
 export function getUserEmail(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_user_email");
+  return localStorage.getItem(STORAGE_KEY_USER_EMAIL);
 }
 
 let _refreshPromise: Promise<boolean> | null = null;
