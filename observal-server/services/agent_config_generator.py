@@ -18,6 +18,55 @@ from services.config_generator import (
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+# Hook events that send to the generic observal-hook.sh handler.
+_GENERIC_HOOK_EVENTS = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "SubagentStart",
+    "SubagentStop",
+    "StopFailure",
+    "Notification",
+    "TaskCreated",
+    "TaskCompleted",
+    "PreCompact",
+    "PostCompact",
+    "WorktreeCreate",
+    "WorktreeRemove",
+    "Elicitation",
+    "ElicitationResult",
+]
+
+
+def _claude_code_hooks_frontmatter_lines(hook_script: str, stop_script: str) -> list[str]:
+    """Build the YAML lines for a hooks: section in Claude Code frontmatter.
+
+    Returns a list of indented strings (no trailing newlines) ready to be
+    appended to the frontmatter_lines list before the closing '---'.
+    """
+    lines = ["hooks:"]
+    for event in _GENERIC_HOOK_EVENTS:
+        lines += [
+            f"  {event}:",
+            "    - hooks:",
+            "        - type: command",
+            f'          command: "{hook_script}"',
+        ]
+    # Stop event gets two matcher groups: generic hook + stop-specific hook.
+    lines += [
+        "  Stop:",
+        "    - hooks:",
+        "        - type: command",
+        f'          command: "{hook_script}"',
+        "    - hooks:",
+        "        - type: command",
+        f'          command: "{stop_script}"',
+    ]
+    return lines
+
+
 _MODEL_SHORT_NAMES: dict[str, str] = {
     "sonnet": "sonnet",
     "opus": "opus",
@@ -417,6 +466,9 @@ def generate_agent_config(
             frontmatter_lines.append("mcpServers:")
             for mcp_name in claude_mcps:
                 frontmatter_lines.append(f"  - {mcp_name}")
+        frontmatter_lines.extend(
+            _claude_code_hooks_frontmatter_lines("observal-hook.sh", "observal-stop-hook.sh")
+        )
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 

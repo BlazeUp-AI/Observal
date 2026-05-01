@@ -14,6 +14,32 @@ from observal_cli import client, config
 from observal_cli.ide_registry import get_scope_aware_ides
 from observal_cli.render import spinner
 
+# Hook script names used as placeholders in server-generated agent configs.
+# Resolved to absolute paths client-side before writing to disk.
+_HOOK_SCRIPT_NAMES = ("observal-hook.sh", "observal-stop-hook.sh")
+
+
+def _resolve_hook_paths(content: str) -> str:
+    """Replace hook script names with absolute paths in agent file content.
+
+    Server-side config generator emits bare script names (observal-hook.sh)
+    since it doesn't know the client's install path. This resolves them to
+    the actual paths inside the installed package.
+    """
+    import shutil
+
+    hooks_dir = Path(__file__).parent / "hooks"
+    for name in _HOOK_SCRIPT_NAMES:
+        local = hooks_dir / name
+        if local.is_file():
+            content = content.replace(f'"{name}"', f'"{local.resolve()}"')
+        else:
+            # Fallback: check if it's on PATH
+            found = shutil.which(name)
+            if found:
+                content = content.replace(f'"{name}"', f'"{found}"')
+    return content
+
 
 def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
     """Discover MCP env vars from agent components and prompt the user for values.
@@ -273,10 +299,14 @@ def register_pull(app: typer.Typer):
         rules = snippet.get("rules_file")
         if rules:
             p = _resolve_path(rules["path"], target_dir, allow_home=is_user_scope)
+            content = rules["content"]
+            # Resolve hook script placeholders to absolute paths (Claude Code)
+            if ide in ("claude-code", "claude_code") and isinstance(content, str):
+                content = _resolve_hook_paths(content)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
-                status = _write_file(p, rules["content"])
+                status = _write_file(p, content)
                 written.append((str(p), status))
 
         # ── mcp_config with path key (Cursor/VSCode/Gemini) ─

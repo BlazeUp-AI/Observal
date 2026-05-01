@@ -3,8 +3,8 @@
 When enabled, only registered (active) agents are traced.
 Unregistered agent telemetry is stored as metadata-only (no content).
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0023
+Revises: 0022
 Create Date: 2026-05-01 00:00:00.000000
 
 """
@@ -15,8 +15,8 @@ from typing import Union
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0022"
-down_revision: Union[str, Sequence[str], None] = "0021"
+revision: str = "0023"
+down_revision: Union[str, Sequence[str], None] = "0022"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1425,22 +1425,64 @@ def doctor_patch(
                 if not claude_dir.is_dir() and not shutil.which("claude"):
                     continue
                 rprint("[cyan]Claude Code — hooks[/cyan]")
-                if dry_run:
-                    hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
-                    hook_script = _find_hook_script("observal-hook.sh")
-                    stop_script = _find_hook_script("observal-stop-hook.sh")
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    # Registered-agents-only mode: hooks live in agent frontmatter,
+                    # not in global settings.json.  Only ensure env vars are set.
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via agent frontmatter)[/dim]"
+                    )
                     user_id = cfg.get("user_id", "")
-                    desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
                     desired_env = get_desired_env(server_url, api_key, user_id)
-                    changes = settings_reconciler.reconcile(desired_hooks, desired_env, dry_run=True)
+                    changes = settings_reconciler.reconcile({}, desired_env, dry_run=dry_run)
+                    # Warn if stale global hooks exist in settings.json
+                    settings_path = Path.home() / ".claude" / "settings.json"
+                    if settings_path.exists():
+                        try:
+                            sdata = json.loads(settings_path.read_text())
+                            has_stale = any(
+                                _is_observal_matcher_group(g)
+                                for groups in sdata.get("hooks", {}).values()
+                                if isinstance(groups, list)
+                                for g in groups
+                            )
+                            if has_stale:
+                                rprint(
+                                    "  [yellow]⚠ Stale global hooks detected. "
+                                    "Run: observal doctor cleanup --ide claude-code[/yellow]"
+                                )
+                                any_changes = True
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                    if changes:
+                        any_changes = True
+                        for c in changes:
+                            rprint(f"  {c}")
+                    else:
+                        rprint("  [dim]Env vars already up to date[/dim]")
                 else:
-                    changes = _install_claude_code_hooks(server_url, api_key)
-                if changes:
-                    any_changes = True
-                    for c in changes:
-                        rprint(f"  {c}")
-                else:
-                    rprint("  [dim]Already up to date[/dim]")
+                    # All-traces mode: install global hooks as usual.
+                    if dry_run:
+                        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
+                        hook_script = _find_hook_script("observal-hook.sh")
+                        stop_script = _find_hook_script("observal-stop-hook.sh")
+                        user_id = cfg.get("user_id", "")
+                        desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
+                        desired_env = get_desired_env(server_url, api_key, user_id)
+                        changes = settings_reconciler.reconcile(desired_hooks, desired_env, dry_run=True)
+                    else:
+                        changes = _install_claude_code_hooks(server_url, api_key)
+                    if changes:
+                        any_changes = True
+                        for c in changes:
+                            rprint(f"  {c}")
+                    else:
+                        rprint("  [dim]Already up to date[/dim]")
 
             elif target in ("kiro", "kiro-cli"):
                 rprint("[cyan]Kiro — hooks[/cyan]")
