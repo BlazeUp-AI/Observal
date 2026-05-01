@@ -319,6 +319,24 @@ def register_pull(app: typer.Typer):
                 status = _write_file(p, mcp_cfg["content"], merge_mcp=True)
                 written.append((str(p), status))
 
+        # ── hooks_config (Cursor/VSCode/Copilot/OpenCode/Gemini) ─
+        hooks_cfg = snippet.get("hooks_config")
+        if hooks_cfg and isinstance(hooks_cfg, dict) and "path" in hooks_cfg:
+            p = _resolve_path(hooks_cfg["path"], target_dir, allow_home=is_user_scope)
+            content = hooks_cfg["content"]
+            if isinstance(content, str):
+                content = _resolve_hook_paths(content)
+            elif isinstance(content, dict):
+                # Resolve hook paths inside JSON content (command fields)
+                raw = json.dumps(content)
+                raw = _resolve_hook_paths(raw)
+                content = json.loads(raw)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                status = _write_file(p, content, merge_mcp=hooks_cfg.get("merge", False))
+                written.append((str(p), status))
+
         # ── agent_file (Kiro) ───────────────────────────────
         agent_file = snippet.get("agent_file")
         if agent_file:

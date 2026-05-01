@@ -1488,7 +1488,18 @@ def doctor_patch(
 
             elif target in ("kiro", "kiro-cli"):
                 rprint("[cyan]Kiro — hooks[/cyan]")
-                if dry_run:
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    # Kiro hooks are always per-agent (in agent JSON files),
+                    # so in reg-only mode they're already scoped correctly via pull.
+                    rprint(
+                        "  [dim]Registered-agents-only mode: hooks live per-agent (installed via observal pull)[/dim]"
+                    )
+                elif dry_run:
                     rprint("  [yellow]Would install hooks into ~/.kiro/agents/*.json[/yellow]")
                 else:
                     messages, kiro_changed = _install_kiro_hooks(server_url)
@@ -1502,7 +1513,17 @@ def doctor_patch(
                 if not copilot_dir.is_dir() and not shutil.which("copilot"):
                     continue
                 rprint("[cyan]Copilot CLI — hooks[/cyan]")
-                if dry_run:
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent hooks)[/dim]"
+                    )
+                elif dry_run:
                     rprint("  [yellow]Would install hooks into ~/.copilot/config.json[/yellow]")
                 else:
                     messages, ccli_changed = _install_copilot_cli_hooks(server_url)
@@ -1513,7 +1534,17 @@ def doctor_patch(
 
             elif target in ("gemini-cli", "gemini_cli"):
                 rprint("[cyan]Gemini CLI — hooks[/cyan]")
-                if dry_run:
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent config)[/dim]"
+                    )
+                elif dry_run:
                     rprint("  [yellow]Would install hooks into ~/.gemini/settings.json[/yellow]")
                 else:
                     gemini_hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
@@ -1562,6 +1593,123 @@ def doctor_patch(
                             rprint("  [dim]Already up to date[/dim]")
                     except Exception as e:
                         rprint(f"  [yellow]Could not inject Gemini hooks: {e}[/yellow]")
+
+            elif target == "cursor":
+                cursor_dir = Path.home() / ".cursor"
+                if not cursor_dir.is_dir() and not shutil.which("cursor"):
+                    continue
+                rprint("[cyan]Cursor — hooks[/cyan]")
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent hooks.json)[/dim]"
+                    )
+                elif dry_run:
+                    rprint("  [yellow]Would install hooks into ~/.cursor/hooks.json[/yellow]")
+                else:
+                    from observal_cli.ide_specs.cursor_hooks_spec import build_cursor_hooks
+
+                    hook_script = _find_hook_script("observal-hook.sh")
+                    stop_script = _find_hook_script("observal-stop-hook.sh")
+                    hooks_content = build_cursor_hooks(hook_script, stop_script)
+
+                    cursor_hooks_path = cursor_dir / "hooks.json"
+                    try:
+                        needs_update = True
+                        if cursor_hooks_path.exists():
+                            existing = json.loads(cursor_hooks_path.read_text())
+                            if existing == hooks_content:
+                                needs_update = False
+                        if needs_update:
+                            _backup_config(cursor_hooks_path)
+                            cursor_hooks_path.parent.mkdir(parents=True, exist_ok=True)
+                            cursor_hooks_path.write_text(json.dumps(hooks_content, indent=2) + "\n")
+                            rprint(f"  [green]Installed hooks into {cursor_hooks_path}[/green]")
+                            any_changes = True
+                        else:
+                            rprint("  [dim]Already up to date[/dim]")
+                    except Exception as e:
+                        rprint(f"  [yellow]Could not install Cursor hooks: {e}[/yellow]")
+
+            elif target in ("vscode", "copilot"):
+                rprint(f"[cyan]{target.title()} — hooks[/cyan]")
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent hooks)[/dim]"
+                    )
+                elif dry_run:
+                    rprint("  [yellow]Would install hooks into .github/hooks/observal.json[/yellow]")
+                else:
+                    from observal_cli.ide_specs.vscode_hooks_spec import build_vscode_hooks
+
+                    hook_script = _find_hook_script("observal-hook.sh")
+                    stop_script = _find_hook_script("observal-stop-hook.sh")
+                    hooks_content = build_vscode_hooks(hook_script, stop_script)
+
+                    # Write to .github/hooks/observal.json in cwd
+                    hooks_path = Path.cwd() / ".github" / "hooks" / "observal.json"
+                    try:
+                        needs_update = True
+                        if hooks_path.exists():
+                            existing = json.loads(hooks_path.read_text())
+                            if existing == hooks_content:
+                                needs_update = False
+                        if needs_update:
+                            hooks_path.parent.mkdir(parents=True, exist_ok=True)
+                            hooks_path.write_text(json.dumps(hooks_content, indent=2) + "\n")
+                            rprint(f"  [green]Installed hooks into {hooks_path}[/green]")
+                            any_changes = True
+                        else:
+                            rprint("  [dim]Already up to date[/dim]")
+                    except Exception as e:
+                        rprint(f"  [yellow]Could not install VS Code/Copilot hooks: {e}[/yellow]")
+
+            elif target == "opencode":
+                rprint("[cyan]OpenCode — plugin hooks[/cyan]")
+
+                from observal_cli import client as obs_client
+
+                reg_only = obs_client.get_registered_agents_only()
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global plugin "
+                        "(telemetry via per-agent plugin)[/dim]"
+                    )
+                elif dry_run:
+                    rprint("  [yellow]Would install plugin into .opencode/plugins/[/yellow]")
+                else:
+                    from observal_cli.ide_specs.opencode_hooks_spec import build_opencode_plugin_js
+
+                    hook_script = _find_hook_script("observal-hook.sh")
+                    stop_script = _find_hook_script("observal-stop-hook.sh")
+                    plugin_content = build_opencode_plugin_js(hook_script, stop_script)
+
+                    plugin_path = Path.cwd() / ".opencode" / "plugins" / "observal-plugin.mjs"
+                    try:
+                        needs_update = True
+                        if plugin_path.exists() and plugin_path.read_text() == plugin_content:
+                            needs_update = False
+                        if needs_update:
+                            plugin_path.parent.mkdir(parents=True, exist_ok=True)
+                            plugin_path.write_text(plugin_content)
+                            rprint(f"  [green]Installed plugin into {plugin_path}[/green]")
+                            any_changes = True
+                        else:
+                            rprint("  [dim]Already up to date[/dim]")
+                    except Exception as e:
+                        rprint(f"  [yellow]Could not install OpenCode plugin: {e}[/yellow]")
 
         # ── Shims ──
         if do_shims:
