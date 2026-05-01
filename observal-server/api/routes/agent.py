@@ -691,7 +691,9 @@ async def update_agent(
         # Remove ALL old components on the latest version
         version_id = agent.latest_version.id
         old_comps = (
-            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == version_id))).scalars().all()
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == version_id)))
+            .scalars()
+            .all()
         )
         for comp in old_comps:
             await db.delete(comp)
@@ -777,7 +779,9 @@ async def update_agent(
         if not agent.latest_version:
             raise HTTPException(status_code=400, detail="Agent has no version to update features on")
         current_comps = (
-            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == agent.latest_version.id))).scalars().all()
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == agent.latest_version.id)))
+            .scalars()
+            .all()
         )
         skill_comp_ids = [c.component_id for c in current_comps if c.component_type == "skill"]
         skill_listings_map_update: dict = {}
