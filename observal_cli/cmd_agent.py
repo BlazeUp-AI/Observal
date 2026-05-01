@@ -917,8 +917,17 @@ def agent_pull(
         f"[dim]→[/dim] Pulling [bold]{agent.get('name', resolved)}[/bold] v[bold]{target_version}[/bold] for [cyan]{ide}[/cyan]..."
     )
 
-    with spinner("Fetching IDE config..."):
-        config_data = client.get(f"/api/v1/agents/{resolved}/versions/{target_version}/ide/{ide}")
+    # Try versioned IDE config endpoint first; fall back to install endpoint
+    config_data = None
+    try:
+        with spinner("Fetching IDE config..."):
+            config_data = client.get(f"/api/v1/agents/{resolved}/versions/{target_version}/ide/{ide}")
+    except (SystemExit, Exception):
+        # Versioned endpoint 404'd (no cached ide_configs) — fall back to install
+        rprint("[dim]  Pre-generated config not available, generating on-the-fly...[/dim]")
+        with spinner("Generating config via install endpoint..."):
+            result = client.post(f"/api/v1/agents/{resolved}/install", {"ide": ide})
+        config_data = result.get("config_snippet", {})
 
     files: dict[str, str] = config_data.get("files", {}) if isinstance(config_data, dict) else {}
 
@@ -935,9 +944,38 @@ def agent_pull(
             written += 1
         rprint(f"[green]✓ Agent config written to {written} file(s)[/green]")
     else:
-        # Fallback: write the entire config as a single JSON file
-        fallback_path = dir_path / f"{agent.get('name', resolved)}-config.json"
-        fallback_path.parent.mkdir(parents=True, exist_ok=True)
-        fallback_path.write_text(_json.dumps(config_data, indent=2))
-        rprint(f"  [green]✓[/green] created {fallback_path.name}")
-        rprint("[green]✓ Agent config written to 1 file[/green]")
+        # Fallback: write the config snippet files (install endpoint format)
+        from observal_cli.cmd_pull import _resolve_path, _write_file
+
+        snippet = config_data
+        written_files: list[tuple[str, str]] = []
+
+        agent_file = snippet.get("agent_file")
+        if agent_file:
+            p = _resolve_path(agent_file["path"], dir_path)
+            status = _write_file(p, agent_file["content"])
+            written_files.append((str(p), status))
+
+        rules = snippet.get("rules_file")
+        if rules:
+            p = _resolve_path(rules["path"], dir_path)
+            status = _write_file(p, rules["content"])
+            written_files.append((str(p), status))
+
+        mcp_cfg = snippet.get("mcp_config")
+        if mcp_cfg and isinstance(mcp_cfg, dict) and "path" in mcp_cfg:
+            p = _resolve_path(mcp_cfg["path"], dir_path)
+            status = _write_file(p, mcp_cfg["content"], merge_mcp=True)
+            written_files.append((str(p), status))
+
+        if written_files:
+            for path, status in written_files:
+                rprint(f"  [green]✓[/green] {status} {path}")
+            rprint(f"[green]✓ Agent config written to {len(written_files)} file(s)[/green]")
+        else:
+            # Last resort: dump raw JSON
+            fallback_path = dir_path / f"{agent.get('name', resolved)}-config.json"
+            fallback_path.parent.mkdir(parents=True, exist_ok=True)
+            fallback_path.write_text(_json.dumps(config_data, indent=2))
+            rprint(f"  [green]✓[/green] created {fallback_path.name}")
+            rprint("[green]✓ Agent config written to 1 file[/green]")

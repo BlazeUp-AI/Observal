@@ -176,6 +176,8 @@ class AgentResponse(BaseModel):
     visibility: AgentVisibility
     team_accesses: list[TeamAccessResponse] = []
     user_permission: str | None = None
+    latest_approved_version: str | None = None
+    latest_version: str | None = None
 
     model_config = {"from_attributes": True}
 
