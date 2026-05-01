@@ -18,6 +18,20 @@ from services.config_generator import (
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+_MODEL_SHORT_NAMES = {"sonnet": "sonnet", "opus": "opus", "haiku": "haiku"}
+
+
+def _model_name_to_frontmatter(model_name: str) -> str:
+    """Convert a stored model_name (e.g. 'claude-sonnet-4') to a frontmatter short name."""
+    if not model_name:
+        return ""
+    lower = model_name.lower()
+    for key in _MODEL_SHORT_NAMES:
+        if key in lower:
+            return _MODEL_SHORT_NAMES[key]
+    return model_name
+
+
 _FEATURE_LABELS: dict[str, str] = {
     "skills": "slash-command skills",
     "superpowers": "Kiro superpowers",
@@ -369,6 +383,10 @@ def generate_agent_config(
         tools = options.get("tools", "")  # comma-separated whitelist
         color = options.get("color", "")
 
+        # Fall back to the agent's stored model_name when no explicit choice
+        if not model_choice or model_choice == "inherit":
+            model_choice = _model_name_to_frontmatter(getattr(agent, "model_name", ""))
+
         # Build Claude Code agent file with YAML frontmatter
         desc_line = (agent.description or safe_name).replace("\n", " ").strip()
         frontmatter_lines = [
@@ -376,7 +394,7 @@ def generate_agent_config(
             f"name: {safe_name}",
             f'description: "{desc_line}"',
         ]
-        if model_choice and model_choice != "inherit":
+        if model_choice:
             frontmatter_lines.append(f"model: {model_choice}")
         if tools:
             frontmatter_lines.append(f"tools: {tools}")
