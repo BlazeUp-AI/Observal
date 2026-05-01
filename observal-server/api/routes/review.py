@@ -554,8 +554,10 @@ async def approve_agent(
     pending_ver.rejection_reason = None
     pending_ver.reviewed_by = current_user.id
     pending_ver.reviewed_at = datetime.now(UTC)
+    await db.flush()
 
-    # Promote to latest if this version is newer than the current latest
+    # Promote to latest if this version is newer than the current latest.
+    # Flush first to break the circular dependency (Agent ↔ AgentVersion).
     from services.versioning import parse_semver
 
     current_latest = agent.latest_version
