@@ -126,10 +126,31 @@ class TestOptionalCurrentUser:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_none_for_invalid_token(self):
+    async def test_raises_401_for_invalid_token(self):
         mock_db = AsyncMock()
-        result = await optional_current_user(authorization="Bearer invalid-token", db=mock_db)
-        assert result is None
+        with pytest.raises(HTTPException) as exc_info:
+            await optional_current_user(authorization="Bearer invalid-token", db=mock_db)
+        assert exc_info.value.status_code == 401
+        assert "Invalid or expired" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_raises_401_for_deactivated_user(self):
+        from services.jwt_service import create_access_token
+
+        org = _make_org()
+        user = _make_user(org=org)
+        user.auth_provider = "deactivated"
+        token, _ = create_access_token(user.id, user.role)
+
+        mock_result = MagicMock()
+        mock_result.one_or_none.return_value = (user, False)
+        mock_db = AsyncMock()
+        mock_db.execute.return_value = mock_result
+
+        with pytest.raises(HTTPException) as exc_info:
+            await optional_current_user(authorization=f"Bearer {token}", db=mock_db)
+        assert exc_info.value.status_code == 401
+        assert "deactivated" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_returns_user_with_valid_token(self):

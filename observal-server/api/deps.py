@@ -114,13 +114,19 @@ async def optional_current_user(
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User | None:
-    """Return the authenticated user when a valid token is present, else None."""
+    """Return the authenticated user when a valid token is present, else None.
+
+    Raises HTTP 401 if a Bearer token is present but invalid/expired —
+    this distinguishes 'no credentials' from 'bad credentials'.
+    """
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.removeprefix("Bearer ").strip()
     user = await _authenticate_via_jwt(token, db)
-    if user and user.auth_provider == "deactivated":
-        return None
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if user.auth_provider == "deactivated":
+        raise HTTPException(status_code=401, detail="Account deactivated")
     return user
 
 

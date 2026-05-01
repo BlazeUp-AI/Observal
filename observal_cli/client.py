@@ -37,7 +37,10 @@ def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
         rprint("[dim]  Run [bold]observal auth login[/bold] to re-authenticate.[/dim]")
     elif code == 403:
         rprint(f"[red]Permission denied{path_info}.[/red]")
-        rprint("[dim]  This action requires a higher role (admin or super_admin).[/dim]")
+        if detail:
+            rprint(f"[dim]  {detail}[/dim]")
+        else:
+            rprint("[dim]  You do not have permission to perform this action.[/dim]")
     elif code == 404:
         rprint(f"[red]Not found{path_info}.[/red]")
         # Extract component type from API path (e.g. /api/v1/hooks/abc -> hook)
