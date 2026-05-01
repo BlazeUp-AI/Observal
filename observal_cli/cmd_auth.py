@@ -756,11 +756,11 @@ def _configure_kiro(server_url: str):
 
 def _configure_gemini_cli(server_url: str):
     """Check for Gemini CLI and configure telemetry via doctor patch."""
-    gemini_dir = Path.home() / ".gemini"
-
     try:
-        gemini_exists = gemini_dir.is_dir() or shutil.which("gemini")
-        if not gemini_exists:
+        # The gemini binary is the definitive signal.
+        # ~/.gemini/settings.json can be created by a previous observal doctor patch,
+        # so its presence alone doesn't mean Gemini CLI is actually installed.
+        if not shutil.which("gemini"):
             return
 
         if not typer.confirm(
@@ -802,8 +802,21 @@ def _configure_copilot(server_url: str):
     """Check for GitHub Copilot (VS Code) and configure telemetry via doctor patch."""
     try:
         vscode_dir = Path.home() / ".vscode"
-        has_copilot = vscode_dir.is_dir() or shutil.which("code")
+        if not vscode_dir.is_dir():
+            return
+
+        # Check for an actual Copilot extension rather than just VS Code existing.
+        extensions_dir = vscode_dir / "extensions"
+        has_copilot = extensions_dir.is_dir() and any(
+            p.name.startswith("github.copilot") for p in extensions_dir.iterdir()
+        )
         if not has_copilot:
+            return
+
+        if not typer.confirm(
+            "\nDetected GitHub Copilot. Configure telemetry -> Observal?",
+            default=True,
+        ):
             return
 
         _run_doctor_patch("copilot")
@@ -815,8 +828,16 @@ def _configure_copilot(server_url: str):
 def _configure_copilot_cli(server_url: str):
     """Check for Copilot CLI and configure telemetry via doctor patch."""
     try:
-        copilot_dir = Path.home() / ".copilot"
-        if not copilot_dir.is_dir() and not shutil.which("copilot"):
+        # The copilot binary is the definitive signal.
+        # ~/.copilot/config.json can be created by a previous observal doctor patch,
+        # so its presence alone doesn't mean Copilot CLI is actually installed.
+        if not shutil.which("copilot"):
+            return
+
+        if not typer.confirm(
+            "\nDetected Copilot CLI. Configure telemetry -> Observal?",
+            default=True,
+        ):
             return
 
         _run_doctor_patch("copilot-cli")
@@ -828,8 +849,16 @@ def _configure_copilot_cli(server_url: str):
 def _configure_opencode(server_url: str):
     """Check for OpenCode and configure telemetry via doctor patch."""
     try:
-        opencode_config = Path.home() / ".config" / "opencode" / "opencode.json"
-        if not opencode_config.exists() and not shutil.which("opencode"):
+        # The opencode binary is the strongest signal.
+        # ~/.config/opencode/opencode.json can be created by a previous observal
+        # doctor patch, so also accept it only if the binary is present.
+        if not shutil.which("opencode"):
+            return
+
+        if not typer.confirm(
+            "\nDetected OpenCode. Configure telemetry -> Observal?",
+            default=True,
+        ):
             return
 
         _run_doctor_patch("opencode")
