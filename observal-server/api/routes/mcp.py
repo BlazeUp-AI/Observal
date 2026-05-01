@@ -426,6 +426,10 @@ async def delete_mcp(
     for r in (await db.execute(select(McpDownload).where(McpDownload.listing_id == listing.id))).scalars().all():
         await db.delete(r)
 
+    # Clear the circular FK reference before deleting to avoid constraint violation
+    listing.latest_version_id = None
+    await db.flush()
+
     listing_name = listing.name
     await db.delete(listing)
     await db.commit()
