@@ -121,6 +121,27 @@ def _vscode_copilot_hooks_config(hook_script: str, stop_script: str) -> dict:
     return {"hooks": hooks}
 
 
+def _vscode_copilot_hooks_frontmatter_lines(hook_script: str, stop_script: str) -> list[str]:
+    """Build YAML lines for hooks in a VS Code Copilot .agent.md frontmatter."""
+    lines = ["hooks:"]
+    for event in _VSCODE_HOOK_EVENTS:
+        if event == "Stop":
+            lines += [
+                f"  {event}:",
+                "    - type: command",
+                f'      command: "{hook_script}"',
+                "    - type: command",
+                f'      command: "{stop_script}"',
+            ]
+        else:
+            lines += [
+                f"  {event}:",
+                "    - type: command",
+                f'      command: "{hook_script}"',
+            ]
+    return lines
+
+
 _GEMINI_HOOK_EVENTS = (
     "SessionStart",
     "BeforeAgent",
@@ -648,8 +669,24 @@ def generate_agent_config(
                 if "env" in v:
                     copilot_configs[k]["env"] = v["env"]
         copilot_spec = IDE_REGISTRY["copilot"]
+
+        # Build .agent.md with hooks in frontmatter (per-agent hooks)
+        desc_line = (agent.description or safe_name).replace("\n", " ").strip()
+        frontmatter_lines = [
+            "---",
+            f"name: {safe_name}",
+            f'description: "{desc_line}"',
+            "tools: ['*']",
+        ]
+        frontmatter_lines.extend(_vscode_copilot_hooks_frontmatter_lines("observal-hook.sh", "observal-stop-hook.sh"))
+        frontmatter_lines.append("---")
+        agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
+
         result = {
-            "rules_file": {"path": copilot_spec["rules_file"]["project"], "content": rules_content},
+            "rules_file": {
+                "path": f".github/agents/{safe_name}.agent.md",
+                "content": agent_content,
+            },
             "mcp_config": {
                 "path": copilot_spec["mcp_config_path"]["project"],
                 "content": {copilot_spec["mcp_servers_key"]: copilot_configs},
@@ -682,8 +719,24 @@ def generate_agent_config(
                 if "env" in v:
                     copilot_cli_configs[k]["env"] = v["env"]
         copilot_cli_spec = IDE_REGISTRY["copilot-cli"]
+
+        # Build .agent.md with hooks in frontmatter (per-agent hooks)
+        desc_line = (agent.description or safe_name).replace("\n", " ").strip()
+        frontmatter_lines = [
+            "---",
+            f"name: {safe_name}",
+            f'description: "{desc_line}"',
+            "tools: ['*']",
+        ]
+        frontmatter_lines.extend(_vscode_copilot_hooks_frontmatter_lines("observal-hook.sh", "observal-stop-hook.sh"))
+        frontmatter_lines.append("---")
+        agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
+
         result = {
-            "rules_file": {"path": copilot_cli_spec["rules_file"]["project"], "content": rules_content},
+            "rules_file": {
+                "path": f".github/agents/{safe_name}.agent.md",
+                "content": agent_content,
+            },
             "mcp_config": {
                 "path": copilot_cli_spec["mcp_config_path"]["project"],
                 "content": {copilot_cli_spec["mcp_servers_key"]: copilot_cli_configs},
