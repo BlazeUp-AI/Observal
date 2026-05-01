@@ -19,6 +19,7 @@ test.describe("Agent Edit Form", () => {
         version: "1.0.0",
         description: "Original description for edit form test",
         owner: "test",
+        model_name: "claude-sonnet-4-20250514",
         visibility: "private",
         components: [],
         goal_template: {
@@ -91,8 +92,13 @@ test.describe("Agent Edit Form", () => {
 
     await page.getByRole("tab", { name: "Edit" }).click();
 
+    // Make a change to enable the button (form must be dirty)
+    const descInput = page.getByLabel("Description");
+    await descInput.fill("Updated for release test");
+
     // Click Save & Release
     const releaseBtn = page.getByRole("button", { name: /Save.*Release/i });
+    await expect(releaseBtn).toBeEnabled();
     await releaseBtn.click();
 
     // Version bump dialog should appear
