@@ -278,14 +278,16 @@ async def update_prompt_draft(
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the listing owner")
-    if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
-        raise HTTPException(status_code=400, detail="Listing is not a draft")
+    if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
+        raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
+
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version to update")
 
     for field in (
-        "name",
         "version",
         "description",
-        "owner",
         "category",
         "template",
         "variables",
@@ -295,13 +297,26 @@ async def update_prompt_draft(
     ):
         val = getattr(req, field)
         if val is not None:
+            setattr(ver, field, val)
+
+    await db.flush()
+
+    for field in ("name", "owner"):
+        val = getattr(req, field)
+        if val is not None:
             setattr(listing, field, val)
 
     await db.commit()
     await db.refresh(listing)
+    if listing.status == ListingStatus.pending:
+        action = "prompt.pending.update"
+    elif listing.status == ListingStatus.rejected:
+        action = "prompt.rejected.update"
+    else:
+        action = "prompt.draft.update"
     await audit(
         current_user,
-        "prompt.draft.update",
+        action,
         resource_type="prompt",
         resource_id=str(listing.id),
         resource_name=listing.name,

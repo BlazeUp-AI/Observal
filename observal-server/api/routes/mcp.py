@@ -334,16 +334,16 @@ async def update_mcp_draft(
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the listing owner")
-    if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
-        raise HTTPException(status_code=400, detail="Listing is not a draft")
+    if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
+        raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
+
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version to update")
 
     for field in (
-        "name",
         "version",
         "description",
-        "category",
-        "owner",
-        "git_url",
         "framework",
         "docker_image",
         "command",
@@ -357,18 +357,31 @@ async def update_mcp_draft(
     ):
         val = getattr(req, field)
         if val is not None:
-            setattr(listing, field, val)
+            setattr(ver, field, val)
 
+    if req.git_url is not None:
+        ver.source_url = req.git_url
     if req.headers is not None:
-        listing.headers = [h.model_dump() for h in req.headers]
+        ver.headers = [h.model_dump() for h in req.headers]
     if req.environment_variables is not None:
-        listing.environment_variables = [ev.model_dump() for ev in req.environment_variables]
+        ver.environment_variables = [ev.model_dump() for ev in req.environment_variables]
+
+    await db.flush()
+
+    for field in ("name", "category", "owner"):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(listing, field, val)
 
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "mcp.draft.update", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
-    )
+    if listing.status == ListingStatus.pending:
+        action = "mcp.pending.update"
+    elif listing.status == ListingStatus.rejected:
+        action = "mcp.rejected.update"
+    else:
+        action = "mcp.draft.update"
+    await audit(current_user, action, resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
     return McpListingResponse.model_validate(listing)
 
 

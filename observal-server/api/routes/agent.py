@@ -1339,30 +1339,23 @@ async def update_draft(
     perm = get_effective_agent_permission(agent, current_user)
     if perm not in ("owner", "edit"):
         raise HTTPException(status_code=403, detail="Not the agent owner or editor")
-    if agent.status not in (AgentStatus.draft, AgentStatus.rejected):
-        raise HTTPException(status_code=400, detail="Agent is not a draft")
+    if agent.status not in (AgentStatus.draft, AgentStatus.rejected, AgentStatus.pending):
+        raise HTTPException(status_code=400, detail="Only draft, rejected, or pending agents can be edited")
 
-    for field in (
-        "name",
-        "version",
-        "description",
-        "owner",
-        "prompt",
-        "model_name",
-        "model_config_json",
-        "supported_ides",
-    ):
+    version = agent.latest_version
+    if not version:
+        raise HTTPException(status_code=400, detail="Agent has no version to update")
+
+    for field in ("version", "description", "prompt", "model_name", "model_config_json", "supported_ides"):
         val = getattr(req, field)
         if val is not None:
-            setattr(agent, field, val)
+            setattr(version, field, val)
 
     if req.external_mcps is not None:
-        agent.external_mcps = [m.model_dump() for m in req.external_mcps]
+        version.external_mcps = [m.model_dump() for m in req.external_mcps]
 
     if req.components is not None:
-        if not agent.latest_version:
-            raise HTTPException(status_code=400, detail="Agent has no version to update components on")
-        version_id = agent.latest_version.id
+        version_id = version.id
         old_comps = (
             (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == version_id)))
             .scalars()
@@ -1388,7 +1381,7 @@ async def update_draft(
         if not agent.latest_version:
             raise HTTPException(status_code=400, detail="Agent has no version to update features on")
         current_comps_draft = (
-            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == agent.latest_version.id)))
+            (await db.execute(select(AgentComponent).where(AgentComponent.agent_version_id == version.id)))
             .scalars()
             .all()
         )
@@ -1400,18 +1393,29 @@ async def update_draft(
 
         class _DraftUpdateProxy:
             components = current_comps_draft
-            external_mcps = agent.external_mcps
+            external_mcps = version.external_mcps
 
-        agent.required_ide_features = infer_required_features(
+        version.required_ide_features = infer_required_features(
             _DraftUpdateProxy(), skill_listings=skill_listings_map_draft_update
         )
-        agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+        version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
+
+    await db.flush()
+
+    for field in ("name", "owner"):
+        val = getattr(req, field)
+        if val is not None:
+            setattr(agent, field, val)
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))
-    await audit(
-        current_user, "agent.draft.update", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
-    )
+    if agent.status == AgentStatus.pending:
+        action = "agent.pending.update"
+    elif agent.status == AgentStatus.rejected:
+        action = "agent.rejected.update"
+    else:
+        action = "agent.draft.update"
+    await audit(current_user, action, resource_type="agent", resource_id=str(agent.id), resource_name=agent.name)
     return _agent_to_response(agent, created_by_email=current_user.email, created_by_username=current_user.username)
 
 

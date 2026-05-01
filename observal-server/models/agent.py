@@ -131,8 +131,9 @@ class Agent(Base):
 
     @version.setter
     def version(self, value: str) -> None:
-        if self.latest_version:
-            self.latest_version.version = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set version")
+        self.latest_version.version = value
 
     @property
     def description(self) -> str:
@@ -140,8 +141,9 @@ class Agent(Base):
 
     @description.setter
     def description(self, value: str) -> None:
-        if self.latest_version:
-            self.latest_version.description = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set description")
+        self.latest_version.description = value
 
     @property
     def prompt(self) -> str:
@@ -149,8 +151,9 @@ class Agent(Base):
 
     @prompt.setter
     def prompt(self, value: str) -> None:
-        if self.latest_version:
-            self.latest_version.prompt = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set prompt")
+        self.latest_version.prompt = value
 
     @property
     def model_name(self) -> str:
@@ -158,8 +161,9 @@ class Agent(Base):
 
     @model_name.setter
     def model_name(self, value: str) -> None:
-        if self.latest_version:
-            self.latest_version.model_name = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set model_name")
+        self.latest_version.model_name = value
 
     @property
     def model_config_json(self) -> dict:
@@ -167,8 +171,9 @@ class Agent(Base):
 
     @model_config_json.setter
     def model_config_json(self, value: dict) -> None:
-        if self.latest_version:
-            self.latest_version.model_config_json = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set model_config_json")
+        self.latest_version.model_config_json = value
 
     @property
     def external_mcps(self) -> list:
@@ -176,8 +181,9 @@ class Agent(Base):
 
     @external_mcps.setter
     def external_mcps(self, value: list) -> None:
-        if self.latest_version:
-            self.latest_version.external_mcps = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set external_mcps")
+        self.latest_version.external_mcps = value
 
     @property
     def supported_ides(self) -> list:
@@ -185,8 +191,9 @@ class Agent(Base):
 
     @supported_ides.setter
     def supported_ides(self, value: list) -> None:
-        if self.latest_version:
-            self.latest_version.supported_ides = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set supported_ides")
+        self.latest_version.supported_ides = value
 
     @property
     def required_ide_features(self) -> list:
@@ -194,8 +201,9 @@ class Agent(Base):
 
     @required_ide_features.setter
     def required_ide_features(self, value: list) -> None:
-        if self.latest_version:
-            self.latest_version.required_ide_features = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set required_ide_features")
+        self.latest_version.required_ide_features = value
 
     @property
     def inferred_supported_ides(self) -> list:
@@ -203,8 +211,9 @@ class Agent(Base):
 
     @inferred_supported_ides.setter
     def inferred_supported_ides(self, value: list) -> None:
-        if self.latest_version:
-            self.latest_version.inferred_supported_ides = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set inferred_supported_ides")
+        self.latest_version.inferred_supported_ides = value
 
     @property
     def status(self) -> "AgentStatus":
@@ -212,8 +221,9 @@ class Agent(Base):
 
     @status.setter
     def status(self, value: "AgentStatus") -> None:
-        if self.latest_version:
-            self.latest_version.status = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set status")
+        self.latest_version.status = value
 
     @property
     def rejection_reason(self) -> str | None:
@@ -221,8 +231,9 @@ class Agent(Base):
 
     @rejection_reason.setter
     def rejection_reason(self, value: str | None) -> None:
-        if self.latest_version:
-            self.latest_version.rejection_reason = value
+        if not self.latest_version:
+            raise RuntimeError("Agent has no latest_version; cannot set rejection_reason")
+        self.latest_version.rejection_reason = value
 
     @property
     def download_count(self) -> int:

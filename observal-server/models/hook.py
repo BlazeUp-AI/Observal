@@ -56,9 +56,21 @@ class HookListing(Base):
     def version(self) -> str:
         return self.latest_version.version if self.latest_version else "0.0.0"
 
+    @version.setter
+    def version(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set version")
+        self.latest_version.version = value
+
     @property
     def description(self) -> str:
         return self.latest_version.description if self.latest_version else ""
+
+    @description.setter
+    def description(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set description")
+        self.latest_version.description = value
 
     @property
     def status(self) -> ListingStatus:
@@ -87,6 +99,12 @@ class HookListing(Base):
     @property
     def supported_ides(self) -> list:
         return self.latest_version.supported_ides if self.latest_version else []
+
+    @supported_ides.setter
+    def supported_ides(self, value: list) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set supported_ides")
+        self.latest_version.supported_ides = value
 
     @property
     def event(self) -> str:

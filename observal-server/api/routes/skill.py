@@ -238,14 +238,16 @@ async def update_skill_draft(
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the listing owner")
-    if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
-        raise HTTPException(status_code=400, detail="Listing is not a draft")
+    if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
+        raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
+
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version to update")
 
     for field in (
-        "name",
         "version",
         "description",
-        "owner",
         "skill_path",
         "target_agents",
         "task_type",
@@ -261,13 +263,26 @@ async def update_skill_draft(
     ):
         val = getattr(req, field)
         if val is not None:
+            setattr(ver, field, val)
+
+    await db.flush()
+
+    for field in ("name", "owner"):
+        val = getattr(req, field)
+        if val is not None:
             setattr(listing, field, val)
 
     await db.commit()
     await db.refresh(listing)
+    if listing.status == ListingStatus.pending:
+        action = "skill.pending.update"
+    elif listing.status == ListingStatus.rejected:
+        action = "skill.rejected.update"
+    else:
+        action = "skill.draft.update"
     await audit(
         current_user,
-        "skill.draft.update",
+        action,
         resource_type="skill",
         resource_id=str(listing.id),
         resource_name=listing.name,
