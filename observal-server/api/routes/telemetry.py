@@ -1176,6 +1176,7 @@ def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> t
     for rs in body.get("resourceSpans", []):
         res_attrs = _extract_attrs(rs.get("resource", {}).get("attributes", []))
         ide = _detect_ide(res_attrs)
+        agent_version = res_attrs.get("observal.agent.version")
 
         for ss in rs.get("scopeSpans", []):
             for span in ss.get("spans", []):
@@ -1256,6 +1257,7 @@ def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> t
                         "token_count_output": tok_out,
                         "token_count_total": tok_total,
                         "cost": cost,
+                        "agent_version": agent_version,
                     }
                     spans.append(span_row)
 
@@ -1279,6 +1281,7 @@ def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> t
                             "tags": [],
                             "input": input_text,
                             "output": output_text,
+                            "agent_version": agent_version,
                         }
                 except Exception:
                     logger.warning("Failed to convert OTLP span", exc_info=True)
