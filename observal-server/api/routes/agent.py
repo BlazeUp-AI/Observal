@@ -183,7 +183,9 @@ def _agent_to_response(
     agent_dict["created_by_username"] = created_by_username
     agent_dict["user_permission"] = user_permission
     # Populate version fields for CLI pull resolution
-    approved_versions = [v for v in getattr(agent, "versions", []) if getattr(v, "status", None) == AgentStatus.approved]
+    approved_versions = [
+        v for v in getattr(agent, "versions", []) if getattr(v, "status", None) == AgentStatus.approved
+    ]
     latest_approved = max(approved_versions, key=lambda v: v.created_at) if approved_versions else None
     agent_dict["latest_approved_version"] = latest_approved.version if latest_approved else None
     agent_dict["latest_version"] = agent.version if agent.version != "0.0.0" else None
@@ -1076,20 +1078,26 @@ async def delete_agent(
     ):
         await db.delete(r)
     for r in (
-        await db.execute(
-            select(Scorecard)
-            .where(Scorecard.agent_id == agent.id)
-            .options(selectinload(Scorecard.penalties))
+        (
+            await db.execute(
+                select(Scorecard).where(Scorecard.agent_id == agent.id).options(selectinload(Scorecard.penalties))
+            )
         )
-    ).scalars().all():
+        .scalars()
+        .all()
+    ):
         await db.delete(r)
     for r in (
-        await db.execute(
-            select(EvalRun)
-            .where(EvalRun.agent_id == agent.id)
-            .options(selectinload(EvalRun.scorecards).selectinload(Scorecard.penalties))
+        (
+            await db.execute(
+                select(EvalRun)
+                .where(EvalRun.agent_id == agent.id)
+                .options(selectinload(EvalRun.scorecards).selectinload(Scorecard.penalties))
+            )
         )
-    ).scalars().all():
+        .scalars()
+        .all()
+    ):
         await db.delete(r)
     for r in (
         (await db.execute(select(AgentDownloadRecord).where(AgentDownloadRecord.agent_id == agent.id))).scalars().all()
