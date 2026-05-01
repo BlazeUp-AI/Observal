@@ -18,9 +18,23 @@ interface VersionDropdownProps {
   onSelect: (version: string) => void;
 }
 
+/** Compare two semver strings (descending). Falls back to string compare. */
+function semverCompareDesc(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (pb[i] ?? 0) - (pa[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 export function VersionDropdown({ versions, currentVersion, onSelect }: VersionDropdownProps) {
   const approvedVersions = useMemo(
-    () => versions.filter((v) => v.status === "approved"),
+    () =>
+      versions
+        .filter((v) => v.status === "approved")
+        .sort((a, b) => semverCompareDesc(a.version, b.version)),
     [versions]
   );
 
