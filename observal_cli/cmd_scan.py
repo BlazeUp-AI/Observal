@@ -1063,6 +1063,26 @@ def register_scan(app: typer.Typer):
                         unregistered.append(("agent", a.name))
 
                 if unregistered:
+                    # Check if registered-agents-only mode is ON
+                    _reg_only_enabled = False
+                    try:
+                        r = httpx.get(
+                            f"{server_url}/api/v1/admin/org/registered-agents-only",
+                            headers=headers,
+                            timeout=5,
+                        )
+                        if r.status_code == 200:
+                            _reg_only_enabled = r.json().get("registered_agents_only", False)
+                    except Exception:
+                        pass
+
+                    if _reg_only_enabled:
+                        rprint(
+                            "[yellow bold]⚠ Registered-agents-only mode is ON.[/yellow bold] "
+                            "Unregistered components below will NOT be traced."
+                        )
+                        rprint()
+
                     tbl = Table(
                         title=f"Unregistered Components ({len(unregistered)})", show_lines=False, padding=(0, 1)
                     )
