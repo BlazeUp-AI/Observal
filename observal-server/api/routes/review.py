@@ -69,13 +69,13 @@ async def _find_listing(listing_id: str, db: AsyncSession):
     return None, None
 
 
-async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple[bool, list[dict]]:
-    """Check if all of an agent's components are approved."""
-    if not agent.components:
+async def _check_agent_components_ready(components, db: AsyncSession) -> tuple[bool, list[dict]]:
+    """Check if all of an agent version's components are approved."""
+    if not components:
         return True, []
 
     by_type: dict[str, list[uuid.UUID]] = {}
-    for comp in agent.components:
+    for comp in components:
         by_type.setdefault(comp.component_type, []).append(comp.component_id)
 
     blocking: list[dict] = []
@@ -105,35 +105,52 @@ async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple
 
 
 async def _query_pending_agents(db: AsyncSession) -> list[dict]:
-    result = await db.execute(
-        select(Agent)
-        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
-        .where(AgentVersion.status == AgentStatus.pending)
-        .order_by(Agent.created_at.desc())
+    # Find agents that have ANY pending version (not just latest_version_id).
+    # This ensures version updates appear in the review queue after the first
+    # version is approved.
+    pending_versions_stmt = (
+        select(AgentVersion).where(AgentVersion.status == AgentStatus.pending).order_by(AgentVersion.created_at.desc())
     )
-    agents = result.scalars().all()
+    pending_versions = (await db.execute(pending_versions_stmt)).scalars().all()
 
-    user_ids = {a.created_by for a in agents}
+    if not pending_versions:
+        return []
+
+    # Group by agent_id, take the newest pending version per agent
+    seen_agents: dict[uuid.UUID, AgentVersion] = {}
+    for v in pending_versions:
+        if v.agent_id not in seen_agents:
+            seen_agents[v.agent_id] = v
+
+    # Load the agents
+    agent_ids = list(seen_agents.keys())
+    agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+    agents_map = {a.id: a for a in agents_result.scalars().all()}
+
+    user_ids = {a.created_by for a in agents_map.values()}
     user_map: dict[uuid.UUID, str] = {}
     if user_ids:
         rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
         user_map = {r[0]: r[1] for r in rows.all()}
 
     items = []
-    for a in agents:
-        components_ready, blocking = await _check_agent_components_ready(a, db)
+    for agent_id, pending_ver in seen_agents.items():
+        a = agents_map.get(agent_id)
+        if not a:
+            continue
+        components_ready, blocking = await _check_agent_components_ready(pending_ver.components, db)
         items.append(
             {
                 "type": "agent",
                 "id": str(a.id),
                 "name": a.name,
-                "description": a.description or "",
-                "version": a.version or "",
+                "description": pending_ver.description or a.description or "",
+                "version": pending_ver.version,
                 "owner": a.owner or "",
-                "status": a.status.value,
+                "status": pending_ver.status.value,
                 "submitted_by": user_map.get(a.created_by, str(a.created_by)),
-                "created_at": a.created_at.isoformat() if a.created_at else "",
-                "component_count": len(a.components),
+                "created_at": pending_ver.created_at.isoformat() if pending_ver.created_at else "",
+                "component_count": len(pending_ver.components) if pending_ver.components else 0,
                 "components_ready": components_ready,
                 "blocking_components": blocking,
             }
@@ -388,7 +405,7 @@ async def get_review(
         agent = (await db.execute(select(Agent).where(Agent.id == agent_uuid))).scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=404, detail="Listing not found")
-        components_ready, blocking = await _check_agent_components_ready(agent, db)
+        components_ready, blocking = await _check_agent_components_ready(agent.components, db)
         result = {
             "type": "agent",
             "id": str(agent.id),
@@ -510,7 +527,7 @@ async def approve_agent(
     if agent.status != AgentStatus.pending:
         raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', not pending")
 
-    components_ready, blocking = await _check_agent_components_ready(agent, db)
+    components_ready, blocking = await _check_agent_components_ready(agent.components, db)
     if not components_ready:
         raise HTTPException(
             status_code=422,
