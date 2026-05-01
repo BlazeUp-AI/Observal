@@ -1,5 +1,6 @@
 import enum
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -524,10 +525,22 @@ async def approve_agent(
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.status != AgentStatus.pending:
+
+    # Find the newest pending version — it may not be latest_version yet
+    # (new versions are published as pending and only become latest on approval).
+    pending_ver = (
+        await db.execute(
+            select(AgentVersion)
+            .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+            .order_by(AgentVersion.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if not pending_ver:
         raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', not pending")
 
-    components_ready, blocking = await _check_agent_components_ready(agent.components, db)
+    components_ready, blocking = await _check_agent_components_ready(pending_ver.components, db)
     if not components_ready:
         raise HTTPException(
             status_code=422,
@@ -537,8 +550,20 @@ async def approve_agent(
             },
         )
 
-    agent.status = AgentStatus.approved
-    agent.rejection_reason = None
+    pending_ver.status = AgentStatus.approved
+    pending_ver.rejection_reason = None
+    pending_ver.reviewed_by = current_user.id
+    pending_ver.reviewed_at = datetime.now(UTC)
+
+    # Promote to latest if this version is newer than the current latest
+    from services.versioning import parse_semver
+
+    current_latest = agent.latest_version
+    new_parsed = parse_semver(pending_ver.version)
+    current_parsed = parse_semver(current_latest.version) if current_latest else None
+    if not current_latest or (new_parsed is not None and current_parsed is not None and new_parsed >= current_parsed):
+        agent.latest_version_id = pending_ver.id
+
     await db.commit()
     await audit(
         current_user,
@@ -547,7 +572,7 @@ async def approve_agent(
         resource_id=str(agent_id),
         resource_name=agent.name,
     )
-    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+    return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": pending_ver.version}
 
 
 @router.post("/agents/{agent_id}/reject")
@@ -560,11 +585,24 @@ async def reject_agent(
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.status not in (AgentStatus.pending, AgentStatus.approved):
-        raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', cannot reject")
 
-    agent.status = AgentStatus.rejected
-    agent.rejection_reason = req.reason
+    # Find the newest pending version to reject
+    pending_ver = (
+        await db.execute(
+            select(AgentVersion)
+            .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+            .order_by(AgentVersion.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if not pending_ver:
+        raise HTTPException(status_code=400, detail="Agent has no pending version to reject")
+
+    pending_ver.status = AgentStatus.rejected
+    pending_ver.rejection_reason = req.reason
+    pending_ver.reviewed_by = current_user.id
+    pending_ver.reviewed_at = datetime.now(UTC)
     await db.commit()
     await audit(
         current_user,
@@ -574,7 +612,7 @@ async def reject_agent(
         resource_name=agent.name,
         detail=f"reason={req.reason}",
     )
-    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+    return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": pending_ver.version}
 
 
 # ---------------------------------------------------------------------------
