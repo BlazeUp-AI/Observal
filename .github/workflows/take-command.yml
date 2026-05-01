@@ -1,4 +1,4 @@
-name: /take Command
+name: Issue Commands
 
 on:
   issue_comment:
@@ -56,4 +56,43 @@ jobs:
               repo: context.repo.repo,
               issue_number: issue.number,
               body: `@${commenter} You've been assigned to this issue. Welcome aboard! 🎉\n\nPlease read our [contributing guide](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/CONTRIBUTING.md) before submitting a PR.`
+            });
+
+  drop:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/drop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unassign commenter
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const commenter = context.payload.comment.user.login;
+
+            const isAssigned = issue.assignees.some(a => a.login === commenter);
+
+            if (!isAssigned) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `@${commenter} You are not currently assigned to this issue.`
+              });
+              return;
+            }
+
+            await github.rest.issues.removeAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: [commenter]
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `@${commenter} You've been unassigned from this issue. The issue is now available for others to pick up.`
             });
