@@ -265,23 +265,23 @@ class TestGenerateClaudeCode:
         assert "\n" not in fm["description"]
 
     def test_model_fallback_from_agent_when_no_option(self):
-        agent = _make_agent(model_name="claude-sonnet-4")
+        agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
         cfg = generate_agent_config(agent, "claude-code")
         content = cfg["rules_file"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
-        assert fm["model"] == "sonnet"
+        assert fm["model"] == "claude-sonnet-4-6"
 
     def test_model_fallback_from_agent_when_inherit(self):
-        agent = _make_agent(model_name="claude-opus-4")
+        agent = _make_agent(model_name="claude-opus-4-6-20250725")
         cfg = generate_agent_config(agent, "claude-code", options={"model": "inherit"})
         content = cfg["rules_file"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
-        assert fm["model"] == "opus"
+        assert fm["model"] == "claude-opus-4-6"
 
     def test_explicit_model_option_overrides_agent(self):
-        agent = _make_agent(model_name="claude-sonnet-4")
+        agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
         cfg = generate_agent_config(agent, "claude-code", options={"model": "haiku"})
         content = cfg["rules_file"]["content"]
         parts = content.split("---", 2)
@@ -303,19 +303,19 @@ class TestGenerateClaudeCode:
 
 
 class TestModelNameToFrontmatter:
-    def test_sonnet(self):
-        assert _model_name_to_frontmatter("claude-sonnet-4") == "sonnet"
+    def test_strips_date_suffix(self):
+        assert _model_name_to_frontmatter("claude-sonnet-4-6-20250725") == "claude-sonnet-4-6"
 
-    def test_opus(self):
-        assert _model_name_to_frontmatter("claude-opus-4") == "opus"
+    def test_no_date_suffix_unchanged(self):
+        assert _model_name_to_frontmatter("claude-opus-4-6") == "claude-opus-4-6"
 
-    def test_haiku(self):
-        assert _model_name_to_frontmatter("claude-haiku-4-5-20251001") == "haiku"
+    def test_haiku_with_date(self):
+        assert _model_name_to_frontmatter("claude-haiku-4-5-20251001") == "claude-haiku-4-5"
 
     def test_empty(self):
         assert _model_name_to_frontmatter("") == ""
 
-    def test_unknown_model_passthrough(self):
+    def test_non_claude_model_passthrough(self):
         assert _model_name_to_frontmatter("gpt-4o") == "gpt-4o"
 
 

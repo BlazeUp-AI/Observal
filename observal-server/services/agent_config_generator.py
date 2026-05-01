@@ -18,18 +18,17 @@ from services.config_generator import (
 
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
 
-_MODEL_SHORT_NAMES = {"sonnet": "sonnet", "opus": "opus", "haiku": "haiku"}
+_DATE_SUFFIX = re.compile(r"-\d{8}$")
 
 
 def _model_name_to_frontmatter(model_name: str) -> str:
-    """Convert a stored model_name (e.g. 'claude-sonnet-4') to a frontmatter short name."""
+    """Strip the date suffix from a stored model_name, keeping the full model ID.
+
+    e.g. 'claude-sonnet-4-6-20250725' -> 'claude-sonnet-4-6'
+    """
     if not model_name:
         return ""
-    lower = model_name.lower()
-    for key in _MODEL_SHORT_NAMES:
-        if key in lower:
-            return _MODEL_SHORT_NAMES[key]
-    return model_name
+    return _DATE_SUFFIX.sub("", model_name)
 
 
 _FEATURE_LABELS: dict[str, str] = {
