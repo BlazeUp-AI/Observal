@@ -359,6 +359,11 @@ async def _review_agent_version(
     if req.action == "approve":
         ver.status = AgentStatus.approved
         ver.rejection_reason = None
+        ver.reviewed_by = current_user.id
+        ver.reviewed_at = datetime.now(UTC)
+        # Flush version status change first to avoid CircularDependencyError
+        # between Agent.latest_version (ManyToOne) and Agent.versions (OneToMany)
+        await db.flush()
         # Update latest_version_id if this version is newer than (or equal to) the current latest
         current_latest = agent.latest_version
         new_parsed = parse_semver(ver.version)
@@ -370,9 +375,8 @@ async def _review_agent_version(
     else:
         ver.status = AgentStatus.rejected
         ver.rejection_reason = req.reason
-
-    ver.reviewed_by = current_user.id
-    ver.reviewed_at = datetime.now(UTC)
+        ver.reviewed_by = current_user.id
+        ver.reviewed_at = datetime.now(UTC)
 
     await db.commit()
 
