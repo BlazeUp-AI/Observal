@@ -1064,17 +1064,9 @@ def register_scan(app: typer.Typer):
 
                 if unregistered:
                     # Check if registered-agents-only mode is ON
-                    _reg_only_enabled = False
-                    try:
-                        r = httpx.get(
-                            f"{server_url}/api/v1/admin/org/registered-agents-only",
-                            headers=headers,
-                            timeout=5,
-                        )
-                        if r.status_code == 200:
-                            _reg_only_enabled = r.json().get("registered_agents_only", False)
-                    except Exception:
-                        pass
+                    from observal_cli import client as obs_client
+
+                    _reg_only_enabled = obs_client.get_registered_agents_only()
 
                     if _reg_only_enabled:
                         rprint(
