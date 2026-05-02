@@ -434,7 +434,7 @@ function AgentListContent() {
     const active = agents ?? [];
     const activeIds = new Set(active.map((a) => a.id));
     const pending = (myAgents ?? []).filter(
-      (a) => a.status !== "approved" && a.status !== "draft" && a.status !== "rejected" && !activeIds.has(a.id),
+      (a) => a.status !== "approved" && a.status !== "draft" && a.status !== "rejected" && a.status !== "archived" && !activeIds.has(a.id),
     );
     return { filtered: [...pending, ...active], pendingCount: pending.length };
   }, [agents, myAgents]);
