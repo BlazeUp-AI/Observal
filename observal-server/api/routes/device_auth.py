@@ -60,13 +60,14 @@ def _resolve_frontend_url(request: Request) -> str:
     configured = settings.FRONTEND_URL
     if configured and configured != "http://localhost:3000":
         return configured.rstrip("/")
-    # Infer from proxy headers (nginx forwards X-Forwarded-Proto + Host)
-    scheme = request.headers.get("x-forwarded-proto", "http")
-    host = request.headers.get("host") or request.headers.get("x-forwarded-host")
-    if host:
-        return f"{scheme}://{host}".rstrip("/")
-    # Last resort: request base URL
-    return str(request.base_url).rstrip("/")
+    # Only infer from headers when behind a TLS-terminating proxy (https)
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    if forwarded_proto == "https":
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if host:
+            return f"https://{host}".rstrip("/")
+    # Local dev: use the configured default (localhost:3000 = frontend dev server)
+    return configured.rstrip("/")
 
 
 @router.post("/authorize", response_model=DeviceAuthResponse)
