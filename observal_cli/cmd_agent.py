@@ -422,6 +422,43 @@ def agent_list(
             rprint("[dim]End of results.[/dim]")
 
 
+@agent_app.command(name="my")
+def agent_my(
+    output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
+):
+    """List your own agents (all statuses)."""
+    with spinner("Fetching your agents..."):
+        data = client.get("/api/v1/agents/my")
+    if not data:
+        rprint("[dim]You have no agents.[/dim]")
+        return
+    config.save_last_results(data)
+    if output == "json":
+        output_json(data)
+        return
+    if output == "plain":
+        for item in data:
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('status', '')}")
+        return
+    table = Table(title=f"My Agents ({len(data)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Model")
+    table.add_column("Status")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(
+            str(i),
+            item["name"],
+            item.get("version", ""),
+            item.get("model_name", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
+    console.print(table)
+
+
 @agent_app.command(name="show")
 def agent_show(
     agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),

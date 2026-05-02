@@ -1039,6 +1039,43 @@ def list_mcps(
     _list_impl(category, search, limit, sort, output, interactive=interactive)
 
 
+@mcp_app.command(name="my")
+def mcp_my(
+    output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
+):
+    """List your own MCP servers (all statuses)."""
+    with spinner("Fetching your MCPs..."):
+        data = client.get("/api/v1/mcps/my")
+    if not data:
+        rprint("[dim]You have no MCP servers.[/dim]")
+        return
+    config.save_last_results(data)
+    if output == "json":
+        output_json(data)
+        return
+    if output == "plain":
+        for item in data:
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('status', '')}")
+        return
+    table = Table(title=f"My MCPs ({len(data)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Owner", style="dim")
+    table.add_column("Status")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(
+            str(i),
+            item["name"],
+            item.get("version", ""),
+            item.get("owner", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
+    console.print(table)
+
+
 @mcp_app.command()
 def show(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),

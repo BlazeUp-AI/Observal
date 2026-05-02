@@ -123,6 +123,43 @@ def prompt_list(
     console.print(table)
 
 
+@prompt_app.command(name="my")
+def prompt_my(
+    output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
+):
+    """List your own prompts (all statuses)."""
+    with spinner("Fetching your prompts..."):
+        data = client.get("/api/v1/prompts/my")
+    if not data:
+        rprint("[dim]You have no prompts.[/dim]")
+        return
+    config.save_last_results(data)
+    if output == "json":
+        output_json(data)
+        return
+    if output == "plain":
+        for item in data:
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('status', '')}")
+        return
+    table = Table(title=f"My Prompts ({len(data)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Owner", style="dim")
+    table.add_column("Status")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(
+            str(i),
+            item["name"],
+            item.get("version", ""),
+            item.get("owner", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
+    console.print(table)
+
+
 @prompt_app.command(name="show")
 def prompt_show(
     prompt_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
