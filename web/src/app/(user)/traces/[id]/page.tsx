@@ -1293,7 +1293,7 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawSessionEv
       {stats.isKiro ? (
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Credits</p>
-          <p className="text-lg font-semibold tabular-nums text-orange-500">{formatCredits(stats.credits)}</p>
+          <p className="text-lg font-semibold tabular-nums text-orange-500">{stats.credits > 0 ? formatCredits(stats.credits) : "—"}</p>
         </div>
       ) : !stats.isCopilotCli ? (
         <>
