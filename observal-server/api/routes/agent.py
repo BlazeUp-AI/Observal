@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1167,7 +1167,11 @@ async def archive_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
-    agent.status = AgentStatus.archived
+    if not agent.latest_version_id:
+        raise HTTPException(status_code=400, detail="Agent has no version")
+    await db.execute(
+        update(AgentVersion).where(AgentVersion.id == agent.latest_version_id).values(status=AgentStatus.archived)
+    )
     await db.commit()
 
     emit_registry_event(
@@ -1183,7 +1187,7 @@ async def archive_agent(
         current_user, "agent.archive", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
     )
 
-    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+    return {"id": str(agent.id), "name": agent.name, "status": "archived"}
 
 
 @router.patch("/{agent_id}/unarchive")
@@ -1199,7 +1203,11 @@ async def unarchive_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.status != AgentStatus.archived:
         raise HTTPException(status_code=400, detail="Agent is not archived")
-    agent.status = AgentStatus.approved
+    if not agent.latest_version_id:
+        raise HTTPException(status_code=400, detail="Agent has no version")
+    await db.execute(
+        update(AgentVersion).where(AgentVersion.id == agent.latest_version_id).values(status=AgentStatus.approved)
+    )
     await db.commit()
 
     emit_registry_event(
@@ -1215,7 +1223,7 @@ async def unarchive_agent(
         current_user, "agent.unarchive", resource_type="agent", resource_id=str(agent.id), resource_name=agent.name
     )
 
-    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+    return {"id": str(agent.id), "name": agent.name, "status": "approved"}
 
 
 # ---------------------------------------------------------------------------
