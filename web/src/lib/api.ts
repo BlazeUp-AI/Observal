@@ -422,8 +422,8 @@ export const admin = {
     put<unknown>(`/admin/settings/${key}`, body),
   deleteSetting: (key: string) => del(`/admin/settings/${key}`),
   users: () => get<AdminUser[]>("/admin/users"),
-  createUser: (body: { email: string; name: string; role?: string }) =>
-    post<{ id: string; email: string; name: string; role: string; password: string }>("/admin/users", body),
+  createUser: (body: { email: string; name: string; username?: string; role?: string }) =>
+    post<{ id: string; email: string; name: string; username?: string; role: string; password: string }>("/admin/users", body),
   updateRole: (id: string, body: { role: string }) =>
     put<AdminUser>(`/admin/users/${id}/role`, body),
   resetPassword: (id: string, body: { new_password?: string; generate?: boolean }) =>
