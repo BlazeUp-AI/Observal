@@ -186,6 +186,18 @@ def main():
             else:
                 payload["session_id"] = f"kiro-{os.getppid()}"
 
+    # Persist session_id so the stop hook (which may not receive it from Kiro)
+    # can reuse it and land credits on the same session.
+    try:
+        session_file = Path.home() / ".observal" / ".kiro-session"
+        session_file.parent.mkdir(parents=True, exist_ok=True)
+        session_file.write_text(json.dumps({
+            "session_id": payload["session_id"],
+            "cwd": payload.get("cwd", ""),
+        }))
+    except Exception:
+        pass
+
     # Inject user_id and user_name from Observal config if not already present
     if not payload.get("user_id") or not payload.get("user_name"):
         try:
