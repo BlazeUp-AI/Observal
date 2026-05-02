@@ -116,12 +116,76 @@ _ALLOWED_LOGO_MIMES = {
     "image/webp",
 }
 _MAX_LOGO_BYTES = 2 * 1024 * 1024
+_MAX_DATA_URL_LEN = 3 * 1024 * 1024  # base64 bloats ~33%, cap raw string
 _MAX_APP_NAME_LEN = 30
+
+# Magic byte signatures for allowed image formats
+_MAGIC_BYTES: dict[str, list[bytes]] = {
+    "image/png": [b"\x89PNG\r\n\x1a\n"],
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/webp": [b"RIFF"],  # RIFF....WEBP
+    "image/x-icon": [b"\x00\x00\x01\x00", b"\x00\x00\x02\x00"],
+    "image/vnd.microsoft.icon": [b"\x00\x00\x01\x00", b"\x00\x00\x02\x00"],
+    # SVG is validated separately via _sanitize_svg
+}
+
+# SVG elements and attributes that can execute code or make external requests
+_SVG_DANGEROUS_TAGS = re.compile(
+    r"<[\s/]*(script|foreignObject|iframe|embed|object|applet|meta|link|style|handler|set|animate|animateTransform|animateMotion)\b",
+    re.IGNORECASE,
+)
+_SVG_EVENT_ATTRS = re.compile(r"\bon\w+\s*=", re.IGNORECASE)
+_SVG_JS_HREF = re.compile(r"(?:href|xlink:href)[\s=\"']*javascript:", re.IGNORECASE)
+_SVG_EXTERNAL_REF = re.compile(r"(?:href|xlink:href|src|url)[\s=\"']*(?:https?://|//|data:(?!image/))", re.IGNORECASE)
+_SVG_XML_DECL = re.compile(r"<!(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+# Characters forbidden in the app name
+_UNSAFE_NAME_CHARS = re.compile("[\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
+
+
+def _validate_magic_bytes(raw: bytes, mime_type: str) -> None:
+    """Verify the file's actual bytes match the claimed MIME type."""
+    signatures = _MAGIC_BYTES.get(mime_type)
+    if signatures is None:
+        return  # SVG handled separately
+    if not any(raw.startswith(sig) for sig in signatures):
+        raise HTTPException(status_code=422, detail=f"File content does not match declared type {mime_type}")
+    if mime_type == "image/webp" and raw[8:12] != b"WEBP":
+        raise HTTPException(status_code=422, detail="File content does not match declared type image/webp")
+
+
+def _sanitize_svg(raw: bytes) -> bytes:
+    """Reject SVGs containing dangerous elements or attributes."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="SVG contains invalid UTF-8")
+
+    if _SVG_XML_DECL.search(text):
+        raise HTTPException(status_code=422, detail="SVG must not contain DOCTYPE or ENTITY declarations")
+    if _SVG_DANGEROUS_TAGS.search(text):
+        raise HTTPException(
+            status_code=422, detail="SVG contains forbidden elements (script, foreignObject, iframe, etc.)"
+        )
+    if _SVG_EVENT_ATTRS.search(text):
+        raise HTTPException(
+            status_code=422, detail="SVG contains forbidden event handler attributes (onclick, onload, etc.)"
+        )
+    if _SVG_JS_HREF.search(text):
+        raise HTTPException(status_code=422, detail="SVG contains javascript: URLs")
+    if _SVG_EXTERNAL_REF.search(text):
+        raise HTTPException(status_code=422, detail="SVG contains external resource references")
+
+    return raw
 
 
 def _validate_branding_logo(value: str) -> None:
     if not value:
         return
+
+    if len(value) > _MAX_DATA_URL_LEN:
+        raise HTTPException(status_code=422, detail="Image data too large")
+
     match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", value, re.DOTALL)
     if not match:
         raise HTTPException(status_code=422, detail="Logo must be a base64 data URL (data:image/...;base64,...)")
@@ -140,12 +204,21 @@ def _validate_branding_logo(value: str) -> None:
         max_mb = _MAX_LOGO_BYTES // (1024 * 1024)
         raise HTTPException(status_code=422, detail=f"Logo too large ({size_mb}MB). Maximum: {max_mb}MB")
 
+    if mime_type == "image/svg+xml":
+        _sanitize_svg(raw)
+    else:
+        _validate_magic_bytes(raw, mime_type)
+
 
 def _validate_branding_app_name(value: str) -> None:
     if len(value) > _MAX_APP_NAME_LEN:
         raise HTTPException(
             status_code=422, detail=f"App name too long ({len(value)} chars). Maximum: {_MAX_APP_NAME_LEN}"
         )
+    if _UNSAFE_NAME_CHARS.search(value):
+        raise HTTPException(status_code=422, detail="App name contains forbidden control or invisible characters")
+    if "<" in value and ">" in value:
+        raise HTTPException(status_code=422, detail="App name must not contain HTML tags")
 
 
 # ── Enterprise Settings ──────────────────────────────────
