@@ -427,7 +427,7 @@ function AgentListContent() {
   const qc = useQueryClient();
 
   const drafts = useMemo(() => {
-    return (myAgents ?? []).filter((a) => a.status === "draft" || a.status === "rejected" || a.status === "pending");
+    return (myAgents ?? []).filter((a) => a.status === "draft" || a.status === "rejected" || a.status === "pending" || a.status === "archived");
   }, [myAgents]);
 
   const { filtered, pendingCount } = useMemo(() => {
