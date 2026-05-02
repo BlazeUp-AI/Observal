@@ -492,6 +492,52 @@ async def component_leaderboard(
                 )
             )
 
+    # Backfill: include approved components with zero downloads so the board isn't empty
+    if len(all_items) < limit:
+        existing_ids = {item.id for item in all_items}
+        extra_pending: list[tuple[str, list]] = []
+        extra_user_ids: set[uuid.UUID] = set()
+        for _download_model, listing_model, version_model, type_label in component_types:
+            extra_stmt = (
+                select(listing_model.id, listing_model.name, version_model.description, listing_model.submitted_by)
+                .join(version_model, listing_model.latest_version_id == version_model.id)
+                .where(version_model.status == ListingStatus.approved, listing_model.id.notin_(existing_ids))
+                .order_by(listing_model.created_at.desc())
+                .limit(limit)
+            )
+            extra_rows = (await db.execute(extra_stmt)).all()
+            extra_pending.append((type_label, extra_rows))
+            for r in extra_rows:
+                if r.submitted_by:
+                    extra_user_ids.add(r.submitted_by)
+        missing_user_ids = extra_user_ids - set(email_map)
+        if missing_user_ids:
+            extra_email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(missing_user_ids)))
+            for r in extra_email_rows.all():
+                email_map[r[0]] = r[1]
+        for type_label, extra_rows in extra_pending:
+            for r in extra_rows:
+                if r.id in existing_ids:
+                    continue
+                existing_ids.add(r.id)
+                avg_rating, total_reviews = rating_map.get(r.id, (None, 0))
+                all_items.append(
+                    ComponentLeaderboardItem(
+                        id=r.id,
+                        name=r.name,
+                        component_type=type_label,
+                        description=r.description or "",
+                        download_count=0,
+                        created_by_email=email_map.get(r.submitted_by, "") if r.submitted_by else "",
+                        average_rating=avg_rating,
+                        total_reviews=total_reviews,
+                    )
+                )
+                if len(all_items) >= limit:
+                    break
+            if len(all_items) >= limit:
+                break
+
     # Sort by download count descending, then by total_reviews descending as tiebreaker
     all_items.sort(key=lambda x: (x.download_count, x.total_reviews), reverse=True)
     return all_items[:limit]

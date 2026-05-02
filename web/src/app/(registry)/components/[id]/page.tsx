@@ -39,7 +39,7 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
   const { id } = use(params);
   const searchParams = useSearchParams();
   const type = (searchParams.get("type") ?? "mcps") as RegistryType;
-  const singularType = type.replace(/s$/, "");
+  const singularType = type === "sandboxes" ? "sandbox" : type.replace(/s$/, "");
   const { data: item, isLoading, isError, error, refetch } = useRegistryItem(type, id);
   const { data: feedbackItems, refetch: refetchFeedback } = useFeedback(singularType, id);
   const { data: feedbackSummary, refetch: refetchSummary } = useFeedbackSummary(id);

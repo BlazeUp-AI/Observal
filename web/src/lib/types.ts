@@ -116,6 +116,8 @@ export interface ComponentLeaderboardItem {
   description: string;
   download_count: number;
   created_by_email: string;
+  average_rating: number | null;
+  total_reviews: number;
 }
 
 export interface VersionSuggestions {
