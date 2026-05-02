@@ -169,26 +169,47 @@ async def _query_pending_components(db: AsyncSession, type_filter: str | None = 
     user_ids: set[uuid.UUID] = set()
     for listing_type, model in models_to_query.items():
         version_model = VERSION_MODELS[listing_type]
-        result = await db.execute(
-            select(model)
-            .join(version_model, model.latest_version_id == version_model.id)
+        # Find listings that have ANY pending version (not just latest_version_id).
+        # This ensures version updates appear in the queue after first approval.
+        pending_versions_stmt = (
+            select(version_model)
             .where(version_model.status == ListingStatus.pending)
-            .order_by(model.created_at.desc())
+            .order_by(version_model.released_at.desc())
         )
-        for r in result.scalars().all():
-            if r.latest_version and is_actively_editing(r.latest_version):
+        pending_versions = (await db.execute(pending_versions_stmt)).scalars().all()
+        if not pending_versions:
+            continue
+
+        # Group by listing_id, take newest pending version per listing
+        seen_listings: dict[uuid.UUID, object] = {}
+        for pv in pending_versions:
+            if pv.listing_id not in seen_listings and not is_actively_editing(pv):
+                seen_listings[pv.listing_id] = pv
+
+        if not seen_listings:
+            continue
+
+        # Load the listings
+        listings_result = await db.execute(select(model).where(model.id.in_(list(seen_listings.keys()))))
+        listings_map = {r.id: r for r in listings_result.scalars().all()}
+
+        for listing_id, pv in seen_listings.items():
+            r = listings_map.get(listing_id)
+            if not r:
                 continue
             user_ids.add(r.submitted_by)
             item: dict = {
                 "type": listing_type,
                 "id": str(r.id),
                 "name": r.name,
-                "description": getattr(r, "description", None) or "",
-                "version": getattr(r, "version", None) or "",
+                "description": getattr(pv, "description", None) or getattr(r, "description", None) or "",
+                "version": getattr(pv, "version", None) or "",
                 "owner": getattr(r, "owner", None) or "",
-                "status": r.status.value,
+                "status": pv.status.value,
                 "submitted_by": r.submitted_by,
-                "created_at": r.created_at.isoformat(),
+                "created_at": pv.created_at.isoformat()
+                if hasattr(pv, "created_at") and pv.created_at
+                else r.created_at.isoformat(),
                 "bundle_id": str(r.bundle_id) if isinstance(getattr(r, "bundle_id", None), uuid.UUID) else None,
             }
             # Include validation results for MCP listings
@@ -362,20 +383,32 @@ def _safe_serialize(val: object) -> object:
 
 
 def _serialize_listing_detail(listing_type: str, listing) -> dict:
+    # Find the pending version if one exists (for reviews, we want pending content)
+    pending_ver = None
+    if hasattr(listing, "versions"):
+        pending_ver = next(
+            (v for v in listing.versions if v.status == ListingStatus.pending),
+            None,
+        )
+    # Use the pending version for field resolution; fall back to listing properties
+    source = pending_ver if pending_ver else listing
+
     base = {
         "type": listing_type,
         "id": str(listing.id),
         "name": listing.name,
-        "description": getattr(listing, "description", None) or "",
-        "version": getattr(listing, "version", None) or "",
+        "description": getattr(source, "description", None) or "",
+        "version": getattr(source, "version", None) or "",
         "owner": getattr(listing, "owner", None) or "",
-        "status": listing.status.value,
+        "status": source.status.value if hasattr(source, "status") else listing.status.value,
         "submitted_by": str(listing.submitted_by),
         "created_at": listing.created_at.isoformat(),
         "updated_at": listing.updated_at.isoformat() if getattr(listing, "updated_at", None) else None,
     }
     for field in _DETAIL_FIELDS.get(listing_type, []):
-        val = getattr(listing, field, None)
+        val = getattr(source, field, None)
+        if val is None:
+            val = getattr(listing, field, None)
         base[field] = _safe_serialize(val)
     if listing_type == "mcp" and hasattr(listing, "validation_results"):
         base["mcp_validated"] = getattr(listing, "mcp_validated", False)
@@ -410,27 +443,34 @@ async def get_review(
         agent = (await db.execute(select(Agent).where(Agent.id == agent_uuid))).scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=404, detail="Listing not found")
-        components_ready, blocking = await _check_agent_components_ready(agent.components, db)
+        # Use the pending version for review (not latest_version which is the approved one)
+        pending_ver = next(
+            (v for v in agent.versions if v.status == AgentStatus.pending),
+            None,
+        )
+        ver = pending_ver or agent.latest_version
+        ver_components = ver.components if ver else agent.components
+        components_ready, blocking = await _check_agent_components_ready(ver_components, db)
         result = {
             "type": "agent",
             "id": str(agent.id),
             "name": agent.name,
-            "description": agent.description or "",
-            "version": agent.version or "",
+            "description": (ver.description if ver else "") or agent.description or "",
+            "version": (ver.version if ver else "") or agent.version or "",
             "owner": agent.owner or "",
-            "status": agent.status.value,
+            "status": (ver.status.value if ver else agent.status.value),
             "submitted_by": str(agent.created_by),
             "created_at": agent.created_at.isoformat() if agent.created_at else None,
             "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
-            "git_url": agent.git_url,
-            "prompt": agent.prompt,
-            "model_name": agent.model_name,
-            "model_config_json": agent.model_config_json,
-            "external_mcps": agent.external_mcps,
-            "supported_ides": agent.supported_ides,
-            "required_ide_features": agent.required_ide_features,
-            "rejection_reason": agent.rejection_reason,
-            "component_count": len(agent.components),
+            "git_url": getattr(agent, "git_url", None),
+            "prompt": (ver.prompt if ver else "") or "",
+            "model_name": (ver.model_name if ver else "") or "",
+            "model_config_json": (ver.model_config_json if ver else {}) or {},
+            "external_mcps": (ver.external_mcps if ver else []) or [],
+            "supported_ides": (ver.supported_ides if ver else []) or [],
+            "required_ide_features": (ver.required_ide_features if ver else []) or [],
+            "rejection_reason": ver.rejection_reason if ver else None,
+            "component_count": len(ver_components),
             "components_ready": components_ready,
             "component_blockers": blocking,
             "components": [
@@ -438,9 +478,30 @@ async def get_review(
                     "component_type": c.component_type,
                     "component_id": str(c.component_id),
                 }
-                for c in agent.components
+                for c in ver_components
             ],
         }
+
+        # Expand component details with resolved listing content
+        expanded_components = []
+        for c in ver_components:
+            comp_data = {
+                "component_type": c.component_type,
+                "component_id": str(c.component_id),
+                "name": getattr(c, "component_name", "") or "",
+            }
+            model = LISTING_MODELS.get(c.component_type)
+            if model:
+                listing = (await db.execute(select(model).where(model.id == c.component_id))).scalar_one_or_none()
+                if listing:
+                    comp_data["name"] = listing.name
+                    if c.component_type == "prompt":
+                        comp_data["template"] = getattr(listing, "template", "") or ""
+                        comp_data["category"] = getattr(listing, "category", "") or ""
+                    else:
+                        comp_data["description"] = getattr(listing, "description", "") or ""
+            expanded_components.append(comp_data)
+        result["components"] = expanded_components
 
     # Resolve submitted_by UUID to display name
     uid_str = result.get("submitted_by", "")
@@ -471,10 +532,31 @@ async def approve(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.latest_version and is_actively_editing(listing.latest_version):
-        raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this item")
-    listing.status = ListingStatus.approved
-    listing.rejection_reason = None
+
+    # Find the pending version to approve (may not be latest_version)
+    pending_ver = None
+    if hasattr(listing, "versions"):
+        pending_ver = next(
+            (v for v in listing.versions if v.status == ListingStatus.pending),
+            None,
+        )
+
+    if pending_ver:
+        if is_actively_editing(pending_ver):
+            raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this item")
+        pending_ver.status = ListingStatus.approved
+        pending_ver.rejection_reason = None
+        pending_ver.reviewed_by = current_user.id
+        pending_ver.reviewed_at = datetime.now(UTC)
+        # Update latest_version_id to point to newly approved version
+        listing.latest_version_id = pending_ver.id
+    else:
+        # Fallback: legacy path for listings without versioning
+        if listing.latest_version and is_actively_editing(listing.latest_version):
+            raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this item")
+        listing.status = ListingStatus.approved
+        listing.rejection_reason = None
+
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -498,10 +580,29 @@ async def reject(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.latest_version and is_actively_editing(listing.latest_version):
-        raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this item")
-    listing.status = ListingStatus.rejected
-    listing.rejection_reason = req.reason
+
+    # Find the pending version to reject (may not be latest_version)
+    pending_ver = None
+    if hasattr(listing, "versions"):
+        pending_ver = next(
+            (v for v in listing.versions if v.status == ListingStatus.pending),
+            None,
+        )
+
+    if pending_ver:
+        if is_actively_editing(pending_ver):
+            raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this item")
+        pending_ver.status = ListingStatus.rejected
+        pending_ver.rejection_reason = req.reason
+        pending_ver.reviewed_by = current_user.id
+        pending_ver.reviewed_at = datetime.now(UTC)
+    else:
+        # Fallback: legacy path for listings without versioning
+        if listing.latest_version and is_actively_editing(listing.latest_version):
+            raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this item")
+        listing.status = ListingStatus.rejected
+        listing.rejection_reason = req.reason
+
     await db.commit()
     await db.refresh(listing)
     await audit(
