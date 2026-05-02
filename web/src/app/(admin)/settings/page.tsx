@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info, Database, Activity, BookOpen, Shield, HelpCircle, Eye } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { Settings, Plus, Pencil, Trash2, Save, X, Loader2, Info, Database, Activity, BookOpen, Shield, HelpCircle, Eye, Upload, RotateCcw, Palette } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAdminSettings } from "@/hooks/use-api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { useRoleGuard, hasMinRole } from "@/hooks/use-role-guard";
@@ -109,6 +110,9 @@ function SettingRow({
   );
 }
 
+const ALLOWED_LOGO_TYPES = ["image/png", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon", "image/jpeg", "image/webp"];
+const MAX_LOGO_SIZE = 2 * 1024 * 1024;
+
 interface SettingDef {
   key: string;
   description: string;
@@ -184,8 +188,9 @@ const ALL_DEFAULT_SETTINGS = SETTING_SECTIONS.flatMap((s) => s.settings);
 
 export default function SettingsPage() {
   const { ready } = useRoleGuard("admin");
+  const queryClient = useQueryClient();
   const { data: settings, isLoading, isError, error, refetch } = useAdminSettings();
-  const { deploymentMode, ssoEnabled, samlEnabled, evalConfigured } = useDeploymentConfig();
+  const { deploymentMode, ssoEnabled, samlEnabled, evalConfigured, brandingLogo, brandingAppName, brandingWordmark } = useDeploymentConfig();
   const [addingKey, setAddingKey] = useState("");
   const [addingValue, setAddingValue] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -197,6 +202,16 @@ export default function SettingsPage() {
   const [registeredAgentsOnly, setRegisteredAgentsOnly] = useState(false);
   const [registeredAgentsOnlyLoading, setRegisteredAgentsOnlyLoading] = useState(true);
   const [registeredAgentsOnlyToggling, setRegisteredAgentsOnlyToggling] = useState(false);
+  const [logoOverride, setLogoOverride] = useState<string | null | undefined>(undefined);
+  const [wordmarkOverride, setWordmarkOverride] = useState<string | null | undefined>(undefined);
+  const [appNameOverride, setAppNameOverride] = useState<string | undefined>(undefined);
+  const [brandingSaving, setBrandingSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const wordmarkInputRef = useRef<HTMLInputElement>(null);
+
+  const logoPreview = logoOverride !== undefined ? logoOverride : brandingLogo;
+  const wordmarkPreview = wordmarkOverride !== undefined ? wordmarkOverride : brandingWordmark;
+  const appNameDraft = appNameOverride !== undefined ? appNameOverride : (brandingAppName || "");
 
   useEffect(() => {
     admin.getTracePrivacy()
@@ -238,6 +253,65 @@ export default function SettingsPage() {
       setRegisteredAgentsOnlyToggling(false);
     }
   }, []);
+
+  const handleImageFile = useCallback((file: File, setter: (v: string) => void) => {
+    if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
+      toast.error("Unsupported file type. Use PNG, SVG, ICO, JPEG, or WEBP.");
+      return;
+    }
+    if (file.size > MAX_LOGO_SIZE) {
+      toast.error(`File too large (${Math.round(file.size / 1024)}KB). Maximum: 2MB.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setter(reader.result as string);
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleSaveBranding = useCallback(async () => {
+    setBrandingSaving(true);
+    try {
+      if (logoPreview !== brandingLogo) {
+        await admin.updateSetting("branding.logo", { value: logoPreview || "" });
+      }
+      if (wordmarkPreview !== brandingWordmark) {
+        await admin.updateSetting("branding.wordmark", { value: wordmarkPreview || "" });
+      }
+      const trimmedName = appNameDraft.trim();
+      if (trimmedName !== (brandingAppName || "")) {
+        await admin.updateSetting("branding.app_name", { value: trimmedName });
+      }
+      setLogoOverride(undefined);
+      setWordmarkOverride(undefined);
+      setAppNameOverride(undefined);
+      queryClient.invalidateQueries({ queryKey: ["config", "public"] });
+      toast.success("Branding updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save branding");
+    } finally {
+      setBrandingSaving(false);
+    }
+  }, [logoPreview, brandingLogo, wordmarkPreview, brandingWordmark, appNameDraft, brandingAppName, queryClient]);
+
+  const handleResetBranding = useCallback(async () => {
+    setBrandingSaving(true);
+    try {
+      await admin.updateSetting("branding.logo", { value: "" });
+      await admin.updateSetting("branding.wordmark", { value: "" });
+      await admin.updateSetting("branding.app_name", { value: "" });
+      setLogoOverride(undefined);
+      setWordmarkOverride(undefined);
+      setAppNameOverride(undefined);
+      queryClient.invalidateQueries({ queryKey: ["config", "public"] });
+      toast.success("Branding reset to defaults");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reset branding");
+    } finally {
+      setBrandingSaving(false);
+    }
+  }, [queryClient]);
+
+  const hasBrandingChanges = logoPreview !== brandingLogo || wordmarkPreview !== brandingWordmark || appNameDraft.trim() !== (brandingAppName || "");
 
   const entries: { key: string; value: string }[] = Array.isArray(settings)
     ? settings.map((s: AdminSetting) => ({ key: s.key, value: s.value }))
@@ -342,6 +416,106 @@ export default function SettingsPage() {
               <span>Enterprise mode is active. Self-registration and password login are disabled.</span>
             </div>
           )}
+        </section>
+
+        {/* Branding */}
+        <section className="animate-in">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <Palette className="h-3.5 w-3.5" />
+            Branding
+          </h3>
+          <div className="rounded-md border border-border bg-card px-4 py-3 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              PNG, SVG, ICO, JPEG, or WEBP. Max 2MB. Transparent images recommended for theme compatibility.
+            </p>
+            <div className="flex flex-wrap gap-4">
+              {/* Logo icon */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">Icon</p>
+                <div
+                  className="w-12 h-12 rounded border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors bg-muted/30"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f, setLogoOverride); }}
+                >
+                  {logoPreview ? (
+                    <img src={logoPreview} alt="Icon" className="w-8 h-8 object-contain" />
+                  ) : (
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/png,image/svg+xml,image/x-icon,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f, setLogoOverride); e.target.value = ""; }} />
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" className="h-6 text-[11px] px-1.5" onClick={() => fileInputRef.current?.click()}>Upload</Button>
+                  {logoPreview && <Button variant="ghost" size="sm" className="h-6 text-[11px] px-1.5 text-muted-foreground" onClick={() => setLogoOverride(null)}>Remove</Button>}
+                </div>
+              </div>
+              {/* Wordmark */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">Wordmark <span className="text-muted-foreground font-normal">(optional, replaces text)</span></p>
+                <div
+                  className="w-28 h-12 rounded border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-primary/50 transition-colors bg-muted/30"
+                  onClick={() => wordmarkInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f, setWordmarkOverride); }}
+                >
+                  {wordmarkPreview ? (
+                    <img src={wordmarkPreview} alt="Wordmark" className="h-6 max-w-24 object-contain" />
+                  ) : (
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                <input ref={wordmarkInputRef} type="file" accept="image/png,image/svg+xml,image/x-icon,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f, setWordmarkOverride); e.target.value = ""; }} />
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" className="h-6 text-[11px] px-1.5" onClick={() => wordmarkInputRef.current?.click()}>Upload</Button>
+                  {wordmarkPreview && <Button variant="ghost" size="sm" className="h-6 text-[11px] px-1.5 text-muted-foreground" onClick={() => setWordmarkOverride(null)}>Remove</Button>}
+                </div>
+              </div>
+              {/* App name (text fallback) */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">App Name <span className="text-muted-foreground font-normal">(used when no wordmark)</span></p>
+                <Input
+                  value={appNameDraft}
+                  onChange={(e) => setAppNameOverride(e.target.value)}
+                  placeholder="Observal"
+                  maxLength={30}
+                  className="h-8 text-sm w-48"
+                />
+                <p className="text-[11px] text-muted-foreground">{appNameDraft.length}/30</p>
+              </div>
+            </div>
+            {/* Preview + actions */}
+            <div className="flex items-center gap-4 pt-1 border-t border-border">
+              <div className="rounded bg-sidebar px-3 py-2 inline-flex items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center">
+                  {logoPreview ? (
+                    <img src={logoPreview} alt="" className="w-5 h-5 object-contain" />
+                  ) : (
+                    <img src="/favicon.ico" alt="" className="w-5 h-5" />
+                  )}
+                </div>
+                {wordmarkPreview ? (
+                  <img src={wordmarkPreview} alt="" className="h-4 max-w-35 object-contain object-left" />
+                ) : (
+                  <span className="text-sm font-semibold tracking-tight font-display text-sidebar-foreground truncate max-w-35">
+                    {appNameDraft.trim() || "Observal"}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" className="h-7 text-xs" onClick={handleSaveBranding} disabled={brandingSaving || !hasBrandingChanges}>
+                  {brandingSaving ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
+                  Save
+                </Button>
+                {(brandingLogo || brandingAppName || brandingWordmark) && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleResetBranding} disabled={brandingSaving}>
+                    <RotateCcw className="mr-1 h-3 w-3" />
+                    Reset
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Trace Privacy */}

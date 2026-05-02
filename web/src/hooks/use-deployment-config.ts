@@ -17,6 +17,9 @@ export function useDeploymentConfig() {
     ssoOnly: data?.sso_only ?? false,
     samlEnabled: data?.saml_enabled ?? false,
     evalConfigured: data?.eval_configured ?? false,
+    brandingLogo: data?.branding_logo ?? null,
+    brandingAppName: data?.branding_app_name ?? null,
+    brandingWordmark: data?.branding_wordmark ?? null,
     loading: isLoading,
   };
 }
