@@ -190,6 +190,9 @@ def get_effective_agent_permission(agent: "Agent", user: User | None) -> str:  #
     if user_role_level <= ROLE_HIERARCHY[UserRole.admin]:
         return "owner"  # admins can edit anything
 
+    if user.org_id is not None and agent.owner_org_id == user.org_id:
+        return "view"
+
     user_groups = get_user_groups(user)
     best_perm = "none"
     perm_levels = {"none": 0, "view": 1, "edit": 2, "owner": 3}
