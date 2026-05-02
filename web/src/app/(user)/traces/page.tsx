@@ -73,11 +73,11 @@ function fmtTokens(n: number | string | undefined): string {
   return `${num}`;
 }
 
-function fmtCredits(c: string | undefined): string {
-  if (!c) return "0.00";
+function fmtCredits(c: string | undefined): string | null {
+  if (!c) return null;
   const num = parseFloat(c);
-  if (isNaN(num)) return "0.00";
-  return num < 0.01 && num > 0 ? num.toFixed(4) : num.toFixed(2);
+  if (isNaN(num) || num <= 0) return null;
+  return num < 0.01 ? num.toFixed(4) : num.toFixed(2);
 }
 
 function fmtDuration(first?: string, last?: string): string {
@@ -184,9 +184,18 @@ const columns: ColumnDef<Session>[] = [
         );
       }
       if (isKiroSession(r)) {
+        const credits = fmtCredits(r.credits);
+        if (credits) {
+          return (
+            <span className="text-[13px] font-mono tabular-nums text-orange-400">
+              {credits} cr
+            </span>
+          );
+        }
+        const count = r.prompt_count ?? 0;
         return (
-          <span className="text-[13px] font-mono tabular-nums text-orange-400">
-            {fmtCredits(r.credits)} cr
+          <span className="text-[13px] text-muted-foreground">
+            {count} prompt{count !== 1 ? "s" : ""}
           </span>
         );
       }
