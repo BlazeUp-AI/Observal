@@ -534,45 +534,9 @@ export function AgentEditForm({
   async function handleSaveDraft() {
     setSavingDraft(true);
     try {
-      const components: { component_type: string; component_id: string }[] = [];
-      for (const [type, items] of Object.entries(selectedComponents)) {
-        const singularType = TYPE_MAP[type] ?? type;
-        for (const item of items) {
-          components.push({ component_type: singularType, component_id: item.id });
-        }
-      }
-
-      const sections = goalSections
-        .filter((s) => s.title.trim())
-        .map((s) => ({
-          name: s.title.trim(),
-          description: s.content.trim() || null,
-        }));
-
-      const promptParts = customPrompts
-        .filter((p) => p.content.trim())
-        .map((p) =>
-          p.title.trim()
-            ? `## ${p.title.trim()}\n${p.content.trim()}`
-            : p.content.trim(),
-        );
-
-      await updateAgent.mutateAsync({
-        id: agentId,
-        body: {
-          description: description.trim(),
-          model_name: modelName,
-          prompt: promptParts.join("\n\n"),
-          components: components.length > 0 ? components : [],
-          goal_template: {
-            description: description.trim() || agent.name,
-            sections:
-              sections.length > 0
-                ? sections
-                : [{ name: "Default", description: description.trim() || agent.name }],
-          },
-        },
-      });
+      const draftVersion = versionSuggestions?.suggestions?.patch ?? currentVersion;
+      const body = { ...buildVersionBody(draftVersion), save_as_draft: true };
+      await createVersion.mutateAsync({ agentId, body });
       initialStateRef.current = {
         description,
         modelName,
@@ -581,6 +545,7 @@ export function AgentEditForm({
         selectedComponents,
       };
       setIsDirty(false);
+      onSuccess?.();
     } catch {
       // toast handled by mutation
     } finally {

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
-from api.deps import get_db, get_effective_agent_permission, require_role
+from api.deps import ROLE_HIERARCHY, get_db, get_effective_agent_permission, require_role
 from models.agent import (
     Agent,
     AgentGoalSection,
@@ -173,9 +173,10 @@ async def _create_agent_version(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
     is_owner = agent.created_by == current_user.id
     is_co_maintainer = str(current_user.id) in [str(uid) for uid in (agent.co_maintainers or [])]
-    if not is_owner and not is_co_maintainer:
+    if not is_admin and not is_owner and not is_co_maintainer:
         raise HTTPException(status_code=403, detail="Not authorized to release versions")
 
     # Duplicate check
@@ -208,6 +209,7 @@ async def _create_agent_version(
     )
     pending_count = (await db.execute(pending_stmt)).scalar() or 0
 
+    initial_status = AgentStatus.draft if req.save_as_draft else AgentStatus.pending
     now = datetime.now(UTC)
     ver = AgentVersion(
         agent_id=agent.id,
@@ -220,7 +222,7 @@ async def _create_agent_version(
         supported_ides=req.supported_ides,
         yaml_snapshot=req.yaml_snapshot,
         is_prerelease=req.is_prerelease,
-        status=AgentStatus.pending,
+        status=initial_status,
         released_by=current_user.id,
         released_at=now,
     )
