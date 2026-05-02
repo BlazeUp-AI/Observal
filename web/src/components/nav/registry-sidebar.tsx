@@ -91,7 +91,7 @@ export function RegistrySidebar() {
   const snap = useSyncExternalStore(storeSub, getAuthSnap, getServerSnap);
   const [token, role, userName, userEmail] = snap.split("|");
   const isAuthenticated = !!token;
-  const { deploymentMode } = useDeploymentConfig();
+  const { deploymentMode, brandingLogo, brandingAppName, brandingWordmark } = useDeploymentConfig();
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
@@ -132,12 +132,20 @@ export function RegistrySidebar() {
             <SidebarMenuButton size="lg" asChild>
               <Link href="/">
                 <div className="flex size-8 shrink-0 items-center justify-center">
-                  <Image src="/favicon.ico" alt="" width={20} height={20} />
+                  {brandingLogo ? (
+                    <img src={brandingLogo} alt="" width={20} height={20} className="object-contain" />
+                  ) : (
+                    <Image src="/favicon.ico" alt="" width={20} height={20} />
+                  )}
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="text-base font-semibold tracking-tight font-[family-name:var(--font-display)]">
-                    Observal
-                  </span>
+                  {brandingWordmark ? (
+                    <img src={brandingWordmark} alt={brandingAppName || "Observal"} className="h-5 max-w-35 object-contain object-left" />
+                  ) : (
+                    <span className="text-base font-semibold tracking-tight font-display truncate max-w-35">
+                      {brandingAppName || "Observal"}
+                    </span>
+                  )}
                 </div>
               </Link>
             </SidebarMenuButton>
