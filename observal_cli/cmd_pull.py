@@ -32,12 +32,12 @@ def _resolve_hook_paths(content: str) -> str:
     for name in _HOOK_SCRIPT_NAMES:
         local = hooks_dir / name
         if local.is_file():
-            content = content.replace(f'"{name}"', f'"{local.resolve()}"')
+            content = content.replace(f'"{name}"', f'"{local.resolve().as_posix()}"')
         else:
             # Fallback: check if it's on PATH
             found = shutil.which(name)
             if found:
-                content = content.replace(f'"{name}"', f'"{found}"')
+                content = content.replace(f'"{name}"', f'"{Path(found).resolve().as_posix()}"')
     return content
 
 
