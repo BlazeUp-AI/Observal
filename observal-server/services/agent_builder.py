@@ -33,7 +33,7 @@ class ManifestComponent(BaseModel):
 
     name: str
     version: str
-    git_url: str
+    git_url: str = ""
     description: str = ""
     order: int = 0
     git_ref: str | None = None
