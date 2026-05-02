@@ -869,11 +869,18 @@ async def install_agent(
     hook_listings_map = {}
     if hook_comp_ids:
         from sqlalchemy.orm import selectinload as _sel
+
         hook_rows = (
-            await db.execute(
-                select(HookListing).options(_sel(HookListing.latest_version)).where(HookListing.id.in_(hook_comp_ids))
+            (
+                await db.execute(
+                    select(HookListing)
+                    .options(_sel(HookListing.latest_version))
+                    .where(HookListing.id.in_(hook_comp_ids))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         hook_listings_map = {row.id: row for row in hook_rows}
 
     # Resolve all component names for rules file content
