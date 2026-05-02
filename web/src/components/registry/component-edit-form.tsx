@@ -833,7 +833,7 @@ export function ComponentEditForm({
   item,
   onSuccess,
 }: ComponentEditFormProps) {
-  const singularType = type.replace(/s$/, "");
+  const singularType = type === "sandboxes" ? "sandbox" : type.replace(/s$/, "");
 
   if (singularType === "mcp" || singularType === "sandbox") {
     return <WipStub type={singularType} />;
