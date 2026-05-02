@@ -313,9 +313,10 @@ export default function SettingsPage() {
 
   const hasBrandingChanges = logoPreview !== brandingLogo || wordmarkPreview !== brandingWordmark || appNameDraft.trim() !== (brandingAppName || "");
 
-  const entries: { key: string; value: string }[] = Array.isArray(settings)
+  const entries: { key: string; value: string }[] = (Array.isArray(settings)
     ? settings.map((s: AdminSetting) => ({ key: s.key, value: s.value }))
-    : Object.entries(settings ?? {}).map(([k, v]) => ({ key: k, value: String(v) }));
+    : Object.entries(settings ?? {}).map(([k, v]) => ({ key: k, value: String(v) }))
+  ).filter((e) => !e.key.startsWith("branding."));
 
   const existingKeys = new Set(entries.map((e) => e.key));
   const missingSections = SETTING_SECTIONS
