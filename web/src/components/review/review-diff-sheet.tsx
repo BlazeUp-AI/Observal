@@ -22,8 +22,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { YamlDiffView } from "./yaml-diff-view";
-import { useAgentVersions, useVersionDiff, useAgentVersionDetail } from "@/hooks/use-api";
+import { useAgentVersions, useVersionDiff, useAgentVersionDetail, useComponentVersions, useComponentVersionDetail } from "@/hooks/use-api";
+import type { RegistryType } from "@/lib/api";
 import type { ReviewItem, ComponentChange } from "@/lib/types";
+
+function pluralizeType(type: string): string {
+  if (type === "agent") return "agents";
+  return `${type}s`;
+}
 
 function semverBumpType(from: string, to: string): "major" | "minor" | "patch" | null {
   const parse = (v: string) => v.replace(/^v/, "").split(".").map(Number);
@@ -140,34 +146,97 @@ function DiffDialogBody({
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
-  const { data: versionsData, isLoading: versionsLoading } = useAgentVersions(item.id);
+  const isAgent = item.type === "agent";
+  const registryType = !isAgent && item.type ? pluralizeType(item.type) as RegistryType : undefined;
+
+  // Agent versions
+  const { data: agentVersionsData, isLoading: agentVersionsLoading } = useAgentVersions(
+    isAgent ? item.id : undefined,
+  );
+
+  // Component versions
+  const { data: compVersionsData, isLoading: compVersionsLoading } = useComponentVersions(
+    registryType,
+    !isAgent ? item.id : undefined,
+  );
+
+  const versionsLoading = isAgent ? agentVersionsLoading : compVersionsLoading;
+  const versionsItems = isAgent ? agentVersionsData?.items : compVersionsData?.items;
 
   // Find the most recent approved version before the pending one.
   // Versions are returned newest-first (created_at DESC), so [0] is the most recent.
   const previousVersion = useMemo(() => {
-    if (!versionsData?.items || !item.version) return undefined;
-    const approved = versionsData.items.filter(
+    if (!versionsItems || !item.version) return undefined;
+    const approved = versionsItems.filter(
       (v) => v.status === "approved" && v.version !== item.version,
     );
     return approved[0]?.version;
-  }, [versionsData, item.version]);
+  }, [versionsItems, item.version]);
 
+  // Only agents have a server-side diff endpoint
   const { data: diffData, isLoading: diffLoading } = useVersionDiff(
-    item.id,
-    previousVersion,
-    item.version,
+    isAgent ? item.id : undefined,
+    isAgent ? previousVersion : undefined,
+    isAgent ? item.version : undefined,
   );
 
-  // Always fetch version detail for the left pane (prompt, model, components, yaml_snapshot)
-  const { data: versionDetail, isLoading: detailLoading } = useAgentVersionDetail(
-    item.id,
-    item.version ?? null,
+  // Agent version detail
+  const { data: agentDetail, isLoading: agentDetailLoading } = useAgentVersionDetail(
+    isAgent ? item.id : undefined,
+    isAgent ? (item.version ?? null) : null,
   );
+
+  // Component version detail
+  const { data: compDetail, isLoading: compDetailLoading } = useComponentVersionDetail(
+    registryType,
+    !isAgent ? item.id : undefined,
+    !isAgent ? (item.version ?? null) : null,
+  );
+
+  // Also fetch previous approved version detail for component diff
+  const { data: compPrevDetail } = useComponentVersionDetail(
+    registryType,
+    !isAgent ? item.id : undefined,
+    !isAgent ? (previousVersion ?? null) : null,
+  );
+
+  const detailLoading = isAgent ? agentDetailLoading : compDetailLoading;
 
   const bumpType = useMemo(() => {
     if (!previousVersion || !item.version) return null;
     return semverBumpType(previousVersion, item.version);
   }, [previousVersion, item.version]);
+
+  const componentDiff = useMemo(() => {
+    if (isAgent || !compDetail || !compPrevDetail || !previousVersion) return null;
+    const prev = JSON.stringify(compPrevDetail, null, 2);
+    const curr = JSON.stringify(compDetail, null, 2);
+    if (prev === curr) return "";
+    const prevLines = prev.split("\n");
+    const currLines = curr.split("\n");
+    const lines: string[] = [`--- v${previousVersion}`, `+++ v${item.version}`];
+    const hunks: string[] = [];
+    const maxLen = Math.max(prevLines.length, currLines.length);
+    let inHunk = false;
+    for (let i = 0; i < maxLen; i++) {
+      const pl = prevLines[i] ?? "";
+      const cl = currLines[i] ?? "";
+      if (pl !== cl) {
+        if (!inHunk) {
+          hunks.push(`@@ -${i + 1} +${i + 1} @@`);
+          inHunk = true;
+        }
+        if (pl) hunks.push(`-${pl}`);
+        if (cl) hunks.push(`+${cl}`);
+      } else {
+        if (inHunk) {
+          hunks.push(` ${cl}`);
+          inHunk = false;
+        }
+      }
+    }
+    return [...lines, ...hunks].join("\n");
+  }, [isAgent, compDetail, compPrevDetail, previousVersion, item.version]);
 
   const handleApprove = useCallback(() => {
     onApprove(item.id, item.type);
@@ -184,15 +253,19 @@ function DiffDialogBody({
 
   const disableApprove = item.components_ready === false;
 
-  const isLoading = versionsLoading || (!!previousVersion && diffLoading);
+  const isLoading = versionsLoading || detailLoading || (!!previousVersion && diffLoading);
 
-  const detail = versionDetail as Record<string, unknown> | undefined;
-  const yamlSnapshot = detail?.yaml_snapshot as string | null | undefined;
+  const detail = (isAgent ? agentDetail : compDetail) as Record<string, unknown> | undefined;
+  const yamlSnapshot = isAgent
+    ? (detail?.yaml_snapshot as string | null | undefined)
+    : detail
+      ? JSON.stringify(detail, null, 2)
+      : null;
   // Prefer version detail fields over the sparse review item fields
   const prompt = (detail?.prompt as string) || item.prompt || "";
   const modelName = (detail?.model_name as string) || item.model_name || "";
   const supportedIdes = (detail?.supported_ides as string[]) || item.supported_ides || [];
-  const components = (detail?.components as { component_type: string; component_id: string }[]) || item.components || [];
+  const components = (detail?.components as { component_type: string; component_id: string; name?: string; template?: string; description?: string; category?: string }[]) || item.components || [];
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -201,7 +274,7 @@ function DiffDialogBody({
         <DialogHeader className="space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className="text-[10px]">
-              agent
+              {item.type}
             </Badge>
             {bumpType && (
               <Badge
@@ -321,6 +394,71 @@ function DiffDialogBody({
               </>
             )}
 
+            {/* Component-specific fields */}
+            {!isAgent && detail && (
+              <>
+                {(detail.template as string) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Template
+                      </h4>
+                      <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words bg-muted/40 rounded p-3 leading-relaxed max-h-64 overflow-y-auto">
+                        {detail.template as string}
+                      </pre>
+                    </div>
+                  </>
+                )}
+                {(detail.category as string) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Category
+                      </h4>
+                      <p className="text-xs font-medium">{detail.category as string}</p>
+                    </div>
+                  </>
+                )}
+                {(detail.event as string) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Event
+                      </h4>
+                      <p className="text-xs font-medium">{detail.event as string}</p>
+                    </div>
+                  </>
+                )}
+                {(detail.handler_type as string) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Handler
+                      </h4>
+                      <p className="text-xs font-medium">{detail.handler_type as string}</p>
+                    </div>
+                  </>
+                )}
+                {(detail.changelog as string) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        Changelog
+                      </h4>
+                      <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words bg-muted/40 rounded p-3 leading-relaxed max-h-32 overflow-y-auto">
+                        {detail.changelog as string}
+                      </pre>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
             {/* Component changes (from diff) or component list */}
             {diffData?.component_changes?.length ? (
               <>
@@ -339,18 +477,30 @@ function DiffDialogBody({
                   <h4 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Components ({components.length})
                   </h4>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {components.map((c, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-2 text-xs py-1.5 px-2 rounded bg-muted/40"
+                        className="text-xs rounded bg-muted/40 overflow-hidden"
                       >
-                        <Badge variant="outline" className="text-[10px] shrink-0">
-                          {c.component_type}
-                        </Badge>
-                        <span className="text-muted-foreground font-[family-name:var(--font-mono)] truncate">
-                          {c.component_id}
-                        </span>
+                        <div className="flex items-center gap-2 py-1.5 px-2">
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {c.component_type}
+                          </Badge>
+                          <span className="font-medium truncate">
+                            {c.name || c.component_id}
+                          </span>
+                        </div>
+                        {c.template && (
+                          <pre className="px-3 pb-2 text-[11px] font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words text-muted-foreground leading-relaxed">
+                            {c.template}
+                          </pre>
+                        )}
+                        {c.description && !c.template && (
+                          <p className="px-3 pb-2 text-[11px] text-muted-foreground">
+                            {c.description}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -437,6 +587,12 @@ function DiffDialogBody({
                 </div>
               )}
             </div>
+          ) : componentDiff !== null ? (
+            <YamlDiffView
+              diff={componentDiff}
+              versionA={previousVersion ?? ""}
+              versionB={item.version ?? ""}
+            />
           ) : (
             <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
               Unable to load diff.

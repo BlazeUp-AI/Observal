@@ -82,6 +82,15 @@ def _version_to_detail(ver: AgentVersion) -> dict:
             "inferred_supported_ides": ver.inferred_supported_ides,
         }
     )
+    d["components"] = [
+        {
+            "component_type": c.component_type,
+            "component_id": str(c.component_id),
+            "name": c.component_name or "",
+            "resolved_version": c.resolved_version or "",
+        }
+        for c in (ver.components or [])
+    ]
     return d
 
 
@@ -455,8 +464,41 @@ async def _get_version_diff(
     if not ver2:
         raise HTTPException(status_code=404, detail=f"Version {v2!r} not found")
 
-    # Build YAML diff text
-    def _structural_text(ver: AgentVersion) -> str:
+    # Build YAML diff text with resolved component details
+    async def _structural_text(ver: AgentVersion) -> str:
+        # Resolve component names and content from listings
+        comp_details = []
+        if ver.components:
+            from models.hook import HookListing
+            from models.mcp import McpListing
+            from models.prompt import PromptListing
+            from models.sandbox import SandboxListing
+            from models.skill import SkillListing
+
+            listing_models = {
+                "mcp": McpListing,
+                "skill": SkillListing,
+                "hook": HookListing,
+                "prompt": PromptListing,
+                "sandbox": SandboxListing,
+            }
+            for c in ver.components:
+                model = listing_models.get(c.component_type)
+                comp_entry: dict = {"type": c.component_type}
+                if model:
+                    listing = (await db.execute(select(model).where(model.id == c.component_id))).scalar_one_or_none()
+                    if listing:
+                        comp_entry["name"] = listing.name
+                        if c.component_type == "prompt":
+                            comp_entry["template"] = getattr(listing, "template", "") or ""
+                        else:
+                            comp_entry["description"] = getattr(listing, "description", "") or ""
+                    else:
+                        comp_entry["name"] = c.component_name or str(c.component_id)[:8]
+                else:
+                    comp_entry["name"] = c.component_name or str(c.component_id)[:8]
+                comp_details.append(comp_entry)
+
         data = {
             "description": ver.description,
             "prompt": ver.prompt,
@@ -464,11 +506,12 @@ async def _get_version_diff(
             "model_config_json": ver.model_config_json,
             "supported_ides": ver.supported_ides,
             "external_mcps": ver.external_mcps,
+            "components": comp_details,
         }
         return json.dumps(data, indent=2, default=str)
 
-    text1 = ver1.yaml_snapshot if ver1.yaml_snapshot is not None else _structural_text(ver1)
-    text2 = ver2.yaml_snapshot if ver2.yaml_snapshot is not None else _structural_text(ver2)
+    text1 = ver1.yaml_snapshot if ver1.yaml_snapshot is not None else await _structural_text(ver1)
+    text2 = ver2.yaml_snapshot if ver2.yaml_snapshot is not None else await _structural_text(ver2)
 
     yaml_diff = "\n".join(
         line.rstrip("\n")
