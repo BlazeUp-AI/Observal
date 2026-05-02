@@ -55,6 +55,20 @@ def _normalize_user_code(code: str) -> str:
     return code.replace("-", "").upper()
 
 
+def _resolve_frontend_url(request: Request) -> str:
+    """Derive the frontend base URL from the request when FRONTEND_URL is not configured."""
+    configured = settings.FRONTEND_URL
+    if configured and configured != "http://localhost:3000":
+        return configured.rstrip("/")
+    # Infer from proxy headers (nginx forwards X-Forwarded-Proto + Host)
+    scheme = request.headers.get("x-forwarded-proto", "http")
+    host = request.headers.get("host") or request.headers.get("x-forwarded-host")
+    if host:
+        return f"{scheme}://{host}".rstrip("/")
+    # Last resort: request base URL
+    return str(request.base_url).rstrip("/")
+
+
 @router.post("/authorize", response_model=DeviceAuthResponse)
 @limiter.limit("5/minute")
 async def device_authorize(request: Request, req: DeviceAuthRequest = None):
@@ -81,11 +95,13 @@ async def device_authorize(request: Request, req: DeviceAuthRequest = None):
         logger.error("Redis unavailable during device authorize: %s", e)
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
 
+    frontend_url = _resolve_frontend_url(request)
+
     return DeviceAuthResponse(
         device_code=device_code,
         user_code=user_code,
-        verification_uri=f"{settings.FRONTEND_URL}/device",
-        verification_uri_complete=f"{settings.FRONTEND_URL}/device?code={user_code}",
+        verification_uri=f"{frontend_url}/device",
+        verification_uri_complete=f"{frontend_url}/device?code={user_code}",
         expires_in=_DEVICE_AUTH_TTL,
         interval=5,
     )
