@@ -69,6 +69,7 @@ async def _load_agent(
     *,
     prefer_user_id: uuid.UUID | None = None,
     org_id: uuid.UUID | None = None,
+    include_all_statuses: bool = False,
 ) -> Agent | None:
     """Load an agent by UUID, prefix, or name with eager loading.
 
@@ -76,15 +77,15 @@ async def _load_agent(
     caller's own agent over agents created by other users with the same name.
     The global name fallback is restricted to active agents and, when *org_id*
     is set, to agents within the same organisation.
+
+    Set *include_all_statuses* to find agents regardless of version status
+    (needed for unarchive, delete, etc.).
     """
     try:
         return await resolve_prefix_id(
             Agent, agent_id, db, load_options=_agent_load_options, extra_conditions=extra_conditions
         )
     except HTTPException:
-        # UUID / prefix lookup failed — fall through to name-based lookup.
-        # This handles agent names that are short (< 4 chars) or could be
-        # mistaken for UUID prefixes (e.g. names containing only hex + hyphens).
         pass
 
     # Try the caller's own agent first
@@ -100,13 +101,15 @@ async def _load_agent(
         if mine:
             return mine
 
-    # Fall back to global name lookup — only active, org-scoped agents
+    # Fall back to global name lookup
     stmt = (
         select(Agent)
         .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
-        .where(Agent.name == agent_id, AgentVersion.status == AgentStatus.approved)
+        .where(Agent.name == agent_id)
         .options(*_agent_load_options)
     )
+    if not include_all_statuses:
+        stmt = stmt.where(AgentVersion.status == AgentStatus.approved)
     if extra_conditions:
         stmt = stmt.where(*extra_conditions)
     if org_id is not None:
@@ -1096,7 +1099,9 @@ async def delete_agent(
     from models.eval import EvalRun, Scorecard
     from models.feedback import Feedback
 
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
+    agent = await _load_agent(
+        db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id, include_all_statuses=True
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -1214,7 +1219,9 @@ async def unarchive_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
+    agent = await _load_agent(
+        db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id, include_all_statuses=True
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
