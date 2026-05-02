@@ -71,6 +71,7 @@ export default function UsersPage() {
   const [resetResult, setResetResult] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [role, setRole] = useState<string>("user");
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -79,17 +80,18 @@ export default function UsersPage() {
   const handleCreate = useCallback(async () => {
     if (!name.trim() || !email.trim()) return;
     createUser.mutate(
-      { email: email.trim(), name: name.trim(), role },
+      { email: email.trim(), name: name.trim(), username: username.trim() || undefined, role },
       {
         onSuccess: (data) => {
           setCreatedPassword(data.password);
           setName("");
           setEmail("");
+          setUsername("");
           setRole("user");
         },
       },
     );
-  }, [name, email, role, createUser]);
+  }, [name, email, username, role, createUser]);
 
   const handleCopyPassword = useCallback(() => {
     if (!createdPassword) return;
@@ -121,6 +123,7 @@ export default function UsersPage() {
     setCreatedPassword(null);
     setName("");
     setEmail("");
+    setUsername("");
     setRole("user");
   }, []);
 
@@ -267,6 +270,16 @@ export default function UsersPage() {
                   placeholder="jane@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="h-8 text-sm"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">Username (optional)</label>
+                <Input
+                  placeholder="jane_smith"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="h-8 text-sm"
                   onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
                 />
