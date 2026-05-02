@@ -1,6 +1,8 @@
+import base64
 import hashlib
 import json
 import logging
+import re
 import secrets
 import uuid
 
@@ -103,6 +105,49 @@ async def diagnostics(
     return diag
 
 
+# ── Branding Validation ──────────────────────────────────
+
+_ALLOWED_LOGO_MIMES = {
+    "image/png",
+    "image/svg+xml",
+    "image/x-icon",
+    "image/vnd.microsoft.icon",
+    "image/jpeg",
+    "image/webp",
+}
+_MAX_LOGO_BYTES = 2 * 1024 * 1024
+_MAX_APP_NAME_LEN = 30
+
+
+def _validate_branding_logo(value: str) -> None:
+    if not value:
+        return
+    match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", value, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=422, detail="Logo must be a base64 data URL (data:image/...;base64,...)")
+    mime_type = match.group(1)
+    b64_data = match.group(2)
+    if mime_type not in _ALLOWED_LOGO_MIMES:
+        raise HTTPException(
+            status_code=422, detail=f"Unsupported image type: {mime_type}. Allowed: PNG, SVG, ICO, JPEG, WEBP"
+        )
+    try:
+        raw = base64.b64decode(b64_data)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid base64 data")
+    if len(raw) > _MAX_LOGO_BYTES:
+        size_mb = round(len(raw) / (1024 * 1024), 1)
+        max_mb = _MAX_LOGO_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=422, detail=f"Logo too large ({size_mb}MB). Maximum: {max_mb}MB")
+
+
+def _validate_branding_app_name(value: str) -> None:
+    if len(value) > _MAX_APP_NAME_LEN:
+        raise HTTPException(
+            status_code=422, detail=f"App name too long ({len(value)} chars). Maximum: {_MAX_APP_NAME_LEN}"
+        )
+
+
 # ── Enterprise Settings ──────────────────────────────────
 
 
@@ -138,6 +183,11 @@ async def upsert_setting(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
+    if key in ("branding.logo", "branding.wordmark"):
+        _validate_branding_logo(req.value)
+    elif key == "branding.app_name":
+        _validate_branding_app_name(req.value)
+
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
     if cfg:
