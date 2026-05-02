@@ -186,10 +186,9 @@ function ArchiveAgentButton({ agent }: { agent: RegistryItem }) {
 
 function UnarchiveAgentButton({ agent }: { agent: RegistryItem }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const isAdmin = useSyncExternalStore(roleSub, () => hasMinRole(getUserRole(), "admin"), () => false);
   const unarchiveMutation = useUnarchiveAgent();
 
-  if (!isAdmin || agent.status !== "archived") return null;
+  if (agent.status !== "archived") return null;
 
   return (
     <>

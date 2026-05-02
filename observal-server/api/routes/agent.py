@@ -1217,7 +1217,7 @@ async def archive_agent(
 async def unarchive_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     agent = await _load_agent(
         db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id, include_all_statuses=True
@@ -1226,6 +1226,9 @@ async def unarchive_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
+    if agent.created_by != current_user.id and not is_admin:
+        raise HTTPException(status_code=403, detail="Only the owner or an admin can unarchive this agent")
     if agent.status != AgentStatus.archived:
         raise HTTPException(status_code=400, detail="Agent is not archived")
     if not agent.latest_version_id:
