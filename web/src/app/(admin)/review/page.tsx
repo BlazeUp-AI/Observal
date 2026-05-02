@@ -363,11 +363,7 @@ export default function ReviewPage() {
 
   const handleItemClick = useCallback(
     (item: ReviewItem) => {
-      if (item.type === "agent") {
-        setDiffItem(item);
-      } else {
-        setSelectedItem(item);
-      }
+      setDiffItem(item);
     },
     [],
   );
