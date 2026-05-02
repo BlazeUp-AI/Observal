@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -325,6 +326,37 @@ class TestPullKiro:
         data = json.loads(agent.read_text())
         assert data["name"] == "my-agent"
         assert data["tools"] == ["search"]
+
+    def test_rewrites_hook_python_path(self, tmp_path: Path):
+        """Hook commands should use sys.executable, not bare python3."""
+        snippet = {
+            "config_snippet": {
+                "agent_file": {
+                    "path": "~/.kiro/agents/my-agent.json",
+                    "content": {
+                        "name": "my-agent",
+                        "tools": ["search"],
+                        "hooks": {
+                            "agentSpawn": [{"command": "python3 -m observal_cli.hooks.kiro_hook --url http://localhost:8000/api/v1/telemetry/hooks --agent-name my-agent"}],
+                            "stop": [{"command": "python3 -m observal_cli.hooks.kiro_stop_hook --url http://localhost:8000/api/v1/telemetry/hooks --agent-name my-agent"}],
+                        },
+                    },
+                }
+            }
+        }
+        with _patch_config(), _patch_get_agent(), _patch_post(snippet):
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "kiro", "--dir", str(tmp_path), "--no-prompt"]
+            )
+
+        assert result.exit_code == 0, result.output
+        agent = tmp_path / ".kiro" / "agents" / "my-agent.json"
+        data = json.loads(agent.read_text())
+        # All hook commands should use sys.executable, not bare python3
+        for event, entries in data["hooks"].items():
+            for h in entries:
+                assert sys.executable in h["command"], f"{event} hook missing sys.executable: {h['command']}"
+                assert not h["command"].startswith("python3 ")
 
 
 # ═══════════════════════════════════════════════════════════════

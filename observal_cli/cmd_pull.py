@@ -170,6 +170,33 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
     return "updated" if existed else "created"
 
 
+def _rewrite_kiro_hooks(content: dict) -> dict:
+    """Rewrite Kiro hook commands to use the current Python interpreter.
+
+    The server generates commands with bare 'python3' which won't find
+    observal_cli when installed in a project-local virtual environment.
+    """
+    hooks = content.get("hooks")
+    agent_name = content.get("name")
+    if not hooks or not agent_name:
+        return content
+
+    from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
+
+    cfg = config.get_or_exit()
+    hooks_url = f"{cfg['server_url'].rstrip('/')}/api/v1/telemetry/hooks"
+    desired_hooks = build_kiro_hooks(hooks_url, agent_name)
+
+    # Replace only Observal hooks, preserve any user-added hooks
+    for event, desired_entries in desired_hooks.items():
+        existing = hooks.get(event, [])
+        cleaned = [h for h in existing if "observal_cli" not in h.get("command", "")]
+        hooks[event] = cleaned + desired_entries
+
+    content["hooks"] = hooks
+    return content
+
+
 def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) -> Path:
     """Resolve a path from the config snippet relative to *target_dir*.
 
@@ -349,6 +376,10 @@ def register_pull(app: typer.Typer):
         # ── agent_file (Kiro) ───────────────────────────────
         agent_file = snippet.get("agent_file")
         if agent_file:
+            # Rewrite hook commands to use the current Python interpreter
+            # so they work regardless of which directory Kiro is launched from.
+            if isinstance(agent_file.get("content"), dict):
+                agent_file["content"] = _rewrite_kiro_hooks(agent_file["content"])
             p = _resolve_path(agent_file["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
                 written.append((str(p), "would write"))
