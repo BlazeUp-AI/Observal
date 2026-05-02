@@ -59,8 +59,26 @@ def _listing_mock(status=ListingStatus.pending, **extra):
     m.submitted_by = uuid.uuid4()
     m.created_at = datetime.now(UTC)
     m.updated_at = datetime.now(UTC)
+    m.bundle_id = extra.get("bundle_id")
+    m.versions = extra.get("versions", [])
+    m.latest_version_id = extra.get("latest_version_id")
+    m.latest_version = extra.get("latest_version")
     for k, v in extra.items():
         setattr(m, k, v)
+    return m
+
+
+def _version_mock(listing_id, **extra):
+    m = MagicMock()
+    m.id = uuid.uuid4()
+    m.listing_id = listing_id
+    m.status = extra.get("status", ListingStatus.pending)
+    m.description = extra.get("description", "A test description")
+    m.version = extra.get("version", "1.0.0")
+    m.created_at = extra.get("created_at", datetime.now(UTC))
+    m.is_editing = False
+    m.editing_since = None
+    m.editing_by = None
     return m
 
 
@@ -91,13 +109,18 @@ class TestListPending:
     async def test_response_includes_description_version_owner(self):
         """PR #174: list_pending must return description, version, owner fields."""
         app, db, _ = _app_with()
-        listing = _listing_mock(
-            description="My cool MCP server",
-            version="2.1.0",
-            owner="acme-corp",
-        )
-        # agents query (empty) + 5 listing types + user lookup
-        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        listing = _listing_mock(owner="acme-corp")
+        version = _version_mock(listing.id, description="My cool MCP server", version="2.1.0")
+        results = [
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(version),  # mcp: pending versions
+            _result_with(listing),  # mcp: listings load
+            _empty_result(),  # skill: pending versions (empty → continue)
+            _empty_result(),  # hook: pending versions (empty → continue)
+            _empty_result(),  # prompt: pending versions (empty → continue)
+            _empty_result(),  # sandbox: pending versions (empty → continue)
+            _empty_result(),  # user lookup
+        ]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -116,7 +139,17 @@ class TestListPending:
         """Verify the full shape of each item in the list_pending response."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        version = _version_mock(listing.id)
+        results = [
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(version),  # mcp: pending versions
+            _result_with(listing),  # mcp: listings load
+            _empty_result(),  # skill: pending versions (empty → continue)
+            _empty_result(),  # hook: pending versions (empty → continue)
+            _empty_result(),  # prompt: pending versions (empty → continue)
+            _empty_result(),  # sandbox: pending versions (empty → continue)
+            _empty_result(),  # user lookup
+        ]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -142,8 +175,19 @@ class TestListPending:
         """When a listing has no description attr, response should default to empty string."""
         app, db, _ = _app_with()
         listing = _listing_mock()
+        version = _version_mock(listing.id)
+        version.description = None
         listing.description = None
-        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        results = [
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(version),  # mcp: pending versions
+            _result_with(listing),  # mcp: listings load
+            _empty_result(),  # skill: pending versions (empty → continue)
+            _empty_result(),  # hook: pending versions (empty → continue)
+            _empty_result(),  # prompt: pending versions (empty → continue)
+            _empty_result(),  # sandbox: pending versions (empty → continue)
+            _empty_result(),  # user lookup
+        ]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -156,8 +200,18 @@ class TestListPending:
         """When a listing has no version attr, response should default to empty string."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        listing.version = None
-        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        version = _version_mock(listing.id)
+        version.version = None
+        results = [
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(version),  # mcp: pending versions
+            _result_with(listing),  # mcp: listings load
+            _empty_result(),  # skill: pending versions (empty → continue)
+            _empty_result(),  # hook: pending versions (empty → continue)
+            _empty_result(),  # prompt: pending versions (empty → continue)
+            _empty_result(),  # sandbox: pending versions (empty → continue)
+            _empty_result(),  # user lookup
+        ]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -170,8 +224,18 @@ class TestListPending:
         """When a listing has no owner attr, response should default to empty string."""
         app, db, _ = _app_with()
         listing = _listing_mock()
+        version = _version_mock(listing.id)
         listing.owner = None
-        results = [_empty_result()] + [_result_with(listing)] + [_empty_result() for _ in range(4)] + [_empty_result()]
+        results = [
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(version),  # mcp: pending versions
+            _result_with(listing),  # mcp: listings load
+            _empty_result(),  # skill: pending versions (empty → continue)
+            _empty_result(),  # hook: pending versions (empty → continue)
+            _empty_result(),  # prompt: pending versions (empty → continue)
+            _empty_result(),  # sandbox: pending versions (empty → continue)
+            _empty_result(),  # user lookup
+        ]
         db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -184,15 +248,21 @@ class TestListPending:
         """The ?type= query param should only query that one listing type."""
         app, db, _ = _app_with()
         listing = _listing_mock()
-        # agents query (empty) + single type query + user lookup
-        db.execute = AsyncMock(side_effect=[_empty_result(), _result_with(listing), _empty_result()])
+        version = _version_mock(listing.id)
+        results = [
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(version),  # mcp: pending versions
+            _result_with(listing),  # mcp: listings load
+            _empty_result(),  # user lookup
+        ]
+        db.execute = AsyncMock(side_effect=results)
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.get("/api/v1/review?type=mcp")
 
         assert r.status_code == 200
-        # 1 agents query + 1 single type + 1 user lookup
-        assert db.execute.call_count == 3
+        # 1 agents query + 2 mcp queries (versions + listings) + 1 user lookup
+        assert db.execute.call_count == 4
         assert r.json()[0]["type"] == "mcp"
 
     @pytest.mark.asyncio
@@ -213,14 +283,18 @@ class TestListPending:
         """Listings from different model types all appear in a single response."""
         app, db, _ = _app_with()
         mcp_listing = _listing_mock(name="mcp-one")
+        mcp_version = _version_mock(mcp_listing.id)
         skill_listing = _listing_mock(name="skill-one")
+        skill_version = _version_mock(skill_listing.id)
         results = [
-            _empty_result(),  # agents query
-            _result_with(mcp_listing),
-            _result_with(skill_listing),
-            _empty_result(),
-            _empty_result(),
-            _empty_result(),
+            _empty_result(),  # agents: pending versions (empty → return early)
+            _result_with(mcp_version),  # mcp: pending versions
+            _result_with(mcp_listing),  # mcp: listings load
+            _result_with(skill_version),  # skill: pending versions
+            _result_with(skill_listing),  # skill: listings load
+            _empty_result(),  # hook: pending versions (empty → continue)
+            _empty_result(),  # prompt: pending versions (empty → continue)
+            _empty_result(),  # sandbox: pending versions (empty → continue)
             _empty_result(),  # user lookup
         ]
         db.execute = AsyncMock(side_effect=results)
