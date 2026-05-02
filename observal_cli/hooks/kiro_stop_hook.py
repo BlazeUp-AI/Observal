@@ -16,12 +16,31 @@ Usage (in a Kiro agent hook):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from observal_cli.hooks._kiro_utils import _find_kiro_cli_pid, _resolve_hooks_url
+
+_DEBUG = os.environ.get("OBSERVAL_DEBUG") == "1"
+_LOG_PATH = Path.home() / ".observal" / "hook-debug.log"
+
+logger = logging.getLogger(__name__)
+
+
+def _debug(msg: str) -> None:
+    """Write debug message to log file when OBSERVAL_DEBUG=1."""
+    if not _DEBUG:
+        return
+    try:
+        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with _LOG_PATH.open("a") as f:
+            f.write(f"[kiro_stop_hook] {msg}\n")
+    except Exception:
+        pass
 
 
 def _get_kiro_db() -> Path | None:
@@ -45,43 +64,58 @@ def _get_kiro_db() -> Path | None:
     return None
 
 
+def _read_conversation(kiro_db: Path, cwd: str) -> tuple[str, dict] | None:
+    """Read the most recent conversation for *cwd* from Kiro's SQLite DB."""
+    conn = sqlite3.connect(f"file:{kiro_db}?mode=ro", uri=True)
+    cur = conn.cursor()
+    if cwd:
+        cur.execute(
+            "SELECT conversation_id, value FROM conversations_v2 WHERE key = ? ORDER BY updated_at DESC LIMIT 1",
+            (cwd,),
+        )
+    else:
+        cur.execute("SELECT conversation_id, value FROM conversations_v2 ORDER BY updated_at DESC LIMIT 1")
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    conversation_id, value_str = row
+    return conversation_id, json.loads(value_str)
+
+
 def _enrich(payload: dict) -> dict:
     """Read the Kiro SQLite DB and merge session-level stats into *payload*."""
     kiro_db = _get_kiro_db()
     if not kiro_db:
+        _debug("Kiro DB not found")
         return payload
 
     cwd = payload.get("cwd", "")
+    _debug(f"cwd={cwd}, db={kiro_db}")
 
     try:
-        conn = sqlite3.connect(f"file:{kiro_db}?mode=ro", uri=True)
-        cur = conn.cursor()
+        result = _read_conversation(kiro_db, cwd)
 
-        # Find the most recent conversation for this cwd
-        if cwd:
-            cur.execute(
-                "SELECT conversation_id, value FROM conversations_v2 WHERE key = ? ORDER BY updated_at DESC LIMIT 1",
-                (cwd,),
-            )
-        else:
-            cur.execute("SELECT conversation_id, value FROM conversations_v2 ORDER BY updated_at DESC LIMIT 1")
+        # Kiro may not have committed the conversation to SQLite yet when the
+        # stop hook fires. Retry with increasing delays.
+        if not result:
+            for delay in (0.5, 1.0, 1.5):
+                _debug(f"No conversation found for cwd, retrying after {delay}s...")
+                time.sleep(delay)
+                result = _read_conversation(kiro_db, cwd)
+                if result:
+                    break
 
-        row = cur.fetchone()
-        conn.close()
-
-        if not row:
+        if not result:
+            _debug("No conversation found for cwd after retries")
             return payload
 
-        conversation_id, value_str = row
-        conv = json.loads(value_str)
+        conversation_id, conv = result
 
-        # Include the real conversation_id for cross-session linking.
-        # The $PPID-based session_id (injected via sed before this script) groups
-        # events within a single kiro-cli run. The conversation_id persists across
-        # resumed sessions — the dashboard can use it to link related sessions.
         if conversation_id:
             payload["conversation_id"] = conversation_id
-    except Exception:
+    except Exception as e:
+        _debug(f"DB read error: {e}")
         return payload
 
     # --- Extract model info ---
@@ -117,9 +151,24 @@ def _enrich(payload: dict) -> dict:
     # --- Credit usage ---
     utm = conv.get("user_turn_metadata", {})
     usage_info = utm.get("usage_info", [])
-    total_credits = 0.0
-    for u in usage_info:
-        total_credits += u.get("value", 0.0)
+
+    # Kiro writes usage_info asynchronously — if empty on first read but we
+    # have history entries, retry after a short delay.
+    if not usage_info and history:
+        _debug("usage_info empty, retrying after 500ms...")
+        time.sleep(0.5)
+        try:
+            result2 = _read_conversation(kiro_db, cwd)
+            if result2:
+                conv2 = result2[1]
+                utm = conv2.get("user_turn_metadata", {})
+                usage_info = utm.get("usage_info", [])
+                _debug(f"Retry result: {len(usage_info)} usage_info items")
+        except Exception:
+            pass
+
+    total_credits = sum(u.get("value", 0.0) for u in usage_info) if usage_info else None
+    _debug(f"credits={total_credits}, turn_count={turn_count}, usage_items={len(usage_info)}")
 
     # --- Resolve the actual model used ---
     # If model_id is "auto", try to use per-turn model_ids
@@ -134,7 +183,8 @@ def _enrich(payload: dict) -> dict:
     if resolved_model and not payload.get("model"):
         payload["model"] = resolved_model
     payload["turn_count"] = str(turn_count)
-    payload["credits"] = f"{total_credits:.6f}"
+    if total_credits is not None:
+        payload["credits"] = f"{total_credits:.6f}"
 
     if tools_used:
         # Deduplicate while preserving order
@@ -175,7 +225,24 @@ def main():
     except (json.JSONDecodeError, ValueError):
         sys.exit(0)
 
+    _debug(f"payload keys: {list(payload.keys())}")
+    _debug(f"payload: {json.dumps(payload)[:2000]}")
+
     payload.setdefault("service_name", "kiro")
+
+    if not payload.get("session_id"):
+        # Kiro 2.x sends session_id on agentSpawn/userPromptSubmit but NOT on
+        # stop events. Read the session_id persisted by the non-stop hook so
+        # credits land on the same session the user sees in the UI.
+        session_file = Path.home() / ".observal" / ".kiro-session"
+        try:
+            if session_file.exists():
+                cached = json.loads(session_file.read_text())
+                if cached.get("session_id"):
+                    payload["session_id"] = cached["session_id"]
+                    _debug(f"Reused persisted session_id: {cached['session_id']}")
+        except Exception:
+            pass
 
     if not payload.get("session_id"):
         env_pid = os.environ.get("KIRO_CLI_PID")
