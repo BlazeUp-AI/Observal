@@ -289,7 +289,7 @@ def _find_hook_script(name: str) -> str | None:
     ]
     for p in candidates:
         if p.is_file():
-            return str(p.resolve())
+            return p.resolve().as_posix()
     return None
 
 
