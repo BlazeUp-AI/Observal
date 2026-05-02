@@ -529,7 +529,7 @@ function AgentListContent() {
               ) : (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
-              My Submissions
+              Drafts
               <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                 {drafts.length}
               </span>
