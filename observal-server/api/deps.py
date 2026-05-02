@@ -275,7 +275,10 @@ async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_s
         except ValueError:
             stmt = select(model).where(model.name == identifier)
     if require_status is not None:
-        stmt = stmt.where(model.status == require_status)
+        version_model = model.__mapper__.relationships["latest_version"].entity.class_
+        stmt = stmt.join(version_model, model.latest_version_id == version_model.id).where(
+            version_model.status == require_status
+        )
     # Order by created_at desc so duplicates resolve to the most recent entry
     if hasattr(model, "created_at"):
         stmt = stmt.order_by(model.created_at.desc())
