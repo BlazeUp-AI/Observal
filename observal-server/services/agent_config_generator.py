@@ -40,12 +40,24 @@ _GENERIC_HOOK_EVENTS = [
 ]
 
 
-def _claude_code_hooks_frontmatter_lines(hook_script: str, stop_script: str) -> list[str]:
+def _claude_code_hooks_frontmatter_lines(
+    hook_script: str, stop_script: str, custom_hooks: list[dict] | None = None
+) -> list[str]:
     """Build the YAML lines for a hooks: section in Claude Code frontmatter.
 
     Returns a list of indented strings (no trailing newlines) ready to be
     appended to the frontmatter_lines list before the closing '---'.
+
+    custom_hooks: list of dicts with event, handler_type, handler_config
+    from hook components attached to the agent.
     """
+    custom_hooks = custom_hooks or []
+    custom_by_event: dict[str, list[dict]] = {}
+    for h in custom_hooks:
+        ev = h.get("event")
+        if ev:
+            custom_by_event.setdefault(ev, []).append(h)
+
     lines = ["hooks:"]
     for event in _GENERIC_HOOK_EVENTS:
         lines += [
@@ -54,7 +66,9 @@ def _claude_code_hooks_frontmatter_lines(hook_script: str, stop_script: str) -> 
             "        - type: command",
             f'          command: "{hook_script}"',
         ]
-    # Stop event gets two matcher groups: generic hook + stop-specific hook.
+        for ch in custom_by_event.get(event, []):
+            lines += _custom_hook_matcher_lines(ch)
+
     lines += [
         "  Stop:",
         "    - hooks:",
@@ -64,6 +78,36 @@ def _claude_code_hooks_frontmatter_lines(hook_script: str, stop_script: str) -> 
         "        - type: command",
         f'          command: "{stop_script}"',
     ]
+    for ch in custom_by_event.get("Stop", []):
+        lines += _custom_hook_matcher_lines(ch)
+
+    return lines
+
+
+def _custom_hook_matcher_lines(hook: dict) -> list[str]:
+    """Build YAML lines for a single custom hook matcher group."""
+    handler_type = hook.get("handler_type", "command")
+    handler_config = hook.get("handler_config", {})
+
+    if handler_type == "http":
+        url = handler_config.get("url", "")
+        timeout = handler_config.get("timeout", 10)
+        lines = [
+            "    - hooks:",
+            f"        - type: http",
+            f'          url: "{url}"',
+            f"          timeout: {timeout}",
+        ]
+    else:
+        command = handler_config.get("command", "")
+        if command:
+            lines = [
+                "    - hooks:",
+                "        - type: command",
+                f'          command: "{command}"',
+            ]
+        else:
+            lines = []
     return lines
 
 
@@ -421,6 +465,36 @@ def _generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict:
     return {"path": path, "content": content}
 
 
+def _build_hook_configs(
+    agent: Agent,
+    hook_listings: dict | None = None,
+) -> list[dict]:
+    """Extract hook component metadata from agent's hook components.
+
+    Returns a list of dicts with event, handler_type, handler_config
+    that IDE-specific generators merge into the agent's hook frontmatter.
+    """
+    hook_listings = hook_listings or {}
+    hooks: list[dict] = []
+
+    for comp in agent.components:
+        if comp.component_type != "hook":
+            continue
+        listing = hook_listings.get(comp.component_id)
+        if not listing:
+            continue
+        hooks.append(
+            {
+                "event": getattr(listing, "event", None),
+                "handler_type": getattr(listing, "handler_type", "command"),
+                "handler_config": getattr(listing, "handler_config", {}) or {},
+                "name": getattr(listing, "name", ""),
+            }
+        )
+
+    return hooks
+
+
 def _build_rules_content(agent: Agent, component_names: dict | None = None) -> str:
     """Build markdown rules content from the agent and its components.
 
@@ -471,6 +545,7 @@ def generate_agent_config(
     options: dict | None = None,
     platform: str = "",
     skill_listings: dict | None = None,
+    hook_listings: dict | None = None,
     otlp_http_url: str = "",
 ) -> dict:
     """Generate IDE-specific config for an agent.
@@ -481,12 +556,14 @@ def generate_agent_config(
         env_values: optional {mcp_listing_id_str: {VAR: value}} map of user-supplied env var values.
         platform: client platform string (e.g. "win32", "darwin", "linux"). Empty = Unix default.
         skill_listings: optional {component_id: SkillListing} map pre-loaded by caller.
+        hook_listings: optional {component_id: HookListing} map pre-loaded by caller.
     """
     safe_name = _sanitize_name(agent.name)
     effective_otlp_http = otlp_http_url or observal_url
     mcp_configs = _build_mcp_configs(agent, ide, effective_otlp_http, mcp_listings=mcp_listings, env_values=env_values)
     rules_content = _build_rules_content(agent, component_names)
     skill_configs = _build_skill_configs(agent, skill_listings)
+    hook_configs = _build_hook_configs(agent, hook_listings)
     options = options or {}
     compatibility_warnings = _check_ide_compatibility(agent, ide)
 
@@ -600,7 +677,9 @@ def generate_agent_config(
             frontmatter_lines.append("mcpServers:")
             for mcp_name in claude_mcps:
                 frontmatter_lines.append(f"  - {mcp_name}")
-        frontmatter_lines.extend(_claude_code_hooks_frontmatter_lines("observal-hook.sh", "observal-stop-hook.sh"))
+        frontmatter_lines.extend(
+            _claude_code_hooks_frontmatter_lines("observal-hook.sh", "observal-stop-hook.sh", custom_hooks=hook_configs)
+        )
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
@@ -817,6 +896,7 @@ async def generate_all_ide_configs(
     observal_url: str = "http://localhost:8000",
     mcp_listings: dict | None = None,
     skill_listings: dict | None = None,
+    hook_listings: dict | None = None,
     component_names: dict | None = None,
     env_values: dict | None = None,
     otlp_http_url: str = "",
@@ -854,6 +934,7 @@ async def generate_all_ide_configs(
             observal_url=observal_url,
             mcp_listings=mcp_listings,
             skill_listings=skill_listings,
+            hook_listings=hook_listings,
             component_names=component_names,
             env_values=env_values,
             otlp_http_url=otlp_http_url,

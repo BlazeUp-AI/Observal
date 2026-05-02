@@ -28,6 +28,7 @@ from models.agent import (
 )
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
+from models.hook import HookListing
 from models.mcp import ListingStatus, McpListing, McpVersion
 from models.skill import SkillListing
 from models.user import User, UserRole
@@ -858,6 +859,18 @@ async def install_agent(
         skill_rows = (await db.execute(select(SkillListing).where(SkillListing.id.in_(skill_comp_ids)))).scalars().all()
         skill_listings_map = {row.id: row for row in skill_rows}
 
+    # Pre-load hook listings for hook config generation
+    hook_comp_ids = [c.component_id for c in agent.components if c.component_type == "hook"]
+    hook_listings_map = {}
+    if hook_comp_ids:
+        from sqlalchemy.orm import selectinload as _sel
+        hook_rows = (
+            await db.execute(
+                select(HookListing).options(_sel(HookListing.latest_version)).where(HookListing.id.in_(hook_comp_ids))
+            )
+        ).scalars().all()
+        hook_listings_map = {row.id: row for row in hook_rows}
+
     # Resolve all component names for rules file content
     name_map = await _resolve_component_names(agent.components, db)
 
@@ -874,6 +887,7 @@ async def install_agent(
         options=req.options,
         platform=req.platform,
         skill_listings=skill_listings_map,
+        hook_listings=hook_listings_map,
         otlp_http_url=endpoints["otlp_http"],
     )
 
