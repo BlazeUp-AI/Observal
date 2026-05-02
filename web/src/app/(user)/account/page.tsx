@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState, useCallback, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
-import { Check } from "lucide-react";
-import { getUserName, getUserEmail, getUserRole } from "@/lib/api";
+import { Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { getUserName, getUserEmail, getUserRole, auth } from "@/lib/api";
 import { ROLE_LABELS, type Role } from "@/hooks/use-role-guard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layouts/page-header";
@@ -66,6 +69,89 @@ function initials(name: string) {
     .slice(0, 2);
 }
 
+// ── Change Password ───────────────────────────────────────────────────────
+function ChangePasswordSection() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = useCallback(async () => {
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setSaving(true);
+    try {
+      await auth.changePassword({ current_password: currentPassword, new_password: newPassword });
+      toast.success("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to change password");
+    } finally {
+      setSaving(false);
+    }
+  }, [currentPassword, newPassword, confirmPassword]);
+
+  return (
+    <section className="animate-in stagger-1">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+        Change Password
+      </h3>
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Current Password</label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="h-8 text-sm"
+              placeholder="Enter current password"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">New Password</label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="h-8 text-sm"
+              placeholder="At least 8 characters"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Confirm New Password</label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="h-8 text-sm"
+              placeholder="Re-enter new password"
+              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+            />
+          </div>
+          <Button
+            size="sm"
+            className="h-8"
+            onClick={handleSubmit}
+            disabled={saving || !currentPassword || !newPassword || !confirmPassword}
+          >
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Update Password
+          </Button>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function AccountPage() {
   const name = useSyncExternalStore(subscribe, getNameSnapshot, getServerSnapshot);
@@ -112,7 +198,10 @@ export default function AccountPage() {
           </Card>
         </section>
 
-        {/* ── Section 2: Theme ───────────────────────────────────────────── */}
+        {/* ── Section 2: Change Password ───────────────────────────────── */}
+        <ChangePasswordSection />
+
+        {/* ── Section 3: Theme ───────────────────────────────────────────── */}
         <section className="animate-in stagger-1">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             Theme
