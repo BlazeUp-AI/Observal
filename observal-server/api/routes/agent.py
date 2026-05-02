@@ -1167,6 +1167,8 @@ async def archive_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.status != AgentStatus.approved:
+        raise HTTPException(status_code=400, detail="Only approved agents can be archived")
     if not agent.latest_version_id:
         raise HTTPException(status_code=400, detail="Agent has no version")
     await db.execute(
