@@ -254,6 +254,7 @@ class AgentVersionCreateRequest(BaseModel):
     goal_template: GoalTemplateRequest | None = None
     yaml_snapshot: str | None = None
     is_prerelease: bool = False
+    save_as_draft: bool = False
 
     @field_validator("version")
     @classmethod
