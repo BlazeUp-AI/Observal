@@ -37,7 +37,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
-import { getUserRole, getUserName, getUserEmail } from "@/lib/api";
+import { getUserRole, getUserName, getUserEmail, getUserUsername } from "@/lib/api";
 import { hasMinRole, type Role } from "@/hooks/use-role-guard";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 
@@ -83,13 +83,13 @@ const storeSub = (cb: () => void) => {
   return () => window.removeEventListener("storage", cb);
 };
 const getAuthSnap = () =>
-  `${localStorage.getItem("observal_access_token") ?? ""}|${getUserRole() ?? ""}|${getUserName() ?? ""}|${getUserEmail() ?? ""}`;
-const getServerSnap = () => "|||";
+  `${localStorage.getItem("observal_access_token") ?? ""}|${getUserRole() ?? ""}|${getUserName() ?? ""}|${getUserEmail() ?? ""}|${getUserUsername() ?? ""}`;
+const getServerSnap = () => "||||";
 
 export function RegistrySidebar() {
   const pathname = usePathname();
   const snap = useSyncExternalStore(storeSub, getAuthSnap, getServerSnap);
-  const [token, role, userName, userEmail] = snap.split("|");
+  const [token, role, userName, userEmail, userUsername] = snap.split("|");
   const isAuthenticated = !!token;
   const { deploymentMode, brandingLogo, brandingAppName, brandingWordmark } = useDeploymentConfig();
 
@@ -240,7 +240,7 @@ export function RegistrySidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={{ name: userName || "User", email: userEmail || "" }} />
+        <NavUser user={{ name: userName || "User", email: userEmail || "", username: userUsername || undefined }} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

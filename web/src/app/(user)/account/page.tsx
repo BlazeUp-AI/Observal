@@ -4,7 +4,7 @@ import { useState, useCallback, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { getUserName, getUserEmail, getUserRole, auth } from "@/lib/api";
+import { getUserName, getUserEmail, getUserRole, getUserUsername, setUserUsername, auth } from "@/lib/api";
 import { ROLE_LABELS, type Role } from "@/hooks/use-role-guard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,105 @@ function initials(name: string) {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+}
+
+// ── Change Username ───────────────────────────────────────────────────────
+function ChangeUsernameSection() {
+  const [newUsername, setNewUsername] = useState("");
+  const [saving, setSaving] = useState(false);
+  const currentUsername = useSyncExternalStore(
+    (cb) => { window.addEventListener("storage", cb); return () => window.removeEventListener("storage", cb); },
+    () => getUserUsername() ?? "",
+    () => ""
+  );
+
+  const handleSubmit = useCallback(async () => {
+    if (!newUsername.trim()) {
+      toast.error("Username cannot be empty");
+      return;
+    }
+    if (newUsername.length < 3) {
+      toast.error("Username must be at least 3 characters");
+      return;
+    }
+    if (newUsername.length > 32) {
+      toast.error("Username must be at most 32 characters");
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9\-]{1,30}[a-z0-9]$/.test(newUsername)) {
+      toast.error("Username must be lowercase alphanumeric with hyphens (3-32 chars, start/end with alphanumeric)");
+      return;
+    }
+    if (newUsername === currentUsername) {
+      toast.error("New username is the same as current username");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/v1/auth/profile/username", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("observal_access_token")}` },
+        body: JSON.stringify({ username: newUsername }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to update username");
+      }
+      const data = await res.json();
+      setUserUsername(data.username);
+      toast.success("Username updated successfully");
+      setNewUsername("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update username");
+    } finally {
+      setSaving(false);
+    }
+  }, [newUsername, currentUsername]);
+
+  return (
+    <section className="animate-in stagger-0">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+        Change Username
+      </h3>
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Current Username</label>
+            <Input
+              type="text"
+              value={currentUsername || "—"}
+              disabled
+              className="h-8 text-sm bg-muted"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">New Username</label>
+            <Input
+              type="text"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value.toLowerCase())}
+              className="h-8 text-sm"
+              placeholder="3-32 chars, lowercase alphanumeric + hyphens"
+              onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
+            />
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Must be 3-32 characters, lowercase alphanumeric and hyphens only. Must start and end with alphanumeric.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="h-8"
+            onClick={handleSubmit}
+            disabled={saving || !newUsername.trim() || newUsername === currentUsername}
+          >
+            {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Update Username
+          </Button>
+        </CardContent>
+      </Card>
+    </section>
+  );
 }
 
 // ── Change Password ───────────────────────────────────────────────────────
@@ -152,11 +251,17 @@ function ChangePasswordSection() {
   );
 }
 
+function getUsernameSnapshot() {
+  if (typeof window === "undefined") return "";
+  return getUserUsername() ?? "";
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function AccountPage() {
   const name = useSyncExternalStore(subscribe, getNameSnapshot, getServerSnapshot);
   const email = useSyncExternalStore(subscribe, getEmailSnapshot, getServerSnapshot);
   const role = useSyncExternalStore(subscribe, getRoleSnapshot, getServerSnapshot);
+  const username = useSyncExternalStore(subscribe, getUsernameSnapshot, getServerSnapshot);
 
   const { theme, setTheme } = useTheme();
 
@@ -179,7 +284,7 @@ export default function AccountPage() {
             Profile
           </h3>
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-4 space-y-3">
               <div className="flex items-center gap-4">
                 <Avatar className="h-12 w-12 shrink-0">
                   <AvatarFallback className="text-sm font-semibold">
@@ -194,14 +299,23 @@ export default function AccountPage() {
                   {roleLabel}
                 </Badge>
               </div>
+              {username && (
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-muted-foreground">Username:</p>
+                  <p className="text-sm font-mono">@{username}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </section>
 
-        {/* ── Section 2: Change Password ───────────────────────────────── */}
+        {/* ── Section 2: Change Username ───────────────────────────────── */}
+        <ChangeUsernameSection />
+
+        {/* ── Section 3: Change Password ───────────────────────────────── */}
         <ChangePasswordSection />
 
-        {/* ── Section 3: Theme ───────────────────────────────────────────── */}
+        {/* ── Section 4: Theme ───────────────────────────────────────────── */}
         <section className="animate-in stagger-1">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             Theme
@@ -241,7 +355,7 @@ export default function AccountPage() {
           </div>
         </section>
 
-        {/* ── Section 3: Notifications ───────────────────────────────────── */}
+        {/* ── Section 5: Notifications ───────────────────────────────────── */}
         <section className="animate-in stagger-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             Notifications
