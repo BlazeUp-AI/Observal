@@ -224,7 +224,7 @@ services:
       - observal-net
 
   observal-prometheus:
-    image: prom/prometheus:v3.4.2
+    image: prom/prometheus:v3.11.3
     ports:
       - "${PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:
