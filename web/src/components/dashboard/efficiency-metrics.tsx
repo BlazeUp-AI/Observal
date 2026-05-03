@@ -39,8 +39,11 @@ export function EfficiencyMetrics({ data }: { data: EfficiencyData }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const animatedRef = useRef(false);
 
+  // Check if there are no tool calls (rating is 0 and no meaningful metrics)
+  const hasNoToolCalls = rating === 0 && Object.values(data.efficiency_metrics).every(v => v === 0 || v === null);
+
   useEffect(() => {
-    if (animatedRef.current || !containerRef.current) return;
+    if (animatedRef.current || !containerRef.current || hasNoToolCalls) return;
     animatedRef.current = true;
 
     const scoreEl = containerRef.current.querySelector("[data-score-number]");
@@ -72,7 +75,7 @@ export function EfficiencyMetrics({ data }: { data: EfficiencyData }) {
 
     tl.to(rows, { opacity: 1, x: 0, duration: 0.5, stagger: 0.04 }, 0.3);
     tl.to(warnings, { opacity: 1, y: 0, duration: 0.4, stagger: 0.06 }, "-=0.2");
-  }, [rating]);
+  }, [rating, hasNoToolCalls]);
 
   const entries = Object.entries(data.interpretation);
 
@@ -107,87 +110,90 @@ export function EfficiencyMetrics({ data }: { data: EfficiencyData }) {
           }}
         >
           {/* Hero score section */}
-          <div className="px-5 pt-5 pb-4">
-            <div className="flex items-end gap-4">
-              <div className="flex items-baseline gap-1">
-                <span
-                  data-score-number
-                  className="text-5xl font-black tabular-nums leading-none"
-                  style={{ color, textShadow: `0 0 40px ${color}40` }}
-                >
-                  0
-                </span>
-                <span className="text-lg font-medium" style={{ color: color + "80" }}>/100</span>
-              </div>
-              <div className="flex-1 pb-2">
-                <div
-                  className="h-2 rounded-full overflow-hidden"
-                  style={{ background: "rgba(100,116,139,0.08)" }}
-                >
+          {!hasNoToolCalls && (
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-end gap-4">
+                <div className="flex items-baseline gap-1">
+                  <span
+                    data-score-number
+                    className="text-5xl font-black tabular-nums leading-none"
+                    style={{ color, textShadow: `0 0 40px ${color}40` }}
+                  >
+                    0
+                  </span>
+                  <span className="text-lg font-medium" style={{ color: color + "80" }}>/100</span>
+                </div>
+                <div className="flex-1 pb-2">
                   <div
-                    data-bar-fill
-                    className="h-full rounded-full"
-                    style={{
-                      background: `linear-gradient(90deg, ${color}cc, ${color})`,
-                      boxShadow: `0 0 12px ${color}50`,
-                      width: "0%",
-                    }}
-                  />
+                    className="h-2 rounded-full overflow-hidden"
+                    style={{ background: "rgba(100,116,139,0.08)" }}
+                  >
+                    <div
+                      data-bar-fill
+                      className="h-full rounded-full"
+                      style={{
+                        background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                        boxShadow: `0 0 12px ${color}50`,
+                        width: "0%",
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Metrics grid */}
-          <div className="px-4 pb-4 space-y-1">
-            {entries.map(([key, label]) => {
-              const meta = METRIC_LABELS[key] || { label: key, description: "" };
-              const rawValue = data.efficiency_metrics[key];
-              const displayValue = rawValue === null || rawValue === undefined
-                ? "—"
-                : typeof rawValue === "number" && !Number.isInteger(rawValue)
-                  ? rawValue.toFixed(2)
-                  : String(rawValue);
-              const style = interpretStyle(label);
+          {entries.length > 0 && (
+            <div className="px-4 pb-4 space-y-1">
+              {entries.map(([key, label]) => {
+                const meta = METRIC_LABELS[key] || { label: key, description: "" };
+                const rawValue = data.efficiency_metrics[key];
+                const displayValue = rawValue === null || rawValue === undefined
+                  ? "—"
+                  : typeof rawValue === "number" && !Number.isInteger(rawValue)
+                    ? rawValue.toFixed(2)
+                    : String(rawValue);
+                const style = interpretStyle(label);
 
-              return (
-                <div
-                  key={key}
-                  data-metric-row
-                  className="flex items-center justify-between py-2 px-3 rounded-lg group"
-                  style={{ background: "rgba(100,116,139,0.03)" }}
-                >
-                  <div className="flex flex-col min-w-0 mr-3">
-                    <span className="text-[12px] font-medium" style={{ color: "rgba(226,232,240,0.8)" }}>
-                      {meta.label}
-                    </span>
-                    <span className="text-[10px]" style={{ color: "rgba(148,163,184,0.4)" }}>
-                      {meta.description}
-                    </span>
+                return (
+                  <div
+                    key={key}
+                    data-metric-row
+                    className="flex items-center justify-between py-2 px-3 rounded-lg group"
+                    style={{ background: "rgba(100,116,139,0.03)" }}
+                  >
+                    <div className="flex flex-col min-w-0 mr-3">
+                      <span className="text-[12px] font-medium" style={{ color: "rgba(226,232,240,0.8)" }}>
+                        {meta.label}
+                      </span>
+                      <span className="text-[10px]" style={{ color: "rgba(148,163,184,0.4)" }}>
+                        {meta.description}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span
+                        className="text-xs font-mono font-bold tabular-nums"
+                        style={{ color: "rgba(226,232,240,0.7)" }}
+                      >
+                        {displayValue}
+                      </span>
+                      <span
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap"
+                        style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}
+                      >
+                        {label.split("(")[0].trim()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <span
-                      className="text-xs font-mono font-bold tabular-nums"
-                      style={{ color: "rgba(226,232,240,0.7)" }}
-                    >
-                      {displayValue}
-                    </span>
-                    <span
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap"
-                      style={{ color: style.color, background: style.bg, border: `1px solid ${style.border}` }}
-                    >
-                      {label.split("(")[0].trim()}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Warnings */}
           {data.warnings.length > 0 && (
-            <div className="px-4 pb-4 space-y-1.5">
-              <div className="h-px" style={{ background: "rgba(245,158,11,0.1)" }} />
+            <div className="p-4 space-y-1.5">
               {data.warnings.map((w, i) => (
                 <div
                   key={i}
