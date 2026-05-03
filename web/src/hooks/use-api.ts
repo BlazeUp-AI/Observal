@@ -216,6 +216,14 @@ export function useEvalScorecards(
   });
 }
 
+export function useAgentEvaluatedSessions(agentId: string | undefined) {
+  return useQuery({
+    queryKey: ["eval", "agent-sessions", agentId],
+    enabled: !!agentId,
+    queryFn: () => eval_.agentSessions(agentId!),
+  });
+}
+
 export function useEvalCompare(
   agentId: string | undefined,
   params: Record<string, string>,

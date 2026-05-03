@@ -824,6 +824,9 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
 @router.get("/{session_id}/efficiency")
 async def get_session_efficiency(session_id: str, current_user: User = Depends(require_role(UserRole.user))):
     """Run kernel efficiency analysis on a session's hook events."""
+    if not session_id or not session_id.strip():
+        return {"error": "No session ID provided"}
+
     is_admin = _is_admin_user(current_user)
     params: dict[str, str] = {"param_sid": session_id}
 
@@ -841,6 +844,7 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
         if not ownership:
             return {"error": "Session not found or access denied"}
 
+    # Try querying by session.id first
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -853,6 +857,21 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
         "ORDER BY Timestamp ASC",
         params,
     )
+
+    # If no events found, try querying by TraceId (for evaluation traces)
+    if not events:
+        events = await _ch_json(
+            "SELECT "
+            "Timestamp AS timestamp, "
+            "LogAttributes['event.name'] AS event_name, "
+            "Body AS body, "
+            "LogAttributes AS attributes, "
+            "ServiceName AS service_name "
+            "FROM otel_logs "
+            "WHERE TraceId = {sid:String} "
+            "ORDER BY Timestamp ASC",
+            params,
+        )
 
     if not events:
         return {"error": "No events found for session", "session_id": session_id}

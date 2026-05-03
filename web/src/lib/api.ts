@@ -424,6 +424,17 @@ export const eval_ = {
   },
   penalties: (scorecardId: string) =>
     get<TracePenalty[]>(`/eval/scorecards/${scorecardId}/penalties`),
+  agentSessions: (agentId: string) =>
+    get<Array<{
+      session_id: string;
+      trace_id: string;
+      evaluated_at: string;
+      start_time?: string;
+      end_time?: string;
+      event_count?: number;
+      first_prompt?: string;
+      service_name?: string;
+    }>>(`/eval/agents/${agentId}/sessions`),
 };
 
 // ── Admin ───────────────────────────────────────────────────────────
