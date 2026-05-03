@@ -9,10 +9,8 @@ import { ROLE_LABELS, type Role } from "@/hooks/use-role-guard";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/layouts/page-header";
 
 // ── Theme definitions ──────────────────────────────────────────────────────
@@ -265,10 +263,6 @@ export default function AccountPage() {
 
   const { theme, setTheme } = useTheme();
 
-  const [agentUpdates, setAgentUpdates] = useState(false);
-  const [reviewAssignments, setReviewAssignments] = useState(false);
-  const [emailNotifications, setEmailNotifications] = useState(false);
-
   const displayName = name || "—";
   const displayEmail = email || "—";
   const roleLabel = role ? (ROLE_LABELS[role as Role] ?? role) : "—";
@@ -355,66 +349,6 @@ export default function AccountPage() {
           </div>
         </section>
 
-        {/* ── Section 5: Notifications ───────────────────────────────────── */}
-        <section className="animate-in stagger-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Notifications
-          </h3>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle>Notification Preferences</CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Notification preferences will be saved in a future release.
-              </p>
-            </CardHeader>
-            <CardContent className="p-4 pt-0 space-y-0">
-              <div className="flex items-center justify-between py-3">
-                <div>
-                  <p className="text-sm font-medium">Agent update notifications</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Notify when a monitored agent completes or errors
-                  </p>
-                </div>
-                <Switch
-                  checked={agentUpdates}
-                  onCheckedChange={setAgentUpdates}
-                  disabled
-                  aria-label="Agent update notifications"
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between py-3">
-                <div>
-                  <p className="text-sm font-medium">Review assignment notifications</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Notify when a trace is assigned to you for review
-                  </p>
-                </div>
-                <Switch
-                  checked={reviewAssignments}
-                  onCheckedChange={setReviewAssignments}
-                  disabled
-                  aria-label="Review assignment notifications"
-                />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between py-3">
-                <div>
-                  <p className="text-sm font-medium">Email notifications</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Receive the above notifications by email
-                  </p>
-                </div>
-                <Switch
-                  checked={emailNotifications}
-                  onCheckedChange={setEmailNotifications}
-                  disabled
-                  aria-label="Email notifications"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </section>
 
       </div>
     </>
