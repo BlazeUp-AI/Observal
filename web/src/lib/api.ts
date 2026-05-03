@@ -43,6 +43,7 @@ const STORAGE_KEY_REFRESH_TOKEN = "observal_refresh_token";
 const STORAGE_KEY_USER_ROLE = "observal_user_role";
 const STORAGE_KEY_USER_NAME = "observal_user_name";
 const STORAGE_KEY_USER_EMAIL = "observal_user_email";
+const STORAGE_KEY_USER_USERNAME = "observal_user_username";
 
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -66,6 +67,7 @@ export function clearSession() {
   localStorage.removeItem(STORAGE_KEY_USER_ROLE);
   localStorage.removeItem(STORAGE_KEY_USER_NAME);
   localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
+  localStorage.removeItem(STORAGE_KEY_USER_USERNAME);
 }
 
 export function setUserRole(role: string) {
@@ -93,6 +95,15 @@ export function setUserEmail(email: string) {
 export function getUserEmail(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(STORAGE_KEY_USER_EMAIL);
+}
+
+export function setUserUsername(username: string) {
+  localStorage.setItem(STORAGE_KEY_USER_USERNAME, username);
+}
+
+export function getUserUsername(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(STORAGE_KEY_USER_USERNAME);
 }
 
 let _refreshPromise: Promise<boolean> | null = null;
