@@ -35,6 +35,7 @@ import {
   ShieldAlert,
   Stethoscope,
   KeyRound,
+  Lightbulb,
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { getUserRole, getUserName, getUserEmail, getUserUsername } from "@/lib/api";
@@ -63,6 +64,7 @@ const adminNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, minRole: "admin" },
   { title: "Errors", href: "/errors", icon: AlertTriangle, minRole: "admin" },
   { title: "Evals", href: "/eval", icon: FlaskConical, minRole: "admin" },
+  { title: "Insights", href: "/insights", icon: Lightbulb, minRole: "admin" },
   { title: "Users", href: "/users", icon: Users, minRole: "admin" },
   { title: "Audit Log", href: "/audit-log", icon: ScrollText, minRole: "admin", enterpriseOnly: true },
   { title: "Security", href: "/security-events", icon: ShieldAlert, minRole: "admin", enterpriseOnly: true },

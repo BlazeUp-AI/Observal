@@ -589,6 +589,17 @@ export interface InsightInterruptions {
   total_stops: number;
 }
 
+export interface InsightReconciliation {
+  available: boolean;
+  reconciled_sessions?: number;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  thinking_turns?: number;
+  tool_uses?: number;
+}
+
 export interface InsightMetrics {
   overview: {
     total_sessions: string;
@@ -619,6 +630,7 @@ export interface InsightMetrics {
   };
   tool_errors?: InsightToolErrors;
   interruptions?: InsightInterruptions;
+  reconciliation?: InsightReconciliation;
   tools: {
     name: string;
     invocations: string;
@@ -635,10 +647,28 @@ export interface InsightMetrics {
 }
 
 export interface InsightNarrative {
-  at_a_glance: string;
-  usage_patterns: string[];
-  friction_analysis: string[];
-  suggestions: string[];
+  // V2 structured format — each section is a structured object
+  // V1 fallback — each section is string[] | string
+  // The frontend handles both formats gracefully
+  at_a_glance: unknown;
+  usage_patterns: unknown;
+  user_experience?: unknown;
+  what_works?: unknown;
+  friction_analysis: unknown;
+  suggestions: unknown;
+  token_optimization?: unknown;
+  regression_detection?: unknown;
+  fun_ending?: unknown;
+  regressions?: InsightRegression[];
+}
+
+export interface InsightRegression {
+  metric: string;
+  direction: "improved" | "degraded";
+  magnitude: number;
+  current_value: number;
+  previous_value: number;
+  severity: "low" | "medium" | "high";
 }
 
 export interface InsightReport {

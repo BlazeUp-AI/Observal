@@ -516,6 +516,20 @@ export const insights = {
     get<InsightReportListItem[]>(`/insights/agents/${agentId}/reports`),
   getReport: (reportId: string) =>
     get<InsightReport>(`/insights/reports/${reportId}`),
+  exportHtml: async (reportId: string): Promise<void> => {
+    const token = getAccessToken();
+    const res = await fetch(`${API}/insights/reports/${reportId}/export/html`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error("Export failed");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `insight-report-${reportId.slice(0, 8)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ── Health ──────────────────────────────────────────────────────────
