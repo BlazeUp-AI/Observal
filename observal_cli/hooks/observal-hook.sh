@@ -25,8 +25,30 @@ if [ -z "$OBSERVAL_HOOKS_URL" ]; then
 fi
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Parse --agent-name from arguments (set by per-agent frontmatter hooks)
+_agent_name=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent-name) _agent_name="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
 # Read payload from stdin into a variable so we can reuse it
 payload=$(cat)
+
+# Inject agent_name into the payload (frontmatter arg takes priority over env var)
+_effective_agent="${_agent_name:-$OBSERVAL_AGENT_NAME}"
+if [ -n "$_effective_agent" ]; then
+  payload=$(echo "$payload" | OBSERVAL_AGENT_NAME="$_effective_agent" "$_py" -c "
+import json,sys,os
+d=json.load(sys.stdin)
+a=os.environ.get('OBSERVAL_AGENT_NAME','')
+if a and not d.get('agent_name'):
+    d['agent_name']=a
+print(json.dumps(d))
+" 2>/dev/null || echo "$payload")
+fi
 
 # Try to send to server first
 if echo "$payload" | curl -sf --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \

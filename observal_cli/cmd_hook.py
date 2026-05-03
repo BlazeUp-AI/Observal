@@ -296,6 +296,7 @@ def _find_hook_script(name: str) -> str | None:
 @hook_app.command(name="sync")
 def hook_sync(
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show changes without applying"),
+    agent_name: str = typer.Option("", "--agent-name", help="Agent name for telemetry attribution (env var fallback)"),
 ):
     """Sync Claude Code hooks to the latest Observal spec.
 
@@ -316,8 +317,19 @@ def hook_sync(
     stop_script = _find_hook_script("observal-stop-hook.sh")
     user_id = cfg.get("user_id", "")
 
+    # Use explicit --agent-name, fall back to config, then auto-detect
+    if not agent_name:
+        agent_name = cfg.get("agent_name", "")
+    if not agent_name:
+        from observal_cli.client import get_registered_agent_names
+
+        agents = get_registered_agent_names()
+        if len(agents) == 1:
+            agent_name = next(iter(agents))
+            rprint(f"[dim]Auto-detected single agent: {agent_name}[/dim]")
+
     desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-    desired_env = get_desired_env(server_url, access_token, user_id)
+    desired_env = get_desired_env(server_url, access_token, user_id, agent_name=agent_name)
 
     applied = settings_reconciler.get_applied_version()
     from observal_cli.ide_specs.claude_code_hooks_spec import HOOKS_SPEC_VERSION

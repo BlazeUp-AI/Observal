@@ -14,7 +14,7 @@ from __future__ import annotations
 # Bump this when hook definitions change (new events, different scripts,
 # additional handlers, etc.).  Stored in ~/.observal/config.json so we
 # can detect when an upgrade is needed without re-reading all hooks.
-HOOKS_SPEC_VERSION = "6"
+HOOKS_SPEC_VERSION = "7"
 
 # Metadata key injected into every Observal matcher group.
 # Primary identification method — the reconciler checks this first.
@@ -105,6 +105,7 @@ def get_desired_env(
     hooks_token: str,
     user_id: str = "",
     user_name: str = "",
+    agent_name: str = "",
 ) -> dict[str, str]:
     """Return the desired Observal env vars for Claude Code settings."""
     env: dict[str, str] = {
@@ -122,6 +123,8 @@ def get_desired_env(
         env["OTEL_RESOURCE_ATTRIBUTES"] = f"user.id={user_id}"
     if user_name:
         env["OBSERVAL_USERNAME"] = user_name
+    if agent_name:
+        env["OBSERVAL_AGENT_NAME"] = agent_name
 
     return env
 
@@ -141,5 +144,6 @@ MANAGED_ENV_KEYS = frozenset(
         "OBSERVAL_HOOKS_SPEC_VERSION",
         "OBSERVAL_USER_ID",
         "OBSERVAL_USERNAME",
+        "OBSERVAL_AGENT_NAME",
     }
 )
