@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_AUTH: str = "10/minute"
     RATE_LIMIT_AUTH_STRICT: str = "5/minute"
 
+    # Agent Insights batch processing
+    INSIGHT_BATCH_ENABLED: bool = True
+    INSIGHT_BATCH_PERIOD_DAYS: int = 14
+    INSIGHT_MIN_SESSIONS: int = 5  # Minimum new sessions to trigger a report
+
     # ClickHouse data retention
     DATA_RETENTION_DAYS: int = 90
 
