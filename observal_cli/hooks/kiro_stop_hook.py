@@ -83,119 +83,154 @@ def _read_conversation(kiro_db: Path, cwd: str) -> tuple[str, dict] | None:
     return conversation_id, json.loads(value_str)
 
 
+def _read_session_file(session_id: str, retries: tuple = (0.5, 1.0, 2.0)) -> dict | None:
+    """Read a Kiro session JSON file by session_id, retrying if not yet written."""
+    candidates = [session_id]
+    for prefix in ("kiro-cli-", "kiro-"):
+        if session_id.startswith(prefix):
+            candidates.append(session_id[len(prefix):])
+
+    sessions_dir = Path.home() / ".kiro" / "sessions" / "cli"
+    if not sessions_dir.is_dir():
+        return None
+
+    for attempt, delay in enumerate((-1,) + retries):
+        if delay >= 0:
+            time.sleep(delay)
+        for sid in candidates:
+            p = sessions_dir / f"{sid}.json"
+            if p.exists():
+                try:
+                    return json.loads(p.read_text())
+                except Exception:
+                    return None
+
+    return None
+
+
 def _enrich(payload: dict) -> dict:
-    """Read the Kiro SQLite DB and merge session-level stats into *payload*."""
-    kiro_db = _get_kiro_db()
-    if not kiro_db:
-        _debug("Kiro DB not found")
-        return payload
-
+    """Read the Kiro session file and merge session-level stats into *payload*."""
+    session_id = payload.get("session_id", "")
     cwd = payload.get("cwd", "")
-    _debug(f"cwd={cwd}, db={kiro_db}")
+    _debug(f"session_id={session_id}, cwd={cwd}")
 
-    try:
-        result = _read_conversation(kiro_db, cwd)
+    session = None
 
-        # Kiro may not have committed the conversation to SQLite yet when the
-        # stop hook fires. Retry with increasing delays.
-        if not result:
-            for delay in (0.5, 1.0, 1.5):
-                _debug(f"No conversation found for cwd, retrying after {delay}s...")
-                time.sleep(delay)
+    # Try reading from session file first (Kiro 2.2+)
+    if session_id:
+        session = _read_session_file(session_id)
+
+    # Fall back to most recent session matching cwd
+    if not session:
+        sessions_dir = Path.home() / ".kiro" / "sessions" / "cli"
+        if sessions_dir.is_dir() and cwd:
+            matches = [
+                f for f in sessions_dir.glob("*.json")
+                if json.loads(f.read_text()).get("cwd") == cwd
+            ] if False else []  # avoid double-parse; use stat-based sort below
+            try:
+                candidates = sorted(sessions_dir.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+                for f in candidates[:10]:
+                    try:
+                        data = json.loads(f.read_text())
+                        if data.get("cwd") == cwd:
+                            session = data
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+    if not session:
+        # Last resort: try SQLite (Kiro < 2.2)
+        kiro_db = _get_kiro_db()
+        if kiro_db:
+            try:
                 result = _read_conversation(kiro_db, cwd)
+                if not result:
+                    for delay in (0.5, 1.0, 1.5):
+                        time.sleep(delay)
+                        result = _read_conversation(kiro_db, cwd)
+                        if result:
+                            break
                 if result:
-                    break
-
-        if not result:
-            _debug("No conversation found for cwd after retries")
-            return payload
-
-        conversation_id, conv = result
-
-        if conversation_id:
-            payload["conversation_id"] = conversation_id
-    except Exception as e:
-        _debug(f"DB read error: {e}")
+                    conversation_id, conv = result
+                    if conversation_id:
+                        payload["conversation_id"] = conversation_id
+                    utm = conv.get("user_turn_metadata", {})
+                    usage_info = utm.get("usage_info", [])
+                    total_credits = sum(u.get("value", 0.0) for u in usage_info) if usage_info else None
+                    if total_credits is not None:
+                        payload["credits"] = f"{total_credits:.6f}"
+                    model_id = conv.get("model_info", {}).get("model_id", "")
+                    if model_id and not payload.get("model"):
+                        payload["model"] = model_id
+            except Exception as e:
+                _debug(f"SQLite fallback error: {e}")
         return payload
 
-    # --- Extract model info ---
-    model_info = conv.get("model_info", {})
-    model_id = model_info.get("model_id", "")
+    # --- Extract from session file ---
+    conv_meta = session.get("session_state", {}).get("conversation_metadata", {})
+    turn_metadatas = conv_meta.get("user_turn_metadatas", [])
 
-    # --- Aggregate per-turn metadata ---
-    history = conv.get("history", [])
-    total_input_chars = 0
-    total_output_chars = 0
-    turn_count = 0
-    models_used: set[str] = set()
+    def _has_credits(turns: list) -> bool:
+        return any(t.get("metering_usage") for t in turns)
+
+    # Kiro writes metering_usage asynchronously after the stop hook fires.
+    # Poll with increasing delays up to ~15s total.
+    if not _has_credits(turn_metadatas):
+        for delay in (2.0, 3.0, 4.0, 6.0):
+            _debug(f"metering_usage empty, retrying after {delay}s...")
+            time.sleep(delay)
+            fresh = _read_session_file(session_id) if session_id else None
+            if fresh:
+                session = fresh
+                conv_meta = session.get("session_state", {}).get("conversation_metadata", {})
+                turn_metadatas = conv_meta.get("user_turn_metadatas", [])
+            if _has_credits(turn_metadatas):
+                _debug(f"metering_usage found after retry")
+                break
+
+    turn_count = len(turn_metadatas)
+    # Only report the latest turn's credits — the stop hook fires after every
+    # prompt, so sending the cumulative total causes double-counting on the server.
+    latest_turn = turn_metadatas[-1] if turn_metadatas else {}
+    total_credits = sum(
+        u.get("value", 0.0)
+        for u in latest_turn.get("metering_usage", [])
+        if u.get("unit") == "credit"
+    )
+    models_used = {
+        t.get("model_id", "") for t in turn_metadatas if t.get("model_id", "")
+    }
     tools_used: list[str] = []
-    max_context_pct = 0.0
+    for t in turn_metadatas:
+        for tool in t.get("builtin_tool_uses_detail", []):
+            name = tool.get("name", "")
+            if name:
+                tools_used.append(name)
 
-    for entry in history:
-        rm = entry.get("request_metadata")
-        if not rm:
-            continue
-        turn_count += 1
-        total_input_chars += rm.get("user_prompt_length", 0)
-        total_output_chars += rm.get("response_size", 0)
-        mid = rm.get("model_id", "")
-        if mid:
-            models_used.add(mid)
-        ctx_pct = rm.get("context_usage_percentage", 0.0)
-        if ctx_pct > max_context_pct:
-            max_context_pct = ctx_pct
-        for tool_pair in rm.get("tool_use_ids_and_names", []):
-            if isinstance(tool_pair, list) and len(tool_pair) >= 2:
-                tools_used.append(tool_pair[1])
-
-    # --- Credit usage ---
-    utm = conv.get("user_turn_metadata", {})
-    usage_info = utm.get("usage_info", [])
-
-    # Kiro writes usage_info asynchronously — if empty on first read but we
-    # have history entries, retry after a short delay.
-    if not usage_info and history:
-        _debug("usage_info empty, retrying after 500ms...")
-        time.sleep(0.5)
-        try:
-            result2 = _read_conversation(kiro_db, cwd)
-            if result2:
-                conv2 = result2[1]
-                utm = conv2.get("user_turn_metadata", {})
-                usage_info = utm.get("usage_info", [])
-                _debug(f"Retry result: {len(usage_info)} usage_info items")
-        except Exception:
-            pass
-
-    total_credits = sum(u.get("value", 0.0) for u in usage_info) if usage_info else None
-    _debug(f"credits={total_credits}, turn_count={turn_count}, usage_items={len(usage_info)}")
-
-    # --- Resolve the actual model used ---
-    # If model_id is "auto", try to use per-turn model_ids
+    model_id = session.get("session_state", {}).get("rts_model_state", {}).get("model_info", {}).get("model_id", "")
     resolved_model = model_id
-    if model_id == "auto" and models_used - {"auto"}:
-        # Use the most common non-auto model
-        non_auto = [m for m in models_used if m != "auto"]
-        if non_auto:
-            resolved_model = non_auto[0]
+    if model_id == "auto" and models_used - {"auto", ""}:
+        resolved_model = next(m for m in models_used if m not in ("auto", ""))
 
-    # --- Merge into payload ---
+    conv_id = session.get("session_id", "")
+    if conv_id and not payload.get("conversation_id"):
+        payload["conversation_id"] = conv_id
+
     if resolved_model and not payload.get("model"):
         payload["model"] = resolved_model
     payload["turn_count"] = str(turn_count)
-    if total_credits is not None:
+    if total_credits:
         payload["credits"] = f"{total_credits:.6f}"
 
     if tools_used:
-        # Deduplicate while preserving order
         seen: set[str] = set()
-        unique_tools = []
-        for t in tools_used:
-            if t not in seen:
-                unique_tools.append(t)
-                seen.add(t)
+        unique_tools = [t for t in tools_used if not (t in seen or seen.add(t))]  # type: ignore[func-returns-value]
         payload["tools_used"] = ",".join(unique_tools[:20])
 
+    _debug(f"credits={total_credits}, turn_count={turn_count}")
     return payload
 
 
@@ -274,22 +309,28 @@ def main():
     if model:
         payload.setdefault("model", model)
 
-    # Enrich with SQLite data
-    payload = _enrich(payload)
-
-    # POST to Observal
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=5):
+    def _post(p: dict) -> None:
+        d = json.dumps(p).encode("utf-8")
+        r = urllib.request.Request(url, data=d, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(r, timeout=5):
+                pass
+        except Exception:
             pass
-    except Exception:
-        pass
+
+    # POST the stop event immediately so the server records the correct
+    # timestamp/duration, then fork a background child to enrich with
+    # credits and POST an update.
+    _post(payload)
+
+    if sys.platform != "win32":
+        pid = os.fork()
+        if pid != 0:
+            sys.exit(0)
+        os.setsid()
+
+    payload = _enrich(payload)
+    _post(payload)
 
 
 if __name__ == "__main__":
