@@ -9,10 +9,6 @@ services:
     env_file:
       - ../.env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
     depends_on:
@@ -40,10 +36,6 @@ services:
     env_file:
       - ../.env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
       - JWT_KEY_DIR=/data/keys
@@ -157,10 +149,6 @@ services:
     env_file:
       - ../.env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
     depends_on:
       observal-init:
