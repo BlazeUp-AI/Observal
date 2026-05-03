@@ -40,6 +40,7 @@ from services.security_events import (
     _extract_request_info,
     emit_security_event,
 )
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +88,10 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="System already initialized")
 
     default_org = await get_or_create_default_org(db)
+    username = req.username or await generate_unique_username(req.email, db)
     user = User(
         email=req.email,
-        username=req.username,
+        username=username,
         name=req.name,
         role=UserRole.admin,
         org_id=default_org.id,
@@ -129,6 +131,7 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
     default_org = await get_or_create_default_org(db)
     user = User(
         email="admin@localhost",
+        username=await generate_unique_username("admin@localhost", db),
         name="admin",
         role=UserRole.admin,
         org_id=default_org.id,
@@ -273,6 +276,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         default_org = await get_or_create_default_org(db)
         user = User(
             email=email,
+            username=await generate_unique_username(email, db),
             name=name,
             role=UserRole.user,
             org_id=default_org.id,

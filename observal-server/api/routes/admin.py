@@ -33,6 +33,7 @@ from services.security_events import (
     Severity,
     emit_security_event,
 )
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +346,8 @@ async def create_user(
         default_org = await get_or_create_default_org(db)
         org_id = default_org.id
 
-    user = User(email=req.email, username=req.username, name=req.name, role=role, org_id=org_id)
+    username = req.username or await generate_unique_username(req.email, db)
+    user = User(email=req.email, username=username, name=req.name, role=role, org_id=org_id)
     user.set_password(password)
     db.add(user)
     try:
