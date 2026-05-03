@@ -124,6 +124,29 @@ async def maintain_clickhouse(ctx: dict):
         logger.debug("Part health check failed: %s", e)
 
 
+async def generate_insight_report(ctx: dict, report_id: str):
+    """Background job: generate an insight report for an agent."""
+    logger.info("insight_report_started", report_id=report_id)
+    try:
+        from services.insights.generator import generate_report
+
+        await generate_report(report_id)
+    except Exception as e:
+        logger.exception("insight_report_job_failed", report_id=report_id, error=str(e))
+
+
+async def batch_generate_insights(ctx: dict):
+    """Cron job: discover agents needing reports and queue generation."""
+    from services.insights.batch import discover_and_queue_reports
+
+    try:
+        queued = await discover_and_queue_reports()
+        if queued > 0:
+            logger.info("insight_batch_queued_reports", count=queued)
+    except Exception as e:
+        logger.exception("insight_batch_failed", error=str(e))
+
+
 async def startup(ctx: dict):
     logger.info("arq worker started")
 
@@ -135,11 +158,12 @@ async def shutdown(ctx: dict):
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [run_eval, sync_component_sources, evaluate_alerts, maintain_clickhouse]
+    functions = [run_eval, sync_component_sources, evaluate_alerts, maintain_clickhouse, generate_insight_report, batch_generate_insights]
     cron_jobs = [
         cron(sync_component_sources, hour={0, 6, 12, 18}),  # Every 6 hours
         cron(evaluate_alerts, second={0}, timeout=55),  # Every minute
         cron(maintain_clickhouse, hour={0, 4, 8, 12, 16, 20}, timeout=120),  # Every 4 hours
+        cron(batch_generate_insights, weekday={0}, hour={6}, minute={0}, timeout=300),  # Weekly Monday 6AM
     ]
     on_startup = startup
     on_shutdown = shutdown
