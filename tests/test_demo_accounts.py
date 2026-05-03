@@ -33,9 +33,18 @@ def _patch_db_execute(db, org):
     db.execute = AsyncMock(return_value=result)
 
 
+async def _stub_username(email, db):
+    """Stub that returns email prefix as username without DB queries."""
+    return email.split("@")[0].replace(".", "-")
+
+
+_patch_username_gen = patch("services.demo_accounts.generate_unique_username", side_effect=_stub_username)
+
+
 class TestSeedDemoAccounts:
     @pytest.mark.asyncio
-    async def test_seeds_when_no_real_users(self):
+    @_patch_username_gen
+    async def test_seeds_when_no_real_users(self, _mock_gen):
         from services.demo_accounts import seed_demo_accounts
 
         db = AsyncMock()
@@ -99,7 +108,8 @@ class TestSeedDemoAccounts:
         assert count == 0
 
     @pytest.mark.asyncio
-    async def test_idempotent_skips_existing(self):
+    @_patch_username_gen
+    async def test_idempotent_skips_existing(self, _mock_gen):
         from services.demo_accounts import seed_demo_accounts
 
         db = AsyncMock()
