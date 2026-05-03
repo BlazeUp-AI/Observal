@@ -12,13 +12,14 @@ from api.deps import get_db, require_role
 from api.sanitize import escape_like
 from config import settings
 from models.agent import Agent, AgentStatus, AgentVersion
+from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
 from models.feedback import Feedback
-from models.hook import HookDownload, HookListing, HookVersion
+from models.hook import HookListing, HookVersion
 from models.mcp import ListingStatus, McpDownload, McpListing, McpVersion
-from models.prompt import PromptDownload, PromptListing, PromptVersion
-from models.sandbox import SandboxDownload, SandboxListing, SandboxVersion
-from models.skill import SkillDownload, SkillListing, SkillVersion
+from models.prompt import PromptListing, PromptVersion
+from models.sandbox import SandboxListing, SandboxVersion
+from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.dashboard import (
     AgentMetrics,
@@ -400,33 +401,36 @@ async def component_leaderboard(
     user: str | None = Query(None, description="Filter by creator email"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public leaderboard of components ranked by downloads within a time window."""
-    # Define all component types: (DownloadModel, ListingModel, VersionModel, type_label)
-    component_types = [
-        (McpDownload, McpListing, McpVersion, "mcp"),
-        (SkillDownload, SkillListing, SkillVersion, "skill"),
-        (HookDownload, HookListing, HookVersion, "hook"),
-        (PromptDownload, PromptListing, PromptVersion, "prompt"),
-        (SandboxDownload, SandboxListing, SandboxVersion, "sandbox"),
+    """Public leaderboard of components ranked by agent downloads within a time window."""
+    listing_types = [
+        (McpListing, McpVersion, "mcp"),
+        (SkillListing, SkillVersion, "skill"),
+        (HookListing, HookVersion, "hook"),
+        (PromptListing, PromptVersion, "prompt"),
+        (SandboxListing, SandboxVersion, "sandbox"),
     ]
 
     all_items: list[ComponentLeaderboardItem] = []
     all_user_ids: set[uuid.UUID] = set()
+    all_listing_ids: list[uuid.UUID] = []
+    submitted_by_map: dict[uuid.UUID, uuid.UUID] = {}  # component_id -> user_id
 
-    # Collect raw rows from each component type
-    raw_results: list[tuple[str, list]] = []
-    for download_model, listing_model, version_model, type_label in component_types:
+    for listing_model, version_model, type_label in listing_types:
+        # Count agent downloads for each component via AgentComponent linkage
         stmt = (
             select(
-                download_model.listing_id,
-                func.count(download_model.id).label("cnt"),
+                AgentComponent.component_id,
+                func.count(func.distinct(AgentDownloadRecord.id)).label("cnt"),
                 listing_model.name,
                 version_model.description,
                 listing_model.submitted_by,
             )
-            .join(listing_model, download_model.listing_id == listing_model.id)
+            .join(AgentVersion, AgentComponent.agent_version_id == AgentVersion.id)
+            .join(Agent, Agent.latest_version_id == AgentVersion.id)
+            .join(AgentDownloadRecord, AgentDownloadRecord.agent_id == Agent.id)
+            .join(listing_model, AgentComponent.component_id == listing_model.id)
             .join(version_model, listing_model.latest_version_id == version_model.id)
-            .where(version_model.status == ListingStatus.approved)
+            .where(AgentComponent.component_type == type_label, version_model.status == ListingStatus.approved)
         )
         if user:
             stmt = stmt.join(User, listing_model.submitted_by == User.id).where(
@@ -434,26 +438,33 @@ async def component_leaderboard(
             )
         if window != "all":
             days = _RANGE_MAP.get(window, 7)
-            stmt = stmt.where(download_model.downloaded_at >= dt.now(UTC) - timedelta(days=days))
+            stmt = stmt.where(AgentDownloadRecord.installed_at >= dt.now(UTC) - timedelta(days=days))
         stmt = (
             stmt.group_by(
-                download_model.listing_id, listing_model.name, version_model.description, listing_model.submitted_by
+                AgentComponent.component_id, listing_model.name, version_model.description, listing_model.submitted_by
             )
-            .order_by(func.count(download_model.id).desc())
+            .order_by(func.count(func.distinct(AgentDownloadRecord.id)).desc())
             .limit(limit)
         )
-        result = await db.execute(stmt)
-        rows = result.all()
-        raw_results.append((type_label, rows))
-
-    # Collect all listing IDs across component types for feedback lookup
-    all_listing_ids: list[uuid.UUID] = []
-    for _type_label, rows in raw_results:
+        rows = (await db.execute(stmt)).all()
         for r in rows:
-            all_listing_ids.append(r.listing_id)
+            all_listing_ids.append(r.component_id)
             all_user_ids.add(r.submitted_by)
+            submitted_by_map[r.component_id] = r.submitted_by
+            all_items.append(
+                ComponentLeaderboardItem(
+                    id=r.component_id,
+                    name=r.name,
+                    component_type=type_label,
+                    description=r.description or "",
+                    download_count=r.cnt,
+                    created_by_email="",
+                    average_rating=None,
+                    total_reviews=0,
+                )
+            )
 
-    # Batch-fetch average ratings and review counts for all listings
+    # Batch-fetch feedback ratings
     rating_map: dict[uuid.UUID, tuple[float | None, int]] = {}
     if all_listing_ids:
         fb_result = await db.execute(
@@ -475,47 +486,34 @@ async def component_leaderboard(
         email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(all_user_ids)))
         email_map = {r[0]: r[1] for r in email_rows.all()}
 
-    # Build leaderboard items
-    for type_label, rows in raw_results:
-        for row in rows:
-            avg_rating, total_reviews = rating_map.get(row.listing_id, (None, 0))
-            all_items.append(
-                ComponentLeaderboardItem(
-                    id=row.listing_id,
-                    name=row.name,
-                    component_type=type_label,
-                    description=row.description or "",
-                    download_count=row.cnt,
-                    created_by_email=email_map.get(row.submitted_by, ""),
-                    average_rating=avg_rating,
-                    total_reviews=total_reviews,
-                )
-            )
+    # Patch in emails and ratings
+    for item in all_items:
+        avg_rating, total_reviews = rating_map.get(item.id, (None, 0))
+        item.average_rating = avg_rating
+        item.total_reviews = total_reviews
+    for item in all_items:
+        uid = submitted_by_map.get(item.id)
+        if uid and not item.created_by_email:
+            item.created_by_email = email_map.get(uid, "")
 
-    # Backfill: include approved components with zero downloads so the board isn't empty
+    # Backfill: include approved components with zero agent downloads
     if len(all_items) < limit:
         existing_ids = {item.id for item in all_items}
-        extra_pending: list[tuple[str, list]] = []
-        extra_user_ids: set[uuid.UUID] = set()
-        for _download_model, listing_model, version_model, type_label in component_types:
+        for listing_model, version_model, type_label in listing_types:
+            if len(all_items) >= limit:
+                break
             extra_stmt = (
                 select(listing_model.id, listing_model.name, version_model.description, listing_model.submitted_by)
                 .join(version_model, listing_model.latest_version_id == version_model.id)
                 .where(version_model.status == ListingStatus.approved, listing_model.id.notin_(existing_ids))
                 .order_by(listing_model.created_at.desc())
-                .limit(limit)
+                .limit(limit - len(all_items))
             )
             extra_rows = (await db.execute(extra_stmt)).all()
-            extra_pending.append((type_label, extra_rows))
-            for r in extra_rows:
-                if r.submitted_by:
-                    extra_user_ids.add(r.submitted_by)
-        missing_user_ids = extra_user_ids - set(email_map)
-        if missing_user_ids:
-            extra_email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(missing_user_ids)))
-            for r in extra_email_rows.all():
-                email_map[r[0]] = r[1]
-        for type_label, extra_rows in extra_pending:
+            extra_sub_ids = {r.submitted_by for r in extra_rows if r.submitted_by} - set(email_map)
+            if extra_sub_ids:
+                for er in (await db.execute(select(User.id, User.email).where(User.id.in_(extra_sub_ids)))).all():
+                    email_map[er[0]] = er[1]
             for r in extra_rows:
                 if r.id in existing_ids:
                     continue
@@ -535,8 +533,6 @@ async def component_leaderboard(
                 )
                 if len(all_items) >= limit:
                     break
-            if len(all_items) >= limit:
-                break
 
     # Sort by download count descending, then by total_reviews descending as tiebreaker
     all_items.sort(key=lambda x: (x.download_count, x.total_reviews), reverse=True)
