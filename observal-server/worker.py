@@ -169,4 +169,4 @@ class WorkerSettings:
     on_shutdown = shutdown
     redis_settings = parse_redis_settings()
     max_jobs = 5
-    job_timeout = 300  # 5 min per eval job
+    job_timeout = 600  # 10 min (V2 insights with facet extraction needs more time)

@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     EVAL_MODEL_PROVIDER: str = ""  # "bedrock", "openai", or "" for auto-detect
     AWS_REGION: str = "us-east-1"
 
+    # Multi-model insight generation:
+    # - INSIGHT_MODEL_SECTIONS: detailed narrative sections (default: Opus for depth)
+    # - INSIGHT_MODEL_SYNTHESIS: aggregation/synthesis (default: Sonnet for balance)
+    # - INSIGHT_MODEL_FACETS: per-session facet extraction (default: Haiku for cost)
+    # If blank, falls back to EVAL_MODEL_NAME for all.
+    INSIGHT_MODEL_SECTIONS: str = ""  # e.g., us.anthropic.claude-opus-4-6-20250514-v1:0
+    INSIGHT_MODEL_SYNTHESIS: str = ""  # e.g., us.anthropic.claude-sonnet-4-6-20250514-v1:0
+    INSIGHT_MODEL_FACETS: str = ""  # e.g., us.anthropic.claude-haiku-4-5-20251001-v1:0
+
     # OAuth Settings
     OAUTH_CLIENT_ID: str | None = None
     OAUTH_CLIENT_SECRET: str | None = None
@@ -66,6 +75,8 @@ class Settings(BaseSettings):
     INSIGHT_BATCH_ENABLED: bool = True
     INSIGHT_BATCH_PERIOD_DAYS: int = 14
     INSIGHT_MIN_SESSIONS: int = 5  # Minimum new sessions to trigger a report
+    INSIGHT_FACET_MAX_CALLS: int = 100  # Max LLM calls for facet extraction per report
+    INSIGHT_FACET_CONCURRENCY: int = 25  # Max concurrent facet extraction calls
 
     # ClickHouse data retention
     DATA_RETENTION_DAYS: int = 90

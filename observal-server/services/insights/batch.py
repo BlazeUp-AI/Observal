@@ -98,6 +98,19 @@ async def discover_and_queue_reports() -> int:
                     )
                     continue
 
+                # Find the most recent completed report for regression linking
+                prev_report_stmt = (
+                    select(InsightReport)
+                    .where(
+                        InsightReport.agent_id == agent.id,
+                        InsightReport.status == InsightReportStatus.completed,
+                    )
+                    .order_by(InsightReport.created_at.desc())
+                    .limit(1)
+                )
+                prev_result = await db.execute(prev_report_stmt)
+                prev_report = prev_result.scalar_one_or_none()
+
                 # Create a new report record
                 report = InsightReport(
                     agent_id=agent.id,
@@ -107,6 +120,7 @@ async def discover_and_queue_reports() -> int:
                     period_end=now,
                     started_at=now,
                     created_at=now,
+                    previous_report_id=prev_report.id if prev_report else None,
                 )
                 db.add(report)
                 await db.flush()

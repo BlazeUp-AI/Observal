@@ -37,4 +37,8 @@ class InsightReportResponse(BaseModel):
     started_at: datetime
     completed_at: datetime | None
     created_at: datetime
+    # V2 fields
+    previous_report_id: uuid.UUID | None = None
+    aggregated_data: dict | None = None
+    report_version: int = 1
     model_config = {"from_attributes": True}

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from models.insight_report import InsightReport, InsightReportStatus
 from models.user import User, UserRole
 from schemas.insights import GenerateInsightRequest, InsightReportListItem, InsightReportResponse
 from services.audit_helpers import audit
+from services.insights.html_export import render_report_html
 from services.redis import _get_arq_pool
 
 logger = structlog.get_logger(__name__)
@@ -37,6 +39,19 @@ async def generate_insight(
     now = datetime.now(UTC)
     period_start = now - timedelta(days=period_days)
 
+    # Find previous completed report for regression linking
+    prev_stmt = (
+        select(InsightReport)
+        .where(
+            InsightReport.agent_id == agent.id,
+            InsightReport.status == InsightReportStatus.completed,
+        )
+        .order_by(InsightReport.created_at.desc())
+        .limit(1)
+    )
+    prev_result = await db.execute(prev_stmt)
+    prev_report = prev_result.scalar_one_or_none()
+
     report = InsightReport(
         agent_id=agent.id,
         triggered_by=current_user.id,
@@ -44,6 +59,7 @@ async def generate_insight(
         period_start=period_start,
         period_end=now,
         started_at=now,
+        previous_report_id=prev_report.id if prev_report else None,
     )
     db.add(report)
     await db.flush()
@@ -103,3 +119,49 @@ async def get_report(
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     return InsightReportResponse.model_validate(report)
+
+
+@router.get("/reports/{report_id}/export/html", response_class=HTMLResponse)
+async def export_report_html(
+    report_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Export an insight report as a self-contained HTML document."""
+    stmt = select(InsightReport).where(InsightReport.id == report_id)
+    result = await db.execute(stmt)
+    report = result.scalar_one_or_none()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    if report.status != InsightReportStatus.completed:
+        raise HTTPException(status_code=400, detail="Report is not yet completed")
+
+    # Org-scope check
+    agent_stmt = select(Agent).where(Agent.id == report.agent_id)
+    agent_result = await db.execute(agent_stmt)
+    agent = agent_result.scalar_one_or_none()
+    if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
+    # Build report dict for the renderer
+    report_data = {
+        "id": str(report.id),
+        "agent_id": str(report.agent_id),
+        "status": report.status.value if hasattr(report.status, "value") else str(report.status),
+        "period_start": report.period_start,
+        "period_end": report.period_end,
+        "metrics": report.metrics,
+        "narrative": report.narrative,
+        "sessions_analyzed": report.sessions_analyzed,
+    }
+
+    html_content = render_report_html(report_data)
+
+    return HTMLResponse(
+        content=html_content,
+        headers={
+            "Content-Disposition": f'attachment; filename="insight-report-{report_id[:8]}.html"',
+        },
+    )

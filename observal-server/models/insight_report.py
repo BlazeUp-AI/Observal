@@ -41,3 +41,10 @@ class InsightReport(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    # V2 fields
+    previous_report_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("insight_reports.id", ondelete="SET NULL"), nullable=True
+    )
+    aggregated_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    report_version: Mapped[int] = mapped_column(Integer, default=1)

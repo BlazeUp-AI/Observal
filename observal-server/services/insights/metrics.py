@@ -380,6 +380,9 @@ async def compute_all_metrics(agent_name: str, start: str, end: str) -> dict:
     # Compute cost summary from per-session token data
     cost = compute_cost_summary(per_session_tokens)
 
+    # Check for reconciliation enrichment data
+    reconciliation = await get_reconciliation_data(agent_name, start, end)
+
     return {
         "overview": overview,
         "tokens": tokens,
@@ -390,4 +393,50 @@ async def compute_all_metrics(agent_name: str, start: str, end: str) -> dict:
         "cost": cost,
         "tool_errors": tool_errors,
         "interruptions": interruptions,
+        "reconciliation": reconciliation,
     }
+
+
+async def get_reconciliation_data(agent_name: str, start: str, end: str) -> dict:
+    """Check if any sessions have reconciliation enrichment data."""
+    sql = f"""
+        SELECT
+            count(DISTINCT LogAttributes['session.id']) AS reconciled_sessions,
+            sum(toUInt64OrZero(LogAttributes['input_tokens'])) AS total_input,
+            sum(toUInt64OrZero(LogAttributes['output_tokens'])) AS total_output,
+            sum(toUInt64OrZero(LogAttributes['cache_read_tokens'])) AS cache_read,
+            sum(toUInt64OrZero(LogAttributes['cache_creation_tokens'])) AS cache_creation,
+            sum(toUInt64OrZero(LogAttributes['thinking_turns'])) AS thinking_turns,
+            sum(toUInt64OrZero(LogAttributes['tool_use_count'])) AS tool_uses
+        FROM otel_logs
+        WHERE LogAttributes['session.id'] IN ({_SESSIONS_SUBQUERY})
+          AND LogAttributes['event.name'] = 'reconcile_enrichment'
+          AND Timestamp >= {{t_start:String}}
+          AND Timestamp <= {{t_end:String}}
+        FORMAT JSON
+    """
+    params = {
+        "param_aname": agent_name,
+        "param_t_start": start,
+        "param_t_end": end,
+    }
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        if data and int(data[0].get("reconciled_sessions", 0)) > 0:
+            row = data[0]
+            return {
+                "available": True,
+                "reconciled_sessions": int(row["reconciled_sessions"]),
+                "total_input_tokens": int(row["total_input"]),
+                "total_output_tokens": int(row["total_output"]),
+                "cache_read_tokens": int(row["cache_read"]),
+                "cache_creation_tokens": int(row["cache_creation"]),
+                "thinking_turns": int(row["thinking_turns"]),
+                "tool_uses": int(row["tool_uses"]),
+            }
+        return {"available": False}
+    except Exception as e:
+        logger.warning("reconciliation_data_query_failed", error=str(e))
+        return {"available": False}

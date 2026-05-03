@@ -91,22 +91,28 @@ async def fetch_traces(agent_id: str, limit: int = 20, trace_id: str | None = No
     return []
 
 
-async def call_eval_model(prompt: str) -> dict:
-    """Call the evaluation model. Supports Bedrock, Moonshot, and OpenAI-compatible APIs."""
+async def call_eval_model(prompt: str, model_override: str | None = None, max_tokens: int = 4096) -> dict:
+    """Call the evaluation model. Supports Bedrock, Moonshot, and OpenAI-compatible APIs.
+
+    Args:
+        prompt: The prompt to send to the model.
+        model_override: Optional model ID to use instead of EVAL_MODEL_NAME.
+        max_tokens: Maximum output tokens (default 4096, use 8192 for detailed sections).
+    """
     provider = getattr(settings, "EVAL_MODEL_PROVIDER", "") or ""
-    eval_model = getattr(settings, "EVAL_MODEL_NAME", "") or ""
+    eval_model = model_override or getattr(settings, "EVAL_MODEL_NAME", "") or ""
 
     if not eval_model:
         return {}
 
     if provider == "bedrock" or (not provider and "anthropic" in eval_model):
-        return await _call_bedrock(prompt, eval_model)
+        return await _call_bedrock(prompt, eval_model, max_tokens=max_tokens)
     if provider == "moonshot" or (not provider and "kimi" in eval_model.lower()):
         return await _call_openai_compatible(prompt, eval_model, provider="moonshot")
     return await _call_openai_compatible(prompt, eval_model)
 
 
-async def _call_bedrock(prompt: str, model_id: str) -> dict:
+async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 4096) -> dict:
     """Call AWS Bedrock Converse API."""
     import asyncio
 
@@ -118,7 +124,7 @@ async def _call_bedrock(prompt: str, model_id: str) -> dict:
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
-            inferenceConfig={"temperature": 0.1, "maxTokens": 4096},
+            inferenceConfig={"temperature": 0.1, "maxTokens": max_tokens},
         )
         text = response["output"]["message"]["content"][0]["text"]
         if "```json" in text:
@@ -130,7 +136,7 @@ async def _call_bedrock(prompt: str, model_id: str) -> dict:
     try:
         return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
     except Exception as e:
-        logger.error("bedrock_eval_call_failed", error=str(e))
+        logger.error("bedrock_eval_call_failed", error=str(e), model=model_id)
         return {}
 
 
