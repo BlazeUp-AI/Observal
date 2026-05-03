@@ -50,16 +50,24 @@ _GENERIC_HOOK_EVENTS = [
 
 
 def _claude_code_hooks_frontmatter_lines(
-    hook_script: str, stop_script: str, custom_hooks: list[dict] | None = None
+    hook_script: str,
+    stop_script: str,
+    agent_name: str = "",
+    custom_hooks: list[dict] | None = None,
 ) -> list[str]:
     """Build the YAML lines for a hooks: section in Claude Code frontmatter.
 
     Returns a list of indented strings (no trailing newlines) ready to be
     appended to the frontmatter_lines list before the closing '---'.
 
+    agent_name: baked into hook commands so each agent's telemetry carries
+    its identity (mirrors Kiro's --agent-name pattern).
+
     custom_hooks: list of dicts with event, handler_type, handler_config
     from hook components attached to the agent.
     """
+    import re
+
     custom_hooks = custom_hooks or []
     custom_by_event: dict[str, list[dict]] = {}
     for h in custom_hooks:
@@ -67,13 +75,16 @@ def _claude_code_hooks_frontmatter_lines(
         if ev:
             custom_by_event.setdefault(ev, []).append(h)
 
+    agent_name = re.sub(r"[^a-zA-Z0-9_\-.]", "", agent_name)
+    agent_flag = f" --agent-name {agent_name}" if agent_name else ""
+
     lines = ["hooks:"]
     for event in _GENERIC_HOOK_EVENTS:
         lines += [
             f"  {event}:",
             "    - hooks:",
             "        - type: command",
-            f'          command: "{hook_script}"',
+            f'          command: "{hook_script}{agent_flag}"',
         ]
         for ch in custom_by_event.get(event, []):
             lines += _custom_hook_matcher_lines(ch)
@@ -82,10 +93,10 @@ def _claude_code_hooks_frontmatter_lines(
         "  Stop:",
         "    - hooks:",
         "        - type: command",
-        f'          command: "{hook_script}"',
+        f'          command: "{hook_script}{agent_flag}"',
         "    - hooks:",
         "        - type: command",
-        f'          command: "{stop_script}"',
+        f'          command: "{stop_script}{agent_flag}"',
     ]
     for ch in custom_by_event.get("Stop", []):
         lines += _custom_hook_matcher_lines(ch)
@@ -730,7 +741,12 @@ def generate_agent_config(
             for mcp_name in claude_mcps:
                 frontmatter_lines.append(f"  - {mcp_name}")
         frontmatter_lines.extend(
-            _claude_code_hooks_frontmatter_lines("observal-hook.sh", "observal-stop-hook.sh", custom_hooks=hook_configs)
+            _claude_code_hooks_frontmatter_lines(
+                "observal-hook.sh",
+                "observal-stop-hook.sh",
+                agent_name=safe_name,
+                custom_hooks=hook_configs,
+            )
         )
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content

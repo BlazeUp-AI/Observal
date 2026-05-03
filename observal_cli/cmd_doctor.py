@@ -1080,9 +1080,10 @@ def _install_claude_code_hooks(server_url: str, api_key: str) -> list[str]:
     stop_script = _find_hook_script("observal-stop-hook.sh")
     cfg = config.load()
     user_id = cfg.get("user_id", "")
+    agent_name = cfg.get("agent_name", "")
 
     desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-    desired_env = get_desired_env(server_url, api_key, user_id)
+    desired_env = get_desired_env(server_url, api_key, user_id, agent_name=agent_name)
 
     return settings_reconciler.reconcile(desired_hooks, desired_env)
 
@@ -1441,7 +1442,8 @@ def doctor_patch(
                         "(telemetry via agent frontmatter)[/dim]"
                     )
                     user_id = cfg.get("user_id", "")
-                    desired_env = get_desired_env(server_url, api_key, user_id)
+                    agent_name = cfg.get("agent_name", "")
+                    desired_env = get_desired_env(server_url, api_key, user_id, agent_name=agent_name)
                     changes = settings_reconciler.reconcile({}, desired_env, dry_run=dry_run)
                     # Warn if stale global hooks exist in settings.json
                     settings_path = Path.home() / ".claude" / "settings.json"
@@ -1476,7 +1478,8 @@ def doctor_patch(
                         stop_script = _find_hook_script("observal-stop-hook.sh")
                         user_id = cfg.get("user_id", "")
                         desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-                        desired_env = get_desired_env(server_url, api_key, user_id)
+                        agent_name = cfg.get("agent_name", "")
+                        desired_env = get_desired_env(server_url, api_key, user_id, agent_name=agent_name)
                         changes = settings_reconciler.reconcile(desired_hooks, desired_env, dry_run=True)
                     else:
                         changes = _install_claude_code_hooks(server_url, api_key)

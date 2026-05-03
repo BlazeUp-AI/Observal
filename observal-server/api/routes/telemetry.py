@@ -898,6 +898,27 @@ async def ingest_hook(request: Request):
     if body.get("permission_mode"):
         attrs["permission_mode"] = body["permission_mode"]
 
+    # ── Session-agent cache: propagate agent_name across all events in a session ──
+    # Uses body["agent_name"] (hook-injected) for writes to avoid caching subagent
+    # descriptions set by _extract_claude_code in attrs.  SETNX ensures the first
+    # attribution sticks for the session's lifetime.
+    if session_id and len(session_id) <= 256 and all(c.isalnum() or c in "-_" for c in session_id):
+        _body_agent = body.get("agent_name", "")
+        if _body_agent:
+            try:
+                _redis = get_redis()
+                await _redis.set(f"session_agent:{session_id}", _body_agent, nx=True, ex=86400)
+            except RedisError:
+                pass
+        elif not attrs.get("agent_name"):
+            try:
+                _redis = get_redis()
+                _cached = await _redis.get(f"session_agent:{session_id}")
+                if _cached:
+                    attrs["agent_name"] = _cached
+            except RedisError:
+                pass
+
     # ── Registered-agents-only gate ──
     # When enabled, drop unregistered agent spans entirely (no ClickHouse write).
     from services.agent_registry_cache import is_registered, is_toggle_enabled, resolve_user_org

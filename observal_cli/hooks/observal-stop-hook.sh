@@ -29,6 +29,16 @@ if [ -z "$OBSERVAL_HOOKS_URL" ]; then
 fi
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Parse --agent-name from arguments (set by per-agent frontmatter hooks)
+_agent_name=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent-name) _agent_name="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+_effective_agent="${_agent_name:-$OBSERVAL_AGENT_NAME}"
+
 # Read hook payload from stdin
 PAYLOAD=$(cat)
 
@@ -98,6 +108,7 @@ if [ -n "$THINK_FILES" ]; then
       --arg response "$THINK_TEXT" \
       --arg seq "$TSEQ" \
       --arg total "$THINK_TOTAL" \
+      --arg agent_name "${_effective_agent:-}" \
       '{
         hook_event_name: "Stop",
         session_id: $session_id,
@@ -105,7 +116,7 @@ if [ -n "$THINK_FILES" ]; then
         tool_response: $response,
         message_sequence: ($seq | tonumber),
         message_total: ($total | tonumber)
-      }' | curl -s --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
+      } + (if $agent_name != "" then {agent_name: $agent_name} else {} end)' | curl -s --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
         ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
         ${OBSERVAL_USERNAME:+-H "X-Observal-Username: $OBSERVAL_USERNAME"} \
         -H "Content-Type: application/json" \
@@ -129,6 +140,7 @@ if [ -n "$MSG_FILES" ]; then
       --arg response "$MSG_TEXT" \
       --arg seq "$SEQ" \
       --arg total "$MSG_TOTAL" \
+      --arg agent_name "${_effective_agent:-}" \
       '{
         hook_event_name: "Stop",
         session_id: $session_id,
@@ -136,7 +148,7 @@ if [ -n "$MSG_FILES" ]; then
         tool_response: $response,
         message_sequence: ($seq | tonumber),
         message_total: ($total | tonumber)
-      }' | curl -s --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
+      } + (if $agent_name != "" then {agent_name: $agent_name} else {} end)' | curl -s --max-time 5 -X POST "$OBSERVAL_HOOKS_URL" \
         ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
         ${OBSERVAL_USERNAME:+-H "X-Observal-Username: $OBSERVAL_USERNAME"} \
         -H "Content-Type: application/json" \

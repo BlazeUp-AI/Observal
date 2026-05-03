@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,19 +26,27 @@ def _resolve_hook_paths(content: str) -> str:
     Server-side config generator emits bare script names (observal-hook.sh)
     since it doesn't know the client's install path. This resolves them to
     the actual paths inside the installed package.
+
+    Uses regex anchored to quoted command context so matches like
+    ``"observal-hook.sh --agent-name foo"`` are resolved correctly,
+    but comments or prose mentioning the script name are not affected.
     """
     import shutil
 
     hooks_dir = Path(__file__).parent / "hooks"
     for name in _HOOK_SCRIPT_NAMES:
         local = hooks_dir / name
-        if local.is_file():
-            content = content.replace(f'"{name}"', f'"{local.resolve().as_posix()}"')
-        else:
+        path = local.resolve().as_posix()
+        if not local.is_file():
             # Fallback: check if it's on PATH
             found = shutil.which(name)
-            if found:
-                content = content.replace(f'"{name}"', f'"{Path(found).resolve().as_posix()}"')
+            if not found:
+                continue
+            path = Path(found).resolve().as_posix()
+        # Match script name inside quotes with optional trailing args, replace only the script name
+        pattern = rf'"{re.escape(name)}(?:\s+[^"]*)?'
+        replacement = f'"{path}'
+        content = re.sub(pattern, replacement, content)
     return content
 
 
