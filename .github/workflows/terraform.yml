@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Terraform — fmt + validate for the AWS self-hosting module.
+#
+# Runs on PRs that touch infra/terraform/aws/** and on pushes to main.
+# No AWS credentials needed — `terraform init -backend=false` is used.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Terraform
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/terraform/aws/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/terraform/aws/**'
+      - '.github/workflows/terraform.yml'
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt-validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+
+      - name: terraform fmt (recursive)
+        working-directory: infra/terraform/aws
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform init (root module, no backend)
+        working-directory: infra/terraform/aws
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate (root module)
+        working-directory: infra/terraform/aws
+        run: terraform validate -no-color
+
+      - name: terraform init (examples/minimal)
+        working-directory: infra/terraform/aws/examples/minimal
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate (examples/minimal)
+        working-directory: infra/terraform/aws/examples/minimal
+        run: terraform validate -no-color
+
+  tflint:
+    name: tflint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.55.0
+
+      - name: tflint init
+        working-directory: infra/terraform/aws
+        run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: tflint
+        working-directory: infra/terraform/aws
+        run: tflint --recursive --format=compact
