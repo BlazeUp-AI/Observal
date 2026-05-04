@@ -95,29 +95,29 @@ function getNodeVisualStatus(node: DagNode): string {
 
 function StatPills({ stats, crossCount, errorCount }: { stats: DagData["stats"]; crossCount: number; errorCount: number }) {
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1.5">
       {[
         { l: "effective", c: stats.effective_nodes, color: "#10b981", textColor: "var(--color-success)" },
         { l: "reverted", c: stats.reverted_nodes, color: "#ef4444", textColor: "var(--color-destructive)" },
         { l: "waste", c: stats.waste_nodes, color: "#f59e0b", textColor: "var(--color-warning)" },
       ].map(({ l, c, color, textColor }) => (
-        <div key={l} className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap"
+        <div key={l} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
           style={{ background: color + "0d", border: `1px solid ${color}25`, color: textColor }}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} /> {c} {l}
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />{c}
         </div>
       ))}
       {errorCount > 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap"
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
           style={{ background: "color-mix(in oklch, var(--color-destructive) 8%, transparent)", border: "1px solid color-mix(in oklch, var(--color-destructive) 20%, transparent)", color: "var(--color-destructive)" }}>
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-destructive)" }} /> {errorCount} errors
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-destructive)" }} />{errorCount} err
         </div>
       )}
-      <div className="px-2 py-0.5 rounded-full text-[10px] text-muted-foreground whitespace-nowrap"
+      <div className="px-2 py-0.5 rounded-full text-[10px] text-muted-foreground"
         style={{ background: "color-mix(in oklch, var(--color-muted-foreground) 8%, transparent)", border: "1px solid var(--color-border)" }}>
-        {stats.total_nodes} total
+        {stats.total_nodes}
       </div>
       {crossCount > 0 && (
-        <div className="px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap"
+        <div className="px-2 py-0.5 rounded-full text-[10px] font-medium"
           style={{ background: "color-mix(in oklch, var(--color-info) 8%, transparent)", border: "1px solid color-mix(in oklch, var(--color-info) 20%, transparent)", color: "var(--color-info)" }}>
           {crossCount} cross
         </div>
