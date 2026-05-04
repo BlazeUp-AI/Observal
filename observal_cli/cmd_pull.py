@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -11,7 +12,42 @@ import typer
 from rich import print as rprint
 
 from observal_cli import client, config
+from observal_cli.ide_registry import get_scope_aware_ides
 from observal_cli.render import spinner
+
+# Hook script names used as placeholders in server-generated agent configs.
+# Resolved to absolute paths client-side before writing to disk.
+_HOOK_SCRIPT_NAMES = ("observal-hook.sh", "observal-stop-hook.sh")
+
+
+def _resolve_hook_paths(content: str) -> str:
+    """Replace hook script names with absolute paths in agent file content.
+
+    Server-side config generator emits bare script names (observal-hook.sh)
+    since it doesn't know the client's install path. This resolves them to
+    the actual paths inside the installed package.
+
+    Uses regex anchored to quoted command context so matches like
+    ``"observal-hook.sh --agent-name foo"`` are resolved correctly,
+    but comments or prose mentioning the script name are not affected.
+    """
+    import shutil
+
+    hooks_dir = Path(__file__).parent / "hooks"
+    for name in _HOOK_SCRIPT_NAMES:
+        local = hooks_dir / name
+        path = local.resolve().as_posix()
+        if not local.is_file():
+            # Fallback: check if it's on PATH
+            found = shutil.which(name)
+            if not found:
+                continue
+            path = Path(found).resolve().as_posix()
+        # Match script name inside quotes with optional trailing args, replace only the script name
+        pattern = rf'"{re.escape(name)}(?:\s+[^"]*)?'
+        replacement = f'"{path}'
+        content = re.sub(pattern, replacement, content)
+    return content
 
 
 def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
@@ -159,14 +195,8 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
     return resolved
 
 
-# IDEs that support a project vs user install scope
-_SCOPE_AWARE_IDES = {
-    "claude-code": ("project (.claude/agents/)", "user (~/.claude/agents/)"),
-    "kiro": ("project (.kiro/agents/)", "user (~/.kiro/agents/)"),
-    "gemini-cli": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
-    "cursor": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
-    "opencode": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
-}
+# IDEs that support a project vs user install scope (derived from registry)
+_SCOPE_AWARE_IDES = get_scope_aware_ides()
 
 
 def _collect_install_options(
@@ -278,10 +308,14 @@ def register_pull(app: typer.Typer):
         rules = snippet.get("rules_file")
         if rules:
             p = _resolve_path(rules["path"], target_dir, allow_home=is_user_scope)
+            content = rules["content"]
+            # Resolve hook script placeholders to absolute paths
+            if isinstance(content, str):
+                content = _resolve_hook_paths(content)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
-                status = _write_file(p, rules["content"])
+                status = _write_file(p, content)
                 written.append((str(p), status))
 
         # ── mcp_config with path key (Cursor/VSCode/Gemini) ─
@@ -292,6 +326,24 @@ def register_pull(app: typer.Typer):
                 written.append((str(p), "would write"))
             else:
                 status = _write_file(p, mcp_cfg["content"], merge_mcp=True)
+                written.append((str(p), status))
+
+        # ── hooks_config (Cursor/VSCode/Copilot/OpenCode/Gemini) ─
+        hooks_cfg = snippet.get("hooks_config")
+        if hooks_cfg and isinstance(hooks_cfg, dict) and "path" in hooks_cfg:
+            p = _resolve_path(hooks_cfg["path"], target_dir, allow_home=is_user_scope)
+            content = hooks_cfg["content"]
+            if isinstance(content, str):
+                content = _resolve_hook_paths(content)
+            elif isinstance(content, dict):
+                # Resolve hook paths inside JSON content (command fields)
+                raw = json.dumps(content)
+                raw = _resolve_hook_paths(raw)
+                content = json.loads(raw)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                status = _write_file(p, content, merge_mcp=hooks_cfg.get("merge", False))
                 written.append((str(p), status))
 
         # ── agent_file (Kiro) ───────────────────────────────
@@ -312,6 +364,15 @@ def register_pull(app: typer.Typer):
                 written.append((str(p), "would write"))
             else:
                 status = _write_file(p, steering_file["content"])
+                written.append((str(p), status))
+
+        # ── skill_files (Claude Code, Kiro, Cursor) ──────────
+        for sf in snippet.get("skill_files") or []:
+            p = _resolve_path(sf["path"], target_dir, allow_home=is_user_scope)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                status = _write_file(p, sf["content"])
                 written.append((str(p), status))
 
         # ── Output summary ──────────────────────────────────

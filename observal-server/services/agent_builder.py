@@ -18,6 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from schemas.ide_registry import IDE_REGISTRY, get_valid_ides
 from services.agent_config_generator import _wrap_kiro_prompt
 from services.agent_resolver import ResolvedAgent, ResolvedComponent
 
@@ -32,7 +33,7 @@ class ManifestComponent(BaseModel):
 
     name: str
     version: str
-    git_url: str
+    git_url: str = ""
     description: str = ""
     order: int = 0
     git_ref: str | None = None
@@ -47,6 +48,8 @@ class ManifestComponent(BaseModel):
     event: str | None = None
     execution_mode: str | None = None
     priority: int | None = None
+    handler_type: str | None = None
+    handler_config: dict | None = None
     # Prompt-specific
     template: str | None = None
     variables: list[str] | None = None
@@ -184,6 +187,8 @@ def _resolved_to_manifest_component(comp: ResolvedComponent) -> ManifestComponen
         kwargs["event"] = comp.extra.get("event", "")
         kwargs["execution_mode"] = comp.extra.get("execution_mode", "async")
         kwargs["priority"] = comp.extra.get("priority", 100)
+        kwargs["handler_type"] = comp.extra.get("handler_type", "")
+        kwargs["handler_config"] = comp.extra.get("handler_config", {})
     elif comp.component_type == "prompt":
         if comp.extra.get("template"):
             kwargs["template"] = comp.extra["template"]
@@ -300,34 +305,30 @@ def _build_mcp_entries(manifest: AgentManifest) -> dict:
 
 def _build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
     """Generate IDE-specific skill files from manifest skills."""
+    ide_key = ide.replace("_", "-")
+    spec = IDE_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skill_file")
+    if not skill_paths:
+        return []
+
     files: list[AgentFile] = []
+    skill_format = spec.get("skill_format")
     for skill in manifest.components.skills:
         name = _sanitize_name(skill.name)
         desc = skill.description or ""
+        path = next(iter(skill_paths.values())).format(name=name)
 
-        if ide in ("claude-code", "claude_code"):
+        if skill_format == "yaml_frontmatter":
             content = f"---\nname: {name}\n"
             if desc:
                 content += f'description: "{desc}"\n'
-            if skill.slash_command:
+            if skill.slash_command and ide_key == "claude-code":
                 content += f"command: /{skill.slash_command}\n"
             content += f"---\n\n{desc}\n"
-            files.append(AgentFile(path=f".claude/skills/{name}/SKILL.md", content=content, format="markdown"))
-
-        elif ide == "kiro":
-            content = f"---\nname: {name}\n"
-            if desc:
-                content += f'description: "{desc}"\n'
-            content += f"---\n\n{desc}\n"
-            files.append(AgentFile(path=f".kiro/skills/{name}/SKILL.md", content=content, format="markdown"))
-
-        elif ide == "cursor":
+        else:
             content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-            files.append(AgentFile(path=f".cursor/rules/{name}.md", content=content, format="markdown"))
 
-        elif ide == "vscode":
-            content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-            files.append(AgentFile(path=f".vscode/rules/{name}.md", content=content, format="markdown"))
+        files.append(AgentFile(path=path, content=content, format="markdown"))
 
     return files
 
@@ -467,7 +468,7 @@ def _generate_vscode(manifest: AgentManifest) -> IdeAgentConfig:
             ),
             AgentFile(
                 path=".vscode/mcp.json",
-                content={"mcpServers": mcp_entries},
+                content={"servers": mcp_entries},
                 format="json",
             ),
             *skill_files,
@@ -516,6 +517,15 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     )
 
 
+_KIRO_EVENT_MAP = {
+    "SessionStart": "agentSpawn",
+    "UserPromptSubmit": "userPromptSubmit",
+    "PreToolUse": "preToolUse",
+    "PostToolUse": "postToolUse",
+    "Stop": "stop",
+}
+
+
 def _build_kiro_hooks(safe_name: str, observal_url: str, platform: str = "") -> dict:
     """Build Kiro hook commands for telemetry collection."""
     if not observal_url:
@@ -531,6 +541,31 @@ def _build_kiro_hooks(safe_name: str, observal_url: str, platform: str = "") -> 
         "postToolUse": [{"matcher": "*", "command": hook_cmd}],
         "stop": [{"command": stop_cmd}],
     }
+
+
+def _materialize_kiro_hook_components(hooks_dict: dict, manifest: AgentManifest) -> None:
+    """Merge hook components from the agent manifest into the Kiro hooks dict."""
+    for hook in manifest.components.hooks:
+        if not hook.event or not hook.handler_config:
+            continue
+        kiro_event = _KIRO_EVENT_MAP.get(hook.event, hook.event)
+        handler_type = hook.handler_type or "command"
+        if handler_type == "command":
+            cmd = hook.handler_config.get("command", "")
+            if not cmd:
+                continue
+            entry: dict = {"command": cmd}
+            if kiro_event in ("preToolUse", "postToolUse"):
+                entry["matcher"] = hook.handler_config.get("matcher", "*")
+            hooks_dict.setdefault(kiro_event, []).append(entry)
+        elif handler_type == "http":
+            url = hook.handler_config.get("url", "")
+            if not url:
+                continue
+            entry = {"command": f"curl -s -X POST -H 'Content-Type: application/json' -d @- {url}"}
+            if kiro_event in ("preToolUse", "postToolUse"):
+                entry["matcher"] = hook.handler_config.get("matcher", "*")
+            hooks_dict.setdefault(kiro_event, []).append(entry)
 
 
 def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
@@ -559,6 +594,9 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
         "includeMcpJson": True,
         "model": None,
     }
+
+    # Materialize hook components from the agent manifest into the hooks dict
+    _materialize_kiro_hook_components(kiro_agent["hooks"], manifest)
 
     skill_files = _build_skill_files(manifest, "kiro")
 
@@ -701,18 +739,7 @@ _IDE_GENERATORS = {
     "opencode": _generate_opencode,
 }
 
-SUPPORTED_IDES = list(
-    {
-        "claude-code",
-        "cursor",
-        "vscode",
-        "gemini-cli",
-        "kiro",
-        "codex",
-        "copilot",
-        "opencode",
-    }
-)
+SUPPORTED_IDES = [ide for ide in get_valid_ides() if ide in _IDE_GENERATORS or ide.replace("-", "_") in _IDE_GENERATORS]
 
 
 def generate_ide_agent_files(

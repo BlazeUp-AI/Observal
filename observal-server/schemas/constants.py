@@ -3,34 +3,30 @@
 This module is the single source of truth for constrained field values.
 The CLI mirrors these in ``observal_cli/constants.py`` -- a sync test
 (``tests/test_constants_sync.py``) ensures they stay in lockstep.
+
+IDE-specific data (features, paths, scopes) is defined in
+``schemas/ide_registry.py``; the lists below are derived from it.
 """
 
 from __future__ import annotations
 
 import re
 
+from schemas.ide_registry import get_ide_feature_matrix, get_valid_ides
+
 # ── Name validation ───────────────────────────────────────────
 
 AGENT_NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 # ── IDE / client names (hyphen-canonical) ───────────────────
-VALID_IDES: list[str] = [
-    "cursor",
-    "kiro",
-    "claude-code",
-    "gemini-cli",
-    "vscode",
-    "codex",
-    "copilot",
-    "copilot-cli",
-    "opencode",
-]
+# Derived from IDE_REGISTRY key order.
+VALID_IDES: list[str] = get_valid_ides()
 
 # ── IDE feature capabilities ──────────────────────────────────
-# Each IDE supports a subset of agent features. This matrix is the
-# single source of truth used by the inference engine, config
-# generator, and frontend.  Mirrored in observal_cli/constants.py
-# and web/src/lib/ide-features.ts.
+# IDE_FEATURES defines the vocabulary of possible features (used by
+# Pydantic validators).  IDE_FEATURE_MATRIX is derived from the
+# registry.  Both are mirrored in observal_cli/constants.py and
+# web/src/lib/ide-features.ts.
 
 IDE_FEATURES: list[str] = [
     "skills",
@@ -42,17 +38,7 @@ IDE_FEATURES: list[str] = [
     "otlp_telemetry",
 ]
 
-IDE_FEATURE_MATRIX: dict[str, set[str]] = {
-    "claude-code": {"skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
-    "kiro": {"superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"},
-    "cursor": {"mcp_servers", "rules"},
-    "gemini-cli": {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
-    "codex": {"rules"},
-    "copilot": {"mcp_servers", "rules"},
-    "copilot-cli": {"mcp_servers", "rules", "hook_bridge"},
-    "opencode": {"mcp_servers", "rules"},
-    "vscode": {"mcp_servers", "rules"},
-}
+IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()
 
 # ── MCP servers ─────────────────────────────────────────────
 VALID_MCP_CATEGORIES: list[str] = [

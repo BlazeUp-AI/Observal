@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db, require_role
-from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
+from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus, AgentVersion, AgentVisibility
 from models.agent_component import AgentComponent
 from models.user import User, UserRole
 from schemas.bulk import BulkAgentItem, BulkAgentRequest, BulkResult, BulkResultItem
@@ -29,31 +29,43 @@ async def _create_single_agent(
     user: User,
     db: AsyncSession,
 ) -> Agent:
-    """Create a single Agent row (with components and goal template) from a BulkAgentItem."""
+    """Create a single Agent + AgentVersion row (with components and goal template)."""
     agent = Agent(
         name=item.name,
+        owner=item.owner or user.email,
+        created_by=user.id,
+        owner_org_id=user.org_id,
+        visibility=AgentVisibility.public,
+    )
+    db.add(agent)
+    await db.flush()
+
+    version = AgentVersion(
+        agent_id=agent.id,
         version=item.version,
         description=item.description,
-        owner=item.owner or user.email,
         prompt=item.prompt,
         model_name=item.model_name,
         model_config_json=item.model_config_json,
         external_mcps=item.external_mcps,
         supported_ides=item.supported_ides,
-        created_by=user.id,
         status=AgentStatus.pending,
+        released_by=user.id,
     )
-    db.add(agent)
+    db.add(version)
     await db.flush()
+
+    agent.latest_version_id = version.id
 
     # Attach components
     for i, comp in enumerate(item.components):
         db.add(
             AgentComponent(
-                agent_id=agent.id,
+                agent_version_id=version.id,
                 component_type=comp.get("component_type", "mcp"),
                 component_id=comp["component_id"],
-                version_ref="latest",
+                component_name=comp.get("component_name", ""),
+                resolved_version="latest",
                 order_index=i,
                 config_override=comp.get("config_override"),
             )
@@ -62,7 +74,7 @@ async def _create_single_agent(
     # Attach goal template when provided
     if item.goal_template:
         goal = AgentGoalTemplate(
-            agent_id=agent.id,
+            agent_version_id=version.id,
             description=item.goal_template.get("description", ""),
         )
         db.add(goal)

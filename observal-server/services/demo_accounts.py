@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 from models.organization import Organization
 from models.user import User, UserRole
 from services.events import UserCreated, bus
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.demo")
 
@@ -62,6 +63,7 @@ async def seed_demo_accounts(db: AsyncSession) -> int:
 
         user = User(
             email=email,
+            username=await generate_unique_username(email, db),
             name=f"Demo {role.value.replace('_', ' ').title()}",
             role=role,
             is_demo=True,

@@ -1,3 +1,4 @@
+from importlib.metadata import version as pkg_version
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
@@ -5,8 +6,25 @@ from sqlalchemy import select
 
 from api.deps import get_db
 from config import settings
+from models.enterprise_config import EnterpriseConfig
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
+
+
+def _server_version() -> str:
+    try:
+        return pkg_version("observal-server")
+    except Exception:
+        return "dev"
+
+
+@router.get("/version")
+async def get_version():
+    """Server version and minimum compatible CLI version. No auth required."""
+    return {
+        "server_version": _server_version(),
+        "min_cli_version": settings.MIN_CLI_VERSION,
+    }
 
 
 def derive_endpoints(request: Request | None = None) -> dict[str, str]:
@@ -51,10 +69,32 @@ async def get_public_config(db=Depends(get_db)):
         except Exception:
             pass
 
+    branding_logo = None
+    branding_app_name = None
+    branding_wordmark = None
+    try:
+        result = await db.execute(
+            select(EnterpriseConfig).where(
+                EnterpriseConfig.key.in_(["branding.logo", "branding.app_name", "branding.wordmark"])
+            )
+        )
+        for cfg in result.scalars().all():
+            if cfg.key == "branding.logo" and cfg.value:
+                branding_logo = cfg.value
+            elif cfg.key == "branding.app_name" and cfg.value:
+                branding_app_name = cfg.value
+            elif cfg.key == "branding.wordmark" and cfg.value:
+                branding_wordmark = cfg.value
+    except Exception:
+        pass
+
     return {
         "deployment_mode": settings.DEPLOYMENT_MODE,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
         "sso_only": settings.SSO_ONLY,
         "saml_enabled": saml_enabled,
         "eval_configured": bool(settings.EVAL_MODEL_NAME),
+        "branding_logo": branding_logo,
+        "branding_app_name": branding_app_name,
+        "branding_wordmark": branding_wordmark,
     }

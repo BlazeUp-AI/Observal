@@ -619,6 +619,106 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
     return events + synthetic
 
 
+def _collapse_trace_events(events: list[dict]) -> list[dict]:
+    """Collapse duplicate tool-call events from hook + OTLP + reconcile sources.
+
+    The raw otel_logs event format uses `timestamp` and an `attributes` dict
+    with `event.name` and `tool_name`.  This bridges that shape to
+    collapse_duplicate_tool_spans which expects materialized span dicts.
+
+    Non-tool events (reconcile_enrichment, session_start, user_prompt, etc.)
+    pass through unchanged.  Only tool-call events within a 2-second window
+    sharing the same tool_name are collapsed.
+    """
+    from services.insights.trace_dedup import collapse_duplicate_tool_spans
+
+    _TOOL_CALL_EVENTS = frozenset(
+        {
+            "hook_posttooluse",
+            "hook_posttoolusefailure",
+            "hook_pretooluse",
+            "shim_tool_call",
+            "tool_result",
+        }
+    )
+
+    # Split into tool-call events (candidates for collapse) and everything else
+    tool_events: list[dict] = []
+    other_events: list[dict] = []
+
+    for e in events:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        event_name = attrs.get("event.name", e.get("event_name", ""))
+        if event_name in _TOOL_CALL_EVENTS:
+            tool_events.append(e)
+        else:
+            other_events.append(e)
+
+    if not tool_events:
+        return events
+
+    # Translate otel_logs events to span-shaped dicts for collapse_duplicate_tool_spans
+    def _to_span(e: dict) -> dict:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        return {
+            "_original": e,
+            "type": "tool_call",
+            "name": attrs.get("tool_name") or "",
+            "start_time": e.get("timestamp", ""),
+            "tool_input": attrs.get("tool_input", ""),
+            "tool_response": attrs.get("tool_response", ""),
+            "error": attrs.get("error", ""),
+            "model": attrs.get("model", ""),
+            "input_tokens": int(attrs.get("input_tokens", 0) or 0),
+            "output_tokens": int(attrs.get("output_tokens", 0) or 0),
+            "source": attrs.get("source", ""),
+        }
+
+    def _from_span(span: dict) -> dict:
+        """Reconstruct an otel_logs event from a collapsed span."""
+        original = span.pop("_original", None)
+        if original is None:
+            return span
+        # Merge enriched fields back into the original event's attributes
+        original = dict(original)
+        attrs = original.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        else:
+            attrs = dict(attrs)
+
+        for field in ("tool_input", "tool_response", "error", "model"):
+            if span.get(field):
+                attrs[field] = span[field]
+        for field in ("input_tokens", "output_tokens"):
+            if span.get(field):
+                attrs[field] = str(span[field])
+
+        original["attributes"] = attrs
+        return original
+
+    spans = [_to_span(e) for e in tool_events]
+    collapsed = collapse_duplicate_tool_spans(spans)
+    collapsed_events = [_from_span(s) for s in collapsed]
+
+    all_events = collapsed_events + other_events
+    all_events.sort(key=lambda e: e.get("timestamp", ""))
+    return all_events
+
+
 @router.get("/traces")
 @cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_traces(current_user: User = Depends(require_role(UserRole.admin))):
@@ -816,6 +916,9 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     # Merge events from multiple sources (hook + shim + collector)
     events = _merge_session_events(events)
     events = _annotate_agent_scope(events)
+    # Collapse duplicate tool spans so the trace viewer shows one row per tool call
+    # (hook + OTLP + reconcile may each record the same tool invocation)
+    events = _collapse_trace_events(events)
     svc = _normalize_service(events[0]["service_name"]) if events else ""
     await audit(current_user, "session.view", "session", resource_id=session_id)
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
@@ -824,6 +927,9 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
 @router.get("/{session_id}/efficiency")
 async def get_session_efficiency(session_id: str, current_user: User = Depends(require_role(UserRole.user))):
     """Run kernel efficiency analysis on a session's hook events."""
+    if not session_id or not session_id.strip():
+        return {"error": "No session ID provided"}
+
     is_admin = _is_admin_user(current_user)
     params: dict[str, str] = {"param_sid": session_id}
 
@@ -841,6 +947,7 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
         if not ownership:
             return {"error": "Session not found or access denied"}
 
+    # Try querying by session.id first
     events = await _ch_json(
         "SELECT "
         "Timestamp AS timestamp, "
@@ -854,6 +961,23 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
         params,
     )
 
+    # If no events found, try querying by TraceId (for evaluation traces)
+    if not events:
+        events = await _ch_json(
+            "SELECT "
+            "Timestamp AS timestamp, "
+            "LogAttributes['event.name'] AS event_name, "
+            "Body AS body, "
+            "LogAttributes AS attributes, "
+            "ServiceName AS service_name "
+            "FROM otel_logs "
+            "WHERE TraceId = {sid:String} "
+            "AND (LogAttributes['user.id'] = {uid:String} "
+            "     OR LogAttributes['user.id'] = {uemail:String}) "
+            "ORDER BY Timestamp ASC",
+            params,
+        )
+
     if not events:
         return {"error": "No events found for session", "session_id": session_id}
 
@@ -864,3 +988,42 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
     except Exception:
         logger.exception("Session efficiency analysis failed for %s", session_id)
         return {"error": "Analysis failed", "session_id": session_id}
+
+
+@router.post("/{session_id}/bind-agent")
+async def bind_session_agent(
+    session_id: str,
+    agent_name: str = Query(..., description="Agent name to bind to this session"),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Explicitly bind a session to an agent name.
+
+    Overrides any cached attribution.  Used when frontmatter hooks are
+    unavailable or when the wrong agent was initially attributed.
+    """
+    is_admin = _is_admin_user(current_user)
+    if not is_admin:
+        params = {"param_sid": session_id, "param_uid": str(current_user.id), "param_uemail": current_user.email}
+        ownership = await _ch_json(
+            "SELECT 1 FROM otel_logs "
+            "WHERE LogAttributes['session.id'] = {sid:String} "
+            "AND (LogAttributes['user.id'] = {uid:String} "
+            "     OR LogAttributes['user.id'] = {uemail:String}) "
+            "LIMIT 1",
+            params,
+        )
+        if not ownership:
+            return {"error": "Session not found or access denied"}
+
+    from redis.exceptions import RedisError
+
+    from services.redis import get_redis
+
+    try:
+        redis = get_redis()
+        await redis.set(f"session_agent:{session_id}", agent_name, ex=86400)
+    except RedisError:
+        return {"session_id": session_id, "agent_name": agent_name, "bound": False, "error": "Redis unavailable"}
+
+    await audit(current_user, "session.bind_agent", "session", resource_id=session_id, detail=f"Bound to {agent_name}")
+    return {"session_id": session_id, "agent_name": agent_name, "bound": True}

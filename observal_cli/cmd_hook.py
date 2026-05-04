@@ -123,6 +123,43 @@ def hook_list(
     console.print(table)
 
 
+@hook_app.command(name="my")
+def hook_my(
+    output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
+):
+    """List your own hooks (all statuses)."""
+    with spinner("Fetching your hooks..."):
+        data = client.get("/api/v1/hooks/my")
+    if not data:
+        rprint("[dim]You have no hooks.[/dim]")
+        return
+    config.save_last_results(data)
+    if output == "json":
+        output_json(data)
+        return
+    if output == "plain":
+        for item in data:
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('status', '')}")
+        return
+    table = Table(title=f"My Hooks ({len(data)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Owner", style="dim")
+    table.add_column("Status")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(
+            str(i),
+            item["name"],
+            item.get("version", ""),
+            item.get("owner", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
+    console.print(table)
+
+
 @hook_app.command(name="show")
 def hook_show(
     hook_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
@@ -170,6 +207,61 @@ def hook_install(
     console.print_json(_json.dumps(snippet, indent=2))
 
 
+@hook_app.command(name="edit")
+def hook_edit(
+    hook_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    from_file: str | None = typer.Option(None, "--from-file", "-f", help="Load updates from JSON file"),
+    name: str | None = typer.Option(None, "--name", "-n", help="New listing name"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+    version: str | None = typer.Option(None, "--version", "-v", help="New version string"),
+    event: str | None = typer.Option(None, "--event", "-e", help="New event type"),
+):
+    """Edit a draft, rejected, or pending hook submission."""
+    resolved = config.resolve_alias(hook_id)
+    if from_file:
+        try:
+            with open(from_file) as f:
+                updates = _json.load(f)
+        except _json.JSONDecodeError as e:
+            rprint(f"[red]Invalid JSON in {from_file}:[/red] {e}")
+            raise typer.Exit(code=1)
+        except FileNotFoundError:
+            rprint(f"[red]File not found:[/red] {from_file}")
+            raise typer.Exit(code=1)
+    else:
+        updates = {}
+        if name is not None:
+            updates["name"] = name
+        if description is not None:
+            updates["description"] = description
+        if version is not None:
+            updates["version"] = version
+        if event is not None:
+            updates["event"] = event
+
+    if not updates:
+        rprint("[yellow]No changes specified.[/yellow] Use --from-file or field options (--name, --description, etc.)")
+        raise typer.Exit(code=1)
+
+    try:
+        client.post(f"/api/v1/hooks/{resolved}/start-edit")
+    except Exception as exc:
+        if "409" in str(exc) or "currently being edited" in str(exc):
+            rprint(f"[red]✗ Cannot edit:[/red] {exc}")
+            raise typer.Exit(code=1)
+    try:
+        with spinner("Saving changes..."):
+            result = client.put(f"/api/v1/hooks/{resolved}/draft", updates)
+        rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
+    except Exception as exc:
+        try:
+            client.post(f"/api/v1/hooks/{resolved}/cancel-edit")
+        except Exception:
+            pass
+        rprint(f"[red]Failed to update:[/red] {exc}")
+        raise typer.Exit(code=1)
+
+
 @hook_app.command(name="delete")
 def hook_delete(
     hook_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
@@ -197,13 +289,14 @@ def _find_hook_script(name: str) -> str | None:
     ]
     for p in candidates:
         if p.is_file():
-            return str(p.resolve())
+            return p.resolve().as_posix()
     return None
 
 
 @hook_app.command(name="sync")
 def hook_sync(
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show changes without applying"),
+    agent_name: str = typer.Option("", "--agent-name", help="Agent name for telemetry attribution (env var fallback)"),
 ):
     """Sync Claude Code hooks to the latest Observal spec.
 
@@ -224,8 +317,19 @@ def hook_sync(
     stop_script = _find_hook_script("observal-stop-hook.sh")
     user_id = cfg.get("user_id", "")
 
+    # Use explicit --agent-name, fall back to config, then auto-detect
+    if not agent_name:
+        agent_name = cfg.get("agent_name", "")
+    if not agent_name:
+        from observal_cli.client import get_registered_agent_names
+
+        agents = get_registered_agent_names()
+        if len(agents) == 1:
+            agent_name = next(iter(agents))
+            rprint(f"[dim]Auto-detected single agent: {agent_name}[/dim]")
+
     desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-    desired_env = get_desired_env(server_url, access_token, user_id)
+    desired_env = get_desired_env(server_url, access_token, user_id, agent_name=agent_name)
 
     applied = settings_reconciler.get_applied_version()
     from observal_cli.ide_specs.claude_code_hooks_spec import HOOKS_SPEC_VERSION

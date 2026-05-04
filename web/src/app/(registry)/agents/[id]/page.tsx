@@ -14,6 +14,10 @@ import {
   Loader2,
   Activity,
   Trash2,
+  Lock,
+  Globe,
+  Edit,
+  Plus,
 } from "lucide-react";
 import { useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
@@ -26,17 +30,23 @@ import {
   useFeedbackSummary,
   useEvalAggregate,
   useWhoami,
+  useUpdateAgent,
+  useAgentVersions,
+  useAgentVersionDetail,
 } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
 import { hasMinRole } from "@/hooks/use-role-guard";
+import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import type { FeedbackItem } from "@/lib/types";
 import { PullCommand } from "@/components/registry/pull-command";
+import { VersionDropdown } from "@/components/registry/version-dropdown";
 import { StatusBadge } from "@/components/registry/status-badge";
 import { IdeBadges } from "@/components/registry/ide-badges";
 import { FEATURE_LABELS, type IdeFeature } from "@/lib/ide-features";
 import { ReviewForm } from "@/components/registry/review-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,6 +54,7 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { DetailSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
+import { AgentEditForm, type AgentEditFormProps } from "@/components/registry/agent-edit-form";
 import { compactNumber, copyToClipboard } from "@/lib/utils";
 import { DIMENSION_META } from "@/components/dashboard/score-overview";
 
@@ -52,6 +63,9 @@ interface AgentDetail {
   status?: string;
   version?: string;
   owner?: string;
+  visibility?: string;
+  team_accesses?: { group_name: string; permission: "view" | "edit" }[];
+  user_permission?: string;
   description?: string;
   prompt?: string;
   model_name?: string;
@@ -277,6 +291,168 @@ function AnalyticsTab({ agentId }: { agentId: string }) {
   );
 }
 
+function AccessSettingsWidget({ agentId, visibility, teamAccesses, canEdit }: { agentId: string; visibility?: string; teamAccesses?: { group_name: string; permission: "view" | "edit" }[]; canEdit: boolean }) {
+  const { deploymentMode } = useDeploymentConfig();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editVisibility, setEditVisibility] = useState<"public" | "private">(visibility === "public" ? "public" : "private");
+  const [editTeamAccesses, setEditTeamAccesses] = useState<{ group_name: string; permission: "view" | "edit" }[]>(teamAccesses ?? []);
+  const updateAgent = useUpdateAgent();
+
+  if (deploymentMode !== "enterprise") return null;
+
+  async function handleSave() {
+    try {
+      await updateAgent.mutateAsync({
+        id: agentId,
+        body: {
+          visibility: editVisibility,
+          team_accesses: editTeamAccesses,
+        },
+      });
+      setIsEditing(false);
+    } catch (e) {
+      // toast is handled in the mutation
+    }
+  }
+
+  if (!isEditing) {
+    return (
+      <div className="border border-border rounded-md p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold font-display uppercase tracking-wider text-muted-foreground">
+            Access Settings
+          </h3>
+          {canEdit && (
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => {
+              setEditVisibility(visibility === "public" ? "public" : "private");
+              setEditTeamAccesses(teamAccesses ?? []);
+              setIsEditing(true);
+            }}>
+              <Edit className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+        
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm">
+            {visibility === "public" ? <Globe className="h-4 w-4 text-muted-foreground" /> : <Lock className="h-4 w-4 text-muted-foreground" />}
+            <span className="font-medium">{visibility === "public" ? "Public" : "Private"}</span>
+          </div>
+
+          {teamAccesses && teamAccesses.length > 0 && (
+            <div className="space-y-1.5 pt-2 border-t border-border/50">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Groups</span>
+              {teamAccesses.map((acc, i) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <span className="font-mono">{acc.group_name}</span>
+                  <Badge variant="outline" className="text-[10px]">{acc.permission}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-border rounded-md p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold font-display uppercase tracking-wider text-muted-foreground">
+          Edit Access Settings
+        </h3>
+      </div>
+      
+      <div className="space-y-3">
+        <select
+          className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={editVisibility}
+          onChange={(e) => setEditVisibility(e.target.value as "public" | "private")}
+        >
+          <option value="private">Private (Team Access Only)</option>
+          <option value="public">Public (Visible to All)</option>
+        </select>
+
+        {editVisibility === "private" && (
+          <div className="space-y-2 pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Team Permissions</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setEditTeamAccesses([
+                    ...editTeamAccesses,
+                    { group_name: "", permission: "view" },
+                  ])
+                }
+                className="h-6 text-xs px-2"
+              >
+                <Plus className="mr-1 h-3 w-3" />
+                Add
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {editTeamAccesses.map((access, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="Group"
+                    value={access.group_name}
+                    onChange={(e) => {
+                      const newAccess = [...editTeamAccesses];
+                      newAccess[i].group_name = e.target.value;
+                      setEditTeamAccesses(newAccess);
+                    }}
+                    className="h-7 flex-1 text-xs px-2"
+                  />
+                  <select
+                    className="flex h-7 w-16 rounded-md border border-input bg-transparent px-1.5 py-0 text-xs shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={access.permission}
+                    onChange={(e) => {
+                      const newAccess = [...editTeamAccesses];
+                      newAccess[i].permission = e.target.value as "view" | "edit";
+                      setEditTeamAccesses(newAccess);
+                    }}
+                  >
+                    <option value="view">View</option>
+                    <option value="edit">Edit</option>
+                  </select>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const newAccess = [...editTeamAccesses];
+                      newAccess.splice(i, 1);
+                      setEditTeamAccesses(newAccess);
+                    }}
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2 justify-end pt-2">
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+          setIsEditing(false);
+          setEditVisibility(visibility === "public" ? "public" : "private");
+          setEditTeamAccesses(teamAccesses ?? []);
+        }}>Cancel</Button>
+        <Button size="sm" className="h-7 text-xs" disabled={updateAgent.isPending} onClick={handleSave}>
+          {updateAgent.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentDetailPage({
   params,
 }: {
@@ -299,6 +475,9 @@ export default function AgentDetailPage({
     useFeedbackSummary(id);
 
   const { data: whoami } = useWhoami();
+  const { data: versionsData } = useAgentVersions(id);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const { data: versionDetail } = useAgentVersionDetail(id, selectedVersion);
 
   const storeSub = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);
@@ -316,7 +495,20 @@ export default function AgentDetailPage({
   );
 
   const a = agent as unknown as AgentDetail | undefined;
+  const versions = versionsData?.items ?? [];
+  const latestApprovedVersion = versions.find((v) => v.status === "approved")?.version;
+  const effectiveVersion = selectedVersion ?? latestApprovedVersion ?? a?.version;
+  // Overlay version-specific fields when viewing a non-default version
+  const vd = versionDetail as Record<string, unknown> | undefined;
+  const versionDescription = (vd?.description as string) ?? a?.description;
+  const versionPrompt = (vd?.prompt as string) ?? a?.prompt;
+  const versionModelName = (vd?.model_name as string) ?? a?.model_name;
+  const versionSupportedIdes = (vd?.supported_ides as string[]) ?? a?.supported_ides;
+  const versionRequiredFeatures = (vd?.required_ide_features as string[]) ?? a?.required_ide_features;
+  const versionInferredIdes = (vd?.inferred_supported_ides as string[]) ?? a?.inferred_supported_ides;
   const canDelete = isAdmin || (whoami?.id && a?.created_by && whoami.id === String(a.created_by));
+  const agentStatus = a?.status as string | undefined;
+  const canEdit = (isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit") && ["approved", "pending", "draft", "rejected"].includes(agentStatus ?? "");
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
   const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);
@@ -344,7 +536,7 @@ export default function AgentDetailPage({
         }
       />
 
-      <div className="p-6 lg:p-8 max-w-[1200px]">
+      <div className="p-6 lg:p-8 w-full">
         {isLoading ? (
           <DetailSkeleton />
         ) : isError ? (
@@ -362,20 +554,26 @@ export default function AgentDetailPage({
                     {a.name}
                   </h1>
                   {a.status && <StatusBadge status={a.status} />}
-                  {a.version && (
+                  {versions.length > 0 ? (
+                    <VersionDropdown
+                      versions={versions}
+                      currentVersion={effectiveVersion ?? ""}
+                      onSelect={setSelectedVersion}
+                    />
+                  ) : a?.version ? (
                     <Badge variant="secondary" className="text-xs">
                       {a.version}
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
 
                 {a.owner && (
                   <p className="text-sm text-muted-foreground">{a.owner}</p>
                 )}
 
-                {a.description && (
+                {versionDescription && (
                   <p className="text-sm text-foreground/80 leading-relaxed max-w-2xl">
-                    {a.description}
+                    {versionDescription}
                   </p>
                 )}
               </div>
@@ -426,28 +624,29 @@ export default function AgentDetailPage({
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="install">Install</TabsTrigger>
+                  {canEdit && <TabsTrigger value="edit">Edit</TabsTrigger>}
                   {isAdmin && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-6 mt-6">
-                  {a.description && (
+                  {versionDescription && (
                     <div className="space-y-2">
                       <h3 className="text-sm font-semibold font-display">
                         About
                       </h3>
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        {a.description}
+                        {versionDescription}
                       </p>
                     </div>
                   )}
 
-                  {a.model_name && (
+                  {versionModelName && (
                     <div className="space-y-1">
                       <h3 className="text-sm font-semibold font-display">
                         Model
                       </h3>
                       <p className="text-sm text-muted-foreground font-mono">
-                        {a.model_name}
+                        {versionModelName}
                       </p>
                     </div>
                   )}
@@ -479,7 +678,7 @@ export default function AgentDetailPage({
                     </div>
                   )}
 
-                  {!a.description && !goalTemplate && (
+                  {!versionDescription && !goalTemplate && (
                     <p className="text-sm text-muted-foreground">
                       No additional details provided for this agent.
                     </p>
@@ -489,7 +688,7 @@ export default function AgentDetailPage({
                 <TabsContent value="components" className="mt-6">
                   <div className="min-h-[300px]">
                   {components.length === 0 ? (
-                    a.prompt ? (
+                    versionPrompt ? (
                       <div className="space-y-3">
                         <p className="text-xs text-muted-foreground">
                           This agent was registered via scan and uses an inline system prompt instead of linked components.
@@ -497,7 +696,7 @@ export default function AgentDetailPage({
                         <div className="rounded-md border border-border bg-muted/20 p-4">
                           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">System Prompt</h4>
                           <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words text-foreground/80 leading-relaxed max-h-[400px] overflow-y-auto">
-                            {String(a.prompt)}
+                            {String(versionPrompt)}
                           </pre>
                         </div>
                       </div>
@@ -648,6 +847,16 @@ export default function AgentDetailPage({
                   </div>
                 </TabsContent>
 
+                {canEdit && (
+                  <TabsContent value="edit" className="mt-6">
+                    <AgentEditForm
+                      agentId={id}
+                      agent={a as unknown as AgentEditFormProps["agent"]}
+                      versionDetail={vd}
+                      currentVersion={effectiveVersion ?? "1.0.0"}
+                    />
+                  </TabsContent>
+                )}
                 {isAdmin && (
                   <TabsContent value="analytics" className="mt-6">
                     <AnalyticsTab agentId={id} />
@@ -710,11 +919,11 @@ export default function AgentDetailPage({
                       {components.length}
                     </span>
                   </div>
-                  {a.model_name && (
+                  {versionModelName && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Model</span>
                       <span className="font-mono text-xs truncate max-w-[140px]">
-                        {a.model_name}
+                        {versionModelName}
                       </span>
                     </div>
                   )}
@@ -726,17 +935,17 @@ export default function AgentDetailPage({
                   IDE Compatibility
                 </h3>
                 <IdeBadges
-                  supportedIdes={a.supported_ides}
-                  inferredSupportedIdes={a.inferred_supported_ides}
+                  supportedIdes={versionSupportedIdes}
+                  inferredSupportedIdes={versionInferredIdes}
                   max={7}
                 />
-                {a.required_ide_features && a.required_ide_features.length > 0 && (
+                {versionRequiredFeatures && versionRequiredFeatures.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
                       Required features
                     </p>
                     <div className="flex flex-wrap gap-1">
-                      {a.required_ide_features.map((f: string) => (
+                      {versionRequiredFeatures.map((f: string) => (
                         <span key={f} className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                           {FEATURE_LABELS[f as IdeFeature] ?? f}
                         </span>
@@ -754,6 +963,13 @@ export default function AgentDetailPage({
                   <p className="text-sm">{a.owner}</p>
                 </div>
               )}
+
+              <AccessSettingsWidget
+                agentId={id}
+                visibility={a.visibility}
+                teamAccesses={a.team_accesses}
+                canEdit={isAdmin || a.user_permission === "owner" || a.user_permission === "edit"}
+              />
             </aside>
           </div>
         )}

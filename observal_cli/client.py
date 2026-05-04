@@ -37,7 +37,10 @@ def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
         rprint("[dim]  Run [bold]observal auth login[/bold] to re-authenticate.[/dim]")
     elif code == 403:
         rprint(f"[red]Permission denied{path_info}.[/red]")
-        rprint("[dim]  This action requires a higher role (admin or super_admin).[/dim]")
+        if detail:
+            rprint(f"[dim]  {detail}[/dim]")
+        else:
+            rprint("[dim]  You do not have permission to perform this action.[/dim]")
     elif code == 404:
         rprint(f"[red]Not found{path_info}.[/red]")
         # Extract component type from API path (e.g. /api/v1/hooks/abc -> hook)
@@ -251,6 +254,75 @@ def delete(path: str) -> dict:
         _handle_connect()
 
 
+def get_registered_agents_only() -> bool:
+    """Check if the org has registered-agents-only mode enabled.
+
+    Returns False on any error (fail-open, silent — no printed messages).
+    """
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return False
+        r = httpx.get(
+            f"{server_url}/api/v1/admin/org/registered-agents-only",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return r.json().get("registered_agents_only", False)
+        return False
+    except Exception:
+        return False
+
+
+def get_registered_agent_names() -> set[str]:
+    """Fetch the set of registered (approved) agent names from the server.
+
+    Returns empty set on any error (fail-open).
+    """
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return set()
+        r = httpx.get(
+            f"{server_url}/api/v1/agents",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return {item.get("name", "") for item in r.json() if item.get("name")}
+    except Exception:
+        pass
+    return set()
+
+
+def get_registered_mcp_names() -> set[str]:
+    """Fetch the set of registered (approved) MCP names from the server.
+
+    Returns empty set on any error (fail-open).
+    """
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return set()
+        r = httpx.get(
+            f"{server_url}/api/v1/mcp",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            return {item.get("name", "") for item in r.json() if item.get("name")}
+    except Exception:
+        pass
+    return set()
+
+
 def health() -> tuple[bool, float]:
     """Check server health. Returns (ok, latency_ms)."""
     cfg = config.load()
@@ -264,3 +336,41 @@ def health() -> tuple[bool, float]:
         return r.status_code == 200, latency
     except Exception:
         return False, 0
+
+
+def check_version_compatibility(server_url: str) -> None:
+    """Warn if CLI version is older than server's minimum requirement."""
+    from importlib.metadata import version as pkg_version
+
+    try:
+        cli_ver_str = pkg_version("observal-cli")
+    except Exception:
+        return  # dev install, skip check
+
+    try:
+        r = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/version", timeout=5)
+        if r.status_code != 200:
+            return
+        data = r.json()
+    except Exception:
+        return  # server doesn't support this endpoint yet, skip
+
+    min_cli = data.get("min_cli_version")
+    server_ver = data.get("server_version", "unknown")
+    if not min_cli:
+        return
+
+    try:
+        cli_tuple = tuple(int(x) for x in cli_ver_str.split("."))
+        min_tuple = tuple(int(x) for x in min_cli.split("."))
+        if cli_tuple < min_tuple:
+            rprint(
+                f"\n[bold yellow]⚠ CLI version {cli_ver_str} is older than the server requires "
+                f"(minimum {min_cli}).[/bold yellow]\n"
+                f"  Server version: {server_ver}\n"
+                f"  Please upgrade:\n\n"
+                f"    [cyan]uv tool upgrade observal-cli[/cyan]    "
+                f"[dim]# or: pip install --upgrade observal-cli[/dim]\n"
+            )
+    except (ValueError, TypeError):
+        pass

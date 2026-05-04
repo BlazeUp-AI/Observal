@@ -116,14 +116,100 @@ export interface ComponentLeaderboardItem {
   description: string;
   download_count: number;
   created_by_email: string;
+  average_rating: number | null;
+  total_reviews: number;
 }
 
 export interface VersionSuggestions {
   current: string;
-  patch: string;
-  minor: string;
-  major: string;
+  suggestions: {
+    patch: string;
+    minor: string;
+    major: string;
+  };
 }
+
+export interface AgentVersionSummary {
+  id: string;
+  agent_id: string;
+  version: string;
+  description: string;
+  status: string;
+  is_prerelease: boolean;
+  download_count: number;
+  supported_ides: string[];
+  released_by: string;
+  released_at: string | null;
+  created_at: string | null;
+  rejection_reason: string | null;
+  component_count: number;
+}
+
+export interface AgentVersionsResponse {
+  items: AgentVersionSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// ── Component Versions ─────────────────────────────────────────────
+
+export interface ComponentVersionSummary {
+  id: string;
+  listing_id: string;
+  version: string;
+  description: string;
+  changelog: string | null;
+  status: string;
+  rejection_reason: string | null;
+  download_count: number;
+  supported_ides: string[];
+  released_by: string;
+  released_at: string | null;
+  created_at: string | null;
+  // Hook fields
+  event?: string;
+  execution_mode?: string;
+  priority?: number;
+  handler_type?: string;
+  handler_config?: Record<string, unknown>;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  scope?: string;
+  tool_filter?: Record<string, unknown>;
+  file_pattern?: string[];
+  // Skill fields
+  skill_path?: string;
+  target_agents?: string[];
+  task_type?: string;
+  triggers?: Record<string, unknown>;
+  slash_command?: string;
+  has_scripts?: boolean;
+  has_templates?: boolean;
+  is_power?: boolean;
+  power_md?: string;
+  mcp_server_config?: Record<string, unknown>;
+  activation_keywords?: string[];
+  // Prompt fields
+  category?: string;
+  template?: string;
+  variables?: unknown[];
+  model_hints?: Record<string, unknown>;
+  tags?: string[];
+  // MCP/Sandbox fields
+  source_url?: string;
+  source_ref?: string;
+  resolved_sha?: string;
+}
+
+export interface ComponentVersionsResponse {
+  items: ComponentVersionSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export type ComponentVersionDetail = ComponentVersionSummary;
 
 export interface BulkResultItem {
   name: string;
@@ -157,6 +243,25 @@ export interface ValidationIssue {
 export interface ValidationResult {
   valid: boolean;
   issues: ValidationIssue[];
+}
+
+// ── Version Diff ────────────────────────────────────────────────────
+
+export interface ComponentChange {
+  type: string;
+  name: string;
+  change: "added" | "removed" | "updated";
+  version?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface VersionDiff {
+  agent_id: string;
+  version_a: string;
+  version_b: string;
+  yaml_diff: string;
+  component_changes: ComponentChange[];
 }
 
 // ── Review ──────────────────────────────────────────────────────────
@@ -258,6 +363,8 @@ export interface ReviewItem {
   required_ide_features?: string[];
   component_count?: number;
   components?: { component_type: string; component_id: string }[];
+  visibility?: 'public' | 'private';
+  team_accesses?: { group_name: string; permission: 'view' | 'edit' }[];
 }
 
 // ── Scores ──────────────────────────────────────────────────────────
@@ -444,6 +551,141 @@ export interface SessionErrorEvent {
   tool_response: string;
   stop_reason: string;
   user_id: string;
+}
+
+// ── Insights ───────────────────────────────────────────────────────
+
+export interface InsightReportListItem {
+  id: string;
+  agent_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  period_start: string;
+  period_end: string;
+  sessions_analyzed: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface InsightCostMetrics {
+  total_cost_usd: number;
+  avg_cost_per_session: number;
+  p50_session_cost: number;
+  p90_session_cost: number;
+  p99_session_cost: number;
+  cache_efficiency_ratio: number;
+  most_expensive_model: string;
+  cost_by_model: { model: string; total_cost_usd: number }[];
+}
+
+export interface InsightToolErrors {
+  total_categorized: number;
+  categories: Record<string, number>;
+  by_tool: Record<string, Record<string, number>>;
+}
+
+export interface InsightInterruptions {
+  stop_reasons: Record<string, number>;
+  user_interruptions: number;
+  total_stops: number;
+}
+
+export interface InsightReconciliation {
+  available: boolean;
+  reconciled_sessions?: number;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  thinking_turns?: number;
+  tool_uses?: number;
+}
+
+export interface InsightMetrics {
+  overview: {
+    total_sessions: string;
+    unique_users: string;
+    first_session: string;
+    last_session: string;
+  };
+  tokens: {
+    total_input_tokens: string;
+    total_output_tokens: string;
+    total_tokens: string;
+    total_cache_read_tokens: string;
+    total_cache_write_tokens: string;
+  };
+  cost?: InsightCostMetrics;
+  duration: {
+    session_count: string;
+    avg_duration_seconds: string;
+    p50_duration_seconds: string;
+    p90_duration_seconds: string;
+  };
+  errors: {
+    total_events: string;
+    total_tool_calls: string;
+    failure_stops: string;
+    error_events: string;
+    error_rate: number;
+  };
+  tool_errors?: InsightToolErrors;
+  interruptions?: InsightInterruptions;
+  reconciliation?: InsightReconciliation;
+  tools: {
+    name: string;
+    invocations: string;
+    errors: string;
+  }[];
+  sessions: {
+    session_id: string;
+    duration_seconds: string;
+    prompt_count: string;
+    tool_call_count: string;
+    input_tokens: string;
+    output_tokens: string;
+  }[];
+}
+
+export interface InsightNarrative {
+  // V2 structured format — each section is a structured object
+  // V1 fallback — each section is string[] | string
+  // The frontend handles both formats gracefully
+  at_a_glance: unknown;
+  usage_patterns: unknown;
+  user_experience?: unknown;
+  what_works?: unknown;
+  friction_analysis: unknown;
+  suggestions: unknown;
+  token_optimization?: unknown;
+  regression_detection?: unknown;
+  fun_ending?: unknown;
+  regressions?: InsightRegression[];
+}
+
+export interface InsightRegression {
+  metric: string;
+  direction: "improved" | "degraded";
+  magnitude: number;
+  current_value: number;
+  previous_value: number;
+  severity: "low" | "medium" | "high";
+}
+
+export interface InsightReport {
+  id: string;
+  agent_id: string;
+  triggered_by: string | null;
+  status: "pending" | "running" | "completed" | "failed";
+  period_start: string;
+  period_end: string;
+  metrics: InsightMetrics | null;
+  narrative: InsightNarrative | null;
+  sessions_analyzed: number;
+  llm_model_used: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
 }
 
 // ── Telemetry ───────────────────────────────────────────────────────

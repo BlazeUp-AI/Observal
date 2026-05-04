@@ -3,20 +3,20 @@
 import { useState } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { IDE_DISPLAY_NAMES, type IdeName } from "@/lib/ide-features";
 import type { ValidationResult } from "@/lib/types";
 
-const IDE_OPTIONS = [
-  { value: "claude-code", label: "Claude Code" },
-  { value: "cursor", label: "Cursor" },
-  { value: "kiro", label: "Kiro" },
-  { value: "vscode", label: "VS Code" },
-  { value: "gemini-cli", label: "Gemini CLI" },
-  { value: "codex", label: "Codex" },
-  { value: "copilot", label: "Copilot" },
-  { value: "opencode", label: "OpenCode" },
-] as const;
+// Curated display order for the builder preview (copilot-cli excluded)
+const IDE_DISPLAY_ORDER = [
+  "claude-code", "cursor", "kiro", "vscode", "gemini-cli", "codex", "copilot", "opencode",
+] as const satisfies readonly IdeName[];
 
-type Ide = (typeof IDE_OPTIONS)[number]["value"];
+const IDE_OPTIONS = IDE_DISPLAY_ORDER.map((ide) => ({
+  value: ide,
+  label: IDE_DISPLAY_NAMES[ide],
+}));
+
+type Ide = (typeof IDE_DISPLAY_ORDER)[number];
 
 interface PreviewPanelProps {
   name: string;

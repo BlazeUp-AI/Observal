@@ -1063,6 +1063,18 @@ def register_scan(app: typer.Typer):
                         unregistered.append(("agent", a.name))
 
                 if unregistered:
+                    # Check if registered-agents-only mode is ON
+                    from observal_cli import client as obs_client
+
+                    _reg_only_enabled = obs_client.get_registered_agents_only()
+
+                    if _reg_only_enabled:
+                        rprint(
+                            "[yellow bold]⚠ Registered-agents-only mode is ON.[/yellow bold] "
+                            "Unregistered components below will NOT be traced."
+                        )
+                        rprint()
+
                     tbl = Table(
                         title=f"Unregistered Components ({len(unregistered)})", show_lines=False, padding=(0, 1)
                     )

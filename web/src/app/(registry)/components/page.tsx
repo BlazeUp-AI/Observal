@@ -26,6 +26,8 @@ import {
   useComponentSubmitDraft,
   useComponentUpdateDraft,
   useComponentDelete,
+  useStartEdit,
+  useCancelEdit,
 } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import type { RegistryType } from "@/lib/api";
@@ -187,6 +189,33 @@ export default function ComponentsPage() {
   const submitDraftMutation = useComponentSubmitDraft(activeType);
   const updateDraftMutation = useComponentUpdateDraft(activeType);
   const deleteMutation = useComponentDelete(activeType);
+  const startEditMutation = useStartEdit(activeType);
+  const cancelEditMutation = useCancelEdit(activeType);
+
+  const editItemRef = useRef(editItem);
+  editItemRef.current = editItem;
+  const activeTypeRef = useRef(activeType);
+  activeTypeRef.current = activeType;
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const item = editItemRef.current;
+      if (item?.status === "pending") {
+        const type = activeTypeRef.current;
+        const token = localStorage.getItem("observal_access_token");
+        fetch(`/api/v1/${type}/${item.id}/cancel-edit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          keepalive: true,
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const items = useMemo(() => data ?? [], [data]);
 
@@ -397,28 +426,37 @@ export default function ComponentsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {(item.status === "draft" || item.status === "rejected" || item.status === "pending") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={startEditMutation.isPending}
+                        onClick={() => {
+                          if (item.status === "pending") {
+                            startEditMutation.mutate(item.id, {
+                              onSuccess: () => { setEditItem(item); setSubmitOpen(true); },
+                            });
+                          } else {
+                            setEditItem(item); setSubmitOpen(true);
+                          }
+                        }}
+                      >
+                        <FileEdit className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
+                    )}
                     {(item.status === "draft" || item.status === "rejected") && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => { setEditItem(item); setSubmitOpen(true); }}
-                        >
-                          <FileEdit className="h-3 w-3 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => submitDraftMutation.mutate(item.id)}
-                          disabled={submitDraftMutation.isPending}
-                        >
-                          <Send className="h-3 w-3 mr-1" />
-                          {item.status === "rejected" ? "Resubmit" : "Submit"}
-                        </Button>
-                      </>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => submitDraftMutation.mutate(item.id)}
+                        disabled={submitDraftMutation.isPending}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        {item.status === "rejected" ? "Resubmit" : "Submit"}
+                      </Button>
                     )}
                     <Button
                       variant="ghost"
@@ -440,14 +478,26 @@ export default function ComponentsPage() {
       <SubmitComponentDialog
         key={editItem?.id ?? "new"}
         open={submitOpen}
-        onOpenChange={(v) => { setSubmitOpen(v); if (!v) setEditItem(null); }}
+        onOpenChange={(v) => {
+          if (!v && editItem?.status === "pending") {
+            cancelEditMutation.mutate(editItem.id);
+          }
+          setSubmitOpen(v);
+          if (!v) setEditItem(null);
+        }}
         type={activeType}
         editItem={editItem as Record<string, unknown> | null}
         onSubmit={(body) => {
           if (editItem) {
-            submitDraftMutation.mutate(editItem.id, {
-              onSuccess: () => { setSubmitOpen(false); setEditItem(null); },
-            });
+            if (editItem.status === "pending") {
+              updateDraftMutation.mutate({ id: editItem.id, body }, {
+                onSuccess: () => { setSubmitOpen(false); setEditItem(null); },
+              });
+            } else {
+              submitDraftMutation.mutate(editItem.id, {
+                onSuccess: () => { setSubmitOpen(false); setEditItem(null); },
+              });
+            }
           } else {
             submitMutation.mutate(body, {
               onSuccess: () => setSubmitOpen(false),

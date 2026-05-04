@@ -4,9 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from models.agent import AgentStatus
+from config import settings
+from models.agent import AgentStatus, AgentVisibility
 from schemas.constants import AGENT_NAME_REGEX, make_name_validator
 from services.versioning import validate_semver
+
+_DEFAULT_VISIBILITY = AgentVisibility.public if settings.DEPLOYMENT_MODE == "local" else AgentVisibility.private
 
 VALID_COMPONENT_TYPES = {"mcp", "skill", "hook", "prompt", "sandbox"}
 
@@ -41,6 +44,17 @@ class ComponentRef(BaseModel):
     config_override: dict | None = None
 
 
+class TeamAccessRequest(BaseModel):
+    group_name: str = Field(min_length=1, max_length=255)
+    permission: Literal["view", "edit"]
+
+
+class TeamAccessResponse(BaseModel):
+    group_name: str
+    permission: str
+    model_config = {"from_attributes": True}
+
+
 class AgentCreateRequest(BaseModel):
     name: str
     version: str
@@ -54,6 +68,8 @@ class AgentCreateRequest(BaseModel):
     components: list[ComponentRef] = []  # new: all component types
     external_mcps: list[ExternalMcp] = []
     goal_template: GoalTemplateRequest
+    visibility: AgentVisibility = _DEFAULT_VISIBILITY
+    team_accesses: list[TeamAccessRequest] = []
 
     _validate_name = field_validator("name")(make_name_validator("name"))
 
@@ -79,6 +95,8 @@ class AgentUpdateRequest(BaseModel):
     components: list[ComponentRef] | None = None  # new: all component types
     external_mcps: list[ExternalMcp] | None = None
     goal_template: GoalTemplateRequest | None = None
+    visibility: AgentVisibility | None = None
+    team_accesses: list[TeamAccessRequest] | None = None
 
     @field_validator("name", mode="before")
     @classmethod
@@ -158,6 +176,11 @@ class AgentResponse(BaseModel):
     mcp_links: list[McpLinkResponse] = []
     component_links: list[ComponentLinkResponse] = []
     goal_template: GoalTemplateResponse | None = None
+    visibility: AgentVisibility
+    team_accesses: list[TeamAccessResponse] = []
+    user_permission: str | None = None
+    latest_approved_version: str | None = None
+    latest_version: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -177,12 +200,14 @@ class AgentSummary(BaseModel):
     download_count: int = 0
     average_rating: float | None = None
     component_count: int = 0
+    created_by: uuid.UUID | None = None
     created_by_email: str = ""
     created_by_username: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     components_ready: bool = True
     blocking_components: list = []
+    visibility: AgentVisibility
     model_config = {"from_attributes": True}
 
 
@@ -215,3 +240,30 @@ class AgentInstallResponse(BaseModel):
     ide: str
     config_snippet: dict
     warnings: list[str] = []
+
+
+class AgentVersionCreateRequest(BaseModel):
+    version: str
+    description: str = ""
+    prompt: str = ""
+    model_name: str
+    model_config_json: dict = {}
+    external_mcps: list[ExternalMcp] = []
+    supported_ides: list[str] = []
+    components: list[ComponentRef] = []
+    goal_template: GoalTemplateRequest | None = None
+    yaml_snapshot: str | None = None
+    is_prerelease: bool = False
+    save_as_draft: bool = False
+
+    @field_validator("version")
+    @classmethod
+    def _validate_version(cls, v: str) -> str:
+        if not validate_semver(v):
+            raise ValueError(f"Invalid version '{v}'. Must be semver format: x.y.z (e.g. 1.0.0)")
+        return v
+
+
+class AgentVersionReviewRequest(BaseModel):
+    action: Literal["approve", "reject"]
+    reason: str | None = None

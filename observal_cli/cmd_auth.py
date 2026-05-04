@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as _json
+import os
 import shutil
 from pathlib import Path
 
@@ -60,6 +61,9 @@ def login(
         raise typer.Exit(1)
 
     initialized = health_data.get("initialized", True)
+
+    # Check CLI/server version compatibility
+    client.check_version_compatibility(server_url)
 
     # 2. Fresh server → prompt for admin credentials and initialize
     if not initialized:
@@ -165,28 +169,49 @@ def login(
 
 @auth_app.command()
 def init():
-    """[Removed] Use 'observal auth login' + 'observal pull' instead."""
+    """[Removed] Use 'observal auth login' + 'observal agent pull' instead."""
     rprint("[yellow]'observal auth init' has been removed.[/yellow]")
     rprint()
     rprint("Use these commands instead:")
     rprint("  [bold]observal auth login[/bold]   — connect to your server")
-    rprint("  [bold]observal pull[/bold]          — pull your configuration")
+    rprint("  [bold]observal agent pull[/bold]   — pull agent config to your IDE")
     raise typer.Exit(1)
 
 
 @auth_app.command()
 def logout():
     """Clear saved credentials."""
+    # Best-effort: revoke tokens on the server before clearing locally
     if config.CONFIG_FILE.exists():
         import json
 
         raw_cfg = json.loads(config.CONFIG_FILE.read_text())
+
+        access_token = raw_cfg.get("access_token")
+        refresh_token = raw_cfg.get("refresh_token")
+        server_url = raw_cfg.get("server_url", "").rstrip("/")
+
+        if access_token and server_url:
+            try:
+                resp = httpx.post(
+                    f"{server_url}/api/v1/auth/logout",
+                    json={"refresh_token": refresh_token or None},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=5,
+                )
+                resp.raise_for_status()
+            except Exception:
+                pass  # Best-effort — proceed with local cleanup regardless
 
         for key in ("access_token", "refresh_token", "api_key"):
             raw_cfg.pop(key, None)
         config.CONFIG_FILE.write_text(json.dumps(raw_cfg, indent=2))
 
         rprint("[green]Logged out.[/green]")
+        rprint(
+            "[dim]Note: IDE hooks will stop sending telemetry. "
+            "To remove hook scripts from your IDE, run [bold]observal doctor unpatch[/bold].[/dim]"
+        )
     else:
         rprint("[dim]No config to clear.[/dim]")
 
@@ -229,6 +254,7 @@ def status():
     if ok:
         color = "green" if latency < 200 else "yellow" if latency < 1000 else "red"
         rprint(f"  Health:  [{color}]ok[/{color}] ({latency:.0f}ms)")
+        client.check_version_compatibility(url)
     else:
         rprint("  Health:  [red]unreachable[/red]")
 
@@ -311,7 +337,7 @@ def version_callback():
     from importlib.metadata import version as pkg_version
 
     try:
-        v = pkg_version("observal")
+        v = pkg_version("observal-cli")
     except Exception:
         v = "dev"
     rprint(f"observal [bold]{v}[/bold]")
@@ -717,11 +743,15 @@ def _run_doctor_patch(ide_name: str):
     import sys
 
     try:
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         result = subprocess.run(
             [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--ide", ide_name],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
+            env=env,
         )
         if result.stdout:
             rprint(result.stdout.rstrip())
@@ -756,11 +786,11 @@ def _configure_kiro(server_url: str):
 
 def _configure_gemini_cli(server_url: str):
     """Check for Gemini CLI and configure telemetry via doctor patch."""
-    gemini_dir = Path.home() / ".gemini"
-
     try:
-        gemini_exists = gemini_dir.is_dir() or shutil.which("gemini")
-        if not gemini_exists:
+        # The gemini binary is the definitive signal.
+        # ~/.gemini/settings.json can be created by a previous observal doctor patch,
+        # so its presence alone doesn't mean Gemini CLI is actually installed.
+        if not shutil.which("gemini"):
             return
 
         if not typer.confirm(
@@ -802,8 +832,21 @@ def _configure_copilot(server_url: str):
     """Check for GitHub Copilot (VS Code) and configure telemetry via doctor patch."""
     try:
         vscode_dir = Path.home() / ".vscode"
-        has_copilot = vscode_dir.is_dir() or shutil.which("code")
+        if not vscode_dir.is_dir():
+            return
+
+        # Check for an actual Copilot extension rather than just VS Code existing.
+        extensions_dir = vscode_dir / "extensions"
+        has_copilot = extensions_dir.is_dir() and any(
+            p.name.startswith("github.copilot") for p in extensions_dir.iterdir()
+        )
         if not has_copilot:
+            return
+
+        if not typer.confirm(
+            "\nDetected GitHub Copilot. Configure telemetry -> Observal?",
+            default=True,
+        ):
             return
 
         _run_doctor_patch("copilot")
@@ -815,8 +858,16 @@ def _configure_copilot(server_url: str):
 def _configure_copilot_cli(server_url: str):
     """Check for Copilot CLI and configure telemetry via doctor patch."""
     try:
-        copilot_dir = Path.home() / ".copilot"
-        if not copilot_dir.is_dir() and not shutil.which("copilot"):
+        # The copilot binary is the definitive signal.
+        # ~/.copilot/config.json can be created by a previous observal doctor patch,
+        # so its presence alone doesn't mean Copilot CLI is actually installed.
+        if not shutil.which("copilot"):
+            return
+
+        if not typer.confirm(
+            "\nDetected Copilot CLI. Configure telemetry -> Observal?",
+            default=True,
+        ):
             return
 
         _run_doctor_patch("copilot-cli")
@@ -828,8 +879,16 @@ def _configure_copilot_cli(server_url: str):
 def _configure_opencode(server_url: str):
     """Check for OpenCode and configure telemetry via doctor patch."""
     try:
-        opencode_config = Path.home() / ".config" / "opencode" / "opencode.json"
-        if not opencode_config.exists() and not shutil.which("opencode"):
+        # The opencode binary is the strongest signal.
+        # ~/.config/opencode/opencode.json can be created by a previous observal
+        # doctor patch, so also accept it only if the binary is present.
+        if not shutil.which("opencode"):
+            return
+
+        if not typer.confirm(
+            "\nDetected OpenCode. Configure telemetry -> Observal?",
+            default=True,
+        ):
             return
 
         _run_doctor_patch("opencode")

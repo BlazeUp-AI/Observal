@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+from datetime import UTC, datetime
 
 import jwt as pyjwt
 from authlib.integrations.starlette_client import OAuth
@@ -21,6 +22,7 @@ from schemas.auth import (
     InitRequest,
     InitResponse,
     LoginRequest,
+    LogoutRequest,
     RefreshRequest,
     RevokeRequest,
     TokenRequest,
@@ -29,7 +31,7 @@ from schemas.auth import (
     UserResponse,
 )
 from services.audit_helpers import audit
-from services.jwt_service import create_access_token, create_refresh_token, decode_refresh_token
+from services.jwt_service import create_access_token, create_refresh_token, decode_access_token, decode_refresh_token
 from services.redis import get_redis
 from services.security_events import (
     EventType,
@@ -38,6 +40,7 @@ from services.security_events import (
     _extract_request_info,
     emit_security_event,
 )
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger(__name__)
 
@@ -57,19 +60,21 @@ if settings.OAUTH_CLIENT_ID and settings.OAUTH_CLIENT_SECRET and settings.OAUTH_
     )
 
 
-async def _issue_tokens(user: User) -> tuple[str, str, int]:
+async def _issue_tokens(user: User, groups: list[str] | None = None) -> tuple[str, str, int]:
     """Issue JWT access + refresh tokens for a user, storing refresh JTI in Redis.
 
     Returns (access_token, refresh_token, expires_in).
     Fails open: tokens are still returned if Redis is temporarily unreachable.
     """
-    access_token, expires_in = create_access_token(user.id, user.role)
-    refresh_token, jti = create_refresh_token(user.id, user.role)
+    access_token, expires_in = create_access_token(user.id, user.role, groups=groups)
+    refresh_token, jti = create_refresh_token(user.id, user.role, groups=groups)
 
     try:
         redis = get_redis()
         refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
         await redis.setex(f"refresh_jti:{jti}", refresh_ttl, str(user.id))
+        # Clear any logout revocation so hooks resume after re-login
+        await redis.delete(f"revoked_user:{user.id}")
     except RedisError as e:
         logger.warning("Redis unavailable when storing refresh JTI, failing open: %s", e)
 
@@ -83,9 +88,10 @@ async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="System already initialized")
 
     default_org = await get_or_create_default_org(db)
+    username = req.username or await generate_unique_username(req.email, db)
     user = User(
         email=req.email,
-        username=req.username,
+        username=username,
         name=req.name,
         role=UserRole.admin,
         org_id=default_org.id,
@@ -125,6 +131,7 @@ async def bootstrap(request: Request, db: AsyncSession = Depends(get_db)):
     default_org = await get_or_create_default_org(db)
     user = User(
         email="admin@localhost",
+        username=await generate_unique_username("admin@localhost", db),
         name="admin",
         role=UserRole.admin,
         org_id=default_org.id,
@@ -253,6 +260,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
     email = userinfo.get("email")
     name = userinfo.get("name") or userinfo.get("preferred_username") or "SSO User"
+    groups = userinfo.get("groups", [])
 
     if not email:
         raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
@@ -268,6 +276,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         default_org = await get_or_create_default_org(db)
         user = User(
             email=email,
+            username=await generate_unique_username(email, db),
             name=name,
             role=UserRole.user,
             org_id=default_org.id,
@@ -285,7 +294,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
                 raise HTTPException(status_code=500, detail="Failed to create or find user")
 
     # Issue JWT tokens for the OAuth login
-    access_token, refresh_token, expires_in = await _issue_tokens(user)
+    access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
     await db.commit()
 
     # Generate a short-lived opaque code instead of exposing tokens in the URL.
@@ -387,6 +396,73 @@ async def whoami(current_user: User = Depends(get_current_user)):
     return UserResponse.model_validate(current_user)
 
 
+@router.post("/logout")
+async def logout(
+    request: Request,
+    req: LogoutRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Revoke the current access token and optionally a refresh token.
+
+    Blacklists the access token JTI in Redis so it can no longer be used,
+    and marks the user_id as revoked so hook scripts stop sending telemetry.
+    """
+    # Extract the raw token from the Authorization header so we can get jti/exp
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip() if auth_header.startswith("Bearer ") else ""
+
+    try:
+        payload = decode_access_token(token)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+    except Exception:
+        jti = None
+        exp = None
+
+    try:
+        redis = get_redis()
+        if jti and exp:
+            now_ts = int(datetime.now(UTC).timestamp())
+            ttl = max(exp - now_ts, 1)
+            await redis.setex(f"revoked_jti:{jti}", ttl, "1")
+
+        # Mark the user as revoked for 30 days (max hooks token lifetime)
+        hooks_ttl = 30 * 86400
+        await redis.setex(f"revoked_user:{current_user.id}", hooks_ttl, "1")
+    except RedisError as e:
+        logger.warning("Redis unavailable during logout: %s", e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+
+    # Optionally revoke the refresh token
+    if req.refresh_token:
+        try:
+            refresh_payload = decode_refresh_token(req.refresh_token)
+            refresh_jti = refresh_payload.get("jti")
+            if refresh_jti:
+                try:
+                    await redis.delete(f"refresh_jti:{refresh_jti}")
+                except RedisError:
+                    pass
+        except Exception:
+            pass  # Best-effort
+
+    source_ip, user_agent = _extract_request_info(request)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.LOGOUT,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
+    await audit(current_user, "auth.logout", resource_type="session", resource_id=str(current_user.id))
+    return {"detail": "Logged out"}
+
+
 # ── JWT Token Endpoints ────────────────────────────────────
 
 
@@ -475,8 +551,9 @@ async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession 
         raise HTTPException(status_code=401, detail="User no longer exists")
 
     # Issue new token pair
-    access_token, expires_in = create_access_token(user.id, user.role)
-    new_refresh_token, new_jti = create_refresh_token(user.id, user.role)
+    groups = payload.get("groups", [])
+    access_token, expires_in = create_access_token(user.id, user.role, groups=groups)
+    new_refresh_token, new_jti = create_refresh_token(user.id, user.role, groups=groups)
 
     try:
         refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
@@ -584,6 +661,7 @@ async def create_hooks_token(current_user: User = Depends(get_current_user)):
         current_user.id,
         current_user.role,
         expires_in_minutes=settings.JWT_HOOKS_TOKEN_EXPIRE_MINUTES,
+        groups=getattr(current_user, "_groups", []),
     )
     await emit_security_event(
         SecurityEvent(

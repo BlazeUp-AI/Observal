@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.deps import get_db, require_role, resolve_prefix_id
-from models.agent import Agent, AgentGoalTemplate
+from models.agent import Agent
 from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User, UserRole
 from schemas.eval import EvalRequest, EvalRunDetailResponse, EvalRunResponse, ScorecardResponse
@@ -44,7 +44,7 @@ async def run_evaluation(
         Agent,
         agent_id,
         db,
-        load_options=[selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)],
+        load_options=[selectinload(Agent.team_accesses)],
     )
 
     # Org-scope check: verify agent belongs to user's org
@@ -290,7 +290,7 @@ async def eval_session(
             Agent,
             agent_id,
             db,
-            load_options=[selectinload(Agent.goal_template).selectinload(AgentGoalTemplate.sections)],
+            load_options=[selectinload(Agent.team_accesses)],
         )
         # Org-scope check: verify agent belongs to user's org
         if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -529,3 +529,84 @@ async def scorecard_penalties(
     penalties = raw.get("penalties", [])
     await audit(current_user, "eval.scorecard.penalties", resource_type="scorecard", resource_id=str(sc.id))
     return penalties
+
+
+@router.get("/agents/{agent_id}/sessions", response_model=list[dict])
+async def list_agent_evaluated_sessions(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Get list of sessions where this agent was actually used (from telemetry), not from scorecards.
+
+    This avoids the trace_id mapping problem where eval creates synthetic trace_ids that don't
+    exist in ClickHouse telemetry.
+    """
+    agent = await resolve_prefix_id(Agent, agent_id, db)
+
+    _log.info("list_agent_evaluated_sessions_start", agent_id=str(agent.id), agent_name=agent.name)
+
+    # Org-scope check: verify agent belongs to user's org
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
+    # Query ClickHouse directly for sessions where this agent was used
+    # Uses strict agent_name matching (works for Kiro and any IDE that sets agent_name)
+    # No heuristics = zero false positives
+    sql = (
+        "SELECT DISTINCT "
+        "LogAttributes['session.id'] AS session_id, "
+        "min(Timestamp) AS start_time, "
+        "max(Timestamp) AS end_time, "
+        "count() AS event_count, "
+        "any(LogAttributes['tool_input']) AS first_prompt, "
+        "any(ServiceName) AS service_name "
+        "FROM otel_logs "
+        "WHERE LogAttributes['agent_name'] = {agent_name:String} "
+        "AND LogAttributes['session.id'] != '' "
+        "GROUP BY session_id "
+        "ORDER BY start_time DESC "
+        "LIMIT 50"
+    )
+
+    session_map: dict[str, dict] = {}
+
+    try:
+        ch_result = await _query(f"{sql} FORMAT JSON", {"param_agent_name": agent.name})
+        _log.info("clickhouse_query_result", status_code=ch_result.status_code, agent_name=agent.name)
+        if ch_result.status_code == 200:
+            data = ch_result.json().get("data", [])
+            _log.info("clickhouse_data", row_count=len(data), agent_name=agent.name)
+            for row in data:
+                sid = row.get("session_id")
+                # Only include sessions with actual events
+                event_count = row.get("event_count", 0)
+                if sid and event_count > 0:
+                    session_map[sid] = {
+                        "session_id": sid,
+                        "trace_id": sid,  # Use session_id as trace_id for consistency
+                        "evaluated_at": row.get("end_time", row.get("start_time")),  # Use session end time
+                        "start_time": row.get("start_time"),
+                        "end_time": row.get("end_time"),
+                        "event_count": event_count,
+                        "first_prompt": (row.get("first_prompt") or "")[:100],
+                        "service_name": row.get("service_name"),
+                    }
+    except Exception as e:
+        _log.warning("failed_to_fetch_agent_sessions", agent_name=agent.name, error=str(e))
+        return []
+
+    # Convert to list
+    valid_sessions = list(session_map.values())
+
+    _log.info("list_agent_evaluated_sessions_complete", agent_name=agent.name, session_count=len(valid_sessions))
+
+    await audit(
+        current_user,
+        "eval.agent.sessions.list",
+        resource_type="agent",
+        resource_id=str(agent.id),
+        resource_name=agent.name,
+    )
+
+    return valid_sessions

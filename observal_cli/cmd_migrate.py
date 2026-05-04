@@ -112,6 +112,10 @@ CLICKHOUSE_TABLES: list[TableCfg] = [
     {"name": "audit_log", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["actor_id"]},
     {"name": "mcp_tool_calls", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["mcp_server_id", "user_id"]},
     {"name": "agent_interactions", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["agent_id", "user_id"]},
+    # otel_logs DDL uses capital-T "Timestamp" (OpenTelemetry convention)
+    {"name": "otel_logs", "engine": "mergetree", "time_col": "Timestamp", "fk_cols": []},
+    {"name": "security_events", "engine": "mergetree", "time_col": "timestamp", "fk_cols": []},
+    {"name": "webhook_deliveries", "engine": "mergetree", "time_col": "timestamp", "fk_cols": []},
 ]
 
 FK_PG_TABLE_MAP: dict[str, str] = {
@@ -401,7 +405,8 @@ async def _insert_table(
     inserted = 0
     skipped = 0
     batch: list[dict] = []
-    columns: list[str] | None = None
+    columns = sorted(col_types.keys())
+    logged_skipped = False
 
     with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
@@ -410,8 +415,14 @@ async def _insert_table(
                 continue
             row = json.loads(line)
 
-            if columns is None:
-                columns = list(row.keys())
+            if not logged_skipped:
+                skipped_cols = set(row) - set(columns)
+                if skipped_cols:
+                    rprint(
+                        f"[dim]  {jsonl_path.stem}: skipping archive columns not in target: "
+                        f"{', '.join(sorted(skipped_cols))}[/dim]"
+                    )
+                    logged_skipped = True
 
             batch.append(row)
 
@@ -488,6 +499,22 @@ async def _ch_query(
     finally:
         if owns_client:
             await http_client.aclose()
+
+
+def _rewrite_project_id(parquet_path: Path, target_project_id: str) -> Path:
+    """Rewrite project_id column in a Parquet file, return path to temp file."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(parquet_path)
+    if "project_id" not in table.column_names:
+        return parquet_path
+    idx = table.column_names.index("project_id")
+    new_col = pa.nulls(len(table), type=pa.string()).fill_null(target_project_id)
+    table = table.set_column(idx, "project_id", new_col)
+    tmp_path = parquet_path.with_suffix(".tmp.parquet")
+    pq.write_table(table, tmp_path)
+    return tmp_path
 
 
 async def _ch_import(
@@ -683,11 +710,11 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
             target_version = await conn.fetchval("SELECT version_num FROM alembic_version LIMIT 1")
             source_version = manifest["source_alembic_version"]
             if target_version != source_version:
-                rprint("[red]Schema version mismatch:[/red]")
+                rprint("[yellow]Schema version mismatch (non-fatal):[/yellow]")
                 rprint(f"  Archive: {source_version}")
                 rprint(f"  Target:  {target_version}")
-                rprint("\n[dim]  Run: cd observal-server && alembic upgrade head[/dim]")
-                raise typer.Exit(1)
+                rprint("[dim]  Extra columns from the archive will be filtered out automatically.[/dim]")
+                warnings.append(f"Schema version mismatch: archive={source_version}, target={target_version}")
 
             rows_inserted: dict[str, int] = {}
             rows_skipped: dict[str, int] = {}
@@ -716,6 +743,33 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
                 ins, sk = await _insert_table(conn, table, jsonl_path, col_types)
                 rows_inserted[table] = ins
                 rows_skipped[table] = sk
+
+            # Post-import fixup: backfill NULL owner_org_id from creator's org
+            _org_backfill = [
+                ("agents", "created_by"),
+                ("mcp_listings", "submitted_by"),
+                ("skill_listings", "submitted_by"),
+                ("hook_listings", "submitted_by"),
+                ("prompt_listings", "submitted_by"),
+                ("sandbox_listings", "submitted_by"),
+            ]
+            for tbl, creator_col in _org_backfill:
+                if tbl not in existing_tables:
+                    continue
+                tbl_cols = await _get_column_types(conn, tbl)
+                if "owner_org_id" not in tbl_cols:
+                    continue
+                result = await conn.execute(
+                    f"UPDATE {tbl} SET owner_org_id = u.org_id "
+                    f"FROM users u "
+                    f"WHERE {tbl}.{creator_col} = u.id "
+                    f"AND {tbl}.owner_org_id IS NULL "
+                    f"AND u.org_id IS NOT NULL"
+                )
+                count = int(result.split()[-1])
+                if count > 0:
+                    rprint(f"[dim]  Fixed {count} row(s) in {tbl} with NULL owner_org_id[/dim]")
+                    warnings.append(f"{tbl}: backfilled owner_org_id for {count} row(s)")
 
         finally:
             await conn.close()
@@ -1114,6 +1168,7 @@ async def _export_telemetry(
 async def _import_telemetry(
     clickhouse_url: str,
     input_dir: Path,
+    normalize_project_id: str | None = None,
 ) -> TelemetryImportResult:
     """Import Parquet files into target ClickHouse."""
     t0 = time.monotonic()
@@ -1169,6 +1224,36 @@ async def _import_telemetry(
     else:
         completed_tables = set()
 
+    # Validate resume state: check that "completed" tables actually have data
+    if completed_tables:
+        invalidated: list[str] = []
+        for table_cfg in CLICKHOUSE_TABLES:
+            tname = table_cfg["name"]
+            if tname not in completed_tables:
+                continue
+            if tname not in existing:
+                invalidated.append(tname)
+                continue
+            if table_cfg["engine"] == "replacing":
+                sql = f"SELECT 1 FROM {tname} FINAL WHERE is_deleted = 0 LIMIT 1 FORMAT JSON"
+            else:
+                sql = f"SELECT 1 FROM {tname} LIMIT 1 FORMAT JSON"
+            resp = await _ch_query(http_url, db, user, password, sql)
+            if not resp.json().get("data"):
+                invalidated.append(tname)
+        if invalidated:
+            for name in invalidated:
+                completed_tables.discard(name)
+            rprint(
+                f"[yellow]Resume state invalidated for {len(invalidated)} table(s) "
+                f"(no data found): {', '.join(sorted(invalidated))}[/yellow]"
+            )
+            warnings.append(f"Resume state invalidated for: {', '.join(sorted(invalidated))}")
+            state_path.write_text(
+                json.dumps({"completed": sorted(completed_tables)}, indent=2),
+                encoding="utf-8",
+            )
+
     for table_cfg in CLICKHOUSE_TABLES:
         table_name = table_cfg["name"]
         table_info = manifest["tables"].get(table_name, {})
@@ -1205,7 +1290,14 @@ async def _import_telemetry(
                 continue
 
             rprint(f"  Importing {filename}...")
-            await _ch_import(http_url, db, user, password, table_name, filepath)
+            import_path = filepath
+            if normalize_project_id is not None:
+                import_path = _rewrite_project_id(filepath, normalize_project_id)
+            try:
+                await _ch_import(http_url, db, user, password, table_name, import_path)
+            finally:
+                if import_path != filepath:
+                    import_path.unlink(missing_ok=True)
 
         rows_imported[table_name] = table_info.get("row_count", 0)
         rprint(f"  [green]✓[/green] {table_name}: {rows_imported[table_name]:,} rows")
@@ -1540,6 +1632,9 @@ def export_telemetry_cmd(
 def import_telemetry_cmd(
     clickhouse_url: str = typer.Option(..., "--clickhouse-url", help="Target ClickHouse connection string"),
     input_dir: str = typer.Option(..., "--input-dir", help="Directory containing Parquet files"),
+    project_id: str | None = typer.Option(
+        None, "--project-id", help="Rewrite project_id in all tables to this value (use when source/target orgs differ)"
+    ),
 ) -> None:
     """Import Parquet telemetry files into target ClickHouse."""
     _require_admin()
@@ -1550,8 +1645,11 @@ def import_telemetry_cmd(
         rprint(f"[red]Directory not found:[/red] {input_path}")
         raise typer.Exit(1)
 
+    if project_id:
+        rprint(f"[dim]  Normalizing project_id to: {project_id}[/dim]")
+
     rprint(f"[bold]Importing telemetry from:[/bold] {input_path}")
-    result = asyncio.run(_import_telemetry(clickhouse_url, input_path))
+    result = asyncio.run(_import_telemetry(clickhouse_url, input_path, normalize_project_id=project_id))
 
     total = sum(result.rows_imported.values())
     rprint("\n[bold green]✓ Telemetry import complete[/bold green]")

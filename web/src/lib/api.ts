@@ -25,64 +25,87 @@ import type {
   LeaderboardWindow,
   ValidationResult,
   VersionSuggestions,
+  AgentVersionsResponse,
+  ComponentVersionsResponse,
+  ComponentVersionDetail,
+  VersionDiff,
   BulkResult,
   ComponentLeaderboardItem,
   AuditLogEntry,
   SecurityEvent,
   DiagnosticsResponse,
+  InsightReportListItem,
+  InsightReport,
 } from "./types";
 
 const API = "/api/v1";
 
+const STORAGE_KEY_ACCESS_TOKEN = "observal_access_token";
+const STORAGE_KEY_REFRESH_TOKEN = "observal_refresh_token";
+const STORAGE_KEY_USER_ROLE = "observal_user_role";
+const STORAGE_KEY_USER_NAME = "observal_user_name";
+const STORAGE_KEY_USER_EMAIL = "observal_user_email";
+const STORAGE_KEY_USER_USERNAME = "observal_user_username";
+
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_access_token");
+  return localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
 }
 
 function getRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_refresh_token");
+  return localStorage.getItem(STORAGE_KEY_REFRESH_TOKEN);
 }
 
 export function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem("observal_access_token", accessToken);
-  localStorage.setItem("observal_refresh_token", refreshToken);
+  localStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, accessToken);
+  localStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshToken);
 }
 
 export function clearSession() {
-  localStorage.removeItem("observal_access_token");
-  localStorage.removeItem("observal_refresh_token");
+  localStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
+  localStorage.removeItem(STORAGE_KEY_REFRESH_TOKEN);
   localStorage.removeItem("observal_api_key"); // clean up legacy
-  localStorage.removeItem("observal_user_role");
-  localStorage.removeItem("observal_user_name");
-  localStorage.removeItem("observal_user_email");
+  localStorage.removeItem(STORAGE_KEY_USER_ROLE);
+  localStorage.removeItem(STORAGE_KEY_USER_NAME);
+  localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
+  localStorage.removeItem(STORAGE_KEY_USER_USERNAME);
 }
 
 export function setUserRole(role: string) {
-  localStorage.setItem("observal_user_role", role);
+  localStorage.setItem(STORAGE_KEY_USER_ROLE, role);
 }
 
 export function getUserRole(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_user_role");
+  return localStorage.getItem(STORAGE_KEY_USER_ROLE);
 }
 
 export function setUserName(name: string) {
-  localStorage.setItem("observal_user_name", name);
+  localStorage.setItem(STORAGE_KEY_USER_NAME, name);
 }
 
 export function getUserName(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_user_name");
+  return localStorage.getItem(STORAGE_KEY_USER_NAME);
 }
 
 export function setUserEmail(email: string) {
-  localStorage.setItem("observal_user_email", email);
+  localStorage.setItem(STORAGE_KEY_USER_EMAIL, email);
 }
 
 export function getUserEmail(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("observal_user_email");
+  return localStorage.getItem(STORAGE_KEY_USER_EMAIL);
+}
+
+export function setUserUsername(username: string) {
+  localStorage.setItem(STORAGE_KEY_USER_USERNAME, username);
+}
+
+export function getUserUsername(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(STORAGE_KEY_USER_USERNAME);
 }
 
 let _refreshPromise: Promise<boolean> | null = null;
@@ -167,7 +190,16 @@ async function request<T = unknown>(
     }
 
     const text = await response.text().catch(() => response.statusText);
-    throw new Error(`${response.status}: ${text}`);
+    let detail = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.detail) detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+    } catch {
+      // not JSON — use raw text
+    }
+    const err = new Error(detail);
+    (err as Error & { status: number }).status = response.status;
+    throw err;
   }
 
   if (response.status === 204) return undefined as T;
@@ -252,18 +284,43 @@ export const registry = {
   validate: (body: { components: { component_type: string; component_id: string }[] }) =>
     post<ValidationResult>("/agents/validate", body),
   my: (type?: RegistryType) => get<RegistryItem[]>(`/${type ?? "agents"}/my`),
+  archived: () => get<RegistryItem[]>("/agents/archived"),
   archive: (id: string) => patch(`/agents/${id}/archive`),
   unarchive: (id: string) => patch(`/agents/${id}/unarchive`),
   draft: (body: unknown, type?: RegistryType) =>
     post<RegistryItem>(`/${type ?? "agents"}/draft`, body),
   updateDraft: (id: string, body: unknown, type?: RegistryType) =>
     put<RegistryItem>(`/${type ?? "agents"}/${id}/draft`, body),
+  updateAgent: (id: string, body: unknown) =>
+    put<RegistryItem>(`/agents/${id}`, body),
   submitDraft: (id: string, type?: RegistryType) =>
     post(`/${type ?? "agents"}/${id}/submit`),
   submit: (type: RegistryType, body: unknown) =>
     post<RegistryItem>(`/${type}/submit`, body),
   versionSuggestions: (id: string) =>
     get<VersionSuggestions>(`/agents/${id}/version-suggestions`),
+  listVersions: (agentId: string, page = 1, pageSize = 50) =>
+    get<AgentVersionsResponse>(`/agents/${agentId}/versions?page=${page}&page_size=${pageSize}`),
+  getVersion: (agentId: string, version: string) =>
+    get<unknown>(`/agents/${agentId}/versions/${version}`),
+  createVersion: (agentId: string, body: unknown) =>
+    post<unknown>(`/agents/${agentId}/versions`, body),
+  getVersionDiff: (agentId: string, v1: string, v2: string) =>
+    get<VersionDiff>(`/agents/${agentId}/versions/${v1}/diff/${v2}`),
+
+  // Component versions
+  listComponentVersions: (type: RegistryType, listingId: string, page = 1, pageSize = 50) =>
+    get<ComponentVersionsResponse>(`/${type}/${listingId}/versions?page=${page}&page_size=${pageSize}`),
+  getComponentVersion: (type: RegistryType, listingId: string, version: string) =>
+    get<ComponentVersionDetail>(`/${type}/${listingId}/versions/${version}`),
+  publishComponentVersion: (type: RegistryType, listingId: string, body: unknown) =>
+    post<ComponentVersionDetail>(`/${type}/${listingId}/versions`, body),
+  componentVersionSuggestions: (type: RegistryType, listingId: string) =>
+    get<VersionSuggestions>(`/${type}/${listingId}/version-suggestions`),
+  startEdit: (id: string, type?: RegistryType) =>
+    post<{ status: string }>(`/${type ?? "agents"}/${id}/start-edit`),
+  cancelEdit: (id: string, type?: RegistryType) =>
+    post<{ status: string }>(`/${type ?? "agents"}/${id}/cancel-edit`),
 };
 
 // ── Review ──────────────────────────────────────────────────────────
@@ -369,6 +426,17 @@ export const eval_ = {
   },
   penalties: (scorecardId: string) =>
     get<TracePenalty[]>(`/eval/scorecards/${scorecardId}/penalties`),
+  agentSessions: (agentId: string) =>
+    get<Array<{
+      session_id: string;
+      trace_id: string;
+      evaluated_at: string;
+      start_time?: string;
+      end_time?: string;
+      event_count?: number;
+      first_prompt?: string;
+      service_name?: string;
+    }>>(`/eval/agents/${agentId}/sessions`),
 };
 
 // ── Admin ───────────────────────────────────────────────────────────
@@ -378,8 +446,8 @@ export const admin = {
     put<unknown>(`/admin/settings/${key}`, body),
   deleteSetting: (key: string) => del(`/admin/settings/${key}`),
   users: () => get<AdminUser[]>("/admin/users"),
-  createUser: (body: { email: string; name: string; role?: string }) =>
-    post<{ id: string; email: string; name: string; role: string; password: string }>("/admin/users", body),
+  createUser: (body: { email: string; name: string; username?: string; role?: string }) =>
+    post<{ id: string; email: string; name: string; username?: string; role: string; password: string }>("/admin/users", body),
   updateRole: (id: string, body: { role: string }) =>
     put<AdminUser>(`/admin/users/${id}/role`, body),
   resetPassword: (id: string, body: { new_password?: string; generate?: boolean }) =>
@@ -391,6 +459,10 @@ export const admin = {
     get<{ trace_privacy: boolean }>("/admin/org/trace-privacy"),
   setTracePrivacy: (enabled: boolean) =>
     put<{ trace_privacy: boolean }>("/admin/org/trace-privacy", { trace_privacy: enabled }),
+  getRegisteredAgentsOnly: () =>
+    get<{ registered_agents_only: boolean }>("/admin/org/registered-agents-only"),
+  setRegisteredAgentsOnly: (enabled: boolean) =>
+    put<{ registered_agents_only: boolean }>("/admin/org/registered-agents-only", { registered_agents_only: enabled }),
   auditLog: (params?: Record<string, string>) => {
     const qs = params ? `?${new URLSearchParams(params)}` : "";
     return get<AuditLogEntry[]>(`/admin/audit-log${qs}`);
@@ -421,6 +493,9 @@ export type PublicConfig = {
   sso_only: boolean;
   saml_enabled: boolean;
   eval_configured: boolean;
+  branding_logo: string | null;
+  branding_app_name: string | null;
+  branding_wordmark: string | null;
 };
 
 export const config = {
@@ -431,6 +506,30 @@ export const config = {
 export const bulk = {
   createAgents: (body: { agents: unknown[]; dry_run?: boolean }) =>
     post<BulkResult>("/bulk/agents", body),
+};
+
+// ── Insights ───────────────────────────────────────────────────────
+export const insights = {
+  generate: (agentId: string, periodDays?: number) =>
+    post<InsightReportListItem>(`/insights/agents/${agentId}/generate`, periodDays ? { period_days: periodDays } : {}),
+  listReports: (agentId: string) =>
+    get<InsightReportListItem[]>(`/insights/agents/${agentId}/reports`),
+  getReport: (reportId: string) =>
+    get<InsightReport>(`/insights/reports/${reportId}`),
+  exportHtml: async (reportId: string): Promise<void> => {
+    const token = getAccessToken();
+    const res = await fetch(`${API}/insights/reports/${reportId}/export/html`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error("Export failed");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `insight-report-${reportId.slice(0, 8)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ── Health ──────────────────────────────────────────────────────────

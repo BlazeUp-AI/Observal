@@ -1,10 +1,13 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
+from api.routes.component_versions import create_version_router
 from api.sanitize import escape_like
-from models.hook import HookDownload, HookListing
+from models.hook import HookDownload, HookListing, HookVersion
 from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.hook import (
@@ -17,6 +20,7 @@ from schemas.hook import (
     HookUpdateRequest,
 )
 from services.audit_helpers import audit
+from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
 
 router = APIRouter(prefix="/api/v1/hooks", tags=["hooks"])
 
@@ -35,9 +39,17 @@ async def submit_hook(
 
     listing = HookListing(
         name=req.name,
+        owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = HookVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner,
         event=req.event,
         execution_mode=req.execution_mode,
         priority=req.priority,
@@ -50,10 +62,13 @@ async def submit_hook(
         file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -69,14 +84,18 @@ async def list_hooks(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(HookListing).where(HookListing.status == ListingStatus.approved)
+    stmt = (
+        select(HookListing)
+        .join(HookVersion, HookListing.latest_version_id == HookVersion.id)
+        .where(HookVersion.status == ListingStatus.approved)
+    )
     if event:
-        stmt = stmt.where(HookListing.event == event)
+        stmt = stmt.where(HookVersion.event == event)
     if scope:
-        stmt = stmt.where(HookListing.scope == scope)
+        stmt = stmt.where(HookVersion.scope == scope)
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(HookListing.created_at.desc()))
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "hook.list", resource_type="hook")
@@ -162,9 +181,17 @@ async def save_hook_draft(
 ):
     listing = HookListing(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = HookVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
         event=req.event,
         execution_mode=req.execution_mode,
         priority=req.priority,
@@ -177,10 +204,13 @@ async def save_hook_draft(
         file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -201,14 +231,16 @@ async def update_hook_draft(
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the listing owner")
-    if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
-        raise HTTPException(status_code=400, detail="Listing is not a draft")
+    if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
+        raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
+
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version to update")
 
     for field in (
-        "name",
         "version",
         "description",
-        "owner",
         "event",
         "execution_mode",
         "priority",
@@ -223,14 +255,74 @@ async def update_hook_draft(
     ):
         val = getattr(req, field)
         if val is not None:
+            setattr(ver, field, val)
+
+    # Don't allow saving over another user's active lock
+    if ver.is_editing and ver.editing_by != current_user.id and not _is_lock_expired(ver.editing_since):
+        raise HTTPException(
+            status_code=409,
+            detail="This item is currently being edited by another user. Please try again later.",
+        )
+    release_edit_lock(ver, current_user.id, force=True)
+    await db.flush()
+
+    for field in ("name", "owner"):
+        val = getattr(req, field)
+        if val is not None:
             setattr(listing, field, val)
 
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.draft.update", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
+    if listing.status == ListingStatus.pending:
+        action = "hook.pending.update"
+    elif listing.status == ListingStatus.rejected:
+        action = "hook.rejected.update"
+    else:
+        action = "hook.draft.update"
+    await audit(current_user, action, resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
     return HookListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/start-edit")
+async def start_edit_hook(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(HookListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    if ver.status not in (ListingStatus.pending, ListingStatus.draft, ListingStatus.rejected):
+        raise HTTPException(status_code=400, detail=f"Cannot edit: listing is '{ver.status.value}'")
+    # Re-fetch with row-level lock to prevent TOCTOU race
+    ver = (await db.execute(select(HookVersion).where(HookVersion.id == ver.id).with_for_update())).scalar_one()
+    acquire_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "locked"}
+
+
+@router.post("/{listing_id}/cancel-edit")
+async def cancel_edit_hook(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(HookListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    release_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "unlocked"}
 
 
 @router.post("/{listing_id}/submit", response_model=HookListingResponse)
@@ -277,10 +369,22 @@ async def delete_hook(
     for r in (await db.execute(select(HookDownload).where(HookDownload.listing_id == listing.id))).scalars().all():
         await db.delete(r)
 
+    # Break the circular FK (listing → latest_version → listing) before delete
     listing_name = listing.name
+    listing.latest_version_id = None
+    listing.latest_version = None
+    await db.flush()
+    # Delete versions explicitly to avoid SQLAlchemy circular dependency detection
+    for ver in list(listing.versions):
+        await db.delete(ver)
+    await db.flush()
     await db.delete(listing)
     await db.commit()
     await audit(
         current_user, "hook.delete", resource_type="hook", resource_id=str(listing_id), resource_name=listing_name
     )
     return {"deleted": str(listing_id)}
+
+
+# --- Version sub-routes ---
+router.include_router(create_version_router("hook", HookListing, HookVersion))

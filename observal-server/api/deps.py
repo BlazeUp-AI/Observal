@@ -38,7 +38,17 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
     except jwt.InvalidTokenError:
         return None
 
+    jti = payload.get("jti")
+    if jti:
+        try:
+            redis = get_redis()
+            if await redis.get(f"revoked_jti:{jti}"):
+                return None
+        except RedisError:
+            pass  # Fail open if Redis is down
+
     user_id = payload.get("sub")
+
     if not user_id:
         return None
 
@@ -57,6 +67,7 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
         return None
     user, trace_privacy = row
     user._trace_privacy = bool(trace_privacy)
+    user._groups = payload.get("groups", [])
     return user
 
 
@@ -103,13 +114,19 @@ async def optional_current_user(
     authorization: str | None = Header(None),
     db: AsyncSession = Depends(get_db),
 ) -> User | None:
-    """Return the authenticated user when a valid token is present, else None."""
+    """Return the authenticated user when a valid token is present, else None.
+
+    Raises HTTP 401 if a Bearer token is present but invalid/expired —
+    this distinguishes 'no credentials' from 'bad credentials'.
+    """
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.removeprefix("Bearer ").strip()
     user = await _authenticate_via_jwt(token, db)
-    if user and user.auth_provider == "deactivated":
-        return None
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if user.auth_provider == "deactivated":
+        raise HTTPException(status_code=401, detail="Account deactivated")
     return user
 
 
@@ -147,6 +164,47 @@ def require_role(min_role: UserRole):
         return current_user
 
     return _check
+
+
+def get_user_groups(user: User | None) -> list[str]:
+    """Get user groups extracted from the JWT token during authentication."""
+    if not user:
+        return []
+    return getattr(user, "_groups", [])
+
+
+def get_effective_agent_permission(agent: "Agent", user: User | None) -> str:  # noqa: F821
+    """Evaluate effective permission for an agent: 'owner', 'edit', 'view', or 'none'."""
+    # Local import to avoid circular dependency
+    from models.agent import AgentVisibility
+
+    if not user:
+        if agent.visibility == AgentVisibility.public:
+            return "view"
+        return "none"
+
+    if agent.created_by == user.id:
+        return "owner"
+
+    user_role_level = ROLE_HIERARCHY.get(user.role, 999)
+    if user_role_level <= ROLE_HIERARCHY[UserRole.admin]:
+        return "owner"  # admins can edit anything
+
+    if user.org_id is not None and agent.owner_org_id == user.org_id:
+        return "view"
+
+    user_groups = get_user_groups(user)
+    best_perm = "none"
+    perm_levels = {"none": 0, "view": 1, "edit": 2, "owner": 3}
+
+    for access in getattr(agent, "team_accesses", []):
+        if access.group_name in user_groups and perm_levels.get(access.permission, 0) > perm_levels[best_perm]:
+            best_perm = access.permission
+
+    if best_perm == "none" and agent.visibility == AgentVisibility.public:
+        return "view"
+
+    return best_perm
 
 
 # Convenience shorthand for super_admin-only endpoints
@@ -220,7 +278,10 @@ async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_s
         except ValueError:
             stmt = select(model).where(model.name == identifier)
     if require_status is not None:
-        stmt = stmt.where(model.status == require_status)
+        version_model = model.__mapper__.relationships["latest_version"].entity.class_
+        stmt = stmt.join(version_model, model.latest_version_id == version_model.id).where(
+            version_model.status == require_status
+        )
     # Order by created_at desc so duplicates resolve to the most recent entry
     if hasattr(model, "created_at"):
         stmt = stmt.order_by(model.created_at.desc())

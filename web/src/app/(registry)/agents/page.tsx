@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useRegistryList, useMyAgents, useWhoami, useArchiveAgent, useUnarchiveAgent, useSubmitDraft } from "@/hooks/use-api";
+import { useRegistryList, useMyAgents, useArchivedAgents, useWhoami, useArchiveAgent, useUnarchiveAgent, useSubmitDraft } from "@/hooks/use-api";
 import { registry, getUserRole } from "@/lib/api";
 import { hasMinRole } from "@/hooks/use-role-guard";
 import {
@@ -130,9 +130,11 @@ function DeleteAgentButton({ agent }: { agent: RegistryItem }) {
 function ArchiveAgentButton({ agent }: { agent: RegistryItem }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isAdmin = useSyncExternalStore(roleSub, () => hasMinRole(getUserRole(), "admin"), () => false);
+  const { data: whoami } = useWhoami();
   const archiveMutation = useArchiveAgent();
+  const isOwner = whoami?.id && agent.created_by && whoami.id === String(agent.created_by);
 
-  if (!isAdmin || agent.status === "archived") return null;
+  if ((!isAdmin && !isOwner) || agent.status === "archived") return null;
 
   return (
     <>
@@ -186,10 +188,9 @@ function ArchiveAgentButton({ agent }: { agent: RegistryItem }) {
 
 function UnarchiveAgentButton({ agent }: { agent: RegistryItem }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const isAdmin = useSyncExternalStore(roleSub, () => hasMinRole(getUserRole(), "admin"), () => false);
   const unarchiveMutation = useUnarchiveAgent();
 
-  if (!isAdmin || agent.status !== "archived") return null;
+  if (agent.status !== "archived") return null;
 
   return (
     <>
@@ -199,7 +200,7 @@ function UnarchiveAgentButton({ agent }: { agent: RegistryItem }) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-green-600"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-success"
               onClick={(e) => {
                 e.stopPropagation();
                 setConfirmOpen(true);
@@ -268,8 +269,8 @@ const columns: ColumnDef<RegistryItem>[] = [
           >
             {row.original.name}
           </Link>
-          {row.original.status && row.original.status !== "active" && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-600 dark:text-yellow-400 ring-1 ring-yellow-500/20">
+          {row.original.status && row.original.status !== "approved" && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning ring-1 ring-warning/20">
               <Clock className="h-2.5 w-2.5" />
               Pending Review
             </span>
@@ -421,20 +422,30 @@ function AgentListContent() {
   );
 
   const { data: myAgents } = useMyAgents();
+  const isAdmin = useSyncExternalStore(roleSub, () => hasMinRole(getUserRole(), "admin"), () => false);
+  const { data: allArchivedAgents } = useArchivedAgents(isAdmin);
   const submitDraft = useSubmitDraft();
   const [draftsExpanded, setDraftsExpanded] = useState(true);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const drafts = useMemo(() => {
-    return (myAgents ?? []).filter((a) => a.status === "draft" || a.status === "rejected");
+    return (myAgents ?? []).filter((a) => a.status === "draft" || a.status === "rejected" || a.status === "pending");
   }, [myAgents]);
+
+  const archivedAgents = useMemo(() => {
+    if (isAdmin && allArchivedAgents) {
+      return allArchivedAgents;
+    }
+    return (myAgents ?? []).filter((a) => a.status === "archived");
+  }, [isAdmin, allArchivedAgents, myAgents]);
 
   const { filtered, pendingCount } = useMemo(() => {
     const active = agents ?? [];
     const activeIds = new Set(active.map((a) => a.id));
     const pending = (myAgents ?? []).filter(
-      (a) => a.status !== "active" && a.status !== "draft" && a.status !== "rejected" && !activeIds.has(a.id),
+      (a) => a.status !== "approved" && a.status !== "draft" && a.status !== "rejected" && a.status !== "archived" && !activeIds.has(a.id),
     );
     return { filtered: [...pending, ...active], pendingCount: pending.length };
   }, [agents, myAgents]);
@@ -529,7 +540,7 @@ function AgentListContent() {
               ) : (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
-              My Drafts & Rejected
+              Drafts
               <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
                 {drafts.length}
               </span>
@@ -541,7 +552,9 @@ function AgentListContent() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-medium">{draft.name}</p>
-                        {draft.status === "rejected" && <StatusBadge status="rejected" />}
+                        {(draft.status === "rejected" || draft.status === "pending") && (
+                          <StatusBadge status={draft.status} />
+                        )}
                       </div>
                       {draft.status === "rejected" && draft.rejection_reason && (
                         <p className="text-xs text-destructive mt-0.5">
@@ -569,16 +582,18 @@ function AgentListContent() {
                         <FileEdit className="mr-1 h-3 w-3" />
                         Edit
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={submitDraft.isPending}
-                        onClick={() => submitDraft.mutate(draft.id)}
-                      >
-                        <Send className="mr-1 h-3 w-3" />
-                        {draft.status === "rejected" ? "Resubmit" : "Submit for Review"}
-                      </Button>
+                      {(draft.status === "draft" || draft.status === "rejected") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={submitDraft.isPending}
+                          onClick={() => submitDraft.mutate(draft.id)}
+                        >
+                          <Send className="mr-1 h-3 w-3" />
+                          {draft.status === "rejected" ? "Resubmit" : "Submit for Review"}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="sm"
@@ -596,10 +611,67 @@ function AgentListContent() {
           </div>
         )}
 
+        {/* Archived */}
+        {archivedAgents.length > 0 && (
+          <div className="rounded-lg border border-border bg-card">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium hover:bg-accent/40 transition-colors rounded-t-lg"
+              onClick={() => setArchivedExpanded((prev) => !prev)}
+            >
+              {archivedExpanded ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              )}
+              <Archive className="h-4 w-4 text-muted-foreground" />
+              Archived
+              <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+                {archivedAgents.length}
+              </span>
+            </button>
+            {archivedExpanded && (
+              <div className="divide-y divide-border border-t">
+                {archivedAgents.map((agent) => (
+                  <div key={agent.id} className="flex items-center gap-4 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium">{agent.name}</p>
+                        <StatusBadge status="archived" />
+                      </div>
+                      {agent.description && (
+                        <p className="truncate text-xs text-muted-foreground mt-0.5">
+                          {agent.description}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {isAdmin && ((agent.created_by_email as string) || (agent.created_by_username as string)) && (
+                          <p className="text-[11px] text-muted-foreground">
+                            by {(agent.created_by_username as string) || (agent.created_by_email as string)}
+                          </p>
+                        )}
+                        {agent.updated_at && (
+                          <p className="text-[11px] text-muted-foreground">
+                            {new Date(agent.updated_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <UnarchiveAgentButton agent={agent} />
+                      <DeleteAgentButton agent={agent} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {pendingCount > 0 && (
-          <div className="flex items-start gap-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
-            <Clock className="h-4 w-4 mt-0.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
-            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+          <div className="flex items-start gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3">
+            <Clock className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+            <p className="text-sm text-warning">
               You have {pendingCount} agent{pendingCount > 1 ? "s" : ""} pending review.
               An admin must approve {pendingCount > 1 ? "them" : "it"} before {pendingCount > 1 ? "they become" : "it becomes"} visible to other users.
             </p>

@@ -69,7 +69,7 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.rejection_reason = None
     m.download_count = 0
     m.unique_users = 0
-    m.is_private = False
+    m.visibility = "private"
     m.owner_org_id = None
     m.git_url = None
     m.created_by = created_by or uuid.uuid4()
@@ -77,6 +77,10 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.updated_at = datetime.now(UTC)
     m.components = extra.get("components", [])
     m.goal_template = extra.get("goal_template")
+    # Edit-lock fields on the latest_version mock
+    m.latest_version.is_editing = False
+    m.latest_version.editing_by = None
+    m.latest_version.editing_since = None
     # Make __table__.columns iterable for _agent_to_response
     col_keys = [
         "id",
@@ -90,7 +94,7 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
         "model_config_json",
         "external_mcps",
         "supported_ides",
-        "is_private",
+        "visibility",
         "owner_org_id",
         "status",
         "rejection_reason",
@@ -221,10 +225,10 @@ class TestDraftUpdate:
     @pytest.mark.asyncio
     @patch("api.routes.agent._load_agent")
     async def test_rejects_update_on_non_draft(self, mock_load):
-        """Updating a non-draft agent returns 400."""
+        """Updating an approved agent returns 400."""
         user = _user()
         app, db, _ = _app_with(user=user)
-        agent = _agent_mock(status=AgentStatus.pending, created_by=user.id)
+        agent = _agent_mock(status=AgentStatus.approved, created_by=user.id)
         mock_load.return_value = agent
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -328,7 +332,7 @@ class TestDraftSubmitNotDraft:
         """Submitting an active agent returns 400."""
         user = _user()
         app, db, _ = _app_with(user=user)
-        agent = _agent_mock(status=AgentStatus.active, created_by=user.id)
+        agent = _agent_mock(status=AgentStatus.approved, created_by=user.id)
         mock_load.return_value = agent
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

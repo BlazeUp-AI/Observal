@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState, useCallback, useMemo, createElement } from "react";
-import { useSessionDetail, useSessionSubscription, useSessionEfficiency } from "@/hooks/use-api";
+import { useSessionDetail, useSessionSubscription } from "@/hooks/use-api";
 import type { SessionData, RawSessionEvent } from "@/lib/types";
 import {
   FileText,
@@ -40,15 +40,13 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { EfficiencyMetrics } from "@/components/dashboard/efficiency-metrics";
-import { SessionDAG } from "@/components/dashboard/session-dag";
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
 function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default" | "success" | "warning" | "muted" }) {
   const cls = {
     default: "bg-primary/10 text-primary",
-    success: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    success: "bg-success/10 text-success",
     warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
     muted: "bg-muted text-muted-foreground",
   }[variant];
@@ -120,21 +118,21 @@ function eventIcon(eventName: string) {
 }
 
 function eventColor(eventName: string): string {
-  if (eventName === "api_request") return "text-blue-500";
-  if (eventName === "tool_result") return "text-emerald-500";
+  if (eventName === "api_request") return "text-info";
+  if (eventName === "tool_result") return "text-success";
   if (eventName === "tool_decision") return "text-amber-500";
   if (eventName === "user_prompt" || eventName === "hook_userpromptsubmit") return "text-purple-500";
   if (eventName === "hook_posttooluse") return "text-cyan-500";
   if (eventName === "hook_pretooluse") return "text-sky-400";
-  if (eventName === "hook_posttoolusefailure" || eventName === "hook_stopfailure") return "text-red-500";
+  if (eventName === "hook_posttoolusefailure" || eventName === "hook_stopfailure") return "text-destructive";
   if (eventName === "hook_subagentstart" || eventName === "hook_subagentstop") return "text-indigo-500";
   if (eventName === "hook_assistant_response") return "text-violet-500";
   if (eventName === "hook_assistant_thinking") return "text-fuchsia-500";
   if (eventName === "hook_stop") return "text-rose-500";
-  if (eventName === "hook_sessionstart") return "text-green-500";
-  if (eventName === "hook_notification") return "text-yellow-500";
+  if (eventName === "hook_sessionstart") return "text-success";
+  if (eventName === "hook_notification") return "text-warning";
   if (eventName === "hook_taskcreated" || eventName === "hook_taskcompleted") return "text-lime-500";
-  if (eventName === "hook_precompact" || eventName === "hook_postcompact") return "text-slate-400";
+  if (eventName === "hook_precompact" || eventName === "hook_postcompact") return "text-muted-foreground";
   if (eventName === "hook_worktreecreate" || eventName === "hook_worktreeremove") return "text-amber-400";
   if (eventName === "hook_elicitation" || eventName === "hook_elicitationresult") return "text-teal-500";
   if (isShimEvent(eventName)) return "text-teal-500";
@@ -156,13 +154,13 @@ const FILTER_CATEGORIES: FilterCategory[] = [
   { key: "responses", label: "Responses", match: (e) => e === "hook_assistant_response", color: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20" },
   { key: "thinking", label: "Thinking", match: (e) => e === "hook_assistant_thinking", color: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20" },
   { key: "tools", label: "Tools", match: (e) => ["tool_result", "tool_decision", "hook_posttooluse", "hook_pretooluse", "hook_posttoolusefailure", "shim_tool_call"].includes(e), color: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20" },
-  { key: "api", label: "API", match: (e) => e === "api_request", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
+  { key: "api", label: "API", match: (e) => e === "api_request", color: "bg-info/10 text-info border-info/20" },
   { key: "agents", label: "Agents", match: (e) => e === "hook_subagentstart" || e === "hook_subagentstop", color: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" },
   { key: "lifecycle", label: "Lifecycle", match: (e) => ["hook_sessionstart", "hook_stop", "hook_stopfailure", "hook_precompact", "hook_postcompact"].includes(e), color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20" },
   { key: "tasks", label: "Tasks", match: (e) => e === "hook_taskcreated" || e === "hook_taskcompleted", color: "bg-lime-500/10 text-lime-600 dark:text-lime-400 border-lime-500/20" },
   { key: "mcp", label: "MCP", match: (e) => e === "hook_elicitation" || e === "hook_elicitationresult", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20" },
-  { key: "errors", label: "Errors", match: (e) => e === "hook_posttoolusefailure" || e === "hook_stopfailure", color: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" },
-  { key: "notifications", label: "Notifications", match: (e) => e === "hook_notification", color: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20" },
+  { key: "errors", label: "Errors", match: (e) => e === "hook_posttoolusefailure" || e === "hook_stopfailure", color: "bg-destructive/10 text-destructive border-destructive/20" },
+  { key: "notifications", label: "Notifications", match: (e) => e === "hook_notification", color: "bg-warning/10 text-warning border-warning/20" },
   { key: "worktree", label: "Worktrees", match: (e) => e === "hook_worktreecreate" || e === "hook_worktreeremove", color: "bg-amber-400/10 text-amber-600 dark:text-amber-300 border-amber-400/20" },
 ];
 
@@ -474,7 +472,7 @@ function EventSummary({ event }: { event: RawSessionEvent }) {
         {attrs.duration_ms && <Stat label="" value={formatDuration(attrs.duration_ms)} icon={Clock} />}
         {attrs.mcp_latency_ms && <Stat label="MCP" value={formatDuration(attrs.mcp_latency_ms)} icon={Clock} />}
         {hasMcp && (
-          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${schemaValid ? "text-emerald-500" : "text-red-400"}`}>
+          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${schemaValid ? "text-success" : "text-destructive"}`}>
             {schemaValid ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
             schema
           </span>
@@ -489,7 +487,7 @@ function EventSummary({ event }: { event: RawSessionEvent }) {
     return (
       <div className="flex items-center gap-3 flex-wrap">
         <Badge variant="warning">{attrs.tool_name || "?"}</Badge>
-        <span className="text-xs text-red-500">failed</span>
+        <span className="text-xs text-destructive">failed</span>
         {attrs.error && <span className="text-xs text-muted-foreground truncate max-w-md">{attrs.error.slice(0, 80)}</span>}
       </div>
     );
@@ -499,7 +497,7 @@ function EventSummary({ event }: { event: RawSessionEvent }) {
     return (
       <div className="flex items-center gap-3 flex-wrap">
         <Badge variant="warning">API error</Badge>
-        {attrs.error && <span className="text-xs text-red-500 truncate max-w-md">{attrs.error.slice(0, 80)}</span>}
+        {attrs.error && <span className="text-xs text-destructive truncate max-w-md">{attrs.error.slice(0, 80)}</span>}
       </div>
     );
   }
@@ -562,7 +560,7 @@ function EventSummary({ event }: { event: RawSessionEvent }) {
         )}
         {attrs.mcp_latency_ms && <Stat label="MCP" value={formatDuration(attrs.mcp_latency_ms)} icon={Clock} />}
         {attrs.tool_schema_valid && (
-          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${schemaValid ? "text-emerald-500" : "text-red-400"}`}>
+          <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${schemaValid ? "text-success" : "text-destructive"}`}>
             {schemaValid ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
             schema
           </span>
@@ -675,8 +673,8 @@ function DiffBlock({ filePath, oldStr, newStr }: { filePath: string; oldStr: str
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Diff</span>
         <span className="text-[11px] font-[family-name:var(--font-mono)] text-muted-foreground">{filePath.split("/").pop()}</span>
-        <span className="text-[11px] text-emerald-500">+{addCount}</span>
-        <span className="text-[11px] text-red-400">-{removeCount}</span>
+        <span className="text-[11px] text-success">+{addCount}</span>
+        <span className="text-[11px] text-destructive">-{removeCount}</span>
       </div>
       <div className="text-xs font-[family-name:var(--font-mono)] border border-border rounded-md overflow-hidden max-h-[400px] overflow-auto">
         {visible.map((line, idx) => {
@@ -687,8 +685,8 @@ function DiffBlock({ filePath, oldStr, newStr }: { filePath: string; oldStr: str
               </div>
             );
           }
-          const bgCls = line.type === "add" ? "bg-emerald-500/10" : line.type === "remove" ? "bg-red-500/10" : "";
-          const textCls = line.type === "add" ? "text-emerald-600 dark:text-emerald-400" : line.type === "remove" ? "text-red-400" : "text-foreground/60";
+          const bgCls = line.type === "add" ? "bg-success/10" : line.type === "remove" ? "bg-destructive/10" : "";
+          const textCls = line.type === "add" ? "text-success" : line.type === "remove" ? "text-destructive" : "text-foreground/60";
           const prefix = line.type === "add" ? "+" : line.type === "remove" ? "-" : " ";
           const ln = line.type === "remove" ? oldLine : line.type === "add" ? newLine : oldLine;
           if (line.type === "remove" || line.type === "same") oldLine++;
@@ -1283,7 +1281,13 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawSessionEv
       }
     }
 
-    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, isCopilotCli, models, tools };
+    // Detect reconciliation enrichment (JSONL data was reconciled to server)
+    const isEnriched = events.some((e) => {
+      const en = getEventName(e);
+      return en === "reconcile_enrichment" || (e.attributes?.["_enriched"] === "true");
+    });
+
+    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, isCopilotCli, models, tools, isEnriched };
   }, [events, sessionId, serviceName]);
 
   const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
@@ -1333,6 +1337,17 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawSessionEv
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Hook Captures</p>
           <p className="text-lg font-semibold tabular-nums text-orange-500">{stats.hookEvents}</p>
+        </div>
+      )}
+      {stats.isEnriched && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Data Source</p>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Enriched
+            </span>
+          </div>
         </div>
       )}
       {!stats.isCopilotCli && (
@@ -1567,7 +1582,7 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawSession
                       }`}
                     >
                       {active
-                        ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        ? <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
                         : <XCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <span className="font-medium">{hook.label}</span>
@@ -1593,7 +1608,6 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawSession
 export default function TraceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data, isLoading, isError, error, refetch } = useSessionDetail(id);
-  const { data: efficiency, isLoading: effLoading } = useSessionEfficiency(id);
   useSessionSubscription();
 
   const session = data as SessionData;
@@ -1720,7 +1734,6 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
               <Tabs defaultValue="traces" className="animate-in stagger-1">
                 <TabsList>
                   <TabsTrigger value="traces">Traces</TabsTrigger>
-                  <TabsTrigger value="efficiency">Efficiency</TabsTrigger>
                   <TabsTrigger value="info">Session Info</TabsTrigger>
                 </TabsList>
                 <TabsContent value="traces" className="space-y-2 mt-4">
@@ -1812,22 +1825,6 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
                         );
                       })}
                     </div>
-                  )}
-                </TabsContent>
-                <TabsContent value="efficiency" className="mt-4">
-                  {effLoading ? (
-                    <DetailSkeleton />
-                  ) : efficiency && !efficiency.error ? (
-                    <div className="space-y-4">
-                      <EfficiencyMetrics data={efficiency} />
-                      {efficiency.dag && <SessionDAG dag={efficiency.dag} />}
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={Zap}
-                      title="No efficiency data"
-                      description={efficiency?.error || "Efficiency metrics are not available for this session yet."}
-                    />
                   )}
                 </TabsContent>
                 <TabsContent value="info" className="mt-4">

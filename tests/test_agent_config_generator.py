@@ -21,6 +21,7 @@ from services.agent_builder import (
 from services.agent_config_generator import (
     _build_rules_content,
     _inject_agent_id,
+    _model_name_to_frontmatter,
     _sanitize_name,
     generate_agent_config,
 )
@@ -263,6 +264,60 @@ class TestGenerateClaudeCode:
         fm = yaml.safe_load(parts[1])
         assert "\n" not in fm["description"]
 
+    def test_model_fallback_from_agent_when_no_option(self):
+        agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
+        cfg = generate_agent_config(agent, "claude-code")
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert fm["model"] == "sonnet"
+
+    def test_model_fallback_from_agent_when_inherit(self):
+        agent = _make_agent(model_name="claude-opus-4-6-20250725")
+        cfg = generate_agent_config(agent, "claude-code", options={"model": "inherit"})
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert fm["model"] == "opus"
+
+    def test_explicit_model_option_overrides_agent(self):
+        agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
+        cfg = generate_agent_config(agent, "claude-code", options={"model": "haiku"})
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert fm["model"] == "haiku"
+
+    def test_no_model_when_agent_has_empty_model_name(self):
+        agent = _make_agent(model_name="")
+        cfg = generate_agent_config(agent, "claude-code")
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert "model" not in fm
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 4b. _model_name_to_frontmatter
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestModelNameToFrontmatter:
+    def test_sonnet_with_date(self):
+        assert _model_name_to_frontmatter("claude-sonnet-4-6-20250725") == "sonnet"
+
+    def test_opus_without_date(self):
+        assert _model_name_to_frontmatter("claude-opus-4-6") == "opus"
+
+    def test_haiku_with_date(self):
+        assert _model_name_to_frontmatter("claude-haiku-4-5-20251001") == "haiku"
+
+    def test_empty(self):
+        assert _model_name_to_frontmatter("") == ""
+
+    def test_non_claude_model_passthrough(self):
+        assert _model_name_to_frontmatter("gpt-4o") == "gpt-4o"
+
 
 # ═══════════════════════════════════════════════════════════════════
 # 5. generate_agent_config — Cursor / VSCode
@@ -273,13 +328,13 @@ class TestGenerateCursorVscode:
     def test_cursor_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
-        assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.md"
+        assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.mdc"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
 
     def test_vscode_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "vscode")
-        assert cfg["rules_file"]["path"] == ".vscode/rules/test-agent.md"
+        assert cfg["rules_file"]["path"] == ".github/instructions/test-agent.instructions.md"
         assert cfg["mcp_config"]["path"] == ".vscode/mcp.json"
 
     def test_rules_content_not_empty(self):
@@ -415,7 +470,7 @@ class TestGenerateCopilot:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_present(self):
         agent = _make_agent()

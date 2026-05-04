@@ -1039,6 +1039,43 @@ def list_mcps(
     _list_impl(category, search, limit, sort, output, interactive=interactive)
 
 
+@mcp_app.command(name="my")
+def mcp_my(
+    output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
+):
+    """List your own MCP servers (all statuses)."""
+    with spinner("Fetching your MCPs..."):
+        data = client.get("/api/v1/mcps/my")
+    if not data:
+        rprint("[dim]You have no MCP servers.[/dim]")
+        return
+    config.save_last_results(data)
+    if output == "json":
+        output_json(data)
+        return
+    if output == "plain":
+        for item in data:
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('status', '')}")
+        return
+    table = Table(title=f"My MCPs ({len(data)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Owner", style="dim")
+    table.add_column("Status")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(
+            str(i),
+            item["name"],
+            item.get("version", ""),
+            item.get("owner", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
+    console.print(table)
+
+
 @mcp_app.command()
 def show(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
@@ -1056,6 +1093,70 @@ def install(
 ):
     """Get install config snippet for an MCP server."""
     _install_impl(mcp_id, ide, raw)
+
+
+@mcp_app.command(name="edit")
+def edit_mcp(
+    mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    from_file: str | None = typer.Option(None, "--from-file", "-f", help="Load updates from JSON file"),
+    name: str | None = typer.Option(None, "--name", "-n", help="New listing name"),
+    description: str | None = typer.Option(None, "--description", "-d", help="New description"),
+    category: str | None = typer.Option(None, "--category", "-c", help="New category"),
+    version: str | None = typer.Option(None, "--version", "-v", help="New version string"),
+    git_url: str | None = typer.Option(None, "--git-url", help="New git URL"),
+    command: str | None = typer.Option(None, "--command", help="New command"),
+    url: str | None = typer.Option(None, "--url", help="New URL"),
+):
+    """Edit a draft, rejected, or pending MCP server submission."""
+    resolved = config.resolve_alias(mcp_id)
+    if from_file:
+        try:
+            with open(from_file) as f:
+                updates = json.load(f)
+        except json.JSONDecodeError as e:
+            rprint(f"[red]Invalid JSON in {from_file}:[/red] {e}")
+            raise typer.Exit(code=1)
+        except FileNotFoundError:
+            rprint(f"[red]File not found:[/red] {from_file}")
+            raise typer.Exit(code=1)
+    else:
+        updates = {}
+        if name is not None:
+            updates["name"] = name
+        if description is not None:
+            updates["description"] = description
+        if category is not None:
+            updates["category"] = category
+        if version is not None:
+            updates["version"] = version
+        if git_url is not None:
+            updates["git_url"] = git_url
+        if command is not None:
+            updates["command"] = command
+        if url is not None:
+            updates["url"] = url
+
+    if not updates:
+        rprint("[yellow]No changes specified.[/yellow] Use --from-file or field options (--name, --description, etc.)")
+        raise typer.Exit(code=1)
+
+    try:
+        client.post(f"/api/v1/mcps/{resolved}/start-edit")
+    except Exception as exc:
+        if "409" in str(exc) or "currently being edited" in str(exc):
+            rprint(f"[red]✗ Cannot edit:[/red] {exc}")
+            raise typer.Exit(code=1)
+    try:
+        with spinner("Saving changes..."):
+            result = client.put(f"/api/v1/mcps/{resolved}/draft", updates)
+        rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
+    except Exception as exc:
+        try:
+            client.post(f"/api/v1/mcps/{resolved}/cancel-edit")
+        except Exception:
+            pass
+        rprint(f"[red]Failed to update:[/red] {exc}")
+        raise typer.Exit(code=1)
 
 
 @mcp_app.command(name="delete")

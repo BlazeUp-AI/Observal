@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +16,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { ThemeSwitcher } from "@/components/ui/theme-switcher";
 import { NavUser } from "@/components/nav/nav-user";
 
 import {
@@ -35,12 +35,14 @@ import {
   ShieldAlert,
   Stethoscope,
   KeyRound,
+  Lightbulb,
 } from "lucide-react";
 import { useSyncExternalStore } from "react";
-import { getUserRole, getUserName, getUserEmail } from "@/lib/api";
+import { getUserRole, getUserName, getUserEmail, getUserUsername } from "@/lib/api";
 import { hasMinRole, type Role } from "@/hooks/use-role-guard";
+import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 
-type NavItem = { title: string; href: string; icon: typeof Home; requiresAuth?: boolean; minRole?: Role };
+type NavItem = { title: string; href: string; icon: typeof Home; requiresAuth?: boolean; minRole?: Role; enterpriseOnly?: boolean };
 
 const registryNav: NavItem[] = [
   { title: "Home", href: "/", icon: Home },
@@ -62,10 +64,11 @@ const adminNav: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, minRole: "admin" },
   { title: "Errors", href: "/errors", icon: AlertTriangle, minRole: "admin" },
   { title: "Evals", href: "/eval", icon: FlaskConical, minRole: "admin" },
+  { title: "Insights", href: "/insights", icon: Lightbulb, minRole: "admin" },
   { title: "Users", href: "/users", icon: Users, minRole: "admin" },
-  { title: "Audit Log", href: "/audit-log", icon: ScrollText, minRole: "admin" },
-  { title: "Security", href: "/security-events", icon: ShieldAlert, minRole: "admin" },
-  { title: "SSO & SCIM", href: "/sso", icon: KeyRound, minRole: "admin" },
+  { title: "Audit Log", href: "/audit-log", icon: ScrollText, minRole: "admin", enterpriseOnly: true },
+  { title: "Security", href: "/security-events", icon: ShieldAlert, minRole: "admin", enterpriseOnly: true },
+  { title: "SSO & SCIM", href: "/sso", icon: KeyRound, minRole: "admin", enterpriseOnly: true },
   { title: "Diagnostics", href: "/diagnostics", icon: Stethoscope, minRole: "admin" },
   { title: "Settings", href: "/settings", icon: Settings, minRole: "admin" },
 ];
@@ -82,14 +85,15 @@ const storeSub = (cb: () => void) => {
   return () => window.removeEventListener("storage", cb);
 };
 const getAuthSnap = () =>
-  `${localStorage.getItem("observal_access_token") ?? ""}|${getUserRole() ?? ""}|${getUserName() ?? ""}|${getUserEmail() ?? ""}`;
-const getServerSnap = () => "|||";
+  `${localStorage.getItem("observal_access_token") ?? ""}|${getUserRole() ?? ""}|${getUserName() ?? ""}|${getUserEmail() ?? ""}|${getUserUsername() ?? ""}`;
+const getServerSnap = () => "||||";
 
 export function RegistrySidebar() {
   const pathname = usePathname();
   const snap = useSyncExternalStore(storeSub, getAuthSnap, getServerSnap);
-  const [token, role, userName, userEmail] = snap.split("|");
+  const [token, role, userName, userEmail, userUsername] = snap.split("|");
   const isAuthenticated = !!token;
+  const { deploymentMode, brandingLogo, brandingAppName, brandingWordmark } = useDeploymentConfig();
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
@@ -115,17 +119,40 @@ export function RegistrySidebar() {
     : [];
 
   const visibleAdminNav = isAuthenticated
-    ? adminNav.filter((item) => !item.minRole || hasMinRole(role, item.minRole))
+    ? adminNav.filter(
+        (item) =>
+          (!item.minRole || hasMinRole(role, item.minRole)) &&
+          (!item.enterpriseOnly || deploymentMode === "enterprise"),
+      )
     : [];
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2.5 px-2 py-1.5">
-          <span className="text-base font-semibold tracking-tight font-[family-name:var(--font-display)]">
-            Observal
-          </span>
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild>
+              <Link href="/">
+                <div className="flex size-8 shrink-0 items-center justify-center">
+                  {brandingLogo ? (
+                    <img src={brandingLogo} alt="" width={20} height={20} className="object-contain" />
+                  ) : (
+                    <Image src="/favicon.ico" alt="" width={20} height={20} />
+                  )}
+                </div>
+                <div className="flex flex-col gap-0.5 leading-none">
+                  {brandingWordmark ? (
+                    <img src={brandingWordmark} alt={brandingAppName || "Observal"} className="h-5 max-w-35 object-contain object-left" />
+                  ) : (
+                    <span className="text-base font-semibold tracking-tight font-display truncate max-w-35">
+                      {brandingAppName || "Observal"}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -215,8 +242,7 @@ export function RegistrySidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <ThemeSwitcher />
-        <NavUser user={{ name: userName || "User", email: userEmail || "" }} />
+        <NavUser user={{ name: userName || "User", email: userEmail || "", username: userUsername || undefined }} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

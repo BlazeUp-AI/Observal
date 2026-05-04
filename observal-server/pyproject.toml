@@ -1,6 +1,6 @@
 [project]
 name = "observal-server"
-version = "0.3.4"
+version = "0.4.0"
 description = "Observal API server"
 requires-python = ">=3.11"
 license = "Apache-2.0"

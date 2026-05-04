@@ -37,6 +37,7 @@ from services.security_events import (
     Severity,
     emit_security_event,
 )
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.ee.scim")
 
@@ -197,6 +198,7 @@ async def create_user(
 
     user = User(
         email=email,
+        username=await generate_unique_username(email, db),
         name=parsed["name"],
         role=UserRole.user,
         org_id=org_id,

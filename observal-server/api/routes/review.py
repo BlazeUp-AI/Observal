@@ -1,24 +1,25 @@
 import enum
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from api.deps import get_db, require_role, resolve_prefix_id
 from api.sanitize import escape_like
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.component_bundle import ComponentBundle
-from models.hook import HookListing
-from models.mcp import ListingStatus, McpListing
-from models.prompt import PromptListing
-from models.sandbox import SandboxListing
-from models.skill import SkillListing
+from models.hook import HookListing, HookVersion
+from models.mcp import ListingStatus, McpListing, McpVersion
+from models.prompt import PromptListing, PromptVersion
+from models.sandbox import SandboxListing, SandboxVersion
+from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
 from services.audit_helpers import audit
+from services.editing_lock import is_actively_editing
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
@@ -28,6 +29,14 @@ LISTING_MODELS = {
     "hook": HookListing,
     "prompt": PromptListing,
     "sandbox": SandboxListing,
+}
+
+VERSION_MODELS = {
+    "mcp": McpVersion,
+    "skill": SkillVersion,
+    "hook": HookVersion,
+    "prompt": PromptVersion,
+    "sandbox": SandboxVersion,
 }
 
 
@@ -62,21 +71,28 @@ async def _find_listing(listing_id: str, db: AsyncSession):
     return None, None
 
 
-async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple[bool, list[dict]]:
-    """Check if all of an agent's components are approved."""
-    if not agent.components:
+async def _check_agent_components_ready(components, db: AsyncSession) -> tuple[bool, list[dict]]:
+    """Check if all of an agent version's components are approved."""
+    if not components:
         return True, []
 
     by_type: dict[str, list[uuid.UUID]] = {}
-    for comp in agent.components:
+    for comp in components:
         by_type.setdefault(comp.component_type, []).append(comp.component_id)
 
     blocking: list[dict] = []
     for comp_type, ids in by_type.items():
         model = LISTING_MODELS.get(comp_type)
-        if not model:
+        version_model = VERSION_MODELS.get(comp_type)
+        if not model or not version_model:
             continue
-        rows = (await db.execute(select(model.id, model.name, model.status).where(model.id.in_(ids)))).all()
+        rows = (
+            await db.execute(
+                select(model.id, model.name, version_model.status)
+                .join(version_model, model.latest_version_id == version_model.id)
+                .where(model.id.in_(ids))
+            )
+        ).all()
         for row in rows:
             if row.status != ListingStatus.approved:
                 blocking.append(
@@ -91,37 +107,56 @@ async def _check_agent_components_ready(agent: Agent, db: AsyncSession) -> tuple
 
 
 async def _query_pending_agents(db: AsyncSession) -> list[dict]:
-    result = await db.execute(
-        select(Agent)
-        .where(Agent.status == AgentStatus.pending)
-        .options(selectinload(Agent.components))
-        .order_by(Agent.created_at.desc())
+    # Find agents that have ANY pending version (not just latest_version_id).
+    # This ensures version updates appear in the review queue after the first
+    # version is approved.
+    pending_versions_stmt = (
+        select(AgentVersion).where(AgentVersion.status == AgentStatus.pending).order_by(AgentVersion.created_at.desc())
     )
-    agents = result.scalars().all()
+    pending_versions = (await db.execute(pending_versions_stmt)).scalars().all()
 
-    user_ids = {a.created_by for a in agents}
+    if not pending_versions:
+        return []
+
+    # Group by agent_id, take the newest pending version per agent.
+    # Skip versions that are actively being edited by their owner.
+    seen_agents: dict[uuid.UUID, AgentVersion] = {}
+    for v in pending_versions:
+        if v.agent_id not in seen_agents and not is_actively_editing(v):
+            seen_agents[v.agent_id] = v
+
+    # Load the agents
+    agent_ids = list(seen_agents.keys())
+    agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
+    agents_map = {a.id: a for a in agents_result.scalars().all()}
+
+    user_ids = {a.created_by for a in agents_map.values()}
     user_map: dict[uuid.UUID, str] = {}
     if user_ids:
         rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
         user_map = {r[0]: r[1] for r in rows.all()}
 
     items = []
-    for a in agents:
-        components_ready, blocking = await _check_agent_components_ready(a, db)
+    for agent_id, pending_ver in seen_agents.items():
+        a = agents_map.get(agent_id)
+        if not a:
+            continue
+        components_ready, blocking = await _check_agent_components_ready(pending_ver.components, db)
         items.append(
             {
                 "type": "agent",
                 "id": str(a.id),
                 "name": a.name,
-                "description": a.description or "",
-                "version": a.version or "",
+                "description": pending_ver.description or a.description or "",
+                "version": pending_ver.version,
                 "owner": a.owner or "",
-                "status": a.status.value,
+                "status": pending_ver.status.value,
                 "submitted_by": user_map.get(a.created_by, str(a.created_by)),
-                "created_at": a.created_at.isoformat() if a.created_at else "",
-                "component_count": len(a.components),
+                "created_at": pending_ver.created_at.isoformat() if pending_ver.created_at else "",
+                "component_count": len(pending_ver.components) if pending_ver.components else 0,
                 "components_ready": components_ready,
                 "blocking_components": blocking,
+                "gaming_flags": pending_ver.gaming_flags,
             }
         )
     return items
@@ -134,21 +169,48 @@ async def _query_pending_components(db: AsyncSession, type_filter: str | None = 
     items = []
     user_ids: set[uuid.UUID] = set()
     for listing_type, model in models_to_query.items():
-        result = await db.execute(
-            select(model).where(model.status == ListingStatus.pending).order_by(model.created_at.desc())
+        version_model = VERSION_MODELS[listing_type]
+        # Find listings that have ANY pending version (not just latest_version_id).
+        # This ensures version updates appear in the queue after first approval.
+        pending_versions_stmt = (
+            select(version_model)
+            .where(version_model.status == ListingStatus.pending)
+            .order_by(version_model.released_at.desc())
         )
-        for r in result.scalars().all():
+        pending_versions = (await db.execute(pending_versions_stmt)).scalars().all()
+        if not pending_versions:
+            continue
+
+        # Group by listing_id, take newest pending version per listing
+        seen_listings: dict[uuid.UUID, object] = {}
+        for pv in pending_versions:
+            if pv.listing_id not in seen_listings and not is_actively_editing(pv):
+                seen_listings[pv.listing_id] = pv
+
+        if not seen_listings:
+            continue
+
+        # Load the listings
+        listings_result = await db.execute(select(model).where(model.id.in_(list(seen_listings.keys()))))
+        listings_map = {r.id: r for r in listings_result.scalars().all()}
+
+        for listing_id, pv in seen_listings.items():
+            r = listings_map.get(listing_id)
+            if not r:
+                continue
             user_ids.add(r.submitted_by)
             item: dict = {
                 "type": listing_type,
                 "id": str(r.id),
                 "name": r.name,
-                "description": getattr(r, "description", None) or "",
-                "version": getattr(r, "version", None) or "",
+                "description": getattr(pv, "description", None) or getattr(r, "description", None) or "",
+                "version": getattr(pv, "version", None) or "",
                 "owner": getattr(r, "owner", None) or "",
-                "status": r.status.value,
+                "status": pv.status.value,
                 "submitted_by": r.submitted_by,
-                "created_at": r.created_at.isoformat(),
+                "created_at": pv.created_at.isoformat()
+                if hasattr(pv, "created_at") and pv.created_at
+                else r.created_at.isoformat(),
                 "bundle_id": str(r.bundle_id) if isinstance(getattr(r, "bundle_id", None), uuid.UUID) else None,
             }
             # Include validation results for MCP listings
@@ -322,20 +384,32 @@ def _safe_serialize(val: object) -> object:
 
 
 def _serialize_listing_detail(listing_type: str, listing) -> dict:
+    # Find the pending version if one exists (for reviews, we want pending content)
+    pending_ver = None
+    if hasattr(listing, "versions"):
+        pending_ver = next(
+            (v for v in listing.versions if v.status == ListingStatus.pending),
+            None,
+        )
+    # Use the pending version for field resolution; fall back to listing properties
+    source = pending_ver if pending_ver else listing
+
     base = {
         "type": listing_type,
         "id": str(listing.id),
         "name": listing.name,
-        "description": getattr(listing, "description", None) or "",
-        "version": getattr(listing, "version", None) or "",
+        "description": getattr(source, "description", None) or "",
+        "version": getattr(source, "version", None) or "",
         "owner": getattr(listing, "owner", None) or "",
-        "status": listing.status.value,
+        "status": source.status.value if hasattr(source, "status") else listing.status.value,
         "submitted_by": str(listing.submitted_by),
         "created_at": listing.created_at.isoformat(),
         "updated_at": listing.updated_at.isoformat() if getattr(listing, "updated_at", None) else None,
     }
     for field in _DETAIL_FIELDS.get(listing_type, []):
-        val = getattr(listing, field, None)
+        val = getattr(source, field, None)
+        if val is None:
+            val = getattr(listing, field, None)
         base[field] = _safe_serialize(val)
     if listing_type == "mcp" and hasattr(listing, "validation_results"):
         base["mcp_validated"] = getattr(listing, "mcp_validated", False)
@@ -367,42 +441,69 @@ async def get_review(
             agent_uuid = uuid.UUID(listing_id)
         except ValueError:
             raise HTTPException(status_code=404, detail="Listing not found")
-        agent = (
-            await db.execute(select(Agent).where(Agent.id == agent_uuid).options(selectinload(Agent.components)))
-        ).scalar_one_or_none()
+        agent = (await db.execute(select(Agent).where(Agent.id == agent_uuid))).scalar_one_or_none()
         if not agent:
             raise HTTPException(status_code=404, detail="Listing not found")
-        components_ready, blocking = await _check_agent_components_ready(agent, db)
+        # Use the pending version for review (not latest_version which is the approved one)
+        pending_ver = next(
+            (v for v in agent.versions if v.status == AgentStatus.pending),
+            None,
+        )
+        ver = pending_ver or agent.latest_version
+        ver_components = ver.components if ver else agent.components
+        components_ready, blocking = await _check_agent_components_ready(ver_components, db)
         result = {
             "type": "agent",
             "id": str(agent.id),
             "name": agent.name,
-            "description": agent.description or "",
-            "version": agent.version or "",
+            "description": (ver.description if ver else "") or agent.description or "",
+            "version": (ver.version if ver else "") or agent.version or "",
             "owner": agent.owner or "",
-            "status": agent.status.value,
+            "status": (ver.status.value if ver else agent.status.value),
             "submitted_by": str(agent.created_by),
             "created_at": agent.created_at.isoformat() if agent.created_at else None,
             "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
-            "git_url": agent.git_url,
-            "prompt": agent.prompt,
-            "model_name": agent.model_name,
-            "model_config_json": agent.model_config_json,
-            "external_mcps": agent.external_mcps,
-            "supported_ides": agent.supported_ides,
-            "required_ide_features": agent.required_ide_features,
-            "rejection_reason": agent.rejection_reason,
-            "component_count": len(agent.components),
+            "git_url": getattr(agent, "git_url", None),
+            "prompt": (ver.prompt if ver else "") or "",
+            "model_name": (ver.model_name if ver else "") or "",
+            "model_config_json": (ver.model_config_json if ver else {}) or {},
+            "external_mcps": (ver.external_mcps if ver else []) or [],
+            "supported_ides": (ver.supported_ides if ver else []) or [],
+            "required_ide_features": (ver.required_ide_features if ver else []) or [],
+            "rejection_reason": ver.rejection_reason if ver else None,
+            "component_count": len(ver_components),
             "components_ready": components_ready,
             "component_blockers": blocking,
+            "gaming_flags": ver.gaming_flags if ver else None,
             "components": [
                 {
                     "component_type": c.component_type,
                     "component_id": str(c.component_id),
                 }
-                for c in agent.components
+                for c in ver_components
             ],
         }
+
+        # Expand component details with resolved listing content
+        expanded_components = []
+        for c in ver_components:
+            comp_data = {
+                "component_type": c.component_type,
+                "component_id": str(c.component_id),
+                "name": getattr(c, "component_name", "") or "",
+            }
+            model = LISTING_MODELS.get(c.component_type)
+            if model:
+                listing = (await db.execute(select(model).where(model.id == c.component_id))).scalar_one_or_none()
+                if listing:
+                    comp_data["name"] = listing.name
+                    if c.component_type == "prompt":
+                        comp_data["template"] = getattr(listing, "template", "") or ""
+                        comp_data["category"] = getattr(listing, "category", "") or ""
+                    else:
+                        comp_data["description"] = getattr(listing, "description", "") or ""
+            expanded_components.append(comp_data)
+        result["components"] = expanded_components
 
     # Resolve submitted_by UUID to display name
     uid_str = result.get("submitted_by", "")
@@ -433,8 +534,33 @@ async def approve(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    listing.status = ListingStatus.approved
-    listing.rejection_reason = None
+
+    # Find the pending version to approve (may not be latest_version)
+    pending_ver = None
+    if hasattr(listing, "versions"):
+        pending_ver = next(
+            (v for v in listing.versions if v.status == ListingStatus.pending),
+            None,
+        )
+
+    if pending_ver:
+        if is_actively_editing(pending_ver):
+            raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this item")
+        pending_ver.status = ListingStatus.approved
+        pending_ver.rejection_reason = None
+        pending_ver.reviewed_by = current_user.id
+        pending_ver.reviewed_at = datetime.now(UTC)
+        # Flush version changes first to avoid CircularDependencyError
+        await db.flush()
+        # Update latest_version_id to point to newly approved version
+        listing.latest_version_id = pending_ver.id
+    else:
+        # Fallback: legacy path for listings without versioning
+        if listing.latest_version and is_actively_editing(listing.latest_version):
+            raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this item")
+        listing.status = ListingStatus.approved
+        listing.rejection_reason = None
+
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -458,8 +584,29 @@ async def reject(
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    listing.status = ListingStatus.rejected
-    listing.rejection_reason = req.reason
+
+    # Find the pending version to reject (may not be latest_version)
+    pending_ver = None
+    if hasattr(listing, "versions"):
+        pending_ver = next(
+            (v for v in listing.versions if v.status == ListingStatus.pending),
+            None,
+        )
+
+    if pending_ver:
+        if is_actively_editing(pending_ver):
+            raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this item")
+        pending_ver.status = ListingStatus.rejected
+        pending_ver.rejection_reason = req.reason
+        pending_ver.reviewed_by = current_user.id
+        pending_ver.reviewed_at = datetime.now(UTC)
+    else:
+        # Fallback: legacy path for listings without versioning
+        if listing.latest_version and is_actively_editing(listing.latest_version):
+            raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this item")
+        listing.status = ListingStatus.rejected
+        listing.rejection_reason = req.reason
+
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -488,15 +635,33 @@ async def approve_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
-    agent = (
-        await db.execute(select(Agent).where(Agent.id == agent_id).options(selectinload(Agent.components)))
-    ).scalar_one_or_none()
+    from services.versioning import parse_semver
+
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.status != AgentStatus.pending:
-        raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', not pending")
 
-    components_ready, blocking = await _check_agent_components_ready(agent, db)
+    pending_versions = (
+        (
+            await db.execute(
+                select(AgentVersion)
+                .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+                .order_by(AgentVersion.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not pending_versions:
+        raise HTTPException(status_code=400, detail=f"Agent has no pending versions (latest is '{agent.status.value}')")
+
+    for pv in pending_versions:
+        if is_actively_editing(pv):
+            raise HTTPException(status_code=409, detail="Cannot approve: the owner is currently editing this agent")
+
+    newest_pending = pending_versions[0]
+    components_ready, blocking = await _check_agent_components_ready(newest_pending.components, db)
     if not components_ready:
         raise HTTPException(
             status_code=422,
@@ -506,8 +671,27 @@ async def approve_agent(
             },
         )
 
-    agent.status = AgentStatus.active
-    agent.rejection_reason = None
+    now = datetime.now(UTC)
+    # Approve only the newest pending version; mark older ones as superseded
+    newest_pending.status = AgentStatus.approved
+    newest_pending.rejection_reason = None
+    newest_pending.reviewed_by = current_user.id
+    newest_pending.reviewed_at = now
+    for pv in pending_versions[1:]:
+        pv.status = AgentStatus.rejected
+        pv.rejection_reason = "Superseded by newer version"
+        pv.reviewed_by = current_user.id
+        pv.reviewed_at = now
+
+    # Flush version changes first to avoid CircularDependencyError
+    await db.flush()
+
+    current_latest = agent.latest_version
+    new_parsed = parse_semver(newest_pending.version)
+    current_parsed = parse_semver(current_latest.version) if current_latest else None
+    if not current_latest or (new_parsed is not None and current_parsed is not None and new_parsed >= current_parsed):
+        agent.latest_version_id = newest_pending.id
+
     await db.commit()
     await audit(
         current_user,
@@ -516,7 +700,7 @@ async def approve_agent(
         resource_id=str(agent_id),
         resource_name=agent.name,
     )
-    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+    return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": newest_pending.version}
 
 
 @router.post("/agents/{agent_id}/reject")
@@ -529,11 +713,33 @@ async def reject_agent(
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if agent.status not in (AgentStatus.pending, AgentStatus.active):
-        raise HTTPException(status_code=400, detail=f"Agent is '{agent.status.value}', cannot reject")
 
-    agent.status = AgentStatus.rejected
-    agent.rejection_reason = req.reason
+    pending_versions = (
+        (
+            await db.execute(
+                select(AgentVersion)
+                .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+                .order_by(AgentVersion.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not pending_versions:
+        raise HTTPException(status_code=400, detail=f"Agent has no pending versions (latest is '{agent.status.value}')")
+    else:
+        for pv in pending_versions:
+            if is_actively_editing(pv):
+                raise HTTPException(status_code=409, detail="Cannot reject: the owner is currently editing this agent")
+        now = datetime.now(UTC)
+        for pv in pending_versions:
+            pv.status = AgentStatus.rejected
+            pv.rejection_reason = req.reason
+            pv.reviewed_by = current_user.id
+            pv.reviewed_at = now
+        await db.flush()
+
     await db.commit()
     await audit(
         current_user,
@@ -543,7 +749,8 @@ async def reject_agent(
         resource_name=agent.name,
         detail=f"reason={req.reason}",
     )
-    return {"id": str(agent.id), "name": agent.name, "status": agent.status.value}
+    rejected_version = pending_versions[0].version if pending_versions else ""
+    return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": rejected_version}
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +772,11 @@ async def approve_bundle(
     for model in LISTING_MODELS.values():
         result = await db.execute(select(model).where(model.bundle_id == bundle_id))
         for listing in result.scalars().all():
+            if listing.latest_version and is_actively_editing(listing.latest_version):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot approve: '{listing.name}' is currently being edited by its owner",
+                )
             listing.status = ListingStatus.approved
             listing.rejection_reason = None
             count += 1
@@ -596,6 +808,11 @@ async def reject_bundle(
     for model in LISTING_MODELS.values():
         result = await db.execute(select(model).where(model.bundle_id == bundle_id))
         for listing in result.scalars().all():
+            if listing.latest_version and is_actively_editing(listing.latest_version):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cannot reject: '{listing.name}' is currently being edited by its owner",
+                )
             listing.status = ListingStatus.rejected
             listing.rejection_reason = req.reason
             count += 1
@@ -632,12 +849,13 @@ async def get_related_skills(
 
     stmt = (
         select(SkillListing)
+        .join(SkillVersion, SkillListing.latest_version_id == SkillVersion.id)
         .where(
-            SkillListing.status == ListingStatus.pending,
-            SkillListing.mcp_server_config.isnot(None),
+            SkillVersion.status == ListingStatus.pending,
+            SkillVersion.mcp_server_config.isnot(None),
             or_(
-                cast(SkillListing.mcp_server_config, String).contains(escape_like(mcp_name)),
-                cast(SkillListing.mcp_server_config, String).contains(escape_like(mcp_id)),
+                cast(SkillVersion.mcp_server_config, String).contains(escape_like(mcp_name)),
+                cast(SkillVersion.mcp_server_config, String).contains(escape_like(mcp_id)),
             ),
         )
         .order_by(SkillListing.created_at.desc())

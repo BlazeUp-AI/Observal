@@ -307,6 +307,14 @@ INIT_SQL = [
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS hook_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS skill_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS prompt_id Nullable(String)""",
+    # Agent versioning: track which version produced telemetry
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS agent_version Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS agent_version Nullable(String)""",
+    """ALTER TABLE scores ADD COLUMN IF NOT EXISTS agent_version Nullable(String)""",
+    # Bloom filter indexes for agent_version point lookups
+    """ALTER TABLE traces ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
+    """ALTER TABLE spans ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
+    """ALTER TABLE scores ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
     # Security events table (SIEM integration — SOC 2 / ISO 27001)
     """CREATE TABLE IF NOT EXISTS security_events (
         event_id    UUID,
@@ -613,13 +621,15 @@ async def insert_traces(traces: list[dict]):
             "hook_id": t.get("hook_id"),
             "skill_id": t.get("skill_id"),
             "prompt_id": t.get("prompt_id"),
+            "agent_version": t.get("agent_version"),
         }
         lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
         "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
         "metadata, tags, input, output, event_ts, is_deleted, "
-        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id) FORMAT JSONEachRow"
+        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id, "
+        "agent_version) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
@@ -691,6 +701,7 @@ async def insert_spans(spans: list[dict]):
             "variables_provided": s.get("variables_provided"),
             "template_tokens": s.get("template_tokens"),
             "rendered_tokens": s.get("rendered_tokens"),
+            "agent_version": s.get("agent_version"),
         }
         lines.append(json.dumps(row, default=str))
     sql = (
@@ -704,7 +715,8 @@ async def insert_spans(spans: list[dict]):
         "disk_read_bytes, disk_write_bytes, oom_killed, query_interface, "
         "relevance_score, chunks_returned, embedding_latency_ms, "
         "hook_event, hook_scope, hook_action, hook_blocked, "
-        "variables_provided, template_tokens, rendered_tokens) FORMAT JSONEachRow"
+        "variables_provided, template_tokens, rendered_tokens, "
+        "agent_version) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
@@ -744,13 +756,14 @@ async def insert_scores(scores: list[dict]):
             "timestamp": _normalize_ts(sc["timestamp"]),
             "event_ts": event_ts,
             "is_deleted": 0,
+            "agent_version": sc.get("agent_version"),
         }
         lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO scores (score_id, trace_id, span_id, project_id, mcp_id, agent_id, "
         "user_id, name, source, data_type, value, string_value, comment, "
         "eval_template_id, eval_config_id, eval_run_id, environment, metadata, "
-        "timestamp, event_ts, is_deleted) FORMAT JSONEachRow"
+        "timestamp, event_ts, is_deleted, agent_version) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
@@ -834,6 +847,7 @@ async def query_traces(
     mcp_id: str | None = None,
     agent_id: str | None = None,
     user_id: str | None = None,
+    agent_version: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -852,6 +866,9 @@ async def query_traces(
     if user_id:
         conditions.append("user_id = {uid:String}")
         params["param_uid"] = user_id
+    if agent_version:
+        conditions.append("agent_version = {av:String}")
+        params["param_av"] = agent_version
     where = " AND ".join(conditions)
     sql = (
         f"SELECT * FROM traces FINAL WHERE {where} "

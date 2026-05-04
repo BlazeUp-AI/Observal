@@ -34,9 +34,11 @@ from api.routes.device_auth import router as device_auth_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.hook import router as hook_router
+from api.routes.insights import router as insights_router
 from api.routes.jwks import router as jwks_router
 from api.routes.mcp import router as mcp_router
 from api.routes.prompt import router as prompt_router
+from api.routes.reconcile import router as reconcile_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
 from api.routes.sessions import router as sessions_router
@@ -113,6 +115,11 @@ async def lifespan(app: FastAPI):
         except ImportError:
             pass
 
+    # Start agent registry cache for registered-agents-only filtering
+    from services.agent_registry_cache import start as start_registry_cache
+
+    await start_registry_cache()
+
     yield
 
     if settings.DEPLOYMENT_MODE == "enterprise":
@@ -123,6 +130,9 @@ async def lifespan(app: FastAPI):
         except ImportError:
             pass
 
+    from services.agent_registry_cache import stop as stop_registry_cache
+
+    await stop_registry_cache()
     await close_cache()
     await close_redis()
 
@@ -289,6 +299,8 @@ app.include_router(telemetry_router)
 app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(eval_router)
+app.include_router(insights_router)
+app.include_router(reconcile_router)
 app.include_router(admin_router)
 app.include_router(alert_router)
 app.include_router(sessions_router)

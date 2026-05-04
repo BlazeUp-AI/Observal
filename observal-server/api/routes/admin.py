@@ -1,6 +1,8 @@
+import base64
 import hashlib
 import json
 import logging
+import re
 import secrets
 import uuid
 
@@ -31,6 +33,7 @@ from services.security_events import (
     Severity,
     emit_security_event,
 )
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +106,122 @@ async def diagnostics(
     return diag
 
 
+# ── Branding Validation ──────────────────────────────────
+
+_ALLOWED_LOGO_MIMES = {
+    "image/png",
+    "image/svg+xml",
+    "image/x-icon",
+    "image/vnd.microsoft.icon",
+    "image/jpeg",
+    "image/webp",
+}
+_MAX_LOGO_BYTES = 2 * 1024 * 1024
+_MAX_DATA_URL_LEN = 3 * 1024 * 1024  # base64 bloats ~33%, cap raw string
+_MAX_APP_NAME_LEN = 30
+
+# Magic byte signatures for allowed image formats
+_MAGIC_BYTES: dict[str, list[bytes]] = {
+    "image/png": [b"\x89PNG\r\n\x1a\n"],
+    "image/jpeg": [b"\xff\xd8\xff"],
+    "image/webp": [b"RIFF"],  # RIFF....WEBP
+    "image/x-icon": [b"\x00\x00\x01\x00", b"\x00\x00\x02\x00"],
+    "image/vnd.microsoft.icon": [b"\x00\x00\x01\x00", b"\x00\x00\x02\x00"],
+    # SVG is validated separately via _sanitize_svg
+}
+
+# SVG elements and attributes that can execute code or make external requests
+_SVG_DANGEROUS_TAGS = re.compile(
+    r"<[\s/]*(script|foreignObject|iframe|embed|object|applet|meta|link|style|handler|set|animate|animateTransform|animateMotion)\b",
+    re.IGNORECASE,
+)
+_SVG_EVENT_ATTRS = re.compile(r"\bon\w+\s*=", re.IGNORECASE)
+_SVG_JS_HREF = re.compile(r"(?:href|xlink:href)[\s=\"']*javascript:", re.IGNORECASE)
+_SVG_EXTERNAL_REF = re.compile(r"(?:href|xlink:href|src|url)[\s=\"']*(?:https?://|//|data:(?!image/))", re.IGNORECASE)
+_SVG_XML_DECL = re.compile(r"<!(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+# Characters forbidden in the app name
+_UNSAFE_NAME_CHARS = re.compile("[\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
+
+
+def _validate_magic_bytes(raw: bytes, mime_type: str) -> None:
+    """Verify the file's actual bytes match the claimed MIME type."""
+    signatures = _MAGIC_BYTES.get(mime_type)
+    if signatures is None:
+        return  # SVG handled separately
+    if not any(raw.startswith(sig) for sig in signatures):
+        raise HTTPException(status_code=422, detail=f"File content does not match declared type {mime_type}")
+    if mime_type == "image/webp" and raw[8:12] != b"WEBP":
+        raise HTTPException(status_code=422, detail="File content does not match declared type image/webp")
+
+
+def _sanitize_svg(raw: bytes) -> bytes:
+    """Reject SVGs containing dangerous elements or attributes."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="SVG contains invalid UTF-8")
+
+    if _SVG_XML_DECL.search(text):
+        raise HTTPException(status_code=422, detail="SVG must not contain DOCTYPE or ENTITY declarations")
+    if _SVG_DANGEROUS_TAGS.search(text):
+        raise HTTPException(
+            status_code=422, detail="SVG contains forbidden elements (script, foreignObject, iframe, etc.)"
+        )
+    if _SVG_EVENT_ATTRS.search(text):
+        raise HTTPException(
+            status_code=422, detail="SVG contains forbidden event handler attributes (onclick, onload, etc.)"
+        )
+    if _SVG_JS_HREF.search(text):
+        raise HTTPException(status_code=422, detail="SVG contains javascript: URLs")
+    if _SVG_EXTERNAL_REF.search(text):
+        raise HTTPException(status_code=422, detail="SVG contains external resource references")
+
+    return raw
+
+
+def _validate_branding_logo(value: str) -> None:
+    if not value:
+        return
+
+    if len(value) > _MAX_DATA_URL_LEN:
+        raise HTTPException(status_code=422, detail="Image data too large")
+
+    match = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", value, re.DOTALL)
+    if not match:
+        raise HTTPException(status_code=422, detail="Logo must be a base64 data URL (data:image/...;base64,...)")
+    mime_type = match.group(1)
+    b64_data = match.group(2)
+    if mime_type not in _ALLOWED_LOGO_MIMES:
+        raise HTTPException(
+            status_code=422, detail=f"Unsupported image type: {mime_type}. Allowed: PNG, SVG, ICO, JPEG, WEBP"
+        )
+    try:
+        raw = base64.b64decode(b64_data)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid base64 data")
+    if len(raw) > _MAX_LOGO_BYTES:
+        size_mb = round(len(raw) / (1024 * 1024), 1)
+        max_mb = _MAX_LOGO_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=422, detail=f"Logo too large ({size_mb}MB). Maximum: {max_mb}MB")
+
+    if mime_type == "image/svg+xml":
+        _sanitize_svg(raw)
+    else:
+        _validate_magic_bytes(raw, mime_type)
+
+
+def _validate_branding_app_name(value: str) -> None:
+    if len(value) > _MAX_APP_NAME_LEN:
+        raise HTTPException(
+            status_code=422, detail=f"App name too long ({len(value)} chars). Maximum: {_MAX_APP_NAME_LEN}"
+        )
+    if _UNSAFE_NAME_CHARS.search(value):
+        raise HTTPException(status_code=422, detail="App name contains forbidden control or invisible characters")
+    if "<" in value and ">" in value:
+        raise HTTPException(status_code=422, detail="App name must not contain HTML tags")
+
+
 # ── Enterprise Settings ──────────────────────────────────
 
 
@@ -138,6 +257,11 @@ async def upsert_setting(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
+    if key in ("branding.logo", "branding.wordmark"):
+        _validate_branding_logo(req.value)
+    elif key == "branding.app_name":
+        _validate_branding_app_name(req.value)
+
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
     if cfg:
@@ -222,7 +346,8 @@ async def create_user(
         default_org = await get_or_create_default_org(db)
         org_id = default_org.id
 
-    user = User(email=req.email, username=req.username, name=req.name, role=role, org_id=org_id)
+    username = req.username or await generate_unique_username(req.email, db)
+    user = User(email=req.email, username=username, name=req.name, role=role, org_id=org_id)
     user.set_password(password)
     db.add(user)
     try:
@@ -905,6 +1030,78 @@ async def set_trace_privacy(
     return {"trace_privacy": org.trace_privacy}
 
 
+# ── Registered Agents Only ─────────────────────────────────
+
+
+@router.get("/org/registered-agents-only")
+async def get_registered_agents_only(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Get the registered-agents-only setting for the current user's organization."""
+    if not current_user.org_id:
+        await audit(current_user, "admin.registered_agents_only.view", "registered_agents_only")
+        return {"registered_agents_only": False}
+    result = await db.execute(select(Organization).where(Organization.id == current_user.org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        await audit(current_user, "admin.registered_agents_only.view", "registered_agents_only")
+        return {"registered_agents_only": False}
+    await audit(current_user, "admin.registered_agents_only.view", "registered_agents_only", resource_id=str(org.id))
+    return {"registered_agents_only": org.registered_agents_only}
+
+
+@router.put("/org/registered-agents-only")
+async def set_registered_agents_only(
+    req: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.super_admin)),
+):
+    """Toggle registered-agents-only mode for the current user's organization.
+
+    When enabled, only registered (active) agents are traced.
+    Unregistered agent telemetry is stored as metadata-only (no content).
+    """
+    enabled = bool(req.get("registered_agents_only", False))
+
+    if not current_user.org_id:
+        raise HTTPException(status_code=400, detail="User has no organization")
+
+    result = await db.execute(select(Organization).where(Organization.id == current_user.org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    org.registered_agents_only = enabled
+    await db.commit()
+    await db.refresh(org)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.SETTING_CHANGED,
+            severity=Severity.WARNING,
+            outcome="success",
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role.value,
+            target_id=str(org.id),
+            target_type="organization",
+            detail=f"Registered-agents-only {'enabled' if enabled else 'disabled'}",
+        )
+    )
+    await audit(
+        current_user,
+        "admin.registered_agents_only.update",
+        "registered_agents_only",
+        resource_id=str(org.id),
+        detail=json.dumps({"enabled": enabled}),
+    )
+    # Invalidate registry cache so all server instances pick up the change immediately
+    from services.agent_registry_cache import invalidate as invalidate_registry_cache
+
+    await invalidate_registry_cache()
+    return {"registered_agents_only": org.registered_agents_only}
+
+
 @router.post("/cache/clear")
 async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))):
     """Clear all cached dashboard and OTEL responses."""
@@ -913,3 +1110,25 @@ async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))
     deleted = await invalidate_all()
     await audit(current_user, "admin.cache.clear", "cache", detail=json.dumps({"cleared": deleted}))
     return {"cleared": deleted}
+
+
+@router.post("/fix-agent-org")
+async def fix_agent_org(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Fix agents missing owner_org_id by setting it from the creator's org."""
+    from models.agent import Agent, AgentVisibility
+
+    result = await db.execute(select(Agent).where(Agent.owner_org_id.is_(None)))
+    agents = result.scalars().all()
+    fixed = 0
+    for agent in agents:
+        creator = (await db.execute(select(User).where(User.id == agent.created_by))).scalar_one_or_none()
+        if creator and creator.org_id:
+            agent.owner_org_id = creator.org_id
+            agent.visibility = AgentVisibility.public
+            fixed += 1
+    await db.commit()
+    await audit(current_user, "admin.fix_agent_org", detail=json.dumps({"fixed": fixed}))
+    return {"fixed": fixed, "total_checked": len(agents)}

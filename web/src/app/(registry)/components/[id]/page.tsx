@@ -3,14 +3,23 @@
 import { use } from "react";
 import { useSearchParams } from "next/navigation";
 import { useState, useCallback, useSyncExternalStore } from "react";
-import { Star, Check, Copy, ArrowLeft } from "lucide-react";
+import { Star, Check, Copy, ArrowLeft, History, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useRegistryItem, useFeedback, useFeedbackSummary, useRegistryMetrics } from "@/hooks/use-api";
+import {
+  useRegistryItem,
+  useFeedback,
+  useFeedbackSummary,
+  useRegistryMetrics,
+  useComponentVersions,
+  useComponentVersionDetail,
+} from "@/hooks/use-api";
 import type { RegistryType } from "@/lib/api";
-import type { FeedbackItem, RegistryItem } from "@/lib/types";
+import type { FeedbackItem, RegistryItem, ComponentVersionSummary } from "@/lib/types";
 import { copyToClipboard } from "@/lib/utils";
 import Link from "next/link";
 import { ReviewForm } from "@/components/registry/review-form";
+import { VersionDropdown } from "@/components/registry/version-dropdown";
+import { ComponentEditForm } from "@/components/registry/component-edit-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -30,11 +39,14 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
   const { id } = use(params);
   const searchParams = useSearchParams();
   const type = (searchParams.get("type") ?? "mcps") as RegistryType;
-  const singularType = type.replace(/s$/, "");
+  const singularType = type === "sandboxes" ? "sandbox" : type.replace(/s$/, "");
   const { data: item, isLoading, isError, error, refetch } = useRegistryItem(type, id);
   const { data: feedbackItems, refetch: refetchFeedback } = useFeedback(singularType, id);
   const { data: feedbackSummary, refetch: refetchSummary } = useFeedbackSummary(id);
   const { data: rawMetrics } = useRegistryMetrics(type, id);
+  const { data: versionsData, isLoading: versionsLoading } = useComponentVersions(type, id);
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const { data: versionDetail } = useComponentVersionDetail(type, id, selectedVersion);
 
   const storeSub = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);
@@ -45,6 +57,18 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
     () => !!localStorage.getItem("observal_access_token"),
     () => false,
   );
+
+  const versions = versionsData?.items ?? [];
+  // VersionDropdown expects AgentVersionSummary shape; ComponentVersionSummary is compatible
+  const versionsForDropdown = versions.filter((v) => v.status === "approved") as unknown as import("@/lib/types").AgentVersionSummary[];
+  const latestApprovedVersion = versions.find((v) => v.status === "approved")?.version;
+  const effectiveVersion = selectedVersion ?? latestApprovedVersion ?? (item?.version as string | undefined);
+  // Overlay version-specific description when a version is selected
+  const effectiveItem: RegistryItem | undefined = item
+    ? versionDetail
+      ? { ...item, ...(versionDetail as unknown as RegistryItem) }
+      : item
+    : undefined;
 
   const componentName = item?.name ?? id.slice(0, 8);
   const avgRating = feedbackSummary?.average_rating;
@@ -82,13 +106,22 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
           <div className="animate-in space-y-6">
             {/* Header */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-start gap-3 flex-wrap">
                 <h1 className="text-2xl font-display font-bold tracking-tight">{item.name}</h1>
                 <Badge variant="outline" className="text-xs">{singularType}</Badge>
                 {item.status && <Badge variant={statusVariant(item.status)}>{item.status}</Badge>}
+                {versionsForDropdown.length > 0 ? (
+                  <VersionDropdown
+                    versions={versionsForDropdown}
+                    currentVersion={effectiveVersion ?? ""}
+                    onSelect={setSelectedVersion}
+                  />
+                ) : effectiveVersion ? (
+                  <Badge variant="secondary" className="text-xs">v{effectiveVersion}</Badge>
+                ) : null}
               </div>
-              {item.description && (
-                <p className="text-sm text-foreground/80 leading-relaxed max-w-2xl">{item.description}</p>
+              {effectiveItem?.description && (
+                <p className="text-sm text-foreground/80 leading-relaxed max-w-2xl">{effectiveItem.description as string}</p>
               )}
               {avgRating != null && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -118,11 +151,20 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="install">Add to Agent</TabsTrigger>
+                <TabsTrigger value="versions">
+                  Versions
+                  {versions.length > 0 && (
+                    <span className="ml-1.5 text-[10px] bg-muted px-1.5 py-0.5 rounded-full">
+                      {versions.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                {isAuthenticated && <TabsTrigger value="edit">Edit</TabsTrigger>}
               </TabsList>
 
               <TabsContent value="overview" forceMount className="mt-6 data-[state=inactive]:hidden">
                 <div className="space-y-6 w-full min-h-[400px]">
-                  <ComponentMetadata item={item} />
+                  <ComponentMetadata item={effectiveItem ?? item} />
                   <MetricsSection entries={metricsEntries} />
                 </div>
               </TabsContent>
@@ -211,6 +253,70 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
                 ) : null}
                 </div>
               </TabsContent>
+
+              <TabsContent value="versions" forceMount className="mt-6 data-[state=inactive]:hidden">
+                <div className="space-y-4 w-full min-h-[400px]">
+                  {versionsLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : versions.length === 0 ? (
+                    <EmptyState
+                      icon={History}
+                      title="No versions yet"
+                      description="Release a new version from the Edit tab to start tracking version history."
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {versions.map((v: ComponentVersionSummary) => (
+                        <div
+                          key={v.id}
+                          className="flex items-start justify-between gap-4 rounded-md border border-border px-4 py-3"
+                        >
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-sm font-medium">v{v.version}</span>
+                              <Badge variant={statusVariant(v.status)} className="text-[10px]">
+                                {v.status}
+                              </Badge>
+                            </div>
+                            {v.description && (
+                              <p className="text-xs text-muted-foreground truncate max-w-xl">{v.description}</p>
+                            )}
+                            {v.changelog && (
+                              <p className="text-xs text-muted-foreground/70 italic truncate max-w-xl">{v.changelog}</p>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-right space-y-0.5">
+                            {v.released_by && (
+                              <p className="text-xs text-muted-foreground">{v.released_by}</p>
+                            )}
+                            {v.released_at && (
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(v.released_at).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {isAuthenticated && (
+                <TabsContent value="edit" forceMount className="mt-6 data-[state=inactive]:hidden">
+                  <div className="w-full min-h-[400px]">
+                    <ComponentEditForm
+                      listingId={id}
+                      type={type}
+                      currentVersion={effectiveVersion ?? "1.0.0"}
+                      item={effectiveItem ?? item}
+                      onSuccess={() => refetch()}
+                    />
+                  </div>
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         )}
@@ -301,7 +407,7 @@ function InstallSnippet({ type, name }: { type: string; name: string }) {
         aria-label="Copy command"
       >
         {copied ? (
-          <Check className="h-3.5 w-3.5 text-green-500" />
+          <Check className="h-3.5 w-3.5 text-success" />
         ) : (
           <Copy className="h-3.5 w-3.5" />
         )}

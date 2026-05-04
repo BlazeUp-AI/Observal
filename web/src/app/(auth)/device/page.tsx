@@ -95,7 +95,7 @@ function DeviceContent() {
           <div className="px-8 py-6">
             {success ? (
               <div className="flex flex-col items-center gap-4 py-4 animate-in">
-                <CheckCircle2 className="h-12 w-12 text-green-500" />
+                <CheckCircle2 className="h-12 w-12 text-success" />
                 <p className="text-center text-sm text-muted-foreground">
                   Device authorized! You can close this tab and return to your terminal.
                 </p>

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import jwt
 from fastapi import APIRouter, Depends, Header, Request, Response
+from redis.exceptions import RedisError
 from sqlalchemy import select
 
 from api.deps import get_project_id, require_role
@@ -28,7 +29,7 @@ from services.clickhouse import (
     query_recent_events,
 )
 from services.jwt_service import decode_access_token
-from services.redis import publish
+from services.redis import get_redis, publish
 from services.secrets_redactor import get_and_reset_redaction_count, redact_secrets
 from services.security_events import (
     EventType,
@@ -867,7 +868,9 @@ async def ingest_hook(request: Request):
     tool_name = body.get("tool_name", "")
 
     # ── Kiro IDE session correlation ──
-    # $PPID differs per hook invocation in IDE context. Correlate by cwd.
+    # Legacy $PPID sessions (kiro-{PPID}) need cwd-based correlation because
+    # PPID differs per hook invocation. Modern sessions (kiro-cli-{PID}) have
+    # a stable PID per kiro-cli run, so they skip the cache.
     cwd = body.get("cwd", "")
     is_kiro = service_name == "kiro"
     is_kiro_ppid = bool(re.match(r"^kiro-\d+$", session_id))
@@ -879,7 +882,9 @@ async def ingest_hook(request: Request):
         session_id = f"kiro-{hashlib.sha256(cwd.encode()).hexdigest()[:12]}"
         is_kiro_ppid = True  # treat it like a PPID session for caching below
 
-    if is_kiro_ppid and cwd:
+    # Only apply cwd-based cache to legacy kiro-{PPID} format.
+    # Modern kiro-cli-{PID}-{startms} format has stable PID per session, no cache needed.
+    if is_kiro_ppid and cwd and not session_id.startswith("kiro-cli-"):
         now_ts = _time.monotonic()
         cached = _kiro_session_cache.get(cwd)
         if cached and (now_ts - cached[1]) < _KIRO_SESSION_WINDOW:
@@ -909,6 +914,18 @@ async def ingest_hook(request: Request):
 
     # ── User identity (from Observal login, injected by CLI) ──
     user_id = body.get("user_id") or request.headers.get("x-observal-user-id") or ""
+
+    # Drop events silently for revoked users (post-logout).
+    # Return 200 so hook scripts don't break on error responses.
+    if user_id:
+        try:
+            redis = get_redis()
+            if await redis.get(f"revoked_user:{user_id}"):
+                logger.debug("hooks: dropping event for revoked user %s", user_id)
+                return {}
+        except RedisError:
+            pass  # Fail open if Redis is down
+
     if user_id:
         attrs["user.id"] = user_id
 
@@ -933,6 +950,45 @@ async def ingest_hook(request: Request):
         attrs["cwd"] = body["cwd"]
     if body.get("permission_mode"):
         attrs["permission_mode"] = body["permission_mode"]
+
+    # ── Session-agent cache: propagate agent_name across all events in a session ──
+    # Uses body["agent_name"] (hook-injected) for writes to avoid caching subagent
+    # descriptions set by _extract_claude_code in attrs.  SETNX ensures the first
+    # attribution sticks for the session's lifetime.
+    if session_id and len(session_id) <= 256 and all(c.isalnum() or c in "-_" for c in session_id):
+        _body_agent = body.get("agent_name", "")
+        if _body_agent:
+            try:
+                _redis = get_redis()
+                await _redis.set(f"session_agent:{session_id}", _body_agent, nx=True, ex=86400)
+            except RedisError:
+                pass
+        elif not attrs.get("agent_name"):
+            try:
+                _redis = get_redis()
+                _cached = await _redis.get(f"session_agent:{session_id}")
+                if _cached:
+                    attrs["agent_name"] = _cached
+            except RedisError:
+                pass
+
+    # ── Registered-agents-only gate ──
+    # When enabled, drop unregistered agent spans entirely (no ClickHouse write).
+    from services.agent_registry_cache import is_registered, is_toggle_enabled, resolve_user_org
+
+    if user_id:
+        _org_id = await resolve_user_org(user_id)
+        if _org_id and is_toggle_enabled(_org_id):
+            _agent_name = attrs.get("agent_name", "")
+            _should_drop = False
+            if _agent_name:
+                if not is_registered(_org_id, _agent_name):
+                    _should_drop = True
+            else:
+                # No agent identity — can't verify registration, drop conservatively
+                _should_drop = True
+            if _should_drop:
+                return {"ingested": 0, "filtered": "unregistered_agent"}
 
     # Build the Body as a readable summary
     agent_prefix = f"[{attrs.get('agent_type', '')}] " if attrs.get("agent_id") else ""
@@ -1145,6 +1201,15 @@ async def _resolve_project_id(request: Request) -> str:
     except jwt.InvalidTokenError:
         return _DEFAULT_PROJECT
 
+    jti = payload.get("jti")
+    if jti:
+        try:
+            redis = get_redis()
+            if await redis.get(f"revoked_jti:{jti}"):
+                return _DEFAULT_PROJECT
+        except RedisError:
+            pass  # Fail open if Redis is down
+
     user_id = payload.get("sub")
     if not user_id:
         return _DEFAULT_PROJECT
@@ -1225,6 +1290,7 @@ def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> t
     for rs in body.get("resourceSpans", []):
         res_attrs = _extract_attrs(rs.get("resource", {}).get("attributes", []))
         ide = _detect_ide(res_attrs)
+        agent_version = res_attrs.get("observal.agent.version")
 
         for ss in rs.get("scopeSpans", []):
             for span in ss.get("spans", []):
@@ -1305,6 +1371,7 @@ def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> t
                         "token_count_output": tok_out,
                         "token_count_total": tok_total,
                         "cost": cost,
+                        "agent_version": agent_version,
                     }
                     spans.append(span_row)
 
@@ -1328,6 +1395,7 @@ def _convert_resource_spans(body: dict, project_id: str = _DEFAULT_PROJECT) -> t
                             "tags": [],
                             "input": input_text,
                             "output": output_text,
+                            "agent_version": agent_version,
                         }
                 except Exception:
                     logger.warning("Failed to convert OTLP span", exc_info=True)

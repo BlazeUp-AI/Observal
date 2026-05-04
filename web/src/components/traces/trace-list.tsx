@@ -26,11 +26,11 @@ import { QueryError } from "@/components/dashboard/query-error";
 import { ListTree } from "lucide-react";
 
 const IDE_BADGE_STYLES: Record<string, string> = {
-  "claude-code": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+  "claude-code": "bg-light-yellow text-dark-yellow",
   kiro: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   cursor: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
-  "gemini-cli": "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  vscode: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  "gemini-cli": "bg-light-red text-dark-red",
+  vscode: "bg-light-blue text-dark-blue",
   codex: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
   copilot: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
   "copilot-cli": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",

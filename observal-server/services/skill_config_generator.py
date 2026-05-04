@@ -2,7 +2,28 @@ from __future__ import annotations
 
 import re
 
+from schemas.ide_registry import IDE_REGISTRY
+
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _short_description(desc: str, max_len: int = 200) -> str:
+    """Extract a single-line summary from a potentially multi-line description.
+
+    Takes the first line of desc. If that line is too long (> max_len), falls
+    back to the first sentence (up to first '.'). Strips leading '# ' markdown
+    heading markers.
+    """
+    if not desc:
+        return ""
+    first_line = desc.split("\n", 1)[0].strip()
+    # Strip leading markdown heading markers (e.g. "# ", "## ")
+    first_line = re.sub(r"^#+\s*", "", first_line)
+    if len(first_line) <= max_len:
+        return first_line
+    # Fall back to first sentence
+    sentence, _, _ = first_line.partition(".")
+    return sentence.strip()
 
 
 def _sanitize_name(name: str) -> str:
@@ -17,37 +38,30 @@ def _generate_skill_file(skill_listing, ide: str, scope: str = "project") -> dic
     Returns None for monolithic IDEs (gemini, codex, copilot) that inline
     skills into their rules markdown.
     """
+    ide_key = ide.replace("_", "-")
+    spec = IDE_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skill_file")
+    if not skill_paths:
+        return None
+
     name = _sanitize_name(skill_listing.name)
     desc = getattr(skill_listing, "description", "") or ""
     slash_cmd = getattr(skill_listing, "slash_command", None)
+    path = skill_paths.get(scope, next(iter(skill_paths.values()))).format(name=name)
 
-    if ide in ("claude-code", "claude_code"):
+    short_desc = _short_description(desc)
+    skill_format = spec.get("skill_format")
+    if skill_format == "yaml_frontmatter":
         content = f"---\nname: {name}\n"
-        if desc:
-            content += f'description: "{desc}"\n'
-        if slash_cmd:
+        if short_desc:
+            content += f'description: "{short_desc}"\n'
+        if slash_cmd and ide_key == "claude-code":
             content += f"command: /{slash_cmd}\n"
         content += f"---\n\n{desc}\n"
-        prefix = "~/.claude" if scope == "user" else ".claude"
-        return {"path": f"{prefix}/skills/{name}/SKILL.md", "content": content}
+    else:
+        content = f"---\ndescription: {short_desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
 
-    if ide == "kiro":
-        content = f"---\nname: {name}\n"
-        if desc:
-            content += f'description: "{desc}"\n'
-        content += f"---\n\n{desc}\n"
-        return {"path": f".kiro/skills/{name}/SKILL.md", "content": content}
-
-    if ide == "cursor":
-        prefix = "~/.cursor" if scope == "user" else ".cursor"
-        content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-        return {"path": f"{prefix}/rules/{name}.md", "content": content}
-
-    if ide == "vscode":
-        content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-        return {"path": f".vscode/rules/{name}.md", "content": content}
-
-    return None
+    return {"path": path, "content": content}
 
 
 def generate_skill_config(

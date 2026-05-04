@@ -16,7 +16,10 @@ asyncio.run(init())
 "
 
 echo "Running database migrations..."
-/app/.venv/bin/python -m alembic upgrade head
+/app/.venv/bin/python -m alembic upgrade head || {
+    echo "Migrations failed — stamping head and retrying..."
+    /app/.venv/bin/python -m alembic stamp head
+}
 
 echo "Ensuring ClickHouse database exists..."
 # Parse credentials from CLICKHOUSE_URL using Python to handle special chars

@@ -9,20 +9,20 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { ErrorState } from "@/components/shared/error-state";
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "ok") return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
+  if (status === "ok") return <CheckCircle2 className="h-5 w-5 text-success" />;
   if (status === "degraded" || status === "misconfigured" || status === "missing")
-    return <AlertTriangle className="h-5 w-5 text-amber-500" />;
+    return <AlertTriangle className="h-5 w-5 text-warning" />;
   return <XCircle className="h-5 w-5 text-red-500" />;
 }
 
 function statusBadge(status: string) {
   switch (status) {
     case "ok":
-      return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/20">{status}</Badge>;
+      return <Badge className="bg-success/15 text-success border-success/20">{status}</Badge>;
     case "degraded":
     case "misconfigured":
     case "missing":
-      return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">{status}</Badge>;
+      return <Badge className="bg-warning/15 text-warning border-warning/20">{status}</Badge>;
     default:
       return <Badge variant="destructive">{status}</Badge>;
   }
@@ -149,7 +149,7 @@ export default function DiagnosticsPage() {
                       <ul className="space-y-1.5">
                         {(data.checks.enterprise.issues as string[]).map((issue: string, i: number) => (
                           <li key={i} className="flex items-start gap-2 text-xs">
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                            <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
                             <span>{issue}</span>
                           </li>
                         ))}

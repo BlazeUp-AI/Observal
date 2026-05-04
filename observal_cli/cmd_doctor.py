@@ -9,6 +9,7 @@ import typer
 from rich import print as rprint
 
 from observal_cli import config, settings_reconciler
+from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
     OBSERVAL_METADATA_KEY,
@@ -258,8 +259,10 @@ def _cleanup_gemini(dry_run: bool) -> bool:
         rprint(f"  {verb} hooks: {', '.join(removed_events)}")
 
     if changed and not dry_run:
-        data.pop("env", None) if not data.get("env") else None
-        data.pop("hooks", None) if not data.get("hooks") else None
+        if not data.get("env"):
+            data.pop("env", None)
+        if not data.get("hooks"):
+            data.pop("hooks", None)
         settings_path.write_text(json.dumps(data, indent=2) + "\n")
         rprint(f"  [green]Written {settings_path}[/green]")
 
@@ -1066,7 +1069,7 @@ def _find_hook_script(name: str) -> str | None:
     ]
     for p in candidates:
         if p.is_file():
-            return str(p.resolve())
+            return p.resolve().as_posix()
     return None
 
 
@@ -1077,9 +1080,10 @@ def _install_claude_code_hooks(server_url: str, api_key: str) -> list[str]:
     stop_script = _find_hook_script("observal-stop-hook.sh")
     cfg = config.load()
     user_id = cfg.get("user_id", "")
+    agent_name = cfg.get("agent_name", "")
 
     desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-    desired_env = get_desired_env(server_url, api_key, user_id)
+    desired_env = get_desired_env(server_url, api_key, user_id, agent_name=agent_name)
 
     return settings_reconciler.reconcile(desired_hooks, desired_env)
 
@@ -1126,6 +1130,25 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
             pass
     agent_files = list(agents_dir.glob("*.json"))
 
+    # Check if registered-agents-only mode is enabled
+    from observal_cli import client as obs_client
+
+    registered_agents_only = obs_client.get_registered_agents_only()
+    registered_agents: set[str] = set()
+    if registered_agents_only:
+        registered_agents = obs_client.get_registered_agent_names()
+        # Filter agent files to only registered ones (skip silently)
+        eligible_files = [af for af in agent_files if af.stem != "kiro_default" and af.stem in registered_agents]
+        if not eligible_files:
+            skipped_count = sum(1 for af in agent_files if af.stem != "kiro_default")
+            if skipped_count:
+                changes.append(
+                    f"[dim]  {skipped_count} unregistered agent(s) skipped. "
+                    "Register agents via [bold]observal agent create[/bold] to enable tracing.[/dim]"
+                )
+            return changes, changed
+        agent_files = eligible_files
+
     for af in agent_files:
         agent_name = af.stem
         # Skip kiro_default — only trace registered agents
@@ -1144,15 +1167,15 @@ def _install_kiro_hooks(server_url: str) -> tuple[list[str], bool]:
         current_hooks = data.get("hooks", {})
         updated = False
 
+        def _is_observal_hook(h: dict) -> bool:
+            cmd = h.get("command", "")
+            return "observal_cli" in cmd or "telemetry/hooks" in cmd
+
         for kiro_event, desired_entries in desired_kiro_hooks.items():
             existing = current_hooks.get(kiro_event, [])
-            # Check if Observal hook already present
-            has_observal = any(
-                "observal" in h.get("command", "") or "telemetry/hooks" in h.get("command", "") for h in existing
-            )
-            if not has_observal:
-                # Append our hooks, keep existing ones
-                current_hooks[kiro_event] = existing + desired_entries
+            cleaned = [h for h in existing if not _is_observal_hook(h)]
+            current_hooks[kiro_event] = cleaned + desired_entries
+            if current_hooks[kiro_event] != existing:
                 updated = True
 
         if updated:
@@ -1252,20 +1275,24 @@ def _backup_config(config_path: Path) -> Path:
 
 
 def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
-    """Extract MCP servers dict from IDE config."""
-    if ide in ("vscode", "copilot"):
+    """Extract MCP servers dict from IDE config using registry-defined key."""
+    key = get_mcp_servers_key(ide)
+    if key == "mcp.servers":
+        return config_data.get("mcp", {}).get("servers", {})
+    if key == "mcp":
+        return config_data.get("mcp", {})
+    if key == "servers" or ide == "vscode":
         return config_data.get("servers", config_data.get("mcpServers", {}))
     if ide == "copilot-cli":
         return config_data.get("mcpServers", {})
-    if ide == "opencode":
-        return config_data.get("mcp", {})
-    if ide == "codex":
-        return config_data.get("mcp", {}).get("servers", {})
-    return config_data.get("mcpServers", config_data.get("servers", {}))
+    return config_data.get(key, config_data.get("servers", {}))
 
 
-def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
-    """Wrap un-shimmed MCP servers in a config file with observal-shim. Returns count of shimmed entries."""
+def _shim_config_file(config_path: Path, ide: str, dry_run: bool, *, registered_mcps: set[str] | None = None) -> int:
+    """Wrap un-shimmed MCP servers in a config file with observal-shim. Returns count of shimmed entries.
+
+    When registered_mcps is provided, only MCPs in that set are shimmed (registered-agents-only mode).
+    """
     if not config_path.exists():
         return 0
     try:
@@ -1287,6 +1314,9 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
     shimmed = 0
     for name, entry in servers.items():
         if not _is_already_shimmed(entry) and not entry.get("url"):
+            # Skip unregistered MCPs when registered-agents-only mode is ON
+            if registered_mcps is not None and name not in registered_mcps:
+                continue
             if not dry_run:
                 servers[name] = _wrap_with_shim(entry, name)
             shimmed += 1
@@ -1332,18 +1362,9 @@ def auto_shim_home_config(config_path: Path, ide: str):
         rprint(f"  [green]Shimmed {shimmed} MCP entries in {config_path}[/green]")
 
 
-# ── IDE home-dir MCP config paths for shimming ──
+# ── IDE home-dir MCP config paths for shimming (derived from registry) ──
 
-_SHIM_TARGETS: dict[str, Path] = {
-    "claude-code": Path.home() / ".mcp.json",
-    "kiro": Path.home() / ".kiro" / "settings" / "mcp.json",
-    "gemini-cli": Path.home() / ".gemini" / "settings.json",
-    "codex": Path.home() / ".codex" / "config.toml",
-    "copilot": Path.home() / ".vscode" / "mcp.json",
-    "copilot-cli": Path.home() / ".copilot" / "mcp-config.json",
-    "opencode": Path.home() / ".config" / "opencode" / "opencode.json",
-    "cursor": Path.home() / ".cursor" / "mcp.json",
-}
+_SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items()}
 
 _VALID_IDES = list(_SHIM_TARGETS.keys())
 
@@ -1399,6 +1420,11 @@ def doctor_patch(
 
     rprint("[bold]Observal Doctor — Patch[/bold]\n")
 
+    # Fetch toggle once for all IDEs (avoid repeated HTTP round-trips)
+    from observal_cli import client as obs_client
+
+    reg_only = obs_client.get_registered_agents_only()
+
     for target in targets:
         # ── Hooks ──
         if do_hooks:
@@ -1407,26 +1433,73 @@ def doctor_patch(
                 if not claude_dir.is_dir() and not shutil.which("claude"):
                     continue
                 rprint("[cyan]Claude Code — hooks[/cyan]")
-                if dry_run:
-                    hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
-                    hook_script = _find_hook_script("observal-hook.sh")
-                    stop_script = _find_hook_script("observal-stop-hook.sh")
+
+                if reg_only:
+                    # Registered-agents-only mode: hooks live in agent frontmatter,
+                    # not in global settings.json.  Only ensure env vars are set.
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via agent frontmatter)[/dim]"
+                    )
                     user_id = cfg.get("user_id", "")
-                    desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
-                    desired_env = get_desired_env(server_url, api_key, user_id)
-                    changes = settings_reconciler.reconcile(desired_hooks, desired_env, dry_run=True)
+                    agent_name = cfg.get("agent_name", "")
+                    desired_env = get_desired_env(server_url, api_key, user_id, agent_name=agent_name)
+                    changes = settings_reconciler.reconcile({}, desired_env, dry_run=dry_run)
+                    # Warn if stale global hooks exist in settings.json
+                    settings_path = Path.home() / ".claude" / "settings.json"
+                    if settings_path.exists():
+                        try:
+                            sdata = json.loads(settings_path.read_text())
+                            has_stale = any(
+                                _is_observal_matcher_group(g)
+                                for groups in sdata.get("hooks", {}).values()
+                                if isinstance(groups, list)
+                                for g in groups
+                            )
+                            if has_stale:
+                                rprint(
+                                    "  [yellow]⚠ Stale global hooks detected. "
+                                    "Run: observal doctor cleanup --ide claude-code[/yellow]"
+                                )
+                                any_changes = True
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                    if changes:
+                        any_changes = True
+                        for c in changes:
+                            rprint(f"  {c}")
+                    else:
+                        rprint("  [dim]Env vars already up to date[/dim]")
                 else:
-                    changes = _install_claude_code_hooks(server_url, api_key)
-                if changes:
-                    any_changes = True
-                    for c in changes:
-                        rprint(f"  {c}")
-                else:
-                    rprint("  [dim]Already up to date[/dim]")
+                    # All-traces mode: install global hooks as usual.
+                    if dry_run:
+                        hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
+                        hook_script = _find_hook_script("observal-hook.sh")
+                        stop_script = _find_hook_script("observal-stop-hook.sh")
+                        user_id = cfg.get("user_id", "")
+                        desired_hooks = get_desired_hooks(hook_script, stop_script, hooks_url, user_id)
+                        agent_name = cfg.get("agent_name", "")
+                        desired_env = get_desired_env(server_url, api_key, user_id, agent_name=agent_name)
+                        changes = settings_reconciler.reconcile(desired_hooks, desired_env, dry_run=True)
+                    else:
+                        changes = _install_claude_code_hooks(server_url, api_key)
+                    if changes:
+                        any_changes = True
+                        for c in changes:
+                            rprint(f"  {c}")
+                    else:
+                        rprint("  [dim]Already up to date[/dim]")
 
             elif target in ("kiro", "kiro-cli"):
                 rprint("[cyan]Kiro — hooks[/cyan]")
-                if dry_run:
+
+                if reg_only:
+                    # Kiro hooks are always per-agent (in agent JSON files),
+                    # so in reg-only mode they're already scoped correctly via pull.
+                    rprint(
+                        "  [dim]Registered-agents-only mode: hooks live per-agent (installed via observal pull)[/dim]"
+                    )
+                elif dry_run:
                     rprint("  [yellow]Would install hooks into ~/.kiro/agents/*.json[/yellow]")
                 else:
                     messages, kiro_changed = _install_kiro_hooks(server_url)
@@ -1440,7 +1513,13 @@ def doctor_patch(
                 if not copilot_dir.is_dir() and not shutil.which("copilot"):
                     continue
                 rprint("[cyan]Copilot CLI — hooks[/cyan]")
-                if dry_run:
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent hooks)[/dim]"
+                    )
+                elif dry_run:
                     rprint("  [yellow]Would install hooks into ~/.copilot/config.json[/yellow]")
                 else:
                     messages, ccli_changed = _install_copilot_cli_hooks(server_url)
@@ -1451,7 +1530,13 @@ def doctor_patch(
 
             elif target in ("gemini-cli", "gemini_cli"):
                 rprint("[cyan]Gemini CLI — hooks[/cyan]")
-                if dry_run:
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent config)[/dim]"
+                    )
+                elif dry_run:
                     rprint("  [yellow]Would install hooks into ~/.gemini/settings.json[/yellow]")
                 else:
                     gemini_hooks_url = f"{server_url.rstrip('/')}/api/v1/telemetry/hooks"
@@ -1501,17 +1586,126 @@ def doctor_patch(
                     except Exception as e:
                         rprint(f"  [yellow]Could not inject Gemini hooks: {e}[/yellow]")
 
+            elif target == "cursor":
+                cursor_dir = Path.home() / ".cursor"
+                if not cursor_dir.is_dir() and not shutil.which("cursor"):
+                    continue
+                rprint("[cyan]Cursor — hooks[/cyan]")
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent hooks.json)[/dim]"
+                    )
+                elif dry_run:
+                    rprint("  [yellow]Would install hooks into ~/.cursor/hooks.json[/yellow]")
+                else:
+                    from observal_cli.ide_specs.cursor_hooks_spec import build_cursor_hooks
+
+                    hook_script = _find_hook_script("observal-hook.sh")
+                    stop_script = _find_hook_script("observal-stop-hook.sh")
+                    hooks_content = build_cursor_hooks(hook_script, stop_script)
+
+                    cursor_hooks_path = cursor_dir / "hooks.json"
+                    try:
+                        needs_update = True
+                        if cursor_hooks_path.exists():
+                            existing = json.loads(cursor_hooks_path.read_text())
+                            if existing == hooks_content:
+                                needs_update = False
+                        if needs_update:
+                            _backup_config(cursor_hooks_path)
+                            cursor_hooks_path.parent.mkdir(parents=True, exist_ok=True)
+                            cursor_hooks_path.write_text(json.dumps(hooks_content, indent=2) + "\n")
+                            rprint(f"  [green]Installed hooks into {cursor_hooks_path}[/green]")
+                            any_changes = True
+                        else:
+                            rprint("  [dim]Already up to date[/dim]")
+                    except Exception as e:
+                        rprint(f"  [yellow]Could not install Cursor hooks: {e}[/yellow]")
+
+            elif target in ("vscode", "copilot"):
+                rprint(f"[cyan]{target.title()} — hooks[/cyan]")
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global hooks "
+                        "(telemetry via per-agent hooks)[/dim]"
+                    )
+                elif dry_run:
+                    rprint("  [yellow]Would install hooks into .github/hooks/observal.json[/yellow]")
+                else:
+                    from observal_cli.ide_specs.vscode_hooks_spec import build_vscode_hooks
+
+                    hook_script = _find_hook_script("observal-hook.sh")
+                    stop_script = _find_hook_script("observal-stop-hook.sh")
+                    hooks_content = build_vscode_hooks(hook_script, stop_script)
+
+                    # Write to .github/hooks/observal.json in cwd
+                    hooks_path = Path.cwd() / ".github" / "hooks" / "observal.json"
+                    try:
+                        needs_update = True
+                        if hooks_path.exists():
+                            existing = json.loads(hooks_path.read_text())
+                            if existing == hooks_content:
+                                needs_update = False
+                        if needs_update:
+                            hooks_path.parent.mkdir(parents=True, exist_ok=True)
+                            hooks_path.write_text(json.dumps(hooks_content, indent=2) + "\n")
+                            rprint(f"  [green]Installed hooks into {hooks_path}[/green]")
+                            any_changes = True
+                        else:
+                            rprint("  [dim]Already up to date[/dim]")
+                    except Exception as e:
+                        rprint(f"  [yellow]Could not install VS Code/Copilot hooks: {e}[/yellow]")
+
+            elif target == "opencode":
+                rprint("[cyan]OpenCode — plugin hooks[/cyan]")
+
+                if reg_only:
+                    rprint(
+                        "  [dim]Registered-agents-only mode: skipping global plugin "
+                        "(telemetry via per-agent plugin)[/dim]"
+                    )
+                elif dry_run:
+                    rprint("  [yellow]Would install plugin into .opencode/plugins/[/yellow]")
+                else:
+                    from observal_cli.ide_specs.opencode_hooks_spec import build_opencode_plugin_js
+
+                    hook_script = _find_hook_script("observal-hook.sh")
+                    stop_script = _find_hook_script("observal-stop-hook.sh")
+                    plugin_content = build_opencode_plugin_js(hook_script, stop_script)
+
+                    plugin_path = Path.cwd() / ".opencode" / "plugins" / "observal-plugin.mjs"
+                    try:
+                        needs_update = True
+                        if plugin_path.exists() and plugin_path.read_text() == plugin_content:
+                            needs_update = False
+                        if needs_update:
+                            plugin_path.parent.mkdir(parents=True, exist_ok=True)
+                            plugin_path.write_text(plugin_content)
+                            rprint(f"  [green]Installed plugin into {plugin_path}[/green]")
+                            any_changes = True
+                        else:
+                            rprint("  [dim]Already up to date[/dim]")
+                    except Exception as e:
+                        rprint(f"  [yellow]Could not install OpenCode plugin: {e}[/yellow]")
+
         # ── Shims ──
         if do_shims:
             shim_path = _SHIM_TARGETS.get(target)
             if shim_path and shim_path.exists():
                 rprint(f"[cyan]{target} — shims[/cyan]")
-                count = _shim_config_file(shim_path, target, dry_run)
+                _reg_mcps = obs_client.get_registered_mcp_names() if reg_only else None
+                count = _shim_config_file(shim_path, target, dry_run, registered_mcps=_reg_mcps)
                 if count:
                     any_changes = True
                     rprint(f"  {verb}: shimmed {count} MCP entries in {shim_path}")
                 else:
-                    rprint("  [dim]All MCP servers already shimmed[/dim]")
+                    if reg_only:
+                        rprint("  [dim]All MCP servers already shimmed or unregistered[/dim]")
+                    else:
+                        rprint("  [dim]All MCP servers already shimmed[/dim]")
 
         # ── OTel config ──
         if do_otel and target in ("gemini-cli", "gemini_cli"):

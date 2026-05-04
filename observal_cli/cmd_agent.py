@@ -327,7 +327,7 @@ def agent_bulk_create(
             if status == "created"
             else ("[yellow]skipped[/yellow]" if status == "skipped" else f"[red]{status}[/red]")
         )
-        agent_id = str(item["agent_id"])[:8] + "…" if item.get("agent_id") else ""
+        agent_id = f"{str(item['agent_id'])[:8]}…" if item.get("agent_id") else ""
         results_table.add_row(str(i), item.get("name", ""), badge, agent_id, item.get("error", "") or "")
     console.print(results_table)
 
@@ -407,7 +407,7 @@ def agent_list(
         creator = item.get("created_by_username") or item.get("created_by_email", "")
         row = [str(i), item["name"], item.get("version", ""), item.get("model_name", ""), creator]
         if include_id:
-            row.append(str(item["id"]) if full_id else str(item["id"])[:8] + "…")
+            row.append(str(item["id"]) if full_id else f"{str(item['id'])[:8]}…")
         table.add_row(*row)
     console.print(table)
 
@@ -420,6 +420,43 @@ def agent_list(
             )
         else:
             rprint("[dim]End of results.[/dim]")
+
+
+@agent_app.command(name="my")
+def agent_my(
+    output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
+):
+    """List your own agents (all statuses)."""
+    with spinner("Fetching your agents..."):
+        data = client.get("/api/v1/agents/my")
+    if not data:
+        rprint("[dim]You have no agents.[/dim]")
+        return
+    config.save_last_results(data)
+    if output == "json":
+        output_json(data)
+        return
+    if output == "plain":
+        for item in data:
+            rprint(f"{item['name']}  v{item.get('version', '?')}  {item.get('status', '')}")
+        return
+    table = Table(title=f"My Agents ({len(data)})", show_lines=False, padding=(0, 1))
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Name", style="bold cyan", no_wrap=True)
+    table.add_column("Version", style="green")
+    table.add_column("Model")
+    table.add_column("Status")
+    table.add_column("ID", style="dim", max_width=12)
+    for i, item in enumerate(data, 1):
+        table.add_row(
+            str(i),
+            item["name"],
+            item.get("version", ""),
+            item.get("model_name", ""),
+            status_badge(item.get("status", "")),
+            str(item["id"])[:8] + "…",
+        )
+    console.print(table)
 
 
 @agent_app.command(name="show")
@@ -781,3 +818,103 @@ def agent_publish(
         status = result.get("status", "pending")
         rprint(f"[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
         rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
+
+
+@agent_app.command(name="release")
+def agent_release(
+    name: str = typer.Argument(..., help="Agent name, ID, row number, or @alias"),
+    bump: str = typer.Option(..., "--bump", help="Version bump type: patch, minor, or major"),
+    directory: str = typer.Option(".", "--dir", "-d", help="Directory containing observal-agent.yaml"),
+):
+    """Bump version and push a versioned release to the registry."""
+    if bump not in ("patch", "minor", "major"):
+        rprint("[red]Error:[/red] --bump must be one of: patch, minor, major")
+        raise typer.Exit(code=1)
+
+    dir_path = Path(directory)
+    data = _load_agent_yaml(dir_path)
+
+    resolved = config.resolve_alias(name)
+    with spinner("Looking up agent..."):
+        agent = client.get(f"/api/v1/agents/{resolved}")
+    agent_id = agent["id"]
+
+    # Fetch version suggestions
+    with spinner("Fetching version suggestions..."):
+        suggestions = client.get(f"/api/v1/agents/{agent_id}/version-suggestions")
+
+    current = suggestions.get("current", data.get("version", "1.0.0"))
+    new_version = suggestions.get("suggestions", {}).get(bump)
+    if not new_version:
+        rprint(f"[red]Error:[/red] Could not determine new version for bump type '{bump}'")
+        raise typer.Exit(code=1)
+
+    rprint(f"[dim]→[/dim] Bumping version: [bold]{current}[/bold] → [bold cyan]{new_version}[/bold cyan]")
+
+    # Update version in data BEFORE capturing snapshot
+    data["version"] = new_version
+    _save_agent_yaml(dir_path, data)
+    raw_yaml = (dir_path / YAML_FILE).read_text()
+
+    # Build release payload from YAML
+    payload = {
+        "version": new_version,
+        "description": data.get("description", ""),
+        "prompt": data.get("prompt", ""),
+        "model_name": data.get("model_name", "claude-sonnet-4"),
+        "model_config_json": data.get("model_config_json"),
+        "external_mcps": data.get("external_mcps"),
+        "supported_ides": data.get("supported_ides", []),
+        "components": data.get("components", []),
+        "goal_template": data.get("goal_template"),
+        "yaml_snapshot": raw_yaml,
+    }
+
+    rprint("[dim]→[/dim] Pushing definition to registry...")
+    with spinner("Creating version..."):
+        result = client.post(f"/api/v1/agents/{agent_id}/versions", payload)
+
+    rprint(f"[green]✓ Version {new_version} submitted for review[/green]")
+
+    for warning in result.get("warnings", []):
+        rprint(f"[yellow]⚠ {warning}[/yellow]")
+
+
+@agent_app.command(name="versions")
+def agent_versions(
+    name: str = typer.Argument(..., help="Agent name, ID, row number, or @alias"),
+    output: str = typer.Option("table", "--output", "-o", help="Output format: table or json"),
+):
+    """List all versions for an agent."""
+    resolved = config.resolve_alias(name)
+
+    with spinner("Fetching versions..."):
+        data = client.get(f"/api/v1/agents/{resolved}/versions", params={"page": 1, "page_size": 50})
+
+    items = data.get("items", [])
+
+    if output == "json":
+        output_json(data)
+        return
+
+    if not items:
+        rprint("[dim]No versions found.[/dim]")
+        return
+
+    table = Table(show_lines=False, padding=(0, 1))
+    table.add_column("VERSION", style="bold cyan", no_wrap=True)
+    table.add_column("STATUS")
+    table.add_column("DATE")
+    table.add_column("RELEASED BY", style="dim")
+    table.add_column("COMPONENTS")
+
+    for item in items:
+        table.add_row(
+            item.get("version", ""),
+            status_badge(item.get("status", "")),
+            relative_time(item.get("created_at")),
+            item.get("created_by_email", "") or item.get("created_by_username", ""),
+            str(item.get("component_count", "")),
+        )
+
+    console.print(table)

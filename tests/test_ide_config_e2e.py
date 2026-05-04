@@ -88,7 +88,7 @@ class TestConstants:
 
     def test_copilot_feature_matrix(self):
         assert "copilot" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot"] == {"mcp_servers", "rules"}
+        assert IDE_FEATURE_MATRIX["copilot"] == {"hook_bridge", "mcp_servers", "rules"}
 
     def test_gemini_cli_feature_matrix(self):
         assert "gemini-cli" in IDE_FEATURE_MATRIX
@@ -96,14 +96,14 @@ class TestConstants:
 
     def test_opencode_feature_matrix(self):
         assert "opencode" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["opencode"] == {"mcp_servers", "rules"}
+        assert IDE_FEATURE_MATRIX["opencode"] == {"hook_bridge", "mcp_servers", "rules"}
 
     def test_copilot_cli_in_valid_ides(self):
         assert "copilot-cli" in VALID_IDES
 
     def test_copilot_cli_feature_matrix(self):
         assert "copilot-cli" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "rules", "hook_bridge"}
+        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "rules", "hook_bridge", "skills"}
 
     def test_ide_project_configs_include_all_new_ides(self):
         assert "codex" in _IDE_PROJECT_CONFIGS
@@ -185,7 +185,7 @@ class TestGenerateCopilotConfig:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_path(self):
         agent = _make_agent()
@@ -248,7 +248,7 @@ class TestGenerateCopilotCliConfig:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot-cli")
-        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_path(self):
         agent = _make_agent()
@@ -315,6 +315,11 @@ class TestGenerateOpenCodeConfig:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "opencode")
+        assert cfg["rules_file"]["path"] == "~/.config/opencode/AGENTS.md"
+
+    def test_rules_path_project_scope(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "opencode", options={"scope": "project"})
         assert cfg["rules_file"]["path"] == "AGENTS.md"
 
     def test_mcp_config_path(self):
@@ -465,7 +470,8 @@ class TestIdeCompatibilityWarnings:
         agent = _make_agent()
         agent.required_ide_features = ["skills", "hook_bridge"]
         warnings = _check_ide_compatibility(agent, "opencode")
-        assert len(warnings) == 2
+        # opencode now supports hook_bridge (via plugins), only "skills" is unsupported
+        assert len(warnings) == 1
 
     def test_no_warnings_for_supported_features(self):
         agent = _make_agent()
@@ -489,7 +495,7 @@ class TestIdeCompatibilityWarnings:
 
     def test_copilot_cli_warns_on_unsupported_features(self):
         agent = _make_agent()
-        agent.required_ide_features = ["skills", "otlp_telemetry"]
+        agent.required_ide_features = ["otlp_telemetry", "superpowers"]
         warnings = _check_ide_compatibility(agent, "copilot-cli")
         assert len(warnings) == 2
 
@@ -806,7 +812,9 @@ class TestPullCodex:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "codex", "--dir", str(tmp_path)])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "codex", "--dir", str(tmp_path), "--no-prompt"]
+            )
         assert result.exit_code == 0, result.output
         rules = tmp_path / "AGENTS.md"
         assert rules.exists()
@@ -827,7 +835,9 @@ class TestPullCodex:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "codex", "--dir", str(tmp_path)])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "codex", "--dir", str(tmp_path), "--no-prompt"]
+            )
         assert result.exit_code == 0, result.output
         assert (tmp_path / "AGENTS.md").exists()
 
@@ -855,7 +865,9 @@ class TestPullCopilot:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "copilot", "--dir", str(tmp_path)])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "copilot", "--dir", str(tmp_path), "--no-prompt"]
+            )
         assert result.exit_code == 0, result.output
         rules = tmp_path / ".github" / "copilot-instructions.md"
         assert rules.exists()
@@ -890,7 +902,9 @@ class TestPullOpenCode:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "opencode", "--dir", str(tmp_path)])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "opencode", "--dir", str(tmp_path), "--no-prompt"]
+            )
         assert result.exit_code == 0, result.output
         rules = tmp_path / "AGENTS.md"
         assert rules.exists()
@@ -911,7 +925,9 @@ class TestPullOpenCode:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "opencode", "--dir", str(tmp_path)])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "opencode", "--dir", str(tmp_path), "--no-prompt"]
+            )
         assert result.exit_code == 0, result.output
         assert (tmp_path / "AGENTS.md").exists()
 
@@ -939,7 +955,9 @@ class TestPullGemini:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path)])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--no-prompt"]
+            )
         assert result.exit_code == 0, result.output
         rules = tmp_path / "GEMINI.md"
         assert rules.exists()
@@ -961,7 +979,9 @@ class TestPullDryRunAllIdes:
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(cli_app, ["pull", "abc123", "--ide", ide, "--dir", str(tmp_path), "--dry-run"])
+            result = runner.invoke(
+                cli_app, ["agent", "pull", "abc123", "--ide", ide, "--dir", str(tmp_path), "--dry-run", "--no-prompt"]
+            )
 
         assert result.exit_code == 0, result.output
         assert "Dry run" in result.output
@@ -978,7 +998,8 @@ class TestPullDryRunAllIdes:
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
             result = runner.invoke(
-                cli_app, ["pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--dry-run"]
+                cli_app,
+                ["agent", "pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--dry-run", "--no-prompt"],
             )
 
         assert result.exit_code == 0, result.output

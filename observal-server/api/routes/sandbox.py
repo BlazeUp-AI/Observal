@@ -1,11 +1,14 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
+from api.routes.component_versions import create_version_router
 from api.sanitize import escape_like
 from models.mcp import ListingStatus
-from models.sandbox import SandboxDownload, SandboxListing
+from models.sandbox import SandboxDownload, SandboxListing, SandboxVersion
 from models.user import User, UserRole
 from schemas.sandbox import (
     SandboxDraftRequest,
@@ -17,6 +20,7 @@ from schemas.sandbox import (
     SandboxUpdateRequest,
 )
 from services.audit_helpers import audit
+from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
 
 router = APIRouter(prefix="/api/v1/sandboxes", tags=["sandboxes"])
 
@@ -35,9 +39,17 @@ async def submit_sandbox(
 
     listing = SandboxListing(
         name=req.name,
+        owner=req.owner,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = SandboxVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner,
         runtime_type=req.runtime_type,
         image=req.image,
         dockerfile_url=req.dockerfile_url,
@@ -48,10 +60,13 @@ async def submit_sandbox(
         entrypoint=req.entrypoint,
         supported_ides=req.supported_ides,
         status=ListingStatus.pending,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -66,12 +81,16 @@ async def list_sandboxes(
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(SandboxListing).where(SandboxListing.status == ListingStatus.approved)
+    stmt = (
+        select(SandboxListing)
+        .join(SandboxVersion, SandboxListing.latest_version_id == SandboxVersion.id)
+        .where(SandboxVersion.status == ListingStatus.approved)
+    )
     if runtime_type:
-        stmt = stmt.where(SandboxListing.runtime_type == runtime_type)
+        stmt = stmt.where(SandboxVersion.runtime_type == runtime_type)
     if search:
         safe = escape_like(search)
-        stmt = stmt.where(SandboxListing.name.ilike(f"%{safe}%") | SandboxListing.description.ilike(f"%{safe}%"))
+        stmt = stmt.where(SandboxListing.name.ilike(f"%{safe}%") | SandboxVersion.description.ilike(f"%{safe}%"))
     result = await db.execute(stmt.order_by(SandboxListing.created_at.desc()))
     listings = [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
     await audit(None, "sandbox.list", resource_type="sandbox")
@@ -171,9 +190,17 @@ async def save_sandbox_draft(
 ):
     listing = SandboxListing(
         name=req.name,
+        owner=req.owner or current_user.username or current_user.email,
+        submitted_by=current_user.id,
+        owner_org_id=current_user.org_id,
+    )
+    db.add(listing)
+    await db.flush()
+
+    version = SandboxVersion(
+        listing_id=listing.id,
         version=req.version,
         description=req.description,
-        owner=req.owner or current_user.username or current_user.email,
         runtime_type=req.runtime_type,
         image=req.image,
         dockerfile_url=req.dockerfile_url,
@@ -184,10 +211,13 @@ async def save_sandbox_draft(
         entrypoint=req.entrypoint,
         supported_ides=req.supported_ides,
         status=ListingStatus.draft,
-        submitted_by=current_user.id,
-        owner_org_id=current_user.org_id,
+        released_by=current_user.id,
+        released_at=datetime.now(UTC),
     )
-    db.add(listing)
+    db.add(version)
+    await db.flush()
+
+    listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
     await audit(
@@ -212,14 +242,16 @@ async def update_sandbox_draft(
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Not the listing owner")
-    if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
-        raise HTTPException(status_code=400, detail="Listing is not a draft")
+    if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
+        raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
+
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version to update")
 
     for field in (
-        "name",
         "version",
         "description",
-        "owner",
         "runtime_type",
         "image",
         "dockerfile_url",
@@ -232,18 +264,80 @@ async def update_sandbox_draft(
     ):
         val = getattr(req, field)
         if val is not None:
+            setattr(ver, field, val)
+
+    # Don't allow saving over another user's active lock
+    if ver.is_editing and ver.editing_by != current_user.id and not _is_lock_expired(ver.editing_since):
+        raise HTTPException(
+            status_code=409,
+            detail="This item is currently being edited by another user. Please try again later.",
+        )
+    release_edit_lock(ver, current_user.id, force=True)
+    await db.flush()
+
+    for field in ("name", "owner"):
+        val = getattr(req, field)
+        if val is not None:
             setattr(listing, field, val)
 
     await db.commit()
     await db.refresh(listing)
+    if listing.status == ListingStatus.pending:
+        action = "sandbox.pending.update"
+    elif listing.status == ListingStatus.rejected:
+        action = "sandbox.rejected.update"
+    else:
+        action = "sandbox.draft.update"
     await audit(
         current_user,
-        "sandbox.draft.update",
+        action,
         resource_type="sandbox",
         resource_id=str(listing.id),
         resource_name=listing.name,
     )
     return SandboxListingResponse.model_validate(listing)
+
+
+@router.post("/{listing_id}/start-edit")
+async def start_edit_sandbox(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(SandboxListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    if ver.status not in (ListingStatus.pending, ListingStatus.draft, ListingStatus.rejected):
+        raise HTTPException(status_code=400, detail=f"Cannot edit: listing is '{ver.status.value}'")
+    # Re-fetch with row-level lock to prevent TOCTOU race
+    ver = (await db.execute(select(SandboxVersion).where(SandboxVersion.id == ver.id).with_for_update())).scalar_one()
+    acquire_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "locked"}
+
+
+@router.post("/{listing_id}/cancel-edit")
+async def cancel_edit_sandbox(
+    listing_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    listing = await resolve_listing(SandboxListing, listing_id, db)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.submitted_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Not the listing owner")
+    ver = listing.latest_version
+    if not ver:
+        raise HTTPException(status_code=400, detail="Listing has no version")
+    release_edit_lock(ver, current_user.id)
+    await db.commit()
+    return {"status": "unlocked"}
 
 
 @router.post("/{listing_id}/submit", response_model=SandboxListingResponse)
@@ -298,10 +392,22 @@ async def delete_sandbox(
     ):
         await db.delete(r)
 
+    # Break the circular FK (listing → latest_version → listing) before delete
     listing_name = listing.name
+    listing.latest_version_id = None
+    listing.latest_version = None
+    await db.flush()
+    # Delete versions explicitly to avoid SQLAlchemy circular dependency detection
+    for ver in list(listing.versions):
+        await db.delete(ver)
+    await db.flush()
     await db.delete(listing)
     await db.commit()
     await audit(
         current_user, "sandbox.delete", resource_type="sandbox", resource_id=str(listing_id), resource_name=listing_name
     )
     return {"deleted": str(listing_id)}
+
+
+# --- Version sub-routes ---
+router.include_router(create_version_router("sandbox", SandboxListing, SandboxVersion))

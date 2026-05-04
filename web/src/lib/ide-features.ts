@@ -1,6 +1,9 @@
 /**
  * IDE feature capability matrix — TypeScript mirror of
- * observal-server/schemas/constants.py.
+ * observal-server/schemas/ide_registry.py (IDE_REGISTRY).
+ *
+ * When adding or changing IDE entries, update IDE_REGISTRY in
+ * observal-server/schemas/ide_registry.py first, then mirror here.
  */
 
 export const VALID_IDES = [
@@ -36,7 +39,7 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   "gemini-cli": new Set(["hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   codex: new Set(["rules"]),
   copilot: new Set(["mcp_servers", "rules"]),
-  "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge"]),
+  "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   opencode: new Set(["mcp_servers", "rules"]),
   vscode: new Set(["mcp_servers", "rules"]),
 };
