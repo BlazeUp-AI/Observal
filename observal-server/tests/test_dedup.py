@@ -1,6 +1,5 @@
 """Tests for event deduplication logic (hook + OTLP merge)."""
 
-import pytest
 
 
 def _make_event(

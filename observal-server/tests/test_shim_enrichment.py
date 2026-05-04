@@ -5,15 +5,15 @@ TDD: these tests define the expected behavior before implementation.
 
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from services.insights.shim_enrichment import (
+    compute_mcp_metrics,
     enrich_session_with_shim,
     get_shim_spans_for_sessions,
-    compute_mcp_metrics,
 )
-
 
 # ---------------------------------------------------------------------------
 # enrich_session_with_shim — pure logic, no I/O

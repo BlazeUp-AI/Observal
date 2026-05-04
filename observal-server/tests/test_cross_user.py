@@ -22,7 +22,6 @@ from services.insights.cross_user import (
     detect_user_friction_clusters,
 )
 
-
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
 def _make_session(
@@ -201,7 +200,7 @@ class TestComputeSessionLengthTrends:
         assert result["p99_duration_seconds"] == 99
 
     def test_outlier_detection_gt_3x_p50(self):
-        # p50 = 100s, outlier at 400s (> 3×100)
+        # p50 = 100s, outlier at 400s (> 3x100)
         sessions = [_make_session(f"s{i}", duration_seconds=100) for i in range(10)]
         sessions.append(_make_session("s_outlier", duration_seconds=400))
         result = compute_session_length_trends(sessions)
@@ -254,7 +253,7 @@ class TestComputeCostDistribution:
             for i in range(10)
         ]
         expensive = _make_session("s_expensive", input_tokens=100_000, output_tokens=50_000)
-        result = compute_cost_distribution(cheap + [expensive])
+        result = compute_cost_distribution([*cheap, expensive])
         outlier_ids = [s.get("session_id") for s in result["outlier_sessions"]]
         assert "s_expensive" in outlier_ids
 

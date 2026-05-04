@@ -12,6 +12,8 @@ Other IDEs will have no spans, and all functions handle that gracefully.
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import structlog
 
 from services.clickhouse import _query
@@ -86,7 +88,7 @@ def _parse_ts_ms(ts: str) -> float | None:
     """Parse an ISO-ish timestamp to milliseconds since epoch. Returns None on failure."""
     if not ts:
         return None
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     fmts = [
         "%Y-%m-%d %H:%M:%S.%f",
@@ -98,7 +100,7 @@ def _parse_ts_ms(ts: str) -> float | None:
     ts_trimmed = ts[:26]
     for fmt in fmts:
         try:
-            dt = datetime.strptime(ts_trimmed, fmt).replace(tzinfo=timezone.utc)
+            dt = datetime.strptime(ts_trimmed, fmt).replace(tzinfo=UTC)
             return dt.timestamp() * 1000
         except ValueError:
             continue
@@ -192,7 +194,7 @@ async def compute_mcp_metrics(agent_name: str, start: str, end: str) -> dict:
     }
 
     # Aggregate query
-    agg_sql = f"""
+    agg_sql = """
         SELECT
             count() AS total_mcp_calls,
             quantile(0.5)(latency_ms) AS latency_p50_ms,
@@ -207,18 +209,18 @@ async def compute_mcp_metrics(agent_name: str, start: str, end: str) -> dict:
           AND metadata['agent_name'] IN (
               SELECT DISTINCT LogAttributes['agent_name']
               FROM otel_logs
-              WHERE (LogAttributes['agent_type'] = {{aname:String}}
-                     OR LogAttributes['agent_name'] = {{aname:String}})
-                AND Timestamp >= {{t_start:String}}
-                AND Timestamp <= {{t_end:String}}
+              WHERE (LogAttributes['agent_type'] = {aname:String}
+                     OR LogAttributes['agent_name'] = {aname:String})
+                AND Timestamp >= {t_start:String}
+                AND Timestamp <= {t_end:String}
           )
-          AND start_time >= parseDateTimeBestEffort({{t_start:String}})
-          AND start_time <= parseDateTimeBestEffort({{t_end:String}})
+          AND start_time >= parseDateTimeBestEffort({t_start:String})
+          AND start_time <= parseDateTimeBestEffort({t_end:String})
         FORMAT JSON
     """
 
     # Slowest tools by p95 latency
-    slowest_sql = f"""
+    slowest_sql = """
         SELECT
             name AS tool_name,
             count() AS call_count,
@@ -230,13 +232,13 @@ async def compute_mcp_metrics(agent_name: str, start: str, end: str) -> dict:
           AND metadata['agent_name'] IN (
               SELECT DISTINCT LogAttributes['agent_name']
               FROM otel_logs
-              WHERE (LogAttributes['agent_type'] = {{aname:String}}
-                     OR LogAttributes['agent_name'] = {{aname:String}})
-                AND Timestamp >= {{t_start:String}}
-                AND Timestamp <= {{t_end:String}}
+              WHERE (LogAttributes['agent_type'] = {aname:String}
+                     OR LogAttributes['agent_name'] = {aname:String})
+                AND Timestamp >= {t_start:String}
+                AND Timestamp <= {t_end:String}
           )
-          AND start_time >= parseDateTimeBestEffort({{t_start:String}})
-          AND start_time <= parseDateTimeBestEffort({{t_end:String}})
+          AND start_time >= parseDateTimeBestEffort({t_start:String})
+          AND start_time <= parseDateTimeBestEffort({t_end:String})
         GROUP BY name
         ORDER BY p95_latency_ms DESC
         LIMIT 5
@@ -244,7 +246,7 @@ async def compute_mcp_metrics(agent_name: str, start: str, end: str) -> dict:
     """
 
     # Tools with highest error rates
-    error_tools_sql = f"""
+    error_tools_sql = """
         SELECT
             name AS tool_name,
             count() AS call_count,
@@ -256,13 +258,13 @@ async def compute_mcp_metrics(agent_name: str, start: str, end: str) -> dict:
           AND metadata['agent_name'] IN (
               SELECT DISTINCT LogAttributes['agent_name']
               FROM otel_logs
-              WHERE (LogAttributes['agent_type'] = {{aname:String}}
-                     OR LogAttributes['agent_name'] = {{aname:String}})
-                AND Timestamp >= {{t_start:String}}
-                AND Timestamp <= {{t_end:String}}
+              WHERE (LogAttributes['agent_type'] = {aname:String}
+                     OR LogAttributes['agent_name'] = {aname:String})
+                AND Timestamp >= {t_start:String}
+                AND Timestamp <= {t_end:String}
           )
-          AND start_time >= parseDateTimeBestEffort({{t_start:String}})
-          AND start_time <= parseDateTimeBestEffort({{t_end:String}})
+          AND start_time >= parseDateTimeBestEffort({t_start:String})
+          AND start_time <= parseDateTimeBestEffort({t_end:String})
         GROUP BY name
         HAVING error_count > 0
         ORDER BY error_rate DESC

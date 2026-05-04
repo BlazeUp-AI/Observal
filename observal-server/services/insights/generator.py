@@ -27,7 +27,9 @@ from models.agent import Agent
 from models.insight_report import InsightReport, InsightReportStatus
 from services.insights.anonymize import anonymize_sessions
 from services.insights.cross_user import compute_cross_user_patterns
-from services.insights.dedup import dedupe_session_events  # noqa: F401 — per-session event dedup when raw events are available
+from services.insights.dedup import (
+    dedupe_session_events,  # noqa: F401 — per-session event dedup when raw events are available
+)
 from services.insights.enrichment import enrich_all_metas
 from services.insights.facets import aggregate_facets, extract_facets_batch
 from services.insights.metrics import compute_all_metrics

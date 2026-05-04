@@ -162,11 +162,11 @@ async def reconcile_session(
     # thinking/CoT, tool_use inputs, and system messages.
     # Skip: metadata-only types (last-prompt, agent-setting, permission-mode,
     # file-history-snapshot, queue-operation, attachment) to reduce storage.
-    CONTENT_TYPES = {"assistant", "user", "system"}
+    content_types = {"assistant", "user", "system"}
 
     for seq, record in enumerate(payload.records, 1):
         record_type = record.get("type", "unknown")
-        if record_type not in CONTENT_TYPES:
+        if record_type not in content_types:
             continue
 
         timestamp = record.get("timestamp") or now

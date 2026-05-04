@@ -3,7 +3,6 @@
 Validates regex pattern matching, context extraction, and summary serialization.
 """
 
-import pytest
 
 from services.anti_gaming import GamingFlag, scan_for_gaming, summarize_flags
 

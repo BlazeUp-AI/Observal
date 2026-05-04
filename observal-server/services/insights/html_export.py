@@ -40,7 +40,7 @@ def render_report_html(report: dict) -> str:
     """
     metrics = report.get("metrics") or {}
     narrative = report.get("narrative") or {}
-    agent_id = report.get("agent_id", "Unknown")
+    report.get("agent_id", "Unknown")
     period_start = report.get("period_start", "")
     period_end = report.get("period_end", "")
     sessions_analyzed = report.get("sessions_analyzed", 0)
@@ -76,7 +76,7 @@ def render_report_html(report: dict) -> str:
     duration = metrics.get("duration", {})
     tools = metrics.get("tools", [])
     tool_errors = metrics.get("tool_errors", {})
-    interruptions = metrics.get("interruptions", {})
+    metrics.get("interruptions", {})
 
     # Build HTML sections
     sections_html = []
