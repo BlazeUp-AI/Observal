@@ -26,6 +26,7 @@ def _get_facet_model() -> str | None:
     """Get the model for facet extraction (Haiku for cost efficiency)."""
     return getattr(settings, "INSIGHT_MODEL_FACETS", "") or None
 
+
 FACET_PROMPT = """Analyze this AI coding agent session transcript and extract structured facets.
 
 ## Transcript
@@ -49,9 +50,7 @@ Respond with JSON matching this exact structure:
 If the transcript is too short to determine something, use "unclear" or empty values."""
 
 
-async def load_cached_facets(
-    db: AsyncSession, agent_id: uuid.UUID, session_ids: list[str]
-) -> dict[str, dict]:
+async def load_cached_facets(db: AsyncSession, agent_id: uuid.UUID, session_ids: list[str]) -> dict[str, dict]:
     """Load cached facets from PostgreSQL."""
     if not session_ids:
         return {}
@@ -65,25 +64,27 @@ async def load_cached_facets(
     return {row.session_id: row.facets for row in rows}
 
 
-async def store_facets(
-    db: AsyncSession, agent_id: uuid.UUID, facets: dict[str, dict], model_used: str
-) -> None:
+async def store_facets(db: AsyncSession, agent_id: uuid.UUID, facets: dict[str, dict], model_used: str) -> None:
     """Store extracted facets in PostgreSQL (upsert)."""
     if not facets:
         return
 
     now = datetime.now(UTC)
     for session_id, facet_data in facets.items():
-        stmt = pg_insert(InsightSessionFacets).values(
-            id=uuid.uuid4(),
-            agent_id=agent_id,
-            session_id=session_id,
-            extracted_at=now,
-            model_used=model_used,
-            facets=facet_data,
-        ).on_conflict_do_update(
-            constraint="uq_session_facets_agent_session",
-            set_={"facets": facet_data, "extracted_at": now, "model_used": model_used},
+        stmt = (
+            pg_insert(InsightSessionFacets)
+            .values(
+                id=uuid.uuid4(),
+                agent_id=agent_id,
+                session_id=session_id,
+                extracted_at=now,
+                model_used=model_used,
+                facets=facet_data,
+            )
+            .on_conflict_do_update(
+                constraint="uq_session_facets_agent_session",
+                set_={"facets": facet_data, "extracted_at": now, "model_used": model_used},
+            )
         )
         await db.execute(stmt)
     await db.flush()
@@ -131,9 +132,9 @@ async def extract_facets_batch(
 
     # Filter to substantive sessions
     substantive_ids = [
-        sid for sid, meta in session_metas.items()
-        if int(meta.get("tool_call_count", 0)) >= 3
-        and int(meta.get("duration_seconds", 0)) >= 60
+        sid
+        for sid, meta in session_metas.items()
+        if int(meta.get("tool_call_count", 0)) >= 3 and int(meta.get("duration_seconds", 0)) >= 60
     ]
 
     if not substantive_ids:

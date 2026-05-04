@@ -1,7 +1,6 @@
 """Tests for trace-level deduplication (enrichment merge + tool span collapse)."""
 
 
-
 def _span(span_id, tool_name, start_time="2024-01-01 10:00:00.000", **extra) -> dict:
     s = {
         "span_id": span_id,

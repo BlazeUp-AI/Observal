@@ -190,10 +190,12 @@ async def reconcile_session(
                         thinking_parts.append(block.get("thinking", ""))
                     elif btype == "tool_use":
                         tool_uses.append(block.get("name", "unknown"))
-                        tool_use_details.append({
-                            "name": block.get("name", ""),
-                            "input": block.get("input", {}),
-                        })
+                        tool_use_details.append(
+                            {
+                                "name": block.get("name", ""),
+                                "input": block.get("input", {}),
+                            }
+                        )
                     elif btype == "tool_result":
                         text_parts.append(str(block.get("content", ""))[:10000])
                 elif isinstance(block, str):
