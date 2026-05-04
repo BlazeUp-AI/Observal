@@ -39,25 +39,34 @@ def _find_claude_sessions_dir() -> Path | None:
 
 
 def _find_session_file(session_id: str) -> Path | None:
-    """Find a specific session JSONL file by session ID."""
+    """Find a specific session or subagent JSONL file by ID."""
     claude_dir = _find_claude_sessions_dir()
     if not claude_dir:
         return None
 
-    # Claude Code session files are at:
-    # ~/.claude/projects/<project-path>/<session-id>.jsonl
     for project_dir in claude_dir.iterdir():
         if not project_dir.is_dir():
             continue
+        # Top-level sessions: ~/.claude/projects/<project>/<session-id>.jsonl
         session_file = project_dir / f"{session_id}.jsonl"
         if session_file.exists():
             return session_file
+        # Subagent sessions: ~/.claude/projects/<project>/<session-id>/subagents/<id>.jsonl
+        for session_dir in project_dir.iterdir():
+            if not session_dir.is_dir():
+                continue
+            subagent_file = session_dir / "subagents" / f"{session_id}.jsonl"
+            if subagent_file.exists():
+                return subagent_file
 
     return None
 
 
 def _find_recent_sessions(since_hours: float = 168) -> list[tuple[Path, float]]:
-    """Find all session JSONL files modified within the given timeframe."""
+    """Find all session JSONL files modified within the given timeframe.
+
+    Discovers both top-level sessions AND subagent files within session directories.
+    """
     claude_dir = _find_claude_sessions_dir()
     if not claude_dir:
         return []
@@ -68,10 +77,21 @@ def _find_recent_sessions(since_hours: float = 168) -> list[tuple[Path, float]]:
     for project_dir in claude_dir.iterdir():
         if not project_dir.is_dir():
             continue
+        # Top-level sessions
         for f in project_dir.glob("*.jsonl"):
             mtime = f.stat().st_mtime
             if mtime >= cutoff:
                 sessions.append((f, mtime))
+        # Subagent sessions: <project>/<session-id>/subagents/*.jsonl
+        for session_dir in project_dir.iterdir():
+            if not session_dir.is_dir():
+                continue
+            subagent_dir = session_dir / "subagents"
+            if subagent_dir.exists():
+                for f in subagent_dir.glob("*.jsonl"):
+                    mtime = f.stat().st_mtime
+                    if mtime >= cutoff:
+                        sessions.append((f, mtime))
 
     # Sort by most recent first
     sessions.sort(key=lambda x: x[1], reverse=True)
@@ -79,9 +99,11 @@ def _find_recent_sessions(since_hours: float = 168) -> list[tuple[Path, float]]:
 
 
 def _parse_session_file(path: Path) -> dict:
-    """Parse a Claude Code session JSONL file into enrichment data."""
-    # Import the parser from the server module (shared code)
-    # For CLI distribution, we inline the parsing logic
+    """Parse a Claude Code session JSONL file into enrichment data.
+
+    Captures ALL records from the JSONL: assistant turns (with full content),
+    user messages, system prompts, tool results, attachments — everything.
+    """
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     session_id = path.stem  # filename without .jsonl
 
@@ -101,10 +123,34 @@ def _parse_session_file(path: Path) -> dict:
         "stop_reasons": {},
         "completeness_score": 1.0,
         "per_turn": [],
+        "records": [],
+        # Subagent attribution
+        "is_subagent": False,
+        "parent_session_id": None,
+        "subagent_id": None,
+        "agent_type": None,
+        "agent_description": None,
     }
+
+    # Detect subagent files: path.parent.name == "subagents"
+    if path.parent.name == "subagents":
+        enrichment["is_subagent"] = True
+        enrichment["parent_session_id"] = path.parent.parent.name
+        enrichment["subagent_id"] = path.stem
+
+        meta_path = path.with_suffix(".meta.json")
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                enrichment["agent_type"] = meta.get("agentType")
+                enrichment["agent_description"] = meta.get("description")
+            except (json.JSONDecodeError, OSError):
+                pass
 
     models_seen: set[str] = set()
     turn_index = 0
+    service_tier = None
+    seq = 0
 
     for line in lines:
         line = line.strip()
@@ -115,59 +161,53 @@ def _parse_session_file(path: Path) -> dict:
         except json.JSONDecodeError:
             continue
 
-        if record.get("type") != "assistant":
-            continue
+        record_type = record.get("type", "")
+        seq += 1
 
-        turn_index += 1
-        usage = record.get("usage", {})
-        message = record.get("message", {})
-        content = message.get("content", [])
+        # Only send content types — server discards everything else anyway.
+        # This reduces payload size significantly (metadata types add bulk).
+        if record_type in ("assistant", "user", "system"):
+            enrichment["records"].append(record)
 
-        model = record.get("model") or message.get("model")
-        stop_reason = record.get("stop_reason") or message.get("stop_reason")
-        input_tokens = usage.get("input_tokens", 0)
-        output_tokens = usage.get("output_tokens", 0)
-        cache_read = usage.get("cache_read_input_tokens", 0)
-        cache_creation = usage.get("cache_creation_input_tokens", 0)
-        service_tier = usage.get("service_tier")
+        # Aggregate stats from assistant records
+        if record_type == "assistant":
+            turn_index += 1
+            message = record.get("message", {})
+            usage = message.get("usage", {}) or record.get("usage", {})
+            content = message.get("content", [])
 
-        # Check for thinking and tool_use blocks
-        has_thinking = False
-        tool_uses = []
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict):
-                    if block.get("type") == "thinking":
-                        has_thinking = True
-                    elif block.get("type") == "tool_use":
-                        tool_uses.append(block.get("name", "unknown"))
+            model = record.get("model") or message.get("model")
+            stop_reason = record.get("stop_reason") or message.get("stop_reason")
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            cache_read = usage.get("cache_read_input_tokens", 0)
+            cache_creation = usage.get("cache_creation_input_tokens", 0)
+            service_tier = usage.get("service_tier") or service_tier
 
-        enrichment["total_input_tokens"] += input_tokens
-        enrichment["total_output_tokens"] += output_tokens
-        enrichment["total_cache_read_tokens"] += cache_read
-        enrichment["total_cache_creation_tokens"] += cache_creation
-        enrichment["tool_use_count"] += len(tool_uses)
+            has_thinking = False
+            tool_uses = []
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "thinking":
+                            has_thinking = True
+                        elif block.get("type") == "tool_use":
+                            tool_uses.append(block.get("name", "unknown"))
 
-        if model:
-            models_seen.add(model)
-        if has_thinking:
-            enrichment["thinking_turns"] += 1
-        if stop_reason:
-            enrichment["stop_reasons"][stop_reason] = (
-                enrichment["stop_reasons"].get(stop_reason, 0) + 1
-            )
+            enrichment["total_input_tokens"] += input_tokens
+            enrichment["total_output_tokens"] += output_tokens
+            enrichment["total_cache_read_tokens"] += cache_read
+            enrichment["total_cache_creation_tokens"] += cache_creation
+            enrichment["tool_use_count"] += len(tool_uses)
 
-        enrichment["per_turn"].append({
-            "turn_index": turn_index,
-            "model": model,
-            "stop_reason": stop_reason,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "cache_read_tokens": cache_read,
-            "cache_creation_tokens": cache_creation,
-            "has_thinking": has_thinking,
-            "tool_uses": tool_uses,
-        })
+            if model:
+                models_seen.add(model)
+            if has_thinking:
+                enrichment["thinking_turns"] += 1
+            if stop_reason:
+                enrichment["stop_reasons"][stop_reason] = (
+                    enrichment["stop_reasons"].get(stop_reason, 0) + 1
+                )
 
     enrichment["conversation_turns"] = turn_index
     enrichment["models_used"] = sorted(models_seen)
@@ -225,6 +265,11 @@ def reconcile_session(
     table = Table(title="Session Enrichment Summary")
     table.add_column("Metric", style="dim")
     table.add_column("Value", style="bold")
+    if enrichment.get("is_subagent"):
+        table.add_row("Type", "Subagent")
+        table.add_row("Agent Type", enrichment.get("agent_type") or "unknown")
+        parent = enrichment["parent_session_id"] or ""
+        table.add_row("Parent Session", parent[:16] + "..." if len(parent) > 16 else parent)
     table.add_row("Turns", str(enrichment["conversation_turns"]))
     table.add_row("Model", enrichment["primary_model"] or "unknown")
     table.add_row("Input Tokens", f"{enrichment['total_input_tokens']:,}")
@@ -261,7 +306,9 @@ def reconcile_batch(
         rprint(f"[yellow]No sessions found in the last {since}[/yellow]")
         raise typer.Exit(0)
 
-    rprint(f"[dim]Found {len(sessions)} sessions in the last {since}[/dim]\n")
+    subagent_count = sum(1 for p, _ in sessions if p.parent.name == "subagents")
+    main_count = len(sessions) - subagent_count
+    rprint(f"[dim]Found {len(sessions)} files in the last {since} ({main_count} sessions, {subagent_count} subagents)[/dim]\n")
 
     if dry_run:
         table = Table(title="Sessions to Reconcile")

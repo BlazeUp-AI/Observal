@@ -3,6 +3,8 @@
 Pipeline:
 1. Load report + agent → set status=running
 2. Compute deterministic metrics (ClickHouse)
+2a. [dedup] When per-session raw events are available, call dedupe_session_events()
+    to merge hook+OTLP duplicates before computing metadata aggregates.
 3. Get per-session metadata (cached or computed)
 4. Enrich session metadata (completeness scoring)
 5. Extract qualitative facets via LLM (cached, with caps)
@@ -24,6 +26,8 @@ from database import async_session
 from models.agent import Agent
 from models.insight_report import InsightReport, InsightReportStatus
 from services.insights.anonymize import anonymize_sessions
+from services.insights.cross_user import compute_cross_user_patterns
+from services.insights.dedup import dedupe_session_events  # noqa: F401 — per-session event dedup when raw events are available
 from services.insights.enrichment import enrich_all_metas
 from services.insights.facets import aggregate_facets, extract_facets_batch
 from services.insights.metrics import compute_all_metrics
@@ -46,6 +50,7 @@ def _build_data_block(
     regressions: list[dict],
     period_start: str,
     period_end: str,
+    cross_user_patterns: dict | None = None,
 ) -> str:
     """Build the DATA_BLOCK string that gets passed to all section prompts."""
     # Anonymize session data for LLM
@@ -85,12 +90,43 @@ def _build_data_block(
         json.dumps(anonymized[:20], indent=2, default=str),
     ]
 
+    # Add MCP shim metrics if available (Claude Code + Observal shim only)
+    mcp = metrics.get("mcp", {})
+    if mcp and int(mcp.get("total_mcp_calls", 0)) > 0:
+        sections.extend([
+            "",
+            "## MCP Shim Metrics (precise latency + schema compliance)",
+            json.dumps(
+                {
+                    "mcp_latency": {
+                        "p50": mcp.get("latency_p50_ms", 0),
+                        "p95": mcp.get("latency_p95_ms", 0),
+                        "p99": mcp.get("latency_p99_ms", 0),
+                    },
+                    "schema_violations": mcp.get("schema_violations", 0),
+                    "schema_violation_rate": mcp.get("schema_violation_rate", 0.0),
+                    "tools_available_count": mcp.get("tools_available_count", 0),
+                    "slowest_tools": mcp.get("slowest_tools", []),
+                    "error_tools": mcp.get("error_tools", []),
+                },
+                indent=2,
+            ),
+        ])
+
     # Add facet summary if available
     if facet_summary:
         sections.extend([
             "",
             "## Qualitative Facet Summary (from LLM analysis of individual sessions)",
             json.dumps(facet_summary, indent=2),
+        ])
+
+    # Add cross-user patterns if available
+    if cross_user_patterns:
+        sections.extend([
+            "",
+            "## Cross-User Patterns",
+            json.dumps(cross_user_patterns, indent=2),
         ])
 
     # Add regression flags if available
@@ -157,6 +193,9 @@ async def generate_report(report_id: str) -> None:
             # ── Step 3: Enrich metadata ──
             session_metas = enrich_all_metas(session_metas)
 
+            # ── Step 3b: Cross-user pattern detection (deterministic) ──
+            cross_user_patterns = await compute_cross_user_patterns(session_metas)
+
             # ── Step 4: Extract facets (LLM, with caching + caps) ──
             facets: dict[str, dict] = {}
             facet_summary: dict = {}
@@ -190,6 +229,7 @@ async def generate_report(report_id: str) -> None:
                 regressions=regressions,
                 period_start=start_str,
                 period_end=end_str,
+                cross_user_patterns=cross_user_patterns,
             )
 
             # Generate narrative (V2: 8+1 parallel sections OR V1 fallback)

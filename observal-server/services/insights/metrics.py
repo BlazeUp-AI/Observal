@@ -355,6 +355,8 @@ async def get_interruption_metrics(agent_name: str, start: str, end: str) -> dic
 
 async def compute_all_metrics(agent_name: str, start: str, end: str) -> dict:
     """Run all metric queries in parallel and return combined results."""
+    from services.insights.shim_enrichment import compute_mcp_metrics
+
     (
         overview,
         tokens,
@@ -365,6 +367,7 @@ async def compute_all_metrics(agent_name: str, start: str, end: str) -> dict:
         per_session_tokens,
         tool_errors,
         interruptions,
+        mcp_metrics,
     ) = await asyncio.gather(
         get_session_overview(agent_name, start, end),
         get_token_aggregates(agent_name, start, end),
@@ -375,6 +378,7 @@ async def compute_all_metrics(agent_name: str, start: str, end: str) -> dict:
         get_per_session_tokens(agent_name, start, end),
         get_tool_error_categories(agent_name, start, end),
         get_interruption_metrics(agent_name, start, end),
+        compute_mcp_metrics(agent_name, start, end),
     )
 
     # Compute cost summary from per-session token data
@@ -394,6 +398,7 @@ async def compute_all_metrics(agent_name: str, start: str, end: str) -> dict:
         "tool_errors": tool_errors,
         "interruptions": interruptions,
         "reconciliation": reconciliation,
+        "mcp": mcp_metrics,
     }
 
 

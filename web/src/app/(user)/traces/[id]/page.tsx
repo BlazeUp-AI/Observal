@@ -1281,7 +1281,13 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawSessionEv
       }
     }
 
-    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, isCopilotCli, models, tools };
+    // Detect reconciliation enrichment (JSONL data was reconciled to server)
+    const isEnriched = events.some((e) => {
+      const en = getEventName(e);
+      return en === "reconcile_enrichment" || (e.attributes?.["_enriched"] === "true");
+    });
+
+    return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheWrite, apiCalls, toolCalls, hookEvents, credits, isKiro, isGemini, isCopilotCli, models, tools, isEnriched };
   }, [events, sessionId, serviceName]);
 
   const formatCredits = (c: number) => c < 0.01 ? c.toFixed(4) : c.toFixed(2);
@@ -1331,6 +1337,17 @@ function SessionStats({ events, sessionId, serviceName }: { events: RawSessionEv
         <div className="space-y-1">
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Hook Captures</p>
           <p className="text-lg font-semibold tabular-nums text-orange-500">{stats.hookEvents}</p>
+        </div>
+      )}
+      {stats.isEnriched && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Data Source</p>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Enriched
+            </span>
+          </div>
         </div>
       )}
       {!stats.isCopilotCli && (

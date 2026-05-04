@@ -1,7 +1,11 @@
-"""Session reconciliation endpoint — accepts enrichment data from CLI
-after parsing local session JSONL files."""
+"""Session reconciliation endpoint — accepts full JSONL records from CLI
+after parsing local session files. Stores everything: assistant messages,
+user prompts, system messages, tool results, attachments."""
 
 from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Header, Request
@@ -32,6 +36,13 @@ class ReconcilePayload(BaseModel):
     stop_reasons: dict[str, int] = {}
     completeness_score: float = 1.0
     per_turn: list[dict] = []
+    records: list[dict] = []
+    # Subagent attribution
+    is_subagent: bool = False
+    parent_session_id: str | None = None
+    subagent_id: str | None = None
+    agent_type: str | None = None
+    agent_description: str | None = None
 
 
 @router.post("/reconcile")
@@ -40,12 +51,11 @@ async def reconcile_session(
     request: Request,
     x_observal_user_id: str | None = Header(None),
 ):
-    """Accept session enrichment data and merge into ClickHouse.
+    """Accept full session JSONL records and store in ClickHouse.
 
-    This endpoint receives parsed session file data from the CLI and
-    inserts enrichment records into otel_logs for the session. The
-    enrichment data includes per-turn token counts, model info, and
-    cost data that hooks alone cannot capture.
+    Stores every record from the session file: assistant messages (with full
+    text, thinking, tool_use), user prompts, system messages, attachments,
+    and metadata. Also writes a summary enrichment event.
     """
     session_id = payload.session_id
     user_id = x_observal_user_id or "unknown"
@@ -71,17 +81,32 @@ async def reconcile_session(
         logger.info("reconcile_no_existing_session", session_id=session_id)
         return {"status": "skipped", "reason": "no existing session data found"}
 
-    # Check if already reconciled (avoid duplicates)
-    recon_check_sql = """
-        SELECT count() as cnt
-        FROM otel_logs
-        WHERE LogAttributes['session.id'] = {sid:String}
-          AND LogAttributes['event.name'] = 'reconcile_enrichment'
-        LIMIT 1
-        FORMAT JSON
-    """
+    # Check if already reconciled (avoid duplicates).
+    if payload.is_subagent and payload.subagent_id:
+        recon_check_sql = """
+            SELECT count() as cnt
+            FROM otel_logs
+            WHERE LogAttributes['session.id'] = {sid:String}
+              AND LogAttributes['event.name'] = 'reconcile_enrichment'
+              AND LogAttributes['subagent_id'] = {subagent_id:String}
+            LIMIT 1
+            FORMAT JSON
+        """
+        recon_params = {"param_sid": session_id, "param_subagent_id": payload.subagent_id}
+    else:
+        recon_check_sql = """
+            SELECT count() as cnt
+            FROM otel_logs
+            WHERE LogAttributes['session.id'] = {sid:String}
+              AND LogAttributes['event.name'] = 'reconcile_enrichment'
+              AND (LogAttributes['is_subagent'] = '' OR LogAttributes['is_subagent'] = 'false')
+            LIMIT 1
+            FORMAT JSON
+        """
+        recon_params = {"param_sid": session_id}
+
     try:
-        resp = await _query(recon_check_sql, {"param_sid": session_id})
+        resp = await _query(recon_check_sql, recon_params)
         resp.raise_for_status()
         data = resp.json().get("data", [])
         already_reconciled = int(data[0]["cnt"]) if data else 0
@@ -91,12 +116,9 @@ async def reconcile_session(
     if already_reconciled > 0:
         return {"status": "skipped", "reason": "session already reconciled"}
 
-    # Insert enrichment as a special otel_logs record
-    import json
-    from datetime import UTC, datetime
-
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")
 
+    # Summary enrichment row
     enrichment_row = {
         "Timestamp": now,
         "TraceId": "",
@@ -122,40 +144,126 @@ async def reconcile_session(
             "thinking_turns": str(payload.thinking_turns),
             "stop_reasons": json.dumps(payload.stop_reasons),
             "completeness_score": f"{payload.completeness_score:.2f}",
-            "per_turn_count": str(len(payload.per_turn)),
+            "records_count": str(len(payload.records)),
             "reconciled": "true",
+            "is_subagent": "true" if payload.is_subagent else "false",
+            "subagent_id": payload.subagent_id or "",
+            "parent_session_id": payload.parent_session_id or "",
+            "agent_type": payload.agent_type or "",
+            "agent_description": payload.agent_description or "",
         },
     }
 
-    # Also insert per-turn records for detailed analysis
     rows = [enrichment_row]
 
-    for turn in payload.per_turn[:50]:  # Cap at 50 turns
-        turn_row = {
-            "Timestamp": now,
+    # Store JSONL records — only types with content not captured by hooks.
+    # Hooks already capture: api_request (tokens), tool_result, tool_decision,
+    # hook_stop, user_prompt. JSONL uniquely provides: full assistant text,
+    # thinking/CoT, tool_use inputs, and system messages.
+    # Skip: metadata-only types (last-prompt, agent-setting, permission-mode,
+    # file-history-snapshot, queue-operation, attachment) to reduce storage.
+    CONTENT_TYPES = {"assistant", "user", "system"}
+
+    for seq, record in enumerate(payload.records, 1):
+        record_type = record.get("type", "unknown")
+        if record_type not in CONTENT_TYPES:
+            continue
+
+        timestamp = record.get("timestamp") or now
+        message = record.get("message", {})
+        content = message.get("content", [])
+        usage = message.get("usage", {}) or record.get("usage", {})
+
+        # Extract content blocks
+        text_parts = []
+        thinking_parts = []
+        tool_uses = []
+        tool_use_details = []
+
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    btype = block.get("type", "")
+                    if btype == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif btype == "thinking":
+                        thinking_parts.append(block.get("thinking", ""))
+                    elif btype == "tool_use":
+                        tool_uses.append(block.get("name", "unknown"))
+                        tool_use_details.append({
+                            "name": block.get("name", ""),
+                            "input": block.get("input", {}),
+                        })
+                    elif btype == "tool_result":
+                        text_parts.append(str(block.get("content", ""))[:10000])
+                elif isinstance(block, str):
+                    text_parts.append(block)
+
+        text = "\n".join(text_parts)
+        thinking = "\n".join(thinking_parts)
+
+        # Skip empty records (no text, no thinking, no tool use)
+        if not text and not thinking and not tool_uses:
+            continue
+
+        # Build concise body for display
+        if record_type == "assistant":
+            if thinking:
+                body = f"[thinking] {thinking[:300]}"
+            elif text:
+                body = text[:500]
+            else:
+                body = f"Tool use: {', '.join(tool_uses)}"
+        elif record_type == "user":
+            body = text[:500] if text else "User message"
+        else:
+            body = text[:500] if text else record_type
+
+        attrs = {
+            "session.id": session_id,
+            "event.name": f"reconcile_{record_type}",
+            "user.id": user_id,
+            "record_type": record_type,
+            "sequence": str(seq),
+            "reconciled": "true",
+        }
+
+        # Store content
+        if text:
+            attrs["text"] = text
+        if thinking:
+            attrs["thinking"] = thinking
+        if tool_uses:
+            attrs["tool_uses"] = ",".join(tool_uses)
+        if tool_use_details:
+            attrs["tool_use_details"] = json.dumps(tool_use_details)
+
+        # Token metadata for assistant records
+        if record_type == "assistant":
+            attrs["model"] = record.get("model") or message.get("model") or ""
+            attrs["stop_reason"] = record.get("stop_reason") or message.get("stop_reason") or ""
+            attrs["input_tokens"] = str(usage.get("input_tokens", 0))
+            attrs["output_tokens"] = str(usage.get("output_tokens", 0))
+            attrs["cache_read_tokens"] = str(usage.get("cache_read_input_tokens", 0))
+            attrs["cache_creation_tokens"] = str(usage.get("cache_creation_input_tokens", 0))
+
+        # Subagent attribution
+        if payload.is_subagent:
+            attrs["is_subagent"] = "true"
+            attrs["subagent_id"] = payload.subagent_id or ""
+            attrs["agent_type"] = payload.agent_type or ""
+
+        row = {
+            "Timestamp": timestamp if isinstance(timestamp, str) and len(timestamp) > 10 else now,
             "TraceId": "",
             "SpanId": "",
             "SeverityText": "INFO",
             "SeverityNumber": 9,
             "ServiceName": "reconcile",
-            "Body": f"Turn {turn.get('turn_index', 0)}: {turn.get('model', 'unknown')}",
-            "LogAttributes": {
-                "session.id": session_id,
-                "event.name": "reconcile_turn",
-                "user.id": user_id,
-                "turn_index": str(turn.get("turn_index", 0)),
-                "model": turn.get("model") or "",
-                "stop_reason": turn.get("stop_reason") or "",
-                "input_tokens": str(turn.get("input_tokens", 0)),
-                "output_tokens": str(turn.get("output_tokens", 0)),
-                "cache_read_tokens": str(turn.get("cache_read_tokens", 0)),
-                "cache_creation_tokens": str(turn.get("cache_creation_tokens", 0)),
-                "has_thinking": "true" if turn.get("has_thinking") else "false",
-                "tool_uses": ",".join(turn.get("tool_uses", [])),
-                "reconciled": "true",
-            },
+            "Body": body,
+            "LogAttributes": attrs,
         }
-        rows.append(turn_row)
+        rows.append(row)
 
     try:
         await insert_otel_logs(rows)
@@ -163,7 +271,7 @@ async def reconcile_session(
             "reconcile_success",
             session_id=session_id,
             turns=payload.conversation_turns,
-            cost_usd=payload.total_cost_usd,
+            records=len(payload.records),
             rows_inserted=len(rows),
         )
     except Exception as e:
@@ -173,6 +281,7 @@ async def reconcile_session(
     return {
         "status": "reconciled",
         "session_id": session_id,
-        "turns_ingested": len(payload.per_turn),
+        "turns_ingested": payload.conversation_turns,
+        "records_ingested": len(payload.records),
         "total_cost_usd": payload.total_cost_usd,
     }

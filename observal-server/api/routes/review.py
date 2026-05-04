@@ -156,6 +156,7 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
                 "component_count": len(pending_ver.components) if pending_ver.components else 0,
                 "components_ready": components_ready,
                 "blocking_components": blocking,
+                "gaming_flags": pending_ver.gaming_flags,
             }
         )
     return items
@@ -473,6 +474,7 @@ async def get_review(
             "component_count": len(ver_components),
             "components_ready": components_ready,
             "component_blockers": blocking,
+            "gaming_flags": ver.gaming_flags if ver else None,
             "components": [
                 {
                     "component_type": c.component_type,

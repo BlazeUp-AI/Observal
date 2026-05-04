@@ -55,6 +55,12 @@ class SessionEnrichment:
     thinking_turns: int = 0
     stop_reasons: dict[str, int] = field(default_factory=dict)
     completeness_score: float = 1.0
+    # Subagent attribution
+    is_subagent: bool = False
+    parent_session_id: str | None = None
+    subagent_id: str | None = None
+    agent_type: str | None = None
+    agent_description: str | None = None
 
 
 def parse_claude_code_jsonl(lines: list[str], session_id: str) -> SessionEnrichment:
@@ -190,6 +196,11 @@ def enrichment_to_dict(enrichment: SessionEnrichment) -> dict:
         "thinking_turns": enrichment.thinking_turns,
         "stop_reasons": enrichment.stop_reasons,
         "completeness_score": enrichment.completeness_score,
+        "is_subagent": enrichment.is_subagent,
+        "parent_session_id": enrichment.parent_session_id,
+        "subagent_id": enrichment.subagent_id,
+        "agent_type": enrichment.agent_type,
+        "agent_description": enrichment.agent_description,
         "per_turn": [
             {
                 "turn_index": t.turn_index,

@@ -115,6 +115,8 @@ async def get_or_compute_metas(
     end: str,
 ) -> dict[str, dict]:
     """Load cached metas, compute missing ones from ClickHouse, store and return all."""
+    from services.insights.shim_enrichment import get_shim_spans_for_sessions
+
     cached = await load_cached_metas(db, agent_id, session_ids)
     uncached_ids = [sid for sid in session_ids if sid not in cached]
 
@@ -123,5 +125,32 @@ async def get_or_compute_metas(
         if computed:
             await store_metas(db, agent_id, computed)
             cached.update(computed)
+
+    # Enrich all sessions with per-session shim latency stats (best-effort).
+    # Only Claude Code + Observal shim produce spans data; other IDEs return empty.
+    if session_ids:
+        try:
+            # We need an agent name string, not a UUID — use the UUID as a fallback key.
+            # The shim spans table is keyed by metadata['session.id'], so agent_name
+            # is only used for the sessions subquery which we skip here; we query
+            # directly by session_id instead via get_shim_spans_for_sessions.
+            shim_by_session = await get_shim_spans_for_sessions(
+                "", session_ids, start, end
+            )
+            for sid, spans in shim_by_session.items():
+                if not spans or sid not in cached:
+                    continue
+                latencies = [int(s["latency_ms"]) for s in spans if s.get("latency_ms") is not None]
+                violations = sum(1 for s in spans if str(s.get("tool_schema_valid", "1")) == "0")
+                if latencies:
+                    latencies_sorted = sorted(latencies)
+                    n = len(latencies_sorted)
+                    p50_idx = max(0, int(n * 0.5) - 1)
+                    p95_idx = max(0, int(n * 0.95) - 1)
+                    cached[sid]["mcp_latency_p50"] = latencies_sorted[p50_idx]
+                    cached[sid]["mcp_latency_p95"] = latencies_sorted[p95_idx]
+                cached[sid]["mcp_schema_violations"] = violations
+        except Exception as e:
+            logger.warning("shim_session_enrichment_failed", error=str(e))
 
     return cached

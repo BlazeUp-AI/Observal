@@ -1645,6 +1645,13 @@ async def submit_draft(
                 ],
             )
 
+    # Scan for anti-gaming patterns before transitioning to pending
+    from services.anti_gaming import scan_for_gaming, summarize_flags
+
+    if agent.latest_version:
+        flags = scan_for_gaming(agent.latest_version.prompt)
+        agent.latest_version.gaming_flags = summarize_flags(flags)
+
     agent.status = AgentStatus.pending
     await db.commit()
     agent = await _load_agent(db, str(agent.id))

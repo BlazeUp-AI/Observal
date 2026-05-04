@@ -159,14 +159,12 @@ fi
 # If we didn't find any text or thinking, that's fine — the turn was
 # all tool calls.  The generic hook handles the basic hook_stop event.
 
-# ── Optional: Session Reconciliation ──
-# If OBSERVAL_RECONCILE=1, parse the full session JSONL and send enrichment
-# data (per-turn tokens, model info, cost) to the server. This runs in
-# the background to avoid delaying the hook.
-if [ "${OBSERVAL_RECONCILE:-0}" = "1" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+# ── Session Reconciliation ──
+# Parse the full session JSONL and send ALL records to the server.
+# Runs in background to avoid delaying the hook.
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   _RECONCILE_URL="${OBSERVAL_HOOKS_URL%/hooks}/reconcile"
 
-  # Run in background subshell so it doesn't block
   (
     $_py -c "
 import json, sys
@@ -190,8 +188,128 @@ enrichment = {
     'stop_reasons': {},
     'completeness_score': 1.0,
     'per_turn': [],
+    'records': [],
 }
 
+CONTENT_TYPES = {'assistant', 'user', 'system'}
+models_seen = set()
+turn_index = 0
+service_tier = None
+
+for line in lines:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        record = json.loads(line)
+    except:
+        continue
+
+    # Only send content types - server discards metadata types anyway
+    if record.get('type') in CONTENT_TYPES:
+        enrichment['records'].append(record)
+
+    if record.get('type') != 'assistant':
+        continue
+
+    turn_index += 1
+    message = record.get('message', {})
+    usage = message.get('usage', {}) or record.get('usage', {})
+    content = message.get('content', [])
+    model = record.get('model') or message.get('model')
+    stop_reason = record.get('stop_reason') or message.get('stop_reason')
+    input_t = usage.get('input_tokens', 0)
+    output_t = usage.get('output_tokens', 0)
+    cache_read = usage.get('cache_read_input_tokens', 0)
+    cache_creation = usage.get('cache_creation_input_tokens', 0)
+    service_tier = usage.get('service_tier') or service_tier
+
+    tool_count = 0
+    has_thinking = False
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                if block.get('type') == 'thinking':
+                    has_thinking = True
+                elif block.get('type') == 'tool_use':
+                    tool_count += 1
+
+    enrichment['total_input_tokens'] += input_t
+    enrichment['total_output_tokens'] += output_t
+    enrichment['total_cache_read_tokens'] += cache_read
+    enrichment['total_cache_creation_tokens'] += cache_creation
+    enrichment['tool_use_count'] += tool_count
+    if model:
+        models_seen.add(model)
+    if has_thinking:
+        enrichment['thinking_turns'] += 1
+    if stop_reason:
+        enrichment['stop_reasons'][stop_reason] = enrichment['stop_reasons'].get(stop_reason, 0) + 1
+
+enrichment['conversation_turns'] = turn_index
+enrichment['models_used'] = sorted(models_seen)
+enrichment['primary_model'] = enrichment['models_used'][0] if enrichment['models_used'] else None
+enrichment['service_tier'] = service_tier
+
+if enrichment['records']:
+    json.dump(enrichment, sys.stdout)
+" 2>/dev/null | curl -s --max-time 30 -X POST "$_RECONCILE_URL" \
+      ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
+      -H "Content-Type: application/json" \
+      -d @- >/dev/null 2>&1
+  ) &
+fi
+
+# ── Subagent Reconciliation ──
+_SESSION_DIR="${TRANSCRIPT_PATH%.jsonl}"
+if [ -d "$_SESSION_DIR/subagents" ]; then
+  _RECONCILE_URL="${OBSERVAL_HOOKS_URL%/hooks}/reconcile"
+  for _sub_file in "$_SESSION_DIR/subagents"/*.jsonl; do
+    [ -f "$_sub_file" ] || continue
+    _sub_id=$(basename "$_sub_file" .jsonl)
+    _meta_file="${_sub_file%.jsonl}.meta.json"
+    _agent_type=""
+    _agent_desc=""
+    if [ -f "$_meta_file" ]; then
+      _agent_type=$(jq -r '.agentType // ""' "$_meta_file" 2>/dev/null || true)
+      _agent_desc=$(jq -r '.description // ""' "$_meta_file" 2>/dev/null || true)
+    fi
+
+    (
+      $_py -c "
+import json, sys
+
+lines = open('$_sub_file', encoding='utf-8', errors='replace').readlines()
+session_id = '$SESSION_ID'
+subagent_id = '$_sub_id'
+agent_type = '$_agent_type' or None
+agent_desc = '$_agent_desc' or None
+
+enrichment = {
+    'session_id': session_id,
+    'total_input_tokens': 0,
+    'total_output_tokens': 0,
+    'total_cache_read_tokens': 0,
+    'total_cache_creation_tokens': 0,
+    'models_used': [],
+    'primary_model': None,
+    'total_cost_usd': 0.0,
+    'service_tier': None,
+    'conversation_turns': 0,
+    'tool_use_count': 0,
+    'thinking_turns': 0,
+    'stop_reasons': {},
+    'completeness_score': 1.0,
+    'per_turn': [],
+    'records': [],
+    'is_subagent': True,
+    'parent_session_id': session_id,
+    'subagent_id': subagent_id,
+    'agent_type': agent_type,
+    'agent_description': agent_desc,
+}
+
+CONTENT_TYPES = {'assistant', 'user', 'system'}
 models_seen = set()
 turn_index = 0
 
@@ -203,14 +321,17 @@ for line in lines:
         record = json.loads(line)
     except:
         continue
+
+    if record.get('type') in CONTENT_TYPES:
+        enrichment['records'].append(record)
+
     if record.get('type') != 'assistant':
         continue
 
     turn_index += 1
-    usage = record.get('usage', {})
     message = record.get('message', {})
+    usage = message.get('usage', {}) or record.get('usage', {})
     content = message.get('content', [])
-
     model = record.get('model') or message.get('model')
     stop_reason = record.get('stop_reason') or message.get('stop_reason')
     input_t = usage.get('input_tokens', 0)
@@ -218,22 +339,21 @@ for line in lines:
     cache_read = usage.get('cache_read_input_tokens', 0)
     cache_creation = usage.get('cache_creation_input_tokens', 0)
 
+    tool_count = 0
     has_thinking = False
-    tool_uses = []
     if isinstance(content, list):
         for block in content:
             if isinstance(block, dict):
                 if block.get('type') == 'thinking':
                     has_thinking = True
                 elif block.get('type') == 'tool_use':
-                    tool_uses.append(block.get('name', 'unknown'))
+                    tool_count += 1
 
     enrichment['total_input_tokens'] += input_t
     enrichment['total_output_tokens'] += output_t
     enrichment['total_cache_read_tokens'] += cache_read
     enrichment['total_cache_creation_tokens'] += cache_creation
-    enrichment['tool_use_count'] += len(tool_uses)
-
+    enrichment['tool_use_count'] += tool_count
     if model:
         models_seen.add(model)
     if has_thinking:
@@ -241,28 +361,18 @@ for line in lines:
     if stop_reason:
         enrichment['stop_reasons'][stop_reason] = enrichment['stop_reasons'].get(stop_reason, 0) + 1
 
-    enrichment['per_turn'].append({
-        'turn_index': turn_index,
-        'model': model,
-        'stop_reason': stop_reason,
-        'input_tokens': input_t,
-        'output_tokens': output_t,
-        'cache_read_tokens': cache_read,
-        'cache_creation_tokens': cache_creation,
-        'has_thinking': has_thinking,
-        'tool_uses': tool_uses,
-    })
-
 enrichment['conversation_turns'] = turn_index
 enrichment['models_used'] = sorted(models_seen)
 enrichment['primary_model'] = enrichment['models_used'][0] if enrichment['models_used'] else None
 
-json.dump(enrichment, sys.stdout)
-" 2>/dev/null | curl -s --max-time 10 -X POST "$_RECONCILE_URL" \
-      ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
-      -H "Content-Type: application/json" \
-      -d @- >/dev/null 2>&1
-  ) &
+if enrichment['records']:
+    json.dump(enrichment, sys.stdout)
+" 2>/dev/null | curl -s --max-time 30 -X POST "$_RECONCILE_URL" \
+        ${OBSERVAL_USER_ID:+-H "X-Observal-User-Id: $OBSERVAL_USER_ID"} \
+        -H "Content-Type: application/json" \
+        -d @- >/dev/null 2>&1
+    ) &
+  done
 fi
 
 exit 0

@@ -1,3 +1,134 @@
+# observal-insight-god
+
+> **Private fork** of [BlazeUp-AI/Observal](https://github.com/BlazeUp-AI/Observal) with the Insights V2 + Session Reconciliation system. This branch is ahead of the public repo.
+
+## What's different from main Observal
+
+This fork adds:
+
+1. **Full session reconciliation** — CLI stop hook and `observal reconcile` command parse local Claude Code JSONL files and send ALL content (assistant text, thinking/CoT, user prompts, tool_use inputs) to the server for storage alongside hook telemetry.
+2. **Agent Insights V2** — multi-model LLM report generation (Opus for sections, Sonnet for synthesis, Haiku for facet extraction) that produces periodic performance reports per agent.
+3. **Subagent attribution** — reconcile tracks subagent sessions with parent linkage and agent type metadata.
+4. **Anti-gaming, dedup, and cross-user services** (in `observal-server/services/`)
+
+## Setup (differences from main repo)
+
+### New environment variables
+
+Add these to your `.env` file (all optional, have defaults):
+
+```bash
+# ── Insight Report Generation (requires at least one model configured) ──
+# Multi-model setup for cost optimization. Falls back to EVAL_MODEL_NAME if blank.
+INSIGHT_MODEL_SECTIONS=     # Opus — detailed narrative sections
+INSIGHT_MODEL_SYNTHESIS=    # Sonnet — aggregation/synthesis
+INSIGHT_MODEL_FACETS=       # Haiku — per-session facet extraction
+
+# Batch processing controls
+INSIGHT_BATCH_ENABLED=true          # Enable/disable periodic report generation
+INSIGHT_BATCH_PERIOD_DAYS=14        # Report window (days)
+INSIGHT_MIN_SESSIONS=5              # Minimum sessions before generating a report
+INSIGHT_FACET_MAX_CALLS=100         # Max LLM calls per report for facet extraction
+INSIGHT_FACET_CONCURRENCY=25        # Parallel LLM calls during facet extraction
+```
+
+### Client-side env vars (set in Claude Code hooks environment)
+
+These are set automatically by `observal auth login` and stored in `~/.observal/config.json`. The stop hook reads them:
+
+```bash
+OBSERVAL_HOOKS_URL    # Auto-derived from config.json server_url (no manual setup needed)
+OBSERVAL_USER_ID      # User ID for attribution (set during login)
+OBSERVAL_USERNAME     # Display name (set during login)
+OBSERVAL_AGENT_NAME   # Optional: override agent name for hook events
+```
+
+### nginx body size limit
+
+The reconcile endpoint accepts full session JSONL payloads (up to ~3MB for long sessions). The nginx config now includes:
+
+```nginx
+client_max_body_size 10m;
+```
+
+This is already set in `docker/nginx.conf`. No action needed unless you're using a custom nginx config.
+
+### Reconcile workflow
+
+Session data flows to the server via two paths:
+
+1. **Stop hook (automatic)** — fires after every Claude Code turn, reconciles the full session JSONL in background. Deduped server-side (only runs once per session).
+2. **CLI backfill** — for historical sessions:
+   ```bash
+   observal reconcile session <session-id>   # specific session
+   observal reconcile session latest          # most recent
+   observal reconcile batch --since 30d      # all sessions from last 30 days
+   ```
+
+The server only accepts reconciliation for sessions that already have hook telemetry (prevents orphan data). Duplicate reconcile attempts are rejected.
+
+### New files (not in main Observal)
+
+```
+observal-server/services/insights/       # Insight generation pipeline
+observal-server/services/anti_gaming.py  # Anti-gaming regex scanner
+observal-server/services/insights/cross_user.py
+observal-server/services/insights/dedup.py
+observal-server/services/insights/shim_enrichment.py
+observal-server/services/insights/trace_dedup.py
+observal-server/alembic/versions/0028_add_gaming_flags_to_agent_versions.py
+.github/hooks/                           # GitHub Actions hook templates
+tests/test_reconcile_subagent.py
+```
+
+### Getting started
+
+**1. Clone and install the CLI (editable, so you always get latest):**
+
+```bash
+git clone git@github.com:BlazeUp-AI/observal-insight-god.git
+cd observal-insight-god
+uv tool install --editable . --force   # upgrades CLI to this branch
+```
+
+**2. Connect to the dev server:**
+
+```bash
+observal auth login --server https://dev.observal.io
+```
+
+**3. Install hooks (registers the stop hook with reconciliation):**
+
+```bash
+observal hook install
+```
+
+**4. Clean up any stale hook state from previous installs:**
+
+```bash
+observal doctor cleanup
+```
+
+**5. Start using Claude Code normally.** Traces flow automatically via hooks. To backfill historical sessions:
+
+```bash
+observal reconcile batch --since 30d
+```
+
+### Running the server locally (optional)
+
+If you want to run the full stack locally instead of connecting to dev.observal.io:
+
+```bash
+cp .env.example .env
+# Edit .env with your model keys if you want insight generation
+docker compose -f docker/docker-compose.yml up --build -d
+observal auth login   # connects to localhost:8000 by default
+observal hook install
+```
+
+---
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/logo.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.svg">

@@ -619,6 +619,106 @@ async def _sideload_shim_spans(events: list[dict]) -> list[dict]:
     return events + synthetic
 
 
+def _collapse_trace_events(events: list[dict]) -> list[dict]:
+    """Collapse duplicate tool-call events from hook + OTLP + reconcile sources.
+
+    The raw otel_logs event format uses `timestamp` and an `attributes` dict
+    with `event.name` and `tool_name`.  This bridges that shape to
+    collapse_duplicate_tool_spans which expects materialized span dicts.
+
+    Non-tool events (reconcile_enrichment, session_start, user_prompt, etc.)
+    pass through unchanged.  Only tool-call events within a 2-second window
+    sharing the same tool_name are collapsed.
+    """
+    from services.insights.trace_dedup import collapse_duplicate_tool_spans
+
+    _TOOL_CALL_EVENTS = frozenset(
+        {
+            "hook_posttooluse",
+            "hook_posttoolusefailure",
+            "hook_pretooluse",
+            "shim_tool_call",
+            "tool_result",
+        }
+    )
+
+    # Split into tool-call events (candidates for collapse) and everything else
+    tool_events: list[dict] = []
+    other_events: list[dict] = []
+
+    for e in events:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        event_name = attrs.get("event.name", e.get("event_name", ""))
+        if event_name in _TOOL_CALL_EVENTS:
+            tool_events.append(e)
+        else:
+            other_events.append(e)
+
+    if not tool_events:
+        return events
+
+    # Translate otel_logs events to span-shaped dicts for collapse_duplicate_tool_spans
+    def _to_span(e: dict) -> dict:
+        attrs = e.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        return {
+            "_original": e,
+            "type": "tool_call",
+            "name": attrs.get("tool_name") or "",
+            "start_time": e.get("timestamp", ""),
+            "tool_input": attrs.get("tool_input", ""),
+            "tool_response": attrs.get("tool_response", ""),
+            "error": attrs.get("error", ""),
+            "model": attrs.get("model", ""),
+            "input_tokens": int(attrs.get("input_tokens", 0) or 0),
+            "output_tokens": int(attrs.get("output_tokens", 0) or 0),
+            "source": attrs.get("source", ""),
+        }
+
+    def _from_span(span: dict) -> dict:
+        """Reconstruct an otel_logs event from a collapsed span."""
+        original = span.pop("_original", None)
+        if original is None:
+            return span
+        # Merge enriched fields back into the original event's attributes
+        original = dict(original)
+        attrs = original.get("attributes", {})
+        if isinstance(attrs, str):
+            try:
+                attrs = json.loads(attrs)
+            except Exception:
+                attrs = {}
+        else:
+            attrs = dict(attrs)
+
+        for field in ("tool_input", "tool_response", "error", "model"):
+            if span.get(field):
+                attrs[field] = span[field]
+        for field in ("input_tokens", "output_tokens"):
+            if span.get(field):
+                attrs[field] = str(span[field])
+
+        original["attributes"] = attrs
+        return original
+
+    spans = [_to_span(e) for e in tool_events]
+    collapsed = collapse_duplicate_tool_spans(spans)
+    collapsed_events = [_from_span(s) for s in collapsed]
+
+    all_events = collapsed_events + other_events
+    all_events.sort(key=lambda e: e.get("timestamp", ""))
+    return all_events
+
+
 @router.get("/traces")
 @cache(expire=settings.CACHE_TTL_OTEL, namespace="otel")
 async def list_traces(current_user: User = Depends(require_role(UserRole.admin))):
@@ -816,6 +916,9 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     # Merge events from multiple sources (hook + shim + collector)
     events = _merge_session_events(events)
     events = _annotate_agent_scope(events)
+    # Collapse duplicate tool spans so the trace viewer shows one row per tool call
+    # (hook + OTLP + reconcile may each record the same tool invocation)
+    events = _collapse_trace_events(events)
     svc = _normalize_service(events[0]["service_name"]) if events else ""
     await audit(current_user, "session.view", "session", resource_id=session_id)
     return {"session_id": session_id, "service_name": svc, "events": events, "traces": traces}
