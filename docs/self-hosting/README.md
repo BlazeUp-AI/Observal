@@ -42,6 +42,7 @@ All services run on a private `observal-net` bridge network. Named volumes (`pgd
 | --- | --- |
 | Confirm your machine can run Observal | [Requirements](requirements.md) |
 | Get the stack running locally | [Docker Compose setup](docker-compose.md) |
+| Deploy to AWS in one command | [AWS deployment with Terraform](aws-terraform.md) |
 | Know every env var that matters | [Configuration](configuration.md) |
 | See every port and volume at a glance | [Ports and volumes](ports-and-volumes.md) |
 | Understand the DBs and retention | [Databases](databases.md) |
