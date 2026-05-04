@@ -1110,3 +1110,25 @@ async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))
     deleted = await invalidate_all()
     await audit(current_user, "admin.cache.clear", "cache", detail=json.dumps({"cleared": deleted}))
     return {"cleared": deleted}
+
+
+@router.post("/fix-agent-org")
+async def fix_agent_org(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Fix agents missing owner_org_id by setting it from the creator's org."""
+    from models.agent import Agent, AgentVisibility
+
+    result = await db.execute(select(Agent).where(Agent.owner_org_id.is_(None)))
+    agents = result.scalars().all()
+    fixed = 0
+    for agent in agents:
+        creator = (await db.execute(select(User).where(User.id == agent.created_by))).scalar_one_or_none()
+        if creator and creator.org_id:
+            agent.owner_org_id = creator.org_id
+            agent.visibility = AgentVisibility.public
+            fixed += 1
+    await db.commit()
+    await audit(current_user, "admin.fix_agent_org", detail=json.dumps({"fixed": fixed}))
+    return {"fixed": fixed, "total_checked": len(agents)}
