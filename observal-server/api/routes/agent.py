@@ -441,10 +441,11 @@ async def list_agents(
         safe = escape_like(search)
         search_filter = Agent.name.ilike(f"%{safe}%") | AgentVersion.description.ilike(f"%{safe}%")
 
-    # Org-scoping: when the caller belongs to an org, only show agents owned by that org
+    # Org-scoping: when the caller belongs to an org, show agents owned by that org
+    # or agents with no org set (legacy/bulk-created agents)
     org_filter = None
     if current_user is not None and current_user.org_id is not None:
-        org_filter = Agent.owner_org_id == current_user.org_id
+        org_filter = (Agent.owner_org_id == current_user.org_id) | (Agent.owner_org_id.is_(None))
 
     # Total count for pagination header
     count_stmt = (
@@ -704,11 +705,12 @@ async def update_agent(
     agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id, org_id=current_user.org_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
+    if not is_admin and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     perm = get_effective_agent_permission(agent, current_user)
-    if perm not in ("owner", "edit"):
+    if perm not in ("owner", "edit") and not is_admin:
         raise HTTPException(status_code=403, detail="Not the agent owner or editor")
 
     if req.version_bump_type and req.version is None:
@@ -1198,9 +1200,9 @@ async def delete_agent(
     )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=404, detail="Agent not found")
     is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
+    if not is_admin and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=404, detail="Agent not found")
     perm = get_effective_agent_permission(agent, current_user)
     if perm != "owner" and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
