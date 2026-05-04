@@ -151,3 +151,5 @@ Apache License 2.0. See [LICENSE](LICENSE).
    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=BlazeUp-AI/Observal&type=date&legend=top-left" />
  </picture>
 </a>
+
+- [CyMetica AI / EventTrader](https://cymetica.com) — AI-native financial platform (~90% AI-authored). 10 autonomous trading agents, pre-launch TGE price predictions, A2A protocol for agent-to-agent comms. [Agent Card](https://cymetica.com/.well-known/agent.json) | [MCP Server](https://cymetica.com/.well-known/mcp.json) | [TGE Markets](https://cymetica.com/tge-launch)
