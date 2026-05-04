@@ -162,11 +162,11 @@ async def reconcile_session(
     # thinking/CoT, tool_use inputs, and system messages.
     # Skip: metadata-only types (last-prompt, agent-setting, permission-mode,
     # file-history-snapshot, queue-operation, attachment) to reduce storage.
-    content_types = {"assistant", "user", "system"}
+    CONTENT_TYPES = {"assistant", "user", "system"}
 
     for seq, record in enumerate(payload.records, 1):
         record_type = record.get("type", "unknown")
-        if record_type not in content_types:
+        if record_type not in CONTENT_TYPES:
             continue
 
         timestamp = record.get("timestamp") or now
@@ -190,12 +190,10 @@ async def reconcile_session(
                         thinking_parts.append(block.get("thinking", ""))
                     elif btype == "tool_use":
                         tool_uses.append(block.get("name", "unknown"))
-                        tool_use_details.append(
-                            {
-                                "name": block.get("name", ""),
-                                "input": block.get("input", {}),
-                            }
-                        )
+                        tool_use_details.append({
+                            "name": block.get("name", ""),
+                            "input": block.get("input", {}),
+                        })
                     elif btype == "tool_result":
                         text_parts.append(str(block.get("content", ""))[:10000])
                 elif isinstance(block, str):

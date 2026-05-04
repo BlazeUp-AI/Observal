@@ -8,8 +8,9 @@ Usage:
 
 import json
 import logging
+import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -204,7 +205,9 @@ def _parse_session_file(path: Path) -> dict:
             if has_thinking:
                 enrichment["thinking_turns"] += 1
             if stop_reason:
-                enrichment["stop_reasons"][stop_reason] = enrichment["stop_reasons"].get(stop_reason, 0) + 1
+                enrichment["stop_reasons"][stop_reason] = (
+                    enrichment["stop_reasons"].get(stop_reason, 0) + 1
+                )
 
     enrichment["conversation_turns"] = turn_index
     enrichment["models_used"] = sorted(models_seen)
@@ -305,9 +308,7 @@ def reconcile_batch(
 
     subagent_count = sum(1 for p, _ in sessions if p.parent.name == "subagents")
     main_count = len(sessions) - subagent_count
-    rprint(
-        f"[dim]Found {len(sessions)} files in the last {since} ({main_count} sessions, {subagent_count} subagents)[/dim]\n"
-    )
+    rprint(f"[dim]Found {len(sessions)} files in the last {since} ({main_count} sessions, {subagent_count} subagents)[/dim]\n")
 
     if dry_run:
         table = Table(title="Sessions to Reconcile")
@@ -352,6 +353,4 @@ def reconcile_batch(
                 errors += 1
             progress.advance(task)
 
-    rprint(
-        f"\n[green]✓ Reconciled: {reconciled}[/green]  [yellow]⊘ Skipped: {skipped}[/yellow]  [red]✗ Errors: {errors}[/red]"
-    )
+    rprint(f"\n[green]✓ Reconciled: {reconciled}[/green]  [yellow]⊘ Skipped: {skipped}[/yellow]  [red]✗ Errors: {errors}[/red]")
