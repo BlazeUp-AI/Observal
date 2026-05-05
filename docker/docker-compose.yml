@@ -211,25 +211,6 @@ services:
     networks:
       - observal-net
 
-  observal-prometheus:
-    image: prom/prometheus:v3.11.3
-    ports:
-      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
-    volumes:
-      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      observal-api:
-        condition: service_healthy
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    networks:
-      - observal-net
-
   observal-grafana:
     image: grafana/grafana-oss:11.6.5
     ports:
@@ -246,7 +227,40 @@ services:
     depends_on:
       observal-clickhouse:
         condition: service_healthy
+      observal-prometheus:
+        condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - observal-net
+
+  observal-prometheus:
+    image: prom/prometheus:v3.4.2
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro
+      - prometheusdata:/prometheus
+    depends_on:
+      observal-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
@@ -260,6 +274,7 @@ volumes:
   redisdata:
   grafanadata:
   apidata:
+  prometheusdata:
 
 networks:
   observal-net:

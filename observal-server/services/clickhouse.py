@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -9,6 +10,37 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from config import settings
 
 logger = structlog.get_logger(__name__)
+
+# Prometheus metrics for ClickHouse operations
+if settings.METRICS_ENABLED:
+    from prometheus_client import Counter, Histogram
+
+    clickhouse_query_duration = Histogram(
+        "clickhouse_query_duration_seconds",
+        "ClickHouse query duration in seconds",
+        ["operation"],
+    )
+    clickhouse_query_errors = Counter(
+        "clickhouse_query_errors_total",
+        "Total number of ClickHouse query errors",
+        ["operation"],
+    )
+else:
+
+    class _NoOpMetric:
+        """silently discards all metric operations when metrics are disabled."""
+
+        def observe(self, amount: float) -> None:
+            pass
+
+        def inc(self, amount: float = 1) -> None:
+            pass
+
+        def labels(self, **_kwargs) -> "_NoOpMetric":
+            return self
+
+    clickhouse_query_duration = _NoOpMetric()
+    clickhouse_query_errors = _NoOpMetric()
 
 
 async def _invalidate_cache():
@@ -43,6 +75,15 @@ def _get_client() -> httpx.AsyncClient:
     return _client
 
 
+def _query_operation(sql: str) -> str:
+    statement = sql.lstrip().upper()
+    if statement.startswith("INSERT"):
+        return "insert"
+    if statement.startswith(("CREATE", "ALTER", "DROP", "TRUNCATE", "OPTIMIZE", "RENAME", "ATTACH", "DETACH")):
+        return "ddl"
+    return "select"
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=0.5, min=0.5, max=5),
@@ -61,19 +102,29 @@ async def _query(sql: str, params: dict | None = None, *, data: str | None = Non
             newline.  Used for ``INSERT ... FORMAT JSONEachRow`` where each
             line in *data* is a JSON object.
     """
-    client = _get_client()
-    query_params = {
-        "database": CLICKHOUSE_DB,
-        "user": CLICKHOUSE_USER,
-        "password": CLICKHOUSE_PASSWORD,
-    }
-    # Inject admin-configured resource overrides (e.g. max_memory_usage)
-    if _resource_overrides:
-        query_params.update(_resource_overrides)
-    if params:
-        query_params.update(params)
-    body = f"{sql}\n{data}" if data else sql
-    return await client.post(CLICKHOUSE_HTTP, content=body, params=query_params)
+    start_time = time.monotonic()
+    operation = _query_operation(sql)
+
+    try:
+        client = _get_client()
+        query_params = {
+            "database": CLICKHOUSE_DB,
+            "user": CLICKHOUSE_USER,
+            "password": CLICKHOUSE_PASSWORD,
+        }
+        # Inject admin-configured resource overrides (e.g. max_memory_usage)
+        if _resource_overrides:
+            query_params.update(_resource_overrides)
+        if params:
+            query_params.update(params)
+        body = f"{sql}\n{data}" if data else sql
+        response = await client.post(CLICKHOUSE_HTTP, content=body, params=query_params)
+        return response
+    except Exception:
+        clickhouse_query_errors.labels(operation=operation).inc()
+        raise
+    finally:
+        clickhouse_query_duration.labels(operation=operation).observe(time.monotonic() - start_time)
 
 
 async def clickhouse_health() -> bool:

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     PUBLIC_URL: str = ""
     OTLP_HTTP_URL: str = ""
 
+    # Prometheus metrics
+    METRICS_ENABLED: bool = True
+
     # JWT Settings
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7

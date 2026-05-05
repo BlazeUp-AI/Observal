@@ -8,3 +8,6 @@ datasources:
     url: http://observal-prometheus:9090
     isDefault: false
     editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
