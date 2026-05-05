@@ -126,17 +126,113 @@ async def maintain_clickhouse(ctx: dict):
 
 async def generate_insight_report(ctx: dict, report_id: str):
     """Background job: generate an insight report for an agent."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        logger.warning("insight_report_skipped_not_installed", report_id=report_id)
+        return
+
     logger.info("insight_report_started", report_id=report_id)
     try:
-        from services.insights.generator import generate_report
+        from datetime import UTC, datetime
 
-        await generate_report(report_id)
+        from sqlalchemy import select
+
+        from database import async_session
+        from models.agent import Agent
+        from models.insight_report import InsightReport, InsightReportStatus
+        from services.insights import generate_report_content
+
+        async with async_session() as db:
+            stmt = select(InsightReport).where(InsightReport.id == report_id)
+            result = await db.execute(stmt)
+            report = result.scalar_one_or_none()
+            if not report:
+                logger.error("insight_report_not_found", report_id=report_id)
+                return
+
+            report.status = InsightReportStatus.running
+            report.started_at = datetime.now(UTC)
+            await db.commit()
+
+            # Load agent
+            agent_stmt = select(Agent).where(Agent.id == report.agent_id)
+            agent_result = await db.execute(agent_stmt)
+            agent = agent_result.scalar_one_or_none()
+            agent_name = agent.name if agent else "Unknown Agent"
+
+            start_str = report.period_start.strftime("%Y-%m-%d %H:%M:%S")
+            end_str = report.period_end.strftime("%Y-%m-%d %H:%M:%S")
+
+            # Load previous report metrics for regression detection
+            previous_metrics = None
+            if report.previous_report_id:
+                prev_stmt = select(InsightReport).where(InsightReport.id == report.previous_report_id)
+                prev_result = await db.execute(prev_stmt)
+                prev_report = prev_result.scalar_one_or_none()
+                if prev_report and prev_report.aggregated_data:
+                    previous_metrics = prev_report.aggregated_data
+
+            # Run the pipeline from the private package
+            result_data = await generate_report_content(
+                agent_name=agent_name,
+                agent_id=str(report.agent_id),
+                period_start=start_str,
+                period_end=end_str,
+                previous_metrics=previous_metrics,
+                db=db,
+            )
+
+            # Persist results
+            report.metrics = result_data.get("metrics")
+            report.narrative = result_data.get("narrative")
+            report.sessions_analyzed = result_data.get("sessions_analyzed", 0)
+            report.aggregated_data = result_data.get("metrics")
+            report.report_version = 2 if "user_experience" in (result_data.get("narrative") or {}) else 1
+
+            models_used = result_data.get("models_used", [])
+            report.llm_model_used = ", ".join(models_used) if models_used else None
+
+            report.status = InsightReportStatus.completed
+            report.completed_at = datetime.now(UTC)
+            await db.commit()
+
+            logger.info(
+                "insight_report_completed",
+                report_id=report_id,
+                sessions=report.sessions_analyzed,
+                version=report.report_version,
+            )
     except Exception as e:
         logger.exception("insight_report_job_failed", report_id=report_id, error=str(e))
+        try:
+            from datetime import UTC, datetime
+
+            from sqlalchemy import select
+
+            from database import async_session
+            from models.insight_report import InsightReport, InsightReportStatus
+
+            async with async_session() as db:
+                stmt = select(InsightReport).where(InsightReport.id == report_id)
+                result = await db.execute(stmt)
+                report = result.scalar_one_or_none()
+                if report:
+                    report.status = InsightReportStatus.failed
+                    report.error_message = str(e)
+                    report.completed_at = datetime.now(UTC)
+                    await db.commit()
+        except Exception:
+            pass
 
 
 async def batch_generate_insights(ctx: dict):
     """Cron job: discover agents needing reports and queue generation."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        return
+
     from services.insights.batch import discover_and_queue_reports
 
     try:

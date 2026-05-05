@@ -14,7 +14,7 @@ from models.insight_report import InsightReport, InsightReportStatus
 from models.user import User, UserRole
 from schemas.insights import GenerateInsightRequest, InsightReportListItem, InsightReportResponse
 from services.audit_helpers import audit
-from services.insights.html_export import render_report_html
+from services.insights import INSIGHTS_AVAILABLE, render_report_html
 from services.redis import _get_arq_pool
 
 logger = structlog.get_logger(__name__)
@@ -30,6 +30,9 @@ async def generate_insight(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Trigger generation of an insight report for an agent."""
+    if not INSIGHTS_AVAILABLE:
+        raise HTTPException(status_code=402, detail="Insights module not installed")
+
     agent = await resolve_prefix_id(Agent, agent_id, db)
 
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -128,6 +131,9 @@ async def export_report_html(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Export an insight report as a self-contained HTML document."""
+    if not INSIGHTS_AVAILABLE:
+        raise HTTPException(status_code=402, detail="Insights module not installed")
+
     stmt = select(InsightReport).where(InsightReport.id == report_id)
     result = await db.execute(stmt)
     report = result.scalar_one_or_none()
