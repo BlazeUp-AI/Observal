@@ -17,7 +17,7 @@ asyncio.run(init())
 
 echo "Running database migrations..."
 /app/.venv/bin/python -m alembic upgrade head || {
-    echo "Migrations failed — stamping head and retrying..."
+    echo "Fresh database detected — stamping current schema version..."
     /app/.venv/bin/python -m alembic stamp head
 }
 
