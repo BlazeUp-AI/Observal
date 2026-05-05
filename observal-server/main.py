@@ -43,6 +43,7 @@ from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
 from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
+from api.routes.support import router as support_router
 from api.routes.telemetry import otlp_router
 from api.routes.telemetry import router as telemetry_router
 from config import settings
@@ -312,6 +313,7 @@ app.include_router(sessions_router)
 app.include_router(component_source_router)
 app.include_router(bulk_router)
 app.include_router(config_router)
+app.include_router(support_router)
 
 # --- Prometheus metrics ---
 Instrumentator(

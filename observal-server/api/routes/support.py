@@ -1,0 +1,508 @@
+"""Server-side diagnostic collection endpoint for support bundles.
+
+Runs collectors for versions, health, config, aggregates, errors, and
+logs data. Each collector is wrapped in ``_run_collector`` with a
+10-second ``asyncio.wait_for`` timeout. Partial failures are reported
+in the response — the endpoint always returns 200 if at least one
+collector succeeds.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import os
+import re
+import time
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
+
+import httpx
+import structlog
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
+from sqlalchemy import text
+
+from api.deps import get_current_user, get_db
+from api.ratelimit import limiter
+from config import Settings, settings
+from services.clickhouse import CLICKHOUSE_DB, _query
+from services.redis import get_redis
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from models.user import User
+
+logger = structlog.get_logger(__name__)
+
+router = APIRouter(prefix="/api/v1/support", tags=["support"])
+
+COLLECTOR_TIMEOUT_SECONDS = 10
+
+# Valid ClickHouse/PG table name: alphanumeric + underscores, starting with a letter or underscore
+_SAFE_TABLE_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+# ── Request / Response models ────────────────────────────────────────
+
+
+class CollectRequest(BaseModel):
+    collectors: list[str] = ["all"]
+    logs_since: str = "1h"
+
+
+class CollectorData(BaseModel):
+    ok: bool
+    duration_ms: int
+    data: Any = None
+    error: str | None = None
+
+
+class CollectResponse(BaseModel):
+    server_version: str
+    collectors: dict[str, CollectorData]
+
+
+# ── Collector wrapper ────────────────────────────────────────────────
+
+
+async def _run_collector(name: str, coro) -> tuple[str, CollectorData]:
+    """Run a single collector coroutine with a 10-second timeout.
+
+    Returns a (name, CollectorData) tuple regardless of success or failure.
+    """
+    start = time.monotonic()
+    try:
+        data = await asyncio.wait_for(coro, timeout=COLLECTOR_TIMEOUT_SECONDS)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return name, CollectorData(ok=True, duration_ms=elapsed_ms, data=data)
+    except TimeoutError:
+        return name, CollectorData(
+            ok=False,
+            duration_ms=COLLECTOR_TIMEOUT_SECONDS * 1000,
+            error=f"Collector timed out after {COLLECTOR_TIMEOUT_SECONDS}s",
+        )
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return name, CollectorData(ok=False, duration_ms=elapsed_ms, error=str(exc))
+
+
+# ── Individual collectors ────────────────────────────────────────────
+
+
+async def _collect_versions(db: AsyncSession) -> dict:
+    """Collect app version, build hash, Alembic revision, ClickHouse version + tables."""
+    result: dict[str, Any] = {}
+
+    # App version — try importlib.metadata first, fall back to hardcoded
+    try:
+        from importlib.metadata import version
+
+        result["app_version"] = version("observal")
+    except Exception:
+        result["app_version"] = "0.1.0"
+
+    # Build hash — read from BUILD_HASH env var or fall back to unknown
+    result["build_hash"] = os.environ.get("BUILD_HASH", "unknown")
+
+    # Alembic revision from PG
+    try:
+        row = await db.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+        rev = row.scalar_one_or_none()
+        result["alembic_revision"] = rev or "unknown"
+    except Exception as exc:
+        result["alembic_revision"] = f"error: {exc}"
+
+    # ClickHouse version
+    try:
+        resp = await _query("SELECT version()")
+        if resp.status_code == 200:
+            result["clickhouse_version"] = resp.text.strip()
+        else:
+            result["clickhouse_version"] = f"error: HTTP {resp.status_code}"
+    except Exception as exc:
+        result["clickhouse_version"] = f"error: {exc}"
+
+    # ClickHouse table list
+    try:
+        resp = await _query(
+            "SELECT name FROM system.tables WHERE database = {db:String} FORMAT JSON",
+            {"param_db": CLICKHOUSE_DB},
+        )
+        if resp.status_code == 200:
+            rows = resp.json().get("data", [])
+            result["clickhouse_tables"] = [r["name"] for r in rows]
+        else:
+            result["clickhouse_tables"] = []
+    except Exception as exc:
+        result["clickhouse_tables"] = f"error: {exc}"
+
+    return result
+
+
+async def _collect_health(db: AsyncSession) -> dict:
+    """Run health probes against PG, CH, Redis, and OTEL collector."""
+    result: dict[str, Any] = {}
+
+    # PostgreSQL health
+    pg_start = time.monotonic()
+    try:
+        await db.execute(text("SELECT 1"))
+        pg_ms = int((time.monotonic() - pg_start) * 1000)
+        result["postgres"] = {"status": "ok", "latency_ms": pg_ms}
+    except Exception as exc:
+        pg_ms = int((time.monotonic() - pg_start) * 1000)
+        result["postgres"] = {"status": "error", "latency_ms": pg_ms, "error": str(exc)}
+
+    # ClickHouse health
+    ch_start = time.monotonic()
+    try:
+        resp = await _query("SELECT 1")
+        ch_ms = int((time.monotonic() - ch_start) * 1000)
+        if resp.status_code == 200:
+            result["clickhouse"] = {"status": "ok", "latency_ms": ch_ms}
+        else:
+            result["clickhouse"] = {"status": "error", "latency_ms": ch_ms, "error": f"HTTP {resp.status_code}"}
+    except Exception as exc:
+        ch_ms = int((time.monotonic() - ch_start) * 1000)
+        result["clickhouse"] = {"status": "error", "latency_ms": ch_ms, "error": str(exc)}
+
+    # Redis health
+    redis_start = time.monotonic()
+    try:
+        r = get_redis()
+        pong = await r.ping()
+        redis_ms = int((time.monotonic() - redis_start) * 1000)
+        result["redis"] = {"status": "ok" if pong else "error", "latency_ms": redis_ms}
+    except Exception as exc:
+        redis_ms = int((time.monotonic() - redis_start) * 1000)
+        result["redis"] = {"status": "error", "latency_ms": redis_ms, "error": str(exc)}
+
+    # OTEL collector health (best-effort HTTP GET)
+    otel_start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            otel_resp = await client.get("http://otel-collector:13133/")
+            otel_ms = int((time.monotonic() - otel_start) * 1000)
+            if otel_resp.status_code == 200:
+                result["otel_collector"] = {"status": "ok", "latency_ms": otel_ms}
+            else:
+                result["otel_collector"] = {
+                    "status": "error",
+                    "latency_ms": otel_ms,
+                    "error": f"HTTP {otel_resp.status_code}",
+                }
+    except Exception as exc:
+        otel_ms = int((time.monotonic() - otel_start) * 1000)
+        result["otel_collector"] = {"status": "unavailable", "latency_ms": otel_ms, "error": str(exc)}
+
+    return result
+
+
+CONFIG_ALLOWLIST = frozenset(
+    {
+        "DATABASE_URL",
+        "CLICKHOUSE_URL",
+        "REDIS_URL",
+        "REDIS_SOCKET_TIMEOUT",
+        "EVAL_MODEL_NAME",
+        "EVAL_MODEL_PROVIDER",
+        "AWS_REGION",
+        "FRONTEND_URL",
+        "JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
+        "JWT_REFRESH_TOKEN_EXPIRE_DAYS",
+        "JWT_SIGNING_ALGORITHM",
+        "JWT_HOOKS_TOKEN_EXPIRE_MINUTES",
+        "RATE_LIMIT_AUTH",
+        "RATE_LIMIT_AUTH_STRICT",
+        "DATA_RETENTION_DAYS",
+        "DEPLOYMENT_MODE",
+    }
+)
+
+
+async def _collect_config() -> dict:
+    """Return only allowlisted Settings fields as a dict.
+
+    Secrets like SECRET_KEY, OAUTH_CLIENT_SECRET, etc. are never sent
+    over the wire.  The CLI applies its own allowlist filter and
+    redaction as a second layer of defence.
+    """
+    return {
+        field_name: getattr(settings, field_name)
+        for field_name in Settings.model_fields
+        if field_name in CONFIG_ALLOWLIST
+    }
+
+
+async def _collect_aggregates(db: AsyncSession) -> dict:
+    """Collect row counts per PG and CH table.
+
+    Only counts are returned — never row contents.
+    """
+    result: dict[str, Any] = {"pg_table_counts": {}, "ch_table_counts": {}}
+
+    # PostgreSQL table counts
+    try:
+        rows = await db.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
+        table_names = [r[0] for r in rows.fetchall()]
+        for table_name in table_names:
+            try:
+                # Table names come from pg_tables (system catalog), not user input.
+                # Use quoted identifier to handle any special characters safely.
+                count_row = await db.execute(text(f'SELECT count(*) FROM "{table_name}"'))
+                result["pg_table_counts"][table_name] = count_row.scalar()
+            except Exception as exc:
+                result["pg_table_counts"][table_name] = f"error: {exc}"
+    except Exception as exc:
+        result["pg_table_counts"] = {"error": str(exc)}
+
+    # ClickHouse table counts (no FINAL — fast approximate counts)
+    try:
+        resp = await _query(
+            "SELECT name FROM system.tables WHERE database = {db:String} FORMAT JSON",
+            {"param_db": CLICKHOUSE_DB},
+        )
+        if resp.status_code == 200:
+            ch_tables = [r["name"] for r in resp.json().get("data", [])]
+            for table_name in ch_tables:
+                if not _SAFE_TABLE_NAME_RE.match(table_name):
+                    result["ch_table_counts"][table_name] = "error: unsafe table name, skipped"
+                    continue
+                try:
+                    count_resp = await _query(f"SELECT count() FROM `{table_name}` FORMAT JSON")
+                    if count_resp.status_code == 200:
+                        count_data = count_resp.json().get("data", [])
+                        if count_data:
+                            result["ch_table_counts"][table_name] = count_data[0].get("count()", 0)
+                        else:
+                            result["ch_table_counts"][table_name] = 0
+                    else:
+                        result["ch_table_counts"][table_name] = f"error: HTTP {count_resp.status_code}"
+                except Exception as exc:
+                    result["ch_table_counts"][table_name] = f"error: {exc}"
+        else:
+            result["ch_table_counts"] = {"error": f"HTTP {resp.status_code}"}
+    except Exception as exc:
+        result["ch_table_counts"] = {"error": str(exc)}
+
+    return result
+
+
+def _extract_stack_template(error_text: str) -> str:
+    """Extract file paths and function names from a stack trace.
+
+    Returns a sanitised template with only structural information —
+    no argument values, no exception messages.
+    """
+    lines = error_text.splitlines()
+    template_parts: list[str] = []
+
+    # Match Python traceback file/function lines:
+    #   File "path/to/file.py", line N, in function_name
+    file_line_re = re.compile(r'File\s+"([^"]+)",\s+line\s+\d+,\s+in\s+(\S+)')
+
+    for line in lines:
+        m = file_line_re.search(line)
+        if m:
+            filepath, funcname = m.group(1), m.group(2)
+            template_parts.append(f"{filepath}:{funcname}")
+
+    if template_parts:
+        return " -> ".join(template_parts)
+
+    # Fallback: if no traceback pattern found, return a generic marker
+    # with just the first line stripped of any argument-like content
+    first_line = lines[0].strip() if lines else ""
+    # Strip anything that looks like arguments or values (after a colon)
+    sanitised = re.sub(r":.*", "", first_line).strip()
+    return sanitised or "unknown"
+
+
+async def _collect_errors(db: AsyncSession) -> dict:
+    """Collect up to 50 error fingerprints from the last 24 hours.
+
+    Each fingerprint includes a SHA-256 hash, count, first_seen,
+    last_seen, and stack_template (file paths + function names only).
+    No argument values or exception messages are included.
+    """
+    result: dict[str, Any] = {"fingerprints": []}
+
+    try:
+        resp = await _query(
+            "SELECT error, start_time FROM spans "
+            "WHERE error IS NOT NULL AND error != '' "
+            "AND start_time >= now() - INTERVAL 24 HOUR "
+            "ORDER BY start_time DESC "
+            "LIMIT 500 "
+            "FORMAT JSON"
+        )
+        if resp.status_code != 200:
+            result["error"] = f"ClickHouse query failed: HTTP {resp.status_code}"
+            return result
+
+        rows = resp.json().get("data", [])
+        if not rows:
+            return result
+
+        # Group errors by their stack template fingerprint
+        fingerprint_groups: dict[str, dict] = {}
+        for row in rows:
+            error_text = row.get("error", "")
+            start_time = row.get("start_time", "")
+
+            template = _extract_stack_template(error_text)
+            fp_hash = hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+            if fp_hash not in fingerprint_groups:
+                fingerprint_groups[fp_hash] = {
+                    "fingerprint": fp_hash,
+                    "count": 0,
+                    "first_seen": start_time,
+                    "last_seen": start_time,
+                    "stack_template": template,
+                }
+
+            group = fingerprint_groups[fp_hash]
+            group["count"] += 1
+            if start_time < group["first_seen"]:
+                group["first_seen"] = start_time
+            if start_time > group["last_seen"]:
+                group["last_seen"] = start_time
+
+        # Sort by count descending, take top 50
+        sorted_fps = sorted(fingerprint_groups.values(), key=lambda x: x["count"], reverse=True)
+        result["fingerprints"] = sorted_fps[:50]
+
+    except Exception as exc:
+        result["error"] = str(exc)
+
+    return result
+
+
+def _parse_duration(duration_str: str) -> timedelta:
+    """Parse a human-friendly duration string into a timedelta.
+
+    Supported formats: '1h', '30m', '2d', '1h30m', '90s'.
+    Falls back to 1 hour on invalid input.
+    """
+    total_seconds = 0
+    pattern = re.compile(r"(\d+)\s*([dhms])", re.IGNORECASE)
+    matches = pattern.findall(duration_str)
+
+    if not matches:
+        return timedelta(hours=1)
+
+    for value, unit in matches:
+        n = int(value)
+        if unit.lower() == "d":
+            total_seconds += n * 86400
+        elif unit.lower() == "h":
+            total_seconds += n * 3600
+        elif unit.lower() == "m":
+            total_seconds += n * 60
+        elif unit.lower() == "s":
+            total_seconds += n
+
+    return timedelta(seconds=total_seconds) if total_seconds > 0 else timedelta(hours=1)
+
+
+async def _collect_logs(logs_since: str = "1h") -> dict:
+    """Collect structured log lines from the in-memory ring buffer.
+
+    Filters entries by the ``logs_since`` duration. The CLI is
+    responsible for redacting the returned lines before writing.
+    Returns an empty list gracefully if the buffer is empty.
+    """
+    try:
+        from services.log_buffer import get_log_buffer
+
+        buf = get_log_buffer()
+        duration = _parse_duration(logs_since)
+        cutoff = datetime.now(UTC) - duration
+        entries = buf.get_since(cutoff)
+
+        if not entries:
+            return {
+                "lines": [],
+                "note": "Log buffer empty or server recently restarted",
+            }
+
+        # Sanitize entries: remove non-serializable objects like LogRecord
+        sanitized = []
+        for entry in entries:
+            clean = {}
+            for k, v in entry.items():
+                if k.startswith("_"):
+                    continue  # skip internal structlog keys (_record, _logger, etc.)
+                if isinstance(v, (str, int, float, bool, type(None), list, dict)):
+                    clean[k] = v
+                else:
+                    clean[k] = str(v)
+            sanitized.append(clean)
+
+        return {"lines": sanitized}
+    except ImportError:
+        return {
+            "lines": [],
+            "note": "Log buffer module not available",
+        }
+    except Exception as exc:
+        return {
+            "lines": [],
+            "error": str(exc),
+        }
+
+
+# ── Collector registry ───────────────────────────────────────────────
+
+# Maps collector name to a factory that accepts (db, logs_since) and returns
+# a coroutine.  Collectors that don't need all arguments ignore them.
+COLLECTORS: dict[str, Any] = {
+    "versions": lambda db, logs_since: _collect_versions(db),
+    "health": lambda db, logs_since: _collect_health(db),
+    "config": lambda db, logs_since: _collect_config(),
+    "aggregates": lambda db, logs_since: _collect_aggregates(db),
+    "errors": lambda db, logs_since: _collect_errors(db),
+    "logs": lambda db, logs_since: _collect_logs(logs_since),
+}
+
+
+# ── Endpoint ─────────────────────────────────────────────────────────
+
+
+@router.post("/collect", response_model=CollectResponse)
+@limiter.limit("5/minute")
+async def collect_diagnostics(
+    request: Request,
+    body: CollectRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CollectResponse:
+    """Run server-side diagnostic collectors and return results.
+
+    Each collector runs with a 10-second timeout. Partial failures
+    are reported in the response — the endpoint always returns 200
+    if at least one collector succeeds.
+    """
+    # Determine which collectors to run
+    requested = list(COLLECTORS.keys()) if "all" in body.collectors else [c for c in body.collectors if c in COLLECTORS]
+
+    # Run all requested collectors concurrently
+    tasks = [_run_collector(name, COLLECTORS[name](db, body.logs_since)) for name in requested]
+    results = await asyncio.gather(*tasks)
+
+    collectors_out: dict[str, CollectorData] = {}
+    for name, collector_data in results:
+        collectors_out[name] = collector_data
+
+    # Server version
+    try:
+        from importlib.metadata import version
+
+        server_version = version("observal")
+    except Exception:
+        server_version = "0.1.0"
+
+    return CollectResponse(server_version=server_version, collectors=collectors_out)
