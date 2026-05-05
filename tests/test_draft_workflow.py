@@ -77,7 +77,9 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.updated_at = datetime.now(UTC)
     m.components = extra.get("components", [])
     m.goal_template = extra.get("goal_template")
-    # Edit-lock fields on the latest_version mock
+    # Fields accessed via latest_version in submit_draft
+    m.latest_version.prompt = m.prompt
+    m.latest_version.gaming_flags = None
     m.latest_version.is_editing = False
     m.latest_version.editing_by = None
     m.latest_version.editing_since = None
