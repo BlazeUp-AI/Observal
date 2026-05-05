@@ -88,12 +88,15 @@ async def get_public_config(db=Depends(get_db)):
     except Exception:
         pass
 
+    from services.insights import INSIGHTS_AVAILABLE
+
     return {
         "deployment_mode": settings.DEPLOYMENT_MODE,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
         "sso_only": settings.SSO_ONLY,
         "saml_enabled": saml_enabled,
         "eval_configured": bool(settings.EVAL_MODEL_NAME),
+        "insights_available": INSIGHTS_AVAILABLE,
         "branding_logo": branding_logo,
         "branding_app_name": branding_app_name,
         "branding_wordmark": branding_wordmark,
