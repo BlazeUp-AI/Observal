@@ -1,0 +1,46 @@
+# Copy to terraform.tfvars and fill in.
+# terraform.tfvars is gitignored — never commit secrets or per-customer values.
+
+region      = "us-east-1"
+environment = "prod"
+name_prefix = "observal"
+
+# ── DNS / TLS (optional) ──────────────────────────────────────────────
+# Leave both empty to expose the install over plain HTTP on the ALB DNS name.
+# domain_name     = "observal.example.com"
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# ── Image tag (matches the Observal release you want to install) ──────
+image_tag = "latest"
+
+# ── ECS Fargate sizing (api / web / worker) ───────────────────────────
+# Defaults give you HA out of the box: 2× api, 2× web, 1× worker, all autoscaling on CPU.
+# api_cpu              = 512
+# api_memory           = 1024
+# api_desired_count    = 2
+# web_desired_count    = 2
+# worker_desired_count = 1
+
+# ── Data tier (ClickHouse + Grafana + Prometheus on one EC2) ──────────
+# clickhouse_mode      = "self_hosted"     # or "cloud" — see below
+# data_instance_type   = "t3.large"
+# data_volume_size_gb  = 100
+
+# ── ClickHouse Cloud (uncomment if clickhouse_mode = "cloud") ─────────
+# clickhouse_mode           = "cloud"
+# clickhouse_cloud_url      = "https://abc123.us-east-1.aws.clickhouse.cloud:8443"
+# clickhouse_cloud_user     = "default"
+# clickhouse_cloud_password = "..."
+
+# ── Managed services ──────────────────────────────────────────────────
+# db_instance_class = "db.t4g.small"
+# redis_node_type   = "cache.t4g.micro"
+
+# ── Access ────────────────────────────────────────────────────────────
+# Restrict ALB ingress for private installs (e.g. office VPN, corporate egress).
+# alb_ingress_cidrs = ["203.0.113.0/24"]
+
+# ── App config ────────────────────────────────────────────────────────
+deployment_mode     = "enterprise"
+data_retention_days = 90
+log_retention_days  = 30

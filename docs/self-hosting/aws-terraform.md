@@ -1,0 +1,336 @@
+# AWS deployment with Terraform
+
+End state: an Observal install running in your own AWS account, fronted by an Application Load Balancer with HTTPS, with managed Postgres + Redis, ECS Fargate for the stateless app tier, and a single EC2 host for ClickHouse + Grafana + Prometheus.
+
+This is the recommended path for enterprise self-hosting on AWS. If you only want to evaluate Observal, use [Docker Compose setup](docker-compose.md) instead.
+
+## What gets provisioned
+
+A single `terraform apply` creates:
+
+- **VPC** with public + private subnets across two availability zones, NAT gateway, VPC flow logs
+- **Application Load Balancer** with HTTPS (ACM certificate, DNS-validated) when you supply a domain; HTTP-only otherwise. Path-based rules: `/api/*` → api service, `/grafana/*` → Grafana, default → web
+- **ECS Fargate cluster** running:
+  - `api` (FastAPI) — 2 tasks by default, autoscales 2–10 on CPU
+  - `web` (Next.js) — 2 tasks by default, autoscales 2–6 on CPU
+  - `worker` (arq background jobs) — 1 task by default, autoscales 1–5 on CPU
+  - `init` (one-shot migrations + seeds) — runs as a Fargate `RunTask` whenever `image_tag` changes
+- **RDS Postgres 16** — Multi-AZ on `prod`, encrypted, automated daily backups, Performance Insights, Enhanced Monitoring, log exports
+- **ElastiCache Redis 7** — 2-node replication group with automatic failover on `prod`, slow-log to CloudWatch
+- **Data tier EC2** (Amazon Linux 2023) — single host running ClickHouse + Grafana + Prometheus on EBS gp3, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
+- **S3 backups bucket** — versioned, AES256, lifecycle to STANDARD_IA → GLACIER_IR → expire, TLS-only
+- **CloudWatch log groups** — per ECS service, data host, RDS, Redis slow log, VPC flow logs
+- **SSM Parameter Store** — generated DB / ClickHouse / SECRET_KEY / Grafana passwords, plus pre-built connection URLs injected into ECS tasks
+- **SSM Session Manager** — shell access to the data host, no SSH
+
+ClickHouse runs on EC2 because AWS does not offer a managed ClickHouse service. The data volume keeps it durable across instance replacements. For real ClickHouse HA, set `clickhouse_mode = "cloud"` and point at ClickHouse Cloud.
+
+## Prerequisites
+
+| Requirement | Why |
+|---|---|
+| AWS account with billing enabled | obvious |
+| Terraform ≥ 1.6 | `brew install terraform` or use [tenv](https://tofuutils.github.io/tenv/) |
+| AWS CLI v2 | `brew install awscli` — also used by the one-shot init task runner |
+| [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) | shell access into the data host |
+| IAM principal with sufficient rights | see [Required IAM permissions](#required-iam-permissions) |
+| (Optional) Route 53 hosted zone | required for HTTPS on a custom domain |
+| (Recommended) S3 bucket + DynamoDB table | remote Terraform state — see [Remote state](#remote-state) |
+
+## Quickstart
+
+```bash
+git clone https://github.com/BlazeUp-AI/Observal.git
+cd Observal/infra/terraform/aws
+
+# 1. Authenticate to AWS (any of these works)
+export AWS_PROFILE=observal-prod
+# or: aws configure sso
+# or: export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+
+# 2. Configure
+cp terraform.tfvars.example terraform.tfvars
+$EDITOR terraform.tfvars
+
+# 3. Apply
+terraform init
+terraform plan -out tf.plan
+terraform apply tf.plan
+```
+
+First-time apply takes 12–15 minutes — RDS provisioning dominates. When it finishes:
+
+```bash
+terraform output app_url
+```
+
+Open that URL in your browser. The API and web tasks start a couple of minutes after the ALB targets register; refresh until you see the Observal login page.
+
+A ready-to-apply call of the module lives at [`infra/terraform/aws/examples/minimal`](../../infra/terraform/aws/examples/minimal/).
+
+## Configuration
+
+All inputs live in `terraform.tfvars`. The defaults are production-shaped — you can apply with very little changed.
+
+### Minimal configuration (HTTP, no custom domain)
+
+```hcl
+region      = "us-east-1"
+environment = "prod"
+```
+
+The install comes up on the ALB's AWS-assigned hostname (e.g. `observal-prod-alb-1234.us-east-1.elb.amazonaws.com`) over plain HTTP. Useful for evaluation; not for production.
+
+### Recommended configuration (HTTPS on your domain)
+
+```hcl
+region      = "us-east-1"
+environment = "prod"
+
+domain_name     = "observal.example.com"
+route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# Lock down ingress to your corporate egress / VPN
+alb_ingress_cidrs = ["203.0.113.0/24", "198.51.100.0/24"]
+```
+
+Terraform requests an ACM certificate, validates it via DNS records in your hosted zone, attaches it to the ALB, and creates the alias A record pointing the domain at the ALB. There is no manual DNS step.
+
+### Sizing
+
+ECS Fargate sizing defaults give you HA out of the box. Bump task counts or CPU/memory for higher load:
+
+```hcl
+api_cpu              = 512   # 0.5 vCPU; raise to 1024+ for sustained >100 req/s
+api_memory           = 1024
+api_desired_count    = 2
+api_autoscale_max    = 10
+
+web_desired_count    = 2
+worker_desired_count = 1
+
+# Data tier (ClickHouse + Grafana + Prometheus)
+data_instance_type   = "t3.large"   # 8 GB — minimum viable for ClickHouse
+data_volume_size_gb  = 100
+
+db_instance_class    = "db.t4g.small"
+redis_node_type      = "cache.t4g.micro"
+```
+
+For high-throughput installs (>100 trace events/sec sustained), bump `data_instance_type` to `m6i.xlarge` and `db_instance_class` to `db.m6g.large`, or move ClickHouse to ClickHouse Cloud (see below).
+
+### ClickHouse Cloud instead of EC2
+
+```hcl
+clickhouse_mode           = "cloud"
+clickhouse_cloud_url      = "https://abc123.us-east-1.aws.clickhouse.cloud:8443"
+clickhouse_cloud_user     = "default"
+clickhouse_cloud_password = "..."
+```
+
+The EC2 data host, EBS volume, internal DNS records, Grafana, and Prometheus are all skipped. You become responsible for Grafana hosting yourself (typically AWS Managed Grafana).
+
+### Application options
+
+```hcl
+deployment_mode     = "enterprise"   # SSO-only login, SCIM provisioning
+data_retention_days = 90             # ClickHouse TTL; 0 to disable
+log_retention_days  = 30             # CloudWatch log group retention
+image_tag           = "v1.4.0"       # specific Observal release; "latest" pulls main
+```
+
+See [Configuration](configuration.md) for the meaning of each application setting.
+
+## Required IAM permissions
+
+The IAM principal running Terraform needs permission to manage resources across these services. The simplest path is to attach the AWS-managed policies below; for a tighter custom policy, see [Hardened IAM policy](#hardened-iam-policy).
+
+| Service | Managed policy |
+|---|---|
+| VPC, EC2 | `AmazonEC2FullAccess` |
+| ECS | `AmazonECS_FullAccess` |
+| RDS | `AmazonRDSFullAccess` |
+| ElastiCache | `AmazonElastiCacheFullAccess` |
+| Load balancer | `ElasticLoadBalancingFullAccess` |
+| Certificates | `AWSCertificateManagerFullAccess` |
+| DNS | `AmazonRoute53FullAccess` |
+| IAM (creates ECS + EC2 + RDS roles) | `IAMFullAccess` |
+| Parameter Store + Session Manager | `AmazonSSMFullAccess` |
+| S3 (backups bucket) | `AmazonS3FullAccess` |
+| Logs | `CloudWatchLogsFullAccess` |
+| Application Auto Scaling | `AutoScalingFullAccess` |
+
+## Operating the install
+
+### Tail an ECS service
+
+```bash
+aws logs tail /aws/ecs/observal-prod/api --follow
+```
+
+Or get all log group names:
+
+```bash
+terraform output log_group_names
+```
+
+### Force a rolling deploy
+
+```bash
+aws ecs update-service \
+  --cluster $(terraform output -raw ecs_cluster_name) \
+  --service observal-prod-api \
+  --force-new-deployment
+```
+
+### Re-run migrations / seeds
+
+The init task runs automatically on every `image_tag` change. To run it manually:
+
+```bash
+$(terraform output -raw init_run_task_command)
+```
+
+### Shell into the data host
+
+```bash
+$(terraform output -raw data_host_ssm_session_command)
+# inside the session:
+sudo journalctl -u observal-bootstrap -f                                 # cloud-init / first-boot logs
+sudo docker compose -f /opt/observal/docker-compose.data.yml ps          # CH/Grafana/Prom status
+sudo docker compose -f /opt/observal/docker-compose.data.yml logs -f clickhouse
+```
+
+### Read a generated secret
+
+```bash
+aws ssm get-parameter --with-decryption \
+  --name /observal-prod/SECRET_KEY \
+  --query Parameter.Value --output text
+```
+
+The Terraform run generates and stores `DB_PASSWORD`, `CLICKHOUSE_PASSWORD`, `SECRET_KEY`, and `GRAFANA_ADMIN_PASSWORD`, plus pre-built `DATABASE_URL`, `REDIS_URL`, and `CLICKHOUSE_URL` connection strings. ECS injects these into tasks at start; you never paste them in.
+
+### Upgrade to a new Observal release
+
+```hcl
+# terraform.tfvars
+image_tag = "v1.5.0"
+```
+
+```bash
+terraform apply
+```
+
+The init task re-runs migrations against the live RDS, then ECS rolls each service over with zero downtime.
+
+### Resize the data volume
+
+```hcl
+# terraform.tfvars
+data_volume_size_gb = 250
+```
+
+```bash
+terraform apply
+# then SSM into the data host:
+sudo growpart /dev/nvme1n1 1 || true
+sudo resize2fs /dev/nvme1n1
+```
+
+### Destroy
+
+```bash
+terraform destroy
+```
+
+In `prod`, RDS has `deletion_protection = true` and `skip_final_snapshot = false`. Disable both manually before destroy if that is really what you want. The S3 backups bucket also blocks destroy unless `backup_bucket_force_destroy = true`.
+
+## Remote state
+
+By default, Terraform writes state to your laptop (`terraform.tfstate`). For a real install, configure remote state so the install can be managed by anyone on your team and state isn't lost.
+
+1. Create an S3 bucket (versioned, encrypted) and a DynamoDB table with hash key `LockID`.
+2. Uncomment and fill the backend block in `versions.tf`:
+
+   ```hcl
+   backend "s3" {
+     bucket         = "your-tf-state-bucket"
+     key            = "observal/prod/terraform.tfstate"
+     region         = "us-east-1"
+     dynamodb_table = "your-tf-lock-table"
+     encrypt        = true
+   }
+   ```
+
+3. Re-run `terraform init` and answer "yes" when prompted to migrate state.
+
+## Cost expectations
+
+Rough monthly baseline in `us-east-1` at on-demand rates (May 2026):
+
+| Component | ~$/month |
+|---|---|
+| Fargate api 2× (0.5 vCPU / 1 GB) | $30 |
+| Fargate web 2× (0.25 vCPU / 0.5 GB) | $15 |
+| Fargate worker 1× (0.5 vCPU / 1 GB) | $15 |
+| EC2 `t3.large` (data host) | $60 |
+| RDS `db.t4g.small` Multi-AZ | $50 |
+| ElastiCache (2× `cache.t4g.micro`) | $25 |
+| ALB | $20 |
+| NAT Gateway | $33 + egress |
+| EBS gp3 100 GB | $8 |
+| S3 backups (1 GB cold) | $0.10 |
+| **Baseline** | **~$255** |
+
+Set `environment = "staging"` to drop RDS to single-AZ, run a single Redis node, and skip RDS deletion protection — typically halves the bill. Drop `worker_desired_count` and `web_desired_count` for further savings.
+
+## Production hardening checklist
+
+The defaults are safe but conservative. Before pointing real traffic at this:
+
+- [ ] Switch to remote state (S3 + DynamoDB)
+- [ ] Restrict `alb_ingress_cidrs` to known networks
+- [ ] Enable AWS GuardDuty + Config in the account
+- [ ] Add CloudWatch alarms on RDS `CPUUtilization`, `FreeableMemory`, ECS service CPU, ALB `HTTPCode_Target_5XX_Count`
+- [ ] Attach AWS WAF to the ALB
+- [ ] Set `transit_encryption_enabled = true` on the ElastiCache replication group and switch `REDIS_URL` to `rediss://...`
+- [ ] Move ClickHouse to ClickHouse Cloud (`clickhouse_mode = "cloud"`) for actual HA
+- [ ] Configure Observal SSO — see [Authentication and SSO](authentication.md)
+- [ ] Test the [backup and restore](backup-and-restore.md) procedure end-to-end
+- [ ] Replace the GitHub tarball download in `user-data.sh.tftpl` with an artifact URL you control
+
+## Troubleshooting
+
+**`terraform apply` succeeds but the URL returns 502.**
+The api/web tasks are still starting. Watch the service:
+
+```bash
+aws ecs describe-services \
+  --cluster $(terraform output -raw ecs_cluster_name) \
+  --services observal-prod-api \
+  --query 'services[0].deployments'
+aws logs tail /aws/ecs/observal-prod/api --follow
+```
+
+The `null_resource.run_init` step also runs migrations before the api service comes up — if the init task fails, the api service won't start.
+
+**Init task fails.**
+Check the `/aws/ecs/observal-prod/init` log group. The most common failures are:
+- RDS not yet reachable (transient on first apply — re-running fixes it)
+- Migration error (look at the entrypoint output)
+
+To re-run by hand: `$(terraform output -raw init_run_task_command)`.
+
+**ALB target health is `unhealthy`.**
+- For `api`: health check hits `/readyz` on port 8000. Tail the api log group for startup errors.
+- For `web`: health check hits `/` on port 3000. Check the web log group.
+- For Grafana: health check hits `/api/health` on port 3001. SSM into the data host and check `docker compose ps`.
+
+**ACM certificate stuck in `Pending validation`.**
+The DNS validation records were not created in your hosted zone. Verify `route53_zone_id` is correct and that the IAM principal had `route53:ChangeResourceRecordSets` permission at apply time. Re-run `terraform apply` after fixing.
+
+**RDS storage is full.**
+`max_allocated_storage` autoscales up to 500 GB by default. Raise `db_max_allocated_storage_gb` if you have heavier audit-log volume.
+
+For application-level issues (login fails, traces missing, eval errors) see [Troubleshooting](troubleshooting.md).

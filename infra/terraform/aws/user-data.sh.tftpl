@@ -1,0 +1,183 @@
+#!/bin/bash
+set -euxo pipefail
+
+# Bootstrap the data tier host: ClickHouse + Grafana + Prometheus via docker compose.
+# api/web/worker run on ECS Fargate — they are NOT started here.
+
+exec > >(tee /var/log/observal-bootstrap.log | logger -t observal-bootstrap -s 2>/dev/console) 2>&1
+echo "Observal data-host bootstrap starting at $(date -u)"
+
+# ── Packages ─────────────────────────────────────────────────────
+dnf -y update
+dnf -y install docker jq awscli amazon-cloudwatch-agent
+systemctl enable --now docker
+
+# Compose v2 plugin
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+# ── Mount /data on the EBS volume ────────────────────────────────
+DEVICE=""
+for d in /dev/nvme1n1 /dev/xvdf /dev/sdf; do
+  if [ -b "$d" ]; then DEVICE="$d"; break; fi
+done
+if [ -z "$DEVICE" ]; then
+  echo "Data volume not found"; exit 1
+fi
+if ! blkid "$DEVICE" >/dev/null 2>&1; then
+  mkfs.ext4 -F "$DEVICE"
+fi
+mkdir -p /data
+UUID=$(blkid -s UUID -o value "$DEVICE")
+grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /data ext4 defaults,nofail 0 2" >> /etc/fstab
+mount -a
+mkdir -p /data/clickhouse /data/grafana /data/prometheus
+chown -R 101:101 /data/clickhouse  || true   # clickhouse user inside the official image
+chown -R 472:472 /data/grafana     || true   # grafana user
+chown -R 65534:65534 /data/prometheus || true # nobody
+
+# ── Pull secrets from SSM ────────────────────────────────────────
+fetch() { aws ssm get-parameter --with-decryption --name "$1" --region "${region}" --query Parameter.Value --output text; }
+
+CLICKHOUSE_PASSWORD=$(fetch "${ssm_prefix}/CLICKHOUSE_PASSWORD")
+GRAFANA_ADMIN_PASSWORD=$(fetch "${ssm_prefix}/GRAFANA_ADMIN_PASSWORD")
+
+# ── CloudWatch agent (ship docker logs + system logs) ────────────
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<EOF
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          { "file_path": "/var/log/observal-bootstrap.log", "log_group_name": "${log_group}", "log_stream_name": "bootstrap" },
+          { "file_path": "/var/log/messages", "log_group_name": "${log_group}", "log_stream_name": "messages" }
+        ]
+      }
+    }
+  }
+}
+EOF
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# ── Fetch the upstream docker config bundle (CH config.d, Grafana provisioning) ──
+INSTALL_DIR=/opt/observal
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+curl -fsSL "https://github.com/BlazeUp-AI/Observal/releases/download/${image_tag}/observal-server-${image_tag}.tar.gz" \
+  -o /tmp/observal.tgz \
+  || curl -fsSL "https://api.github.com/repos/BlazeUp-AI/Observal/tarball/main" -o /tmp/observal.tgz
+tar -xzf /tmp/observal.tgz --strip-components=1
+rm /tmp/observal.tgz
+
+# ── Render the data-tier compose file (CH + Grafana + Prometheus only) ──
+cat > "$INSTALL_DIR/docker-compose.data.yml" <<'COMPOSE'
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.3
+    container_name: observal-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      MAX_SERVER_MEMORY_USAGE_RATIO: "0.7"
+    volumes:
+      - /data/clickhouse:/var/lib/clickhouse
+      - ./docker/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+      - ./docker/clickhouse/users.d:/etc/clickhouse-server/users.d
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana-oss:11.6.5
+    container_name: observal-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL}${GRAFANA_SUBPATH_PREFIX}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    volumes:
+      - /data/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.11.3
+    container_name: observal-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /data/prometheus:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+COMPOSE
+
+# Render the .env consumed by docker-compose
+cat > "$INSTALL_DIR/.env" <<EOF
+CLICKHOUSE_DB=${clickhouse_db}
+CLICKHOUSE_PASSWORD=$${CLICKHOUSE_PASSWORD}
+GRAFANA_ADMIN_USER=${grafana_admin_user}
+GRAFANA_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD}
+GRAFANA_ROOT_URL=${grafana_root_url}
+GRAFANA_SUBPATH_PREFIX=${grafana_subpath_prefix}
+EOF
+chmod 600 "$INSTALL_DIR/.env"
+
+# ── Start ────────────────────────────────────────────────────────
+cd "$INSTALL_DIR"
+docker compose --env-file "$INSTALL_DIR/.env" -f docker-compose.data.yml pull
+docker compose --env-file "$INSTALL_DIR/.env" -f docker-compose.data.yml up -d
+
+# ── Daily ClickHouse snapshot to S3 ──────────────────────────────
+cat > /usr/local/bin/observal-ch-backup.sh <<EOF
+#!/bin/bash
+set -euo pipefail
+TS=\$(date -u +%Y%m%dT%H%M%SZ)
+docker exec observal-clickhouse clickhouse-client --password "$CLICKHOUSE_PASSWORD" --query "BACKUP DATABASE observal TO S3('s3://${backups_bucket}/clickhouse/\$TS/', '$(aws configure get aws_access_key_id || echo '')', '$(aws configure get aws_secret_access_key || echo '')')" || \\
+docker exec observal-clickhouse clickhouse-backup create_remote "obs-\$TS" || true
+EOF
+chmod +x /usr/local/bin/observal-ch-backup.sh
+
+cat > /etc/systemd/system/observal-ch-backup.service <<'EOF'
+[Unit]
+Description=ClickHouse daily snapshot to S3
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/observal-ch-backup.sh
+EOF
+
+cat > /etc/systemd/system/observal-ch-backup.timer <<'EOF'
+[Unit]
+Description=Run ClickHouse snapshot daily at 03:30 UTC
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now observal-ch-backup.timer
+
+echo "Observal data-host bootstrap finished at $(date -u)"
