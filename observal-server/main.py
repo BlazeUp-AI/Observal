@@ -115,6 +115,11 @@ async def lifespan(app: FastAPI):
         except ImportError:
             pass
 
+    # Wire insights dependencies (no-op if package not installed)
+    from services.insights import configure_insights
+
+    configure_insights()
+
     # Start agent registry cache for registered-agents-only filtering
     from services.agent_registry_cache import start as start_registry_cache
 
