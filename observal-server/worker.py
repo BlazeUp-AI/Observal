@@ -126,17 +126,28 @@ async def maintain_clickhouse(ctx: dict):
 
 async def generate_insight_report(ctx: dict, report_id: str):
     """Background job: generate an insight report for an agent."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        logger.warning("insight_report_skipped", reason="package not installed")
+        return
+
     logger.info("insight_report_started", report_id=report_id)
     try:
-        from services.insights.generator import generate_report
+        from services.insights.batch import run_single_report
 
-        await generate_report(report_id)
+        await run_single_report(report_id)
     except Exception as e:
         logger.exception("insight_report_job_failed", report_id=report_id, error=str(e))
 
 
 async def batch_generate_insights(ctx: dict):
     """Cron job: discover agents needing reports and queue generation."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        return
+
     from services.insights.batch import discover_and_queue_reports
 
     try:
