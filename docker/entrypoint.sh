@@ -1,25 +1,8 @@
 #!/bin/bash
 set -e
 
-echo "Ensuring base schema exists..."
-/app/.venv/bin/python -c "
-import asyncio
-from database import engine
-from models import Base
-
-async def init():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await engine.dispose()
-
-asyncio.run(init())
-"
-
-echo "Running database migrations..."
-/app/.venv/bin/python -m alembic upgrade head || {
-    echo "Migrations failed — stamping head and retrying..."
-    /app/.venv/bin/python -m alembic stamp head
-}
+echo "Running database migration..."
+/app/.venv/bin/python /app/migrate.py
 
 echo "Ensuring ClickHouse database exists..."
 # Parse credentials from CLICKHOUSE_URL using Python to handle special chars

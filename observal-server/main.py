@@ -58,32 +58,11 @@ from services.redis import close as close_redis
 setup_logging()
 
 
-async def _ensure_columns(conn):
-    """Add columns that may be missing on existing databases."""
-    from sqlalchemy import text
-
-    stmts = [
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)",
-        "ALTER TABLE mcp_listings ADD COLUMN IF NOT EXISTS environment_variables JSONB",
-    ]
-    for stmt in stmts:
-        try:
-            await conn.execute(text(stmt))
-        except Exception:
-            pass  # column already exists or DB doesn't support IF NOT EXISTS
-
-    try:
-        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN DEFAULT false"))
-    except Exception:
-        pass
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not settings.SKIP_DDL_ON_STARTUP:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await _ensure_columns(conn)
         await init_clickhouse()
     await init_cache()
     # Initialize asymmetric key manager for JWT signing

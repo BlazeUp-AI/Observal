@@ -25,6 +25,7 @@ COPY --from=builder --chown=appuser:appgroup /app/.venv /app/.venv
 COPY --chown=appuser:appgroup observal-server/ .
 COPY --chown=appuser:appgroup ee/ ./ee/
 COPY --chown=appuser:appgroup docker/entrypoint.sh /app/entrypoint.sh
+COPY --chown=appuser:appgroup docker/migrate.py /app/migrate.py
 RUN sed -i 's/\r$//' /app/entrypoint.sh
 
 USER appuser
