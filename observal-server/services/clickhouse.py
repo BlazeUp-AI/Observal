@@ -465,7 +465,6 @@ async def init_clickhouse():
         logger.info("ClickHouse data retention disabled (DATA_RETENTION_DAYS=0)")
 
 
-
 def _now_ms() -> str:
     """Current UTC timestamp as ISO string with millisecond precision."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

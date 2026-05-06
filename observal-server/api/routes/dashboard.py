@@ -197,15 +197,11 @@ async def overview_stats(
 
     days = _range_days(range_)
     tool_rows = await _ch_json(
-        "SELECT count() as cnt FROM spans "
-        "WHERE start_time > now() - INTERVAL {days:UInt32} DAY "
-        "AND is_deleted = 0",
+        "SELECT count() as cnt FROM spans WHERE start_time > now() - INTERVAL {days:UInt32} DAY AND is_deleted = 0",
         {"param_days": str(days)},
     )
     agent_rows = await _ch_json(
-        "SELECT count() as cnt FROM traces "
-        "WHERE start_time > now() - INTERVAL {days:UInt32} DAY "
-        "AND is_deleted = 0",
+        "SELECT count() as cnt FROM traces WHERE start_time > now() - INTERVAL {days:UInt32} DAY AND is_deleted = 0",
         {"param_days": str(days)},
     )
 
