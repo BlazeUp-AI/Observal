@@ -106,6 +106,28 @@ async def lifespan(app: FastAPI):
     async with _session_factory() as db:
         await seed_demo_accounts(db)
 
+    # Reset any component sources stuck in "syncing" from a previous API server crash
+    try:
+        from models.component_source import ComponentSource
+
+        async with _session_factory() as db:
+            result = await db.execute(
+                update(ComponentSource)
+                .where(ComponentSource.sync_status == "syncing")
+                .values(
+                    sync_status="failed",
+                    sync_error="Server restarted during sync",
+                )
+            )
+            await db.commit()
+            if result.rowcount:
+                logger.warning(
+                    "Reset %d component source(s) stuck in 'syncing' state",
+                    result.rowcount,
+                )
+    except Exception:
+        logger.warning("Failed to reset stuck component sources", exc_info=True)
+
     # Register audit event bus handlers during startup
     if settings.DEPLOYMENT_MODE == "enterprise":
         try:
