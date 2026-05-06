@@ -1,5 +1,6 @@
 """Component source CRUD and sync endpoints."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -108,7 +109,7 @@ async def trigger_sync(
     source.sync_status = "syncing"
     await db.commit()
 
-    result = sync_source(source.url, source.component_type)
+    result = await asyncio.to_thread(sync_source, source.url, source.component_type)
 
     source.last_synced_at = datetime.now(UTC)
     if result.success:

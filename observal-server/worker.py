@@ -1,5 +1,7 @@
 """arq background worker for eval jobs and async tasks."""
 
+import asyncio
+
 import structlog
 from arq.cron import cron
 
@@ -73,7 +75,7 @@ async def sync_component_sources(ctx: dict):
             source.sync_status = "syncing"
             await db.commit()
 
-            sync_result = sync_source(source.url, source.component_type)
+            sync_result = await asyncio.to_thread(sync_source, source.url, source.component_type)
 
             source.last_synced_at = now
             source.sync_status = "success" if sync_result.success else "failed"
@@ -162,6 +164,32 @@ async def startup(ctx: dict):
     from services.insights import configure_insights
 
     configure_insights()
+
+    # Reset any component sources stuck in "syncing" from a previous crash
+    try:
+        from sqlalchemy import update
+
+        from database import async_session
+        from models.component_source import ComponentSource
+
+        async with async_session() as db:
+            result = await db.execute(
+                update(ComponentSource)
+                .where(ComponentSource.sync_status == "syncing")
+                .values(
+                    sync_status="failed",
+                    sync_error="Worker restarted during sync",
+                )
+            )
+            await db.commit()
+            if result.rowcount:
+                logger.warning(
+                    "Reset %d component source(s) stuck in 'syncing' state",
+                    result.rowcount,
+                )
+    except Exception:
+        logger.warning("Failed to reset stuck component sources", exc_info=True)
+
     logger.info("arq worker started")
 
 
