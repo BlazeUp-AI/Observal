@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Documentation
+
+- add evaluation engine overview documentation
+
 ## [0.4.0] - 2026-04-28
 
 ### Added
@@ -73,6 +79,7 @@ All notable changes to this project will be documented in this file.
 ### Testing
 
 - update expectations for single-endpoint architecture ([3d271a6](https://github.com/BlazeUp-AI/Observal/commit/3d271a629adc4b5f4e380152b5f5e59f66aeea5c))
+
 ## [0.3.4] - 2026-04-25
 
 ### Added
@@ -118,6 +125,7 @@ All notable changes to this project will be documented in this file.
 
 - update assertions for new config format (**kiro**) ([550ade5](https://github.com/BlazeUp-AI/Observal/commit/550ade505fa9eb1658799bdce050cd140927a2d4))
 - add copilot-cli e2e tests ([dfabf02](https://github.com/BlazeUp-AI/Observal/commit/dfabf0215d6bdbb9bc1d0f0e2fb50e36dbe6f6d4))
+
 ## [0.3.3] - 2026-04-24
 
 ### Fixed
@@ -130,6 +138,7 @@ All notable changes to this project will be documented in this file.
 - add production compose override for SSL and frontend routing (**deploy**) ([9309f5d](https://github.com/BlazeUp-AI/Observal/commit/9309f5d2128a3593faad326ef9148df5be3a9a9a))
 - broaden session matching for Claude Code telemetry (**eval**) ([3613d22](https://github.com/BlazeUp-AI/Observal/commit/3613d22729ec05f825f9dec925eb5126a4690dff))
 - use SPECPATH for absolute paths in pyinstaller spec (**cli**) ([46de03c](https://github.com/BlazeUp-AI/Observal/commit/46de03c3dde3a950670609696ada45246cd9bb64))
+
 ## [0.3.2] - 2026-04-23
 
 ### Added
@@ -344,6 +353,7 @@ All notable changes to this project will be documented in this file.
 - update enterprise tests for real SAML/SCIM behavior (**ee**) ([5568201](https://github.com/BlazeUp-AI/Observal/commit/55682010cd05bfef16701be79b388a62b7487ee9))
 - add tests for dollar-var placeholder display ([c352100](https://github.com/BlazeUp-AI/Observal/commit/c3521008b775688174e1619e1f7904582c93e6c2))
 - add edge case tests for ClickHouse resource tuning ([31bd3f7](https://github.com/BlazeUp-AI/Observal/commit/31bd3f7adb39c55c3ff72817db42d339ce7911f4))
+
 ## [0.2.0] - 2026-04-21
 
 ### Added
@@ -537,6 +547,7 @@ All notable changes to this project will be documented in this file.
 - add 32-test org isolation suite (**multi-tenancy**) ([0b63188](https://github.com/BlazeUp-AI/Observal/commit/0b631884906af26dfd6ed42d8cd7107e4eab60f8))
 - add review, bundle, bulk, and draft workflow tests ([15f1336](https://github.com/BlazeUp-AI/Observal/commit/15f133605c9760372a392f312b18a134c31cb241))
 - add env var detection, config generation, and submit tests ([4db4a17](https://github.com/BlazeUp-AI/Observal/commit/4db4a17eec7a493128a46d799abefb229cc5a6ed))
+
 ## [0.0.1] - 2026-04-15
 
 ### Added
