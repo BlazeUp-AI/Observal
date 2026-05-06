@@ -126,7 +126,7 @@ async def optional_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     if user.auth_provider == "deactivated":
-        raise HTTPException(status_code=401, detail="Account deactivated")
+        raise HTTPException(status_code=403, detail="Account deactivated")
     return user
 
 

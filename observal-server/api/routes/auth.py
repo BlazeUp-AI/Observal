@@ -549,6 +549,8 @@ async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession 
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="User no longer exists")
+    if user.auth_provider == "deactivated":
+        raise HTTPException(status_code=401, detail="Account deactivated")
 
     # Issue new token pair
     groups = payload.get("groups", [])
