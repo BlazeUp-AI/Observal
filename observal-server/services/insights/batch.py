@@ -1,4 +1,8 @@
-"""Batch insight report generation — discovers agents needing reports and queues jobs."""
+"""Batch insight report generation — discovers agents needing reports and queues jobs.
+
+This module stays in the main repo because it directly interacts with
+PostgreSQL models (Agent, InsightReport) and Redis job queues.
+"""
 
 from datetime import UTC, datetime, timedelta
 
@@ -13,6 +17,85 @@ from services.clickhouse import _query
 from services.redis import _get_arq_pool
 
 logger = structlog.get_logger(__name__)
+
+
+async def run_single_report(report_id: str) -> None:
+    """Generate an insight report: load from DB, run pipeline, save results.
+
+    This replaces the old generator.generate_report() — orchestration stays
+    here in the main repo, computation is delegated to the observal-insights package.
+    """
+    from services.insights import generate_report_content
+
+    async with async_session() as db:
+        stmt = select(InsightReport).where(InsightReport.id == report_id)
+        result = await db.execute(stmt)
+        report = result.scalar_one_or_none()
+        if not report:
+            logger.error("insight_report_not_found", report_id=report_id)
+            return
+
+        # Mark as running
+        report.status = InsightReportStatus.running
+        report.started_at = datetime.now(UTC)
+        await db.commit()
+
+        try:
+            # Load agent
+            agent_stmt = select(Agent).where(Agent.id == report.agent_id)
+            agent_result = await db.execute(agent_stmt)
+            agent = agent_result.scalar_one_or_none()
+            agent_name = agent.name if agent else "Unknown Agent"
+
+            start_str = report.period_start.strftime("%Y-%m-%d %H:%M:%S")
+            end_str = report.period_end.strftime("%Y-%m-%d %H:%M:%S")
+
+            # Load previous metrics for regression detection
+            previous_metrics = None
+            if report.previous_report_id:
+                prev_stmt = select(InsightReport).where(InsightReport.id == report.previous_report_id)
+                prev_result = await db.execute(prev_stmt)
+                prev_report = prev_result.scalar_one_or_none()
+                if prev_report and prev_report.aggregated_data:
+                    previous_metrics = prev_report.aggregated_data
+
+            # Run the insights pipeline
+            content = await generate_report_content(
+                agent_name=agent_name,
+                agent_id=str(report.agent_id),
+                period_start=start_str,
+                period_end=end_str,
+                previous_metrics=previous_metrics,
+                db=db,
+            )
+
+            # Persist results
+            report.metrics = content.get("metrics")
+            report.narrative = content.get("narrative")
+            report.sessions_analyzed = content.get("sessions_analyzed", 0)
+            report.aggregated_data = content.get("metrics")
+            report.report_version = 2
+
+            models_used = content.get("models_used", [])
+            report.llm_model_used = ", ".join(models_used) if models_used else None
+
+            report.status = InsightReportStatus.completed
+            report.completed_at = datetime.now(UTC)
+            await db.commit()
+
+            logger.info(
+                "insight_report_completed",
+                report_id=report_id,
+                sessions=content.get("sessions_analyzed", 0),
+                has_narrative=content.get("narrative") is not None,
+            )
+
+        except Exception as e:
+            report.status = InsightReportStatus.failed
+            report.error_message = str(e)
+            report.completed_at = datetime.now(UTC)
+            await db.commit()
+            logger.exception("insight_report_failed", report_id=report_id, error=str(e))
 
 
 async def _count_agent_sessions(agent_name: str, since: str) -> int:
@@ -69,11 +152,13 @@ async def discover_and_queue_reports() -> int:
                     select(InsightReport)
                     .where(
                         InsightReport.agent_id == agent.id,
-                        InsightReport.status.in_([
-                            InsightReportStatus.completed,
-                            InsightReportStatus.running,
-                            InsightReportStatus.pending,
-                        ]),
+                        InsightReport.status.in_(
+                            [
+                                InsightReportStatus.completed,
+                                InsightReportStatus.running,
+                                InsightReportStatus.pending,
+                            ]
+                        ),
                     )
                     .order_by(InsightReport.created_at.desc())
                     .limit(1)

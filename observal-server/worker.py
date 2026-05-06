@@ -126,17 +126,28 @@ async def maintain_clickhouse(ctx: dict):
 
 async def generate_insight_report(ctx: dict, report_id: str):
     """Background job: generate an insight report for an agent."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        logger.warning("insight_report_skipped", reason="package not installed")
+        return
+
     logger.info("insight_report_started", report_id=report_id)
     try:
-        from services.insights.generator import generate_report
+        from services.insights.batch import run_single_report
 
-        await generate_report(report_id)
+        await run_single_report(report_id)
     except Exception as e:
         logger.exception("insight_report_job_failed", report_id=report_id, error=str(e))
 
 
 async def batch_generate_insights(ctx: dict):
     """Cron job: discover agents needing reports and queue generation."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        return
+
     from services.insights.batch import discover_and_queue_reports
 
     try:
@@ -148,6 +159,9 @@ async def batch_generate_insights(ctx: dict):
 
 
 async def startup(ctx: dict):
+    from services.insights import configure_insights
+
+    configure_insights()
     logger.info("arq worker started")
 
 
@@ -158,7 +172,14 @@ async def shutdown(ctx: dict):
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [run_eval, sync_component_sources, evaluate_alerts, maintain_clickhouse, generate_insight_report, batch_generate_insights]
+    functions = [
+        run_eval,
+        sync_component_sources,
+        evaluate_alerts,
+        maintain_clickhouse,
+        generate_insight_report,
+        batch_generate_insights,
+    ]
     cron_jobs = [
         cron(sync_component_sources, hour={0, 6, 12, 18}),  # Every 6 hours
         cron(evaluate_alerts, second={0}, timeout=55),  # Every minute

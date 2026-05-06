@@ -27,28 +27,20 @@ def _parse_ts(ts_str: str | None) -> float:
 
 
 def _enrich_event(event: dict, turn: dict) -> dict:
-    """Merge turn enrichment fields into an existing event dict.
-
-    Only overwrites fields that are absent or zero in the existing event.
-    Never discards data already present in the event.
-    """
+    """Merge turn enrichment fields into an existing event dict."""
     event = dict(event)
 
-    # Token fields: only set if missing or zero
     for field in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
         turn_val = turn.get(field)
         if turn_val and not event.get(field):
             event[field] = turn_val
 
-    # Model: prefer whichever has it
     if not event.get("model") and turn.get("model"):
         event["model"] = turn["model"]
 
-    # Thinking flag
     if turn.get("has_thinking"):
         event["has_thinking"] = True
 
-    # Stop reason
     if not event.get("stop_reason") and turn.get("stop_reason"):
         event["stop_reason"] = turn["stop_reason"]
 
@@ -92,7 +84,6 @@ def merge_enrichment_into_trace(
     if not enrichment_turns:
         return list(existing_events)
 
-    # Build a map from turn_index to list of event positions
     turn_to_positions: dict[int, list[int]] = {}
     for idx, event in enumerate(existing_events):
         ti = event.get("turn_index")
@@ -109,11 +100,9 @@ def merge_enrichment_into_trace(
 
         positions = turn_to_positions.get(ti, [])
         if positions:
-            # Enrich the first matching event
             result[positions[0]] = _enrich_event(result[positions[0]], turn)
             matched_turn_indices.add(ti)
 
-    # Append synthetic events for unmatched turns
     for turn in enrichment_turns:
         ti = turn.get("turn_index")
         if ti is not None and ti not in matched_turn_indices:
@@ -123,10 +112,7 @@ def merge_enrichment_into_trace(
 
 
 def _span_collapse_key(event: dict) -> tuple[str, int]:
-    """Generate a collapse key: (tool_name, 1-second time bucket).
-
-    Only applied to tool_call type events.
-    """
+    """Generate a collapse key: (tool_name, 1-second time bucket)."""
     name = event.get("name") or ""
     ts = _parse_ts(event.get("start_time"))
     return (name, int(ts))
@@ -136,31 +122,23 @@ def _merge_spans(base: dict, incoming: dict) -> dict:
     """Merge two span dicts, keeping richer fields from each."""
     merged = dict(base)
 
-    # Token fields: prefer non-zero
     for field in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"):
-        if not merged.get(field) and incoming.get(field):
-            merged[field] = incoming[field]
-        elif merged.get(field) == 0 and incoming.get(field):
+        if (not merged.get(field) or merged.get(field) == 0) and incoming.get(field):
             merged[field] = incoming[field]
 
-    # tool_input / tool_response: prefer non-empty
     for field in ("tool_input", "tool_response"):
         if not merged.get(field) and incoming.get(field):
             merged[field] = incoming[field]
 
-    # error: prefer whichever has it
     if not merged.get("error") and incoming.get("error"):
         merged["error"] = incoming["error"]
 
-    # model: prefer whichever has it
     if not merged.get("model") and incoming.get("model"):
         merged["model"] = incoming["model"]
 
-    # has_thinking: any source wins
     if incoming.get("has_thinking"):
         merged["has_thinking"] = True
 
-    # Keep the earlier start_time
     ts_base = _parse_ts(base.get("start_time"))
     ts_inc = _parse_ts(incoming.get("start_time"))
     if ts_inc > 0 and (ts_base == 0 or ts_inc < ts_base):
@@ -171,10 +149,6 @@ def _merge_spans(base: dict, incoming: dict) -> dict:
 
 def collapse_duplicate_tool_spans(events: list[dict]) -> list[dict]:
     """Collapse multiple spans for the same tool call into one.
-
-    The trace viewer shows one row per tool call. If hook recorded it AND
-    OTLP recorded it AND reconciliation sent it, collapse to one entry
-    with all available fields merged.
 
     Non-tool-call events pass through unchanged. Only events within a 2-second
     window sharing the same tool name are collapsed.
@@ -193,7 +167,6 @@ def collapse_duplicate_tool_spans(events: list[dict]) -> list[dict]:
         else:
             other_events.append(event)
 
-    # Collapse tool events by (name, 1-second bucket)
     collapsed: dict[tuple[str, int], dict] = {}
 
     for event in tool_events:
