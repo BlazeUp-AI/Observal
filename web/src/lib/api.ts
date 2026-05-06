@@ -189,6 +189,20 @@ async function request<T = unknown>(
       throw new Error("Session expired");
     }
 
+    // Handle deactivated accounts (403 from auth checks)
+    if (response.status === 403) {
+      const text = await response.text().catch(() => "");
+      let detail = "";
+      try { detail = JSON.parse(text).detail || ""; } catch {}
+      if (detail === "Account deactivated") {
+        clearSession();
+        if (typeof window !== "undefined") {
+          window.location.href = "/login?reason=account_deactivated";
+        }
+        throw new Error("Account deactivated");
+      }
+    }
+
     const text = await response.text().catch(() => response.statusText);
     let detail = text;
     try {
