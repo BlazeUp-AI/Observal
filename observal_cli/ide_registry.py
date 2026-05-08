@@ -10,6 +10,7 @@ from __future__ import annotations
 IDE_REGISTRY: dict[str, dict] = {
     "cursor": {
         "display_name": "Cursor",
+        "session_parser": "claude-code",
         "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project", "user"],
         "default_scope": "project",
@@ -35,6 +36,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "kiro": {
         "display_name": "Kiro",
+        "session_parser": "kiro",
         "features": {"superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"},
         "scopes": ["project", "user"],
         "default_scope": "user",
@@ -59,6 +61,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "claude-code": {
         "display_name": "Claude Code",
+        "session_parser": "claude-code",
         "features": {"skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
         "scopes": ["project", "user"],
         "default_scope": "project",
@@ -84,6 +87,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "gemini-cli": {
         "display_name": "Gemini CLI",
+        "session_parser": "claude-code",
         "features": {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
         "scopes": ["project", "user"],
         "default_scope": "project",
@@ -109,6 +113,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "vscode": {
         "display_name": "VS Code",
+        "session_parser": "claude-code",
         "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project"],
         "default_scope": "project",
@@ -131,6 +136,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "codex": {
         "display_name": "Codex",
+        "session_parser": "claude-code",
         "features": {"rules"},
         "scopes": ["user"],
         "default_scope": "user",
@@ -151,6 +157,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "copilot": {
         "display_name": "Copilot",
+        "session_parser": "claude-code",
         "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project"],
         "default_scope": "project",
@@ -171,6 +178,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "copilot-cli": {
         "display_name": "Copilot CLI",
+        "session_parser": "claude-code",
         "features": {"mcp_servers", "rules", "hook_bridge", "skills"},
         "scopes": ["project"],
         "default_scope": "project",
@@ -194,6 +202,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "opencode": {
         "display_name": "OpenCode",
+        "session_parser": "claude-code",
         "features": {"hook_bridge", "mcp_servers", "rules"},
         "scopes": ["project", "user"],
         "default_scope": "user",
@@ -255,3 +264,13 @@ def get_mcp_servers_key(ide: str) -> str:
 def get_default_scope(ide: str) -> str:
     """Return the default install scope for an IDE."""
     return IDE_REGISTRY.get(ide, {}).get("default_scope", "project")
+
+
+def get_session_parser_id(ide: str) -> str:
+    """Return the session parser ID for an IDE.
+
+    Raises KeyError for unknown IDEs -- callers must handle unrecognised IDEs
+    explicitly rather than silently falling back to a default parser.
+    """
+    entry = IDE_REGISTRY[ide]  # raises KeyError for unknown IDE
+    return entry["session_parser"]  # raises KeyError if entry has no parser
