@@ -298,6 +298,36 @@ INIT_SQL = [
     ) ENGINE = MergeTree()
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (alert_rule_id, timestamp)""",
+    # Session events: stores parsed JSONL transcript lines from IDE sessions.
+    # Replaces hook-based telemetry with direct session file ingestion.
+    """CREATE TABLE IF NOT EXISTS session_events (
+        session_id      String,
+        project_id      String,
+        user_id         String,
+        agent_id        Nullable(String),
+        agent_version   Nullable(String),
+        layer_hash      Nullable(String),
+        ide             LowCardinality(String),
+        line_offset     UInt32,
+        line_hash       String DEFAULT '' CODEC(ZSTD(1)),
+        event_type      LowCardinality(String),
+        timestamp       DateTime64(3, 'UTC'),
+        uuid            Nullable(String),
+        parent_uuid     Nullable(String),
+        tool_name       Nullable(String),
+        tool_id         Nullable(String),
+        content_preview String CODEC(ZSTD(1)),
+        content_length  UInt32,
+        raw_line        String CODEC(ZSTD(3)),
+        ingested_at     DateTime64(3, 'UTC') DEFAULT now(),
+        credits         Float64 DEFAULT 0,
+        INDEX idx_se_session_id session_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_se_project_id project_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_se_event_type event_type TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_se_line_hash line_hash TYPE bloom_filter(0.001) GRANULARITY 1
+    ) ENGINE = ReplacingMergeTree(ingested_at)
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (project_id, session_id, line_offset)""",
     # otel_logs: previously created by the OTEL collector.
     # Now managed by the API since the collector is removed.
     """CREATE TABLE IF NOT EXISTS otel_logs (
@@ -417,6 +447,7 @@ async def init_clickhouse():
             f"ALTER TABLE spans MODIFY TTL toDate(start_time) + INTERVAL {retention_days} DAY",
             f"ALTER TABLE scores MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
             f"ALTER TABLE otel_logs MODIFY TTL toDate(Timestamp) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE session_events MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
         ]
         applied = 0
         for stmt in ttl_stmts:
@@ -980,3 +1011,101 @@ async def _insert_webhook_deliveries(records: list[dict]):
         r.raise_for_status()
     except Exception as exc:
         logger.error("clickhouse_insert_webhook_deliveries_failed", error=str(exc))
+
+
+# --- Session events (JSONL ingest) ---
+
+
+async def insert_session_events(rows: list[dict]):
+    """Batch insert session event rows into ClickHouse using JSONEachRow."""
+    if not rows:
+        return
+    lines = []
+    for row in rows:
+        lines.append(json.dumps(row, default=str))
+    sql = (
+        "INSERT INTO session_events (session_id, project_id, user_id, agent_id, "
+        "agent_version, layer_hash, ide, line_offset, line_hash, event_type, timestamp, uuid, parent_uuid, "
+        "tool_name, tool_id, content_preview, content_length, raw_line, credits) FORMAT JSONEachRow"
+    )
+    try:
+        r = await _query(sql, data="\n".join(lines))
+        r.raise_for_status()
+        await _invalidate_cache()
+    except Exception as e:
+        logger.error("clickhouse_insert_session_events_failed", error=str(e))
+        raise
+
+
+async def query_session_event_count(session_id: str, project_id: str) -> tuple[int, int]:
+    """Return (count, max_offset) for a session's stored events.
+
+    Uses FINAL so ReplacingMergeTree dedup is applied before counting.
+    Returns (0, -1) when no rows exist.
+    """
+    sql = (
+        "SELECT count() AS cnt, max(line_offset) AS max_off "
+        "FROM session_events FINAL "
+        "WHERE session_id = {sid:String} AND project_id = {pid:String} "
+        "FORMAT JSON"
+    )
+    params = {"param_sid": session_id, "param_pid": project_id}
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [{}])
+        row = data[0] if data else {}
+        count = int(row.get("cnt", 0))
+        max_off = int(row.get("max_off", -1)) if count > 0 else -1
+        return count, max_off
+    except Exception as e:
+        logger.error("clickhouse_query_session_event_count_failed", error=str(e))
+        return 0, -1
+
+
+async def query_existing_for_dedup(
+    session_id: str,
+    project_id: str,
+    min_offset: int,
+    max_offset: int,
+) -> tuple[frozenset[int], frozenset[str]]:
+    """Return (existing_offsets, existing_hashes) for the given session/range.
+
+    Both sets are used together in ``ingest_session_lines`` to skip lines
+    that have already been stored:
+
+    * ``existing_offsets`` -- position-based check; catches rows ingested
+      before ``line_hash`` was added (legacy rows have ``line_hash = ''``).
+    * ``existing_hashes`` -- content-addressed check; catches the same bytes
+      regardless of what ``line_offset`` the client assigned them, making
+      dedup robust to off-by-one differences between IDE push implementations.
+
+    Uses FINAL so ReplacingMergeTree dedup is applied before reading.
+    Fail-open: returns (frozenset(), frozenset()) on any error so the ingest
+    call can proceed normally.
+    """
+    if min_offset > max_offset:
+        return frozenset(), frozenset()
+    sql = (
+        "SELECT line_offset, line_hash "
+        "FROM session_events FINAL "
+        "WHERE project_id = {pid:String} AND session_id = {sid:String} "
+        "AND line_offset >= {min_off:UInt32} AND line_offset <= {max_off:UInt32} "
+        "FORMAT JSON"
+    )
+    params = {
+        "param_pid": project_id,
+        "param_sid": session_id,
+        "param_min_off": str(min_offset),
+        "param_max_off": str(max_offset),
+    }
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        existing_offsets = frozenset(int(row["line_offset"]) for row in data)
+        existing_hashes = frozenset(row["line_hash"] for row in data if row.get("line_hash"))
+        return existing_offsets, existing_hashes
+    except Exception as e:
+        logger.warning("clickhouse_query_existing_for_dedup_failed", error=str(e))
+        return frozenset(), frozenset()
