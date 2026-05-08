@@ -40,6 +40,7 @@ from api.routes.jwks import router as jwks_router
 from api.routes.mcp import router as mcp_router
 from api.routes.prompt import router as prompt_router
 from api.routes.reconcile import router as reconcile_router
+from api.routes.registry_models import router as registry_models_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
 from api.routes.sessions import router as sessions_router
@@ -65,6 +66,7 @@ async def _ensure_columns(conn):
     stmts = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)",
         "ALTER TABLE mcp_listings ADD COLUMN IF NOT EXISTS environment_variables JSONB",
+        "ALTER TABLE agent_versions ADD COLUMN IF NOT EXISTS models_by_ide JSONB NOT NULL DEFAULT '{}'::jsonb",
     ]
     for stmt in stmts:
         try:
@@ -310,6 +312,7 @@ app.include_router(sessions_router)
 app.include_router(component_source_router)
 app.include_router(bulk_router)
 app.include_router(config_router)
+app.include_router(registry_models_router)
 
 # --- Prometheus metrics ---
 Instrumentator(
