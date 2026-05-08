@@ -731,21 +731,21 @@ def _post_auth_onboarding():
                 parts.append(f"{mcps} MCP{'s' if mcps != 1 else ''}")
             rprint(f"  [bold]{label}[/bold] — {', '.join(parts)} found")
         rprint()
-        rprint("[dim]Run `observal doctor patch --hook --all-ides` to instrument telemetry.[/dim]")
+        rprint("[dim]Run `observal doctor patch --all --all-ides` to instrument telemetry.[/dim]")
 
     except Exception:
         pass
 
 
 def _run_doctor_patch(ide_name: str):
-    """Run 'observal doctor patch --hook --ide <name>' as a subprocess."""
+    """Run 'observal doctor patch --all --ide <name>' as a subprocess."""
     import subprocess
     import sys
 
     try:
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         result = subprocess.run(
-            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--hook", "--ide", ide_name],
+            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--ide", ide_name],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -759,7 +759,7 @@ def _run_doctor_patch(ide_name: str):
             rprint(f"[yellow]{result.stderr.rstrip()}[/yellow]")
     except Exception as e:
         rprint(f"[yellow]Could not run doctor patch: {e}[/yellow]")
-        rprint(f"Run [bold]observal doctor patch --hook --ide {ide_name}[/bold] manually.")
+        rprint(f"Run [bold]observal doctor patch --all --ide {ide_name}[/bold] manually.")
 
 
 def _configure_kiro(server_url: str):
@@ -781,7 +781,7 @@ def _configure_kiro(server_url: str):
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Kiro automatically: {e}[/yellow]")
-        rprint("Run [bold]observal doctor patch --hook --ide kiro[/bold] to set up manually.")
+        rprint("Run [bold]observal doctor patch --all --ide kiro[/bold] to set up manually.")
 
 
 def _configure_gemini_cli(server_url: str):
@@ -803,7 +803,7 @@ def _configure_gemini_cli(server_url: str):
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Gemini CLI automatically: {e}[/yellow]")
-        rprint("Run [bold]observal doctor patch --hook --ide gemini-cli[/bold] to set up manually.")
+        rprint("Run [bold]observal doctor patch --all --ide gemini-cli[/bold] to set up manually.")
 
 
 def _configure_codex(server_url: str):
@@ -825,7 +825,7 @@ def _configure_codex(server_url: str):
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Codex automatically: {e}[/yellow]")
-        rprint("Run [bold]observal doctor patch --hook --ide codex[/bold] manually.")
+        rprint("Run [bold]observal doctor patch --all --ide codex[/bold] manually.")
 
 
 def _configure_copilot(server_url: str):
@@ -901,7 +901,7 @@ def _configure_claude_code(server_url: str, access_token: str):
     """Check for Claude Code and configure telemetry via doctor patch.
 
     Fetches a long-lived hooks token first (needed by the patch command),
-    then delegates to 'observal doctor patch --hook --ide claude-code'.
+    then delegates to 'observal doctor patch --all --ide claude-code'.
     """
     claude_dir = Path.home() / ".claude"
 
@@ -927,7 +927,7 @@ def _configure_claude_code(server_url: str, access_token: str):
 
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Claude Code automatically: {e}[/yellow]")
-        rprint("Run [bold]observal doctor patch --hook --ide claude-code[/bold] manually.")
+        rprint("Run [bold]observal doctor patch --all --ide claude-code[/bold] manually.")
 
 
 def _fetch_hooks_token(server_url: str, access_token: str) -> str:
