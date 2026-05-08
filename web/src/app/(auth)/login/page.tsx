@@ -103,7 +103,12 @@ function LoginContent() {
       toast.success("Signed in successfully");
       router.push("/");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Login failed";
+      const raw = e instanceof Error ? e.message : "Login failed";
+      const status = e instanceof Error ? (e as Error & { status?: number }).status : undefined;
+      let msg = raw;
+      if (status === 429 || raw.toLowerCase().includes("rate limit")) {
+        msg = "Too many login attempts. Please wait a minute before trying again.";
+      }
       setError(msg);
       toast.error(msg);
     } finally {

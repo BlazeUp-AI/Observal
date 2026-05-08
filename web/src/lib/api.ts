@@ -194,6 +194,7 @@ async function request<T = unknown>(
     try {
       const parsed = JSON.parse(text);
       if (parsed.detail) detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+      else if (parsed.error) detail = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
     } catch {
       // not JSON — use raw text
     }
