@@ -259,85 +259,13 @@ def telemetry_test():
 def ops_sync():
     """Flush locally buffered telemetry events to the server.
 
-    When the Observal server is unreachable, hook events are stored in a
-    local SQLite buffer (~/.observal/telemetry_buffer.db). This command
-    sends pending events in batches and reports the result.
+    Note: The local SQLite buffer has been removed. Session telemetry
+    now uses incremental JSONL push with crash recovery. Use
+    `observal reconcile run` to recover interrupted sessions.
     """
-    import httpx
-
-    from observal_cli.telemetry_buffer import (
-        BATCH_SIZE,
-        cleanup,
-        get_pending,
-        mark_failed,
-        mark_sent,
-    )
-    from observal_cli.telemetry_buffer import (
-        stats as buffer_stats,
-    )
-
-    buf = buffer_stats()
-    if buf["pending"] == 0:
-        rprint("[dim]No pending events to sync.[/dim]")
-        cleaned = cleanup()
-        if cleaned:
-            rprint(f"[dim]Cleaned up {cleaned} old sent events.[/dim]")
-        return
-
-    cfg = config.load()
-    hooks_url = cfg.get("server_url", "http://localhost:8000").rstrip("/") + "/api/v1/telemetry/hooks"
-    user_id = cfg.get("user_id", "")
-
-    total_sent = 0
-    total_failed = 0
-
-    with spinner("Syncing buffered events..."):
-        while True:
-            batch = get_pending(limit=BATCH_SIZE)
-            if not batch:
-                break
-
-            sent_ids = []
-            failed_ids = []
-
-            for event in batch:
-                try:
-                    headers = {"Content-Type": "application/json"}
-                    if user_id:
-                        headers["X-Observal-User-Id"] = user_id
-
-                    r = httpx.post(
-                        hooks_url,
-                        content=event["payload"],
-                        headers=headers,
-                        timeout=5,
-                    )
-                    if r.status_code < 300:
-                        sent_ids.append(event["id"])
-                    else:
-                        failed_ids.append(event["id"])
-                except Exception:
-                    failed_ids.append(event["id"])
-
-            mark_sent(sent_ids)
-            mark_failed(failed_ids)
-            total_sent += len(sent_ids)
-            total_failed += len(failed_ids)
-
-            # If entire batch failed, server is probably down -- stop
-            if not sent_ids:
-                break
-
-    remaining = buffer_stats()["pending"]
-    cleaned = cleanup()
-
-    rprint(
-        f"[green]Synced {total_sent} events[/green], "
-        f"[{'red' if total_failed else 'dim'}]{total_failed} failed[/], "
-        f"[dim]{remaining} remaining[/dim]"
-    )
-    if cleaned:
-        rprint(f"[dim]Cleaned up {cleaned} old sent events.[/dim]")
+    rprint("[dim]The telemetry buffer has been removed.[/dim]")
+    rprint("[dim]Session data is now pushed incrementally via JSONL hooks.[/dim]")
+    rprint("[dim]Run `observal reconcile run` to recover interrupted sessions.[/dim]")
 
 
 # ── Dashboard (on ops_app) ──────────────────────────────

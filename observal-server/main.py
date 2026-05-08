@@ -44,7 +44,6 @@ from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
 from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
-from api.routes.telemetry import otlp_router
 from api.routes.telemetry import router as telemetry_router
 from config import settings
 from database import engine
@@ -286,9 +285,6 @@ if settings.DEPLOYMENT_MODE == "enterprise":
 # GraphQL (replaces REST dashboard endpoints)
 graphql_app = GraphQLRouter(schema, context_getter=get_context_dep)
 app.include_router(graphql_app, prefix="/api/v1/graphql")
-
-# OTLP receiver (unauthenticated, standard paths — must be before /api/v1 routes)
-app.include_router(otlp_router)
 
 # REST (CLI operations, auth, telemetry ingestion)
 app.include_router(auth_router)
