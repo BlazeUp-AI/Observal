@@ -4,11 +4,11 @@ Go from zero to "my first trace in the Observal dashboard" in about five minutes
 
 By the end of this guide you will have:
 
-* The Observal CLI installed
-* An Observal server running locally
-* The CLI logged in as an admin
-* At least one MCP server instrumented
-* A live trace visible in the web UI
+- The Observal CLI installed
+- An Observal server running locally
+- The CLI logged in as an admin
+- At least one MCP server instrumented
+- A live trace visible in the web UI
 
 ## 1. Install the CLI
 
@@ -31,17 +31,20 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-That's it. The `.env.example` ships with working defaults. Seven containers come up:
+That's it. The `.env.example` ships with working defaults. Ten services come up:
 
-| Service | URL |
-| --- | --- |
-| API (FastAPI + OTLP ingestion) | `http://localhost:8000` |
-| Web UI (Next.js) | `http://localhost:3000` |
-| Postgres | `localhost:5432` |
-| ClickHouse | `localhost:8123` |
-| Redis | `localhost:6379` |
-| Worker | internal |
-| Grafana | `http://localhost:3001` |
+| Service               | URL                     | Purpose                        |
+| --------------------- | ----------------------- | ------------------------------ |
+| `observal-lb` (nginx) | `http://localhost:8000` | Reverse proxy → API            |
+| `observal-web`        | `http://localhost:3000` | Web UI (Next.js)               |
+| `observal-api`        | internal                | FastAPI + OTLP ingestion       |
+| `observal-worker`     | internal                | Background jobs (arq)          |
+| `observal-init`       | internal                | Runs DB migrations, then exits |
+| `observal-db`         | `localhost:5432`        | PostgreSQL 16                  |
+| `observal-clickhouse` | `localhost:8123`        | ClickHouse                     |
+| `observal-redis`      | `localhost:6379`        | Redis                          |
+| `observal-prometheus` | `http://localhost:9090` | Prometheus                     |
+| `observal-grafana`    | `http://localhost:3001` | Grafana                        |
 
 The API waits for Postgres, ClickHouse, and Redis to pass health checks before starting — expect 15–30 seconds. Confirm it is up:
 
@@ -64,12 +67,12 @@ Prompts:
 2. **Login method** — pick `[E]mail`
 3. **Email / password** — use one of the seeded demo accounts:
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Super Admin | `super@demo.example` | `super-changeme` |
-| Admin | `admin@demo.example` | `admin-changeme` |
-| Reviewer | `reviewer@demo.example` | `reviewer-changeme` |
-| User | `user@demo.example` | `user-changeme` |
+| Role        | Email                   | Password            |
+| ----------- | ----------------------- | ------------------- |
+| Super Admin | `super@demo.example`    | `super-changeme`    |
+| Admin       | `admin@demo.example`    | `admin-changeme`    |
+| Reviewer    | `reviewer@demo.example` | `reviewer-changeme` |
+| User        | `user@demo.example`     | `user-changeme`     |
 
 Log in as super admin for the fewest restrictions while exploring. Credentials land in `~/.observal/config.json` (mode `0600`).
 
@@ -128,11 +131,11 @@ Backups saved:
 
 What `doctor patch --all` did:
 
-* Found your existing MCP config files (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, etc.)
-* Rewrote the config so every MCP server runs through `observal-shim` (transparent -- no behavior change)
-* Installed telemetry hooks for session lifecycle events
-* Configured OTel export where supported
-* Saved a timestamped `.bak` next to every file it touched
+- Found your existing MCP config files (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, etc.)
+- Rewrote the config so every MCP server runs through `observal-shim` (transparent -- no behavior change)
+- Installed telemetry hooks for session lifecycle events
+- Configured OTel export where supported
+- Saved a timestamped `.bak` next to every file it touched
 
 Nothing broke. Your agents still work exactly as before. The only difference: every tool call now generates a span.
 
@@ -184,9 +187,9 @@ Every MCP request/response is now a span. Spans group into traces. Traces form s
 
 ## Where to next
 
-| You want to... | Go to |
-| --- | --- |
-| Understand the data model | [Core Concepts](core-concepts.md) |
-| Learn what to do with traces | [Use Cases](../use-cases/README.md) |
+| You want to...                      | Go to                                     |
+| ----------------------------------- | ----------------------------------------- |
+| Understand the data model           | [Core Concepts](core-concepts.md)         |
+| Learn what to do with traces        | [Use Cases](../use-cases/README.md)       |
 | Configure the server for production | [Self-Hosting](../self-hosting/README.md) |
-| Deep-dive on a CLI command | [CLI Reference](../cli/README.md) |
+| Deep-dive on a CLI command          | [CLI Reference](../cli/README.md)         |

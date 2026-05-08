@@ -1,6 +1,6 @@
 # Docker Compose setup
 
-Step-by-step bring-up of the Observal stack. End state: eight healthy containers, API responding at `http://localhost:8000/health`, web UI at `http://localhost:3000`.
+Step-by-step bring-up of the Observal stack. End state: ten healthy services, API responding at `http://localhost:8000/health`, web UI at `http://localhost:3000`.
 
 ## 1. Clone and configure
 
@@ -48,12 +48,12 @@ For local dev, `http://localhost:3000` and `http://localhost:8000` are fine. For
 
 `.env.example` seeds four demo accounts on first startup:
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Super Admin | `super@demo.example` | `super-changeme` |
-| Admin | `admin@demo.example` | `admin-changeme` |
-| Reviewer | `reviewer@demo.example` | `reviewer-changeme` |
-| User | `user@demo.example` | `user-changeme` |
+| Role        | Email                   | Password            |
+| ----------- | ----------------------- | ------------------- |
+| Super Admin | `super@demo.example`    | `super-changeme`    |
+| Admin       | `admin@demo.example`    | `admin-changeme`    |
+| Reviewer    | `reviewer@demo.example` | `reviewer-changeme` |
+| User        | `user@demo.example`     | `user-changeme`     |
 
 Log in with the CLI:
 
