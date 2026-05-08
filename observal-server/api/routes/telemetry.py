@@ -6,12 +6,10 @@ removed — session telemetry now flows through /api/v1/ingest/session
 """
 
 import asyncio
-import json
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, Request
-from redis.exceptions import RedisError
+from fastapi import APIRouter, Depends, Header
 
 from api.deps import get_project_id, require_role
 from models.user import User, UserRole

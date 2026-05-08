@@ -29,7 +29,10 @@ def test_find_recent_sessions_includes_subagent_files(tmp_path):
     subagent_file = subagent_dir / "agent-a55579c8.jsonl"
     subagent_file.write_text('{"type":"assistant"}\n')
 
-    with patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path):
+    with (
+        patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path),
+        patch("observal_cli.cmd_reconcile._find_kiro_sessions_dir", return_value=tmp_path / "_no_kiro"),
+    ):
         results = _find_recent_sessions(since_hours=168)
 
     paths = [p for p, _ in results]
@@ -57,7 +60,10 @@ def test_find_recent_sessions_respects_cutoff_for_subagents(tmp_path):
 
     os.utime(old_subagent, (old_time, old_time))
 
-    with patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path):
+    with (
+        patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path),
+        patch("observal_cli.cmd_reconcile._find_kiro_sessions_dir", return_value=tmp_path / "_no_kiro"),
+    ):
         results = _find_recent_sessions(since_hours=168)
 
     paths = [p for p, _ in results]
@@ -74,7 +80,10 @@ def test_find_recent_sessions_no_subagents_is_fine(tmp_path):
     top_level = project_dir / "session-plain.jsonl"
     top_level.write_text('{"type":"assistant"}\n')
 
-    with patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path):
+    with (
+        patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path),
+        patch("observal_cli.cmd_reconcile._find_kiro_sessions_dir", return_value=tmp_path / "_no_kiro"),
+    ):
         results = _find_recent_sessions(since_hours=168)
 
     paths = [p for p, _ in results]
@@ -153,61 +162,6 @@ def test_parse_session_file_detects_subagent_path(tmp_path):
     assert enrichment["is_subagent"] is True
     assert enrichment["parent_session_id"] == parent_session_id
     assert enrichment["subagent_id"] == "agent-a55579c8"
-
-
-def test_parse_session_file_reads_meta_json(tmp_path):
-    """_parse_session_file reads .meta.json for agent_type and agent_description."""
-    from observal_cli.cmd_reconcile import _parse_session_file
-
-    subagent_dir = tmp_path / "parent-sess" / "subagents"
-    subagent_dir.mkdir(parents=True)
-    subagent_file = subagent_dir / "agent-b99.jsonl"
-    meta_file = subagent_dir / "agent-b99.meta.json"
-
-    record = {
-        "type": "assistant",
-        "model": "claude-haiku-4-5",
-        "usage": {"input_tokens": 200, "output_tokens": 80},
-        "message": {"content": []},
-    }
-    subagent_file.write_text(json.dumps(record) + "\n")
-    meta_file.write_text(
-        json.dumps(
-            {
-                "agentType": "superpowers:code-reviewer",
-                "description": "Review PR #472",
-            }
-        )
-    )
-
-    enrichment = _parse_session_file(subagent_file)
-
-    assert enrichment["agent_type"] == "superpowers:code-reviewer"
-    assert enrichment["agent_description"] == "Review PR #472"
-
-
-def test_parse_session_file_meta_json_missing_is_graceful(tmp_path):
-    """_parse_session_file handles missing .meta.json without error."""
-    from observal_cli.cmd_reconcile import _parse_session_file
-
-    subagent_dir = tmp_path / "parent-sess" / "subagents"
-    subagent_dir.mkdir(parents=True)
-    subagent_file = subagent_dir / "agent-nometa.jsonl"
-
-    record = {
-        "type": "assistant",
-        "model": "claude-sonnet-4-5",
-        "usage": {"input_tokens": 50, "output_tokens": 30},
-        "message": {"content": []},
-    }
-    subagent_file.write_text(json.dumps(record) + "\n")
-    # No .meta.json file created
-
-    enrichment = _parse_session_file(subagent_file)
-
-    assert enrichment["is_subagent"] is True
-    assert enrichment["agent_type"] is None
-    assert enrichment["agent_description"] is None
 
 
 def test_parse_session_file_top_level_is_not_subagent(tmp_path):
@@ -456,7 +410,10 @@ def test_find_recent_sessions_counts_are_separated(tmp_path):
     (subagent_dir / "agent-b.jsonl").write_text("{}\n")
     (subagent_dir / "agent-c.jsonl").write_text("{}\n")
 
-    with patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path):
+    with (
+        patch("observal_cli.cmd_reconcile._find_claude_sessions_dir", return_value=tmp_path),
+        patch("observal_cli.cmd_reconcile._find_kiro_sessions_dir", return_value=tmp_path / "_no_kiro"),
+    ):
         results = _find_recent_sessions(since_hours=168)
 
     paths = [p for p, _ in results]

@@ -337,16 +337,8 @@ class TestPullKiro:
                         "name": "my-agent",
                         "tools": ["search"],
                         "hooks": {
-                            "agentSpawn": [
-                                {
-                                    "command": "python3 -m observal_cli.hooks.kiro_hook --url http://localhost:8000/api/v1/telemetry/hooks --agent-name my-agent"
-                                }
-                            ],
-                            "stop": [
-                                {
-                                    "command": "python3 -m observal_cli.hooks.kiro_stop_hook --url http://localhost:8000/api/v1/telemetry/hooks --agent-name my-agent"
-                                }
-                            ],
+                            "userPromptSubmit": [{"command": "python3 -m observal_cli.hooks.kiro_session_push"}],
+                            "stop": [{"command": "python3 -m observal_cli.hooks.kiro_session_push"}],
                         },
                     },
                 }

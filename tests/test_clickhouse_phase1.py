@@ -135,8 +135,8 @@ class TestInitClickhouse:
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
             await init_clickhouse()
-            # +1 health check + 4 TTL ALTER statements (default retention=90)
-            assert mock_q.call_count == len(INIT_SQL) + 1 + 4
+            # +1 health check + 5 TTL ALTER statements (traces, spans, scores, otel_logs, session_events)
+            assert mock_q.call_count == len(INIT_SQL) + 1 + 5
 
 
 # --- Insert tests (JSONEachRow format) ---

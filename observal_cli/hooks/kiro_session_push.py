@@ -104,16 +104,9 @@ def _read_kiro_credits(session_id: str, home: Path | None = None) -> float | Non
         return None
     try:
         session = json.loads(json_path.read_text())
-        turns = (
-            session.get("session_state", {})
-            .get("conversation_metadata", {})
-            .get("user_turn_metadatas", [])
-        )
+        turns = session.get("session_state", {}).get("conversation_metadata", {}).get("user_turn_metadatas", [])
         total = sum(
-            u.get("value", 0.0)
-            for turn in turns
-            for u in turn.get("metering_usage", [])
-            if u.get("unit") == "credit"
+            u.get("value", 0.0) for turn in turns for u in turn.get("metering_usage", []) if u.get("unit") == "credit"
         )
         return total if total > 0 else None
     except Exception:
@@ -145,9 +138,7 @@ def _run(home: Path | None = None) -> None:
     _h = home if home is not None else Path.home()
     _persist_dir = _h / ".observal"
     _persist_dir.mkdir(parents=True, exist_ok=True)
-    (_persist_dir / ".kiro-session").write_text(
-        json.dumps({"session_id": session_id, "hook_event": hook_event})
-    )
+    (_persist_dir / ".kiro-session").write_text(json.dumps({"session_id": session_id, "hook_event": hook_event}))
 
     config = load_config(home=home)
     if config is None:

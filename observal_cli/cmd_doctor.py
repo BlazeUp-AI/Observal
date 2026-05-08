@@ -15,7 +15,6 @@ from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
     OBSERVAL_METADATA_KEY,
     get_desired_hooks,
-    is_observal_matcher_group,
 )
 
 doctor_app = typer.Typer(help="Diagnose and patch IDE settings for Observal telemetry")

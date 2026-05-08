@@ -362,5 +362,6 @@ def _run_recovery(home: Path | None = None) -> None:
         except Exception:
             pass
 
+
 if __name__ == "__main__":
     run_recovery()

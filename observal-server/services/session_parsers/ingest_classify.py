@@ -285,6 +285,7 @@ def extract_tool_info(ide: str, parsed: dict) -> tuple[str | None, str | None]:
 # Timestamp extraction -- IDE-specific
 # ---------------------------------------------------------------------------
 
+
 def _ts_claude_code(parsed: dict) -> str | None:
     """Return ClickHouse timestamp string from a Claude Code JSONL line, or None."""
     raw = parsed.get("timestamp")
@@ -313,6 +314,7 @@ def _ts_kiro(parsed: dict) -> str | None:
         return None
     try:
         from datetime import UTC, datetime
+
         dt = datetime.fromtimestamp(float(epoch_s), tz=UTC)
         return dt.strftime("%Y-%m-%d %H:%M:%S.000")
     except Exception:
@@ -335,5 +337,5 @@ def extract_timestamp(ide: str, parsed: dict) -> str | None:
     from schemas.ide_registry import IDE_REGISTRY
 
     parser_id = IDE_REGISTRY[ide]["session_parser"]  # KeyError = unknown IDE
-    extractor = _TS_EXTRACTORS[parser_id]             # KeyError = unimplemented
+    extractor = _TS_EXTRACTORS[parser_id]  # KeyError = unimplemented
     return extractor(parsed)  # type: ignore[call-arg,operator]

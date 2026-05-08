@@ -70,13 +70,15 @@ def parse_rows(rows: list[dict]) -> list[dict]:
             # Synthetic row written by kiro_session_push with lifetime credits.
             row_credits = row.get("credits") or data.get("credits")
             if row_credits:
-                events.append({
-                    "timestamp": ts,
-                    "event_name": "kiro_credits",
-                    "body": f"{float(row_credits):.4f} credits",
-                    "attributes": {"credits": str(row_credits), "model": "Kiro Auto"},
-                    "service_name": ide,
-                })
+                events.append(
+                    {
+                        "timestamp": ts,
+                        "event_name": "kiro_credits",
+                        "body": f"{float(row_credits):.4f} credits",
+                        "attributes": {"credits": str(row_credits), "model": "Kiro Auto"},
+                        "service_name": ide,
+                    }
+                )
         elif kind == "Prompt":
             _handle_prompt(data, ts, ide, events)
         elif kind == "AssistantMessage":
