@@ -48,7 +48,7 @@ async def _find_listing(listing_id: str, db: AsyncSession):
             listing = await resolve_prefix_id(model, listing_id, db)
             hits.append((listing_type, listing))
         except HTTPException as e:
-            if e.status_code == 400:
+            if e.status_code == 400 and "too short" not in str(e.detail):
                 raise e
             continue
 
