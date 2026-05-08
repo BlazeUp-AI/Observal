@@ -121,14 +121,15 @@ function ErrorRow({ event }: { event: SessionErrorEvent }) {
           {/* Metadata */}
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
             <span>
-              Session:{" "}
-              <Link href={`/traces/${event.session_id}`} className="text-primary-accent hover:underline font-[family-name:var(--font-mono)]">
-                {event.session_id.slice(0, 12)}...
+              <Link href={`/traces/${event.session_id}`} className="text-primary-accent hover:underline">
+                View trace →
               </Link>
             </span>
             {event.agent_type && <span>Agent: {event.agent_type}</span>}
             {event.stop_reason && <span>Reason: {event.stop_reason}</span>}
-            {event.user_id && <span>User: {event.user_id.slice(0, 8)}...</span>}
+            {(event.user_name || event.user_id) && (
+              <span>User: {event.user_name || event.user_id.slice(0, 8) + "..."}</span>
+            )}
           </div>
         </div>
       )}

@@ -206,7 +206,7 @@ export default function DashboardPage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="h-8 text-xs">Session ID</TableHead>
+                        <TableHead className="h-8 text-xs">Trace</TableHead>
                         <TableHead className="h-8 text-xs">Service</TableHead>
                         <TableHead className="h-8 text-xs text-right">Time</TableHead>
                       </TableRow>
@@ -217,9 +217,11 @@ export default function DashboardPage() {
                           <TableCell className="py-1.5">
                             <Link
                               href={`/traces/${s.session_id}`}
-                              className="font-[family-name:var(--font-mono)] text-xs hover:text-primary-accent transition-colors"
+                              className="text-xs hover:text-primary-accent transition-colors"
                             >
-                              {s.session_id.slice(0, 12)}...
+                              {s.first_event_time
+                                ? new Date(s.first_event_time).toLocaleDateString([], { month: "short", day: "numeric" }) + " · " + new Date(s.first_event_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                                : "View trace"}
                             </Link>
                           </TableCell>
                           <TableCell className="py-1.5 text-xs text-muted-foreground">

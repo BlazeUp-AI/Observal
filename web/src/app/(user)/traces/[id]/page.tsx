@@ -1524,8 +1524,6 @@ function SessionInfoTab({ events, sessionId, serviceName }: { events: RawSession
           Session Details
         </h3>
         <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm bg-surface-sunken rounded-lg p-4">
-          <span className="text-muted-foreground">Session ID</span>
-          <span className="font-[family-name:var(--font-mono)] text-xs">{sessionId}</span>
           <span className="text-muted-foreground">Service</span>
           <span>{serviceName || "unknown"}</span>
           <span className="text-muted-foreground">Source</span>
@@ -1673,11 +1671,24 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
   return (
     <>
       <PageHeader
-        title={isLoading ? "Session" : id.slice(0, 16) + "..."}
+        title={
+          isLoading
+            ? "Trace"
+            : session?.service_name && events[0]?.timestamp
+              ? `${session.service_name} · ${new Date(events[0].timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+              : events[0]?.timestamp
+                ? new Date(events[0].timestamp).toLocaleString()
+                : "Trace"
+        }
         breadcrumbs={[
           { label: "Dashboard", href: "/dashboard" },
           { label: "Traces", href: "/traces" },
-          { label: id.slice(0, 12) + "..." },
+          {
+            label:
+              session?.service_name && events[0]?.timestamp
+                ? `${session.service_name} · ${new Date(events[0].timestamp).toLocaleDateString([], { month: "short", day: "numeric" })}`
+                : "Trace",
+          },
         ]}
       />
       <div className="p-6 w-full mx-auto space-y-6">
@@ -1691,10 +1702,6 @@ export default function TraceDetailPage({ params }: { params: Promise<{ id: stri
           <>
             {/* Header info */}
             <div className="animate-in flex flex-wrap items-center gap-x-6 gap-y-2">
-              <div>
-                <span className="text-xs text-muted-foreground block mb-0.5">Session ID</span>
-                <span className="text-sm font-[family-name:var(--font-mono)]">{id}</span>
-              </div>
               {session.service_name && (
                 <div>
                   <span className="text-xs text-muted-foreground block mb-0.5">IDE</span>

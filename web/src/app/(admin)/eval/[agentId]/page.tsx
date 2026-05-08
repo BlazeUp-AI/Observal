@@ -198,13 +198,12 @@ export default function EvalDetailPage({ params }: { params: Promise<{ agentId: 
                               <SelectItem key={session.session_id} value={session.session_id}>
                                 <div className="flex flex-col gap-0.5 py-1">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-mono text-xs text-foreground">
-                                      {session.session_id.slice(0, 12)}...
-                                    </span>
-                                    {startTime && (
-                                      <span className="text-muted-foreground text-xs">
+                                    {startTime ? (
+                                      <span className="text-foreground text-xs font-medium">
                                         {startTime.toLocaleDateString()} {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                       </span>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">Unknown time</span>
                                     )}
                                     {session.event_count && session.event_count > 0 && (
                                       <span className="text-muted-foreground text-[10px]">

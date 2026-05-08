@@ -551,6 +551,7 @@ export interface SessionErrorEvent {
   tool_response: string;
   stop_reason: string;
   user_id: string;
+  user_name?: string;
 }
 
 // ── Insights ───────────────────────────────────────────────────────
