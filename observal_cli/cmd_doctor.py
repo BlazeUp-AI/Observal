@@ -5,12 +5,15 @@ push session JSONL incrementally to the server.
 """
 
 import json
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 import typer
 from rich import print as rprint
 
 from observal_cli import config
+from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
     OBSERVAL_METADATA_KEY,
@@ -377,37 +380,116 @@ def _cleanup_kiro(dry_run: bool) -> bool:
     return changed
 
 
+# ── Shim helpers ────────────────────────────────────────────
+
+
+def _is_already_shimmed(entry: dict) -> bool:
+    """Check if an MCP entry is already wrapped with observal-shim."""
+    cmd = entry.get("command", "")
+    args = entry.get("args", [])
+    if cmd == "observal-shim" or "observal-shim" in cmd:
+        return True
+    return bool(any("observal-shim" in str(a) for a in args))
+
+
+def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
+    """Wrap an MCP server entry with observal-shim for telemetry."""
+    if entry.get("url"):
+        return entry
+    shimmed = dict(entry)
+    shimmed["command"] = "observal-shim"
+    shimmed["args"] = ["--mcp-id", mcp_id, "--", entry.get("command", ""), *entry.get("args", [])]
+    return shimmed
+
+
+def _backup_config(config_path: Path) -> Path:
+    """Create a timestamped backup of the config file."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = config_path.with_suffix(f".pre-observal.{ts}.bak")
+    shutil.copy2(config_path, backup)
+    return backup
+
+
+def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
+    """Extract MCP servers dict from IDE config using registry-defined key."""
+    key = get_mcp_servers_key(ide)
+    if key == "mcp.servers":
+        return config_data.get("mcp", {}).get("servers", {})
+    if key == "mcp":
+        return config_data.get("mcp", {})
+    if key == "servers" or ide == "vscode":
+        return config_data.get("servers", config_data.get("mcpServers", {}))
+    if ide == "copilot-cli":
+        return config_data.get("mcpServers", {})
+    return config_data.get(key, config_data.get("servers", {}))
+
+
+def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
+    """Wrap un-shimmed MCP servers in a config file with observal-shim.
+
+    Returns count of newly shimmed entries.
+    """
+    if not config_path.exists():
+        return 0
+    try:
+        data = json.loads(config_path.read_text())
+    except Exception:
+        return 0
+
+    servers = _parse_mcp_servers(data, ide)
+    shimmed = 0
+    for name, entry in servers.items():
+        if not _is_already_shimmed(entry) and not entry.get("url"):
+            if not dry_run:
+                servers[name] = _wrap_with_shim(entry, name)
+            shimmed += 1
+
+    if shimmed and not dry_run:
+        _backup_config(config_path)
+        config_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    return shimmed
+
+
+_SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items() if path}
+_VALID_IDES = list(_SHIM_TARGETS.keys())
+
+
 # ── Patch command ────────────────────────────────────────────
 
 
 @doctor_app.command(name="patch")
 def doctor_patch(
-    ide: list[str] = typer.Option([], "--ide", "-i", help="Target IDE (claude-code, kiro). Repeatable."),
-    all_ides: bool = typer.Option(False, "--all-ides", help="Target all supported IDEs"),
+    hook: bool = typer.Option(False, "--hook", help="Install session push hooks (Claude Code + Kiro)"),
+    shim: bool = typer.Option(False, "--shim", help="Wrap MCP servers with observal-shim"),
+    all_: bool = typer.Option(False, "--all", help="Hooks + shims"),
+    all_ides: bool = typer.Option(False, "--all-ides", help="Target every detected IDE"),
+    ide: list[str] = typer.Option([], "--ide", "-i", help="Target specific IDE (repeatable)"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without writing"),
 ):
-    """Install Observal session push hooks into IDE settings.
+    """Instrument IDEs with Observal telemetry hooks and shims.
 
-    Injects 2 hooks (UserPromptSubmit + Stop) that push session JSONL
-    data incrementally to the Observal server.
+    Requires at least one of --hook/--shim/--all AND one of --all-ides/--ide.
+    Session JSONL hooks (--hook) are only supported for Claude Code and Kiro.
+    MCP shim wrapping (--shim) works for all IDEs.
 
     \b
     Examples:
-      observal doctor patch --all-ides            # Claude Code + Kiro
-      observal doctor patch --ide claude-code     # Claude Code only
-      observal doctor patch --ide kiro            # Kiro only
-      observal doctor patch --all-ides --dry-run  # Preview changes
+      observal doctor patch --all --all-ides           # Everything, everywhere
+      observal doctor patch --hook --ide claude-code   # Claude Code hooks only
+      observal doctor patch --shim --ide cursor        # Cursor shims only
+      observal doctor patch --all --all-ides --dry-run # Preview changes
     """
+    do_hooks = hook or all_
+    do_shims = shim or all_
+
+    if not (hook or shim or all_):
+        rprint("[red]Specify at least one of --hook, --shim, or --all[/red]")
+        raise typer.Exit(1)
+
     if not all_ides and not ide:
         rprint("[red]Specify --all-ides or --ide <name>[/red]")
         raise typer.Exit(1)
-
-    valid_ides = ("claude-code", "kiro")
-    targets = list(ide) if ide else list(valid_ides)
-    for t in targets:
-        if t not in valid_ides:
-            rprint(f"[red]Unknown IDE: {t}. Valid: {', '.join(valid_ides)}[/red]")
-            raise typer.Exit(1)
 
     cfg = config.load()
     server_url = cfg.get("server_url")
@@ -415,17 +497,37 @@ def doctor_patch(
         rprint("[red]Not configured. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
+    targets = list(ide) if ide else _VALID_IDES if all_ides else []
+    for t in targets:
+        if t not in _VALID_IDES:
+            rprint(f"[red]Unknown IDE: {t}. Valid: {', '.join(_VALID_IDES)}[/red]")
+            raise typer.Exit(1)
+
     any_changes = False
+    verb = "Would" if dry_run else "Done"
     rprint("[bold]Observal Doctor — Patch[/bold]\n")
 
     for target in targets:
-        if target == "claude-code":
-            changed = _patch_claude_code(dry_run)
-            any_changes = any_changes or changed
+        # ── Hooks (Claude Code + Kiro only) ──
+        if do_hooks:
+            if target == "claude-code":
+                changed = _patch_claude_code(dry_run)
+                any_changes = any_changes or changed
+            elif target == "kiro":
+                changed = _patch_kiro(dry_run)
+                any_changes = any_changes or changed
 
-        elif target == "kiro":
-            changed = _patch_kiro(dry_run)
-            any_changes = any_changes or changed
+        # ── Shims (all IDEs with home MCP config) ──
+        if do_shims:
+            shim_path = _SHIM_TARGETS.get(target)
+            if shim_path and shim_path.exists():
+                rprint(f"[cyan]{target} — shims[/cyan]")
+                count = _shim_config_file(shim_path, target, dry_run)
+                if count:
+                    any_changes = True
+                    rprint(f"  {verb}: shimmed {count} MCP entries in {shim_path}")
+                else:
+                    rprint("  [dim]All MCP servers already shimmed[/dim]")
 
     if dry_run:
         rprint("\n[yellow]Dry run — no changes made.[/yellow]")
