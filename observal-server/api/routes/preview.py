@@ -133,23 +133,31 @@ async def preview_config(
     hook_map: dict = {}
     if hook_ids:
         rows = (
-            await db.execute(
-                select(HookListing)
-                .options(selectinload(HookListing.latest_version))
-                .where(HookListing.id.in_(hook_ids))
+            (
+                await db.execute(
+                    select(HookListing)
+                    .options(selectinload(HookListing.latest_version))
+                    .where(HookListing.id.in_(hook_ids))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         hook_map = {row.id: row for row in rows}
 
     prompt_map: dict = {}
     if prompt_ids:
         rows = (
-            await db.execute(
-                select(PromptListing)
-                .options(selectinload(PromptListing.latest_version))
-                .where(PromptListing.id.in_(prompt_ids))
+            (
+                await db.execute(
+                    select(PromptListing)
+                    .options(selectinload(PromptListing.latest_version))
+                    .where(PromptListing.id.in_(prompt_ids))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         prompt_map = {row.id: row for row in rows}
 
     # Build component name map

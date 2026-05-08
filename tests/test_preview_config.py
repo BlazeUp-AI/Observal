@@ -54,9 +54,7 @@ class TestPreviewConfigNoComponents:
     async def test_returns_configs_for_all_ides(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -84,9 +82,7 @@ class TestPreviewConfigNoComponents:
     async def test_claude_code_has_agent_file(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -107,9 +103,7 @@ class TestPreviewConfigNoComponents:
     async def test_kiro_has_correct_structure(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -136,9 +130,7 @@ class TestPreviewConfigNoComponents:
     async def test_vscode_uses_correct_paths(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -157,9 +149,7 @@ class TestPreviewConfigNoComponents:
     async def test_copilot_uses_agent_md_path(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -178,9 +168,7 @@ class TestPreviewConfigNoComponents:
     async def test_no_real_urls_in_output(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -200,9 +188,7 @@ class TestPreviewConfigNoComponents:
     async def test_validates_payload_limits(self):
         app, db, _user = _app_with()
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={
@@ -221,9 +207,7 @@ class TestPreviewConfigNoComponents:
         app.include_router(router)
         # Don't override get_current_user — it will raise 401
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             res = await client.post(
                 "/api/v1/agents/preview-config",
                 json={"name": "test", "description": "", "prompt": "", "model_name": "", "components": []},
