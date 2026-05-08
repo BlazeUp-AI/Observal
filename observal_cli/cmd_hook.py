@@ -15,6 +15,22 @@ from observal_cli.ide_specs.claude_code_hooks_spec import get_desired_env, get_d
 from observal_cli.prompts import select_one
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
+
+def _prompt_json(label: str) -> dict:
+    """Prompt for JSON input, re-asking on invalid input instead of crashing."""
+    while True:
+        raw = typer.prompt(label)
+        try:
+            parsed = _json.loads(raw)
+            if not isinstance(parsed, dict):
+                rprint("[red]Expected a JSON object (e.g. {\"command\": \"...\"}), got a different type.[/red]")
+                continue
+            return parsed
+        except _json.JSONDecodeError as e:
+            rprint(f"[red]Invalid JSON:[/red] {e}")
+            rprint('[dim]  Enter a valid JSON object, e.g. {"command": "echo hello"}[/dim]')
+
+
 hook_app = typer.Typer(help="Hook registry commands")
 
 
@@ -63,7 +79,7 @@ def hook_submit(
             "owner": typer.prompt("Owner"),
             "event": select_one("Event", VALID_HOOK_EVENTS),
             "handler_type": select_one("Handler type", VALID_HOOK_HANDLER_TYPES),
-            "handler_config": _json.loads(typer.prompt("Handler config (JSON)")),
+            "handler_config": _prompt_json("Handler config (JSON)"),
         }
 
     if draft:
