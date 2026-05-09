@@ -169,6 +169,7 @@ async def _list_sessions_query(
         "any(user_id) AS user_id "
         "FROM session_events FINAL "
         "WHERE session_id != '' "
+        "AND (parent_session_id = '' OR parent_session_id IS NULL) "
         + user_filter
         + time_filter
         + "GROUP BY session_id "
