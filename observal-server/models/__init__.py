@@ -11,6 +11,7 @@ from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
 from models.exporter_config import ExporterConfig
 from models.feedback import Feedback
 from models.hook import HookDownload, HookListing
+from models.insight_meta_cache import InsightMetaCache
 from models.insight_report import InsightReport, InsightReportStatus
 from models.insight_session_facets import InsightSessionFacets
 from models.insight_session_meta import InsightSessionMeta
@@ -59,6 +60,7 @@ __all__ = [
     "Feedback",
     "HookDownload",
     "HookListing",
+    "InsightMetaCache",
     "InsightReport",
     "InsightReportStatus",
     "InsightSessionFacets",
