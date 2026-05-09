@@ -23,6 +23,25 @@ Browse agents created by others, publish your own, and pull complete agent confi
 
 Every interaction generates traces, spans, and sessions that flow into a telemetry pipeline. The built-in eval engine scores agent sessions so you can measure performance and make your agents better over time.
 
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    IDE[IDE / CLI] --> Shim[observal-shim]
+    Shim --> API[Observal API Server]
+    API --> PG[(PostgreSQL)]
+
+    Shim --> OTEL[OTEL Collector]
+    OTEL --> CH[(ClickHouse)]
+
+    API --> Web[Web Dashboard]
+    Worker[Background Worker] --> API
+    Worker --> CH
+    Grafana --> CH
+```
+
+The platform uses a transparent telemetry pipeline to capture MCP tool activity, process traces and spans, and surface analytics through the dashboard and Grafana integrations.
+
 ## Documentation
 
 **Full docs live at [observal.gitbook.io](https://observal.gitbook.io/observal)** (sourced from [`/docs`](docs/) in this repo).
