@@ -51,6 +51,8 @@ docker/clickhouse/users.d/default-user.xml
 # Local / ephemeral
 .playwright-mcp/
 e2e-screenshots/
+migration/
+*.pem
 
 # Private packages (symlinked for local Docker builds)
 observal-insights/

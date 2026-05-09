@@ -160,8 +160,8 @@ class TestPGEncoder:
 
 
 class TestConstants:
-    def test_insert_order_has_33_entries(self):
-        assert len(INSERT_ORDER) == 33
+    def test_insert_order_has_39_entries(self):
+        assert len(INSERT_ORDER) == 39
 
     def test_insert_order_no_duplicates(self):
         assert len(INSERT_ORDER) == len(set(INSERT_ORDER))
@@ -529,13 +529,13 @@ class TestDataclasses:
     def test_import_result_fields(self):
         result = ImportResult(
             migration_id="abc-123",
-            tables_imported=33,
+            tables_imported=39,
             rows_inserted={"users": 10},
             rows_skipped={"users": 2},
             duration_seconds=2.0,
             warnings=[],
         )
-        assert result.tables_imported == 33
+        assert result.tables_imported == 39
         assert result.rows_inserted["users"] == 10
 
     def test_checksum_result_fields(self):

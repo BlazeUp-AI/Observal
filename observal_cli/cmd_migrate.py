@@ -44,12 +44,23 @@ INSERT_ORDER: list[str] = [
     # Tier 1.5 — FK to users
     "component_bundles",
     # Tier 2 — FK to orgs + users + component_bundles
+    # NOTE: listings/agents have a circular FK with their version tables:
+    #   *_listings.latest_version_id → *_versions.id (nullable, use_alter)
+    #   *_versions.listing_id → *_listings.id (NOT NULL)
+    # We break the cycle by nulling latest_version_id during insert (see DEFERRED_VERSION_BACKFILL).
     "mcp_listings",
     "skill_listings",
     "hook_listings",
     "prompt_listings",
     "sandbox_listings",
     "agents",
+    # Tier 2.5 — FK to listings/agents + users (version tables)
+    "mcp_versions",
+    "skill_versions",
+    "hook_versions",
+    "prompt_versions",
+    "sandbox_versions",
+    "agent_versions",
     # Tier 3 — FK to listings/users
     "mcp_validation_results",
     "mcp_downloads",
@@ -59,14 +70,14 @@ INSERT_ORDER: list[str] = [
     "sandbox_downloads",
     "submissions",
     "alert_rules",
-    # Tier 4 — FK to agents
+    # Tier 4 — FK to agents/agent_versions
     "agent_goal_templates",
     "agent_download_records",
     "component_download_records",
     "dimension_weights",
     # Tier 5 — FK to agent_goal_templates
     "agent_goal_sections",
-    # Tier 6 — FK to agents (polymorphic component_id)
+    # Tier 6 — FK to agent_versions (polymorphic component_id)
     "agent_components",
     # Tier 7 — FK to users (polymorphic listing_id)
     "feedback",
@@ -81,13 +92,40 @@ INSERT_ORDER: list[str] = [
     "trace_penalties",
 ]
 
+# Tables with a circular latest_version_id FK that must be nulled during insert
+# and backfilled after version tables are imported.
+# Format: (table, version_table, fk_column)
+DEFERRED_VERSION_BACKFILL: list[tuple[str, str, str]] = [
+    ("mcp_listings", "mcp_versions", "latest_version_id"),
+    ("skill_listings", "skill_versions", "latest_version_id"),
+    ("hook_listings", "hook_versions", "latest_version_id"),
+    ("prompt_listings", "prompt_versions", "latest_version_id"),
+    ("sandbox_listings", "sandbox_versions", "latest_version_id"),
+    ("agents", "agent_versions", "latest_version_id"),
+]
+
 JSONB_COLUMNS: dict[str, list[str]] = {
     "agents": ["model_config_json", "external_mcps", "supported_ides"],
+    "agent_versions": [
+        "model_config_json",
+        "external_mcps",
+        "supported_ides",
+        "required_ide_features",
+        "inferred_supported_ides",
+        "ide_configs",
+        "gaming_flags",
+        "models_by_ide",
+    ],
     "mcp_listings": ["tools_schema", "environment_variables", "supported_ides"],
+    "mcp_versions": ["tools_schema", "environment_variables", "supported_ides", "args", "headers", "auto_approve"],
     "skill_listings": ["supported_ides", "target_agents", "triggers", "mcp_server_config", "activation_keywords"],
+    "skill_versions": ["supported_ides", "target_agents", "triggers", "mcp_server_config", "activation_keywords"],
     "hook_listings": ["supported_ides", "handler_config", "input_schema", "output_schema"],
+    "hook_versions": ["supported_ides", "handler_config", "input_schema", "output_schema"],
     "prompt_listings": ["variables", "model_hints", "tags", "supported_ides"],
+    "prompt_versions": ["variables", "model_hints", "tags", "supported_ides"],
     "sandbox_listings": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
+    "sandbox_versions": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
     "scorecards": ["raw_output", "dimension_scores", "scoring_recommendations", "dimensions_skipped", "warnings"],
     "agent_components": ["config_override"],
     "exporter_configs": ["config"],
@@ -334,7 +372,16 @@ def _coerce_value(value: object, pg_type: str) -> object:
         return int(value)
     if pg_type in ("float4", "float8", "numeric") and isinstance(value, (int, float)):
         return float(value)
+    # asyncpg requires JSON/JSONB values as serialized strings
+    if pg_type in ("json", "jsonb") and not isinstance(value, str):
+        return json.dumps(value)
     return value
+
+
+# Columns that are NOT NULL with JSON defaults — used when archive has NULL for these.
+_NOTNULL_JSON_DEFAULTS: dict[str, dict[str, str]] = {
+    "agent_versions": {"models_by_ide": "{}"},
+}
 
 
 def _build_insert(table: str, columns: list[str], col_types: dict[str, str]) -> str:
@@ -376,6 +423,12 @@ async def _flush_batch(
     skipped = 0
 
     for row in batch:
+        # Apply NOT NULL JSON defaults for columns that are NULL in the archive
+        table_defaults = _NOTNULL_JSON_DEFAULTS.get(table, {})
+        for col, default_val in table_defaults.items():
+            if col in columns and row.get(col) is None:
+                row[col] = default_val  # Already a JSON string
+
         values = [_coerce_value(row.get(col), col_types.get(col, "")) for col in columns]
         try:
             status = await conn.execute(query, *values)
@@ -389,6 +442,10 @@ async def _flush_batch(
             row_id = row.get("id", "unknown")
             rprint(f"[yellow]  FK violation in {table}, row {row_id}: {e.constraint_name}[/yellow]")
             skipped += 1
+        except asyncpg.UniqueViolationError as e:
+            row_id = row.get("id", "unknown")
+            rprint(f"[yellow]  Unique conflict in {table}, row {row_id}: {e.constraint_name}[/yellow]")
+            skipped += 1
 
     return inserted, skipped
 
@@ -398,6 +455,8 @@ async def _insert_table(
     table: str,
     jsonl_path: Path,
     col_types: dict[str, str],
+    org_rewrite_map: dict[str, str] | None = None,
+    org_columns: set[str] | None = None,
 ) -> tuple[int, int]:
     """Insert rows from a JSONL file into a table. Returns (inserted, skipped)."""
     inserted = 0
@@ -405,6 +464,9 @@ async def _insert_table(
     batch: list[dict] = []
     columns = sorted(col_types.keys())
     logged_skipped = False
+
+    # Determine which columns in this table need org rewriting
+    rewrite_cols = (org_columns & set(columns)) if org_rewrite_map and org_columns else set()
 
     with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
@@ -421,6 +483,13 @@ async def _insert_table(
                         f"{', '.join(sorted(skipped_cols))}[/dim]"
                     )
                     logged_skipped = True
+
+            # Rewrite org IDs if normalization is active
+            if rewrite_cols and org_rewrite_map:
+                for col in rewrite_cols:
+                    val = row.get(col)
+                    if val and val in org_rewrite_map:
+                        row[col] = org_rewrite_map[val]
 
             batch.append(row)
 
@@ -663,7 +732,7 @@ def _is_empty_parquet(path: Path) -> bool:
         return True
 
 
-async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
+async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str | None = None) -> ImportResult:
     """Import a migration archive into the target database."""
     t0 = time.monotonic()
     warnings: list[str] = []
@@ -688,7 +757,12 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
         for table in INSERT_ORDER:
             jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
             if not jsonl_path.exists():
+                # Table may not exist in older archives — skip gracefully
+                if table not in manifest["tables"]:
+                    continue
                 failed_checksums.append(f"{table} (file missing)")
+                continue
+            if table not in manifest["tables"]:
                 continue
             expected = manifest["tables"][table]["checksum"]
             actual = _sha256_file(jsonl_path)
@@ -725,6 +799,34 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
                 )
             }
 
+            # Build set of tables that need latest_version_id nulled during insert
+            deferred_tables: dict[str, set[str]] = {}
+            for tbl, _ver_tbl, fk_col in DEFERRED_VERSION_BACKFILL:
+                deferred_tables.setdefault(tbl, set()).add(fk_col)
+
+            # Org ID normalization: detect source org(s) and build rewrite map
+            org_rewrite_map: dict[str, str] = {}
+            if normalize_org_id:
+                org_jsonl = staging_dir / "pg" / "organizations.jsonl"
+                if org_jsonl.exists():
+                    with open(org_jsonl, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            row = json.loads(line)
+                            src_id = row.get("id")
+                            if src_id and src_id != normalize_org_id:
+                                org_rewrite_map[src_id] = normalize_org_id
+                if org_rewrite_map:
+                    rprint(f"[dim]  Normalizing {len(org_rewrite_map)} source org(s) to: {normalize_org_id}[/dim]")
+
+            # Columns that hold org references and should be rewritten
+            org_columns = {"org_id", "owner_org_id"}
+
+            # Temporarily disable FK checks for clean bulk import
+            await conn.execute("SET session_replication_role = 'replica'")
+
             for table in INSERT_ORDER:
                 jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
 
@@ -735,12 +837,28 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
                     rows_skipped[table] = 0
                     continue
 
+                # Skip tables not present in the archive (older export)
+                if not jsonl_path.exists() or jsonl_path.stat().st_size == 0:
+                    rows_inserted[table] = 0
+                    rows_skipped[table] = 0
+                    continue
+
                 # Get column types for proper coercion
                 col_types = await _get_column_types(conn, table)
 
-                ins, sk = await _insert_table(conn, table, jsonl_path, col_types)
+                ins, sk = await _insert_table(
+                    conn,
+                    table,
+                    jsonl_path,
+                    col_types,
+                    org_rewrite_map=org_rewrite_map,
+                    org_columns=org_columns,
+                )
                 rows_inserted[table] = ins
                 rows_skipped[table] = sk
+
+            # Re-enable FK checks
+            await conn.execute("SET session_replication_role = 'origin'")
 
             # Post-import fixup: backfill NULL owner_org_id from creator's org
             _org_backfill = [
@@ -803,6 +921,8 @@ async def _validate_archive(archive_path: Path, db_url: str | None) -> Validatio
         # Verify checksums
         checksum_results: list[ChecksumResult] = []
         for table in INSERT_ORDER:
+            if table not in manifest["tables"]:
+                continue
             jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
             expected = manifest["tables"][table]["checksum"]
             if not jsonl_path.exists():
@@ -826,6 +946,8 @@ async def _validate_archive(archive_path: Path, db_url: str | None) -> Validatio
                 }
                 cross_db_results = {}
                 for table in INSERT_ORDER:
+                    if table not in manifest["tables"]:
+                        continue
                     archive_count = manifest["tables"][table]["row_count"]
                     if table not in existing_tables:
                         cross_db_results[table] = (archive_count, -1)  # -1 signals table missing
@@ -1513,6 +1635,11 @@ def export_cmd(
 def import_cmd(
     db_url: str = typer.Option(..., "--db-url", help="Target PostgreSQL connection string"),
     archive: str = typer.Option(..., "--archive", "-a", help="Path to .tar.gz archive"),
+    org_id: str | None = typer.Option(
+        None,
+        "--org-id",
+        help="Rewrite all org references to this UUID (use target org ID when source/target orgs differ)",
+    ),
 ) -> None:
     """Import a migration archive into the target database."""
     _require_admin()
@@ -1527,9 +1654,12 @@ def import_cmd(
         rprint("[dim]  Expected a .tar.gz file.[/dim]")
         raise typer.Exit(1)
 
+    if org_id:
+        rprint(f"[dim]  Normalizing org references to: {org_id}[/dim]")
+
     rprint(f"[bold]Importing from:[/bold] {archive_path}")
     with spinner("Importing..."):
-        result = asyncio.run(_import_archive(db_url, archive_path))
+        result = asyncio.run(_import_archive(db_url, archive_path, normalize_org_id=org_id))
 
     total_inserted = sum(result.rows_inserted.values())
     total_skipped = sum(result.rows_skipped.values())
