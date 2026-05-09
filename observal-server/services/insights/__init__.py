@@ -51,6 +51,7 @@ def configure_insights():
 
     from database import async_session
     from ee.observal_insights import configure
+    from models.insight_meta_cache import InsightMetaCache
     from models.insight_session_facets import InsightSessionFacets
     from models.insight_session_meta import InsightSessionMeta
     from services.clickhouse import _query
@@ -63,4 +64,5 @@ def configure_insights():
         db_session_factory=async_session,
         meta_model=InsightSessionMeta,
         facets_model=InsightSessionFacets,
+        meta_cache_model=InsightMetaCache,
     )

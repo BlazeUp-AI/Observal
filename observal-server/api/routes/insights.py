@@ -5,12 +5,14 @@ from datetime import UTC, datetime, timedelta
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db, require_role, resolve_prefix_id
 from models.agent import Agent
+from models.insight_meta_cache import InsightMetaCache
 from models.insight_report import InsightReport, InsightReportStatus
+from models.insight_session_facets import InsightSessionFacets
 from models.user import User, UserRole
 from schemas.insights import GenerateInsightRequest, InsightReportListItem, InsightReportResponse
 from services.audit_helpers import audit
@@ -178,3 +180,70 @@ async def export_report_html(
             "Content-Disposition": f'attachment; filename="insight-report-{report_id[:8]}.html"',
         },
     )
+
+
+@router.delete("/agents/{agent_id}/reports")
+async def clear_agent_reports(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Delete all insight reports and cached data for an agent."""
+    _require_insights()
+    agent = await resolve_prefix_id(Agent, agent_id, db)
+
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
+    # Delete reports
+    report_result = await db.execute(
+        delete(InsightReport).where(InsightReport.agent_id == agent.id)
+    )
+
+    # Delete cached session facets
+    facets_result = await db.execute(
+        delete(InsightSessionFacets).where(InsightSessionFacets.agent_id == agent.id)
+    )
+
+    # Delete meta cache
+    cache_result = await db.execute(
+        delete(InsightMetaCache).where(InsightMetaCache.agent_id == agent.id)
+    )
+
+    await audit(current_user, "insights.clear", resource_type="agent", resource_id=str(agent.id))
+    await db.commit()
+
+    return {
+        "deleted_reports": report_result.rowcount,
+        "deleted_facets": facets_result.rowcount,
+        "deleted_cache": cache_result.rowcount,
+    }
+
+
+@router.delete("/reports/{report_id}")
+async def delete_report(
+    report_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Delete a single insight report."""
+    _require_insights()
+    stmt = select(InsightReport).where(InsightReport.id == report_id)
+    result = await db.execute(stmt)
+    report = result.scalar_one_or_none()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Org-scope check
+    agent_stmt = select(Agent).where(Agent.id == report.agent_id)
+    agent_result = await db.execute(agent_stmt)
+    agent = agent_result.scalar_one_or_none()
+    if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
+    await db.delete(report)
+    await audit(current_user, "insights.delete_report", resource_type="insight_report", resource_id=str(report.id))
+    await db.commit()
+
+    return {"deleted": True, "report_id": report_id}

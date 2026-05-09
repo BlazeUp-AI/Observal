@@ -11,12 +11,68 @@ from sqlalchemy import select
 
 from config import settings
 from database import async_session
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.insight_report import InsightReport, InsightReportStatus
 from services.clickhouse import _query
 from services.redis import _get_arq_pool
 
 logger = structlog.get_logger(__name__)
+
+
+async def _load_agent_config(db, agent_id) -> dict | None:
+    """Load the agent's latest approved version and its components.
+
+    Returns a dict summarizing the agent configuration, or None if no
+    approved version exists.
+    """
+    stmt = (
+        select(AgentVersion)
+        .where(
+            AgentVersion.agent_id == agent_id,
+            AgentVersion.status == AgentStatus.approved,
+        )
+        .order_by(AgentVersion.released_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    version = result.scalar_one_or_none()
+    if not version:
+        return None
+
+    # Build a summary of configured MCPs
+    mcp_names = []
+    skill_names = []
+    for comp in version.components or []:
+        if comp.component_type == "mcp":
+            mcp_names.append(comp.component_name or str(comp.component_id)[:8])
+        elif comp.component_type == "skill":
+            skill_names.append(comp.component_name or str(comp.component_id)[:8])
+
+    # Also include external MCPs from the version config
+    for ext_mcp in version.external_mcps or []:
+        name = ext_mcp.get("name") or ext_mcp.get("server_name", "")
+        if name and name not in mcp_names:
+            mcp_names.append(name)
+
+    config: dict = {
+        "version": version.version,
+        "model": version.model_name,
+        "supported_ides": version.supported_ides or [],
+    }
+
+    if version.prompt:
+        # Include a truncated system prompt (first 2000 chars) for context
+        config["system_prompt_excerpt"] = version.prompt[:2000]
+        config["system_prompt_length"] = len(version.prompt)
+
+    if mcp_names:
+        config["configured_mcps"] = mcp_names
+    if skill_names:
+        config["configured_skills"] = skill_names
+    if version.model_config_json:
+        config["model_config"] = version.model_config_json
+
+    return config
 
 
 async def run_single_report(report_id: str) -> None:
@@ -47,6 +103,9 @@ async def run_single_report(report_id: str) -> None:
             agent = agent_result.scalar_one_or_none()
             agent_name = agent.name if agent else "Unknown Agent"
 
+            # Load latest approved version with components for context-aware suggestions
+            agent_config = await _load_agent_config(db, report.agent_id)
+
             start_str = report.period_start.strftime("%Y-%m-%d %H:%M:%S")
             end_str = report.period_end.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -66,6 +125,7 @@ async def run_single_report(report_id: str) -> None:
                 period_start=start_str,
                 period_end=end_str,
                 previous_metrics=previous_metrics,
+                agent_config=agent_config,
                 db=db,
             )
 
@@ -73,8 +133,13 @@ async def run_single_report(report_id: str) -> None:
             report.metrics = content.get("metrics")
             report.narrative = content.get("narrative")
             report.sessions_analyzed = content.get("sessions_analyzed", 0)
-            report.aggregated_data = content.get("metrics")
-            report.report_version = 2
+            report.aggregated_data = {
+                "metrics": content.get("metrics"),
+                "facets_summary": content.get("facets_summary"),
+                "regressions": content.get("regressions"),
+                "cross_user_patterns": content.get("cross_user_patterns"),
+            }
+            report.report_version = 3
 
             models_used = content.get("models_used", [])
             report.llm_model_used = ", ".join(models_used) if models_used else None
