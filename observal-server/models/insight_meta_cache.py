@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,9 +16,7 @@ class InsightMetaCache(Base):
     """
 
     __tablename__ = "insight_meta_cache"
-    __table_args__ = (
-        UniqueConstraint("agent_id", "period_start", "period_end", name="uq_meta_cache_agent_period"),
-    )
+    __table_args__ = (UniqueConstraint("agent_id", "period_start", "period_end", name="uq_meta_cache_agent_period"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=False)

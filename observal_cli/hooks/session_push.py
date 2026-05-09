@@ -12,6 +12,7 @@ imported only when a request is actually needed.
 
 import json
 import sys
+from datetime import UTC
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -129,14 +130,14 @@ def read_agent_marker(cwd: str, session_jsonl: Path | None = None) -> tuple[str 
         # If marker has a pulled_at timestamp, only attribute sessions started after the pull
         pulled_at = data.get("pulled_at")
         if pulled_at and session_jsonl and session_jsonl.exists():
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             pull_time = datetime.fromisoformat(pulled_at)
             # Session JSONL file creation time = session start time
             stat = session_jsonl.stat()
             # st_birthtime (macOS/Windows) or st_ctime as fallback (Linux)
             ctime = getattr(stat, "st_birthtime", None) or stat.st_ctime
-            session_ctime = datetime.fromtimestamp(ctime, tz=timezone.utc)
+            session_ctime = datetime.fromtimestamp(ctime, tz=UTC)
             if session_ctime < pull_time:
                 return None, None
 
@@ -158,6 +159,60 @@ def get_parent_session_id(jsonl_path: Path) -> str | None:
     if len(parts) >= 3 and parts[-2] == "subagents":
         return parts[-3]  # directory above subagents/ is the parent session id
     return None
+
+
+def push_subagent_sessions(
+    parent_session_id: str,
+    jsonl_path: Path,
+    config: dict,
+    cwd: str = "",
+    home: Path | None = None,
+) -> None:
+    """Push incremental lines from any subagent JSONL files under the parent session dir.
+
+    Claude Code writes subagent transcripts to:
+        <project_dir>/<parent_session_id>/subagents/agent-<agent_id>.jsonl
+
+    Files are named agent-*.jsonl (not UUID-named) so the normal find_jsonl_file
+    glob never finds them.  We scan the subagents/ directory explicitly after
+    each successful parent push and forward any new lines to the server with
+    parent_session_id set so the row lands correctly in session_events.
+
+    Cursor keys use the compound format "<parent_session_id>__sub__<agent_id>"
+    to avoid collisions and make the state file readable.
+    """
+    subagents_dir = jsonl_path.parent / parent_session_id / "subagents"
+    if not subagents_dir.is_dir():
+        return
+
+    for sub_file in subagents_dir.glob("agent-*.jsonl"):
+        agent_id = sub_file.stem[len("agent-") :]  # "agent-abc123" → "abc123"
+        cursor_key = f"{parent_session_id}__sub__{agent_id}"
+
+        offset, line_count = read_cursor(cursor_key, home=home)
+        lines, bytes_read = read_new_lines(sub_file, offset=offset)
+        if not lines:
+            continue
+
+        new_offset = offset + bytes_read
+        payload = build_payload(
+            session_id=agent_id,
+            lines=lines,
+            start_offset=line_count,
+            hook_event="UserPromptSubmit",  # subagents have no Stop hook
+            line_count_before=line_count,
+            new_offset=new_offset,
+            cwd=cwd,
+            parent_session_id=parent_session_id,
+        )
+
+        success = post_to_server(
+            server_url=config["server_url"],
+            access_token=config["access_token"],
+            payload=payload,
+        )
+        if success:
+            write_cursor(cursor_key, new_offset, line_count + len(lines), home=home)
 
 
 def build_payload(
@@ -325,6 +380,12 @@ def _run(home: Path | None = None) -> None:
 
     is_stop = hook_event == "Stop"
     write_cursor(session_id, new_offset, line_count + len(lines), finalized=is_stop, home=home)
+
+    # Push any subagent JSONL files that live under this parent session.
+    # Only fires for top-level sessions (parent_session_id is None) to avoid
+    # recursion — subagents don't have their own subagents/ dirs.
+    if parent_session_id is None:
+        push_subagent_sessions(session_id, jsonl_path, config, cwd=cwd, home=home)
 
     # On every turn (non-Stop), spawn a background crash-recovery subprocess
     # to push tails of sessions whose Stop hook never fired (hard kill/crash).

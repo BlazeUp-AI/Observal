@@ -11,12 +11,11 @@ haven't migrated to the new event pipeline.
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
-from ._deps import get_query, get_meta_cache_model
+from ._deps import get_meta_cache_model, get_query
 
 logger = structlog.get_logger(__name__)
 
@@ -132,7 +131,7 @@ async def get_session_last_event_time(session_id: str) -> datetime | None:
                 "%Y-%m-%dT%H:%M:%SZ",
             ):
                 try:
-                    return datetime.strptime(ts_str[:26], fmt).replace(tzinfo=timezone.utc)
+                    return datetime.strptime(ts_str[:26], fmt).replace(tzinfo=UTC)
                 except ValueError:
                     continue
         return None
@@ -297,15 +296,15 @@ async def store_cached_metas(
 
     if existing:
         existing.session_metas = session_metas
-        existing.updated_at = datetime.now(timezone.utc)
+        existing.updated_at = datetime.now(UTC)
     else:
         record = CacheModel(
             agent_id=agent_id,
             period_start=period_start,
             period_end=period_end,
             session_metas=session_metas,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db.add(record)
 
