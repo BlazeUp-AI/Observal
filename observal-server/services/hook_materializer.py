@@ -91,7 +91,7 @@ async def _fetch_session_events(session_id: str) -> list[dict]:
     sql = (
         "SELECT "
         "Timestamp AS timestamp, "
-        "EventName AS event_name, "
+        "LogAttributes['event.name'] AS event_name, "
         "Body AS body, "
         "LogAttributes AS attributes, "
         "ServiceName AS service_name "
@@ -139,7 +139,7 @@ _SHIM_TYPE_TO_EVENT: dict[str, str] = {
 async def _sideload_shim_for_eval(events: list[dict]) -> list[dict]:
     """Side-load shim spans from spans table into otel_logs event list.
 
-    Same strategy as otel_dashboard._sideload_shim_spans() but for the
+    Same strategy as sessions._sideload_shim_spans() but for the
     eval pipeline.  Extracts user_id + time bounds from events, queries
     the spans table, and synthesizes otel_logs-shaped events.
     """
@@ -576,7 +576,24 @@ def build_agent_eval_context(
 
 def _normalize_event_name(name: str) -> str:
     """Normalize event names to a consistent form."""
-    if name.startswith("hook_") or name in (
+    # Normalize hook_ prefixed names (handle both lowercase and camelCase)
+    if name.startswith("hook_"):
+        # Map lowercase hook events to camelCase
+        hook_mapping = {
+            "hook_pretooluse": "hook_PreToolUse",
+            "hook_posttooluse": "hook_PostToolUse",
+            "hook_posttoolusefailure": "hook_PostToolUseFailure",
+            "hook_userpromptsubmit": "hook_UserPromptSubmit",
+            "hook_assistant_response": "hook_AssistantResponse",
+            "hook_sessionstart": "hook_SessionStart",
+            "hook_subagentstart": "hook_SubagentStart",
+            "hook_subagentstop": "hook_SubagentStop",
+            "hook_stop": "hook_Stop",
+        }
+        normalized = hook_mapping.get(name.lower(), name)
+        return normalized
+
+    if name in (
         "PreToolUse",
         "PostToolUse",
         "UserPromptSubmit",
@@ -584,6 +601,8 @@ def _normalize_event_name(name: str) -> str:
         "SessionStart",
     ):
         return name
+
+    # Non-hook event mapping
     mapping = {
         "preToolUse": "PreToolUse",
         "postToolUse": "PostToolUse",

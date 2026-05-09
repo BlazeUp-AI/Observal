@@ -61,7 +61,6 @@ export function TraceDetail({ trace, isLoading }: { trace?: Trace; isLoading: bo
           <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm md:grid-cols-4">
             <div><span className="text-muted-foreground">Trace ID</span><p className="font-mono text-xs">{trace.trace_id}</p></div>
             <div><span className="text-muted-foreground">Type</span><p><Badge variant="outline">{trace.trace_type}</Badge></p></div>
-            {trace.session_id && <div><span className="text-muted-foreground">Session</span><p className="font-mono text-xs truncate">{trace.session_id}</p></div>}
             {trace.user_id && <div><span className="text-muted-foreground">User</span><p className="truncate">{trace.user_id}</p></div>}
             {trace.ide && <div><span className="text-muted-foreground">IDE</span><p>{trace.ide}</p></div>}
             <div><span className="text-muted-foreground">Start</span><p>{new Date(trace.start_time).toLocaleString()}</p></div>
@@ -126,8 +125,8 @@ export function TraceDetail({ trace, isLoading }: { trace?: Trace; isLoading: bo
                   </Card>
                 )}
                 {selectedSpan.error && (
-                  <Card className="border-red-200"><CardHeader className="py-2 px-4"><CardTitle className="text-sm text-red-600">Error</CardTitle></CardHeader>
-                    <CardContent className="px-4 pb-3 text-sm text-red-700 font-mono whitespace-pre-wrap">{selectedSpan.error}</CardContent>
+                  <Card className="border-destructive/20"><CardHeader className="py-2 px-4"><CardTitle className="text-sm text-destructive">Error</CardTitle></CardHeader>
+                    <CardContent className="px-4 pb-3 text-sm text-destructive font-mono whitespace-pre-wrap">{selectedSpan.error}</CardContent>
                   </Card>
                 )}
                 {selectedSpan.metadata && Object.keys(selectedSpan.metadata).length > 0 && (

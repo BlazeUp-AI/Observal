@@ -181,18 +181,30 @@ function AgentConfigSection({ detail }: { detail: ReviewItem }) {
           <dt className="text-xs font-medium text-muted-foreground">
             Components ({detail.components.length})
           </dt>
-          <dd className="mt-0.5 space-y-1">
+          <dd className="mt-0.5 space-y-2">
             {detail.components.map((c, i) => (
               <div
                 key={i}
-                className="text-xs flex items-center gap-2 px-2 py-1 rounded bg-muted"
+                className="text-xs rounded bg-muted overflow-hidden"
               >
-                <Badge variant="outline" className="text-[10px]">
-                  {c.component_type}
-                </Badge>
-                <span className="font-mono text-muted-foreground">
-                  {c.component_id.slice(0, 8)}
-                </span>
+                <div className="flex items-center gap-2 px-2 py-1">
+                  <Badge variant="outline" className="text-[10px]">
+                    {c.component_type}
+                  </Badge>
+                  <span className="font-medium">
+                    {(c as Record<string, string>).name || c.component_id.slice(0, 8)}
+                  </span>
+                </div>
+                {(c as Record<string, string>).template && (
+                  <pre className="px-3 pb-2 text-[11px] font-mono whitespace-pre-wrap break-words text-muted-foreground leading-relaxed">
+                    {(c as Record<string, string>).template}
+                  </pre>
+                )}
+                {(c as Record<string, string>).description && !(c as Record<string, string>).template && (
+                  <p className="px-3 pb-2 text-[11px] text-muted-foreground">
+                    {(c as Record<string, string>).description}
+                  </p>
+                )}
               </div>
             ))}
           </dd>

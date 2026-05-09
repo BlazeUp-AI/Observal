@@ -28,38 +28,26 @@ test.describe("Kiro CLI Commands", () => {
     expect(output).not.toContain("TypeError");
   });
 
-  test("observal scan --ide kiro --dry-run works on a mock project", () => {
-    // Create a temporary Kiro project
-    run("mkdir -p /tmp/kiro-e2e-scan/.kiro/settings");
-    run(
-      `echo '{"mcpServers": {"test-mcp": {"command": "echo", "args": ["hello"]}}}' > /tmp/kiro-e2e-scan/.kiro/settings/mcp.json`,
-    );
-
-    const output = run(
-      "cd /tmp/kiro-e2e-scan && observal scan --ide kiro --dry-run 2>&1 || true",
-    );
-    expect(output).not.toContain("Traceback");
-
-    // Cleanup
-    run("rm -rf /tmp/kiro-e2e-scan");
-  });
-
-  test("observal scan --home --ide kiro --dry-run discovers Kiro agents", () => {
-    const output = run("observal scan --home --ide kiro --dry-run 2>&1 || true");
+  test("observal scan --ide kiro shows read-only inventory", () => {
+    const output = run("observal scan --ide kiro 2>&1 || true");
     expect(output).not.toContain("Traceback");
     // Should discover Kiro agents from ~/.kiro/agents/
     expect(output).toMatch(/Agents/);
     expect(output).toMatch(/coder|backend|frontend/i);
   });
 
-  test("observal scan --all-ides --dry-run discovers components from multiple IDEs", () => {
-    const output = run("observal scan --all-ides --dry-run 2>&1 || true");
+  test("observal scan shows components from multiple IDEs", () => {
+    const output = run("observal scan 2>&1 || true");
     expect(output).not.toContain("Traceback");
-    // Should discover components (strip ANSI codes for matching)
     const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
-    expect(clean).toMatch(/Discovered \d+ components/);
-    // Should have entries from both IDEs
+    expect(clean).toMatch(/\d+ components discovered/);
     expect(clean).toMatch(/kiro/i);
+  });
+
+  test("observal doctor patch --hook --ide kiro --dry-run previews changes", () => {
+    const output = run("observal doctor patch --hook --ide kiro --dry-run 2>&1 || true");
+    expect(output).not.toContain("Traceback");
+    expect(output).toMatch(/Dry run|Would/i);
   });
 
   test("observal pull --ide kiro --dry-run generates Kiro config", () => {

@@ -12,19 +12,20 @@ uv pip install -e .
 
 This installs four entry points:
 
-| Command | Purpose |
-|---------|---------|
-| `observal` | Main CLI |
-| `observal-shim` | Telemetry wrapper that sits in front of MCP servers |
-| `observal-proxy` | HTTP proxy for MCP servers |
-| `observal-sandbox-run` | Sandbox execution runner |
+| Command                | Purpose                                             |
+| ---------------------- | --------------------------------------------------- |
+| `observal`             | Main CLI                                            |
+| `observal-shim`        | Telemetry wrapper that sits in front of MCP servers |
+| `observal-proxy`       | HTTP proxy for MCP servers                          |
+| `observal-sandbox-run` | Sandbox execution runner                            |
 
 ## Quick Start
 
 ```bash
 observal auth login                  # connect to your Observal server
-observal scan                        # discover and register IDE components
-observal pull my-agent --ide cursor  # fetch agent config for Cursor
+observal scan                        # discover what's installed across your IDEs (read-only)
+observal doctor patch --all --all-ides  # instrument everything (hooks + shims + OTel)
+observal agent pull my-agent --ide cursor  # fetch agent config for Cursor
 observal doctor                      # check IDE compatibility
 ```
 
@@ -74,7 +75,6 @@ observal ops review approve <id>   # approve
 observal ops review reject <id> --reason "..."  # reject
 observal ops telemetry status      # check telemetry flow
 observal ops telemetry test        # send a test event
-observal ops sync                  # flush buffered events
 observal ops overview              # system-wide stats
 observal ops metrics <id>          # metrics for an MCP or agent
 ```
@@ -82,22 +82,24 @@ observal ops metrics <id>          # metrics for an MCP or agent
 ### Utilities
 
 ```
-observal pull <agent> --ide <ide>  # write agent config to IDE files
-observal scan [--shim] [--all-ides]  # discover components, optionally wrap with shim
-observal use <profile>             # swap IDE config from a profile
-observal doctor                    # diagnose IDE/Observal issues
-observal doctor sli                # reinstall telemetry hooks
-observal config show               # show current config
-observal uninstall                 # tear down Docker, remove config
+observal agent pull <agent> --ide <ide>             # write agent config to IDE files
+observal scan [--ide <ide>]                          # discover what's installed (read-only)
+observal doctor patch --all --all-ides               # instrument everything (hooks + shims + OTel)
+observal doctor patch --hook --ide <ide>             # install hooks for a specific IDE
+observal doctor patch --shim --ide <ide>             # wrap MCP servers for a specific IDE
+observal use <profile>                               # swap IDE config from a profile
+observal doctor                                      # diagnose IDE/Observal issues
+observal config show                                 # show current config
+observal uninstall                                   # tear down Docker, remove config
 ```
 
 ## Supported IDEs
 
-| IDE / Tool | Support Level |
-|------------|--------------|
-| Claude Code | Fully supported |
-| Kiro CLI | Supported (next most tested) |
-| Cursor, VS Code, Gemini CLI | Untested |
+| IDE / Tool                  | Support Level                |
+| --------------------------- | ---------------------------- |
+| Claude Code                 | Fully supported              |
+| Kiro CLI                    | Supported (next most tested) |
+| Cursor, VS Code, Gemini CLI | Untested                     |
 
 The `--ide` flag controls which config format is generated. Each IDE has its own config paths and JSON structure.
 
@@ -105,17 +107,17 @@ The `--ide` flag controls which config format is generated. Each IDE has its own
 
 All CLI state lives in `~/.observal/`:
 
-| File | Contents |
-|------|----------|
-| `config.json` | Server URL, tokens, user ID |
-| `aliases.json` | User-defined name-to-UUID aliases |
-| `last_results.json` | Cached list results for numeric shorthand |
-| `telemetry_buffer.db` | SQLite buffer for offline event queuing |
-| `keys/server_public.pem` | Server public key for payload encryption |
+| File                     | Contents                                  |
+| ------------------------ | ----------------------------------------- |
+| `config.json`            | Server URL, tokens, user ID               |
+| `aliases.json`           | User-defined name-to-UUID aliases         |
+| `last_results.json`      | Cached list results for numeric shorthand |
+| `telemetry_buffer.db`    | SQLite buffer for offline event queuing   |
+| `keys/server_public.pem` | Server public key for payload encryption  |
 
 ## Telemetry
 
-When `observal scan --shim` wraps an MCP server, tool calls flow through `observal-shim` which records usage events. If the server is unreachable, events are buffered locally in `telemetry_buffer.db` and flushed on the next `observal ops sync`.
+When `observal doctor patch --shim` wraps an MCP server, tool calls flow through `observal-shim` which records usage events. If the server is unreachable, events are retried automatically on the next hook fire.
 
 Hook scripts in `observal_cli/hooks/` capture IDE-level events (prompts, tool use, subagent spawning) and forward them to the server.
 

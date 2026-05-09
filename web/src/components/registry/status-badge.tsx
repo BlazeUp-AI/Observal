@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 const statusConfig: Record<string, { bg: string; text: string; dot?: string; ping?: boolean }> = {
-  draft:     { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-400", dot: "bg-zinc-400" },
+  draft:     { bg: "bg-muted", text: "text-muted-foreground", dot: "bg-muted-foreground" },
   pending:   { bg: "bg-light-yellow", text: "text-dark-yellow", dot: "bg-dark-yellow", ping: true },
   approved:  { bg: "bg-light-green",  text: "text-dark-green",  dot: "bg-dark-green",  ping: true },
   active:    { bg: "bg-light-green",  text: "text-dark-green",  dot: "bg-dark-green",  ping: true },
@@ -12,7 +12,7 @@ const statusConfig: Record<string, { bg: string; text: string; dot?: string; pin
   running:   { bg: "bg-light-blue",   text: "text-dark-blue",   dot: "bg-dark-blue",   ping: true },
   completed: { bg: "bg-light-green",  text: "text-dark-green" },
   success:   { bg: "bg-light-green",  text: "text-dark-green" },
-  archived:  { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-400" },
+  archived:  { bg: "bg-muted", text: "text-muted-foreground" },
 };
 
 const fallback = { bg: "bg-muted", text: "text-muted-foreground" };

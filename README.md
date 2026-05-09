@@ -1,10 +1,13 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/logo.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.svg">
-  <img alt="Observal" src="docs/logo-light.svg" width="320">
-</picture>
+<pre>
+ ██████╗ ██████╗ ███████╗███████╗██████╗ ██╗   ██╗ █████╗ ██╗
+██╔═══██╗██╔══██╗██╔════╝██╔════╝██╔══██╗██║   ██║██╔══██╗██║
+██║   ██║██████╔╝███████╗█████╗  ██████╔╝██║   ██║███████║██║
+██║   ██║██╔══██╗╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██╔══██║██║
+╚██████╔╝██████╔╝███████║███████╗██║  ██║ ╚████╔╝ ██║  ██║███████╗
+ ╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝
+</pre>
 
-### Discover, share, and monitor AI coding agents with full observability built in.
+**Discover, share, and monitor AI coding agents with full observability built in.**
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
@@ -23,107 +26,59 @@ Browse agents created by others, publish your own, and pull complete agent confi
 
 Every interaction generates traces, spans, and sessions that flow into a telemetry pipeline. The built-in eval engine scores agent sessions so you can measure performance and make your agents better over time.
 
-## Architecture Overview
-
-```mermaid
-flowchart LR
-    IDE[IDE / CLI] --> Shim[observal-shim]
-    Shim --> API[Observal API Server]
-    API --> PG[(PostgreSQL)]
-
-    Shim --> OTEL[OTEL Collector]
-    OTEL --> CH[(ClickHouse)]
-
-    API --> Web[Web Dashboard]
-    Worker[Background Worker] --> API
-    Worker --> CH
-    Grafana --> CH
-```
-
-The platform uses a transparent telemetry pipeline to capture MCP tool activity, process traces and spans, and surface analytics through the dashboard and Grafana integrations.
-
 ## Documentation
 
 **Full docs live at [observal.gitbook.io](https://observal.gitbook.io/observal)** (sourced from [`/docs`](docs/) in this repo).
 
-| Start here | Go to |
-| --- | --- |
-| 5-minute install and first trace | [Quickstart](docs/getting-started/quickstart.md) |
-| Understand the data model | [Core Concepts](docs/getting-started/core-concepts.md) |
+| Start here                           | Go to                                                        |
+| ------------------------------------ | ------------------------------------------------------------ |
+| 5-minute install and first trace     | [Quickstart](docs/getting-started/quickstart.md)             |
+| Understand the data model            | [Core Concepts](docs/getting-started/core-concepts.md)       |
 | Instrument your existing MCP servers | [Observe MCP traffic](docs/use-cases/observe-mcp-traffic.md) |
-| Run Observal on your infrastructure | [Self-Hosting](docs/self-hosting/README.md) |
-| Look up a CLI command | [CLI Reference](docs/cli/README.md) |
+| Run Observal on your infrastructure  | [Self-Hosting](docs/self-hosting/README.md)                  |
+| Look up a CLI command                | [CLI Reference](docs/cli/README.md)                          |
 
 See [CHANGELOG.md](CHANGELOG.md) for recent updates.
 
 ## Quick start
 
-**Install the CLI** (standalone binary, no Python required):
+See [SETUP.md](SETUP.md) for the full setup guide.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
-```
-
-Or install via Python: `uv tool install observal-cli` / `pipx install observal-cli` / `pip install --user observal-cli`. See [Installation](docs/getting-started/installation.md) for details.
-
-**Start the server:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install-server.sh | bash
-```
-
-Or manually:
-
-```bash
-git clone https://github.com/BlazeUp-AI/Observal.git
-cd Observal
+git clone https://github.com/BlazeUp-AI/Observal.git && cd Observal
 cp .env.example .env
-docker compose -f docker/docker-compose.yml up --build -d
+make up
+uv tool install --editable .
+observal auth login
 ```
-
-**Log in:**
-
-```bash
-observal auth login            # auto-creates admin on fresh server
-```
-
-Eight services start (API, web UI, Postgres, ClickHouse, Redis, worker, OTEL collector, Grafana). Full walkthrough in [Quickstart](docs/getting-started/quickstart.md); operator guide in [Self-Hosting](docs/self-hosting/docker-compose.md).
-
-Already have MCP servers in your IDE? Instrument them in one command:
-
-```bash
-observal scan                       # auto-detect, register, and instrument everything
-observal pull <agent> --ide cursor  # install a complete agent
-```
-
-This detects MCP servers from your IDE config files and wraps them with `observal-shim` for telemetry without breaking your existing setup. A timestamped backup is created automatically. Everything happens locally — nothing is uploaded to the server.
 
 ## Supported IDEs
 
-| IDE | Support |
-| --- | --- |
-| Claude Code | Full — skills, hooks, MCP, rules, OTLP telemetry |
-| Kiro CLI | Full — superpowers, hooks, MCP, steering files, OTLP telemetry |
-| Gemini CLI | Native OTEL + shim telemetry |
-| Codex CLI | Native OTEL + shim telemetry |
-| GitHub Copilot | Shim telemetry |
-| OpenCode | Shim telemetry |
-| Cursor | MCP + shim telemetry |
+| IDE         | Support                                                        |
+| ----------- | -------------------------------------------------------------- |
+| Claude Code | Full — skills, hooks, MCP, rules, OTLP telemetry               |
+| Kiro CLI    | Full — superpowers, hooks, MCP, steering files, OTLP telemetry |
+| Gemini CLI  | Tested — hooks, MCP, rules, OTLP telemetry                     |
+| Cursor      | Tested — MCP + shim telemetry, rules                           |
+| VS Code     | Limited — MCP + shim telemetry, rules                          |
+| Copilot CLI | Limited — hooks, MCP + shim telemetry, rules                   |
+| Codex CLI   | Limited — rules                                                |
+| OpenCode    | Limited — JS plugin hooks, MCP + shim telemetry, rules         |
 
 Compatibility matrix and per-IDE setup: [Integrations](docs/integrations/README.md).
 
 ## Tech stack
 
-| Component | Technology |
-| --- | --- |
-| Frontend | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Recharts |
-| Backend | Python 3.11+, FastAPI, Strawberry GraphQL, Uvicorn |
-| Databases | PostgreSQL 16 (registry), ClickHouse (telemetry) |
-| Queue | Redis + arq |
-| CLI | Python, Typer, Rich |
-| Eval engine | AWS Bedrock / OpenAI-compatible LLMs |
-| Telemetry | OpenTelemetry Collector |
-| Deployment | Docker Compose (8 services) |
+| Component   | Technology                                                |
+| ----------- | --------------------------------------------------------- |
+| Frontend    | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Recharts |
+| Backend     | Python 3.11+, FastAPI, Strawberry GraphQL, Uvicorn        |
+| Databases   | PostgreSQL 16 (registry), ClickHouse (telemetry)          |
+| Queue       | Redis + arq                                               |
+| CLI         | Python, Typer, Rich                                       |
+| Eval engine | AWS Bedrock / OpenAI-compatible LLMs                      |
+| Telemetry   | OpenTelemetry Collector                                   |
+| Deployment  | Docker Compose (10 services)                              |
 
 ## Contributing
 

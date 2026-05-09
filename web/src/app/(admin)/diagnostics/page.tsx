@@ -1,7 +1,7 @@
 "use client";
 
-import { Stethoscope, CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, KeyRound, Building2 } from "lucide-react";
-import { useDiagnostics } from "@/hooks/use-api";
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Database, KeyRound, Building2, BookOpen } from "lucide-react";
+import { useDiagnostics, useModels, useRefreshModels } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,24 +9,85 @@ import { PageHeader } from "@/components/layouts/page-header";
 import { ErrorState } from "@/components/shared/error-state";
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "ok") return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
+  if (status === "ok") return <CheckCircle2 className="h-5 w-5 text-success" />;
   if (status === "degraded" || status === "misconfigured" || status === "missing")
-    return <AlertTriangle className="h-5 w-5 text-amber-500" />;
+    return <AlertTriangle className="h-5 w-5 text-warning" />;
   return <XCircle className="h-5 w-5 text-red-500" />;
 }
 
 function statusBadge(status: string) {
   switch (status) {
     case "ok":
-      return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/20">{status}</Badge>;
+      return <Badge className="bg-success/15 text-success border-success/20">{status}</Badge>;
     case "degraded":
     case "misconfigured":
     case "missing":
-      return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">{status}</Badge>;
+      return <Badge className="bg-warning/15 text-warning border-warning/20">{status}</Badge>;
     default:
       return <Badge variant="destructive">{status}</Badge>;
   }
 }
+
+function CatalogStatusCard() {
+  const { data, isLoading, isError, error } = useModels();
+  const refresh = useRefreshModels();
+
+  let badgeStatus = "ok";
+  if (isError) badgeStatus = "error";
+  else if (data?.degraded) badgeStatus = "degraded";
+
+  return (
+    <Card className="md:col-span-2">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Model Catalog</CardTitle>
+          <div className="ml-auto flex items-center gap-2">
+            {statusBadge(badgeStatus)}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={refresh.isPending || isLoading}
+              onClick={() => refresh.mutate()}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 mr-1.5 ${refresh.isPending ? "animate-spin" : ""}`}
+              />
+              Refresh now
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-1.5">
+        {isError ? (
+          <p className="text-xs text-destructive">{(error as Error)?.message}</p>
+        ) : (
+          <>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Source</span>
+              <span className="font-mono font-medium">{data?.source ?? "—"}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Models</span>
+              <span className="font-medium">{data?.model_count ?? 0}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Fetched at</span>
+              <span className="font-medium">
+                {data?.fetched_at ? new Date(data.fetched_at).toLocaleString() : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Degraded</span>
+              <span className="font-medium">{data?.degraded ? "yes" : "no"}</span>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 
 export default function DiagnosticsPage() {
   const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useDiagnostics();
@@ -134,6 +195,8 @@ export default function DiagnosticsPage() {
                 </Card>
               )}
 
+              <CatalogStatusCard />
+
               {/* Enterprise */}
               {data.checks.enterprise && (
                 <Card className="md:col-span-2">
@@ -149,7 +212,7 @@ export default function DiagnosticsPage() {
                       <ul className="space-y-1.5">
                         {(data.checks.enterprise.issues as string[]).map((issue: string, i: number) => (
                           <li key={i} className="flex items-start gap-2 text-xs">
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                            <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 shrink-0" />
                             <span>{issue}</span>
                           </li>
                         ))}

@@ -619,10 +619,29 @@ class TestMcpSubmitAutoReplace:
             obj.id = uuid.uuid4()
             obj.created_at = datetime.now(UTC)
             obj.updated_at = datetime.now(UTC)
-            obj.status = ListingStatus.pending
-            obj.mcp_validated = False
-            obj.framework = None
-            obj.rejection_reason = None
+            # Simulate relationship loading after refresh
+            version_mock = MagicMock()
+            version_mock.version = "1.0.0"
+            version_mock.description = "GitHub MCP server"
+            version_mock.status = ListingStatus.pending
+            version_mock.mcp_validated = False
+            version_mock.framework = None
+            version_mock.rejection_reason = None
+            version_mock.supported_ides = []
+            version_mock.environment_variables = []
+            version_mock.setup_instructions = None
+            version_mock.changelog = None
+            version_mock.source_url = "https://github.com/github/github-mcp-server"
+            version_mock.docker_image = None
+            version_mock.command = None
+            version_mock.args = None
+            version_mock.url = None
+            version_mock.headers = None
+            version_mock.auto_approve = None
+            version_mock.download_count = 0
+            version_mock.transport = None
+            version_mock.tools_schema = None
+            obj.latest_version = version_mock
 
         db.refresh = AsyncMock(side_effect=_refresh)
 
@@ -643,7 +662,7 @@ class TestMcpSubmitAutoReplace:
         assert r.status_code == 200
         # The old listing should have been deleted
         db.delete.assert_called_once_with(existing)
-        db.flush.assert_called_once()
+        assert db.flush.call_count >= 1  # flush for delete + listing + version
 
     @pytest.mark.asyncio
     async def test_reject_resubmit_of_approved(self):
@@ -698,10 +717,29 @@ class TestMcpSubmitAutoReplace:
             obj.id = uuid.uuid4()
             obj.created_at = datetime.now(UTC)
             obj.updated_at = datetime.now(UTC)
-            obj.status = ListingStatus.pending
-            obj.mcp_validated = False
-            obj.framework = None
-            obj.rejection_reason = None
+            # Simulate relationship loading after refresh
+            version_mock = MagicMock()
+            version_mock.version = "1.0.0"
+            version_mock.description = "GitHub MCP server"
+            version_mock.status = ListingStatus.pending
+            version_mock.mcp_validated = False
+            version_mock.framework = None
+            version_mock.rejection_reason = None
+            version_mock.supported_ides = []
+            version_mock.environment_variables = []
+            version_mock.setup_instructions = None
+            version_mock.changelog = None
+            version_mock.source_url = "https://github.com/github/github-mcp-server"
+            version_mock.docker_image = None
+            version_mock.command = None
+            version_mock.args = None
+            version_mock.url = None
+            version_mock.headers = None
+            version_mock.auto_approve = None
+            version_mock.download_count = 0
+            version_mock.transport = None
+            version_mock.tools_schema = None
+            obj.latest_version = version_mock
 
         db.refresh = AsyncMock(side_effect=_refresh)
 

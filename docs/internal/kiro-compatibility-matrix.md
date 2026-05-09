@@ -23,7 +23,7 @@ Comparison of Observal's Claude Code integration vs Kiro CLI support.
 | Feature | Claude Code | Kiro CLI | Gap | Severity |
 |---------|------------|----------|-----|----------|
 | HTTP hooks (webhook-style) | Yes (`type: "http"`) | **No** — hooks are shell commands only (`runCommand`) | Observal must use `curl` in a shell hook, not native HTTP | Major |
-| Hook config location | `~/.claude/settings.json` | Agent config JSON (`.kiro/agents/*.json`) or `.kiro/hooks/` | Different config injection point for `observal scan --home` | Major |
+| Hook config location | `~/.claude/settings.json` | Agent config JSON (`.kiro/agents/*.json`) or `.kiro/hooks/` | Different config injection point for `observal doctor patch` | Major |
 | PreToolUse / PostToolUse | Yes | Yes (`preToolUse` / `postToolUse`) | Event names differ (camelCase vs PascalCase) | Minor |
 | SessionStart | Yes | **`agentSpawn`** | Different event name, needs mapping | Minor |
 | SessionEnd / Stop | Yes (`Stop`) | **`stop`** | Different event name (lowercase) | Minor |
@@ -53,12 +53,12 @@ Comparison of Observal's Claude Code integration vs Kiro CLI support.
 
 | Feature | Claude Code | Kiro CLI | Gap | Severity |
 |---------|------------|----------|-----|----------|
-| `observal scan --ide kiro` | N/A | Yes — discovers `.kiro/settings/mcp.json` | Works but no agent/plugin discovery, no hook injection | Major |
+| `observal scan --ide kiro` | N/A | Yes -- discovers `.kiro/settings/mcp.json` (read-only) | Works for discovery; instrumentation moved to `doctor patch` | Major |
 | `observal pull --ide kiro` | N/A | Yes — generates `.kiro/agents/<name>.json` | Works but no Steering file generation | Minor |
 | `observal doctor --ide kiro` | N/A | Yes — checks settings files | Works but limited diagnostics | Minor |
-| Agent discovery (`scan --home`) | Finds `~/.claude/agents/` | **No** — doesn't scan `~/.kiro/agents/` | Missing Kiro agent discovery | Major |
-| Plugin discovery (`scan --home`) | Finds `~/.claude/plugins/` | **No** — doesn't scan Kiro skills/powers | Missing Kiro plugin discovery | Minor |
-| Hook injection (`scan --home`) | Injects into `~/.claude/settings.json` | **No** — doesn't inject into Kiro hook config | Missing hook auto-injection for Kiro | Major |
+| Agent discovery (`scan`) | Finds `~/.claude/agents/` | **No** -- doesn't scan `~/.kiro/agents/` | Missing Kiro agent discovery | Major |
+| Plugin discovery (`scan`) | Finds `~/.claude/plugins/` | **No** -- doesn't scan Kiro skills/powers | Missing Kiro plugin discovery | Minor |
+| Hook injection (`doctor patch --hook`) | Injects into `~/.claude/settings.json` | **No** -- doesn't inject into Kiro hook config | Missing hook auto-injection for Kiro | Major |
 
 ## Frontend Display
 
@@ -90,7 +90,7 @@ Comparison of Observal's Claude Code integration vs Kiro CLI support.
 4. Hook config format differs — can't inject HTTP hooks directly
 5. Hook event name mapping needed (camelCase ↔ PascalCase)
 6. No Steering file generation (only AGENTS.md)
-7. No Kiro agent/plugin discovery in `scan --home`
+7. No Kiro agent/plugin discovery in `scan`
 8. No hook auto-injection for Kiro
 9. No Skills installation support for Kiro format
 

@@ -9,10 +9,6 @@ services:
     env_file:
       - ../.env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
     depends_on:
@@ -40,10 +36,6 @@ services:
     env_file:
       - ../.env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
       - JWT_KEY_DIR=/data/keys
@@ -106,7 +98,7 @@ services:
       - observal-net
 
   observal-clickhouse:
-    image: clickhouse/clickhouse-server:26.3
+    image: clickhouse/clickhouse-server:26.4
     ports:
       - "${CLICKHOUSE_HOST_PORT:-8123}:8123"
     env_file:
@@ -119,7 +111,7 @@ services:
       - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
       - ./clickhouse/users.d:/etc/clickhouse-server/users.d
     healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      test: ["CMD-SHELL", "clickhouse-client --password ${CLICKHOUSE_PASSWORD:-clickhouse} --query 'SELECT 1'"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -157,10 +149,6 @@ services:
     env_file:
       - ../.env
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
     depends_on:
       observal-init:
@@ -189,7 +177,7 @@ services:
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://observal-lb:80
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://observal-lb:80}
     depends_on:
       observal-lb:
         condition: service_started
@@ -223,29 +211,8 @@ services:
     networks:
       - observal-net
 
-  observal-otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.150.1
-    command: ["--config", "/etc/otelcol/config.yaml"]
-    restart: on-failure
-    ports:
-      - "${OTEL_GRPC_HOST_PORT:-4317}:4317"
-      - "${OTEL_HTTP_HOST_PORT:-4318}:4318"
-    volumes:
-      - ../otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
-    depends_on:
-      observal-clickhouse:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: ${OTEL_MEMORY_LIMIT:-512M}
-    networks:
-      - observal-net
-
   observal-prometheus:
-    image: prom/prometheus:v3.4.2
+    image: prom/prometheus:v3.11.3
     ports:
       - "${PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:

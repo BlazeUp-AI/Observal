@@ -1,5 +1,60 @@
-**/node_modules
-**/.next
+# Version control
 **/.git
+
+# Python artifacts
 **/__pycache__
 **/.venv
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js artifacts
+**/node_modules
+**/.next
+
+# Documentation (not copied by any Dockerfile)
+*.md
+LICENSE
+docs/
+screenshots/
+
+# Testing (not shipped in images)
+tests/
+
+# CLI tool (separate distribution, not in API or web image)
+observal_cli/
+
+# Development tooling
+.github/
+.vscode/
+.idea/
+*.code-workspace
+
+# Scripts and tools (not needed in containers)
+scripts/
+tools/
+
+# Demo configs
+demo/
+
+# Monitoring configs (volume-mounted at runtime, not baked in)
+grafana/
+prometheus.yml
+otel-collector-config.yaml
+
+# Docker sub-configs (not needed inside images)
+docker/docker-compose*.yml
+docker/clickhouse/
+docker/nginx*.conf
+docker/server-package/
+
+# Environment and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# Misc
+renovate.json
+cliff.toml

@@ -22,11 +22,6 @@ from services.clickhouse import (
 
 
 class TestInitSQL:
-    def test_has_legacy_tables(self):
-        ddl_text = " ".join(INIT_SQL)
-        assert "mcp_tool_calls" in ddl_text
-        assert "agent_interactions" in ddl_text
-
     def test_has_new_tables(self):
         ddl_text = " ".join(INIT_SQL)
         assert "CREATE TABLE IF NOT EXISTS traces" in ddl_text
@@ -34,29 +29,28 @@ class TestInitSQL:
         assert "CREATE TABLE IF NOT EXISTS scores" in ddl_text
 
     def test_project_id_on_all_new_tables(self):
-        # Find the new table DDLs (last 3)
-        new_tables = INIT_SQL[2:5]
+        new_tables = INIT_SQL[0:3]
         assert len(new_tables) == 3
         for ddl in new_tables:
             assert "project_id" in ddl
 
     def test_replacing_merge_tree(self):
-        new_tables = INIT_SQL[2:5]
+        new_tables = INIT_SQL[0:3]
         for ddl in new_tables:
             assert "ReplacingMergeTree" in ddl
 
     def test_bloom_filter_indexes(self):
-        new_tables = INIT_SQL[2:5]
+        new_tables = INIT_SQL[0:3]
         for ddl in new_tables:
             assert "bloom_filter" in ddl
 
     def test_monthly_partitioning(self):
-        new_tables = INIT_SQL[2:5]
+        new_tables = INIT_SQL[0:3]
         for ddl in new_tables:
             assert "PARTITION BY toYYYYMM" in ddl
 
     def test_traces_columns(self):
-        traces_ddl = INIT_SQL[2]
+        traces_ddl = INIT_SQL[0]
         for col in [
             "trace_id",
             "parent_trace_id",
@@ -76,7 +70,7 @@ class TestInitSQL:
             assert col in traces_ddl
 
     def test_spans_columns(self):
-        spans_ddl = INIT_SQL[3]
+        spans_ddl = INIT_SQL[1]
         for col in [
             "span_id",
             "trace_id",
@@ -102,7 +96,7 @@ class TestInitSQL:
             assert col in spans_ddl
 
     def test_scores_columns(self):
-        scores_ddl = INIT_SQL[4]
+        scores_ddl = INIT_SQL[2]
         for col in [
             "score_id",
             "trace_id",
@@ -141,7 +135,7 @@ class TestInitClickhouse:
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
             await init_clickhouse()
-            # +1 health check + 5 TTL ALTER statements (default retention=90)
+            # +1 health check + 5 TTL ALTER statements (traces, spans, scores, otel_logs, session_events)
             assert mock_q.call_count == len(INIT_SQL) + 1 + 5
 
 

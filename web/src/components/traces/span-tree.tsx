@@ -63,13 +63,13 @@ function countDescendants(node: SpanNode): number {
 }
 
 const threadColor: Record<string, { line: string; hover: string; bg: string }> = {
-  tool_call:    { line: "bg-blue-400",   hover: "bg-blue-500",   bg: "bg-blue-100 text-blue-700" },
+  tool_call:    { line: "bg-info",        hover: "bg-info",       bg: "bg-light-blue text-dark-blue" },
   llm:          { line: "bg-purple-400", hover: "bg-purple-500", bg: "bg-purple-100 text-purple-700" },
   retrieval:    { line: "bg-amber-400",  hover: "bg-amber-500",  bg: "bg-amber-100 text-amber-700" },
-  sandbox_exec: { line: "bg-green-400",  hover: "bg-green-500",  bg: "bg-green-100 text-green-700" },
+  sandbox_exec: { line: "bg-success",    hover: "bg-success",    bg: "bg-light-green text-dark-green" },
   hook:         { line: "bg-pink-400",   hover: "bg-pink-500",   bg: "bg-pink-100 text-pink-700" },
   prompt:       { line: "bg-teal-400",   hover: "bg-teal-500",   bg: "bg-teal-100 text-teal-700" },
-  lifecycle:    { line: "bg-gray-300",   hover: "bg-gray-400",   bg: "bg-gray-100 text-gray-500" },
+  lifecycle:    { line: "bg-muted-foreground", hover: "bg-muted-foreground", bg: "bg-muted text-muted-foreground" },
 };
 
 function isLifecycleSpan(span: Span): boolean {
@@ -77,14 +77,14 @@ function isLifecycleSpan(span: Span): boolean {
 }
 
 function getColors(type: string) {
-  return threadColor[type] ?? { line: "bg-gray-300", hover: "bg-gray-400", bg: "bg-gray-100 text-gray-700" };
+  return threadColor[type] ?? { line: "bg-muted-foreground", hover: "bg-muted-foreground", bg: "bg-muted text-muted-foreground" };
 }
 
 function statusDot(status: string) {
   const color =
-    status === "error" ? "bg-red-500" :
-    status === "timeout" ? "bg-yellow-500" :
-    "bg-green-500";
+    status === "error" ? "bg-destructive" :
+    status === "timeout" ? "bg-warning" :
+    "bg-success";
   return <span className={cn("inline-block h-2 w-2 rounded-full shrink-0", color)} />;
 }
 
@@ -124,7 +124,7 @@ function SpanRow({
         {Array.from({ length: depth }, (_, i) => (
           <div
             key={i}
-            className="absolute top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700"
+            className="absolute top-0 bottom-0 w-0.5 bg-border"
             style={{ left: `${i * INDENT + 11}px` }}
           />
         ))}

@@ -61,11 +61,11 @@ All `{id}` parameters accept a UUID or a name.
 | `GET` | `/telemetry/status` | Data flow status |
 | `GET` | `/otel/crypto/public-key` | Server public key for payload encryption |
 
-## OTEL hooks
+## Telemetry hooks
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/otel/hooks` | Ingest lifecycle hook events (used by Kiro shell hooks) |
+| `POST` | `/telemetry/hooks` | Ingest lifecycle hook events (used by Kiro shell hooks) |
 
 ## Alerts
 

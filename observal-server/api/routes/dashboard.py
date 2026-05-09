@@ -11,12 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_db, require_role
 from api.sanitize import escape_like
 from config import settings
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
+from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
-from models.mcp import ListingStatus, McpDownload, McpListing
+from models.feedback import Feedback
+from models.hook import HookListing, HookVersion
+from models.mcp import ListingStatus, McpDownload, McpListing, McpVersion
+from models.prompt import PromptListing, PromptVersion
+from models.sandbox import SandboxListing, SandboxVersion
+from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.dashboard import (
-    AgentMetrics,
     ComponentLeaderboardItem,
     DateAvg,
     GraphRagQuery,
@@ -25,7 +30,6 @@ from schemas.dashboard import (
     IdeUsage,
     LatencyCell,
     LeaderboardItem,
-    McpMetrics,
     OverviewStats,
     RagasDimensionScore,
     RagasEvalRequest,
@@ -67,107 +71,6 @@ async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
     return []
 
 
-@router.get("/mcps/{listing_id}/metrics", response_model=McpMetrics)
-@cache(expire=settings.CACHE_TTL_DEFAULT, namespace="dashboard")
-async def mcp_metrics(
-    listing_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
-):
-    dl_count = await db.scalar(select(func.count(McpDownload.id)).where(McpDownload.listing_id == listing_id)) or 0
-
-    rows = await _ch_json(
-        "SELECT "
-        "count() as total_calls, "
-        "countIf(status='error') as error_count, "
-        "round(avg(latency_ms),1) as avg_latency, "
-        "quantile(0.5)(latency_ms) as p50, "
-        "quantile(0.9)(latency_ms) as p90, "
-        "quantile(0.99)(latency_ms) as p99 "
-        "FROM mcp_tool_calls WHERE mcp_server_id = {sid:String}",
-        {"param_sid": str(listing_id)},
-    )
-    r = rows[0] if rows else {}
-    total_calls = int(r.get("total_calls", 0))
-    error_count = int(r.get("error_count", 0))
-
-    await audit(current_user, "dashboard.mcp_metrics", resource_type="dashboard", resource_id=str(listing_id))
-    return McpMetrics(
-        listing_id=listing_id,
-        total_downloads=dl_count,
-        total_calls=total_calls,
-        error_count=error_count,
-        error_rate=round(error_count / total_calls, 4) if total_calls else 0,
-        avg_latency_ms=float(r.get("avg_latency", 0)),
-        p50_latency_ms=int(float(r.get("p50", 0))),
-        p90_latency_ms=int(float(r.get("p90", 0))),
-        p99_latency_ms=int(float(r.get("p99", 0))),
-    )
-
-
-@router.get("/agents/{agent_id}/metrics", response_model=AgentMetrics)
-@cache(expire=settings.CACHE_TTL_DEFAULT, namespace="dashboard")
-async def agent_metrics(
-    agent_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
-):
-    from models.eval import Scorecard
-    from services.eval.score_aggregator import ScoreAggregator
-
-    dl_count = (
-        await db.scalar(select(func.count(AgentDownloadRecord.id)).where(AgentDownloadRecord.agent_id == agent_id)) or 0
-    )
-
-    rows = await _ch_json(
-        "SELECT "
-        "count() as total, "
-        "countIf(user_action='accepted') as accepted, "
-        "round(avg(tool_calls),1) as avg_tools, "
-        "round(avg(latency_ms),1) as avg_latency "
-        "FROM agent_interactions WHERE agent_id = {aid:String}",
-        {"param_aid": str(agent_id)},
-    )
-    r = rows[0] if rows else {}
-    total = int(r.get("total", 0))
-    accepted = int(r.get("accepted", 0))
-
-    # Fetch recent scorecards for dimension breakdown
-    sc_result = await db.execute(
-        select(Scorecard).where(Scorecard.agent_id == agent_id).order_by(Scorecard.evaluated_at.desc()).limit(100)
-    )
-    scorecards = sc_result.scalars().all()
-    dimension_averages = None
-    weakest_dimension = None
-    drift_alert = False
-    if scorecards:
-        sc_dicts = [
-            {
-                "composite_score": sc.composite_score or (sc.overall_score * 10),
-                "dimension_scores": sc.dimension_scores or {},
-                "evaluated_at": str(sc.evaluated_at),
-            }
-            for sc in scorecards
-        ]
-        agg = ScoreAggregator().compute_agent_aggregate(sc_dicts)
-        dimension_averages = agg.get("dimension_averages")
-        weakest_dimension = agg.get("weakest_dimension")
-        drift_alert = agg.get("drift_alert", False)
-
-    await audit(current_user, "dashboard.agent_metrics", resource_type="dashboard", resource_id=str(agent_id))
-    return AgentMetrics(
-        agent_id=agent_id,
-        total_interactions=total,
-        total_downloads=dl_count,
-        acceptance_rate=round(accepted / total, 4) if total else 0,
-        avg_tool_calls=float(r.get("avg_tools", 0)),
-        avg_latency_ms=float(r.get("avg_latency", 0)),
-        dimension_averages=dimension_averages,
-        weakest_dimension=weakest_dimension,
-        drift_alert=drift_alert,
-    )
-
-
 @router.get("/overview/stats", response_model=OverviewStats)
 @cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
 async def overview_stats(
@@ -175,18 +78,30 @@ async def overview_stats(
     db: AsyncSession = Depends(get_db),
 ):
     total_mcps = (
-        await db.scalar(select(func.count(McpListing.id)).where(McpListing.status == ListingStatus.approved)) or 0
+        await db.scalar(
+            select(func.count(McpListing.id))
+            .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
+            .where(McpVersion.status == ListingStatus.approved)
+        )
+        or 0
     )
-    total_agents = await db.scalar(select(func.count(Agent.id)).where(Agent.status == AgentStatus.active)) or 0
+    total_agents = (
+        await db.scalar(
+            select(func.count(Agent.id))
+            .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+            .where(AgentVersion.status == AgentStatus.approved)
+        )
+        or 0
+    )
     total_users = await db.scalar(select(func.count(User.id))) or 0
 
     days = _range_days(range_)
     tool_rows = await _ch_json(
-        "SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {days:UInt32} DAY",
+        "SELECT count() as cnt FROM spans WHERE start_time > now() - INTERVAL {days:UInt32} DAY AND is_deleted = 0",
         {"param_days": str(days)},
     )
     agent_rows = await _ch_json(
-        "SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {days:UInt32} DAY",
+        "SELECT count() as cnt FROM traces WHERE start_time > now() - INTERVAL {days:UInt32} DAY AND is_deleted = 0",
         {"param_days": str(days)},
     )
 
@@ -194,8 +109,8 @@ async def overview_stats(
         total_mcps=total_mcps,
         total_agents=total_agents,
         total_users=total_users,
-        total_tool_calls_today=int(tool_rows[0].get("cnt", 0)) if tool_rows else 0,
-        total_agent_interactions_today=int(agent_rows[0].get("cnt", 0)) if agent_rows else 0,
+        total_tool_calls=int(tool_rows[0].get("cnt", 0)) if tool_rows else 0,
+        total_agent_interactions=int(agent_rows[0].get("cnt", 0)) if agent_rows else 0,
     )
 
 
@@ -223,13 +138,14 @@ async def top_agents(
             AgentDownloadRecord.agent_id,
             func.count(AgentDownloadRecord.id).label("cnt"),
             Agent.name,
-            Agent.description,
+            AgentVersion.description,
             Agent.owner,
-            Agent.version,
+            AgentVersion.version,
         )
         .join(Agent, AgentDownloadRecord.agent_id == Agent.id)
-        .where(Agent.status == AgentStatus.active)
-        .group_by(AgentDownloadRecord.agent_id, Agent.name, Agent.description, Agent.owner, Agent.version)
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(AgentVersion.status == AgentStatus.approved)
+        .group_by(AgentDownloadRecord.agent_id, Agent.name, AgentVersion.description, Agent.owner, AgentVersion.version)
         .order_by(func.count(AgentDownloadRecord.id).desc())
         .limit(limit)
     )
@@ -239,8 +155,6 @@ async def top_agents(
     agent_ids = [r.agent_id for r in rows]
     rating_map: dict[uuid.UUID, float] = {}
     if agent_ids:
-        from models.feedback import Feedback
-
         rating_rows = await db.execute(
             select(Feedback.listing_id, func.avg(Feedback.rating))
             .where(Feedback.listing_id.in_(agent_ids), Feedback.listing_type == "agent")
@@ -271,20 +185,19 @@ async def agent_leaderboard(
     db: AsyncSession = Depends(get_db),
 ):
     """Public leaderboard of agents ranked by downloads within a time window."""
-    from models.feedback import Feedback
-
     stmt = (
         select(
             AgentDownloadRecord.agent_id,
             func.count(AgentDownloadRecord.id).label("cnt"),
             Agent.name,
-            Agent.description,
+            AgentVersion.description,
             Agent.owner,
-            Agent.version,
+            AgentVersion.version,
             Agent.created_by,
         )
         .join(Agent, AgentDownloadRecord.agent_id == Agent.id)
-        .where(Agent.status == AgentStatus.active)
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(AgentVersion.status == AgentStatus.approved)
     )
     if user:
         stmt = stmt.join(User, Agent.created_by == User.id).where(User.email.ilike(f"%{escape_like(user)}%"))
@@ -294,9 +207,9 @@ async def agent_leaderboard(
     group_cols = [
         AgentDownloadRecord.agent_id,
         Agent.name,
-        Agent.description,
+        AgentVersion.description,
         Agent.owner,
-        Agent.version,
+        AgentVersion.version,
         Agent.created_by,
     ]
     stmt = stmt.group_by(*group_cols).order_by(func.count(AgentDownloadRecord.id).desc()).limit(limit)
@@ -325,14 +238,18 @@ async def agent_leaderboard(
     # Also include agents with no downloads if window=all and we have fewer than limit
     if window == "all" and len(rows) < limit:
         existing_ids = {r.agent_id for r in rows}
-        extra_stmt = select(Agent).where(Agent.status == AgentStatus.active, Agent.id.notin_(existing_ids))
+        extra_stmt = (
+            select(Agent)
+            .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+            .where(AgentVersion.status == AgentStatus.approved, Agent.id.notin_(existing_ids))
+        )
         if user:
             extra_stmt = extra_stmt.join(User, Agent.created_by == User.id).where(
                 User.email.ilike(f"%{escape_like(user)}%")
             )
         extra_stmt = extra_stmt.order_by(Agent.created_at.desc()).limit(limit - len(rows))
         extra = (await db.execute(extra_stmt)).scalars().all()
-        missing_ids = {a.created_by for a in extra} - set(email_map.keys())
+        missing_ids = {a.created_by for a in extra} - set(email_map)
         if missing_ids:
             extra_user_rows = await db.execute(
                 select(User.id, User.email, User.username).where(User.id.in_(missing_ids))
@@ -381,48 +298,142 @@ async def component_leaderboard(
     user: str | None = Query(None, description="Filter by creator email"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Public leaderboard of components ranked by downloads within a time window."""
-    stmt = (
-        select(
-            McpDownload.listing_id,
-            func.count(McpDownload.id).label("cnt"),
-            McpListing.name,
-            McpListing.description,
-            McpListing.submitted_by,
-        )
-        .join(McpListing, McpDownload.listing_id == McpListing.id)
-        .where(McpListing.status == ListingStatus.approved)
-    )
-    if user:
-        stmt = stmt.join(User, McpListing.submitted_by == User.id).where(User.email.ilike(f"%{escape_like(user)}%"))
-    if window != "all":
-        days = _RANGE_MAP.get(window, 7)
-        stmt = stmt.where(McpDownload.downloaded_at >= dt.now(UTC) - timedelta(days=days))
-    stmt = (
-        stmt.group_by(McpDownload.listing_id, McpListing.name, McpListing.description, McpListing.submitted_by)
-        .order_by(func.count(McpDownload.id).desc())
-        .limit(limit)
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
+    """Public leaderboard of components ranked by agent downloads within a time window."""
+    listing_types = [
+        (McpListing, McpVersion, "mcp"),
+        (SkillListing, SkillVersion, "skill"),
+        (HookListing, HookVersion, "hook"),
+        (PromptListing, PromptVersion, "prompt"),
+        (SandboxListing, SandboxVersion, "sandbox"),
+    ]
 
-    user_ids = {r.submitted_by for r in rows}
+    all_items: list[ComponentLeaderboardItem] = []
+    all_user_ids: set[uuid.UUID] = set()
+    all_listing_ids: list[uuid.UUID] = []
+    submitted_by_map: dict[uuid.UUID, uuid.UUID] = {}  # component_id -> user_id
+
+    for listing_model, version_model, type_label in listing_types:
+        # Count agent downloads for each component via AgentComponent linkage
+        stmt = (
+            select(
+                AgentComponent.component_id,
+                func.count(func.distinct(AgentDownloadRecord.id)).label("cnt"),
+                listing_model.name,
+                version_model.description,
+                listing_model.submitted_by,
+            )
+            .join(AgentVersion, AgentComponent.agent_version_id == AgentVersion.id)
+            .join(Agent, Agent.latest_version_id == AgentVersion.id)
+            .join(AgentDownloadRecord, AgentDownloadRecord.agent_id == Agent.id)
+            .join(listing_model, AgentComponent.component_id == listing_model.id)
+            .join(version_model, listing_model.latest_version_id == version_model.id)
+            .where(AgentComponent.component_type == type_label, version_model.status == ListingStatus.approved)
+        )
+        if user:
+            stmt = stmt.join(User, listing_model.submitted_by == User.id).where(
+                User.email.ilike(f"%{escape_like(user)}%")
+            )
+        if window != "all":
+            days = _RANGE_MAP.get(window, 7)
+            stmt = stmt.where(AgentDownloadRecord.installed_at >= dt.now(UTC) - timedelta(days=days))
+        stmt = (
+            stmt.group_by(
+                AgentComponent.component_id, listing_model.name, version_model.description, listing_model.submitted_by
+            )
+            .order_by(func.count(func.distinct(AgentDownloadRecord.id)).desc())
+            .limit(limit)
+        )
+        rows = (await db.execute(stmt)).all()
+        for r in rows:
+            all_listing_ids.append(r.component_id)
+            all_user_ids.add(r.submitted_by)
+            submitted_by_map[r.component_id] = r.submitted_by
+            all_items.append(
+                ComponentLeaderboardItem(
+                    id=r.component_id,
+                    name=r.name,
+                    component_type=type_label,
+                    description=r.description or "",
+                    download_count=r.cnt,
+                    created_by_email="",
+                    average_rating=None,
+                    total_reviews=0,
+                )
+            )
+
+    # Batch-fetch feedback ratings
+    rating_map: dict[uuid.UUID, tuple[float | None, int]] = {}
+    if all_listing_ids:
+        fb_result = await db.execute(
+            select(
+                Feedback.listing_id,
+                func.avg(Feedback.rating).label("avg_rating"),
+                func.count(Feedback.id).label("total_reviews"),
+            )
+            .where(Feedback.listing_id.in_(all_listing_ids))
+            .group_by(Feedback.listing_id)
+        )
+        for fb_row in fb_result.all():
+            avg_r = round(float(fb_row.avg_rating), 2) if fb_row.avg_rating is not None else None
+            rating_map[fb_row.listing_id] = (avg_r, fb_row.total_reviews)
+
+    # Resolve user emails
     email_map: dict[uuid.UUID, str] = {}
-    if user_ids:
-        email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
+    if all_user_ids:
+        email_rows = await db.execute(select(User.id, User.email).where(User.id.in_(all_user_ids)))
         email_map = {r[0]: r[1] for r in email_rows.all()}
 
-    return [
-        ComponentLeaderboardItem(
-            id=row.listing_id,
-            name=row.name,
-            component_type="mcp",
-            description=row.description or "",
-            download_count=row.cnt,
-            created_by_email=email_map.get(row.submitted_by, ""),
-        )
-        for row in rows
-    ]
+    # Patch in emails and ratings
+    for item in all_items:
+        avg_rating, total_reviews = rating_map.get(item.id, (None, 0))
+        item.average_rating = avg_rating
+        item.total_reviews = total_reviews
+    for item in all_items:
+        uid = submitted_by_map.get(item.id)
+        if uid and not item.created_by_email:
+            item.created_by_email = email_map.get(uid, "")
+
+    # Backfill: include approved components with zero agent downloads
+    if len(all_items) < limit:
+        existing_ids = {item.id for item in all_items}
+        for listing_model, version_model, type_label in listing_types:
+            if len(all_items) >= limit:
+                break
+            extra_stmt = (
+                select(listing_model.id, listing_model.name, version_model.description, listing_model.submitted_by)
+                .join(version_model, listing_model.latest_version_id == version_model.id)
+                .where(version_model.status == ListingStatus.approved, listing_model.id.notin_(existing_ids))
+                .order_by(listing_model.created_at.desc())
+                .limit(limit - len(all_items))
+            )
+            extra_rows = (await db.execute(extra_stmt)).all()
+            extra_sub_ids = {r.submitted_by for r in extra_rows if r.submitted_by} - set(email_map)
+            if extra_sub_ids:
+                for er in (await db.execute(select(User.id, User.email).where(User.id.in_(extra_sub_ids)))).all():
+                    email_map[er[0]] = er[1]
+            for r in extra_rows:
+                if r.id in existing_ids:
+                    continue
+                existing_ids.add(r.id)
+                avg_rating, total_reviews = rating_map.get(r.id, (None, 0))
+                all_items.append(
+                    ComponentLeaderboardItem(
+                        id=r.id,
+                        name=r.name,
+                        component_type=type_label,
+                        description=r.description or "",
+                        download_count=0,
+                        created_by_email=email_map.get(r.submitted_by, "") if r.submitted_by else "",
+                        average_rating=avg_rating,
+                        total_reviews=total_reviews,
+                    )
+                )
+                if len(all_items) >= limit:
+                    break
+
+    # Sort by download count descending, then by total_reviews descending as tiebreaker
+    all_items.sort(key=lambda x: (x.download_count, x.total_reviews), reverse=True)
+    return all_items[:limit]
 
 
 @router.get("/overview/trends", response_model=list[TrendPoint])
@@ -454,7 +465,7 @@ async def trends(
 
     submissions = {str(r.day.date()): r.cnt for r in mcp_rows.all()}
     users = {str(r.day.date()): r.cnt for r in user_rows.all()}
-    all_dates = sorted(set(list(submissions.keys()) + list(users.keys())))
+    all_dates = sorted(set(submissions) | set(users))
 
     result = [TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0)) for d in all_dates]
     await audit(current_user, "dashboard.trends", resource_type="dashboard")

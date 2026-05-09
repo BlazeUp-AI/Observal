@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json as _json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from rich import print as rprint
@@ -137,3 +137,62 @@ def warning(msg: str):
 def success(msg: str):
     """Print a success message."""
     rprint(f"[green]Success:[/green] {msg}")
+
+
+# ── Model display helpers ──
+# Reads the pre-computed ``display`` field from the server API response
+# (computed by ``services/model_display.py``). Falls back to raw model_id
+# when display data isn't available (e.g. offline mirror, bare model_id lookup).
+
+_MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _format_date_short(d: date) -> str:
+    return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
+
+
+def _force_secondary(row: dict, is_rolling: bool) -> str | None:
+    """Derive a secondary label when the caller wants forced disambiguation."""
+    if is_rolling:
+        return "latest"
+    rd = row.get("release_date")
+    if rd:
+        try:
+            d = datetime.fromisoformat(str(rd)).date() if not isinstance(rd, date) else rd
+            return _format_date_short(d)
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def format_model(row: dict, *, disambiguate: bool = False) -> tuple[str, str | None, bool]:
+    """Format a model catalog row for CLI display.
+
+    Returns ``(primary, secondary, is_rolling)``. Reads the server-computed
+    ``display`` field when available; falls back to the model_id.
+    """
+    display = row.get("display")
+    if isinstance(display, dict):
+        primary = display.get("primary") or row.get("model_id", "")
+        secondary = display.get("secondary")
+        is_rolling = bool(display.get("is_rolling"))
+        if disambiguate and not secondary:
+            secondary = _force_secondary(row, is_rolling)
+        return primary, secondary, is_rolling
+
+    # Fallback: no pre-computed display (offline mirror or bare model_id lookup)
+    primary = (row.get("display_name") or row.get("model_id") or "").strip()
+    is_rolling = not primary[-8:].isdigit() if primary else False
+    secondary = _force_secondary(row, is_rolling) if disambiguate else None
+    return primary, secondary, is_rolling
+
+
+def annotate_models(rows: list[dict]) -> list[dict]:
+    """Return a new list where each row gets a ``_display`` dict with primary/secondary."""
+    out: list[dict] = []
+    for r in rows:
+        annotated = dict(r)
+        p, s, rolling = format_model(r, disambiguate=True)
+        annotated["_display"] = {"primary": p, "secondary": s, "is_rolling": rolling}
+        out.append(annotated)
+    return out

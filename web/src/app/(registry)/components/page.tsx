@@ -14,6 +14,7 @@ import {
   Plus,
   Send,
   Trash2,
+  FileEdit,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,10 @@ import {
   useComponentSubmit,
   useComponentSaveDraft,
   useComponentSubmitDraft,
+  useComponentUpdateDraft,
   useComponentDelete,
+  useStartEdit,
+  useCancelEdit,
 } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import type { RegistryType } from "@/lib/api";
@@ -157,6 +161,7 @@ export default function ComponentsPage() {
   const [view, setView] = useState<ViewMode>("table");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [editItem, setEditItem] = useState<RegistryItem | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
@@ -182,7 +187,35 @@ export default function ComponentsPage() {
   const submitMutation = useComponentSubmit(activeType);
   const saveDraftMutation = useComponentSaveDraft(activeType);
   const submitDraftMutation = useComponentSubmitDraft(activeType);
+  const updateDraftMutation = useComponentUpdateDraft(activeType);
   const deleteMutation = useComponentDelete(activeType);
+  const startEditMutation = useStartEdit(activeType);
+  const cancelEditMutation = useCancelEdit(activeType);
+
+  const editItemRef = useRef(editItem);
+  editItemRef.current = editItem;
+  const activeTypeRef = useRef(activeType);
+  activeTypeRef.current = activeType;
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const item = editItemRef.current;
+      if (item?.status === "pending") {
+        const type = activeTypeRef.current;
+        const token = localStorage.getItem("observal_access_token");
+        fetch(`/api/v1/${type}/${item.id}/cancel-edit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          keepalive: true,
+        });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const items = useMemo(() => data ?? [], [data]);
 
@@ -227,7 +260,7 @@ export default function ComponentsPage() {
             />
           </div>
           {authReady && role && (
-            <Button size="sm" className="h-9" onClick={() => setSubmitOpen(true)}>
+            <Button size="sm" className="h-9" onClick={() => { setEditItem(null); setSubmitOpen(true); }}>
               <Plus className="h-4 w-4 mr-1.5" />
               Create
             </Button>
@@ -393,7 +426,27 @@ export default function ComponentsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {item.status === "draft" && (
+                    {(item.status === "draft" || item.status === "rejected" || item.status === "pending") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={startEditMutation.isPending}
+                        onClick={() => {
+                          if (item.status === "pending") {
+                            startEditMutation.mutate(item.id, {
+                              onSuccess: () => { setEditItem(item); setSubmitOpen(true); },
+                            });
+                          } else {
+                            setEditItem(item); setSubmitOpen(true);
+                          }
+                        }}
+                      >
+                        <FileEdit className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
+                    )}
+                    {(item.status === "draft" || item.status === "rejected") && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -402,7 +455,7 @@ export default function ComponentsPage() {
                         disabled={submitDraftMutation.isPending}
                       >
                         <Send className="h-3 w-3 mr-1" />
-                        Submit
+                        {item.status === "rejected" ? "Resubmit" : "Submit"}
                       </Button>
                     )}
                     <Button
@@ -423,21 +476,46 @@ export default function ComponentsPage() {
       </div>
 
       <SubmitComponentDialog
+        key={editItem?.id ?? "new"}
         open={submitOpen}
-        onOpenChange={setSubmitOpen}
+        onOpenChange={(v) => {
+          if (!v && editItem?.status === "pending") {
+            cancelEditMutation.mutate(editItem.id);
+          }
+          setSubmitOpen(v);
+          if (!v) setEditItem(null);
+        }}
         type={activeType}
+        editItem={editItem as Record<string, unknown> | null}
         onSubmit={(body) => {
-          submitMutation.mutate(body, {
-            onSuccess: () => setSubmitOpen(false),
-          });
+          if (editItem) {
+            if (editItem.status === "pending") {
+              updateDraftMutation.mutate({ id: editItem.id, body }, {
+                onSuccess: () => { setSubmitOpen(false); setEditItem(null); },
+              });
+            } else {
+              submitDraftMutation.mutate(editItem.id, {
+                onSuccess: () => { setSubmitOpen(false); setEditItem(null); },
+              });
+            }
+          } else {
+            submitMutation.mutate(body, {
+              onSuccess: () => setSubmitOpen(false),
+            });
+          }
         }}
         onSaveDraft={(body) => {
           saveDraftMutation.mutate(body, {
             onSuccess: () => setSubmitOpen(false),
           });
         }}
-        isSubmitting={submitMutation.isPending}
-        isSavingDraft={saveDraftMutation.isPending}
+        onUpdateDraft={(id, body) => {
+          updateDraftMutation.mutate({ id, body }, {
+            onSuccess: () => { setSubmitOpen(false); setEditItem(null); },
+          });
+        }}
+        isSubmitting={submitMutation.isPending || submitDraftMutation.isPending}
+        isSavingDraft={saveDraftMutation.isPending || updateDraftMutation.isPending}
       />
     </>
   );

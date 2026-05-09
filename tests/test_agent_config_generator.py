@@ -21,6 +21,7 @@ from services.agent_builder import (
 from services.agent_config_generator import (
     _build_rules_content,
     _inject_agent_id,
+    _model_name_to_frontmatter,
     _sanitize_name,
     generate_agent_config,
 )
@@ -263,6 +264,60 @@ class TestGenerateClaudeCode:
         fm = yaml.safe_load(parts[1])
         assert "\n" not in fm["description"]
 
+    def test_model_fallback_from_agent_when_no_option(self):
+        agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
+        cfg = generate_agent_config(agent, "claude-code")
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert fm["model"] == "sonnet"
+
+    def test_model_fallback_from_agent_when_inherit(self):
+        agent = _make_agent(model_name="claude-opus-4-6-20250725")
+        cfg = generate_agent_config(agent, "claude-code", options={"model": "inherit"})
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert fm["model"] == "opus"
+
+    def test_explicit_model_option_overrides_agent(self):
+        agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
+        cfg = generate_agent_config(agent, "claude-code", options={"model": "haiku"})
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert fm["model"] == "haiku"
+
+    def test_no_model_when_agent_has_empty_model_name(self):
+        agent = _make_agent(model_name="")
+        cfg = generate_agent_config(agent, "claude-code")
+        content = cfg["rules_file"]["content"]
+        parts = content.split("---", 2)
+        fm = yaml.safe_load(parts[1])
+        assert "model" not in fm
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 4b. _model_name_to_frontmatter
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestModelNameToFrontmatter:
+    def test_sonnet_with_date(self):
+        assert _model_name_to_frontmatter("claude-sonnet-4-6-20250725") == "sonnet"
+
+    def test_opus_without_date(self):
+        assert _model_name_to_frontmatter("claude-opus-4-6") == "opus"
+
+    def test_haiku_with_date(self):
+        assert _model_name_to_frontmatter("claude-haiku-4-5-20251001") == "haiku"
+
+    def test_empty(self):
+        assert _model_name_to_frontmatter("") == ""
+
+    def test_non_claude_model_passthrough(self):
+        assert _model_name_to_frontmatter("gpt-4o") == "gpt-4o"
+
 
 # ═══════════════════════════════════════════════════════════════════
 # 5. generate_agent_config — Cursor / VSCode
@@ -273,13 +328,13 @@ class TestGenerateCursorVscode:
     def test_cursor_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
-        assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.md"
+        assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.mdc"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
 
     def test_vscode_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "vscode")
-        assert cfg["rules_file"]["path"] == ".vscode/rules/test-agent.md"
+        assert cfg["rules_file"]["path"] == ".github/instructions/test-agent.instructions.md"
         assert cfg["mcp_config"]["path"] == ".vscode/mcp.json"
 
     def test_rules_content_not_empty(self):
@@ -309,8 +364,9 @@ class TestGenerateKiro:
         cfg = generate_agent_config(agent, "kiro")
         content = cfg["agent_file"]["content"]
         assert content["name"] == "test-agent"
-        assert content["prompt"] == "You are helpful."
-        assert content["model"] == "claude-sonnet-4"
+        assert "You are helpful." in content["prompt"]
+        assert "Agent Specialization" in content["prompt"]
+        assert content["model"] is None  # Kiro uses auto model selection
         assert "mcpServers" in content
         assert "hooks" in content
 
@@ -321,15 +377,9 @@ class TestGenerateKiro:
         for event in ("agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"):
             assert event in hooks
 
-    def test_steering_file_generated_when_prompt_present(self):
+    def test_no_steering_file_generated(self):
+        """Prompt lives in agent JSON only — no redundant steering file."""
         agent = _make_agent(prompt="Do the thing")
-        cfg = generate_agent_config(agent, "kiro")
-        assert "steering_file" in cfg
-        assert cfg["steering_file"]["path"] == ".kiro/steering/test-agent.md"
-        assert "Do the thing" in cfg["steering_file"]["content"]
-
-    def test_no_steering_file_when_no_prompt(self):
-        agent = _make_agent(prompt="")
         cfg = generate_agent_config(agent, "kiro")
         assert "steering_file" not in cfg
 
@@ -338,13 +388,21 @@ class TestGenerateKiro:
         cfg = generate_agent_config(agent, "kiro")
         assert len(cfg["agent_file"]["content"]["description"]) == 200
 
-    def test_tools_include_builtins(self):
+    def test_tools_include_wildcard(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
         tools = cfg["agent_file"]["content"]["tools"]
-        assert "read" in tools
-        assert "write" in tools
-        assert "shell" in tools
+        assert "*" in tools
+
+    def test_kiro_native_schema_fields(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "kiro")
+        content = cfg["agent_file"]["content"]
+        assert content["toolAliases"] == {}
+        assert content["allowedTools"] == []
+        assert content["toolsSettings"] == {}
+        assert isinstance(content["resources"], list)
+        assert any("AGENTS.md" in r for r in content["resources"])
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -412,7 +470,7 @@ class TestGenerateCopilot:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert cfg["rules_file"]["path"] == ".github/copilot-instructions.md"
+        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_present(self):
         agent = _make_agent()
@@ -645,14 +703,12 @@ class TestBuilderKiro:
         assert "~/.kiro/agents/" in json_file.path
         assert json_file.content["name"] == "test-agent"
 
-    def test_tools_include_builtins(self):
+    def test_tools_include_wildcard(self):
         manifest = _make_manifest()
         result = generate_ide_agent_files(manifest, "kiro")
         json_file = next(f for f in result.files if f.format == "json")
         tools = json_file.content["tools"]
-        assert "read" in tools
-        assert "write" in tools
-        assert "shell" in tools
+        assert "*" in tools
 
 
 class TestBuilderGemini:
@@ -670,11 +726,13 @@ class TestBuilderCodex:
         paths = [f.path for f in result.files]
         assert "AGENTS.md" in paths
 
-    def test_includes_codex_config_toml(self):
+    def test_codex_only_agents_md_without_otlp_url(self):
         manifest = _make_manifest()
         result = generate_ide_agent_files(manifest, "codex")
         paths = [f.path for f in result.files]
-        assert any("config.toml" in p for p in paths)
+        # Without explicit OTLP URL, only AGENTS.md is generated
+        assert "AGENTS.md" in paths
+        assert len(paths) == 1
 
 
 class TestBuilderCopilot:
@@ -792,15 +850,9 @@ class TestGenerateKiroWin32:
         for cmd in cmds:
             assert "--agent-name my-cool-agent" in cmd
 
-    def test_win32_hooks_include_model_when_present(self):
+    def test_hooks_omit_model_flag(self):
+        """Model is detected from Kiro SQLite at runtime, not baked into hook commands."""
         agent = _make_agent(model_name="claude-sonnet-4")
-        cfg = generate_agent_config(agent, "kiro", platform="win32")
-        cmds = self._all_hook_commands(cfg)
-        for cmd in cmds:
-            assert "--model claude-sonnet-4" in cmd
-
-    def test_win32_hooks_omit_model_when_empty(self):
-        agent = _make_agent(model_name="")
         cfg = generate_agent_config(agent, "kiro", platform="win32")
         cmds = self._all_hook_commands(cfg)
         for cmd in cmds:
@@ -840,14 +892,15 @@ class TestGenerateKiroPreservation:
         cfg_empty = generate_agent_config(agent, "kiro", platform="")
         assert cfg_default == cfg_empty
 
-    def test_unix_hooks_still_use_cat_sed_curl(self):
+    def test_unix_hooks_use_python_hook_scripts(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="linux")
         hooks = cfg["agent_file"]["content"]["hooks"]
         spawn_cmd = hooks["agentSpawn"][0]["command"]
-        assert "cat |" in spawn_cmd
-        assert "sed '" in spawn_cmd
-        assert "curl" in spawn_cmd
+        assert "python3 -m observal_cli.hooks.kiro_hook" in spawn_cmd
+        assert "cat |" not in spawn_cmd
+        assert "sed " not in spawn_cmd
+        assert "curl" not in spawn_cmd
 
     def test_non_kiro_ides_unaffected_by_platform(self):
         agent = _make_agent()
@@ -908,47 +961,3 @@ class TestHookConfigGeneratorWin32:
         cfg_default = generate_hook_telemetry_config(listing, "claude-code")
         cfg_win32 = generate_hook_telemetry_config(listing, "claude-code", platform="win32")
         assert cfg_default == cfg_win32
-
-
-class TestGetKiroDb:
-    """Test platform-aware Kiro DB path resolution."""
-
-    def test_unix_path(self):
-        import unittest.mock
-        from pathlib import Path
-
-        from observal_cli.hooks.kiro_hook import _get_kiro_db
-
-        with (
-            unittest.mock.patch("observal_cli.hooks.kiro_hook.sys") as mock_sys,
-            unittest.mock.patch("observal_cli.hooks.kiro_hook.os") as mock_os,
-            unittest.mock.patch.object(Path, "exists", lambda self: ".local" in str(self)),
-        ):
-            mock_sys.platform = "linux"
-            mock_os.environ.get = lambda key, default="": default
-            db = _get_kiro_db()
-            assert db is not None
-            assert ".local" in str(db)
-            assert "kiro-cli" in str(db)
-            assert "data.sqlite3" in str(db)
-
-    def test_win32_path_with_localappdata(self):
-        import unittest.mock
-        from pathlib import Path
-
-        from observal_cli.hooks.kiro_hook import _get_kiro_db
-
-        with (
-            unittest.mock.patch("observal_cli.hooks.kiro_hook.sys") as mock_sys,
-            unittest.mock.patch("observal_cli.hooks.kiro_hook.os") as mock_os,
-            unittest.mock.patch.object(Path, "exists", return_value=True),
-        ):
-            mock_sys.platform = "win32"
-            mock_os.environ.get = lambda key, default="": (
-                "C:\\Users\\test\\AppData\\Local" if key == "LOCALAPPDATA" else default
-            )
-            db = _get_kiro_db()
-            assert db is not None
-            assert "AppData" in str(db)
-            assert "kiro-cli" in str(db)
-            assert "data.sqlite3" in str(db)

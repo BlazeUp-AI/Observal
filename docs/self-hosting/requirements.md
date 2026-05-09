@@ -20,7 +20,6 @@ The stack's Docker memory limits out-of-the-box:
 | `observal-web` | 256 MB |
 | `observal-clickhouse` | 1 GB |
 | `observal-redis` | 256 MB |
-| `observal-otel-collector` | 256 MB |
 | `observal-grafana` | 512 MB |
 
 ClickHouse is the memory-hungry one. On a long-running team server, bump it to 2–4 GB in `docker/docker-compose.yml`.
@@ -45,6 +44,9 @@ Postgres stays under 500 MB for most deployments — it holds only registry meta
 | Linux / macOS host | any modern | Windows via WSL2 works |
 | Bash / zsh | any | For the CLI install |
 
+> [!NOTE]
+> Homebrew's Docker formula is outdated and may ship an older Compose version. Install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages to get Docker Engine ≥ 24.0 with Compose v2.
+
 For the **CLI** (developer machines, not the server):
 
 * **Standalone binary** (recommended) -- no dependencies, just `curl | bash`
@@ -53,7 +55,7 @@ For the **CLI** (developer machines, not the server):
 ## Network
 
 * **Outbound HTTPS** — only needed to pull Docker images on first `docker compose up --build`. Not needed at runtime (the stack is fully self-contained).
-* **Inbound** — users hit the API (`:8000`), web (`:3000`), and optionally OTEL (`:4317` gRPC or `:4318` HTTP).
+* **Inbound** — users hit the API (`:8000`) and web (`:3000`). OTLP telemetry is also received on the API port (`:8000`).
 * **Between services** — the private `observal-net` bridge handles all of it.
 
 If your eval model is Bedrock or a cloud-hosted OpenAI-compatible endpoint, the API and worker need outbound access to that endpoint. A fully-offline eval path is available with a local Ollama or vLLM deployment.

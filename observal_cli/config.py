@@ -140,24 +140,16 @@ def resolve_alias(name: str) -> str:
         rprint(f"[dim]Set it with: observal config alias {name[1:]} <id>[/dim]")
         raise typer.Exit(1)
 
-    cache = load_last_results()
-
-    # Row number from last list
+    # Row number from last list (positional shortcut only)
     if name.isdigit():
+        cache = load_last_results()
         idx = int(name)
         ids = cache.get("ids", [])
         if 1 <= idx <= len(ids):
             return ids[idx - 1]
 
-    # Name match (case-insensitive)
-    names = cache.get("names", {})
-    resolved = names.get(name.lower())
-    if resolved:
-        return resolved
-
-    # Partial name match: if exactly one result
-    matches = [(n, uid) for n, uid in names.items() if name.lower() in n]
-    if len(matches) == 1:
-        return matches[0][1]
-
+    # Pass names through as-is — the server resolves names natively.
+    # Previously we looked up names in a local cache (last_results.json),
+    # but that cache goes stale after a database reset, causing 404s
+    # when the same name gets a new UUID.
     return name

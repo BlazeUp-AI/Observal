@@ -86,36 +86,6 @@ async def clickhouse_health() -> bool:
 
 
 INIT_SQL = [
-    # Legacy tables (kept for backward compat)
-    """CREATE TABLE IF NOT EXISTS mcp_tool_calls (
-        event_id UUID,
-        timestamp DateTime64(3, 'UTC'),
-        mcp_server_id String,
-        tool_name String,
-        input_params String,
-        response String,
-        latency_ms UInt32,
-        status String,
-        user_action String,
-        session_id String,
-        user_id String,
-        ide String
-    ) ENGINE = MergeTree()
-    PARTITION BY toYYYYMM(timestamp)
-    ORDER BY (mcp_server_id, timestamp)""",
-    """CREATE TABLE IF NOT EXISTS agent_interactions (
-        event_id UUID,
-        timestamp DateTime64(3, 'UTC'),
-        agent_id String,
-        session_id String,
-        tool_calls UInt32,
-        user_action String,
-        latency_ms UInt32,
-        user_id String,
-        ide String
-    ) ENGINE = MergeTree()
-    PARTITION BY toYYYYMM(timestamp)
-    ORDER BY (agent_id, timestamp)""",
     # New telemetry tables (Phase 1)
     """CREATE TABLE IF NOT EXISTS traces (
         trace_id        String,
@@ -256,6 +226,14 @@ INIT_SQL = [
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS hook_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS skill_id Nullable(String)""",
     """ALTER TABLE traces ADD COLUMN IF NOT EXISTS prompt_id Nullable(String)""",
+    # Agent versioning: track which version produced telemetry
+    """ALTER TABLE traces ADD COLUMN IF NOT EXISTS agent_version Nullable(String)""",
+    """ALTER TABLE spans ADD COLUMN IF NOT EXISTS agent_version Nullable(String)""",
+    """ALTER TABLE scores ADD COLUMN IF NOT EXISTS agent_version Nullable(String)""",
+    # Bloom filter indexes for agent_version point lookups
+    """ALTER TABLE traces ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
+    """ALTER TABLE spans ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
+    """ALTER TABLE scores ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
     # Security events table (SIEM integration — SOC 2 / ISO 27001)
     """CREATE TABLE IF NOT EXISTS security_events (
         event_id    UUID,
@@ -320,6 +298,67 @@ INIT_SQL = [
     ) ENGINE = MergeTree()
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (alert_rule_id, timestamp)""",
+    # Session events: stores parsed JSONL transcript lines from IDE sessions.
+    # Replaces hook-based telemetry with direct session file ingestion.
+    """CREATE TABLE IF NOT EXISTS session_events (
+        session_id      String,
+        project_id      String,
+        user_id         String,
+        agent_id        Nullable(String),
+        agent_version   Nullable(String),
+        layer_hash      Nullable(String),
+        ide             LowCardinality(String),
+        line_offset     UInt32,
+        line_hash       String DEFAULT '' CODEC(ZSTD(1)),
+        event_type      LowCardinality(String),
+        timestamp       DateTime64(3, 'UTC'),
+        uuid            Nullable(String),
+        parent_uuid     Nullable(String),
+        tool_name       Nullable(String),
+        tool_id         Nullable(String),
+        content_preview String CODEC(ZSTD(1)),
+        content_length  UInt32,
+        raw_line        String CODEC(ZSTD(3)),
+        ingested_at     DateTime64(3, 'UTC') DEFAULT now(),
+        credits         Float64 DEFAULT 0,
+        parent_session_id Nullable(String),
+        INDEX idx_se_session_id session_id TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_se_project_id project_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_se_event_type event_type TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_se_line_hash line_hash TYPE bloom_filter(0.001) GRANULARITY 1
+    ) ENGINE = ReplacingMergeTree(ingested_at)
+    PARTITION BY toYYYYMM(timestamp)
+    ORDER BY (project_id, session_id, line_offset)""",
+    # otel_logs: previously created by the OTEL collector.
+    # Now managed by the API since the collector is removed.
+    """CREATE TABLE IF NOT EXISTS otel_logs (
+        Timestamp       DateTime64(9) CODEC(Delta, ZSTD(1)),
+        TraceId         String CODEC(ZSTD(1)),
+        SpanId          String CODEC(ZSTD(1)),
+        TraceFlags      UInt32 CODEC(ZSTD(1)),
+        SeverityText    LowCardinality(String) CODEC(ZSTD(1)),
+        SeverityNumber  Int32 CODEC(ZSTD(1)),
+        ServiceName     LowCardinality(String) CODEC(ZSTD(1)),
+        Body            String CODEC(ZSTD(1)),
+        ResourceSchemaUrl   String CODEC(ZSTD(1)),
+        ResourceAttributes  Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        ScopeSchemaUrl  String CODEC(ZSTD(1)),
+        ScopeName       String CODEC(ZSTD(1)),
+        ScopeVersion    String CODEC(ZSTD(1)),
+        ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        LogAttributes   Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+        INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+        INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_body Body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 1
+    ) ENGINE = MergeTree()
+    PARTITION BY toDate(Timestamp)
+    ORDER BY (ServiceName, SeverityText, toUnixTimestamp(Timestamp), TraceId)""",
+    # Subagent attribution: link subagent sessions to their parent session
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS parent_session_id Nullable(String)""",
+    """ALTER TABLE session_events ADD INDEX IF NOT EXISTS idx_se_parent_session_id parent_session_id TYPE bloom_filter(0.01) GRANULARITY 1""",
 ]
 
 
@@ -411,8 +450,8 @@ async def init_clickhouse():
             f"ALTER TABLE traces MODIFY TTL toDate(start_time) + INTERVAL {retention_days} DAY",
             f"ALTER TABLE spans MODIFY TTL toDate(start_time) + INTERVAL {retention_days} DAY",
             f"ALTER TABLE scores MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
-            f"ALTER TABLE mcp_tool_calls MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
-            f"ALTER TABLE agent_interactions MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE otel_logs MODIFY TTL toDate(Timestamp) + INTERVAL {retention_days} DAY",
+            f"ALTER TABLE session_events MODIFY TTL toDate(timestamp) + INTERVAL {retention_days} DAY",
         ]
         applied = 0
         for stmt in ttl_stmts:
@@ -427,59 +466,6 @@ async def init_clickhouse():
             logger.warning("ClickHouse retention partially applied: %d/%d tables", applied, len(ttl_stmts))
     else:
         logger.info("ClickHouse data retention disabled (DATA_RETENTION_DAYS=0)")
-
-
-async def insert_tool_call(event: dict):
-    sql = """INSERT INTO mcp_tool_calls
-        (event_id, timestamp, mcp_server_id, tool_name, input_params, response, latency_ms, status, user_action, session_id, user_id, ide)
-        VALUES
-        ({event_id:String}, {ts:String}, {mcp_server_id:String}, {tool_name:String}, {input_params:String}, {response:String}, {latency_ms:UInt32}, {status:String}, {user_action:String}, {session_id:String}, {user_id:String}, {ide:String})"""
-    params = {
-        "param_event_id": event["event_id"],
-        "param_ts": event["timestamp"],
-        "param_mcp_server_id": event.get("mcp_server_id", ""),
-        "param_tool_name": event.get("tool_name", ""),
-        "param_input_params": event.get("input_params", ""),
-        "param_response": event.get("response", ""),
-        "param_latency_ms": str(event.get("latency_ms", 0)),
-        "param_status": event.get("status", ""),
-        "param_user_action": event.get("user_action", ""),
-        "param_session_id": event.get("session_id", ""),
-        "param_user_id": event.get("user_id", ""),
-        "param_ide": event.get("ide", ""),
-    }
-    try:
-        r = await _query(sql, params)
-        r.raise_for_status()
-        await _invalidate_cache()
-    except Exception as e:
-        logger.error("clickhouse_insert_tool_call_failed", error=str(e))
-        raise
-
-
-async def insert_agent_interaction(event: dict):
-    sql = """INSERT INTO agent_interactions
-        (event_id, timestamp, agent_id, session_id, tool_calls, user_action, latency_ms, user_id, ide)
-        VALUES
-        ({event_id:String}, {ts:String}, {agent_id:String}, {session_id:String}, {tool_calls:UInt32}, {user_action:String}, {latency_ms:UInt32}, {user_id:String}, {ide:String})"""
-    params = {
-        "param_event_id": event["event_id"],
-        "param_ts": event["timestamp"],
-        "param_agent_id": event.get("agent_id", ""),
-        "param_session_id": event.get("session_id", ""),
-        "param_tool_calls": str(event.get("tool_calls", 0)),
-        "param_user_action": event.get("user_action", ""),
-        "param_latency_ms": str(event.get("latency_ms", 0)),
-        "param_user_id": event.get("user_id", ""),
-        "param_ide": event.get("ide", ""),
-    }
-    try:
-        r = await _query(sql, params)
-        r.raise_for_status()
-        await _invalidate_cache()
-    except Exception as e:
-        logger.error("clickhouse_insert_agent_interaction_failed", error=str(e))
-        raise
 
 
 def _now_ms() -> str:
@@ -534,13 +520,15 @@ async def insert_traces(traces: list[dict]):
             "hook_id": t.get("hook_id"),
             "skill_id": t.get("skill_id"),
             "prompt_id": t.get("prompt_id"),
+            "agent_version": t.get("agent_version"),
         }
         lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
         "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
         "metadata, tags, input, output, event_ts, is_deleted, "
-        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id) FORMAT JSONEachRow"
+        "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id, "
+        "agent_version) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
@@ -612,6 +600,7 @@ async def insert_spans(spans: list[dict]):
             "variables_provided": s.get("variables_provided"),
             "template_tokens": s.get("template_tokens"),
             "rendered_tokens": s.get("rendered_tokens"),
+            "agent_version": s.get("agent_version"),
         }
         lines.append(json.dumps(row, default=str))
     sql = (
@@ -625,7 +614,8 @@ async def insert_spans(spans: list[dict]):
         "disk_read_bytes, disk_write_bytes, oom_killed, query_interface, "
         "relevance_score, chunks_returned, embedding_latency_ms, "
         "hook_event, hook_scope, hook_action, hook_blocked, "
-        "variables_provided, template_tokens, rendered_tokens) FORMAT JSONEachRow"
+        "variables_provided, template_tokens, rendered_tokens, "
+        "agent_version) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
@@ -665,13 +655,14 @@ async def insert_scores(scores: list[dict]):
             "timestamp": _normalize_ts(sc["timestamp"]),
             "event_ts": event_ts,
             "is_deleted": 0,
+            "agent_version": sc.get("agent_version"),
         }
         lines.append(json.dumps(row, default=str))
     sql = (
         "INSERT INTO scores (score_id, trace_id, span_id, project_id, mcp_id, agent_id, "
         "user_id, name, source, data_type, value, string_value, comment, "
         "eval_template_id, eval_config_id, eval_run_id, environment, metadata, "
-        "timestamp, event_ts, is_deleted) FORMAT JSONEachRow"
+        "timestamp, event_ts, is_deleted, agent_version) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
@@ -717,30 +708,36 @@ async def insert_otel_logs(rows: list[dict]):
 
 
 async def query_recent_events(minutes: int = 60) -> dict:
-    """Get event counts from the last N minutes."""
+    """Get event counts from the last N minutes from the active telemetry tables."""
     minutes = int(minutes)
     tool_count = 0
     agent_count = 0
 
     try:
         r = await _query(
-            "SELECT count() as cnt FROM mcp_tool_calls WHERE timestamp > now() - INTERVAL {minutes:UInt32} MINUTE FORMAT JSON",
+            "SELECT count() as cnt FROM spans "
+            "WHERE start_time > now() - INTERVAL {minutes:UInt32} MINUTE "
+            "AND is_deleted = 0 "
+            "FORMAT JSON",
             {"param_minutes": str(minutes)},
         )
         if r.status_code == 200:
             tool_count = int(r.json().get("data", [{}])[0].get("cnt", 0))
     except Exception as e:
-        logger.warning("clickhouse_query_tool_calls_failed", error=str(e))
+        logger.warning("clickhouse_query_spans_failed", error=str(e))
 
     try:
         r = await _query(
-            "SELECT count() as cnt FROM agent_interactions WHERE timestamp > now() - INTERVAL {minutes:UInt32} MINUTE FORMAT JSON",
+            "SELECT count() as cnt FROM traces "
+            "WHERE start_time > now() - INTERVAL {minutes:UInt32} MINUTE "
+            "AND is_deleted = 0 "
+            "FORMAT JSON",
             {"param_minutes": str(minutes)},
         )
         if r.status_code == 200:
             agent_count = int(r.json().get("data", [{}])[0].get("cnt", 0))
     except Exception as e:
-        logger.warning("clickhouse_query_agent_interactions_failed", error=str(e))
+        logger.warning("clickhouse_query_traces_failed", error=str(e))
 
     return {"tool_call_events": tool_count, "agent_interaction_events": agent_count}
 
@@ -755,6 +752,7 @@ async def query_traces(
     mcp_id: str | None = None,
     agent_id: str | None = None,
     user_id: str | None = None,
+    agent_version: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -773,6 +771,9 @@ async def query_traces(
     if user_id:
         conditions.append("user_id = {uid:String}")
         params["param_uid"] = user_id
+    if agent_version:
+        conditions.append("agent_version = {av:String}")
+        params["param_av"] = agent_version
     where = " AND ".join(conditions)
     sql = (
         f"SELECT * FROM traces FINAL WHERE {where} "
@@ -1014,3 +1015,101 @@ async def _insert_webhook_deliveries(records: list[dict]):
         r.raise_for_status()
     except Exception as exc:
         logger.error("clickhouse_insert_webhook_deliveries_failed", error=str(exc))
+
+
+# --- Session events (JSONL ingest) ---
+
+
+async def insert_session_events(rows: list[dict]):
+    """Batch insert session event rows into ClickHouse using JSONEachRow."""
+    if not rows:
+        return
+    lines = []
+    for row in rows:
+        lines.append(json.dumps(row, default=str))
+    sql = (
+        "INSERT INTO session_events (session_id, project_id, user_id, agent_id, "
+        "agent_version, layer_hash, ide, line_offset, line_hash, event_type, timestamp, uuid, parent_uuid, "
+        "tool_name, tool_id, content_preview, content_length, raw_line, credits, parent_session_id) FORMAT JSONEachRow"
+    )
+    try:
+        r = await _query(sql, data="\n".join(lines))
+        r.raise_for_status()
+        await _invalidate_cache()
+    except Exception as e:
+        logger.error("clickhouse_insert_session_events_failed", error=str(e))
+        raise
+
+
+async def query_session_event_count(session_id: str, project_id: str) -> tuple[int, int]:
+    """Return (count, max_offset) for a session's stored events.
+
+    Uses FINAL so ReplacingMergeTree dedup is applied before counting.
+    Returns (0, -1) when no rows exist.
+    """
+    sql = (
+        "SELECT count() AS cnt, max(line_offset) AS max_off "
+        "FROM session_events FINAL "
+        "WHERE session_id = {sid:String} AND project_id = {pid:String} "
+        "FORMAT JSON"
+    )
+    params = {"param_sid": session_id, "param_pid": project_id}
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [{}])
+        row = data[0] if data else {}
+        count = int(row.get("cnt", 0))
+        max_off = int(row.get("max_off", -1)) if count > 0 else -1
+        return count, max_off
+    except Exception as e:
+        logger.error("clickhouse_query_session_event_count_failed", error=str(e))
+        return 0, -1
+
+
+async def query_existing_for_dedup(
+    session_id: str,
+    project_id: str,
+    min_offset: int,
+    max_offset: int,
+) -> tuple[frozenset[int], frozenset[str]]:
+    """Return (existing_offsets, existing_hashes) for the given session/range.
+
+    Both sets are used together in ``ingest_session_lines`` to skip lines
+    that have already been stored:
+
+    * ``existing_offsets`` -- position-based check; catches rows ingested
+      before ``line_hash`` was added (legacy rows have ``line_hash = ''``).
+    * ``existing_hashes`` -- content-addressed check; catches the same bytes
+      regardless of what ``line_offset`` the client assigned them, making
+      dedup robust to off-by-one differences between IDE push implementations.
+
+    Uses FINAL so ReplacingMergeTree dedup is applied before reading.
+    Fail-open: returns (frozenset(), frozenset()) on any error so the ingest
+    call can proceed normally.
+    """
+    if min_offset > max_offset:
+        return frozenset(), frozenset()
+    sql = (
+        "SELECT line_offset, line_hash "
+        "FROM session_events FINAL "
+        "WHERE project_id = {pid:String} AND session_id = {sid:String} "
+        "AND line_offset >= {min_off:UInt32} AND line_offset <= {max_off:UInt32} "
+        "FORMAT JSON"
+    )
+    params = {
+        "param_pid": project_id,
+        "param_sid": session_id,
+        "param_min_off": str(min_offset),
+        "param_max_off": str(max_offset),
+    }
+    try:
+        r = await _query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        existing_offsets = frozenset(int(row["line_offset"]) for row in data)
+        existing_hashes = frozenset(row["line_hash"] for row in data if row.get("line_hash"))
+        return existing_offsets, existing_hashes
+    except Exception as e:
+        logger.warning("clickhouse_query_existing_for_dedup_failed", error=str(e))
+        return frozenset(), frozenset()

@@ -4,11 +4,11 @@ Go from zero to "my first trace in the Observal dashboard" in about five minutes
 
 By the end of this guide you will have:
 
-* The Observal CLI installed
-* An Observal server running locally
-* The CLI logged in as an admin
-* At least one MCP server instrumented
-* A live trace visible in the web UI
+- The Observal CLI installed
+- An Observal server running locally
+- The CLI logged in as an admin
+- At least one MCP server instrumented
+- A live trace visible in the web UI
 
 ## 1. Install the CLI
 
@@ -17,6 +17,9 @@ curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh
 ```
 
 No Python required. For alternative install methods, see [Installation](installation.md).
+
+> [!NOTE]
+> You need Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
 
 ## 2. Start the server
 
@@ -28,18 +31,20 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-That's it. The `.env.example` ships with working defaults. Eight containers come up:
+That's it. The `.env.example` ships with working defaults. Ten services come up:
 
-| Service | URL |
-| --- | --- |
-| API (FastAPI) | `http://localhost:8000` |
-| Web UI (Next.js) | `http://localhost:3000` |
-| Postgres | `localhost:5432` |
-| ClickHouse | `localhost:8123` |
-| Redis | `localhost:6379` |
-| Worker | internal |
-| OTEL Collector | `localhost:4317` (gRPC), `4318` (HTTP) |
-| Grafana | `http://localhost:3001` |
+| Service               | URL                     | Purpose                        |
+| --------------------- | ----------------------- | ------------------------------ |
+| `observal-lb` (nginx) | `http://localhost:8000` | Reverse proxy → API            |
+| `observal-web`        | `http://localhost:3000` | Web UI (Next.js)               |
+| `observal-api`        | internal                | FastAPI + OTLP ingestion       |
+| `observal-worker`     | internal                | Background jobs (arq)          |
+| `observal-init`       | internal                | Runs DB migrations, then exits |
+| `observal-db`         | `localhost:5432`        | PostgreSQL 16                  |
+| `observal-clickhouse` | `localhost:8123`        | ClickHouse                     |
+| `observal-redis`      | `localhost:6379`        | Redis                          |
+| `observal-prometheus` | `http://localhost:9090` | Prometheus                     |
+| `observal-grafana`    | `http://localhost:3001` | Grafana                        |
 
 The API waits for Postgres, ClickHouse, and Redis to pass health checks before starting — expect 15–30 seconds. Confirm it is up:
 
@@ -62,12 +67,12 @@ Prompts:
 2. **Login method** — pick `[E]mail`
 3. **Email / password** — use one of the seeded demo accounts:
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Super Admin | `super@demo.example` | `super-changeme` |
-| Admin | `admin@demo.example` | `admin-changeme` |
-| Reviewer | `reviewer@demo.example` | `reviewer-changeme` |
-| User | `user@demo.example` | `user-changeme` |
+| Role        | Email                   | Password            |
+| ----------- | ----------------------- | ------------------- |
+| Super Admin | `super@demo.example`    | `super-changeme`    |
+| Admin       | `admin@demo.example`    | `admin-changeme`    |
+| Reviewer    | `reviewer@demo.example` | `reviewer-changeme` |
+| User        | `user@demo.example`     | `user-changeme`     |
 
 Log in as super admin for the fewest restrictions while exploring. Credentials land in `~/.observal/config.json` (mode `0600`).
 
@@ -78,9 +83,9 @@ observal auth whoami
 # → super@demo.example (super_admin)
 ```
 
-## 4. Instrument your IDE
+## 4. Discover and instrument your IDE
 
-If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, one command wires them all up:
+If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, first see what's there:
 
 ```bash
 observal scan
@@ -89,23 +94,48 @@ observal scan
 Expected output:
 
 ```
-Scanning Claude Code config...
-  ✓ filesystem        wrapped  (was: npx @modelcontextprotocol/server-filesystem)
-  ✓ github            wrapped  (was: npx @modelcontextprotocol/server-github)
+Claude Code (~/.claude/settings.json)
+  filesystem        npx @modelcontextprotocol/server-filesystem   not wrapped
+  github            npx @modelcontextprotocol/server-github       not wrapped
 
-Scanning Kiro config...
-  ✓ mcp-obsidian      wrapped
+Kiro (.kiro/settings/mcp.json)
+  mcp-obsidian      mcp-obsidian                                  not wrapped
 
-Backup saved: ~/.claude/settings.json.20260421_143055.bak
-3 server(s) instrumented across 2 IDE(s).
+2 IDE(s) found, 3 MCP server(s) total, 0 wrapped.
 ```
 
-What `scan` did:
+`scan` is read-only -- it shows what you have without modifying anything. Now instrument everything:
 
-* Found your existing MCP config files (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, etc.)
-* Registered each MCP server with Observal
-* Rewrote the config so every server runs through `observal-shim` (transparent — no behavior change)
-* Saved a timestamped `.bak` next to every file it touched
+```bash
+observal doctor patch --all --all-ides
+```
+
+Expected output:
+
+```
+Patching Claude Code...
+  ✓ filesystem        wrapped  (was: npx @modelcontextprotocol/server-filesystem)
+  ✓ github            wrapped  (was: npx @modelcontextprotocol/server-github)
+  ✓ Telemetry hooks installed
+
+Patching Kiro...
+  ✓ mcp-obsidian      wrapped
+  ✓ Telemetry hooks installed
+
+Backups saved:
+  ~/.claude/settings.json.20260421_143055.bak
+  .kiro/settings/mcp.json.20260421_143055.bak
+
+3 server(s) instrumented, hooks installed across 2 IDE(s).
+```
+
+What `doctor patch --all` did:
+
+- Found your existing MCP config files (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, etc.)
+- Rewrote the config so every MCP server runs through `observal-shim` (transparent -- no behavior change)
+- Installed telemetry hooks for session lifecycle events
+- Configured OTel export where supported
+- Saved a timestamped `.bak` next to every file it touched
 
 Nothing broke. Your agents still work exactly as before. The only difference: every tool call now generates a span.
 
@@ -157,9 +187,9 @@ Every MCP request/response is now a span. Spans group into traces. Traces form s
 
 ## Where to next
 
-| You want to... | Go to |
-| --- | --- |
-| Understand the data model | [Core Concepts](core-concepts.md) |
-| Learn what to do with traces | [Use Cases](../use-cases/README.md) |
+| You want to...                      | Go to                                     |
+| ----------------------------------- | ----------------------------------------- |
+| Understand the data model           | [Core Concepts](core-concepts.md)         |
+| Learn what to do with traces        | [Use Cases](../use-cases/README.md)       |
 | Configure the server for production | [Self-Hosting](../self-hosting/README.md) |
-| Deep-dive on a CLI command | [CLI Reference](../cli/README.md) |
+| Deep-dive on a CLI command          | [CLI Reference](../cli/README.md)         |

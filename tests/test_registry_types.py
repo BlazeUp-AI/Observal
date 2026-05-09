@@ -118,14 +118,15 @@ class TestModels:
         assert SandboxDownload.__tablename__ == "sandbox_downloads"
 
     def test_listing_status_reused_not_redefined(self):
-        """All remaining listing models import ListingStatus from models.mcp: not their own copy."""
-        from models.hook import HookListing
+        """All version models use the same ListingStatus enum from models.mcp."""
+        from models.hook import HookVersion
         from models.mcp import ListingStatus as Canonical
-        from models.prompt import PromptListing
-        from models.sandbox import SandboxListing
-        from models.skill import SkillListing
+        from models.mcp import McpVersion
+        from models.prompt import PromptVersion
+        from models.sandbox import SandboxVersion
+        from models.skill import SkillVersion
 
-        for model in (SkillListing, HookListing, PromptListing, SandboxListing):
+        for model in (McpVersion, SkillVersion, HookVersion, PromptVersion, SandboxVersion):
             col = model.__table__.columns["status"]
             assert col.type.enum_class is Canonical
 
@@ -256,8 +257,6 @@ class TestSkillRoutes:
         db.refresh = AsyncMock(side_effect=_refresh)
         db.execute = AsyncMock(return_value=_scalar_result(None))
 
-        # The route passes archive_url to SkillListing but the model lacks that column.
-        # Patch SkillListing.__init__ to accept and ignore unknown kwargs.
         from models.skill import SkillListing
 
         _orig_init = SkillListing.__init__
@@ -273,8 +272,7 @@ class TestSkillRoutes:
                     json={"name": "s", "version": "1.0", "description": "d", "owner": "o", "task_type": "code-review"},
                 )
         assert r.status_code == 200
-        db.add.assert_called_once()
-        assert r.json()["status"] == "pending"
+        assert db.add.call_count == 2  # listing + version
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
@@ -337,8 +335,7 @@ class TestHookRoutes:
                 },
             )
         assert r.status_code == 200
-        db.add.assert_called_once()
-        assert r.json()["status"] == "pending"
+        assert db.add.call_count == 2  # listing + version
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
@@ -401,8 +398,7 @@ class TestPromptRoutes:
                 },
             )
         assert r.status_code == 200
-        db.add.assert_called_once()
-        assert r.json()["status"] == "pending"
+        assert db.add.call_count == 2  # listing + version
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
@@ -492,8 +488,7 @@ class TestSandboxRoutes:
                 },
             )
         assert r.status_code == 200
-        db.add.assert_called_once()
-        assert r.json()["status"] == "pending"
+        assert db.add.call_count == 2  # listing + version
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):

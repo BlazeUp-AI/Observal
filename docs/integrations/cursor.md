@@ -4,7 +4,7 @@ Cursor is supported at the MCP and rules level. Telemetry is MCP-traffic-only �
 
 ## What you get
 
-* **MCP server instrumentation** — `observal scan --ide cursor` wraps MCPs via `observal-shim`
+* **MCP server instrumentation** — `observal doctor patch --shim --ide cursor` wraps MCPs via `observal-shim`
 * **Rules files** — Cursor reads `AGENTS.md` / `.cursor/rules` for system instructions
 
 ## What you don't get
@@ -20,15 +20,16 @@ If these matter, use Claude Code or Kiro instead.
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 observal auth login
 
-observal scan --ide cursor
-observal doctor --ide cursor
+observal scan --ide cursor                         # see what's there
+observal doctor patch --all --ide cursor            # instrument it
+observal doctor --ide cursor                        # verify
 ```
 
 Restart Cursor.
 
 ## Config file
 
-`.cursor/mcp.json` in your project directory. After `scan`, every MCP entry routes through `observal-shim`. A timestamped `.bak` is saved next to the file.
+`.cursor/mcp.json` in your project directory. After `doctor patch --shim`, every MCP entry routes through `observal-shim`. A timestamped `.bak` is saved next to the file.
 
 ## Install an agent
 
@@ -45,7 +46,7 @@ Cursor reloads MCP on the next prompt — you may need to restart Cursor for a c
 
 ## Caveats
 
-* Cursor's MCP config is currently per-project. For global config, repeat `scan` per project or use `observal use` with a profile that applies to multiple directories.
+* Cursor's MCP config is currently per-project. For global config, repeat `doctor patch` per project or use `observal use` with a profile that applies to multiple directories.
 * Because there are no lifecycle hooks, traces are tool-call-level. You won't see "user prompt X produced tool calls Y and Z" — only Y and Z.
 
 ## Related

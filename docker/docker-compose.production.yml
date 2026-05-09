@@ -1,0 +1,12 @@
+services:
+  observal-web:
+    environment:
+      - NEXT_PUBLIC_API_URL=https://${DOMAIN:-internal.observal.io}
+
+  observal-lb:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro

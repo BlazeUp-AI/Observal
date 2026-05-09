@@ -236,8 +236,7 @@ class TestInstallRouteWiring:
             "api.routes.config.derive_endpoints",
             return_value={
                 "api": "http://localhost:8000",
-                "otlp_http": "http://localhost:4318",
-                "otlp_grpc": "http://localhost:4317",
+                "otlp_http": "http://localhost:8000",
                 "web": "http://localhost:3000",
             },
         ):
@@ -275,8 +274,7 @@ class TestInstallRouteWiring:
             "api.routes.config.derive_endpoints",
             return_value={
                 "api": "http://localhost:8000",
-                "otlp_http": "http://localhost:4318",
-                "otlp_grpc": "http://localhost:4317",
+                "otlp_http": "http://localhost:8000",
                 "web": "http://localhost:3000",
             },
         ):

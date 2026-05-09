@@ -1,12 +1,16 @@
 /**
  * IDE feature capability matrix — TypeScript mirror of
- * observal-server/schemas/constants.py.
+ * observal-server/schemas/ide_registry.py (IDE_REGISTRY).
+ *
+ * When adding or changing IDE entries, update IDE_REGISTRY in
+ * observal-server/schemas/ide_registry.py first, then mirror here.
  */
 
 export const VALID_IDES = [
   "claude-code",
   "codex",
   "copilot",
+  "copilot-cli",
   "cursor",
   "gemini-cli",
   "kiro",
@@ -32,9 +36,10 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   "claude-code": new Set(["skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   kiro: new Set(["superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"]),
   cursor: new Set(["mcp_servers", "rules"]),
-  "gemini-cli": new Set(["mcp_servers", "rules"]),
+  "gemini-cli": new Set(["hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   codex: new Set(["rules"]),
   copilot: new Set(["mcp_servers", "rules"]),
+  "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   opencode: new Set(["mcp_servers", "rules"]),
   vscode: new Set(["mcp_servers", "rules"]),
 };
@@ -46,6 +51,7 @@ export const IDE_DISPLAY_NAMES: Record<IdeName, string> = {
   "gemini-cli": "Gemini CLI",
   codex: "Codex",
   copilot: "Copilot",
+  "copilot-cli": "Copilot CLI",
   opencode: "OpenCode",
   vscode: "VS Code",
 };
@@ -59,3 +65,30 @@ export const FEATURE_LABELS: Record<IdeFeature, string> = {
   steering_files: "Steering files",
   otlp_telemetry: "OTLP telemetry",
 };
+
+/**
+ * Whether each IDE accepts an explicit model choice.
+ * Mirror of `accepts_model_choice` in IDE_REGISTRY (server) /
+ * observal_cli/ide_registry.py (CLI).
+ */
+export const IDE_ACCEPTS_MODEL_CHOICE: Record<IdeName, boolean> = {
+  "claude-code": true,
+  kiro: true,
+  "gemini-cli": true,
+  codex: true,
+  opencode: true,
+  cursor: false,
+  copilot: false,
+  "copilot-cli": false,
+  vscode: false,
+};
+
+export function ideAcceptsModelChoice(ide: string): boolean {
+  return IDE_ACCEPTS_MODEL_CHOICE[ide as IdeName] === true;
+}
+
+export function getModelChoiceIdes(): IdeName[] {
+  return (Object.keys(IDE_ACCEPTS_MODEL_CHOICE) as IdeName[]).filter(
+    (ide) => IDE_ACCEPTS_MODEL_CHOICE[ide],
+  );
+}

@@ -382,8 +382,8 @@ class TestReadCount:
 class TestConstants:
     """Verify CLICKHOUSE_TABLES, FK_PG_TABLE_MAP, and EPOCH_SENTINELS."""
 
-    def test_clickhouse_tables_has_6_entries(self):
-        assert len(CLICKHOUSE_TABLES) == 6
+    def test_clickhouse_tables_has_7_entries(self):
+        assert len(CLICKHOUSE_TABLES) == 7
 
     def test_each_table_has_required_keys(self):
         for table_cfg in CLICKHOUSE_TABLES:
@@ -394,7 +394,15 @@ class TestConstants:
 
     def test_table_names(self):
         names = {t["name"] for t in CLICKHOUSE_TABLES}
-        expected = {"traces", "spans", "scores", "audit_log", "mcp_tool_calls", "agent_interactions"}
+        expected = {
+            "traces",
+            "spans",
+            "scores",
+            "audit_log",
+            "otel_logs",
+            "security_events",
+            "webhook_deliveries",
+        }
         assert names == expected
 
     def test_engine_types(self):
@@ -407,7 +415,12 @@ class TestConstants:
 
     def test_mergetree_tables(self):
         mergetree = [t["name"] for t in CLICKHOUSE_TABLES if t["engine"] == "mergetree"]
-        assert set(mergetree) == {"audit_log", "mcp_tool_calls", "agent_interactions"}
+        assert set(mergetree) == {
+            "audit_log",
+            "otel_logs",
+            "security_events",
+            "webhook_deliveries",
+        }
 
     def test_typed_dict_structure(self):
         """Verify CLICKHOUSE_TABLES entries conform to TableCfg TypedDict."""
@@ -847,7 +860,7 @@ class TestTelemetryManifestRoundTripProperty:
     @given(
         migration_id=st.uuids(),
         row_counts=st.dictionaries(
-            keys=st.sampled_from(["traces", "spans", "scores", "audit_log", "mcp_tool_calls"]),
+            keys=st.sampled_from(["traces", "spans", "scores", "audit_log", "otel_logs"]),
             values=st.integers(min_value=0, max_value=1_000_000),
             min_size=1,
             max_size=5,

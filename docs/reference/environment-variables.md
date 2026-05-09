@@ -94,13 +94,11 @@ Used only by `docker/docker-compose.yml`. Remap if a default is already in use.
 
 | Variable | Default | Service |
 | --- | --- | --- |
-| `API_HOST_PORT` | `8000` | API |
+| `API_HOST_PORT` | `8000` | API (+ OTLP ingestion) |
 | `WEB_HOST_PORT` | `3000` | Web UI |
 | `POSTGRES_HOST_PORT` | `5432` | Postgres |
 | `CLICKHOUSE_HOST_PORT` | `8123` | ClickHouse |
 | `REDIS_HOST_PORT` | `6379` | Redis |
-| `OTEL_GRPC_HOST_PORT` | `4317` | OTEL Collector (gRPC) |
-| `OTEL_HTTP_HOST_PORT` | `4318` | OTEL Collector (HTTP) |
 | `GRAFANA_HOST_PORT` | `3001` | Grafana |
 
 ### Grafana

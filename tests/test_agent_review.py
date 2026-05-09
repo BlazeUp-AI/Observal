@@ -63,8 +63,22 @@ def _agent_mock(status=AgentStatus.pending, **extra):
     m.created_at = datetime.now(UTC)
     m.updated_at = datetime.now(UTC)
     m.components = extra.get("components", [])
+    m.latest_version = extra.get("latest_version")
     for k, v in extra.items():
         setattr(m, k, v)
+    return m
+
+
+def _version_mock(status=AgentStatus.pending, **extra):
+    """Return a MagicMock that looks like an AgentVersion ORM instance."""
+    m = MagicMock()
+    m.id = extra.get("id", uuid.uuid4())
+    m.version = extra.get("version", "1.0.0")
+    m.status = status
+    m.rejection_reason = None
+    m.components = extra.get("components", [])
+    m.reviewed_by = None
+    m.reviewed_at = None
     return m
 
 
@@ -75,11 +89,11 @@ def _empty_result():
     return r
 
 
-def _result_with_agent(agent):
-    """Return a mock result that yields the agent via scalar_one_or_none."""
+def _result_with(obj):
+    """Return a mock result that yields obj via scalar_one_or_none."""
     r = MagicMock()
-    r.scalar_one_or_none.return_value = agent
-    r.scalars.return_value.all.return_value = [agent]
+    r.scalar_one_or_none.return_value = obj
+    r.scalars.return_value.all.return_value = [obj] if obj else []
     return r
 
 
@@ -95,18 +109,18 @@ class TestAgentApprove:
     async def test_sets_status_to_active(self):
         """Approving a pending agent with all components ready sets status to active."""
         app, db, _ = _app_with()
+        pending_ver = _version_mock(status=AgentStatus.pending, components=[])
         agent = _agent_mock(status=AgentStatus.pending, components=[])
 
-        # First execute: select Agent -> returns agent
-        # The endpoint uses selectinload, so scalar_one_or_none is the path
-        db.execute = AsyncMock(return_value=_result_with_agent(agent))
+        # 1st execute: select Agent; 2nd: select pending AgentVersion
+        db.execute = AsyncMock(side_effect=[_result_with(agent), _result_with(pending_ver)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(f"/api/v1/review/agents/{agent.id}/approve")
 
         assert r.status_code == 200
-        assert agent.status == AgentStatus.active
-        assert r.json()["status"] == "active"
+        assert pending_ver.status == AgentStatus.approved
+        assert r.json()["status"] == "approved"
         db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -117,16 +131,13 @@ class TestAgentApprove:
         comp = MagicMock()
         comp.component_type = "mcp"
         comp.component_id = uuid.uuid4()
+        pending_ver = _version_mock(status=AgentStatus.pending, components=[comp])
         agent = _agent_mock(status=AgentStatus.pending, components=[comp])
 
-        # First call: select Agent -> agent
-        # Second call: select component status -> component not approved
+        # Row returned by _check_agent_components_ready
         blocking_row = MagicMock()
         blocking_row.id = comp.component_id
         blocking_row.name = "unapproved-mcp"
-        blocking_row.status = MagicMock()
-        blocking_row.status.value = "pending"
-        # The status comparison != ListingStatus.approved should be truthy
         from models.mcp import ListingStatus
 
         blocking_row.status = ListingStatus.pending
@@ -134,7 +145,8 @@ class TestAgentApprove:
         component_result = MagicMock()
         component_result.all.return_value = [blocking_row]
 
-        db.execute = AsyncMock(side_effect=[_result_with_agent(agent), component_result])
+        # 1st: select Agent; 2nd: select pending AgentVersion; 3rd: component check
+        db.execute = AsyncMock(side_effect=[_result_with(agent), _result_with(pending_ver), component_result])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(f"/api/v1/review/agents/{agent.id}/approve")
@@ -145,8 +157,10 @@ class TestAgentApprove:
     async def test_response_includes_id_and_name(self):
         """Approval response includes agent id, name, and status."""
         app, db, _ = _app_with()
+        pending_ver = _version_mock(status=AgentStatus.pending, version="1.0.0", components=[])
         agent = _agent_mock(status=AgentStatus.pending, name="my-agent", components=[])
-        db.execute = AsyncMock(return_value=_result_with_agent(agent))
+
+        db.execute = AsyncMock(side_effect=[_result_with(agent), _result_with(pending_ver)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(f"/api/v1/review/agents/{agent.id}/approve")
@@ -154,7 +168,7 @@ class TestAgentApprove:
         data = r.json()
         assert data["name"] == "my-agent"
         assert data["id"] == str(agent.id)
-        assert data["status"] == "active"
+        assert data["status"] == "approved"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -169,8 +183,11 @@ class TestAgentReject:
     async def test_sets_status_and_stores_reason(self):
         """Rejecting a pending agent stores the rejection reason."""
         app, db, _ = _app_with()
+        pending_ver = _version_mock(status=AgentStatus.pending)
         agent = _agent_mock(status=AgentStatus.pending)
-        db.execute = AsyncMock(return_value=_result_with_agent(agent))
+
+        # 1st: select Agent; 2nd: select pending AgentVersion
+        db.execute = AsyncMock(side_effect=[_result_with(agent), _result_with(pending_ver)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(
@@ -179,17 +196,19 @@ class TestAgentReject:
             )
 
         assert r.status_code == 200
-        assert agent.status == AgentStatus.rejected
-        assert agent.rejection_reason == "missing documentation"
+        assert pending_ver.status == AgentStatus.rejected
+        assert pending_ver.rejection_reason == "missing documentation"
         assert r.json()["status"] == "rejected"
         db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_reject_active_agent(self):
-        """An active agent can also be rejected."""
+    async def test_reject_active_agent_with_pending_version(self):
+        """An approved agent can have a pending version rejected."""
         app, db, _ = _app_with()
-        agent = _agent_mock(status=AgentStatus.active)
-        db.execute = AsyncMock(return_value=_result_with_agent(agent))
+        pending_ver = _version_mock(status=AgentStatus.pending)
+        agent = _agent_mock(status=AgentStatus.approved)
+
+        db.execute = AsyncMock(side_effect=[_result_with(agent), _result_with(pending_ver)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(
@@ -198,14 +217,16 @@ class TestAgentReject:
             )
 
         assert r.status_code == 200
-        assert agent.status == AgentStatus.rejected
+        assert pending_ver.status == AgentStatus.rejected
 
     @pytest.mark.asyncio
-    async def test_reject_draft_agent_returns_400(self):
-        """Rejecting a draft agent is not allowed (status must be pending or active)."""
+    async def test_reject_returns_400_when_no_pending_version(self):
+        """Rejecting when there is no pending version returns 400."""
         app, db, _ = _app_with()
         agent = _agent_mock(status=AgentStatus.draft)
-        db.execute = AsyncMock(return_value=_result_with_agent(agent))
+
+        # 1st: select Agent; 2nd: select pending AgentVersion -> None
+        db.execute = AsyncMock(side_effect=[_result_with(agent), _result_with(None)])
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post(

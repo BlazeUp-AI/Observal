@@ -282,15 +282,10 @@ class TestIngestEndpoint:
 
 
 class TestLegacyEventsEndpoint:
-    """Verify the old /events endpoint still works."""
+    """The /events endpoint was removed in the single-endpoint refactor."""
 
     @pytest.mark.asyncio
-    async def test_still_exists(self, app):
-        with (
-            patch("api.routes.telemetry.insert_tool_call", new_callable=AsyncMock),
-            patch("api.routes.telemetry.insert_agent_interaction", new_callable=AsyncMock),
-        ):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-                r = await ac.post("/api/v1/telemetry/events", json={})
-            assert r.status_code == 200
-            assert r.json() == {"ingested": 0, "errors": 0}
+    async def test_events_endpoint_removed(self, app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            r = await ac.post("/api/v1/telemetry/events", json={})
+        assert r.status_code in (404, 405)

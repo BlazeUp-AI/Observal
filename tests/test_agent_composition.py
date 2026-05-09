@@ -1066,7 +1066,7 @@ class TestPydanticValidation:
                 AgentFile(path=".claude/rules/test.md", content="# Rules", format="markdown"),
                 AgentFile(path=".mcp.json", content={"mcpServers": {}}, format="json"),
             ],
-            env={"OTEL_ENDPOINT": "http://localhost:4318"},
+            env={"OTEL_ENDPOINT": "http://localhost:8000"},
         )
         assert len(config.files) == 2
         assert config.files[0].format == "markdown"
@@ -1185,7 +1185,7 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "claude-code")
         assert "CLAUDE_CODE_ENABLE_TELEMETRY" in config.env
-        assert "OTEL_EXPORTER_OTLP_ENDPOINT" in config.env
+        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
 
     def test_claude_code_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files
@@ -1240,7 +1240,7 @@ class TestGenerateIdeAgentFiles:
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "gemini-cli")
-        assert "OTEL_EXPORTER_OTLP_ENDPOINT" in config.env
+        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
 
     def test_gemini_cli_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files
@@ -1261,26 +1261,24 @@ class TestGenerateIdeAgentFiles:
         assert agent_file.format == "json"
         content = agent_file.content
         assert content["name"] == "test-agent"
-        assert content["prompt"] == "You are a helpful coding assistant."
+        assert "You are a helpful coding assistant." in content["prompt"]
+        assert "Agent Specialization" in content["prompt"]
         assert "mcpServers" in content
         assert "github-mcp" in content["mcpServers"]
-        assert "@github-mcp" in content["tools"]
-        assert content["model"] == "claude-sonnet-4-20250514"
+        assert "*" in content["tools"]
+        assert content["model"] is None  # Kiro uses auto model selection
 
     # ── Codex ──────────────────────────────────────────────────
 
-    def test_codex_generates_agents_md_and_config_toml(self):
+    def test_codex_generates_agents_md(self):
         from services.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "codex")
         assert config.ide == "codex"
-        assert len(config.files) == 2
+        assert len(config.files) >= 1
         md_file = next(f for f in config.files if f.format == "markdown")
-        toml_file = next(f for f in config.files if f.format == "toml")
         assert md_file.path == "AGENTS.md"
-        assert toml_file.path == "~/.codex/config.toml"
-        assert "[otel]" in toml_file.content
 
     # ── GitHub Copilot ─────────────────────────────────────────
 

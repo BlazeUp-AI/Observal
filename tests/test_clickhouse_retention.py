@@ -57,8 +57,8 @@ async def test_retention_disabled_when_zero():
 
 @pytest.mark.asyncio
 async def test_retention_tables_covered():
-    """All five ClickHouse tables get TTL statements."""
-    expected_tables = {"traces", "spans", "scores", "mcp_tool_calls", "agent_interactions"}
+    """All four ClickHouse tables get TTL statements."""
+    expected_tables = {"traces", "spans", "scores", "otel_logs", "session_events"}
 
     with (
         patch("services.clickhouse.settings") as mock_settings,

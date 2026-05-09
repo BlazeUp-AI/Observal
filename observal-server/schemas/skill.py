@@ -12,7 +12,6 @@ class SkillSubmitRequest(BaseModel):
     version: str
     description: str
     owner: str
-    git_url: str | None = None
     skill_path: str = "/"
     archive_url: str | None = None
     target_agents: list[str] = []
@@ -36,7 +35,6 @@ class SkillDraftRequest(BaseModel):
     version: str = "0.1.0"
     description: str = ""
     owner: str = ""
-    git_url: str | None = None
     skill_path: str = "/"
     target_agents: list[str] = []
     task_type: str = "general"
@@ -58,7 +56,6 @@ class SkillUpdateRequest(BaseModel):
     version: str | None = None
     description: str | None = None
     owner: str | None = None
-    git_url: str | None = None
     skill_path: str | None = None
     target_agents: list[str] | None = None
     task_type: str | None = None
@@ -79,7 +76,6 @@ class SkillListingResponse(BaseModel):
     version: str
     description: str
     owner: str
-    git_url: str | None
     task_type: str
     target_agents: list[str]
     supported_ides: list[str]

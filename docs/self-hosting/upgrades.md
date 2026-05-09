@@ -46,7 +46,7 @@ If you run a single instance and have a ~30-second maintenance window:
 5. Start: `docker compose up -d`.
 6. Smoke test: `observal auth status && observal ops telemetry test`.
 
-Web UI, Postgres, ClickHouse, Redis, OTEL collector stay up throughout. Users see a brief API outage (~15–30 s).
+Web UI, Postgres, ClickHouse, Redis stay up throughout. Users see a brief API outage (~15–30 s).
 
 ## Zero-downtime at scale
 
@@ -86,10 +86,6 @@ The CLI speaks a stable contract with the server — a newer CLI works against a
 ## Zero-downtime for the web UI
 
 The web UI (Next.js, static after build) restarts instantly. Users see a brief reload if they're on the page during the deploy. No special handling required.
-
-## OTEL collector upgrades
-
-Pinned to `0.150.1` in `docker/docker-compose.yml`. To upgrade, bump the image tag and rebuild. Collector config at `otel-collector-config.yaml` must match the new version's schema — read the collector release notes.
 
 ## Next
 

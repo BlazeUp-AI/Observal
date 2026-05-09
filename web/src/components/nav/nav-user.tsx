@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Settings, SunMoon } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { ChevronsUpDown } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -26,7 +26,7 @@ function initials(name: string) {
 }
 
 interface NavUserProps {
-  user: { name: string; email: string };
+  user: { name: string; email: string; username?: string };
 }
 
 export function NavUser({ user }: NavUserProps) {
@@ -62,6 +62,11 @@ export function NavUser({ user }: NavUserProps) {
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">{user.name}</p>
+            {user.username && (
+              <p className="text-xs leading-none text-muted-foreground">
+                @{user.username}
+              </p>
+            )}
             <p className="text-xs leading-none text-muted-foreground">
               {user.email}
             </p>
@@ -69,18 +74,32 @@ export function NavUser({ user }: NavUserProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings">
+          <Link href="/account">
             <Settings className="mr-2 h-4 w-4" />
             Account Settings
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem disabled>
-          <SunMoon className="mr-2 h-4 w-4" />
-          Theme
-        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => {
+          onClick={async () => {
+            try {
+              const token = localStorage.getItem("observal_access_token");
+              const refreshToken = localStorage.getItem("observal_refresh_token");
+              if (token) {
+                await fetch("/api/v1/auth/logout", {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    refresh_token: refreshToken || undefined,
+                  }),
+                });
+              }
+            } catch {
+              // Best-effort — proceed with client-side cleanup regardless
+            }
             clearSession();
             router.push("/login");
           }}

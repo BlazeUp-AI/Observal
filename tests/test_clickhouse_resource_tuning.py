@@ -364,7 +364,7 @@ class TestMaintainClickhouse:
     """Tests for the maintain_clickhouse worker cron job."""
 
     async def test_optimizes_all_tables(self):
-        """Cron job runs OPTIMIZE TABLE on all five tables."""
+        """Cron job runs OPTIMIZE TABLE on all three tables."""
         with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
 
@@ -378,8 +378,6 @@ class TestMaintainClickhouse:
             "traces",
             "spans",
             "scores",
-            "mcp_tool_calls",
-            "agent_interactions",
         }
 
     async def test_optimize_failure_doesnt_stop_other_tables(self):
@@ -402,8 +400,8 @@ class TestMaintainClickhouse:
 
             await maintain_clickhouse({})
 
-        # Should have attempted all 5 OPTIMIZE + 1 health check = 6 calls minimum
-        assert call_count >= 5
+        # Should have attempted all 3 OPTIMIZE + 1 health check = 4 calls minimum
+        assert call_count >= 3
 
     async def test_high_part_count_logged_as_warning(self):
         """Part counts > 300 produce a warning log."""

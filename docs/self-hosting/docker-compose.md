@@ -1,6 +1,6 @@
 # Docker Compose setup
 
-Step-by-step bring-up of the Observal stack. End state: eight healthy containers, API responding at `http://localhost:8000/health`, web UI at `http://localhost:3000`.
+Step-by-step bring-up of the Observal stack. End state: ten healthy services, API responding at `http://localhost:8000/health`, web UI at `http://localhost:3000`.
 
 ## 1. Clone and configure
 
@@ -11,6 +11,9 @@ cp .env.example .env
 ```
 
 The `.env.example` ships with working defaults for every setting, including demo account credentials. You do not need to edit it for local development.
+
+> [!NOTE]
+> You need Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
 
 ## 2. Start the stack
 
@@ -45,12 +48,12 @@ For local dev, `http://localhost:3000` and `http://localhost:8000` are fine. For
 
 `.env.example` seeds four demo accounts on first startup:
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Super Admin | `super@demo.example` | `super-changeme` |
-| Admin | `admin@demo.example` | `admin-changeme` |
-| Reviewer | `reviewer@demo.example` | `reviewer-changeme` |
-| User | `user@demo.example` | `user-changeme` |
+| Role        | Email                   | Password            |
+| ----------- | ----------------------- | ------------------- |
+| Super Admin | `super@demo.example`    | `super-changeme`    |
+| Admin       | `admin@demo.example`    | `admin-changeme`    |
+| Reviewer    | `reviewer@demo.example` | `reviewer-changeme` |
+| User        | `user@demo.example`     | `user-changeme`     |
 
 Log in with the CLI:
 

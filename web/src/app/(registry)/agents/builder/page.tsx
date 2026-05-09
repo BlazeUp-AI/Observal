@@ -33,17 +33,19 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/layouts/page-header";
-import { useRegistryList, useRegistryItem, useAgentValidation, useWhoami, useSaveDraft, useUpdateDraft } from "@/hooks/use-api";
+import { useRegistryList, useRegistryItem, useAgentValidation, useWhoami, useSaveDraft, useUpdateDraft, useStartEdit } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import { registry, type RegistryType } from "@/lib/api";
 import type { RegistryItem } from "@/lib/types";
 import type { ValidationResult } from "@/lib/types";
+import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 
 const DRAFT_STORAGE_KEY = "observal_agent_draft";
 
 import { SortableComponentList } from "@/components/builder/sortable-component-list";
 import { ValidationPanel } from "@/components/builder/validation-panel";
 import { PreviewPanel } from "@/components/builder/preview-panel";
+import { ModelPicker } from "@/components/builder/model-picker";
 
 const COMPONENT_TYPES: { value: RegistryType; label: string }[] = [
   { value: "mcps", label: "MCPs" },
@@ -325,6 +327,7 @@ function AgentBuilderInner() {
   const draftParam = searchParams.get("draft");
   const isEditMode = !!editId;
 
+  const { deploymentMode } = useDeploymentConfig();
   const { data: whoami } = useWhoami();
   const { data: existingAgent } = useRegistryItem("agents", editId ?? draftParam ?? undefined);
 
@@ -333,6 +336,9 @@ function AgentBuilderInner() {
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1.0.0");
   const [modelName, setModelName] = useState("");
+  const [modelsByIde, setModelsByIde] = useState<Record<string, string>>({});
+  const [visibility, setVisibility] = useState<"public" | "private">("private");
+  const [teamAccesses, setTeamAccesses] = useState<{ group_name: string; permission: "view" | "edit" }[]>([]);
   const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState<RegistryType>("mcps");
 
@@ -386,6 +392,14 @@ function AgentBuilderInner() {
     if (typeof agentVersion === "string") setVersion(agentVersion);
     const agentModel = (existingAgent as Record<string, unknown>).model_name;
     if (typeof agentModel === "string") setModelName(agentModel);
+    const agentModelsByIde = (existingAgent as Record<string, unknown>).models_by_ide;
+    if (agentModelsByIde && typeof agentModelsByIde === "object" && !Array.isArray(agentModelsByIde)) {
+      setModelsByIde(agentModelsByIde as Record<string, string>);
+    }
+    const agentVisibility = (existingAgent as Record<string, unknown>).visibility;
+    if (agentVisibility === "public" || agentVisibility === "private") setVisibility(agentVisibility as "public" | "private");
+    const agentTeamAccesses = (existingAgent as Record<string, unknown>).team_accesses;
+    if (Array.isArray(agentTeamAccesses)) setTeamAccesses(agentTeamAccesses as { group_name: string; permission: "view" | "edit" }[]);
 
     if (draftParam) setDraftId(draftParam);
 
@@ -436,6 +450,41 @@ function AgentBuilderInner() {
       if (loaded.length > 0) setCustomPrompts(loaded);
     }
   }, [existingAgent, draftParam]);
+
+  // Edit lock for pending agents — acquire on mount, release on unmount
+  const agentIdParam = editId ?? draftParam;
+  const startEdit = useStartEdit("agents");
+  const editLockAcquiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!agentIdParam || !existingAgent) return;
+    if ((existingAgent as Record<string, unknown>).status !== "pending") return;
+    if (editLockAcquiredRef.current) return;
+    editLockAcquiredRef.current = true;
+
+    startEdit.mutate(agentIdParam, {
+      onError: () => { editLockAcquiredRef.current = false; },
+    });
+
+    const releaseLock = () => {
+      const token = localStorage.getItem("observal_access_token");
+      fetch(`/api/v1/agents/${agentIdParam}/cancel-edit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        keepalive: true,
+      });
+    };
+
+    window.addEventListener("beforeunload", releaseLock);
+    return () => {
+      window.removeEventListener("beforeunload", releaseLock);
+      releaseLock();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentIdParam, existingAgent]);
 
   // Compute selected IDs for quick lookup
   const selectedIds = useMemo(() => {
@@ -498,7 +547,7 @@ function AgentBuilderInner() {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     autoSaveTimerRef.current = setTimeout(() => {
-      const hasContent = name || description || modelName || version !== "1.0.0" ||
+      const hasContent = name || description || modelName || version !== "1.0.0" || visibility !== "private" || teamAccesses.length > 0 ||
         Object.values(selectedComponents).some((items) => items.length > 0) ||
         goalSections.some((s) => s.title || s.content) ||
         customPrompts.some((p) => p.title || p.content);
@@ -511,6 +560,9 @@ function AgentBuilderInner() {
           description,
           version,
           model_name: modelName,
+          models_by_ide: modelsByIde,
+          visibility,
+          team_accesses: teamAccesses,
           components: selectedComponents,
           goal_sections: goalSections,
           custom_prompts: customPrompts,
@@ -526,7 +578,7 @@ function AgentBuilderInner() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [name, description, version, modelName, selectedComponents, goalSections, customPrompts, draftId, isEditMode]);
+  }, [name, description, version, modelName, visibility, teamAccesses, selectedComponents, goalSections, customPrompts, draftId, isEditMode]);
 
   function restoreLocalDraft() {
     try {
@@ -537,6 +589,11 @@ function AgentBuilderInner() {
       if (draft.description) setDescription(draft.description);
       if (draft.version) setVersion(draft.version);
       if (draft.model_name) setModelName(draft.model_name);
+      if (draft.models_by_ide && typeof draft.models_by_ide === "object") {
+        setModelsByIde(draft.models_by_ide);
+      }
+      if (draft.visibility) setVisibility(draft.visibility);
+      if (draft.team_accesses) setTeamAccesses(draft.team_accesses);
       if (draft.components) setSelectedComponents(draft.components);
       if (draft.goal_sections) setGoalSections(draft.goal_sections);
       if (Array.isArray(draft.custom_prompts)) setCustomPrompts(draft.custom_prompts);
@@ -697,8 +754,11 @@ function AgentBuilderInner() {
       version: (versionOverride ?? version).trim() || "1.0.0",
       description: description.trim(),
       owner: whoami?.name || whoami?.email || "unknown",
+      visibility,
+      team_accesses: teamAccesses,
       prompt: promptParts.join("\n\n"),
       model_name: modelName,
+      models_by_ide: modelsByIde,
       components: components.length > 0 ? components : [],
       goal_template: {
         description: goalDescription,
@@ -728,9 +788,19 @@ function AgentBuilderInner() {
     setPublishing(true);
     try {
       const body = buildRequestBody();
-      const created = await registry.create("agents", body);
-      toast.success("Agent submitted for review. An admin must approve it before it becomes visible.");
-      router.push(`/agents/${created.id}`);
+      if (draftId) {
+        await updateDraft.mutateAsync({ id: draftId, body });
+        const agentStatus = existingAgent?.status;
+        if (agentStatus && agentStatus !== "pending") {
+          await registry.submitDraft(draftId);
+        }
+        toast.success(!agentStatus || agentStatus === "pending" ? "Changes saved." : "Agent resubmitted for review.");
+        router.push(`/agents/${draftId}`);
+      } else {
+        const created = await registry.create("agents", body);
+        toast.success("Agent submitted for review. An admin must approve it before it becomes visible.");
+        router.push(`/agents/${created.id}`);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to publish agent";
       toast.error(msg);
@@ -774,8 +844,8 @@ function AgentBuilderInner() {
       <div className="p-6 lg:p-8 w-full mx-auto">
         {/* Restore draft banner */}
         {showRestoreBanner && (
-          <div className="mb-4 flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3">
-            <p className="flex-1 text-sm text-blue-700 dark:text-blue-300">
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-info/20 bg-info/5 px-4 py-3">
+            <p className="flex-1 text-sm text-info">
               You have an unsaved draft.
             </p>
             <Button variant="outline" size="sm" onClick={restoreLocalDraft}>
@@ -847,24 +917,13 @@ function AgentBuilderInner() {
                     onChange={(e) => setVersion(e.target.value)}
                   />
                 </div>
-                <div className="space-y-2 flex-1 max-w-xs">
-                  <Label htmlFor="agent-model" className="text-sm font-medium">
-                    Model
-                  </Label>
-                  <Input
-                    id="agent-model"
-                    list="model-suggestions"
-                    placeholder="claude-sonnet-4-20250514"
-                    value={modelName}
-                    onChange={(e) => setModelName(e.target.value)}
+                <div className="flex-1">
+                  <ModelPicker
+                    modelName={modelName}
+                    onModelNameChange={setModelName}
+                    modelsByIde={modelsByIde}
+                    onModelsByIdeChange={setModelsByIde}
                   />
-                  <datalist id="model-suggestions">
-                    <option value="claude-opus-4-6-20250725" />
-                    <option value="claude-sonnet-4-6-20250725" />
-                    <option value="claude-sonnet-4-20250514" />
-                    <option value="claude-opus-4-20250514" />
-                    <option value="claude-haiku-4-5-20251001" />
-                  </datalist>
                 </div>
               </div>
             </section>
@@ -1081,6 +1140,103 @@ function AgentBuilderInner() {
 
             <Separator />
 
+            {/* Visibility & Access */}
+            {deploymentMode === "enterprise" && (
+              <section className="space-y-4 animate-in stagger-2">
+                <div>
+                  <h3 className="text-sm font-medium font-[family-name:var(--font-display)]">
+                  Visibility & Access
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Determine who can discover and install this agent.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={visibility}
+                  onChange={(e) => setVisibility(e.target.value as "public" | "private")}
+                >
+                  <option value="private">Private (Team Access Only)</option>
+                  <option value="public">Public (Visible to All)</option>
+                </select>
+
+                {visibility === "private" && (
+                  <div className="mt-4 space-y-3 rounded-md border p-4 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Team Permissions</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setTeamAccesses([
+                            ...teamAccesses,
+                            { group_name: "", permission: "view" },
+                          ])
+                        }
+                        className="h-8"
+                      >
+                        <Plus className="mr-1 h-3.5 w-3.5" />
+                        Add Group
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {teamAccesses.map((access, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input
+                            placeholder="Group name (e.g. engineering)"
+                            value={access.group_name}
+                            onChange={(e) => {
+                              const newAccess = [...teamAccesses];
+                              newAccess[i].group_name = e.target.value;
+                              setTeamAccesses(newAccess);
+                            }}
+                            className="h-8 flex-1 text-sm"
+                          />
+                          <select
+                            className="flex h-8 w-28 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={access.permission}
+                            onChange={(e) => {
+                              const newAccess = [...teamAccesses];
+                              newAccess[i].permission = e.target.value as "view" | "edit";
+                              setTeamAccesses(newAccess);
+                            }}
+                          >
+                            <option value="view">View</option>
+                            <option value="edit">Edit</option>
+                          </select>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const newAccess = [...teamAccesses];
+                              newAccess.splice(i, 1);
+                              setTeamAccesses(newAccess);
+                            }}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                      {teamAccesses.length === 0 && (
+                        <p className="text-xs text-muted-foreground pt-1">
+                          No groups configured. Only you can view or edit this agent.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+            <Separator />
+
             {/* Publish */}
             <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -1112,7 +1268,7 @@ function AgentBuilderInner() {
                 ) : (
                   <ArrowRight className="mr-2 h-4 w-4" />
                 )}
-                {isEditMode ? "Update Agent" : "Submit for Review"}
+                {isEditMode ? "Update Agent" : existingAgent?.status === "pending" ? "Save Changes" : "Submit for Review"}
               </Button>
             </div>
           </div>

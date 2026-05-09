@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { auth, setTokens, setUserRole, getUserRole, setUserName, setUserEmail } from "@/lib/api";
+import { auth, setTokens, setUserRole, getUserRole, setUserName, setUserEmail, setUserUsername } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,11 +52,12 @@ function LoginContent() {
           }
           return res.json();
         })
-        .then((data: { access_token: string; refresh_token: string; user: { role: string; name: string; email: string } }) => {
+        .then((data: { access_token: string; refresh_token: string; user: { role: string; name: string; email: string; username?: string } }) => {
           setTokens(data.access_token, data.refresh_token);
           setUserRole(data.user.role);
           setUserName(data.user.name);
           setUserEmail(data.user.email);
+          if (data.user.username) setUserUsername(data.user.username);
           toast.success("Signed in successfully via SSO");
           const nextPath = searchParams.get("next");
           const redirectTo = nextPath && nextPath.startsWith("/") ? nextPath : "/";
@@ -98,10 +99,16 @@ function LoginContent() {
       setUserRole(res.user.role);
       setUserName(res.user.name);
       setUserEmail(res.user.email);
+      if (res.user.username) setUserUsername(res.user.username);
       toast.success("Signed in successfully");
       router.push("/");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Login failed";
+      const raw = e instanceof Error ? e.message : "Login failed";
+      const status = e instanceof Error ? (e as Error & { status?: number }).status : undefined;
+      let msg = raw;
+      if (status === 429 || raw.toLowerCase().includes("rate limit")) {
+        msg = "Too many login attempts. Please wait a minute before trying again.";
+      }
       setError(msg);
       toast.error(msg);
     } finally {
@@ -127,6 +134,7 @@ function LoginContent() {
       setUserRole(res.role);
       setUserName(res.name);
       setUserEmail(res.email);
+      if (res.username) setUserUsername(res.username);
       router.push("/");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to change password";

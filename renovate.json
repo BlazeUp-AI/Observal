@@ -30,8 +30,10 @@
       "groupName": "pre-commit hooks (minor/patch)"
     },
     {
-      "matchUpdateTypes": ["patch"],
-      "automerge": true
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
     }
   ]
 }

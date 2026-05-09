@@ -1,24 +1,27 @@
+"""Telemetry ingestion endpoint for shim/proxy structured spans.
+
+The legacy /hooks and OTLP /v1/{traces,logs,metrics} endpoints have been
+removed — session telemetry now flows through /api/v1/ingest/session
+(session JSONL push) and this endpoint (MCP shim spans).
+"""
+
 import asyncio
 import logging
-import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header
 
 from api.deps import get_project_id, require_role
 from models.user import User, UserRole
 from schemas.telemetry import (
     IngestBatch,
     IngestResponse,
-    TelemetryBatch,
     TelemetryStatusResponse,
 )
 from services.clickhouse import (
-    insert_agent_interaction,
     insert_otel_logs,
     insert_scores,
     insert_spans,
-    insert_tool_call,
     insert_traces,
     query_recent_events,
 )
@@ -30,7 +33,6 @@ router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
 
 # Background tasks that must survive until completion (prevent GC)
 _background_tasks: set[asyncio.Task] = set()
-
 
 # Shim span type → otel_logs event.name mapping
 _SHIM_EVENT_NAMES: dict[str, str] = {
@@ -55,7 +57,7 @@ async def ingest(
     current_user: User = Depends(require_role(UserRole.user)),
     x_observal_environment: str = Header("default"),
 ):
-    """New ingestion endpoint for shim/proxy telemetry."""
+    """Ingestion endpoint for shim/proxy telemetry (traces, spans, scores)."""
     user_id = str(current_user.id)
     project_id = get_project_id(current_user)
     environment = x_observal_environment or "default"
@@ -169,7 +171,6 @@ async def ingest(
     # --- Mirror shim spans into otel_logs for unified session view ---
     if batch.spans and batch.traces:
         try:
-            # Build a lookup of trace metadata for session_id / mcp_id
             trace_meta: dict[str, dict] = {}
             for t in batch.traces:
                 trace_meta[t.trace_id] = {
@@ -184,13 +185,12 @@ async def ingest(
                 meta = trace_meta.get(s.trace_id, {})
                 session_id = meta.get("session_id", "")
                 if not session_id:
-                    continue  # Can't place in a session — skip
+                    continue
 
                 event_name = _SHIM_EVENT_NAMES.get(s.type or "", "shim_other")
                 mcp_id = meta.get("mcp_id", "")
                 tool_name = s.name or ""
 
-                # Build a human-readable body
                 latency_label = f" ({s.latency_ms}ms)" if s.latency_ms else ""
                 body_text = f"shim: {s.type} {tool_name}{latency_label}"
 
@@ -239,7 +239,6 @@ async def ingest(
             if otel_rows:
                 await insert_otel_logs(otel_rows)
 
-                # Notify subscribers so session detail updates live
                 session_ids_seen: set[str] = set()
                 for row in otel_rows:
                     sid = row["LogAttributes"].get("session.id", "")
@@ -286,59 +285,6 @@ async def ingest(
     return IngestResponse(ingested=ingested, errors=errors)
 
 
-@router.post("/events")
-async def ingest_events(
-    batch: TelemetryBatch,
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    ingested = 0
-    errors = 0
-
-    for tc in batch.tool_calls:
-        try:
-            await insert_tool_call(
-                {
-                    "event_id": str(uuid.uuid4()),
-                    "timestamp": now,
-                    "mcp_server_id": tc.mcp_server_id,
-                    "tool_name": tc.tool_name,
-                    "input_params": redact_secrets(tc.input_params) if tc.input_params else tc.input_params,
-                    "response": redact_secrets(tc.response) if tc.response else tc.response,
-                    "latency_ms": tc.latency_ms,
-                    "status": tc.status,
-                    "user_action": tc.user_action,
-                    "session_id": tc.session_id,
-                    "user_id": str(current_user.id),
-                    "ide": tc.ide,
-                }
-            )
-            ingested += 1
-        except Exception:
-            errors += 1
-
-    for ai in batch.agent_interactions:
-        try:
-            await insert_agent_interaction(
-                {
-                    "event_id": str(uuid.uuid4()),
-                    "timestamp": now,
-                    "agent_id": ai.agent_id,
-                    "session_id": ai.session_id,
-                    "tool_calls": ai.tool_calls,
-                    "user_action": ai.user_action,
-                    "latency_ms": ai.latency_ms,
-                    "user_id": str(current_user.id),
-                    "ide": ai.ide,
-                }
-            )
-            ingested += 1
-        except Exception:
-            errors += 1
-
-    return {"ingested": ingested, "errors": errors}
-
-
 @router.get("/status", response_model=TelemetryStatusResponse)
 async def telemetry_status(current_user: User = Depends(require_role(UserRole.admin))):
     counts = await query_recent_events(60)
@@ -347,99 +293,3 @@ async def telemetry_status(current_user: User = Depends(require_role(UserRole.ad
         agent_interaction_events=counts["agent_interaction_events"],
         status="ok",
     )
-
-
-# Kiro CLI uses camelCase event names; normalize to PascalCase
-_KIRO_EVENT_MAP = {
-    "agentSpawn": "SessionStart",
-    "userPromptSubmit": "UserPromptSubmit",
-    "promptSubmit": "UserPromptSubmit",
-    "preToolUse": "PreToolUse",
-    "postToolUse": "PostToolUse",
-    "stop": "Stop",
-    "agentStop": "Stop",
-}
-
-
-@router.post("/hooks")
-async def ingest_hook(request: Request, current_user: User = Depends(require_role(UserRole.user))):
-    """Ingest raw hook JSON from Claude Code/Kiro."""
-    project_id = get_project_id(current_user)
-    body = await request.json()
-
-    # Normalize Kiro camelCase field names to snake_case
-    if "hookEventName" in body and "hook_event_name" not in body:
-        body["hook_event_name"] = body["hookEventName"]
-    if "toolName" in body and "tool_name" not in body:
-        body["tool_name"] = body["toolName"]
-    if "toolInput" in body and "tool_input" not in body:
-        body["tool_input"] = body["toolInput"]
-    if "toolResponse" in body and "tool_response" not in body:
-        body["tool_response"] = body["toolResponse"]
-    if "sessionId" in body and "session_id" not in body:
-        body["session_id"] = body["sessionId"]
-
-    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    raw_event = body.get("hook_event_name", "unknown")
-    hook_event_name = _KIRO_EVENT_MAP.get(raw_event, raw_event)
-    tool_name = body.get("tool_name", "")
-    if tool_name in ("assistant_response", "assistant_thinking"):
-        span_type = f"hook_{tool_name}"
-    elif hook_event_name == "PostToolUse":
-        span_type = "hook_exec"
-    else:
-        span_type = f"hook_{hook_event_name.lower()}"
-    row = {
-        "span_id": str(uuid.uuid4()),
-        "trace_id": body.get("session_id", str(uuid.uuid4())),
-        "parent_span_id": None,
-        "project_id": project_id,
-        "mcp_id": None,
-        "agent_id": None,
-        "user_id": str(current_user.id),
-        "type": span_type,
-        "name": body.get("tool_name", "hook"),
-        "method": "",
-        "input": body.get("tool_input"),
-        "output": body.get("tool_response"),
-        "error": None,
-        "start_time": now,
-        "end_time": now,
-        "latency_ms": None,
-        "status": "success",
-        "ide": "",
-        "environment": "default",
-        "metadata": {},
-        "token_count_input": None,
-        "token_count_output": None,
-        "token_count_total": None,
-        "cost": None,
-        "cpu_ms": None,
-        "memory_mb": None,
-        "hop_count": None,
-        "entities_retrieved": None,
-        "relationships_used": None,
-        "retry_count": None,
-        "tools_available": None,
-        "tool_schema_valid": None,
-        "container_id": None,
-        "exit_code": None,
-        "network_bytes_in": None,
-        "network_bytes_out": None,
-        "disk_read_bytes": None,
-        "disk_write_bytes": None,
-        "oom_killed": None,
-        "query_interface": None,
-        "relevance_score": None,
-        "chunks_returned": None,
-        "embedding_latency_ms": None,
-        "hook_event": hook_event_name,
-        "hook_scope": None,
-        "hook_action": None,
-        "hook_blocked": None,
-        "variables_provided": None,
-        "template_tokens": None,
-        "rendered_tokens": None,
-    }
-    await insert_spans([row])
-    return {"ingested": 1}

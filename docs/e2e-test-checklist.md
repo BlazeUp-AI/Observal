@@ -1,5 +1,7 @@
 # E2E Test Checklist
 
+> For enterprise-mode testing (SSO, SCIM, audit log, security events), see [e2e-test-checklist-enterprise.md](e2e-test-checklist-enterprise.md).
+
 ## Test Accounts
 
 | # | Account | Role | Purpose |
@@ -14,9 +16,20 @@
 
 ---
 
+## Prerequisites
+
+> [!NOTE]
+> You need Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
+
 ## 1. Environment Setup
 - [ ] `make rebuild-clean`
-- [ ] `uv sync`
+- [ ] Install the CLI from source:
+  ```bash
+  git clone https://github.com/BlazeUp-AI/Observal.git
+  cd Observal
+  uv tool install --editable .
+  ```
+- [ ] Verify: `observal --version`
 
 ## 2. Super Admin — User Management
 - [ ] Log in as super admin
@@ -54,6 +67,7 @@
 ## 5. Reviewer B — Review Components via UI
 - [ ] Log in as Reviewer B via UI
 - [ ] View pending submissions in review queue
+- [ ] Click a pending component → click "Review" button on detail page
 - [ ] Approve some components via UI
 - [ ] Reject some components via UI with reasons
 
@@ -84,6 +98,7 @@
 ## 9. Reviewer B — Review Agents via UI
 - [ ] Log in as Reviewer B via UI
 - [ ] View pending agent submissions in review queue
+- [ ] Click a pending agent → click "Review" button on detail page
 - [ ] Approve some agents via UI
 - [ ] Reject some agents via UI with reasons
 
@@ -94,12 +109,12 @@
 
 ## 11. User B — Agent Pull & Downloads
 - [ ] Log in as User B via CLI (`observal auth login`)
-- [ ] Pull/install an agent via CLI (`observal pull <agent> --ide <ide>`)
+- [ ] Pull/install an agent via CLI (`observal agent pull <agent> --ide <ide>`)
 - [ ] Verify download count increases (0 → 1)
 
 ## 12. User C — Agent Pull & Downloads
 - [ ] Log in as User C via CLI (`observal auth login`)
-- [ ] Pull/install the same agent via CLI (`observal pull <agent> --ide <ide>`)
+- [ ] Pull/install the same agent via CLI (`observal agent pull <agent> --ide <ide>`)
 - [ ] Verify download count increases (1 → 2)
 
 ## 13. User B — Multi-IDE Long Prompt Test
@@ -129,8 +144,10 @@
 - [ ] As User C, leave ratings on the same agents/components
 - [ ] Verify aggregate rating summary displays correctly
 
-## 17. CLI — Scan & Doctor
-- [ ] Run `observal scan` to detect IDE configs
+## 17. CLI -- Scan, Doctor & Patch
+- [ ] Run `observal scan` to discover IDE configs (read-only)
+- [ ] Run `observal doctor patch --all --all-ides --dry-run` to preview instrumentation
+- [ ] Run `observal doctor patch --all --all-ides` to instrument IDEs
 - [ ] Run `observal self doctor` to check IDE compatibility
 
 ## 18. Admin — Agent Registry Management
@@ -143,3 +160,182 @@
 - [ ] Log in as User C
 - [ ] Verify archived agents are not visible in the registry
 - [ ] Verify deleted agents are not visible in the registry
+
+---
+
+## Test Matrix
+
+The sections below must be run **twice** — once per configuration:
+
+| Case | Global Tracing | Registered-Agents-Only | What it validates |
+|------|---------------|------------------------|-------------------|
+| **A** | ✅ On (default) | ❌ Off | All agents produce traces regardless of registry status |
+| **B** | ❌ Off | ✅ On | Only spans from registered agents are ingested; unregistered agent activity is silently dropped |
+
+> **How to switch:** Log in as Admin → Settings → toggle "Registered Agents Only". The toggle takes effect immediately for new spans.
+
+Run sections 20–30 once with Case A, then reset and repeat with Case B.
+
+---
+
+## 20. Admin — Trace Privacy Toggle
+
+- [ ] Log in as Admin
+- [ ] Go to Settings → Trace Privacy
+- [ ] Enable trace privacy (users see only their own traces)
+- [ ] Switch to User B → verify User B sees only their own traces
+- [ ] Switch to User C → verify User C sees only their own traces
+- [ ] Switch to Admin → verify Admin can still see all users' traces
+- [ ] Switch to Admin → disable trace privacy
+- [ ] Switch to User B → verify User B can now see other users' traces again
+
+---
+
+## 21. User A — Edit Components & Publish New Versions
+
+### Via UI
+- [ ] Log in as User A
+- [ ] Navigate to an approved Hook → click Edit tab
+- [ ] Change a field (e.g. hook script content) → click "Publish New Version"
+- [ ] In the version bump dialog, select version bump type (patch/minor/major)
+- [ ] Confirm → verify new version appears as "pending review"
+- [ ] Navigate to an approved Skill → click Edit tab
+- [ ] Change a field → publish new version → verify pending status
+- [ ] Navigate to an approved Prompt → click Edit tab
+- [ ] Change a field → publish new version → verify pending status
+
+### Via CLI
+- [ ] Log in as User A via CLI (`observal auth login`)
+- [ ] Run `observal component version list <component-slug>` → verify current versions shown
+- [ ] Run `observal component version publish <component-slug>` → follow interactive prompts
+- [ ] Verify CLI confirms version submitted for review
+
+---
+
+## 22. Reviewer B — Review Component Versions via UI (with Diff)
+
+- [ ] Log in as Reviewer B
+- [ ] Go to review queue → see pending component versions from Section 21
+- [ ] Click a pending version → verify diff dialog shows GitHub-style split view (old vs new)
+- [ ] Approve at least 2 component versions
+- [ ] Reject at least 1 component version with a reason
+
+---
+
+## 23. User A — Edit Agent & Release New Version
+
+### Via UI
+- [ ] Log in as User A
+- [ ] Navigate to an approved agent → click Edit tab
+- [ ] Modify agent config (e.g. change model, add/remove a component)
+- [ ] Click "Release New Version" → select version bump in dialog
+- [ ] Confirm → verify new agent version appears as "pending review"
+
+### Via CLI
+- [ ] Log in as User A via CLI
+- [ ] Run `observal agent versions <agent-slug>` → verify current versions shown
+- [ ] Run `observal agent release <agent-slug>` → follow prompts to publish new version
+- [ ] Verify CLI confirms version submitted for review
+
+---
+
+## 24. Reviewer A — Review Agent Versions via CLI
+
+- [ ] Log in as Reviewer A via CLI
+- [ ] Run `observal admin review list` → see pending agent version from Section 23
+- [ ] Run `observal admin review approve <id>` → approve the new agent version
+
+---
+
+## 25. User B — Pull Updated Agent & Verify New Version
+
+- [ ] Log in as User B via CLI (`observal auth login`)
+- [ ] Run `observal agent pull <agent-slug> --ide <ide>` (note: command moved from `observal pull`)
+- [ ] Verify the pulled config reflects the NEW version's changes (updated model, components, etc.)
+- [ ] Verify per-agent hooks are installed correctly for the chosen IDE
+- [ ] Verify download count increments
+- [ ] Use the pulled agent in an IDE → generate a trace
+- [ ] Verify the trace shows the correct agent version (agent name should reflect the new version)
+- [ ] Switch to Admin → verify the trace's agent_version matches what was pulled
+
+---
+
+## 26. User A — Edit & Resubmit Rejected Items
+
+- [ ] Log in as User A
+- [ ] Navigate to the rejected component version from Section 22
+- [ ] Click Edit / Resubmit → modify the rejected fields
+- [ ] Submit for review again → verify status changes to "pending review"
+- [ ] Navigate to a previously rejected agent (if any)
+- [ ] Edit and resubmit → verify status changes to "pending review"
+
+---
+
+## 27. Registered-Agents-Only Enforcement (Case B only)
+
+> These steps only apply when running under **Case B** (registered-agents-only enabled).
+
+- [ ] Log in as Admin → Settings → enable "Registered Agents Only"
+- [ ] Switch to User B
+- [ ] Use an IDE with a **registered** agent → generate a trace
+- [ ] Verify the trace appears in User B's trace list
+- [ ] Use an IDE with an **unregistered** agent (any agent not in the registry) → generate activity
+- [ ] Verify **no trace** is ingested for the unregistered agent
+- [ ] Run `observal scan` → verify it warns/skips unregistered agents
+- [ ] Run `observal doctor patch --all --all-ides` → verify it only instruments registered agents
+- [ ] Switch to Admin → verify traces only exist for registered agent activity
+
+---
+
+## 28. User A — Edit Pending Submissions (Edit Lock)
+
+> PR #712 / Issue #663: Owners can edit/delete pending items. Editing acquires a 30-min lock that hides the item from the review queue.
+
+### Edit a pending component while in review queue (UI)
+- [ ] Log in as User A
+- [ ] Submit a new component (or use one already pending from earlier sections)
+- [ ] Switch to Reviewer B → verify the pending item appears in review queue
+- [ ] Switch back to User A → open the pending component → click Edit
+- [ ] Verify edit lock is acquired (item shows "editing" state)
+- [ ] Switch to Reviewer B → verify the item has **disappeared** from the review queue
+- [ ] Switch back to User A → save edits
+- [ ] Switch to Reviewer B → verify the item **reappears** in the review queue
+
+### Edit a pending agent while in review queue (UI)
+- [ ] Log in as User A
+- [ ] Navigate to a pending agent → open agent builder / edit page
+- [ ] Verify edit lock is acquired on mount
+- [ ] Switch to Reviewer A → run `observal admin review list` → verify agent is NOT listed
+- [ ] Switch back to User A → save edits
+- [ ] Switch to Reviewer A → run `observal admin review list` → verify agent reappears
+
+### Edit pending items via CLI
+- [ ] Log in as User A via CLI
+- [ ] Run edit command for a pending component (e.g. `observal skill edit <slug>`)
+- [ ] Verify start-edit lock is acquired (check review queue from another session)
+- [ ] Complete the edit → verify cancel-edit releases the lock
+
+### Edge cases
+- [ ] As Reviewer B, open a pending component and begin reviewing it → switch to User A → try to edit that same component → verify User A is blocked (banner shown: "item is being reviewed")
+- [ ] As Reviewer A, open a pending agent in CLI review → switch to User A → try to edit that agent → verify User A is blocked
+- [ ] Reverse: User A starts editing a pending component (lock acquired) → switch to Reviewer B → verify item is gone from review queue (cannot review what's being edited)
+- [ ] As Reviewer B, try to approve/reject a component that User A is currently editing → verify 409 error
+- [ ] Close browser tab while editing a pending item → verify lock releases (item reappears in queue after page close or 30-min TTL expiry)
+- [ ] Delete a pending component from My Submissions → verify it disappears from review queue permanently
+
+---
+
+## 29. Auth — Token Revocation Stops Traces
+
+- [ ] Log in as User B via CLI (`observal auth login`)
+- [ ] Use an IDE with an agent → verify traces are being captured
+- [ ] Run `observal auth logout`
+- [ ] Use the same IDE with the same agent → generate activity
+- [ ] Verify **no new traces** appear (token revoked server-side, telemetry rejected)
+
+---
+
+## 30. CLI Compatibility Checks
+
+- [ ] With an outdated CLI version, run any command → verify warning about CLI version being older than server requires
+- [ ] Verify `observal agent pull` works (not the old `observal pull` which no longer exists)

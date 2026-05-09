@@ -27,7 +27,7 @@ export function PullCommand({ agentName }: { agentName: string }) {
   const [ide, setIde] = useState("cursor");
   const [copied, setCopied] = useState(false);
 
-  const command = `observal pull ${agentName} --ide ${ide}`;
+  const command = `observal agent pull ${agentName} --ide ${ide}`;
 
   function handleCopy() {
     copyToClipboard(command);

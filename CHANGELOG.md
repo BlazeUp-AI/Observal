@@ -2,10 +2,146 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.3.1] - 2026-04-23
+## [0.4.0] - 2026-04-28
 
 ### Added
 
+- add account page with profile, theme picker, and notifications (**web**) ([d748558](https://github.com/BlazeUp-AI/Observal/commit/d7485587c3bbdfd043fdfe58eb6bc4c4170758e1))
+- add 10 curated IDE themes with hand-tuned oklch palettes (**web**) ([dcbb704](https://github.com/BlazeUp-AI/Observal/commit/dcbb7047bb31d3fc0fd590b9092b5bbe3270e8ce))
+- add `observal doctor cleanup` command (**cli**) ([ab26241](https://github.com/BlazeUp-AI/Observal/commit/ab26241ab2a129a9479e92b78425138dc5477e8e))
+
+### Changed
+
+- centralize IDE registry into single source of truth (**registry**) ([295ad48](https://github.com/BlazeUp-AI/Observal/commit/295ad486387ee2804c3e357d8c974dcda206fa54))
+- restructure scan/doctor commands, fix Kiro active sessions (**cli**) ([7273872](https://github.com/BlazeUp-AI/Observal/commit/7273872f5f3e2d3de06f56542ade3ea05f9759af))
+- extract IDE hook specs into observal_cli/ide_specs/ (**cli**) ([4ff36b5](https://github.com/BlazeUp-AI/Observal/commit/4ff36b5989da2a22486051676973de9bfc5be299))
+- rename hooks_spec.py → claude_code_spec.py (**cli**) ([404831b](https://github.com/BlazeUp-AI/Observal/commit/404831bdb5635731c7c77fe7fe7d6dec5314260c))
+- format test_ide_config_e2e.py ([707156a](https://github.com/BlazeUp-AI/Observal/commit/707156a0612a9f52abc44c4e418f8e69bfc9c195))
+- format telemetry.py and cmd_scan.py ([cc92e5b](https://github.com/BlazeUp-AI/Observal/commit/cc92e5b21005b8155a9e8d11059f42a7602a1b4a))
+- format test_settings_reconciler.py ([fedfcbb](https://github.com/BlazeUp-AI/Observal/commit/fedfcbbfb840bfc9a4e895c11d76eef3b1d76a10))
+- fix remaining /otel/hooks references across CLI commands (**cli**) ([637e8fd](https://github.com/BlazeUp-AI/Observal/commit/637e8fd1a6a0c6fa17efec9c7e7b2c3b5931855c))
+- merge OTLP handlers from otlp.py, delete otlp.py (**telemetry**) ([098995e](https://github.com/BlazeUp-AI/Observal/commit/098995e7b6e94ec4ddbc372cc75be690feec5d40))
+- rename otel_dashboard → sessions, prefix /api/v1/sessions (**api**) ([ea9275a](https://github.com/BlazeUp-AI/Observal/commit/ea9275a195b1e44ae8bf963cd39af299da5d4a1b))
+- rename /otel/ API paths to /sessions/ (**web**) ([22cc14d](https://github.com/BlazeUp-AI/Observal/commit/22cc14d157118b55c29fe96f2df51d763e1e970a))
+- move hooks handler from otel_dashboard to telemetry router (**telemetry**) ([aee071e](https://github.com/BlazeUp-AI/Observal/commit/aee071e7325ca0ff6d23357c01924d3585962a58))
+- use server_url for OTLP, remove port derivation (**cli**) ([637ee9f](https://github.com/BlazeUp-AI/Observal/commit/637ee9f2eea346b0e54a5789d457aa8e3e5f264e))
+- fix OTLP fallbacks and hook URL paths (**config-gen**) ([6717515](https://github.com/BlazeUp-AI/Observal/commit/67175151797e7ca9d2b8b93122ce3f2ec2cc1a98))
+- switch to HTTP/JSON OTLP, single-endpoint URLs (**hooks-spec**) ([f532296](https://github.com/BlazeUp-AI/Observal/commit/f532296ac1cc8eb39a6a5d955ddf8840617fb8f2))
+- single-endpoint OTLP — remove gRPC, default to API URL (**config**) ([79e9801](https://github.com/BlazeUp-AI/Observal/commit/79e9801577c640e7318b11a9cba032816bbcfefc))
+- remove OTEL collector, add nginx /v1/ routing (**infra**) ([d4f45ed](https://github.com/BlazeUp-AI/Observal/commit/d4f45edeb7e141c70d56a3f191f32a60e9b09198))
+- remove redundant steering file generation (**kiro**) ([c49ec3c](https://github.com/BlazeUp-AI/Observal/commit/c49ec3c39505d4b46ddfa7e2ca4b5fd13fd58810))
+
+### Documentation
+
+- update stale docstring references to claude_code_spec ([e00e193](https://github.com/BlazeUp-AI/Observal/commit/e00e1930240eddabf2a9e583e59c0eda3f378434))
+- update for single-endpoint architecture ([861a3cf](https://github.com/BlazeUp-AI/Observal/commit/861a3cf6fc1cf060e1c92a69c8ea08ded3295ef4))
+
+### Fixed
+
+- update IDE paths and add skill support per official docs (**registry**) ([1904f94](https://github.com/BlazeUp-AI/Observal/commit/1904f94c15a9ab980d73ff8818fd76fa6bd0a49b))
+- correct VS Code mcp_servers_key and Claude Code home_mcp_config (**registry**) ([1693b40](https://github.com/BlazeUp-AI/Observal/commit/1693b404923b70543ab735c7e5084ab196b3ea0a))
+- make session DAG visualization theme-aware (**web**) ([9f5f542](https://github.com/BlazeUp-AI/Observal/commit/9f5f542a5e7ce10a87d8273dcd9d7897c80eedcd))
+- replace hardcoded colors with semantic theme tokens (**web**) ([ae3b5c4](https://github.com/BlazeUp-AI/Observal/commit/ae3b5c4fecc0ed619aab1316ec8ee4ee9663d022))
+- hide enterprise-only sidebar items in local mode, fix collapsed logo (**web**) ([aad850f](https://github.com/BlazeUp-AI/Observal/commit/aad850f7cd000cbe5ca4720f6195ad128670014d))
+- prevent duplicate Observal hooks in Kiro agent configs ([6256a56](https://github.com/BlazeUp-AI/Observal/commit/6256a569b3f86c1571c81811e0d623429b340486))
+- use sys.executable and python detection for cross-platform hook injection (**hooks**) ([7ee202a](https://github.com/BlazeUp-AI/Observal/commit/7ee202a1375cf29f349d0c88738202500476255f))
+- use sys.executable for hook commands, not hardcoded python3 (**cli**) ([1ddcc81](https://github.com/BlazeUp-AI/Observal/commit/1ddcc8140e982caaf6eadb1af4965e589108a0c6))
+- update crypto public-key URL and e2e test paths (**cli**) ([f01e635](https://github.com/BlazeUp-AI/Observal/commit/f01e6359406b857e03cec640ca02edddb210cb85))
+- update copilot CLI hook test to use module invocation format (**test**) ([d526a4b](https://github.com/BlazeUp-AI/Observal/commit/d526a4b52de380b4f0b9e27a1d874fc940d48363))
+- doctor cleanup should also clean kiro_default.json (**cli**) ([5f7a755](https://github.com/BlazeUp-AI/Observal/commit/5f7a75528263fc0101b1e4b917f29412f58dbae1))
+- use module invocation for hook injection, not cat|python3 pipes (**cli**) ([50af818](https://github.com/BlazeUp-AI/Observal/commit/50af81803f3d3eedbfc6f9fbe0ea5978ba82f314))
+- write native OTLP logs to otel_logs table (**telemetry**) ([4381188](https://github.com/BlazeUp-AI/Observal/commit/4381188f5b0c85f8049e12cc3824d59b3fd9b739))
+- update copilot CLI hooks and remaining otel/hooks references (**cli**) ([be5c960](https://github.com/BlazeUp-AI/Observal/commit/be5c960f0532a5b27f9eccc4ea0fed4977198eca))
+- normalize all IDE ServiceName values in SQL query (**sessions**) ([4e86302](https://github.com/BlazeUp-AI/Observal/commit/4e863026c55c27c4ad29b529d5989652c32640ec))
+- remove exception detail leaks in eval kernel (**security**) ([9d56b6c](https://github.com/BlazeUp-AI/Observal/commit/9d56b6c4770d784912af702a60f580eb0c68e178))
+- address CodeQL findings (**security**) ([ef08221](https://github.com/BlazeUp-AI/Observal/commit/ef08221f2028a04171073d7c03f6b10e7c8c337e))
+- update test expectations and fix eslint warnings (**ci**) ([723a29c](https://github.com/BlazeUp-AI/Observal/commit/723a29cfe32099ead233eaaaddbe9c3245e3d836))
+- seed Kiro hooks with telemetry commands (**agent-builder**) ([14bea3d](https://github.com/BlazeUp-AI/Observal/commit/14bea3d1170e97927e43eeb67792525212cbb781))
+- move /traces /errors /stats above /{session_id} catch-all (**sessions**) ([39d9a60](https://github.com/BlazeUp-AI/Observal/commit/39d9a60b15bd4e9dc4c8a3581f8bbc583a1fdd2d))
+- remove duplicate /sessions prefix from route paths (**sessions**) ([606a00d](https://github.com/BlazeUp-AI/Observal/commit/606a00d16d1e67ca6d5516d988681a48910e5cda))
+- replace structlog with stdlib logging (**sessions**) ([106d489](https://github.com/BlazeUp-AI/Observal/commit/106d4898e6cf1799d1248351456a4fa11b6a84d7))
+- fix remaining OtelSession type reference (**web**) ([c6983a8](https://github.com/BlazeUp-AI/Observal/commit/c6983a86ab148d31266dd637787f57a8e8235f3e))
+- add otel_logs DDL to init_clickhouse (**clickhouse**) ([17fd514](https://github.com/BlazeUp-AI/Observal/commit/17fd514a87d6ac0a1e7cf20d6640dd724adc1b07))
+
+### Other
+
+- update docker/build-push-action action to v7 (**deps**) ([20f2626](https://github.com/BlazeUp-AI/Observal/commit/20f26263f09cfc4c9f95b52d6e5509f3d34af58a))
+- update docker/login-action action to v4 (**deps**) ([e5d87a9](https://github.com/BlazeUp-AI/Observal/commit/e5d87a9dd2fa1b06b384efae2dd87019fbc36d6c))
+- update docker/setup-buildx-action action to v4 (**deps**) ([5e5f3f8](https://github.com/BlazeUp-AI/Observal/commit/5e5f3f8f9b0749265cb28ae39912acd0f0d2c1fb))
+- sync observal-server uv.lock version to 0.3.4 ([eed7bdd](https://github.com/BlazeUp-AI/Observal/commit/eed7bdded2218e60d08aafb623cefa698223b7ff))
+
+### Testing
+
+- update expectations for single-endpoint architecture ([3d271a6](https://github.com/BlazeUp-AI/Observal/commit/3d271a629adc4b5f4e380152b5f5e59f66aeea5c))
+## [0.3.4] - 2026-04-25
+
+### Added
+
+- add copilot-cli doctor checks and SLI repair ([fe8f91a](https://github.com/BlazeUp-AI/Observal/commit/fe8f91af37c6e3d354906c022aaba2e12eb4b816))
+- add copilot-cli scan and hook injection ([8956644](https://github.com/BlazeUp-AI/Observal/commit/8956644008e824ba59675be52448880170a544e8))
+- add copilot-cli server-side config generation ([7c71b94](https://github.com/BlazeUp-AI/Observal/commit/7c71b94b2bdeb3827ecfb48bda0180b065d4de8f))
+- add copilot-cli hook scripts ([4e22c5c](https://github.com/BlazeUp-AI/Observal/commit/4e22c5cf5907c30488e9cb73137495e057463535))
+- add copilot-cli to IDE constants and feature matrix ([065900b](https://github.com/BlazeUp-AI/Observal/commit/065900b63c6f7fd60c1c6d11d9e730d51732293e))
+
+### Documentation
+
+- add copilot-cli integration guide ([c459254](https://github.com/BlazeUp-AI/Observal/commit/c459254ee837e396e9d8dc3a9fc8b3c40d7c4cb6))
+
+### Fixed
+
+- add missing event name mappings for prompt counting (**copilot**) ([0a3acf7](https://github.com/BlazeUp-AI/Observal/commit/0a3acf7c0f135e79291915a9d5081996a7d54762))
+- auto-shim copilot/opencode MCP servers during login (**auth**) ([3d12220](https://github.com/BlazeUp-AI/Observal/commit/3d1222013fd0c2907ae82f5b346949c4bf673795))
+- match native agent config schema and fix prompt injection (**kiro**) ([cb773cc](https://github.com/BlazeUp-AI/Observal/commit/cb773cc090540150bc1284063d06b6b243c5e5fc))
+- replace fragile cat|sed|curl Unix pipelines with Python hook scripts (**kiro**) ([c304172](https://github.com/BlazeUp-AI/Observal/commit/c304172d8a96ed48e56b9f92d73fa5f876effe29))
+- use LB URL as Dockerfile build-time default for API rewrites (**docker**) ([af54ebd](https://github.com/BlazeUp-AI/Observal/commit/af54ebd826ea4789b88894d51136644c25a4e683))
+- preserve URL scheme in endpoint derivation and fix port issues (**config**) ([ef28cfe](https://github.com/BlazeUp-AI/Observal/commit/ef28cfe33e801c816ce529d6b827d84e14979340))
+- reformat test_ide_config_e2e.py to satisfy ruff (**lint**) ([4c065ba](https://github.com/BlazeUp-AI/Observal/commit/4c065ba732c07dd43326eb3d84bbe12be2b040d8))
+- rename camelCase test function to satisfy ruff N802 (**test**) ([77a57d4](https://github.com/BlazeUp-AI/Observal/commit/77a57d47a276495b8898dd2706fd6321cfda02ae))
+- add Copilot CLI platform detection and hide unsupported fields (**web**) ([2259794](https://github.com/BlazeUp-AI/Observal/commit/22597942a864c521e61d3d3f0d5fbf2cf97552c1))
+- add JSONC parsing and per-event hook names for Copilot CLI (**cli**) ([096fd3c](https://github.com/BlazeUp-AI/Observal/commit/096fd3c5092d0fa0e4d6e439d0e7c86ad85540a3))
+- normalize Copilot CLI payloads and inject event names (**hooks**) ([a9d47fa](https://github.com/BlazeUp-AI/Observal/commit/a9d47faa3e327c64bb8ba5cb7be34c9c212ae50e))
+- respect --ide filter in fallback home scan (**scan**) ([cf379dd](https://github.com/BlazeUp-AI/Observal/commit/cf379ddeaca9b24ab6b2f158e3711da433903520))
+- only trace registered Kiro agents, skip kiro_default (**scan**) ([db39514](https://github.com/BlazeUp-AI/Observal/commit/db3951494f61f3e724c6dfc3fb659badd6e916ba))
+- only trace registered Kiro agents, skip kiro_default (**scan**) ([63d2b5d](https://github.com/BlazeUp-AI/Observal/commit/63d2b5dc21b608e7039ddfbd8794afff5de58943))
+- only trace registered Kiro agents, skip kiro_default (**scan**) ([9cdc9c5](https://github.com/BlazeUp-AI/Observal/commit/9cdc9c5cd7b451c968696fd0dda288c7db8f97d1))
+- preserve host port in proxy headers to fix Kiro agent tracing (**nginx**) ([60dcda9](https://github.com/BlazeUp-AI/Observal/commit/60dcda95124b5e0e06307c66a43db2fde8056907))
+
+### Other
+
+- update dependency ruff to v0.15.12 (#575) (**deps**) ([a8a406d](https://github.com/BlazeUp-AI/Observal/commit/a8a406df83a1978b157c0c8d6aac359d70a2da7b))
+
+### Performance
+
+- multi-stage API build, expand dockerignore, add nginx gzip (**docker**) ([21fd2a4](https://github.com/BlazeUp-AI/Observal/commit/21fd2a461bd01709df7775655aedc91a07e608e6))
+
+### Testing
+
+- update assertions for new config format (**kiro**) ([550ade5](https://github.com/BlazeUp-AI/Observal/commit/550ade505fa9eb1658799bdce050cd140927a2d4))
+- add copilot-cli e2e tests ([dfabf02](https://github.com/BlazeUp-AI/Observal/commit/dfabf0215d6bdbb9bc1d0f0e2fb50e36dbe6f6d4))
+## [0.3.3] - 2026-04-24
+
+### Fixed
+
+- filter release artifact download to skip Docker metadata (**ci**) ([dbd6a1b](https://github.com/BlazeUp-AI/Observal/commit/dbd6a1b66ec1dd3a6db067ecc9bc41a17174a329))
+- rename package to observal-cli to match PyPI project (**pypi**) ([9e27f7a](https://github.com/BlazeUp-AI/Observal/commit/9e27f7a4645022356f9fcf02358449664f38c250))
+- disable provenance on per-arch Docker builds (**ci**) ([50a8853](https://github.com/BlazeUp-AI/Observal/commit/50a88535f84b488b87afad4749f908d6d9cf2c9c))
+- native multi-arch Docker builds, drop deprecated macos-13 (**ci**) ([d8232c8](https://github.com/BlazeUp-AI/Observal/commit/d8232c85bdc1a43fb524858ac7ded001ed3a5544))
+- broaden session matching for Claude Code telemetry (**eval**) ([ab6f61d](https://github.com/BlazeUp-AI/Observal/commit/ab6f61d9f4098d06804db7980dfe191759d4ff21))
+- add production compose override for SSL and frontend routing (**deploy**) ([9309f5d](https://github.com/BlazeUp-AI/Observal/commit/9309f5d2128a3593faad326ef9148df5be3a9a9a))
+- broaden session matching for Claude Code telemetry (**eval**) ([3613d22](https://github.com/BlazeUp-AI/Observal/commit/3613d22729ec05f825f9dec925eb5126a4690dff))
+- use SPECPATH for absolute paths in pyinstaller spec (**cli**) ([46de03c](https://github.com/BlazeUp-AI/Observal/commit/46de03c3dde3a950670609696ada45246cd9bb64))
+## [0.3.2] - 2026-04-23
+
+### Added
+
+- add Edit and Resubmit UI for rejected agents and components (**web**) ([1d22a61](https://github.com/BlazeUp-AI/Observal/commit/1d22a61a940d2cf7dd3248515079b1d7d34429f0))
+- inject hooks via scan and auth login, update doctor (**gemini**) ([2e3b3a0](https://github.com/BlazeUp-AI/Observal/commit/2e3b3a0e8beffa44d9db3121fbd559ebb0f8bd08))
+- add hook_bridge and otlp_telemetry to feature matrix (**gemini**) ([e3b442c](https://github.com/BlazeUp-AI/Observal/commit/e3b442c99a3ba3df986703cc9813172980ac806d))
+- add hook bridge scripts for telemetry capture (**gemini**) ([0ef45e2](https://github.com/BlazeUp-AI/Observal/commit/0ef45e2f9b83a576e9427830105a2961ad55d4bf))
+- add kernel DAG efficiency analysis and session visualization (**eval**) ([434df95](https://github.com/BlazeUp-AI/Observal/commit/434df95f3a883c7a8fe33076227abdad3af65f5a))
+- add Moonshot/Kimi judge provider (**eval**) ([fc3ed5d](https://github.com/BlazeUp-AI/Observal/commit/fc3ed5d5f0535c208651a16dd17918078eff9f89))
+- display dimension scores and overall display score (**dashboard**) ([3745f2f](https://github.com/BlazeUp-AI/Observal/commit/3745f2f9d69e87f7bf672556e77831613c495d18))
+- add agent/skill attribution for all IDEs (**otel**) ([1b261ce](https://github.com/BlazeUp-AI/Observal/commit/1b261cedd0f4cebef43646d666cc9e4541d3596e))
 - add CLI commands for all Auth 2.0 backend capabilities (**cli**) ([09cb5bb](https://github.com/BlazeUp-AI/Observal/commit/09cb5bb9b22c9b882cd4c9acc743fd31cdd00755))
 - username login, forced password change, remove registration (**auth**) ([1824316](https://github.com/BlazeUp-AI/Observal/commit/1824316602219d70aecdd74a3d204a24de1af7a0))
 - add admin SSO & SCIM management page (**web**) ([e44c82e](https://github.com/BlazeUp-AI/Observal/commit/e44c82e0dda68366b0287664f89ae04548ebe974))
@@ -65,10 +201,13 @@ All notable changes to this project will be documented in this file.
 
 ### CI
 
+- use GitHub App token for release tag push ([0c9c696](https://github.com/BlazeUp-AI/Observal/commit/0c9c69635a6c9f0772d3bf465e4956b577d02c16))
 - automated release pipeline for CLI, Docker, and server packages ([877e4e1](https://github.com/BlazeUp-AI/Observal/commit/877e4e1705f900f88c6c03582fcd39569aec8268))
 
 ### Changed
 
+- fix ruff lint and format issues ([6e33021](https://github.com/BlazeUp-AI/Observal/commit/6e33021f5d2ad5b5484b45e591a75458e10ec2b3))
+- ruff format main.py ([14832c9](https://github.com/BlazeUp-AI/Observal/commit/14832c9ecda57dba9a9a07843dfc7103eaef34a8))
 - fix ruff lint (ternary + import sorting) ([2406c3d](https://github.com/BlazeUp-AI/Observal/commit/2406c3d2168d1a1729f4bd03da00a7a68a11d2e1))
 - apply ruff format to saml_config model ([9d3ebf8](https://github.com/BlazeUp-AI/Observal/commit/9d3ebf80d4563debb76e7857587314e0e827b732))
 - apply ruff format to audit-instrumented files ([4734a87](https://github.com/BlazeUp-AI/Observal/commit/4734a87ea99ffa725f73257306576c16b7e41519))
@@ -83,6 +222,15 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- update integration docs for hook bridge (**gemini**) ([a2d7d9a](https://github.com/BlazeUp-AI/Observal/commit/a2d7d9a6b5a84bd2bedebcdefe6e60e866fc6be6))
+- add enterprise E2E test checklist ([4ba96ba](https://github.com/BlazeUp-AI/Observal/commit/4ba96ba0bd297e8dfbd0742c8bdcec7855c1b51b))
+- switch Docker callouts from [!IMPORTANT] to [!NOTE] ([087f66c](https://github.com/BlazeUp-AI/Observal/commit/087f66cffc4f473c56c9cdadca364ee1529c3110))
+- fix callout formatting in e2e checklist prerequisites ([fba47fc](https://github.com/BlazeUp-AI/Observal/commit/fba47fce36f8efbb7aad765bfdb3793b9bb497b5))
+- add Docker version note to installation and quickstart guides ([10a76bd](https://github.com/BlazeUp-AI/Observal/commit/10a76bdce51ff11d729351691c3ca7246747a9ee))
+- add Docker version note to self-hosting guides ([d54ce80](https://github.com/BlazeUp-AI/Observal/commit/d54ce800f30d35788ec859710786731049badd05))
+- use source install and add Docker prerequisites to e2e checklist ([4a714d4](https://github.com/BlazeUp-AI/Observal/commit/4a714d456098c2b1b722793da8ea92d4322709c9))
+- update e2e checklist to add CLI install step ([7e728a2](https://github.com/BlazeUp-AI/Observal/commit/7e728a295d61ea206c4523bce3c2c6bf454d9a00))
+- update installation docs to use curl | bash installer ([9ff5b05](https://github.com/BlazeUp-AI/Observal/commit/9ff5b05dc13e20069d06f13ad5a7e3b60b921b56))
 - add OIDC/OAuth SSO setup guide and update CLI docs (**ee**) ([57c908c](https://github.com/BlazeUp-AI/Observal/commit/57c908c4e9d76e64b0291d32775bf7d7022b812b))
 - add CLI SSO authentication guide (**ee**) ([2a2f047](https://github.com/BlazeUp-AI/Observal/commit/2a2f0478dfc391739ddc0093ee7f620d16ce1e9d))
 - add SAML and SCIM setup guides, update enterprise CLI docs (**ee**) ([8f152f6](https://github.com/BlazeUp-AI/Observal/commit/8f152f6578f6752f7f370680932b97e7a9d28b6c))
@@ -96,6 +244,22 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- allow editing and resubmitting rejected listings (**api**) ([7ccea95](https://github.com/BlazeUp-AI/Observal/commit/7ccea955bc96195248545674eaf20c3a6214acb0))
+- update frontend for hook-based telemetry (**gemini**) ([8b50d6a](https://github.com/BlazeUp-AI/Observal/commit/8b50d6a9a297c90971d4aab93e977b3ccfc93680))
+- disable native OTLP and add token enrichment server-side (**gemini**) ([d06494a](https://github.com/BlazeUp-AI/Observal/commit/d06494a2ad37c6d0da9a3376120479bb868040af))
+- replace wget with stdlib urllib in init entrypoint (**docker**) ([527c2cd](https://github.com/BlazeUp-AI/Observal/commit/527c2cd27e3de3042bede76d4971821c0191af5e))
+- deduplicate prompt/tool counts from dual ingestion (**dashboard**) ([545d0e5](https://github.com/BlazeUp-AI/Observal/commit/545d0e5ca523aa910b8ae76da0717c35212f8a34))
+- address all 11 structural-scorer flaws from verification report (**eval**) ([51d55b4](https://github.com/BlazeUp-AI/Observal/commit/51d55b4d408d7afb4cd05ce74b03e2a62e0cd6d4))
+- address PR #495 review feedback from Apoorvgarg-creator ([98824d5](https://github.com/BlazeUp-AI/Observal/commit/98824d54f07b87043922c7f595c1cbb69df96160))
+- replace wget with stdlib urllib for ClickHouse readiness check (**docker**) ([49511bd](https://github.com/BlazeUp-AI/Observal/commit/49511bdb2872786236ea6c9a1f02d0f0d57e5af3))
+- harden ClickHouse init with auth + retries (**docker**) ([86b9cc6](https://github.com/BlazeUp-AI/Observal/commit/86b9cc6e3bee873f9b82c7579b11da82e88d2543))
+- rename mislabeled _today stats fields to match actual query range (**api**) ([5f01156](https://github.com/BlazeUp-AI/Observal/commit/5f01156f18f9ae59929e1543dbd456ec994d9c9c))
+- mock default org in demo account seed tests (**tests**) ([f854803](https://github.com/BlazeUp-AI/Observal/commit/f854803a0cf29e28a7d0f8386114b4af846903b2))
+- ensure default org exists and backfill org-less users at startup ([459f8d6](https://github.com/BlazeUp-AI/Observal/commit/459f8d657f8ad15491249e3f7bd2480ae120b6ff))
+- handle HTTP 204 No Content in client.delete() (**cli**) ([10c67f8](https://github.com/BlazeUp-AI/Observal/commit/10c67f898ee51216e7b4f470fa14a4732af1af5a))
+- skip trailing metadata before assistant messages in stop hook (**hooks**) ([d654839](https://github.com/BlazeUp-AI/Observal/commit/d6548392b927a90a1fb7fbd47ae233ae59e9512f))
+- resolve multiple release workflow issues (**ci**) ([7644f95](https://github.com/BlazeUp-AI/Observal/commit/7644f951cc3f9be554ae1572b0bebf0b0a9a57c9))
+- set git identity for release tag creation (**ci**) ([05f3862](https://github.com/BlazeUp-AI/Observal/commit/05f38628a90c0481f0837beeb73a87fdf6736e5d))
 - inline python version check to avoid indentation error (**ci**) ([65322f0](https://github.com/BlazeUp-AI/Observal/commit/65322f0ee2351dc5e89062f4c7c3ea4892f03d19))
 - allow PR number suffix in release commit detection (**ci**) ([9fb4617](https://github.com/BlazeUp-AI/Observal/commit/9fb461736d8fb37e237919baeddd50db82efd69c))
 - remove register endpoint from deployment guard tests (**tests**) ([d14fea0](https://github.com/BlazeUp-AI/Observal/commit/d14fea0b63bac810d76147eac55c88a65e22c91f))
@@ -158,6 +322,7 @@ All notable changes to this project will be documented in this file.
 
 ### Other
 
+- remove volumes in rebuild-clean target ([c36996f](https://github.com/BlazeUp-AI/Observal/commit/c36996fd65e8b11c83f35576f16dfd2b66bec7f5))
 - semvar fix (**pre-bump**) ([f7179ff](https://github.com/BlazeUp-AI/Observal/commit/f7179ff33347614def431e430a0ca0186d6c1790))
 - remove registration endpoint and CLI command (**auth**) ([28fc0f1](https://github.com/BlazeUp-AI/Observal/commit/28fc0f1277a5f632710446f7e18934a8a28d2096))
 - gitignore AI agent and IDE config directories ([2454408](https://github.com/BlazeUp-AI/Observal/commit/245440842607985380a21e2798d834b95fdfb3e4))
@@ -174,6 +339,7 @@ All notable changes to this project will be documented in this file.
 
 ### Testing
 
+- update e2e tests for hook bridge and disabled OTLP (**gemini**) ([9655b26](https://github.com/BlazeUp-AI/Observal/commit/9655b26b3df6f6c34cdb7e7ddfa3c4be0ae46ec9))
 - add comprehensive tests for Auth 2.0 security features (**auth**) ([adeafd3](https://github.com/BlazeUp-AI/Observal/commit/adeafd3570613f748a2872bb580e64bc1df99be1))
 - update enterprise tests for real SAML/SCIM behavior (**ee**) ([5568201](https://github.com/BlazeUp-AI/Observal/commit/55682010cd05bfef16701be79b388a62b7487ee9))
 - add tests for dollar-var placeholder display ([c352100](https://github.com/BlazeUp-AI/Observal/commit/c3521008b775688174e1619e1f7904582c93e6c2))

@@ -112,6 +112,11 @@ git checkout -b "$RELEASE_BRANCH"
 set_version_in_file "$PYPROJECT" "$NEW_VERSION"
 set_version_in_file "observal-server/pyproject.toml" "$NEW_VERSION"
 
+# ── Update uv.lock ──────────────────────────────────────────
+
+info "Updating uv.lock..."
+uv lock
+
 # ── Generate changelog ───────────────────────────────────────
 
 info "Generating changelog..."
@@ -119,7 +124,7 @@ run_git_cliff --config "$CLIFF_CONFIG" --tag "v$NEW_VERSION" --output CHANGELOG.
 
 # ── Commit and push branch ──────────────────────────────────
 
-git add "$PYPROJECT" observal-server/pyproject.toml CHANGELOG.md
+git add "$PYPROJECT" observal-server/pyproject.toml uv.lock CHANGELOG.md
 git commit -s -m "bump(release): v$NEW_VERSION"
 
 info "Pushing release branch to $FORK_REMOTE..."

@@ -1,0 +1,213 @@
+name: Issue Commands
+
+on:
+  issue_comment:
+    types: [created]
+  schedule:
+    # Run daily at midnight UTC to check for stale assignments
+    - cron: '0 0 * * *'
+
+permissions:
+  issues: write
+
+jobs:
+  take:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      contains(github.event.comment.body, '/take')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check labels and assign
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const commenter = context.payload.comment.user.login;
+
+            // Ensure the trimmed comment is exactly "/take"
+            if (context.payload.comment.body.trim() !== '/take') return;
+
+            const labels = issue.labels.map(l => l.name.toLowerCase());
+
+            // Block assignment on issues tagged "keep open"
+            if (labels.includes('keep open')) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `@${commenter} This issue is marked as **keep open** and is not available for assignment. Anyone is welcome to work on it and submit a PR without being assigned.`
+              });
+              return;
+            }
+
+            const eligible = labels.includes('good first issue') || labels.includes('help wanted');
+
+            if (!eligible) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `@${commenter} This issue is not open for community assignment. The \`/take\` command only works on issues labeled \`good first issue\` or \`help wanted\`.`
+              });
+              return;
+            }
+
+            // Check if the contributor already has 2 or more open assigned issues
+            const { data: assignedIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              assignee: commenter,
+              state: 'open',
+              per_page: 3
+            });
+
+            if (assignedIssues.length >= 2) {
+              // Minimise noise — notify the contributor without cluttering the issue thread
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `> **Note to @${commenter}:** You already have ${assignedIssues.length} open issues assigned to you. Please complete or \`/drop\` an existing issue before taking a new one.\n>\n> Your current assignments:\n${assignedIssues.slice(0, 2).map(i => `> - #${i.number} — ${i.title}`).join('\n')}`
+              });
+              return;
+            }
+
+            if (issue.assignees.length > 0) {
+              const currentAssignee = issue.assignees[0].login;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `@${commenter} This issue is already being worked on by @${currentAssignee}. If there has been no activity for a while, a maintainer may reassign it. You can also check other open issues labeled \`good first issue\` or \`help wanted\`.`
+              });
+              return;
+            }
+
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: [commenter]
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `@${commenter} You've been assigned to this issue. Welcome aboard! 🎉\n\nPlease read our [contributing guide](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/CONTRIBUTING.md) before submitting a PR.`
+            });
+
+  drop:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      contains(github.event.comment.body, '/drop')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unassign commenter
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const commenter = context.payload.comment.user.login;
+
+            // Ensure the trimmed comment is exactly "/drop"
+            if (context.payload.comment.body.trim() !== '/drop') return;
+
+            const isAssigned = issue.assignees.some(a => a.login === commenter);
+
+            if (!isAssigned) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `@${commenter} You are not currently assigned to this issue.`
+              });
+              return;
+            }
+
+            await github.rest.issues.removeAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: [commenter]
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `@${commenter} You've been unassigned from this issue. The issue is now available for others to pick up.`
+            });
+
+  stale-assignments:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unassign stale issues
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const STALE_DAYS = 30;
+            const now = new Date();
+
+            // Fetch open issues that have assignees and qualifying labels
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const assigned = issues.filter(i =>
+              !i.pull_request &&
+              i.assignees.length > 0 &&
+              i.labels.some(l => {
+                const name = l.name.toLowerCase();
+                return name === 'good first issue' || name === 'help wanted';
+              })
+            );
+
+            for (const issue of assigned) {
+              // Get the most recent activity (comments, events) on the issue
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                per_page: 1,
+                direction: 'desc'
+              });
+
+              const { data: events } = await github.rest.issues.listEvents({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                per_page: 1
+              });
+
+              // Find the latest activity timestamp
+              const lastCommentDate = comments.length > 0 ? new Date(comments[0].created_at) : new Date(0);
+              const lastEventDate = events.length > 0 ? new Date(events[events.length - 1].created_at) : new Date(0);
+              const lastActivity = new Date(Math.max(lastCommentDate, lastEventDate, new Date(issue.updated_at)));
+
+              const daysSinceActivity = (now - lastActivity) / (1000 * 60 * 60 * 24);
+
+              if (daysSinceActivity >= STALE_DAYS) {
+                const assignee = issue.assignees[0].login;
+
+                await github.rest.issues.removeAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  assignees: issue.assignees.map(a => a.login)
+                });
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `@${assignee} This issue has been unassigned due to ${STALE_DAYS} days of inactivity. No worries — if you'd like to continue working on it, just comment \`/take\` again. Otherwise, the issue is now available for other contributors.`
+                });
+              }
+            }

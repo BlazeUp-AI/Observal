@@ -37,6 +37,7 @@
 * [Overview](self-hosting/README.md)
 * [Requirements](self-hosting/requirements.md)
 * [Docker Compose setup](self-hosting/docker-compose.md)
+* [AWS deployment with Terraform](self-hosting/aws-terraform.md)
 * [Configuration](self-hosting/configuration.md)
 * [Ports and volumes](self-hosting/ports-and-volumes.md)
 * [Databases](self-hosting/databases.md)

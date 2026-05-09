@@ -79,9 +79,9 @@ export function InstallDialog({ type, id, name }: InstallDialogProps) {
         </Select>
         {loading && <p className="text-sm text-muted-foreground">Loading config…</p>}
         {warnings.length > 0 && (
-          <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 space-y-1">
+          <div className="rounded-md border border-warning/30 bg-warning/10 p-3 space-y-1">
             {warnings.map((w, i) => (
-              <p key={i} className="text-xs text-yellow-700 dark:text-yellow-400 flex items-start gap-1.5">
+              <p key={i} className="text-xs text-warning flex items-start gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 {w}
               </p>

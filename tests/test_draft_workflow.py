@@ -69,7 +69,7 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.rejection_reason = None
     m.download_count = 0
     m.unique_users = 0
-    m.is_private = False
+    m.visibility = "private"
     m.owner_org_id = None
     m.git_url = None
     m.created_by = created_by or uuid.uuid4()
@@ -77,6 +77,11 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.updated_at = datetime.now(UTC)
     m.components = extra.get("components", [])
     m.goal_template = extra.get("goal_template")
+    # Edit-lock fields on the latest_version mock
+    m.latest_version.is_editing = False
+    m.latest_version.editing_by = None
+    m.latest_version.editing_since = None
+    m.latest_version.prompt = extra.get("prompt", "Test prompt")
     # Make __table__.columns iterable for _agent_to_response
     col_keys = [
         "id",
@@ -90,7 +95,7 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
         "model_config_json",
         "external_mcps",
         "supported_ides",
-        "is_private",
+        "visibility",
         "owner_org_id",
         "status",
         "rejection_reason",
@@ -152,6 +157,7 @@ class TestDraftSave:
     """Test creating a new draft agent."""
 
     @pytest.mark.asyncio
+    @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
     @patch("api.routes.agent._load_agent")
     async def test_creates_agent_with_draft_status(self, mock_load):
         """POST /agents/draft creates an agent in draft status."""
@@ -172,6 +178,7 @@ class TestDraftSave:
         db.commit.assert_awaited()
 
     @pytest.mark.asyncio
+    @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
     @patch("api.routes.agent._load_agent")
     async def test_response_includes_agent_fields(self, mock_load):
         """Draft response includes id, name, and status fields."""
@@ -201,6 +208,7 @@ class TestDraftUpdate:
     """Test updating a draft agent."""
 
     @pytest.mark.asyncio
+    @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
     @patch("api.routes.agent._load_agent")
     async def test_updates_draft_fields(self, mock_load):
         """PUT /agents/{id}/draft updates the draft agent."""
@@ -221,10 +229,10 @@ class TestDraftUpdate:
     @pytest.mark.asyncio
     @patch("api.routes.agent._load_agent")
     async def test_rejects_update_on_non_draft(self, mock_load):
-        """Updating a non-draft agent returns 400."""
+        """Updating an approved agent returns 400."""
         user = _user()
         app, db, _ = _app_with(user=user)
-        agent = _agent_mock(status=AgentStatus.pending, created_by=user.id)
+        agent = _agent_mock(status=AgentStatus.approved, created_by=user.id)
         mock_load.return_value = agent
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -262,6 +270,7 @@ class TestDraftSubmit:
     """Test submitting a draft for review."""
 
     @pytest.mark.asyncio
+    @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
     @patch("api.routes.agent.emit_registry_event")
     @patch("api.routes.agent._resolve_component_names")
     @patch("api.routes.agent._load_agent")
@@ -281,6 +290,7 @@ class TestDraftSubmit:
         db.commit.assert_awaited()
 
     @pytest.mark.asyncio
+    @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
     @patch("api.routes.agent.emit_registry_event")
     @patch("api.routes.agent._resolve_component_names")
     @patch("api.routes.agent._load_agent")
@@ -328,7 +338,7 @@ class TestDraftSubmitNotDraft:
         """Submitting an active agent returns 400."""
         user = _user()
         app, db, _ = _app_with(user=user)
-        agent = _agent_mock(status=AgentStatus.active, created_by=user.id)
+        agent = _agent_mock(status=AgentStatus.approved, created_by=user.id)
         mock_load.return_value = agent
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

@@ -97,7 +97,7 @@ async def maintain_clickhouse(ctx: dict):
     """
     from services.clickhouse import _query
 
-    tables = ["traces", "spans", "scores", "mcp_tool_calls", "agent_interactions"]
+    tables = ["traces", "spans", "scores"]
     for table in tables:
         try:
             await _query(f"OPTIMIZE TABLE {table}")
@@ -124,7 +124,60 @@ async def maintain_clickhouse(ctx: dict):
         logger.debug("Part health check failed: %s", e)
 
 
+async def generate_insight_report(ctx: dict, report_id: str):
+    """Background job: generate an insight report for an agent."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        logger.warning("insight_report_skipped", reason="package not installed")
+        return
+
+    logger.info("insight_report_started", report_id=report_id)
+    try:
+        from services.insights.batch import run_single_report
+
+        await run_single_report(report_id)
+    except Exception as e:
+        logger.exception("insight_report_job_failed", report_id=report_id, error=str(e))
+
+
+async def batch_generate_insights(ctx: dict):
+    """Cron job: discover agents needing reports and queue generation."""
+    from services.insights import INSIGHTS_AVAILABLE
+
+    if not INSIGHTS_AVAILABLE:
+        return
+
+    from services.insights.batch import discover_and_queue_reports
+
+    try:
+        queued = await discover_and_queue_reports()
+        if queued > 0:
+            logger.info("insight_batch_queued_reports", count=queued)
+    except Exception as e:
+        logger.exception("insight_batch_failed", error=str(e))
+
+
+async def refresh_model_catalog(ctx: dict):
+    """Cron job: pre-warm the model catalog so user requests never hit a cold cache."""
+    from services.model_catalog import get_catalog
+
+    try:
+        cat = await get_catalog(force_refresh=True)
+        logger.info(
+            "model_catalog_prewarm",
+            source=cat.source,
+            count=cat.model_count,
+            degraded=cat.degraded,
+        )
+    except Exception as e:
+        logger.warning("model_catalog_prewarm_failed", error=str(e))
+
+
 async def startup(ctx: dict):
+    from services.insights import configure_insights
+
+    configure_insights()
     logger.info("arq worker started")
 
 
@@ -135,14 +188,24 @@ async def shutdown(ctx: dict):
 class WorkerSettings:
     """arq worker configuration."""
 
-    functions = [run_eval, sync_component_sources, evaluate_alerts, maintain_clickhouse]
+    functions = [
+        run_eval,
+        sync_component_sources,
+        evaluate_alerts,
+        maintain_clickhouse,
+        generate_insight_report,
+        batch_generate_insights,
+        refresh_model_catalog,
+    ]
     cron_jobs = [
         cron(sync_component_sources, hour={0, 6, 12, 18}),  # Every 6 hours
         cron(evaluate_alerts, second={0}, timeout=55),  # Every minute
         cron(maintain_clickhouse, hour={0, 4, 8, 12, 16, 20}, timeout=120),  # Every 4 hours
+        cron(batch_generate_insights, weekday={0}, hour={6}, minute={0}, timeout=300),  # Weekly Monday 6AM
+        cron(refresh_model_catalog, hour={0, 6, 12, 18}, minute={5}, timeout=30),  # Every 6 hours (offset)
     ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = parse_redis_settings()
     max_jobs = 5
-    job_timeout = 300  # 5 min per eval job
+    job_timeout = 600  # 10 min (V2 insights with facet extraction needs more time)

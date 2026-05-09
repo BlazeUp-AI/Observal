@@ -9,7 +9,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from redis.exceptions import RedisError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -17,7 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
 
-from api.deps import get_db
+from api.deps import get_db, get_or_create_default_org
 from api.graphql import get_context_dep, schema
 from api.middleware.content_type import ContentTypeMiddleware
 from api.middleware.request_id import RequestIDMiddleware
@@ -34,13 +34,17 @@ from api.routes.device_auth import router as device_auth_router
 from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.hook import router as hook_router
+from api.routes.ingest import router as ingest_router
+from api.routes.insights import router as insights_router
 from api.routes.jwks import router as jwks_router
 from api.routes.mcp import router as mcp_router
-from api.routes.otel_dashboard import router as otel_dashboard_router
-from api.routes.otlp import router as otlp_router
+from api.routes.preview import router as preview_router
 from api.routes.prompt import router as prompt_router
+from api.routes.reconcile import router as reconcile_router
+from api.routes.registry_models import router as registry_models_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
+from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.telemetry import router as telemetry_router
 from config import settings
@@ -63,6 +67,7 @@ async def _ensure_columns(conn):
     stmts = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)",
         "ALTER TABLE mcp_listings ADD COLUMN IF NOT EXISTS environment_variables JSONB",
+        "ALTER TABLE agent_versions ADD COLUMN IF NOT EXISTS models_by_ide JSONB NOT NULL DEFAULT '{}'::jsonb",
     ]
     for stmt in stmts:
         try:
@@ -90,8 +95,15 @@ async def lifespan(app: FastAPI):
         key_password=settings.JWT_KEY_PASSWORD,
     )
 
-    # Seed demo accounts when no real users exist and DEMO_* env vars are set
     from database import async_session as _session_factory
+
+    # Ensure default org exists and backfill any users missing one
+    async with _session_factory() as db:
+        default_org = await get_or_create_default_org(db)
+        await db.execute(update(User).where(User.org_id.is_(None)).values(org_id=default_org.id))
+        await db.commit()
+
+    # Seed demo accounts when no real users exist and DEMO_* env vars are set
     from services.demo_accounts import seed_demo_accounts
 
     async with _session_factory() as db:
@@ -106,6 +118,16 @@ async def lifespan(app: FastAPI):
         except ImportError:
             pass
 
+    # Wire insights dependencies (no-op if package not installed)
+    from services.insights import configure_insights
+
+    configure_insights()
+
+    # Start agent registry cache for registered-agents-only filtering
+    from services.agent_registry_cache import start as start_registry_cache
+
+    await start_registry_cache()
+
     yield
 
     if settings.DEPLOYMENT_MODE == "enterprise":
@@ -116,6 +138,9 @@ async def lifespan(app: FastAPI):
         except ImportError:
             pass
 
+    from services.agent_registry_cache import stop as stop_registry_cache
+
+    await stop_registry_cache()
     await close_cache()
     await close_redis()
 
@@ -264,9 +289,6 @@ if settings.DEPLOYMENT_MODE == "enterprise":
 graphql_app = GraphQLRouter(schema, context_getter=get_context_dep)
 app.include_router(graphql_app, prefix="/api/v1/graphql")
 
-# OTLP receiver (unauthenticated, standard paths — must be before /api/v1 routes)
-app.include_router(otlp_router)
-
 # REST (CLI operations, auth, telemetry ingestion)
 app.include_router(auth_router)
 app.include_router(device_auth_router)
@@ -274,6 +296,7 @@ app.include_router(jwks_router)
 app.include_router(mcp_router)
 app.include_router(review_router)
 app.include_router(agent_router)
+app.include_router(preview_router)
 app.include_router(skill_router)
 app.include_router(hook_router)
 app.include_router(prompt_router)
@@ -282,12 +305,16 @@ app.include_router(telemetry_router)
 app.include_router(dashboard_router)
 app.include_router(feedback_router)
 app.include_router(eval_router)
+app.include_router(insights_router)
+app.include_router(reconcile_router)
+app.include_router(ingest_router)
 app.include_router(admin_router)
 app.include_router(alert_router)
-app.include_router(otel_dashboard_router)
+app.include_router(sessions_router)
 app.include_router(component_source_router)
 app.include_router(bulk_router)
 app.include_router(config_router)
+app.include_router(registry_models_router)
 
 # --- Prometheus metrics ---
 Instrumentator(

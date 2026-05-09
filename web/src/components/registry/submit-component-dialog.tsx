@@ -21,7 +21,7 @@ import {
 import { Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { RegistryType } from "@/lib/api";
-import { useRegistryList, useMyComponents } from "@/hooks/use-api";
+import { useRegistryList, useMyComponents, useWhoami } from "@/hooks/use-api";
 
 const MCP_CATEGORIES = [
   "browser-automation", "cloud-platforms", "code-execution", "communication",
@@ -73,8 +73,10 @@ interface SubmitComponentDialogProps {
   type: RegistryType;
   onSubmit: (body: Record<string, unknown>) => void;
   onSaveDraft: (body: Record<string, unknown>) => void;
+  onUpdateDraft?: (id: string, body: Record<string, unknown>) => void;
   isSubmitting: boolean;
   isSavingDraft: boolean;
+  editItem?: Record<string, unknown> | null;
 }
 
 export function SubmitComponentDialog({
@@ -83,50 +85,57 @@ export function SubmitComponentDialog({
   type,
   onSubmit,
   onSaveDraft,
+  onUpdateDraft,
   isSubmitting,
   isSavingDraft,
+  editItem,
 }: SubmitComponentDialogProps) {
+  const d = editItem as Record<string, unknown> | null;
+  const { data: whoami } = useWhoami();
+  const defaultOwner = (d?.owner as string) || whoami?.name || whoami?.username || whoami?.email || "";
+
   // ── Common ──────────────────────────────────────────────
-  const [name, setName] = useState("");
-  const [version, setVersion] = useState("0.1.0");
-  const [description, setDescription] = useState("");
-  const [owner, setOwner] = useState("");
-  const [supportedIdes, setSupportedIdes] = useState<string[]>([]);
+  const [name, setName] = useState((d?.name as string) ?? "");
+  const [version, setVersion] = useState((d?.version as string) ?? "0.1.0");
+  const [description, setDescription] = useState((d?.description as string) ?? "");
+  const [ownerInput, setOwnerInput] = useState((d?.owner as string) ?? "");
+  const owner = ownerInput || defaultOwner;
+  const [supportedIdes, setSupportedIdes] = useState<string[]>(Array.isArray(d?.supported_ides) ? d.supported_ides as string[] : []);
 
   // ── MCP ─────────────────────────────────────────────────
-  const [category, setCategory] = useState("general");
-  const [gitUrl, setGitUrl] = useState("");
-  const [command, setCommand] = useState("");
-  const [args, setArgs] = useState("");
-  const [mcpUrl, setMcpUrl] = useState("");
-  const [transport, setTransport] = useState("");
-  const [framework, setFramework] = useState("");
-  const [dockerImage, setDockerImage] = useState("");
-  const [envVars, setEnvVars] = useState<EnvVar[]>([]);
-  const [setupInstructions, setSetupInstructions] = useState("");
+  const [category, setCategory] = useState((d?.category as string) ?? "general");
+  const [gitUrl, setGitUrl] = useState((d?.git_url as string) ?? "");
+  const [command, setCommand] = useState((d?.command as string) ?? "");
+  const [args, setArgs] = useState(Array.isArray(d?.args) ? (d.args as string[]).join(" ") : "");
+  const [mcpUrl, setMcpUrl] = useState((d?.url as string) ?? "");
+  const [transport, setTransport] = useState((d?.transport as string) ?? "");
+  const [framework, setFramework] = useState((d?.framework as string) ?? "");
+  const [dockerImage, setDockerImage] = useState((d?.docker_image as string) ?? "");
+  const [envVars, setEnvVars] = useState<EnvVar[]>(Array.isArray(d?.environment_variables) ? d.environment_variables as EnvVar[] : []);
+  const [setupInstructions, setSetupInstructions] = useState((d?.setup_instructions as string) ?? "");
 
   // ── Skill ───────────────────────────────────────────────
-  const [taskType, setTaskType] = useState("general");
-  const [skillGitUrl, setSkillGitUrl] = useState("");
-  const [skillPath, setSkillPath] = useState("/");
-  const [mcpServerName, setMcpServerName] = useState("");
+  const [taskType, setTaskType] = useState((d?.task_type as string) ?? "general");
+  const [skillGitUrl, setSkillGitUrl] = useState((d?.git_url as string) ?? "");
+  const [skillPath, setSkillPath] = useState((d?.skill_path as string) ?? "/");
+  const [mcpServerName, setMcpServerName] = useState(((d?.mcp_server_config as Record<string, unknown>)?.server as string) ?? "");
 
   // ── Hook ────────────────────────────────────────────────
-  const [event, setEvent] = useState("PreToolUse");
-  const [handlerType, setHandlerType] = useState("command");
-  const [executionMode, setExecutionMode] = useState("async");
-  const [hookScope, setHookScope] = useState("agent");
-  const [handlerConfig, setHandlerConfig] = useState("");
+  const [event, setEvent] = useState((d?.event as string) ?? "PreToolUse");
+  const [handlerType, setHandlerType] = useState((d?.handler_type as string) ?? "command");
+  const [executionMode, setExecutionMode] = useState((d?.execution_mode as string) ?? "async");
+  const [hookScope, setHookScope] = useState((d?.scope as string) ?? "agent");
+  const [handlerConfig, setHandlerConfig] = useState(d?.handler_config && typeof d.handler_config === "object" ? JSON.stringify(d.handler_config, null, 2) : "");
 
   // ── Prompt ──────────────────────────────────────────────
-  const [promptCategory, setPromptCategory] = useState("general");
-  const [template, setTemplate] = useState("");
+  const [promptCategory, setPromptCategory] = useState(type === "prompts" ? ((d?.category as string) ?? "general") : "general");
+  const [template, setTemplate] = useState((d?.template as string) ?? "");
 
   // ── Sandbox ─────────────────────────────────────────────
-  const [runtimeType, setRuntimeType] = useState("docker");
-  const [image, setImage] = useState("");
-  const [networkPolicy, setNetworkPolicy] = useState("none");
-  const [entrypoint, setEntrypoint] = useState("");
+  const [runtimeType, setRuntimeType] = useState((d?.runtime_type as string) ?? "docker");
+  const [image, setImage] = useState((d?.image as string) ?? "");
+  const [networkPolicy, setNetworkPolicy] = useState((d?.network_policy as string) ?? "none");
+  const [entrypoint, setEntrypoint] = useState((d?.entrypoint as string) ?? "");
 
   const { data: approvedMcps } = useRegistryList("mcps");
   const { data: myMcps } = useMyComponents("mcps");
@@ -149,7 +158,7 @@ export function SubmitComponentDialog({
     setName("");
     setVersion("0.1.0");
     setDescription("");
-    setOwner("");
+    setOwnerInput("");
     setSupportedIdes([]);
     setCategory("general");
     setGitUrl("");
@@ -177,6 +186,9 @@ export function SubmitComponentDialog({
     setNetworkPolicy("none");
     setEntrypoint("");
   }
+
+  const isEditMode = !!editItem;
+  const isPendingEdit = isEditMode && d?.status === "pending";
 
   function buildBody(): Record<string, unknown> {
     const base: Record<string, unknown> = {
@@ -319,7 +331,7 @@ export function SubmitComponentDialog({
     >
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Submit {typeLabel}</DialogTitle>
+          <DialogTitle>{isEditMode ? `Edit ${typeLabel}` : `Submit ${typeLabel}`}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
@@ -355,7 +367,7 @@ export function SubmitComponentDialog({
             <Input
               id="comp-owner"
               value={owner}
-              onChange={(e) => setOwner(e.target.value)}
+              onChange={(e) => setOwnerInput(e.target.value)}
               placeholder="your-username"
             />
           </div>
@@ -548,7 +560,7 @@ export function SubmitComponentDialog({
                         <span className="flex items-center gap-2">
                           {mcp.name}
                           {mcp.status === "pending" && (
-                            <span className="text-[10px] rounded bg-yellow-500/15 text-yellow-500 px-1.5 py-0.5">
+                            <span className="text-[10px] rounded bg-warning/15 text-warning px-1.5 py-0.5">
                               pending
                             </span>
                           )}
@@ -747,22 +759,70 @@ export function SubmitComponentDialog({
 
           {/* ── Actions ───────────────────────────────────── */}
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={handleDraft}
-              disabled={busy || !name}
-            >
-              {isSavingDraft && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Save Draft
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={busy || !!submitError}
-              title={submitError ?? undefined}
-            >
-              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Submit for Review
-            </Button>
+            {isEditMode ? (
+              <>
+                {isPendingEdit ? (
+                  <Button
+                    onClick={() => {
+                      const err = validateForSubmit();
+                      if (err) { toast.error(err); return; }
+                      onUpdateDraft?.((editItem as Record<string, unknown>).id as string, buildBody());
+                    }}
+                    disabled={busy || !!submitError}
+                    title={submitError ?? undefined}
+                  >
+                    {isSavingDraft && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                    Save Changes
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (!name) { toast.error("Name is required"); return; }
+                        onUpdateDraft?.((editItem as Record<string, unknown>).id as string, buildBody());
+                      }}
+                      disabled={busy || !name}
+                    >
+                      {isSavingDraft && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                      Save Changes
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        const err = validateForSubmit();
+                        if (err) { toast.error(err); return; }
+                        onUpdateDraft?.((editItem as Record<string, unknown>).id as string, buildBody());
+                        onSubmit(buildBody());
+                      }}
+                      disabled={busy || !!submitError}
+                      title={submitError ?? undefined}
+                    >
+                      {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                      Save & Resubmit
+                    </Button>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleDraft}
+                  disabled={busy || !name}
+                >
+                  {isSavingDraft && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                  Save Draft
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={busy || !!submitError}
+                  title={submitError ?? undefined}
+                >
+                  {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                  Submit for Review
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </DialogContent>

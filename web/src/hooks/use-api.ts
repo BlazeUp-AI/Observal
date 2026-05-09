@@ -18,6 +18,8 @@ import {
   telemetry,
   bulk,
   graphql,
+  insights,
+  models,
   type RegistryType,
 } from "@/lib/api";
 import type { LeaderboardWindow } from "@/lib/types";
@@ -121,6 +123,34 @@ export function useRegistryMetrics(type: RegistryType, id: string | undefined) {
   });
 }
 
+export function useAgentVersions(agentId: string | undefined) {
+  return useQuery({
+    queryKey: ["agent-versions", agentId],
+    enabled: !!agentId,
+    queryFn: () => registry.listVersions(agentId!),
+  });
+}
+
+export function useAgentVersionDetail(agentId: string | undefined, version: string | null) {
+  return useQuery({
+    queryKey: ["agent-version-detail", agentId, version],
+    enabled: !!agentId && !!version,
+    queryFn: () => registry.getVersion(agentId!, version!),
+  });
+}
+
+export function useVersionDiff(
+  agentId: string | undefined,
+  v1: string | undefined,
+  v2: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["version-diff", agentId, v1, v2],
+    enabled: !!agentId && !!v1 && !!v2,
+    queryFn: () => registry.getVersionDiff(agentId!, v1!, v2!),
+  });
+}
+
 // ── Review ──────────────────────────────────────────────────────────
 
 export function useReviewList(typeFilter?: string) {
@@ -185,6 +215,14 @@ export function useEvalScorecards(
     queryKey: ["eval", "scorecards", agentId, params],
     enabled: !!agentId,
     queryFn: () => eval_.scorecards(agentId!, params),
+  });
+}
+
+export function useAgentEvaluatedSessions(agentId: string | undefined) {
+  return useQuery({
+    queryKey: ["eval", "agent-sessions", agentId],
+    enabled: !!agentId,
+    queryFn: () => eval_.agentSessions(agentId!),
   });
 }
 
@@ -340,17 +378,17 @@ export function useTokenStats(range?: string) {
 export function useIdeUsage() {
   return useQuery({ queryKey: ['dashboard', 'ide-usage'], queryFn: dashboard.ideUsage });
 }
-// ── OTel ────────────────────────────────────────────────────────────
+// ── Sessions ───────────────────────────────────────────────────────
 
-export function useOtelSessions(options?: {
+export function useSessions2(options?: {
   refetchInterval?: number | false;
   platform?: string;
   days?: number;
 }) {
   return useQuery({
-    queryKey: ['otel', 'sessions', options?.platform, options?.days],
+    queryKey: ['sessions', 'list', options?.platform, options?.days],
     queryFn: () =>
-      dashboard.otelSessions({
+      dashboard.sessions({
         platform: options?.platform,
         days: options?.days,
       }),
@@ -359,28 +397,50 @@ export function useOtelSessions(options?: {
     staleTime: 0,
   });
 }
-export function useOtelSessionsSummary() {
+export function useSessionsSummary() {
   return useQuery({
-    queryKey: ['otel', 'sessions', 'summary'],
-    queryFn: dashboard.otelSessionsSummary,
+    queryKey: ['sessions', 'summary'],
+    queryFn: dashboard.sessionsSummary,
     refetchOnMount: "always",
     staleTime: 0,
   });
 }
-export function useOtelSession(id: string | undefined) {
-  return useQuery({ queryKey: ['otel', 'session', id], queryFn: () => dashboard.otelSession(id!), enabled: !!id });
+export function useSessionDetail(id: string | undefined) {
+  return useQuery({ queryKey: ['sessions', 'detail', id], queryFn: () => dashboard.session(id!), enabled: !!id });
 }
-export function useOtelTraces() {
-  return useQuery({ queryKey: ['otel', 'traces'], queryFn: dashboard.otelTraces });
+export function useSessionTraces() {
+  return useQuery({ queryKey: ['sessions', 'traces'], queryFn: dashboard.traces });
 }
-export function useOtelTrace(id: string | undefined) {
-  return useQuery({ queryKey: ['otel', 'trace', id], queryFn: () => dashboard.otelTrace(id!), enabled: !!id });
+export function useSessionTrace(id: string | undefined) {
+  return useQuery({ queryKey: ['sessions', 'trace', id], queryFn: () => dashboard.trace(id!), enabled: !!id });
 }
-export function useOtelStats() {
-  return useQuery({ queryKey: ['otel', 'stats'], queryFn: dashboard.otelStats });
+export function useSessionsStats() {
+  return useQuery({ queryKey: ['sessions', 'stats'], queryFn: dashboard.sessionsStats });
 }
-export function useOtelErrors() {
-  return useQuery({ queryKey: ['otel', 'errors'], queryFn: dashboard.otelErrors });
+export function useSessionErrors() {
+  return useQuery({ queryKey: ['sessions', 'errors'], queryFn: dashboard.sessionsErrors });
+}
+export interface SessionEfficiencyData {
+  efficiency_rating: number;
+  efficiency_metrics: Record<string, number | null>;
+  interpretation: Record<string, string>;
+  warnings: string[];
+  scorer_version: string;
+  dag?: {
+    nodes: { id: number; action_type: string; action_detail: string; status: "effective" | "reverted" | "waste"; parent_ids: number[]; trace_id: string | null; files_touched: string[]; latency_ms: number; reverted_by: number | null }[];
+    edges: { source: number; target: number; type: "causal" | "cross_trace" }[];
+    stats: { total_nodes: number; effective_nodes: number; reverted_nodes: number; waste_nodes: number };
+  };
+  waste_classifications?: { category: string; steps: number[] }[];
+  error?: string;
+}
+
+export function useSessionEfficiency(sessionId: string | undefined) {
+  return useQuery<SessionEfficiencyData>({
+    queryKey: ["session-efficiency", sessionId],
+    queryFn: () => dashboard.sessionEfficiency(sessionId!) as unknown as Promise<SessionEfficiencyData>,
+    enabled: !!sessionId,
+  });
 }
 
 export function useSessionSubscription() {
@@ -395,10 +455,10 @@ export function useSessionSubscription() {
         // Debounce the list refetch (many events → one list refresh)
         clearTimeout(listDebounceRef.current);
         listDebounceRef.current = setTimeout(() => {
-          qc.invalidateQueries({ queryKey: ["otel", "sessions"] });
+          qc.invalidateQueries({ queryKey: ["sessions", "list"] });
         }, 300);
         // Session detail: invalidate immediately so new turns appear
-        qc.invalidateQueries({ queryKey: ["otel", "session", sessionId] });
+        qc.invalidateQueries({ queryKey: ["sessions", "detail", sessionId] });
       });
     });
 
@@ -415,6 +475,14 @@ export function useMyAgents() {
   return useQuery({
     queryKey: ["registry", "agents", "my"],
     queryFn: () => registry.my(),
+  });
+}
+
+export function useArchivedAgents(enabled = true) {
+  return useQuery({
+    queryKey: ["registry", "agents", "archived"],
+    queryFn: () => registry.archived(),
+    enabled,
   });
 }
 
@@ -546,6 +614,21 @@ export function useUpdateDraft() {
   });
 }
 
+export function useUpdateAgent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; body: unknown }) => registry.updateAgent(vars.id, vars.body),
+    onSuccess: (_data: unknown, vars: { id: string; body: unknown }) => {
+      qc.invalidateQueries({ queryKey: ["registry", "agents"] });
+      qc.invalidateQueries({ queryKey: ["registry", "agents", vars.id] });
+      toast.success("Agent updated successfully");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update agent");
+    },
+  });
+}
+
 export function useSubmitDraft() {
   const qc = useQueryClient();
   return useMutation({
@@ -629,6 +712,32 @@ export function useComponentSubmitDraft(type: RegistryType) {
   });
 }
 
+export function useStartEdit(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.startEdit(id, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to start editing");
+    },
+  });
+}
+
+export function useCancelEdit(type: RegistryType) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => registry.cancelEdit(id, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["review"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to cancel editing");
+    },
+  });
+}
+
 export function useComponentDelete(type: RegistryType) {
   const qc = useQueryClient();
   return useMutation({
@@ -643,7 +752,65 @@ export function useComponentDelete(type: RegistryType) {
   });
 }
 
+// ── Component Versions ─────────────────────────────────────────────
+
+export function useComponentVersions(type: RegistryType | undefined, listingId: string | undefined) {
+  return useQuery({
+    queryKey: ["component-versions", type, listingId],
+    enabled: !!type && !!listingId,
+    queryFn: () => registry.listComponentVersions(type!, listingId!),
+  });
+}
+
+export function useComponentVersionDetail(type: RegistryType | undefined, listingId: string | undefined, version: string | null) {
+  return useQuery({
+    queryKey: ["component-version-detail", type, listingId, version],
+    enabled: !!type && !!listingId && !!version,
+    queryFn: () => registry.getComponentVersion(type!, listingId!, version!),
+  });
+}
+
+export function usePublishComponentVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ type, listingId, body }: { type: RegistryType; listingId: string; body: unknown }) =>
+      registry.publishComponentVersion(type, listingId, body),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["component-versions", variables.type, variables.listingId] });
+      qc.invalidateQueries({ queryKey: ["registry", variables.type, variables.listingId] });
+      toast.success("Version published successfully");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to publish version");
+    },
+  });
+}
+
+export function useComponentVersionSuggestions(type: RegistryType | undefined, listingId: string | undefined) {
+  return useQuery({
+    queryKey: ["component-version-suggestions", type, listingId],
+    enabled: !!type && !!listingId,
+    queryFn: () => registry.componentVersionSuggestions(type!, listingId!),
+  });
+}
+
 // ── Version ────────────────────────────────────────────────────────
+
+export function useCreateAgentVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { agentId: string; body: unknown }) =>
+      registry.createVersion(vars.agentId, vars.body),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["agent-versions", vars.agentId] });
+      qc.invalidateQueries({ queryKey: ["registry", "agents", vars.agentId] });
+      toast.success("New version released successfully");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to release version");
+    },
+  });
+}
 
 export function useVersionSuggestions(id: string | undefined) {
   return useQuery({
@@ -758,6 +925,81 @@ export function useReviewDelete() {
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to delete submission");
+    },
+  });
+}
+
+// ── Insights ───────────────────────────────────────────────────────
+
+export function useInsightReports(agentId: string | undefined) {
+  return useQuery({
+    queryKey: ["insights", "reports", agentId],
+    queryFn: () => insights.listReports(agentId!),
+    enabled: !!agentId,
+    refetchInterval: (query) => {
+      const reports = query.state.data;
+      if (Array.isArray(reports) && reports.some((r: { status: string }) => r.status === "pending" || r.status === "running")) {
+        return 3000;
+      }
+      return false;
+    },
+  });
+}
+
+export function useInsightReport(reportId: string) {
+  return useQuery({
+    queryKey: ["insights", "report", reportId],
+    queryFn: () => insights.getReport(reportId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "pending" || status === "running") return 3000;
+      return false;
+    },
+  });
+}
+
+export function useGenerateInsight() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { agentId: string; periodDays?: number }) =>
+      insights.generate(vars.agentId, vars.periodDays),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["insights", "reports", vars.agentId] });
+      toast.success("Insight report queued");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to generate insight");
+    },
+  });
+}
+
+// ── Models catalog ─────────────────────────────────────────────────
+
+const MODELS_QUERY_KEY = ["models", "catalog"] as const;
+
+export function useModels() {
+  return useQuery({
+    queryKey: MODELS_QUERY_KEY,
+    queryFn: () => models.list(),
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useRefreshModels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => models.refresh(),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: MODELS_QUERY_KEY });
+      const total = data.diff?.total ?? data.model_count ?? 0;
+      const added = data.diff?.added?.length ?? 0;
+      const removed = data.diff?.removed?.length ?? 0;
+      toast.success(`Models refreshed (${total} total, +${added} / -${removed})`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to refresh model catalog");
     },
   });
 }

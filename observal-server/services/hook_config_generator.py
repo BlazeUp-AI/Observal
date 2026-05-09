@@ -17,42 +17,29 @@ def generate_hook_telemetry_config(
             # PowerShell-compatible: pipe stdin through the Python hook script.
             # No cat/sed/curl/$PPID/$TERM/$SHELL — those don't exist in PowerShell.
             if kiro_event == "stop":
-                ps_stop_cmd = f"python -m observal_cli.hooks.kiro_stop_hook --url {server_url}/api/v1/otel/hooks"
+                ps_stop_cmd = f"python -m observal_cli.hooks.kiro_stop_hook --url {server_url}/api/v1/telemetry/hooks"
                 return {"hooks": {kiro_event: [{"command": ps_stop_cmd}]}}
 
-            ps_cmd = f"python -m observal_cli.hooks.kiro_hook --url {server_url}/api/v1/otel/hooks"
+            ps_cmd = f"python -m observal_cli.hooks.kiro_hook --url {server_url}/api/v1/telemetry/hooks"
             hook_entry = {"command": ps_cmd}
             if kiro_event in ("preToolUse", "postToolUse"):
                 hook_entry["matcher"] = "*"
             return {"hooks": {kiro_event: [hook_entry]}}
 
-        # Unix: cat | sed | curl pipeline (unchanged)
-        curl_cmd = (
-            'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'","service_name":"kiro",'
-            '"terminal_type":"\'$TERM\'","shell":"\'$SHELL\'",/\' '
-            f"| curl -sf -X POST {server_url}/api/v1/otel/hooks "
-            f'-H "Content-Type: application/json" '
-            f"-d @-"
-        )
-
-        # For stop events, use the enrichment script to capture model/tokens
+        # Unix: use the same Python hook scripts as Windows.
         if kiro_event == "stop":
-            stop_cmd = (
-                'cat | sed \'s/^{/{"session_id":"kiro-\'$PPID\'","service_name":"kiro",'
-                '"terminal_type":"\'$TERM\'","shell":"\'$SHELL\'",/\' '
-                f"| python3 -m observal_cli.hooks.kiro_stop_hook "
-                f"--url {server_url}/api/v1/otel/hooks"
-            )
+            stop_cmd = f"python3 -m observal_cli.hooks.kiro_stop_hook --url {server_url}/api/v1/telemetry/hooks"
             return {"hooks": {kiro_event: [{"command": stop_cmd}]}}
 
-        hook_entry = {"command": curl_cmd}
+        cmd = f"python3 -m observal_cli.hooks.kiro_hook --url {server_url}/api/v1/telemetry/hooks"
+        hook_entry = {"command": cmd}
         if kiro_event in ("preToolUse", "postToolUse"):
             hook_entry["matcher"] = "*"
         return {"hooks": {kiro_event: [hook_entry]}}
 
     hook_entry = {
         "type": "http",
-        "url": f"{server_url}/api/v1/otel/hooks",
+        "url": f"{server_url}/api/v1/telemetry/hooks",
         "timeout": 10,
     }
 

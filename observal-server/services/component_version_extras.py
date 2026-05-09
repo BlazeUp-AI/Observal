@@ -1,0 +1,178 @@
+"""Per-type field validation for component version publishing."""
+
+from __future__ import annotations
+
+from fastapi import HTTPException
+
+# Fields allowed in extra dict per component type
+HOOK_FIELDS = {
+    "event",
+    "execution_mode",
+    "priority",
+    "handler_type",
+    "handler_config",
+    "input_schema",
+    "output_schema",
+    "scope",
+    "tool_filter",
+    "file_pattern",
+}
+
+SKILL_FIELDS = {
+    "skill_path",
+    "target_agents",
+    "task_type",
+    "triggers",
+    "slash_command",
+    "has_scripts",
+    "has_templates",
+    "is_power",
+    "power_md",
+    "mcp_server_config",
+    "activation_keywords",
+}
+
+PROMPT_FIELDS = {
+    "category",
+    "template",
+    "variables",
+    "model_hints",
+    "tags",
+}
+
+MCP_FIELDS = {
+    "source_url",
+    "source_ref",
+    "resolved_sha",
+}
+
+SANDBOX_FIELDS = {
+    "source_url",
+    "source_ref",
+    "resolved_sha",
+}
+
+REQUIRED_FIELDS: dict[str, set[str]] = {
+    "hook": {"event", "handler_type"},
+    "skill": {"task_type"},
+    "prompt": {"category", "template"},
+    "mcp": set(),
+    "sandbox": set(),
+}
+
+ALLOWED_FIELDS: dict[str, set[str]] = {
+    "hook": HOOK_FIELDS,
+    "skill": SKILL_FIELDS,
+    "prompt": PROMPT_FIELDS,
+    "mcp": MCP_FIELDS,
+    "sandbox": SANDBOX_FIELDS,
+}
+
+# Expected types for each field. Fields not listed accept any type.
+FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
+    # str fields
+    "event": str,
+    "execution_mode": str,
+    "handler_type": str,
+    "scope": str,
+    "skill_path": str,
+    "task_type": str,
+    "slash_command": str,
+    "power_md": str,
+    "category": str,
+    "template": str,
+    "source_url": str,
+    "source_ref": str,
+    "resolved_sha": str,
+    # int fields
+    "priority": int,
+    # bool fields — must come before int since bool is a subclass of int
+    "has_scripts": bool,
+    "has_templates": bool,
+    "is_power": bool,
+    # dict fields
+    "handler_config": dict,
+    "input_schema": dict,
+    "output_schema": dict,
+    "mcp_server_config": dict,
+    "model_hints": dict,
+    # list fields
+    "tool_filter": list,
+    "file_pattern": list,
+    "target_agents": list,
+    "triggers": list,
+    "activation_keywords": list,
+    "tags": list,
+    "variables": list,
+}
+
+
+def validate_and_extract(component_type: str, extra: dict | None) -> dict:
+    """Validate extra fields for a component type and return clean field dict.
+
+    Returns a dict of field_name -> value to set on the version model.
+    Raises HTTPException(422) on validation errors.
+    """
+    allowed = ALLOWED_FIELDS.get(component_type)
+    if allowed is None:
+        raise HTTPException(status_code=422, detail=f"Unknown component type: {component_type!r}")
+
+    required = REQUIRED_FIELDS.get(component_type, set())
+
+    if not extra:
+        if required:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Missing required fields for {component_type}: {', '.join(sorted(required))}",
+            )
+        return {}
+
+    # Check for unknown fields
+    unknown = set(extra.keys()) - allowed
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown fields for {component_type}: {', '.join(sorted(unknown))}",
+        )
+
+    # Check required fields are present
+    missing = required - set(extra.keys())
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Missing required fields for {component_type}: {', '.join(sorted(missing))}",
+        )
+
+    # Check required fields have non-empty/non-null values
+    for field in required:
+        value = extra.get(field)
+        if value is None or value == "":
+            raise HTTPException(
+                status_code=422,
+                detail=f"Required field {field!r} cannot be empty",
+            )
+
+    # Check field types
+    for field, value in extra.items():
+        if value is None:
+            continue
+        expected = FIELD_TYPES.get(field)
+        if expected is None:
+            continue
+        # bool check must happen before int check (bool is subclass of int)
+        if expected is int and isinstance(value, bool):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Field {field!r} must be an integer, got {type(value).__name__}",
+            )
+        if not isinstance(value, expected):
+            _type_names = {int: "integer", str: "str", bool: "bool", dict: "dict", list: "list"}
+            expected_name = _type_names.get(
+                expected, expected.__name__ if isinstance(expected, type) else str(expected)
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Field {field!r} must be a {expected_name}, got {type(value).__name__}",
+            )
+
+    return {k: v for k, v in extra.items() if k in allowed}

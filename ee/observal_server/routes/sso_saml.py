@@ -37,6 +37,7 @@ from services.security_events import (
     Severity,
     emit_security_event,
 )
+from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.ee.saml")
 
@@ -294,6 +295,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
 
         user = User(
             email=email,
+            username=await generate_unique_username(email, db),
             name=name,
             role=role,
             org_id=getattr(config, "org_id", None) or default_org.id,

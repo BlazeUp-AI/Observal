@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -11,7 +12,42 @@ import typer
 from rich import print as rprint
 
 from observal_cli import client, config
+from observal_cli.ide_registry import get_scope_aware_ides
 from observal_cli.render import spinner
+
+# Hook script names used as placeholders in server-generated agent configs.
+# Resolved to absolute paths client-side before writing to disk.
+_HOOK_SCRIPT_NAMES = ("observal-hook.sh", "observal-stop-hook.sh")
+
+
+def _resolve_hook_paths(content: str) -> str:
+    """Replace hook script names with absolute paths in agent file content.
+
+    Server-side config generator emits bare script names (observal-hook.sh)
+    since it doesn't know the client's install path. This resolves them to
+    the actual paths inside the installed package.
+
+    Uses regex anchored to quoted command context so matches like
+    ``"observal-hook.sh --agent-name foo"`` are resolved correctly,
+    but comments or prose mentioning the script name are not affected.
+    """
+    import shutil
+
+    hooks_dir = Path(__file__).parent / "hooks"
+    for name in _HOOK_SCRIPT_NAMES:
+        local = hooks_dir / name
+        path = local.resolve().as_posix()
+        if not local.is_file():
+            # Fallback: check if it's on PATH
+            found = shutil.which(name)
+            if not found:
+                continue
+            path = Path(found).resolve().as_posix()
+        # Match script name inside quotes with optional trailing args, replace only the script name
+        pattern = rf'"{re.escape(name)}(?:\s+[^"]*)?'
+        replacement = f'"{path}'
+        content = re.sub(pattern, replacement, content)
+    return content
 
 
 def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
@@ -134,6 +170,33 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
     return "updated" if existed else "created"
 
 
+def _rewrite_kiro_hooks(content: dict) -> dict:
+    """Rewrite Kiro hook commands to use the current Python interpreter.
+
+    The server generates commands with bare 'python3' which won't find
+    observal_cli when installed in a project-local virtual environment.
+    """
+    hooks = content.get("hooks")
+    agent_name = content.get("name")
+    if not hooks or not agent_name:
+        return content
+
+    from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
+
+    cfg = config.get_or_exit()
+    hooks_url = f"{cfg['server_url'].rstrip('/')}/api/v1/telemetry/hooks"
+    desired_hooks = build_kiro_hooks(hooks_url, agent_name)
+
+    # Replace only Observal hooks, preserve any user-added hooks
+    for event, desired_entries in desired_hooks.items():
+        existing = hooks.get(event, [])
+        cleaned = [h for h in existing if "observal_cli" not in h.get("command", "")]
+        hooks[event] = cleaned + desired_entries
+
+    content["hooks"] = hooks
+    return content
+
+
 def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) -> Path:
     """Resolve a path from the config snippet relative to *target_dir*.
 
@@ -159,37 +222,89 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
     return resolved
 
 
-# IDEs that support a project vs user install scope
-_SCOPE_AWARE_IDES = {
-    "claude-code": ("project (.claude/agents/)", "user (~/.claude/agents/)"),
-    "kiro": ("project (.kiro/agents/)", "user (~/.kiro/agents/)"),
-    "gemini-cli": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
-    "cursor": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
-    "opencode": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
-}
+# IDEs that support a project vs user install scope (derived from registry)
+_SCOPE_AWARE_IDES = get_scope_aware_ides()
+
+
+def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str]]:
+    """Parse one or more ``--model`` flags.
+
+    Two grammars are accepted:
+
+    * ``--model <value>`` — applies to the IDE selected for this pull.
+    * ``--model <ide>=<value>`` — explicit per-IDE override (advanced; lets
+      a single command target a specific IDE without ambiguity).
+
+    Returns ``(default_value, per_ide_overrides)``.
+    """
+    default: str | None = None
+    overrides: dict[str, str] = {}
+    for raw in values or []:
+        if "=" in raw:
+            ide_key, _, val = raw.partition("=")
+            ide_key = ide_key.strip()
+            val = val.strip()
+            if ide_key and val:
+                overrides[ide_key] = val
+        elif raw.strip():
+            default = raw.strip()
+    return default, overrides
+
+
+def _agent_saved_model(agent_detail: dict | None, ide: str) -> str | None:
+    """Return the model the *agent* has saved for *ide*, if any.
+
+    Per-IDE override wins; otherwise the legacy ``model_name`` is used as
+    the implicit default for Claude Code only. Mirrors the server-side
+    ``services.model_resolver._candidate_for_ide`` rules so the CLI never
+    re-prompts when the author has already chosen a model.
+    """
+    if not agent_detail:
+        return None
+    raw = agent_detail.get("models_by_ide") if isinstance(agent_detail, dict) else None
+    if isinstance(raw, dict):
+        candidate = raw.get(ide)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    if ide in ("claude-code", "claude_code"):
+        legacy = agent_detail.get("model_name") if isinstance(agent_detail, dict) else None
+        if isinstance(legacy, str) and legacy.strip():
+            return legacy.strip()
+    return None
 
 
 def _collect_install_options(
     ide: str,
     *,
     scope: str | None,
-    model: str | None,
+    model_default: str | None,
+    model_overrides: dict[str, str],
     tools: str | None,
     no_prompt: bool,
+    refresh_models: bool = False,
+    agent_detail: dict | None = None,
 ) -> dict:
     """Interactively collect IDE-specific install options.
 
-    Honors explicit --scope/--model/--tools flags; only prompts for what's
-    missing when running in an interactive terminal and --no-prompt isn't set.
+    Honors explicit ``--scope``/``--model``/``--tools`` flags; only prompts for
+    what's missing when running in an interactive terminal and ``--no-prompt``
+    isn't set. The model picker now consults the live catalog (``GET /api/v1/models``)
+    instead of a hardcoded list.
+
+    When the agent already has a saved model for the target IDE (set in the
+    builder) and the user didn't pass ``--model``, the saved value is used
+    silently — the picker is skipped so authoring decisions aren't undone
+    by a stray Enter at the prompt.
     """
     import sys
 
+    from observal_cli.ide_registry import accepts_model_choice
     from observal_cli.prompts import select_one
+    from observal_cli.render import format_model as _format_model
 
     opts: dict = {}
     interactive = sys.stdin.isatty() and not no_prompt
 
-    # Scope (Claude Code, Kiro, Gemini CLI, Cursor)
     if ide in _SCOPE_AWARE_IDES:
         if scope:
             opts["scope"] = scope
@@ -200,20 +315,44 @@ def _collect_install_options(
         else:
             opts["scope"] = "project"
 
-    # Claude Code only: model and tools
-    if ide in ("claude-code", "claude_code"):
-        if model:
-            opts["model"] = model
+    if accepts_model_choice(ide):
+        explicit = model_overrides.get(ide) or model_default
+        saved = _agent_saved_model(agent_detail, ide)
+        if explicit:
+            opts["model"] = explicit
+        elif saved:
+            try:
+                primary, _secondary, _ = _format_model({"model_id": saved})
+                pretty = primary or saved
+            except Exception:
+                pretty = saved
+            rprint(f"  [dim]Model:[/dim] {pretty} [dim](from agent)[/dim]")
+            # Pass through the saved value so the server records the same
+            # choice on the install download record. The resolver still
+            # validates the candidate against the live catalog and falls
+            # back gracefully if needed.
+            opts["model"] = saved
         elif interactive:
-            choice = select_one(
-                "  Model",
-                ["inherit (use main session model)", "sonnet", "opus", "haiku"],
-                default="inherit (use main session model)",
-            )
-            opts["model"] = "inherit" if choice.startswith("inherit") else choice
+            from observal_cli import model_catalog as _catalog
 
-        if tools:
-            opts["tools"] = tools
+            try:
+                catalog = _catalog.fetch_catalog(refresh=refresh_models)
+            except Exception:
+                catalog = {"models": []}
+            choices = _catalog.model_choices_for_picker(catalog, ide)
+            choice_labels = [c[0] for c in choices] if choices else []
+            choice_labels = ["auto (let the IDE decide)", *choice_labels]
+            picked = select_one("  Model", choice_labels, default="auto (let the IDE decide)")
+            if picked.startswith("auto"):
+                opts["model"] = ""
+            else:
+                for label, model_id in choices:
+                    if label == picked:
+                        opts["model"] = model_id
+                        break
+
+    if ide in ("claude-code", "claude_code") and tools:
+        opts["tools"] = tools
 
     return opts
 
@@ -233,10 +372,18 @@ def register_pull(app: typer.Typer):
         scope: str | None = typer.Option(
             None, "--scope", help="Install scope: 'project' or 'user' (Claude Code/Kiro/Gemini only)"
         ),
-        model: str | None = typer.Option(
-            None, "--model", help="Sub-agent model: inherit, sonnet, opus, haiku (Claude Code only)"
+        model: list[str] | None = typer.Option(
+            None,
+            "--model",
+            help=(
+                "Model override. Accepts '<value>' (applies to the selected --ide) or "
+                "'<ide>=<value>' for explicit per-IDE overrides. May be repeated."
+            ),
         ),
         tools: str | None = typer.Option(None, "--tools", help="Comma-separated tool whitelist (Claude Code only)"),
+        refresh_models: bool = typer.Option(
+            False, "--refresh-models", help="Bust the local model catalog cache before showing the model picker"
+        ),
         no_prompt: bool = typer.Option(False, "--no-prompt", "-y", help="Skip interactive prompts"),
     ):
         """Fetch agent config and write IDE files to disk.
@@ -254,9 +401,22 @@ def register_pull(app: typer.Typer):
 
         env_values = _collect_mcp_env_vars(agent_detail)
 
-        # Collect IDE-specific install options (scope, model, tools)
         rprint(f"\n[bold]Install options for [cyan]{ide}[/cyan]:[/bold]")
-        options = _collect_install_options(ide, scope=scope, model=model, tools=tools, no_prompt=no_prompt)
+        if refresh_models:
+            from observal_cli import model_catalog as _catalog
+
+            _catalog.invalidate_cache()
+        model_default, model_overrides = _parse_model_overrides(model or [])
+        options = _collect_install_options(
+            ide,
+            scope=scope,
+            model_default=model_default,
+            model_overrides=model_overrides,
+            tools=tools,
+            no_prompt=no_prompt,
+            refresh_models=refresh_models,
+            agent_detail=agent_detail,
+        )
         is_user_scope = options.get("scope") == "user"
         if is_user_scope:
             rprint("  [dim]Files will be written to your home directory (user scope).[/dim]")
@@ -278,10 +438,14 @@ def register_pull(app: typer.Typer):
         rules = snippet.get("rules_file")
         if rules:
             p = _resolve_path(rules["path"], target_dir, allow_home=is_user_scope)
+            content = rules["content"]
+            # Resolve hook script placeholders to absolute paths
+            if isinstance(content, str):
+                content = _resolve_hook_paths(content)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
-                status = _write_file(p, rules["content"])
+                status = _write_file(p, content)
                 written.append((str(p), status))
 
         # ── mcp_config with path key (Cursor/VSCode/Gemini) ─
@@ -294,9 +458,31 @@ def register_pull(app: typer.Typer):
                 status = _write_file(p, mcp_cfg["content"], merge_mcp=True)
                 written.append((str(p), status))
 
+        # ── hooks_config (Cursor/VSCode/Copilot/OpenCode/Gemini) ─
+        hooks_cfg = snippet.get("hooks_config")
+        if hooks_cfg and isinstance(hooks_cfg, dict) and "path" in hooks_cfg:
+            p = _resolve_path(hooks_cfg["path"], target_dir, allow_home=is_user_scope)
+            content = hooks_cfg["content"]
+            if isinstance(content, str):
+                content = _resolve_hook_paths(content)
+            elif isinstance(content, dict):
+                # Resolve hook paths inside JSON content (command fields)
+                raw = json.dumps(content)
+                raw = _resolve_hook_paths(raw)
+                content = json.loads(raw)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                status = _write_file(p, content, merge_mcp=hooks_cfg.get("merge", False))
+                written.append((str(p), status))
+
         # ── agent_file (Kiro) ───────────────────────────────
         agent_file = snippet.get("agent_file")
         if agent_file:
+            # Rewrite hook commands to use the current Python interpreter
+            # so they work regardless of which directory Kiro is launched from.
+            if isinstance(agent_file.get("content"), dict):
+                agent_file["content"] = _rewrite_kiro_hooks(agent_file["content"])
             p = _resolve_path(agent_file["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
                 written.append((str(p), "would write"))
@@ -314,6 +500,27 @@ def register_pull(app: typer.Typer):
                 status = _write_file(p, steering_file["content"])
                 written.append((str(p), status))
 
+        # ── skill_files (Claude Code, Kiro, Cursor) ──────────
+        for sf in snippet.get("skill_files") or []:
+            p = _resolve_path(sf["path"], target_dir, allow_home=is_user_scope)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                status = _write_file(p, sf["content"])
+                written.append((str(p), status))
+
+        # ── Agent marker (all IDEs) ─────────────────────────
+        # Write <target_dir>/.observal/agent so session_push hooks can attribute
+        # telemetry to this agent without needing OBSERVAL_AGENT_ID in the shell.
+        # Both Claude Code and Kiro pass cwd in their hook events, so one marker
+        # file covers all JSONL-based IDEs.
+        if not dry_run:
+            agent_uuid = agent_detail.get("id", resolved)
+            agent_version = agent_detail.get("version") or agent_detail.get("latest_version")
+            marker_dir = target_dir / ".observal"
+            marker_dir.mkdir(parents=True, exist_ok=True)
+            (marker_dir / "agent").write_text(json.dumps({"agent_id": agent_uuid, "agent_version": agent_version}))
+
         # ── Output summary ──────────────────────────────────
         if not written:
             rprint("[yellow]No files to write from the config snippet.[/yellow]")
@@ -329,6 +536,12 @@ def register_pull(app: typer.Typer):
         for path, status in written:
             style = "dim" if dry_run else "green"
             rprint(f"  [{style}]{status}[/{style}]  {path}")
+
+        warnings_list = snippet.get("_warnings") or []
+        if warnings_list:
+            rprint("")
+            for w in warnings_list:
+                rprint(f"  [yellow]⚠[/yellow]  {w}")
 
         # ── Setup commands (Claude Code) ────────────────────
         setup_cmds = snippet.get("mcp_setup_commands")

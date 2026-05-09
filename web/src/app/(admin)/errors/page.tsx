@@ -3,8 +3,8 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { AlertTriangle, Search, ChevronDown, ChevronRight, Wrench, Bot, Square } from "lucide-react";
-import { useOtelErrors } from "@/hooks/use-api";
-import type { OtelErrorEvent } from "@/lib/types";
+import { useSessionErrors } from "@/hooks/use-api";
+import type { SessionErrorEvent } from "@/lib/types";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 
 type ErrorType = "tool_failure" | "stop_failure" | "api_error";
 
-function classifyError(event: OtelErrorEvent): ErrorType {
+function classifyError(event: SessionErrorEvent): ErrorType {
   if (event.event_name === "hook_posttoolusefailure") return "tool_failure";
   if (event.event_name === "hook_stopfailure") return "stop_failure";
   return "api_error";
@@ -31,9 +31,9 @@ function errorTypeLabel(t: ErrorType): string {
 
 function errorTypeColor(t: ErrorType): string {
   switch (t) {
-    case "tool_failure": return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
-    case "stop_failure": return "bg-red-500/10 text-red-500 border-red-500/20";
-    case "api_error": return "bg-rose-500/10 text-rose-500 border-rose-500/20";
+    case "tool_failure": return "bg-warning/10 text-warning border-warning/20";
+    case "stop_failure": return "bg-destructive/10 text-destructive border-destructive/20";
+    case "api_error": return "bg-destructive/10 text-destructive border-destructive/20";
   }
 }
 
@@ -47,7 +47,7 @@ function ErrorIcon({ type }: { type: ErrorType }) {
 
 /* ── Error row ───────────────────────────────────────────── */
 
-function ErrorRow({ event }: { event: OtelErrorEvent }) {
+function ErrorRow({ event }: { event: SessionErrorEvent }) {
   const [expanded, setExpanded] = useState(false);
   const type = classifyError(event);
   const colorCls = errorTypeColor(type);
@@ -90,7 +90,7 @@ function ErrorRow({ event }: { event: OtelErrorEvent }) {
           {event.error && (
             <div className="space-y-1">
               <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Error</span>
-              <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-all bg-red-500/5 border border-red-500/20 rounded-md p-2.5 max-h-[200px] overflow-auto text-red-600 dark:text-red-400">
+              <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-all bg-destructive/5 border border-destructive/20 rounded-md p-2.5 max-h-[200px] overflow-auto text-destructive">
                 {event.error}
               </pre>
             </div>
@@ -121,14 +121,15 @@ function ErrorRow({ event }: { event: OtelErrorEvent }) {
           {/* Metadata */}
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
             <span>
-              Session:{" "}
-              <Link href={`/traces/${event.session_id}`} className="text-primary-accent hover:underline font-[family-name:var(--font-mono)]">
-                {event.session_id.slice(0, 12)}...
+              <Link href={`/traces/${event.session_id}`} className="text-primary-accent hover:underline">
+                View trace →
               </Link>
             </span>
             {event.agent_type && <span>Agent: {event.agent_type}</span>}
             {event.stop_reason && <span>Reason: {event.stop_reason}</span>}
-            {event.user_id && <span>User: {event.user_id.slice(0, 8)}...</span>}
+            {(event.user_name || event.user_id) && (
+              <span>User: {event.user_name || event.user_id.slice(0, 8) + "..."}</span>
+            )}
           </div>
         </div>
       )}
@@ -139,7 +140,7 @@ function ErrorRow({ event }: { event: OtelErrorEvent }) {
 /* ── Page ─────────────────────────────────────────────────── */
 
 export default function ErrorsPage() {
-  const { data: errors, isLoading, isError, error, refetch } = useOtelErrors();
+  const { data: errors, isLoading, isError, error, refetch } = useSessionErrors();
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ErrorType | "all">("all");

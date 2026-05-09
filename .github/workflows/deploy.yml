@@ -2,7 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
@@ -23,11 +23,11 @@ jobs:
           script: |
             set -e
             cd ~/Observal
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin --tags
+            git checkout ${{ github.ref_name }}
 
             cd docker
-            docker compose up -d --build --remove-orphans
+            docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build --remove-orphans
 
             # Phase 1: Wait for API container to be alive (bypasses nginx).
             # Uses direct container exec because curl through nginx fails
@@ -44,12 +44,12 @@ jobs:
 
             # Nginx caches upstream container IPs — after rebuild the API
             # gets a new IP but nginx still routes to the old one.
-            docker compose restart observal-lb
+            docker compose -f docker-compose.yml -f docker-compose.production.yml restart observal-lb
             sleep 3
 
             # Phase 2: Verify health through nginx (the path clients use)
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              if curl -sf https://localhost/health -k > /dev/null 2>&1; then
                 echo "API is healthy (full stack verified)"
                 exit 0
               fi

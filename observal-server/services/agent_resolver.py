@@ -38,8 +38,8 @@ class ResolvedComponent(BaseModel):
     component_id: uuid.UUID
     name: str
     version: str
-    git_url: str
-    git_ref: str = ""
+    git_url: str | None = None
+    git_ref: str | None = None
     description: str = ""
     order_index: int = 0
     config_override: dict | None = None
@@ -66,6 +66,7 @@ class ResolvedAgent(BaseModel):
     agent_prompt: str = ""
     agent_description: str = ""
     model_name: str = ""
+    models_by_ide: dict[str, str] = Field(default_factory=dict)
     components: list[ResolvedComponent] = Field(default_factory=list)
     errors: list[ResolutionError] = Field(default_factory=list)
 
@@ -178,8 +179,8 @@ async def resolve_agent(
                 component_id=comp.component_id,
                 name=listing.name,
                 version=listing.version,
-                git_url=listing.git_url,
-                git_ref=listing.git_ref or "",
+                git_url=getattr(listing, "git_url", None),
+                git_ref=getattr(listing, "git_ref", None),
                 description=listing.description,
                 order_index=comp.order_index,
                 config_override=comp.config_override,
@@ -188,6 +189,8 @@ async def resolve_agent(
             )
         )
 
+    raw_models_by_ide = getattr(agent, "models_by_ide", None)
+    models_by_ide = raw_models_by_ide if isinstance(raw_models_by_ide, dict) else {}
     return ResolvedAgent(
         agent_id=agent.id,
         agent_name=agent.name,
@@ -195,6 +198,7 @@ async def resolve_agent(
         agent_prompt=agent.prompt or "",
         agent_description=agent.description or "",
         model_name=agent.model_name or "",
+        models_by_ide=models_by_ide,
         components=components,
         errors=errors,
     )

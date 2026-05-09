@@ -8,11 +8,13 @@ from services.eval.eval_engine import (
     EVAL_TEMPLATES,
     FallbackBackend,
     LLMJudgeBackend,
+    _call_model,
     _extract_json,
     get_backend,
     list_templates,
     run_eval_on_trace,
 )
+from services.eval.eval_service import call_eval_model
 
 
 class TestEvalTemplates:
@@ -170,3 +172,143 @@ class TestRunEvalOnTrace:
 
             result = await run_eval_on_trace("agent-1", "t1")
             assert result == []  # errors caught, no scores
+
+
+class TestMoonshotProvider:
+    """Kimi/Moonshot routes through the OpenAI-compatible path with Moonshot defaults."""
+
+    @pytest.mark.asyncio
+    async def test_moonshot_provider_sets_defaults_and_disables_thinking(self):
+        captured: dict = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": '{"score": 0.75, "reason": "ok"}'}}]}
+
+        class _Client:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                captured["url"] = url
+                captured["headers"] = headers
+                captured["body"] = json
+                return _Resp()
+
+        with (
+            patch("services.eval.eval_engine.settings") as mock_settings,
+            patch("services.eval.eval_engine.httpx.AsyncClient", _Client),
+        ):
+            mock_settings.EVAL_MODEL_PROVIDER = "moonshot"
+            mock_settings.EVAL_MODEL_NAME = "kimi-k2.5-preview"
+            mock_settings.EVAL_MODEL_URL = ""
+            mock_settings.EVAL_MODEL_API_KEY = "sk-test"
+
+            result = await _call_model("score this")
+
+        assert result == {"score": 0.75, "reason": "ok"}
+        assert captured["url"].startswith("https://api.moonshot.ai/v1")
+        assert captured["headers"]["Authorization"] == "Bearer sk-test"
+        assert captured["body"]["model"] == "kimi-k2.5-preview"
+        assert captured["body"]["thinking"] == {"type": "disabled"}
+        assert captured["body"]["temperature"] == 0.6
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_by_model_name(self):
+        """Model name containing 'kimi' routes to moonshot even without explicit provider."""
+        captured: dict = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": "{}"}}]}
+
+        class _Client:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                captured["url"] = url
+                captured["body"] = json
+                return _Resp()
+
+        with (
+            patch("services.eval.eval_engine.settings") as mock_settings,
+            patch("services.eval.eval_engine.httpx.AsyncClient", _Client),
+        ):
+            mock_settings.EVAL_MODEL_PROVIDER = ""
+            mock_settings.EVAL_MODEL_NAME = "Kimi-K2.5"
+            mock_settings.EVAL_MODEL_URL = ""
+            mock_settings.EVAL_MODEL_API_KEY = ""
+
+            await _call_model("hi")
+
+        assert captured["url"].startswith("https://api.moonshot.ai/v1")
+        assert captured["body"]["thinking"] == {"type": "disabled"}
+        assert captured["body"]["temperature"] == 0.6
+
+
+class TestMoonshotEvalService:
+    """call_eval_model in eval_service.py shares body-building with eval_engine."""
+
+    @pytest.mark.asyncio
+    async def test_moonshot_via_eval_service(self):
+        captured: dict = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"choices": [{"message": {"content": '{"score": 0.9}'}}]}
+
+        class _Client:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                captured["url"] = url
+                captured["body"] = json
+                return _Resp()
+
+        with (
+            patch("services.eval.eval_service.settings") as svc_settings,
+            patch("services.eval.eval_engine.settings") as eng_settings,
+            patch("services.eval.eval_service.httpx.AsyncClient", _Client),
+        ):
+            for s in (svc_settings, eng_settings):
+                s.EVAL_MODEL_PROVIDER = "moonshot"
+                s.EVAL_MODEL_NAME = "kimi-k2.5"
+                s.EVAL_MODEL_URL = ""
+                s.EVAL_MODEL_API_KEY = "sk-svc"
+
+            result = await call_eval_model("test prompt")
+
+        assert result == {"score": 0.9}
+        assert captured["url"].startswith("https://api.moonshot.ai/v1")
+        assert captured["body"]["thinking"] == {"type": "disabled"}
+        assert captured["body"]["temperature"] == 0.6
+        assert captured["body"]["response_format"] == {"type": "json_object"}

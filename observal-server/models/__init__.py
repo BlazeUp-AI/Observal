@@ -1,4 +1,4 @@
-from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus
+from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus, AgentTeamAccess, AgentVisibility
 from models.agent_component import AgentComponent
 from models.alert import AlertRule
 from models.alert_history import AlertHistory
@@ -11,6 +11,9 @@ from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
 from models.exporter_config import ExporterConfig
 from models.feedback import Feedback
 from models.hook import HookDownload, HookListing
+from models.insight_report import InsightReport, InsightReportStatus
+from models.insight_session_facets import InsightSessionFacets
+from models.insight_session_meta import InsightSessionMeta
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult
 from models.organization import Organization
 from models.prompt import PromptDownload, PromptListing
@@ -40,6 +43,8 @@ __all__ = [
     "AgentGoalSection",
     "AgentGoalTemplate",
     "AgentStatus",
+    "AgentTeamAccess",
+    "AgentVisibility",
     "AlertHistory",
     "AlertRule",
     "Base",
@@ -54,6 +59,10 @@ __all__ = [
     "Feedback",
     "HookDownload",
     "HookListing",
+    "InsightReport",
+    "InsightReportStatus",
+    "InsightSessionFacets",
+    "InsightSessionMeta",
     "ListingStatus",
     "McpDownload",
     "McpListing",

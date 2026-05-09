@@ -124,7 +124,7 @@ curl http://localhost:8000/health
 
 If the shim is wrapped but traces aren't arriving, the shim may be silently dropping events because the API is unreachable. Check `~/.observal/telemetry_buffer.db` — if it's growing, that's exactly the issue.
 
-### `observal scan` wraps 0 servers
+### `observal doctor patch` wraps 0 servers
 
 Your IDE's MCP config may be empty or in a non-standard location. Check:
 
@@ -137,7 +137,7 @@ cat .vscode/mcp.json                # VS Code
 cat .gemini/settings.json           # Gemini CLI
 ```
 
-If none exist, configure at least one MCP server in your IDE first, then re-run `scan`.
+If none exist, configure at least one MCP server in your IDE first, then re-run `doctor patch`.
 
 ### ClickHouse not receiving data
 

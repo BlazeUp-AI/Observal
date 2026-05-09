@@ -95,8 +95,22 @@ To develop or test enterprise features locally, set `DEPLOYMENT_MODE=enterprise`
 Before starting work, check the [open issues](https://github.com/BlazeUp-AI/Observal/issues) to see what needs attention.
 
 - Look for issues labelled **good first issue** if you are new to the project.
-- Comment on an issue to let others know you are working on it before you start.
 - For larger features or architectural changes, open an issue to discuss your approach before writing code. This avoids wasted effort if the direction needs adjustment.
+
+### Claiming Issues with `/take` and `/drop`
+
+Instead of commenting manually, you can use slash commands to self-assign issues:
+
+- **`/take`** — Comment `/take` on any issue labeled `good first issue` or `help wanted` to assign it to yourself. The bot will confirm the assignment and link you to this contributing guide.
+- **`/drop`** — Comment `/drop` on an issue you are assigned to if you can no longer work on it. This frees the issue for other contributors.
+
+**Rules:**
+
+- `/take` only works on issues labeled `good first issue` or `help wanted`.
+- Issues labeled `keep open` cannot be assigned — anyone can submit a PR for those without claiming them.
+- You can have at most **2 open issues** assigned to you at a time. If you try to take a third, the bot will list your current assignments so you can decide which to `/drop`.
+- If an issue is already assigned, `/take` will let you know who is working on it and suggest other available issues.
+- **Stale assignment cleanup:** Issues with no activity for 30 days are automatically unassigned. If you need more time, just post a comment with a progress update to reset the timer. You can always `/take` the issue again afterwards.
 
 ## Making Changes
 
