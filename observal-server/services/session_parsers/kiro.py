@@ -233,3 +233,53 @@ def _extract_result_text(result_content: list) -> str:
                 if isinstance(sub, dict) and sub.get("type") == "text":
                     parts.append(sub.get("text", ""))
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Write-path extras — called by ingest_classify.get_extra_rows()
+# ---------------------------------------------------------------------------
+
+
+def extra_ingest_rows(
+    session_id: str,
+    project_id: str,
+    user_id: str,
+    agent_id: str | None,
+    agent_version: str | None,
+    ide: str,
+    total_credits: float | None,
+) -> list[dict]:
+    """Return Kiro-specific extra rows to write after the main ingest loop.
+
+    Stores a single ``kiro_credits`` row at line_offset=0xFFFFFFFF so the
+    sessions list query can aggregate ``sum(credits)`` per session.
+    ReplacingMergeTree deduplication makes repeated inserts idempotent.
+    Returns an empty list when no credits are available.
+    """
+    if total_credits is None or total_credits <= 0:
+        return []
+    return [
+        {
+            "session_id": session_id,
+            "project_id": project_id,
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "agent_version": agent_version,
+            "ide": ide,
+            "line_offset": 0xFFFFFFFF,
+            "line_hash": "",
+            "layer_hash": None,
+            "event_type": "kiro_credits",
+            "timestamp": "1970-01-01 00:00:00.000",
+            "uuid": None,
+            "parent_uuid": None,
+            "tool_name": None,
+            "tool_id": None,
+            "content_preview": f"{total_credits:.6f} credits",
+            "content_length": 0,
+            "raw_line": json.dumps(
+                {"kind": "KiroCredits", "credits": total_credits, "model": "Kiro Auto"}
+            ),
+            "credits": total_credits,
+        }
+    ]
