@@ -128,52 +128,61 @@ async def _list_sessions_query(
     is_admin: bool,
     uid: str,
 ) -> list[dict]:
-    """ClickHouse query for session list from session_events table."""
-    user_filter = ""
-    time_filter = ""
-    platform_having = ""
+    """Session list from session_stats_agg — no FINAL, no JSONExtract.
+
+    session_stats_agg is an AggregatingMergeTree table fed by session_stats_mv.
+    Each row is a partial aggregate for (project_id, session_id); GROUP BY merges
+    parts at read time.  At ~1 tiny row per session this is orders of magnitude
+    cheaper than session_events FINAL (ClickHouse Bluesky benchmark: 44s → 6ms).
+    """
+    user_where = ""
     params: dict[str, str] = {}
 
     if not is_admin:
-        user_filter = "AND user_id = {uid:String} "
+        user_where = "AND user_id = {uid:String} "
         params["param_uid"] = uid
 
+    # HAVING filters operate on the merged aggregate result (correct for all
+    # SimpleAggregateFunction columns; cannot use WHERE for those columns).
+    having_parts = ["anyLast(parent_session_id) = ''"]
     if days is not None and days > 0:
-        time_filter = f"AND timestamp > now() - INTERVAL {int(days)} DAY "
-
+        having_parts.append(f"max(last_event_time) > now() - INTERVAL {int(days)} DAY")
     if platform:
-        platform_having = "HAVING any(ide) = {platform:String} "
+        having_parts.append("anyLast(ide) = {platform:String}")
         params["param_platform"] = platform
+    having_clause = "HAVING " + " AND ".join(having_parts) + " "
 
     return await _ch_json(
         "SELECT "
         "session_id, "
-        "minIf(timestamp, timestamp > '1970-01-02 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS first_event_time, "
-        "maxIf(timestamp, timestamp > '1970-01-02 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS last_event_time, "
-        "(maxIf(timestamp, timestamp > '1970-01-02 00:00:00' AND timestamp < '2099-01-01 00:00:00') > now() - INTERVAL 30 MINUTE) AS is_active, "
-        "countIf(event_type = 'user_prompt') AS prompt_count, "
-        "0 AS api_request_count, "
-        "countIf(event_type = 'tool_result') AS tool_result_count, "
-        "sumIf(JSONExtractInt(raw_line, 'message', 'usage', 'input_tokens'), JSONExtractString(raw_line, 'type') = 'assistant') AS total_input_tokens, "
-        "sumIf(JSONExtractInt(raw_line, 'message', 'usage', 'output_tokens'), JSONExtractString(raw_line, 'type') = 'assistant') AS total_output_tokens, "
-        "sumIf(JSONExtractInt(raw_line, 'message', 'usage', 'cache_read_input_tokens'), JSONExtractString(raw_line, 'type') = 'assistant') AS total_cache_read_tokens, "
-        "sumIf(JSONExtractInt(raw_line, 'message', 'usage', 'cache_creation_input_tokens'), JSONExtractString(raw_line, 'type') = 'assistant') AS total_cache_write_tokens, "
-        "sum(credits) AS total_credits, "
+        "minIf(first_event_time, "
+        "  first_event_time > '1970-01-02 00:00:00' AND first_event_time < '2099-01-01 00:00:00'"
+        ") AS first_event_time, "
+        "maxIf(last_event_time, "
+        "  last_event_time > '1970-01-02 00:00:00' AND last_event_time < '2099-01-01 00:00:00'"
+        ") AS last_event_time, "
+        "(max(last_event_time) > now() - INTERVAL 30 MINUTE) AS is_active, "
+        "sum(prompt_count)       AS prompt_count, "
+        "0                       AS api_request_count, "
+        "sum(tool_result_count)  AS tool_result_count, "
+        "sum(input_tokens)       AS total_input_tokens, "
+        "sum(output_tokens)      AS total_output_tokens, "
+        "sum(cache_read_tokens)  AS total_cache_read_tokens, "
+        "sum(cache_write_tokens) AS total_cache_write_tokens, "
+        "sum(total_credits)      AS total_credits, "
         "if("
-        "  anyIf(JSONExtractString(raw_line, 'message', 'model'), JSONExtractString(raw_line, 'type') = 'assistant' AND raw_line != '') != '',"
-        "  anyIf(JSONExtractString(raw_line, 'message', 'model'), JSONExtractString(raw_line, 'type') = 'assistant' AND raw_line != ''),"
+        "  anyLastIf(model, model != '') != '',"
+        "  anyLastIf(model, model != ''),"
         "  anyIf(JSONExtractString(raw_line, 'model'), event_type = 'kiro_credits')"
         ") AS model, "
-        "any(ide) AS ide, "
-        "any(agent_id) AS agent_id, "
-        "any(user_id) AS user_id "
-        "FROM session_events FINAL "
+        "anyLast(ide)      AS ide, "
+        "anyLast(agent_id) AS agent_id, "
+        "anyLast(user_id)  AS user_id "
+        "FROM session_stats_agg "
         "WHERE session_id != '' "
-        "AND (parent_session_id = '' OR parent_session_id IS NULL) "
-        + user_filter
-        + time_filter
+        + user_where
         + "GROUP BY session_id "
-        + platform_having
+        + having_clause
         + "ORDER BY last_event_time DESC "
         "LIMIT 100",
         params or None,
@@ -197,7 +206,7 @@ async def sessions_summary(
         "count(DISTINCT CASE WHEN timestamp > today() "
         "  THEN session_id END) AS today_sessions "
         "FROM session_events FINAL "
-        "WHERE session_id != '' " + user_filter,
+        "WHERE session_id != '' " + user_filter + "SETTINGS max_final_threads = 4",
         params or None,
     )
     row = rows[0] if rows else {}
@@ -219,7 +228,8 @@ async def sessions_stats(current_user: User = Depends(require_role(UserRole.admi
         "countIf(event_type = 'tool_use') AS total_tool_calls, "
         "count() AS total_events "
         "FROM session_events FINAL "
-        "WHERE session_id != ''"
+        "WHERE session_id != '' "
+        "SETTINGS max_final_threads = 8"
     )
     row = rows[0] if rows else {}
     await audit(current_user, "stats.view", "stats")
@@ -241,7 +251,7 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         # Verify the user owns this session
         params["param_uid"] = str(current_user.id)
         ownership = await _ch_json(
-            "SELECT 1 FROM session_events FINAL WHERE session_id = {sid:String} AND user_id = {uid:String} LIMIT 1",
+            "SELECT 1 FROM session_events WHERE session_id = {sid:String} AND user_id = {uid:String} LIMIT 1",
             params,
         )
         if not ownership:
@@ -260,11 +270,13 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         "content_length, "
         "ide, "
         "raw_line, "
+        "raw_line_truncated, "
         "credits, "
         "ingested_at "
         "FROM session_events FINAL "
         "WHERE session_id = {sid:String} "
-        "ORDER BY line_offset ASC",
+        "ORDER BY line_offset ASC "
+        "SETTINGS max_final_threads = 4",
         params,
     )
 
@@ -286,10 +298,11 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
     sub_rows_all = await _ch_json(
         "SELECT session_id, timestamp, event_type, content_preview, "
         "tool_name, tool_id, uuid, parent_uuid, content_length, ide, "
-        "raw_line, credits, ingested_at, line_offset "
+        "raw_line, raw_line_truncated, credits, ingested_at, line_offset "
         "FROM session_events FINAL "
         "WHERE parent_session_id = {sid:String} "
-        "ORDER BY session_id, line_offset ASC",
+        "ORDER BY session_id, line_offset ASC "
+        "SETTINGS max_final_threads = 4",
         {"param_sid": session_id},
     )
     if sub_rows_all:
@@ -332,7 +345,7 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
     if not is_admin:
         params["param_uid"] = str(current_user.id)
         ownership = await _ch_json(
-            "SELECT 1 FROM session_events FINAL WHERE session_id = {sid:String} AND user_id = {uid:String} LIMIT 1",
+            "SELECT 1 FROM session_events WHERE session_id = {sid:String} AND user_id = {uid:String} LIMIT 1",
             params,
         )
         if not ownership:
@@ -347,7 +360,8 @@ async def get_session_efficiency(session_id: str, current_user: User = Depends(r
         "ide AS service_name "
         "FROM session_events FINAL "
         "WHERE session_id = {sid:String} "
-        "ORDER BY line_offset ASC",
+        "ORDER BY line_offset ASC "
+        "SETTINGS max_final_threads = 4",
         params,
     )
 
@@ -393,7 +407,7 @@ async def bind_session_agent(
     if not is_admin:
         params = {"param_sid": session_id, "param_uid": str(current_user.id)}
         ownership = await _ch_json(
-            "SELECT 1 FROM session_events FINAL WHERE session_id = {sid:String} AND user_id = {uid:String} LIMIT 1",
+            "SELECT 1 FROM session_events WHERE session_id = {sid:String} AND user_id = {uid:String} LIMIT 1",
             params,
         )
         if not ownership:

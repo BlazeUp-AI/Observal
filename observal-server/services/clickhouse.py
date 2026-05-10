@@ -359,6 +359,72 @@ INIT_SQL = [
     # Subagent attribution: link subagent sessions to their parent session
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS parent_session_id Nullable(String)""",
     """ALTER TABLE session_events ADD INDEX IF NOT EXISTS idx_se_parent_session_id parent_session_id TYPE bloom_filter(0.01) GRANULARITY 1""",
+    # Materialized token / model columns — extract at ingest, avoid JSONExtract at query time.
+    # Default 0 / '' so existing rows remain queryable without rewriting.
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS input_tokens Int32 DEFAULT 0""",
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS output_tokens Int32 DEFAULT 0""",
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS cache_read_tokens Int32 DEFAULT 0""",
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS cache_write_tokens Int32 DEFAULT 0""",
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS model LowCardinality(String) DEFAULT ''""",
+    # raw_line size guard — 1 when the original line exceeded RAW_LINE_MAX_BYTES and was truncated.
+    """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS raw_line_truncated UInt8 DEFAULT 0""",
+    # Pre-aggregated session stats — AggregatingMergeTree table + materialized view.
+    #
+    # Fires on every INSERT block into session_events and maintains running sums/min/max
+    # per (project_id, session_id) so that the session list query and insights metrics
+    # can read a tiny aggregate table instead of scanning session_events FINAL with
+    # JSONExtract on every row.  Benchmark: ClickHouse Bluesky blog shows pre-aggregated
+    # MVs reduce 44-second full scans to 6 ms (7,000x speedup at 4B rows).
+    #
+    # SimpleAggregateFunction: no -State/-Merge suffix needed.  Insert raw partial values;
+    # ClickHouse applies the aggregate function on merge.  Correctness relies on the
+    # dedup check in session_ingest.py (offset + hash) preventing duplicate rows.
+    """CREATE TABLE IF NOT EXISTS session_stats_agg (
+        project_id          String,
+        session_id          String,
+        agent_id            LowCardinality(String) DEFAULT '',
+        user_id             String                 DEFAULT '',
+        parent_session_id   String                 DEFAULT '',
+        ide                 LowCardinality(String) DEFAULT '',
+        first_event_time    SimpleAggregateFunction(min,     DateTime64(3, 'UTC')),
+        last_event_time     SimpleAggregateFunction(max,     DateTime64(3, 'UTC')),
+        event_count         SimpleAggregateFunction(sum,     Int64),
+        prompt_count        SimpleAggregateFunction(sum,     Int64),
+        tool_call_count     SimpleAggregateFunction(sum,     Int64),
+        tool_result_count   SimpleAggregateFunction(sum,     Int64),
+        input_tokens        SimpleAggregateFunction(sum,     Int64),
+        output_tokens       SimpleAggregateFunction(sum,     Int64),
+        cache_read_tokens   SimpleAggregateFunction(sum,     Int64),
+        cache_write_tokens  SimpleAggregateFunction(sum,     Int64),
+        total_credits       SimpleAggregateFunction(sum,     Float64),
+        model               SimpleAggregateFunction(anyLast, String),
+        INDEX idx_ssa_user_id  user_id  TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_ssa_agent_id agent_id TYPE bloom_filter(0.01) GRANULARITY 1
+    ) ENGINE = AggregatingMergeTree()
+    ORDER BY (project_id, session_id)""",
+    """CREATE MATERIALIZED VIEW IF NOT EXISTS session_stats_mv
+    TO session_stats_agg AS
+    SELECT
+        project_id,
+        session_id,
+        any(agent_id)                         AS agent_id,
+        any(user_id)                          AS user_id,
+        any(coalesce(parent_session_id, ''))  AS parent_session_id,
+        any(ide)                              AS ide,
+        min(timestamp)                        AS first_event_time,
+        max(timestamp)                        AS last_event_time,
+        count()                               AS event_count,
+        countIf(event_type = 'user_prompt')   AS prompt_count,
+        countIf(event_type = 'tool_call')     AS tool_call_count,
+        countIf(event_type = 'tool_result')   AS tool_result_count,
+        sum(input_tokens)                     AS input_tokens,
+        sum(output_tokens)                    AS output_tokens,
+        sum(cache_read_tokens)                AS cache_read_tokens,
+        sum(cache_write_tokens)               AS cache_write_tokens,
+        sum(credits)                          AS total_credits,
+        anyLastIf(model, model != '')         AS model
+    FROM session_events
+    GROUP BY project_id, session_id""",
 ]
 
 
@@ -1030,7 +1096,8 @@ async def insert_session_events(rows: list[dict]):
     sql = (
         "INSERT INTO session_events (session_id, project_id, user_id, agent_id, "
         "agent_version, layer_hash, ide, line_offset, line_hash, event_type, timestamp, uuid, parent_uuid, "
-        "tool_name, tool_id, content_preview, content_length, raw_line, credits, parent_session_id) FORMAT JSONEachRow"
+        "tool_name, tool_id, content_preview, content_length, raw_line, credits, parent_session_id, "
+        "input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model, raw_line_truncated) FORMAT JSONEachRow"
     )
     try:
         r = await _query(sql, data="\n".join(lines))
