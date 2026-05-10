@@ -31,5 +31,5 @@ _For each new external resource, add a row to the table below:_
 
 | Library | Description | License |
 | --- | --- | --- |
-| Sample Icon Library | Sample Description | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) |
+| Sample Icon Library | Sample Description | [MIT License](https://opensource.org/licenses/MIT) |
 --->

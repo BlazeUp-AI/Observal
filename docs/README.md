@@ -72,7 +72,7 @@ The full matrix lives in [Integrations](integrations/README.md).
 
 ## Is Observal free?
 
-Yes. Observal is open source under the Apache 2.0 license. Self-host the whole thing for free. There is an enterprise edition with SSO, SCIM, and audit logging, but everything covered in these docs works without it.
+Yes. Observal is open source under the AGPL-3.0 license. Self-host the whole thing for free. There is an enterprise edition with SSO, SCIM, and audit logging, but everything covered in these docs works without it.
 
 ## Next
 
