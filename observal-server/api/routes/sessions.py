@@ -200,13 +200,18 @@ async def sessions_summary(
         user_filter = "AND user_id = {uid:String} "
         params["param_uid"] = str(current_user.id)
 
+    # Use pre-aggregated session_stats_agg — avoids a full session_events FINAL scan.
+    # AggregatingMergeTree + GROUP BY merges partial aggregates at read time; no FINAL needed.
     rows = await _ch_json(
         "SELECT "
-        "count(DISTINCT session_id) AS total, "
-        "count(DISTINCT CASE WHEN timestamp > today() "
-        "  THEN session_id END) AS today_sessions "
-        "FROM session_events FINAL "
-        "WHERE session_id != '' " + user_filter + "SETTINGS max_final_threads = 4",
+        "count() AS total, "
+        "countIf(toDate(last_event_time) = today()) AS today_sessions "
+        "FROM ( "
+        "  SELECT session_id, max(last_event_time) AS last_event_time "
+        "  FROM session_stats_agg "
+        "  WHERE session_id != '' " + user_filter +
+        "  GROUP BY session_id "
+        ")",
         params or None,
     )
     row = rows[0] if rows else {}
