@@ -1,0 +1,67 @@
+license_policies:
+  # ── Approved (compatible with AGPL-3.0) ──────────────────
+  - license_key: agpl-3.0
+    label: Approved License
+  - license_key: agpl-3.0-plus
+    label: Approved License
+  - license_key: gpl-3.0
+    label: Approved License
+  - license_key: gpl-3.0-plus
+    label: Approved License
+  - license_key: lgpl-3.0
+    label: Approved License
+  - license_key: lgpl-3.0-plus
+    label: Approved License
+  - license_key: lgpl-2.1
+    label: Approved License
+  - license_key: lgpl-2.1-plus
+    label: Approved License
+  - license_key: mit
+    label: Approved License
+  - license_key: bsd-simplified
+    label: Approved License
+  - license_key: bsd-new
+    label: Approved License
+  - license_key: apache-2.0
+    label: Approved License
+  - license_key: isc
+    label: Approved License
+  - license_key: python
+    label: Approved License
+  - license_key: mpl-2.0
+    label: Approved License
+  - license_key: unlicense
+    label: Approved License
+  - license_key: cc0-1.0
+    label: Approved License
+  - license_key: zlib
+    label: Approved License
+  - license_key: 0bsd
+    label: Approved License
+
+  - license_key: gpl-2.0-plus
+    label: Approved License
+  - license_key: psf-2.0
+    label: Approved License
+  - license_key: openssl
+    label: Approved License
+  - license_key: unicode
+    label: Approved License
+
+  # ── Restricted (requires legal review) ───────────────────
+  - license_key: gpl-2.0
+    label: Restricted License
+  - license_key: lgpl-2.0
+    label: Restricted License
+  - license_key: cpal-1.0
+    label: Restricted License
+  - license_key: eupl-1.2
+    label: Restricted License
+
+  # ── Prohibited (incompatible / non-redistributable) ──────
+  - license_key: sspl-1.0
+    label: Prohibited License
+  - license_key: bsl-1.0
+    label: Prohibited License
+  - license_key: elastic-2.0
+    label: Prohibited License
