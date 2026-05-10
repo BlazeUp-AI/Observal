@@ -555,17 +555,28 @@ async def _ev_language_detection(agent_id: str, start: str, end: str) -> dict[st
 
 
 async def _ev_subagent_stats(agent_id: str, start: str, end: str) -> dict:
-    """Subagent statistics using materialized output_tokens column."""
+    """Subagent statistics from session_stats_agg.
+
+    parent_session_id != '' identifies subagent sessions in the MV.
+    output_tokens is already summed per session; event_count serves as the
+    subagent event proxy (individual event rows are not needed).
+    """
     _query = get_query()
     sql = """
         SELECT
-            count(DISTINCT session_id) AS total_subagent_sessions,
-            count()                    AS subagent_events,
+            count()                    AS total_subagent_sessions,
+            sum(event_count)           AS subagent_events,
             sum(output_tokens)         AS subagent_output_tokens
-        FROM session_events FINAL
-        WHERE agent_id = {agent_id:String}
-          AND timestamp BETWEEN {t_start:String} AND {t_end:String}
-          AND parent_session_id != ''
+        FROM (
+            SELECT session_id,
+                   sum(event_count)   AS event_count,
+                   sum(output_tokens) AS output_tokens
+            FROM session_stats_agg
+            WHERE agent_id = {agent_id:String}
+              AND parent_session_id != ''
+              AND last_event_time BETWEEN {t_start:String} AND {t_end:String}
+            GROUP BY session_id
+        )
         FORMAT JSON
     """
     params = {
