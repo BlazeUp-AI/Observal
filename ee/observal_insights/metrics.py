@@ -192,13 +192,17 @@ def detect_multi_session(sessions: list[dict]) -> dict:
 
 
 async def _count_sessions_in_events(agent_id: str, start: str, end: str) -> int:
-    """Quick count to determine if session_events has data for this agent."""
+    """Quick count to determine if session_stats_agg has data for this agent.
+
+    Reads from the pre-aggregated AggregatingMergeTree table instead of
+    scanning session_events FINAL — one tiny row per session vs N event rows.
+    """
     _query = get_query()
     sql = """
         SELECT count(DISTINCT session_id) AS cnt
-        FROM session_events FINAL
+        FROM session_stats_agg
         WHERE agent_id = {agent_id:String}
-          AND timestamp BETWEEN {t_start:String} AND {t_end:String}
+          AND last_event_time BETWEEN {t_start:String} AND {t_end:String}
         FORMAT JSON
     """
     params = {
