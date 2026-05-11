@@ -9,7 +9,6 @@ pre-mock them before importing the services.retention module.
 
 import sys
 import uuid
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -48,10 +47,7 @@ import services.retention  # noqa: E402
 from services.retention import (  # noqa: E402
     SCORE_TABLE,
     TIME_PURGE_TABLES,
-    _delete_batch,
-    _has_data,
     _purge_count_based,
-    _purge_session_stats_orphans,
     _purge_time_based,
     run_retention_purge,
 )
@@ -369,9 +365,10 @@ async def test_score_retention_defaults():
         # score_days = max(14*2, 30) = max(28, 30) = 30
         # Second arg is now a cutoff string; verify it's a valid timestamp
         import re
-        assert re.match(
-            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.000$", score_call.args[1]
-        ), f"Expected cutoff string, got {score_call.args[1]}"
+
+        assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.000$", score_call.args[1]), (
+            f"Expected cutoff string, got {score_call.args[1]}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -398,9 +395,7 @@ async def test_cutoff_timestamp_format():
         if cutoff:
             found_cutoff = True
             # Verify format: YYYY-MM-DD HH:MM:SS.000
-            assert re.match(
-                r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.000$", cutoff
-            ), f"Cutoff format mismatch: {cutoff}"
+            assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.000$", cutoff), f"Cutoff format mismatch: {cutoff}"
 
     assert found_cutoff, "No cutoff parameter found in any query call"
 

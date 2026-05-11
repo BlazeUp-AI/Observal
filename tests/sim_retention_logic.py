@@ -51,9 +51,7 @@ print("=" * 60)
 
 def compute_score_days(data_retention_days, score_retention_days=None):
     """Reproduce the logic from run_retention_purge."""
-    score_days = score_retention_days or (
-        (data_retention_days * 2) if data_retention_days else None
-    )
+    score_days = score_retention_days or ((data_retention_days * 2) if data_retention_days else None)
     if score_days:
         score_days = max(score_days, 30)
     return score_days

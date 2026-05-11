@@ -389,6 +389,8 @@ class TestMaintainClickhouse:
             "traces",
             "spans",
             "scores",
+            "session_events",
+            "session_stats_agg",
         }
 
     async def test_optimize_failure_doesnt_stop_other_tables(self):
