@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """Session file reconciliation — parse Claude Code JSONL session files
 and enrich ClickHouse telemetry with per-turn token counts, model info,
 stop reasons, and conversation structure.

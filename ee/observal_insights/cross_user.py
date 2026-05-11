@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """Cross-user pattern detection for Agent Insights (Phase 3 / V3).
 
 All functions are deterministic — no LLM calls.

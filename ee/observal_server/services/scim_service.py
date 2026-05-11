@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """SCIM 2.0 user provisioning service.
 
 Maps between SCIM Core User schema (RFC 7643) and our User model.

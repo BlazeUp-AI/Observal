@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """Model pricing lookup and cost computation for Agent Insights."""
 
 from __future__ import annotations

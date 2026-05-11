@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """Enterprise route mounting."""
 
 from __future__ import annotations

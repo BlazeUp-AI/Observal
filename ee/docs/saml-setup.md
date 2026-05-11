@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-License-Identifier: LicenseRef-Observal-Enterprise -->
+
 # SAML 2.0 Setup Guide
 
 This guide walks you through configuring SAML 2.0 Single Sign-On (SSO) for

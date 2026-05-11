@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """LLM narrative generation for Agent Insights reports (V1 fallback)."""
 
 import json

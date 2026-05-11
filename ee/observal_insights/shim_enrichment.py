@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """MCP shim data enrichment — join spans table with hook events for richer insights.
 
 The shim provides data hooks cannot:
