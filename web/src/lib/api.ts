@@ -530,6 +530,61 @@ export const admin = {
   createScimToken: (body: { description?: string }) =>
     post<{ id: string; token: string; description: string; message: string }>("/admin/scim-tokens", body),
   revokeScimToken: (id: string) => del(`/admin/scim-tokens/${id}`),
+  getRetention: () =>
+    get<RetentionConfig>("/admin/org/retention"),
+  setRetention: (body: RetentionConfigUpdate) =>
+    put<RetentionConfig>("/admin/org/retention", body),
+  previewRetention: (days: number) =>
+    get<RetentionPreview>(`/admin/org/retention/preview?days=${days}`),
+  getRetentionStats: () =>
+    get<RetentionStats>("/admin/org/retention/stats"),
+  getRetentionWarnings: () =>
+    get<RetentionWarnings>("/admin/org/retention/warnings"),
+};
+
+// ── Retention Types ───────────────────────────────────────────────
+export type RetentionConfig = {
+  retention_enabled: boolean;
+  data_retention_days: number | null;
+  score_retention_days: number | null;
+  max_trace_count: number | null;
+  global_retention_days: number;
+};
+
+export type RetentionConfigUpdate = {
+  retention_enabled: boolean;
+  data_retention_days?: number | null;
+  score_retention_days?: number | null;
+  max_trace_count?: number | null;
+};
+
+export type RetentionPreview = {
+  traces: number;
+  spans: number;
+  scores: number;
+  session_events: number;
+  insight_reports: number;
+};
+
+export type RetentionStats = {
+  retention_enabled: boolean;
+  data_retention_days: number | null;
+  score_retention_days: number | null;
+  total_traces: number;
+  oldest_trace_age_days: number;
+  traces_expiring_7d: number;
+  next_purge_approx: string | null;
+};
+
+export type RetentionWarnings = {
+  warnings: {
+    agent_id: string;
+    agent_name: string;
+    traces_expiring_soon: number;
+    last_insight_report: string | null;
+  }[];
+  retention_days: number | null;
+  retention_enabled: boolean;
 };
 
 // ── Config ─────────────────────────────────────────────────────────
