@@ -28,10 +28,12 @@ def upgrade() -> None:
 
     # --- Fix insight_meta_cache FK (0003 omitted ondelete CASCADE) ---
     if inspector.has_table("insight_meta_cache"):
-        # Drop and recreate the FK constraint with CASCADE
         fks = inspector.get_foreign_keys("insight_meta_cache")
         for fk in fks:
             if fk.get("referred_table") == "agents" and "agent_id" in fk.get("constrained_columns", []):
+                # Skip if already has CASCADE (e.g. table created via Base.metadata.create_all after model fix)
+                if fk.get("options", {}).get("ondelete", "").upper() == "CASCADE":
+                    break
                 op.drop_constraint(fk["name"], "insight_meta_cache", type_="foreignkey")
                 op.create_foreign_key(
                     fk["name"],
@@ -82,6 +84,8 @@ def upgrade() -> None:
             sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
             sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            # Self-referential FK: import ordering is handled by session_replication_role = 'replica'
+            # which disables FK enforcement, same pattern as listing/version circular FKs.
             sa.Column(
                 "previous_report_id",
                 postgresql.UUID(as_uuid=True),

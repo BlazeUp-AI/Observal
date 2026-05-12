@@ -273,7 +273,9 @@ def _require_admin() -> None:
 def _build_select(table: str, columns: list[str]) -> str:
     """Build SELECT query, casting JSONB columns to ::text.
 
-    Table names are validated against INSERT_ORDER to prevent SQL injection.
+    Table names are validated against INSERT_ORDER as a defense-in-depth
+    assertion — callers always pass values from INSERT_ORDER, but this
+    guards against accidental misuse by future callers passing unknown tables.
     """
     if table not in INSERT_ORDER:
         msg = f"Unknown table: {table!r}"
@@ -311,9 +313,10 @@ def _safe_tar_extract(tar: tarfile.TarFile, dest: Path) -> None:
         tar.extractall(dest, filter="data")
     else:
         # Manual path traversal protection for Python < 3.12
+        dest_resolved = dest.resolve()
         for member in tar.getmembers():
             member_path = (dest / member.name).resolve()
-            if not str(member_path).startswith(str(dest.resolve())):
+            if not member_path.is_relative_to(dest_resolved):
                 msg = f"Tar member {member.name!r} would escape destination directory"
                 raise ValueError(msg)
             if member.issym() or member.islnk():
@@ -1004,11 +1007,11 @@ async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str
                 if "owner_org_id" not in tbl_cols:
                     continue
                 result = await conn.execute(
-                    f'UPDATE "{tbl}" SET "owner_org_id" = u."org_id" '
-                    f"FROM users u "
-                    f'WHERE "{tbl}"."{creator_col}" = u."id" '
+                    f'UPDATE "{tbl}" SET "owner_org_id" = "u"."org_id" '
+                    f'FROM "users" "u" '
+                    f'WHERE "{tbl}"."{creator_col}" = "u"."id" '
                     f'AND "{tbl}"."owner_org_id" IS NULL '
-                    f'AND u."org_id" IS NOT NULL'
+                    f'AND "u"."org_id" IS NOT NULL'
                 )
                 count = int(result.split()[-1])
                 if count > 0:
