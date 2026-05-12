@@ -225,6 +225,8 @@ Describe the use case clearly. Explain the problem you are trying to solve, not 
 
 See [AGENTS.md](AGENTS.md) for internal architecture notes, file layout, and conventions. See [docs/cli/README.md](docs/cli/README.md) for the full CLI command reference. Both are useful for new contributors and AI coding agents alike.
 
+When adding support for a new IDE, follow the step-by-step walkthrough in [docs/concepts/adding-an-ide.md](docs/concepts/adding-an-ide.md).
+
 ## License
 
 This repository uses a dual-license structure. All code outside the `ee/` directory is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE). The `ee/` directory is licensed separately under the [Observal Enterprise License](ee/LICENSE) and does not accept community contributions.
