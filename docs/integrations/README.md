@@ -4,7 +4,7 @@
 
 # Integrations
 
-Observal supports seven IDEs / AI coding tools. The depth of support varies — some have native OpenTelemetry export and integrate almost transparently; others need hook-based workarounds until their upstream catches up.
+Observal supports eight IDEs / AI coding tools. The depth of support varies — some have native OpenTelemetry export and integrate almost transparently; others need hook-based workarounds until their upstream catches up.
 
 ## Compatibility matrix
 
@@ -16,6 +16,7 @@ Observal supports seven IDEs / AI coding tools. The depth of support varies — 
 | [Gemini CLI](gemini-cli.md) | — | — | — | ✅ | ✅ | — | — |
 | [VS Code](vscode.md) | — | — | — | ✅ | ✅ | — | — |
 | [Codex CLI](codex-cli.md) | — | — | — | — | ✅ | — | — |
+| [OpenCode](opencode.md) | — | — | ✅ | ✅ | ✅ | — | — |
 | Copilot | — | — | — | — | ✅ | — | — |
 
 | Feature | What it means for Observal |

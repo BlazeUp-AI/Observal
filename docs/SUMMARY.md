@@ -60,6 +60,7 @@
 * [Gemini CLI](integrations/gemini-cli.md)
 * [VS Code](integrations/vscode.md)
 * [Codex CLI](integrations/codex-cli.md)
+* [OpenCode](integrations/opencode.md)
 
 ## Concepts
 
