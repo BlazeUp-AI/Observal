@@ -217,12 +217,12 @@ export default function SettingsPage() {
   useEffect(() => {
     admin.getTracePrivacy()
       .then((res) => setTracePrivacy(res.trace_privacy))
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setTracePrivacyLoading(false));
     if (hasMinRole(getUserRole(), "super_admin")) {
       admin.getRegisteredAgentsOnly()
         .then((res) => setRegisteredAgentsOnly(res.registered_agents_only))
-        .catch(() => { })
+        .catch(() => {})
         .finally(() => setRegisteredAgentsOnlyLoading(false));
     } else {
       setRegisteredAgentsOnlyLoading(false);
@@ -462,7 +462,7 @@ export default function SettingsPage() {
                   onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageFile(f, setWordmarkOverride); }}
                 >
                   {wordmarkPreview ? (
-                    <img src={wordmarkPreview} alt="Wordmark" className="h-6 max-w-24 object-contain" />
+                    <Image src={wordmarkPreview} alt="Wordmark" width={24} height={96} className="h-6 max-w-24 object-contain" />
                   ) : (
                     <Upload className="h-4 w-4 text-muted-foreground" />
                   )}
@@ -491,13 +491,13 @@ export default function SettingsPage() {
               <div className="rounded bg-sidebar px-3 py-2 inline-flex items-center gap-2">
                 <div className="flex size-8 shrink-0 items-center justify-center">
                   {logoPreview ? (
-                    <img src={logoPreview} alt="" className="w-5 h-5 object-contain" />
+                    <Image src={logoPreview} alt="" width={20} height={20} className="w-5 h-5 object-contain" />
                   ) : (
-                    <img src="/favicon.ico" alt="" className="w-5 h-5" />
+                    <Image src="/favicon.ico" alt="" width={20} height={20} className="w-5 h-5" />
                   )}
                 </div>
                 {wordmarkPreview ? (
-                  <img src={wordmarkPreview} alt="" className="h-4 max-w-35 object-contain object-left" />
+                  <Image src={wordmarkPreview} alt="" width={16} height={140} className="h-4 max-w-35 object-contain object-left" />
                 ) : (
                   <span className="text-sm font-semibold tracking-tight font-display text-sidebar-foreground truncate max-w-35">
                     {appNameDraft.trim() || "Observal"}
