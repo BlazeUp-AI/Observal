@@ -227,8 +227,19 @@ async function request<T = unknown>(
     let detail = text;
     try {
       const parsed = JSON.parse(text);
-      if (parsed.detail) detail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
-      else if (parsed.error) detail = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
+      if (parsed.detail) {
+        if (typeof parsed.detail === "string") {
+          detail = parsed.detail;
+        } else if (Array.isArray(parsed.detail)) {
+          detail = parsed.detail
+            .map((e: { msg?: string }) => e.msg?.replace(/^Value error, /i, "") || "Validation error")
+            .join(". ");
+        } else {
+          detail = JSON.stringify(parsed.detail);
+        }
+      } else if (parsed.error) {
+        detail = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
+      }
     } catch {
       // not JSON — use raw text
     }
