@@ -1,4 +1,7 @@
-okaokayname: E2E Frontend
+okaokay# SPDX-FileCopyrightText: 2025 Observal Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: E2E Frontend
 
 on:
   pull_request:
