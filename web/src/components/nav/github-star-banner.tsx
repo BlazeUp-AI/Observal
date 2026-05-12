@@ -36,7 +36,7 @@ export function GitHubStarBanner() {
         className="flex items-center gap-1.5"
       >
         <Star className="h-3.5 w-3.5 text-yellow-400 transition-colors group-hover/star:fill-yellow-400" />
-        <span>Star us on testing testing</span>
+        <span>Aspartate Aminotransferase</span>
       </a>
       <button
         onClick={dismiss}
