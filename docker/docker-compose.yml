@@ -20,7 +20,6 @@ services:
       - ../.env
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-      - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
     depends_on:
       observal-db:
         condition: service_healthy
@@ -47,7 +46,6 @@ services:
       - ../.env
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-      - DATA_RETENTION_DAYS=${DATA_RETENTION_DAYS:-90}
       - JWT_KEY_DIR=/data/keys
       - SKIP_DDL_ON_STARTUP=true
       - DEMO_SUPER_ADMIN_EMAIL=${DEMO_SUPER_ADMIN_EMAIL:-super@demo.example}

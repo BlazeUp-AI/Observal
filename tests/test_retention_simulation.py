@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Deep simulation tests for data retention purge logic.
 
 These tests mock the entire service layer to verify purge ordering,

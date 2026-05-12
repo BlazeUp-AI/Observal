@@ -1,7 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Add data retention columns to organizations table.
 
-Revision ID: 0004
-Revises: 0003
+Revision ID: 0007
+Revises: 0006
 Create Date: 2026-05-11
 """
 
@@ -9,8 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0004"
-down_revision = "0003"
+revision = "0007"
+down_revision = "0006"
 branch_labels = None
 depends_on = None
 

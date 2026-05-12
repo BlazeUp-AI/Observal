@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for per-organization data retention purge service."""
 
 import uuid
@@ -108,7 +111,7 @@ async def test_count_based_purge_uses_daily_aggregation():
         first_sql = mock_query.call_args_list[0].args[0]
         assert "GROUP BY day" in first_sql
         assert "ORDER BY day DESC" in first_sql
-        assert "LIMIT 3650" in first_sql
+        assert "LIMIT 730" in first_sql
         assert "OFFSET" not in first_sql
 
 

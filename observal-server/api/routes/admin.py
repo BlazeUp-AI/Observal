@@ -1316,6 +1316,9 @@ async def preview_retention(
         report_count = 0
 
     counts["insight_reports"] = report_count
+    # ClickHouse lightweight deletes are async (lightweight_deletes_sync=0).
+    # Counts may include rows already queued for deletion by a recent purge run.
+    counts["_note"] = "approximate; counts may be higher if a purge ran recently"
     return counts
 
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Per-organization data retention purge service.
 
 Runs as a cron job every 6 hours. For each org with retention_enabled=True:
@@ -152,11 +155,14 @@ async def _purge_count_based(project_id: str, max_trace_count: int) -> int:
     """If trace count exceeds max, find cutoff day and purge oldest."""
     from services.clickhouse import _query
 
-    # Get daily trace counts
+    # Get daily trace counts, capped at 2 years to bound query cost.
+    # Count-based purge only needs to find the cutoff day; scanning beyond
+    # 730 days offers no benefit and risks hitting the cron timeout on large orgs.
     sql = (
         "SELECT toDate(start_time) as day, count() as cnt "
         "FROM traces WHERE project_id = {pid:String} "
-        "GROUP BY day ORDER BY day DESC LIMIT 3650 FORMAT JSON"
+        "AND start_time >= now() - INTERVAL 730 DAY "
+        "GROUP BY day ORDER BY day DESC LIMIT 730 FORMAT JSON"
     )
     resp = await _query(sql, {"param_pid": project_id})
     if resp.status_code != 200:
