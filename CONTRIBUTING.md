@@ -7,8 +7,6 @@
 <!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-> Parts of this guide were inspired by the excellent contributing documentation from [AnkiDroid/Anki-Android](https://github.com/ankidroid/Anki-Android). They set a great standard for OSS contributor docs, worth checking out.
-
 # Contributing to Observal
 
 Thank you for considering contributing to Observal! Contributions of all kinds are welcome: bug reports, bug fixes, new features, documentation improvements, and tests. This guide walks you through the process from setting up your environment to getting your pull request merged.
@@ -16,6 +14,8 @@ Thank you for considering contributing to Observal! Contributions of all kinds a
 Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
 
 If you have questions about contributing or want to discuss your ideas before opening a PR, join the [Observal Discord](https://discord.observal.io) to chat with the maintainers.
+
+> Parts of this guide were inspired by the excellent contributing documentation from [AnkiDroid/Anki-Android](https://github.com/ankidroid/Anki-Android), one of the first open-source projects some of our maintainers were a part of. They set a great standard for OSS contributor docs. If you're looking for another welcoming project to contribute to, we'd encourage you to check them out!
 
 ## Table of Contents
 
