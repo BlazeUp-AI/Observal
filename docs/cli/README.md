@@ -22,6 +22,7 @@ Complete reference for the `observal` CLI. Every subcommand has its own page —
 | [`observal ops`](ops.md) | Observability and operations (traces, spans, metrics, feedback) |
 | [`observal admin`](admin.md) | Admin operations (settings, users, review, eval, canaries) |
 | [`observal doctor`](doctor.md) | Diagnose IDE compatibility; `doctor patch` applies instrumentation |
+| [`python -m observal_cli.cmd_reconcile`](reconcile.md) | Recover stale session JSONL tails after a missed Stop hook |
 | [`observal migrate`](migrate.md) | Export/import PostgreSQL registry (shallow copy) and ClickHouse telemetry (deep copy) |
 | [`observal profile`](profile.md) | Switch IDE configs to a git-hosted profile |
 | [`observal self`](self.md) | Upgrade or downgrade the CLI |

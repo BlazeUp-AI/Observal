@@ -32,6 +32,7 @@
 * [observal ops](cli/ops.md)
 * [observal admin](cli/admin.md)
 * [observal doctor](cli/doctor.md)
+* [reconcile recovery helper](cli/reconcile.md)
 * [observal profile](cli/profile.md)
 * [observal self](cli/self.md)
 
