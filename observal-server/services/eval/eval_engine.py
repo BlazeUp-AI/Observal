@@ -92,9 +92,11 @@ class LLMJudgeBackend(EvalBackend):
     """LLM-as-judge backend using OpenAI-compatible or Bedrock APIs."""
 
     async def score(self, template: dict, trace: dict, span: dict) -> dict:
+        from services.secret_redactor import sanitize_for_provider
+
         prompt = template["prompt"].format(
-            trace=json.dumps(trace, default=str)[:2000],
-            span=json.dumps(span, default=str)[:2000],
+            trace=sanitize_for_provider(json.dumps(trace, default=str)[:2000]),
+            span=sanitize_for_provider(json.dumps(span, default=str)[:2000]),
         )
         result = await _call_model(prompt)
         if isinstance(result, dict) and "score" in result:

@@ -21,6 +21,7 @@ from models.agent import Agent, AgentStatus, AgentVersion
 from models.insight_report import InsightReport, InsightReportStatus
 from services.clickhouse import _query
 from services.redis import _get_arq_pool
+from services.secret_redactor import sanitize_for_provider
 
 logger = structlog.get_logger(__name__)
 
@@ -68,7 +69,7 @@ async def _load_agent_config(db, agent_id) -> dict | None:
 
     if version.prompt:
         # Include a truncated system prompt (first 2000 chars) for context
-        config["system_prompt_excerpt"] = version.prompt[:2000]
+        config["system_prompt_excerpt"] = sanitize_for_provider(version.prompt[:2000])
         config["system_prompt_length"] = len(version.prompt)
 
     if mcp_names:
