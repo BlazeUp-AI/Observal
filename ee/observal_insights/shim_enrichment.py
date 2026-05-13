@@ -15,6 +15,7 @@ Other IDEs will have no spans, and all functions handle that gracefully.
 
 from __future__ import annotations
 
+import re as _re
 from datetime import UTC
 
 import structlog
@@ -22,6 +23,20 @@ import structlog
 from ._deps import get_query
 
 logger = structlog.get_logger(__name__)
+
+_SESSION_ID_SAFE_RE = _re.compile(r"^[a-zA-Z0-9_\-\.]{1,256}$")
+_AGENT_NAME_SAFE_RE = _re.compile(r"^[a-zA-Z0-9_\-\. ]{1,128}$")
+
+
+def _sanitize_session_ids(session_ids: list[str]) -> list[str]:
+    safe: list[str] = []
+    for sid in session_ids:
+        if _SESSION_ID_SAFE_RE.match(sid):
+            safe.append(sid)
+        else:
+            logger.warning("shim_unsafe_session_id_dropped", sid_prefix=str(sid)[:32])
+    return safe
+
 
 # Subquery to find sessions belonging to an agent (same pattern as metrics.py).
 _SESSIONS_SUBQUERY = """
@@ -44,6 +59,10 @@ async def get_shim_spans_for_sessions(
     Each span has: tool_name, input, output, latency_ms, tool_schema_valid,
     start_time, mcp_id, session_id.
     """
+    if not session_ids:
+        return {}
+
+    session_ids = _sanitize_session_ids(session_ids)
     if not session_ids:
         return {}
 

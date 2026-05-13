@@ -352,3 +352,87 @@ class TestAgentConfigGenerator:
         assert agent["name"] == "test-agent"
         assert agent["mcpServers"]["ext-mcp"]["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
         assert "*" in agent["tools"]
+
+
+# --- Session ID sanitization (SEC-029) ---
+
+
+class TestSanitizeSessionIds:
+    """Unit tests for ee.observal_insights.shim_enrichment._sanitize_session_ids."""
+
+    def _get_fn(self):
+        import os
+        import sys
+
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ee"))
+        from observal_insights.shim_enrichment import _sanitize_session_ids
+
+        return _sanitize_session_ids
+
+    def test_sql_injection_dropped(self):
+        """IDs containing SQL injection payloads are rejected."""
+        fn = self._get_fn()
+        result = fn(["') OR 1=1 --"])
+        assert result == []
+
+    def test_valid_id_accepted(self):
+        """A clean alphanumeric-with-dashes ID passes through unchanged."""
+        fn = self._get_fn()
+        result = fn(["valid-id"])
+        assert result == ["valid-id"]
+
+    def test_mixed_list_only_valid_returned(self):
+        """Only IDs matching the safe pattern survive; bad ones are silently dropped."""
+        fn = self._get_fn()
+        inputs = [
+            "good-id-123",
+            "'; DROP TABLE spans; --",
+            "another.valid_ID",
+            "<script>",
+            "uuid-1234-abcd",
+        ]
+        result = fn(inputs)
+        assert result == ["good-id-123", "another.valid_ID", "uuid-1234-abcd"]
+
+    def test_empty_list_returns_empty(self):
+        fn = self._get_fn()
+        assert fn([]) == []
+
+    def test_id_exceeding_max_length_dropped(self):
+        """IDs longer than 256 chars are rejected."""
+        fn = self._get_fn()
+        long_id = "a" * 257
+        assert fn([long_id]) == []
+
+    def test_id_at_max_length_accepted(self):
+        """IDs of exactly 256 chars are accepted."""
+        fn = self._get_fn()
+        long_id = "a" * 256
+        assert fn([long_id]) == [long_id]
+
+
+class TestGetShimSpansAllInvalid:
+    """get_shim_spans_for_sessions returns {} immediately when all IDs are invalid."""
+
+    @pytest.mark.asyncio
+    async def test_all_invalid_ids_returns_empty_without_query(self):
+        """When every session_id fails sanitization, no DB query is issued."""
+        import os
+        import sys
+
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ee"))
+
+        mock_query_fn = AsyncMock()
+
+        with patch("observal_insights.shim_enrichment.get_query", return_value=mock_query_fn):
+            from observal_insights.shim_enrichment import get_shim_spans_for_sessions
+
+            result = await get_shim_spans_for_sessions(
+                agent_name="test-agent",
+                session_ids=["') OR 1=1 --", "<script>alert(1)</script>"],
+                start="2026-01-01 00:00:00",
+                end="2026-01-02 00:00:00",
+            )
+
+        assert result == {}
+        mock_query_fn.assert_not_called()
