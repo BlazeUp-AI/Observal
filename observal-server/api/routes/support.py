@@ -25,9 +25,10 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from api.deps import get_current_user, get_db
+from api.deps import get_db, require_role
 from api.ratelimit import limiter
 from config import Settings, settings
+from models.user import UserRole
 from services.clickhouse import CLICKHOUSE_DB, _query
 from services.redis import get_redis
 
@@ -461,7 +462,7 @@ COLLECTORS: dict[str, Any] = {
 async def collect_diagnostics(
     request: Request,
     body: CollectRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_role(UserRole.admin)),
     db: AsyncSession = Depends(get_db),
 ) -> CollectResponse:
     """Run server-side diagnostic collectors and return results.
