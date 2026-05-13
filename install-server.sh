@@ -9,13 +9,23 @@ set -euo pipefail
 #
 # Options (via env vars):
 #   OBSERVAL_VERSION=latest        Version to install (default: latest)
-#   OBSERVAL_INSTALL_DIR=/path     Install directory (default: /opt/observal)
+#   OBSERVAL_INSTALL_DIR=/path     Install directory (default: ~/.observal on macOS, /opt/observal on Linux)
 #   OBSERVAL_FORCE=1               Skip overwrite confirmation on re-install
 
 GITHUB_REPO="BlazeUp-AI/Observal"
 VERSION="${OBSERVAL_VERSION:-latest}"
-INSTALL_DIR="${OBSERVAL_INSTALL_DIR:-/opt/observal}"
 BASE_URL="${OBSERVAL_BASE_URL:-}"  # Override for testing (e.g. http://localhost:9999)
+
+# Default install directory: ~/.observal on macOS (Docker file sharing),
+# /opt/observal on Linux (standard system path).
+if [ -z "${OBSERVAL_INSTALL_DIR:-}" ]; then
+  case "$(uname -s)" in
+    Darwin) INSTALL_DIR="$HOME/.observal" ;;
+    *)      INSTALL_DIR="/opt/observal" ;;
+  esac
+else
+  INSTALL_DIR="$OBSERVAL_INSTALL_DIR"
+fi
 
 # ── Helpers ──────────────────────────────────────────────────
 
