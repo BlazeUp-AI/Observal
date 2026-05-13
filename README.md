@@ -119,7 +119,7 @@ flowchart LR
     API --> Web[Web Dashboard]
     Worker[Background Worker] --> API
     Worker --> CH
-    Grafana --> CH
+    CH --> Grafana
 ```
 The platform uses a transparent telemetry pipeline to capture MCP tool activity, process traces and spans, and surface analytics through the dashboard and Grafana integrations.
 
