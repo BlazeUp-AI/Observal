@@ -287,16 +287,28 @@ async def test_reconcile_endpoint_uses_subagent_id_for_dedup():
     async def mock_insert(rows):
         inserted_rows.extend(rows)
 
+    import uuid
+
+    from api.deps import get_current_user
+
+    mock_user = MagicMock()
+    mock_user.id = uuid.uuid4()
+    owned_resp = MagicMock()
+    owned_resp.raise_for_status = MagicMock()
+    owned_resp.json = MagicMock(return_value={"data": [{"cnt": "1"}]})
+
     with (
         patch(
             "api.routes.reconcile._query",
             new_callable=AsyncMock,
-            side_effect=[session_exists_resp, not_reconciled_resp],
+            side_effect=[session_exists_resp, owned_resp, not_reconciled_resp],
         ),
         patch("api.routes.reconcile.insert_otel_logs", side_effect=mock_insert),
     ):
+        app.dependency_overrides[get_current_user] = lambda: mock_user
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post("/api/v1/telemetry/reconcile", json=payload)
+        app.dependency_overrides.clear()
 
     assert r.status_code == 200
     body = r.json()
@@ -338,13 +350,25 @@ async def test_reconcile_endpoint_subagent_dedup_uses_subagent_id_not_session_id
         "conversation_turns": 3,
     }
 
+    import uuid
+
+    from api.deps import get_current_user
+
+    mock_user = MagicMock()
+    mock_user.id = uuid.uuid4()
+    owned_resp = MagicMock()
+    owned_resp.raise_for_status = MagicMock()
+    owned_resp.json = MagicMock(return_value={"data": [{"cnt": "1"}]})
+
     with patch(
         "api.routes.reconcile._query",
         new_callable=AsyncMock,
-        side_effect=[session_exists_resp, already_reconciled_resp],
+        side_effect=[session_exists_resp, owned_resp, already_reconciled_resp],
     ):
+        app.dependency_overrides[get_current_user] = lambda: mock_user
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             r = await ac.post("/api/v1/telemetry/reconcile", json=payload)
+        app.dependency_overrides.clear()
 
     assert r.status_code == 200
     body = r.json()

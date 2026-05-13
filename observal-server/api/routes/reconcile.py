@@ -15,11 +15,16 @@ subagents, session_id for top-level) and stores enrichment metadata to
 from __future__ import annotations
 
 import datetime
+from typing import TYPE_CHECKING
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from api.deps import get_current_user
 from services.clickhouse import _query, insert_otel_logs
+
+if TYPE_CHECKING:
+    from models.user import User
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["reconcile"])
 
@@ -80,8 +85,23 @@ async def _already_reconciled(dedup_key: str, key_field: str) -> bool:
         return False
 
 
+async def _session_owned_by_user(session_id: str, user_id: str) -> bool:
+    """Return True if session_events has at least one row owned by this user."""
+    sql = (
+        "SELECT count() AS cnt FROM session_events "
+        "WHERE session_id = {sid:String} AND user_id = {uid:String} FORMAT JSON"
+    )
+    try:
+        r = await _query(sql, {"param_sid": session_id, "param_uid": user_id})
+        r.raise_for_status()
+        data = r.json().get("data", [{}])
+        return int(data[0].get("cnt", 0)) > 0
+    except Exception:
+        return False
+
+
 @router.post("/reconcile")
-async def reconcile_session(payload: ReconcilePayload):
+async def reconcile_session(payload: ReconcilePayload, current_user: User = Depends(get_current_user)):
     """Store reconcile enrichment for a session, skipping duplicates.
 
     Dedup key:
@@ -94,6 +114,9 @@ async def reconcile_session(payload: ReconcilePayload):
     """
     if not await _session_has_data(payload.session_id):
         return {"status": "no_data"}
+
+    if not await _session_owned_by_user(payload.session_id, str(current_user.id)):
+        raise HTTPException(status_code=403, detail="Session not found")
 
     if payload.is_subagent and payload.subagent_id:
         dedup_key = payload.subagent_id
