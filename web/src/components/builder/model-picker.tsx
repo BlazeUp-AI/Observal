@@ -126,8 +126,7 @@ export function ModelPicker({
           { includeAuto: true, autoLabel: "auto (let the IDE pick)" },
         )}
         <p className="text-xs text-muted-foreground">
-          Used as the fallback for IDEs that accept a model choice and don&apos;t
-          have an explicit override below.
+          no
         </p>
       </div>
 
