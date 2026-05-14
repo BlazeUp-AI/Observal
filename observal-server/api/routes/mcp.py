@@ -9,7 +9,7 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import (
@@ -121,10 +121,8 @@ async def submit_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    # Prevent duplicate names for the same user.
-    # Pending/rejected listings are replaced automatically so the user isn't
-    # blocked when re-submitting after a mistake.  Approved listings are
-    # protected — use the update flow instead.
+    # Prevent duplicate names: approved listings are protected globally,
+    # pending/rejected listings from the same user get replaced on re-submit.
     existing = (
         (
             await db.execute(
@@ -137,9 +135,14 @@ async def submit_mcp(
     if existing:
         if existing.status == ListingStatus.approved:
             raise HTTPException(status_code=409, detail=f"You already have an approved listing named '{req.name}'")
-        # Replace the old pending/rejected listing
-        await db.delete(existing)
-        await db.flush()
+        # Use Core statements to avoid SQLAlchemy ORM circular dependency
+        # detection between McpListing.latest_version_id ↔ McpVersion.listing_id
+        listing_id_to_delete = existing.id
+        await db.execute(update(McpListing).where(McpListing.id == listing_id_to_delete).values(latest_version_id=None))
+        await db.execute(delete(McpVersion).where(McpVersion.listing_id == listing_id_to_delete))
+        await db.execute(delete(McpListing).where(McpListing.id == listing_id_to_delete))
+        # Expunge the now-deleted object so it doesn't interfere with the new insert
+        db.expunge(existing)
 
     listing = McpListing(
         name=req.name,

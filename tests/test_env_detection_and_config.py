@@ -664,9 +664,9 @@ class TestMcpSubmitAutoReplace:
             )
 
         assert r.status_code == 200
-        # The old listing should have been deleted
-        db.delete.assert_called_once_with(existing)
-        assert db.flush.call_count >= 1  # flush for delete + listing + version
+        # The old listing should have been deleted via Core SQL statements
+        # (update to null latest_version_id, delete versions, delete listing)
+        assert db.execute.call_count >= 4  # select + update + delete version + delete listing
 
     @pytest.mark.asyncio
     async def test_reject_resubmit_of_approved(self):
