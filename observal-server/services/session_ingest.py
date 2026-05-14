@@ -22,6 +22,22 @@ from services.clickhouse import insert_session_events, query_existing_for_dedup,
 from services.secrets_redactor import redact_secrets
 from services.session_parsers.ingest_classify import extract_timestamp, get_classifier, get_extra_rows
 
+
+def _extract_usage_tokens(parsed: dict) -> dict:
+    """Extract input/output/cache token counts from a parsed JSONL line.
+
+    Claude Code embeds per-turn token counts in ``message.usage``.
+    All other IDEs (Kiro, etc.) have no per-line token data and default to 0.
+    """
+    usage = parsed.get("message", {}).get("usage") or {}
+    return {
+        "input_tokens": int(usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("output_tokens") or 0),
+        "cache_read_tokens": int(usage.get("cache_read_input_tokens") or 0),
+        "cache_write_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+    }
+
+
 logger = structlog.get_logger(__name__)
 
 
@@ -152,6 +168,8 @@ async def ingest_session_lines(
                 "raw_line": redacted_line,
                 "credits": 0.0,
                 "parent_session_id": parent_session_id,
+                # Token counts from the JSONL line (Claude Code: message.usage).
+                **_extract_usage_tokens(parsed),
             }
         )
         ingested += 1

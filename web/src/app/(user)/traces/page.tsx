@@ -100,7 +100,9 @@ function fmtDuration(first?: string, last?: string): string {
 
 function toDate(ts: string): Date {
 	if (ts.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(ts)) return new Date(ts);
-	return new Date(ts + "Z");
+	// ClickHouse returns DateTime64 as "YYYY-MM-DD HH:MM:SS.mmm" (space, no Z).
+	// Replace the space with T and append Z for valid ISO 8601 UTC parsing.
+	return new Date(ts.replace(" ", "T") + "Z");
 }
 
 function relTime(ts?: string): string {
@@ -205,6 +207,9 @@ const columns: ColumnDef<Session>[] = [
 						{count} prompt{count !== 1 ? "s" : ""}
 					</span>
 				);
+			}
+			if (!r.total_input_tokens && !r.total_output_tokens) {
+				return <span className="text-[13px] text-muted-foreground">{"\u2014"}</span>;
 			}
 			const inp = fmtTokens(r.total_input_tokens);
 			const out = fmtTokens(r.total_output_tokens);
