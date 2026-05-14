@@ -1,23 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Observal Contributors
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect, Page } from "@playwright/test";
-import { API_BASE, getAccessToken } from "./helpers";
-
-/**
- * Login by setting sessionStorage (access token) and localStorage (role).
- * The shared loginToWebUI helper uses localStorage which is outdated —
- * the app now reads the access token from sessionStorage.
- */
-async function login(page: Page) {
-  const token = await getAccessToken();
-  await page.goto("/");
-  await page.evaluate((t) => {
-    sessionStorage.setItem("observal_access_token", t);
-    localStorage.setItem("observal_user_role", "admin");
-  }, token);
-  await page.reload();
-}
+import { test, expect } from "@playwright/test";
+import { loginToWebUI, API_BASE, getAccessToken } from "./helpers";
 
 /**
  * E2E: Leaderboard — page load and time window selector
@@ -68,7 +53,7 @@ test.describe("Leaderboard", () => {
    * P1: Leaderboard loads with ranked agents
    */
   test("leaderboard loads with ranked agents", async ({ page }) => {
-    await login(page);
+    await loginToWebUI(page);
     await page.goto("/leaderboard");
     await page.waitForLoadState("networkidle");
 
@@ -112,7 +97,7 @@ test.describe("Leaderboard", () => {
    * P2: Time window selector updates table data
    */
   test("time window selector updates table data", async ({ page }) => {
-    await login(page);
+    await loginToWebUI(page);
     await page.goto("/leaderboard");
     await page.waitForLoadState("networkidle");
 
