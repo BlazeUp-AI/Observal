@@ -45,6 +45,15 @@ _eval_run_load = [selectinload(EvalRun.scorecards).selectinload(Scorecard.dimens
 _background_tasks: set[asyncio.Task] = set()
 
 
+def _project_id_for_eval_trace(agent: Agent, current_user: User, trace: dict) -> str:
+    """Resolve the ClickHouse project_id that stores spans for this eval trace."""
+    trace_project_id = trace.get("project_id")
+    if trace_project_id:
+        return str(trace_project_id)
+    org_id = current_user.org_id or agent.owner_org_id
+    return str(org_id) if org_id else "default"
+
+
 @router.post("/agents/{agent_id}", response_model=EvalRunDetailResponse)
 async def run_evaluation(
     agent_id: str,
@@ -141,9 +150,10 @@ async def run_evaluation(
     try:
         for trace in traces:
             tid = trace.get("event_id", trace.get("trace_id", str(uuid.uuid4())))
+            project_id = _project_id_for_eval_trace(agent, current_user, trace)
 
             # Try new structured eval first (uses spans from ClickHouse)
-            spans = await query_spans("default", tid, limit=500)
+            spans = await query_spans(project_id, tid, limit=500)
             if not spans and trace.get("source") == "hook_materializer":
                 # Use materialized spans from hook events
                 _, spans = await materialize_session_spans(tid)

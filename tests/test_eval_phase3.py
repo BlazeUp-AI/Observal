@@ -73,6 +73,56 @@ class TestRouterRegistration:
         assert "/api/v1/eval/batches/{batch_id}/insights" in paths
 
 
+class TestEvalTraceLookup:
+    def test_project_id_prefers_trace_then_org_then_default(self):
+        from api.routes.eval import _project_id_for_eval_trace
+
+        agent = MagicMock(owner_org_id=uuid.uuid4())
+        user = MagicMock(org_id=uuid.uuid4())
+
+        assert _project_id_for_eval_trace(agent, user, {"project_id": "trace-project"}) == "trace-project"
+        assert _project_id_for_eval_trace(agent, user, {}) == str(user.org_id)
+        assert _project_id_for_eval_trace(agent, MagicMock(org_id=None), {}) == str(agent.owner_org_id)
+        assert _project_id_for_eval_trace(MagicMock(owner_org_id=None), MagicMock(org_id=None), {}) == "default"
+
+    @pytest.mark.asyncio
+    async def test_fetch_traces_excludes_registry_events(self):
+        import services.eval.eval_service as eval_service_mod
+        from services.eval.eval_service import fetch_traces
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"data": [{"trace_id": "agent-run", "trace_type": "agent"}]}
+        eval_service_mod._query = AsyncMock(return_value=response)
+
+        traces = await fetch_traces("agent-id", limit=3)
+
+        assert traces == [{"trace_id": "agent-run", "trace_type": "agent"}]
+        sql, params = eval_service_mod._query.await_args.args
+        assert "trace_type != {excluded_trace_type:String}" in sql
+        assert "LIMIT 3" in sql
+        assert params["param_excluded_trace_type"] == "registry"
+
+    @pytest.mark.asyncio
+    async def test_fetch_traces_by_id_still_excludes_registry_events(self):
+        import services.eval.eval_service as eval_service_mod
+        from services.eval.eval_service import fetch_traces
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"data": []}
+        eval_service_mod._query = AsyncMock(return_value=response)
+
+        await fetch_traces("agent-id", trace_id="trace-id")
+
+        sql, params = eval_service_mod._query.await_args.args
+        assert "trace_id = {tid:String}" in sql
+        assert "trace_type != {excluded_trace_type:String}" in sql
+        assert params == {
+            "param_aid": "agent-id",
+            "param_tid": "trace-id",
+            "param_excluded_trace_type": "registry",
+        }
+
+
 # ── Spec DAG registration ──
 
 
