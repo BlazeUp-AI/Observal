@@ -97,3 +97,92 @@ class TestValidateAndExtract:
         with pytest.raises(HTTPException) as exc_info:
             validate_and_extract("hook", {})
         assert exc_info.value.status_code == 422
+
+    # ── MCP config fields (added for version publishing) ──
+
+    def test_mcp_transport_field(self):
+        """MCP transport field accepts strings."""
+        result = validate_and_extract("mcp", {"transport": "stdio"})
+        assert result == {"transport": "stdio"}
+
+    def test_mcp_framework_field(self):
+        """MCP framework field accepts strings."""
+        result = validate_and_extract("mcp", {"framework": "docker"})
+        assert result == {"framework": "docker"}
+
+    def test_mcp_docker_image_field(self):
+        """MCP docker_image field accepts strings."""
+        result = validate_and_extract("mcp", {"docker_image": "myimage:latest"})
+        assert result == {"docker_image": "myimage:latest"}
+
+    def test_mcp_command_field(self):
+        """MCP command field accepts strings."""
+        result = validate_and_extract("mcp", {"command": "npx"})
+        assert result == {"command": "npx"}
+
+    def test_mcp_args_field(self):
+        """MCP args field accepts lists."""
+        result = validate_and_extract("mcp", {"args": ["-y", "@example/server"]})
+        assert result == {"args": ["-y", "@example/server"]}
+
+    def test_mcp_url_field(self):
+        """MCP url field accepts strings."""
+        result = validate_and_extract("mcp", {"url": "https://api.example.com/mcp"})
+        assert result == {"url": "https://api.example.com/mcp"}
+
+    def test_mcp_headers_field(self):
+        """MCP headers field accepts lists."""
+        headers = [{"name": "Authorization", "value": "Bearer tok"}]
+        result = validate_and_extract("mcp", {"headers": headers})
+        assert result == {"headers": headers}
+
+    def test_mcp_auto_approve_field(self):
+        """MCP auto_approve field accepts lists."""
+        result = validate_and_extract("mcp", {"auto_approve": ["read_file"]})
+        assert result == {"auto_approve": ["read_file"]}
+
+    def test_mcp_environment_variables_field(self):
+        """MCP environment_variables field accepts lists."""
+        env_vars = [{"name": "API_KEY", "description": "Key", "required": True}]
+        result = validate_and_extract("mcp", {"environment_variables": env_vars})
+        assert result == {"environment_variables": env_vars}
+
+    def test_mcp_setup_instructions_field(self):
+        """MCP setup_instructions field accepts strings."""
+        result = validate_and_extract("mcp", {"setup_instructions": "Run npm install first"})
+        assert result == {"setup_instructions": "Run npm install first"}
+
+    def test_mcp_full_config(self):
+        """MCP with all config fields passes validation."""
+        extra = {
+            "transport": "stdio",
+            "framework": "typescript",
+            "command": "npx",
+            "args": ["-y", "@example/server"],
+            "environment_variables": [{"name": "KEY", "description": "", "required": True}],
+            "auto_approve": ["read_file"],
+            "setup_instructions": "Install Node.js first",
+        }
+        result = validate_and_extract("mcp", extra)
+        assert result == extra
+
+    def test_mcp_args_wrong_type_raises(self):
+        """MCP args field rejects non-list types."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_and_extract("mcp", {"args": "not-a-list"})
+        assert exc_info.value.status_code == 422
+        assert "list" in str(exc_info.value.detail)
+
+    def test_mcp_transport_wrong_type_raises(self):
+        """MCP transport field rejects non-string types."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_and_extract("mcp", {"transport": 123})
+        assert exc_info.value.status_code == 422
+        assert "str" in str(exc_info.value.detail)
+
+    def test_mcp_unknown_field_rejected(self):
+        """MCP rejects fields not in the allowlist."""
+        with pytest.raises(HTTPException) as exc_info:
+            validate_and_extract("mcp", {"transport": "stdio", "bogus_field": "x"})
+        assert exc_info.value.status_code == 422
+        assert "bogus_field" in str(exc_info.value.detail)
