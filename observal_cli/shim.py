@@ -26,6 +26,10 @@ from observal_cli.config import load as load_config
 
 logger = logging.getLogger("observal-shim")
 
+# How long to wait after spawn before checking if the process crashed immediately.
+# Covers missing binaries and module import errors without flagging slow starts.
+_STARTUP_HEALTH_CHECK_SEC = float(os.environ.get("OBSERVAL_SHIM_STARTUP_TIMEOUT_SEC", "0.5"))
+
 # --- JSON-RPC span type mapping ---
 
 METHOD_TO_SPAN: dict[str, tuple[str, str | None]] = {
@@ -345,6 +349,52 @@ def _thread_read_stdin(loop: asyncio.AbstractEventLoop, reader: asyncio.StreamRe
         loop.call_soon_threadsafe(reader.feed_eof)
 
 
+def _emit_error_notification(message: str) -> None:
+    """Write a JSON-RPC error notification to stdout and a human-readable message to stderr."""
+    notification = (
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": {
+                    "level": "error",
+                    "logger": "observal-shim",
+                    "data": message,
+                },
+            }
+        )
+        + "\n"
+    )
+    sys.stdout.buffer.write(notification.encode())
+    sys.stdout.buffer.flush()
+    sys.stderr.write(f"[observal-shim] {message}\n")
+    sys.stderr.flush()
+
+
+async def _emit_error_notification_async(message: str, ide_stdout) -> None:
+    """Write a JSON-RPC error notification to the IDE stream (async version for post-relay errors)."""
+    notification = (
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/message",
+                "params": {
+                    "level": "error",
+                    "logger": "observal-shim",
+                    "data": message,
+                },
+            }
+        )
+        + "\n"
+    )
+    if ide_stdout is not None:
+        ide_stdout.write(notification.encode())
+        await ide_stdout.drain()
+    else:
+        sys.stdout.buffer.write(notification.encode())
+        sys.stdout.buffer.flush()
+
+
 async def run_shim(mcp_id: str, command: list[str]):
     """Main shim entry point: spawn MCP process and relay stdio."""
     # On Windows, asyncio.create_subprocess_exec cannot find .cmd/.bat
@@ -376,12 +426,28 @@ async def run_shim(mcp_id: str, command: list[str]):
     state = ShimState(mcp_id, server_url, access_token, agent_id)
 
     # Spawn the real MCP process
-    proc = await asyncio.create_subprocess_exec(
-        *command,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except (FileNotFoundError, PermissionError, OSError) as exc:
+        error_msg = f"{type(exc).__name__}: {exc}"
+        _emit_error_notification(f"MCP server failed to start: {error_msg}")
+        return 1
+
+    # Startup health check: catch immediate crashes (missing module, bad
+    # command, permission denied) before setting up the relay.
+    await asyncio.sleep(_STARTUP_HEALTH_CHECK_SEC)
+    if proc.returncode is not None:
+        stderr_output = await proc.stderr.read()
+        error_msg = stderr_output.decode(errors="replace").strip()
+        if not error_msg:
+            error_msg = f"MCP process exited immediately with code {proc.returncode}"
+        _emit_error_notification(f"MCP server failed to start: {error_msg}")
+        return proc.returncode
 
     # Set up IDE stdin reader.
     # On Windows, connect_read_pipe / connect_write_pipe don't work with
@@ -409,12 +475,16 @@ async def run_shim(mcp_id: str, command: list[str]):
     ide_queue = await _read_messages(ide_reader)
     mcp_queue = await _read_messages(proc.stdout)
 
-    # Forward stderr
+    # Forward stderr (captured for error reporting on crash)
+    stderr_lines: list[str] = []
+
     async def _forward_stderr():
         while True:
             data = await proc.stderr.read(65536)
             if not data:
                 break
+            text = data.decode(errors="replace")
+            stderr_lines.append(text)
             sys.stderr.buffer.write(data)
             sys.stderr.buffer.flush()
 
@@ -431,7 +501,12 @@ async def run_shim(mcp_id: str, command: list[str]):
         stderr_task.cancel()
         await state.send_final()
 
-    return await proc.wait()
+    rc = proc.returncode if proc.returncode is not None else await proc.wait()
+    if rc != 0:
+        captured = "".join(stderr_lines).strip()
+        error_msg = captured[-500:] if captured else f"Process exited with code {rc}"
+        await _emit_error_notification_async(f"MCP server crashed: {error_msg}", ide_stdout)
+    return rc
 
 
 def main():
