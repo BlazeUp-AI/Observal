@@ -196,7 +196,7 @@ jobs:
       - uses: pnpm/action-setup@v6
         if: needs.changes.outputs.web == 'true'
         with:
-          version: 10
+          version: 11
 
       - uses: actions/setup-node@v6
         if: needs.changes.outputs.web == 'true'
@@ -302,7 +302,7 @@ jobs:
       - name: JS dependency audit
         uses: pnpm/action-setup@v6
         with:
-          version: 10
+          version: 11
       - name: Run pnpm audit
         run: |
           cd web
