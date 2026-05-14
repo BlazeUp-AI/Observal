@@ -29,43 +29,64 @@ Prompts also support [`render`](#observal-registry-prompt-render).
 
 ## `observal registry mcp submit`
 
-Submit an MCP server for review. The CLI clones the repo locally (using your git credentials), analyzes it via AST parsing, then sends the analysis to the server.
+Submit an MCP server to the registry. By default, paste your server's JSON config (the same format you use in your IDE). Use `--git` to analyze a git repository instead.
 
 ### Synopsis
 
 ```bash
-observal registry mcp submit <git-url> [OPTIONS]
-observal registry mcp submit --from-file <path> [OPTIONS]
+observal registry mcp submit [OPTIONS]
+observal registry mcp submit --git <url> [OPTIONS]
 ```
 
 ### Options
 
 | Option | Short | Description |
 | --- | --- | --- |
+| `--git` | `-g` | Analyze a git repository instead of pasting config |
 | `--name` | `-n` | Pre-fill server name (skip prompt) |
 | `--category` | `-c` | Pre-fill category (skip prompt) |
-| `--yes` | `-y` | Accept all defaults from repo analysis |
+| `--yes` | `-y` | Accept all defaults |
+| `--draft` | | Save as draft instead of submitting for review |
+| `--submit` | | Submit an existing draft for review (MCP ID) |
 
-### What happens
+### Default flow (JSON paste)
+
+1. Prompts you to paste your MCP server JSON config.
+2. Accepts multiple formats:
+   - **IDE config** — `{"mcpServers": {"name": {"command": "...", "args": [...], "env": {...}}}}`
+   - **Bare config** — `{"command": "npx", "args": ["-y", "pkg"]}`
+   - **SSE/HTTP** — `{"url": "http://...", "type": "sse", "headers": {...}}`
+   - **server.json manifest** — `{"packages": [...], "remotes": [...]}`
+3. Auto-detects environment variables from `$VAR` patterns and `env` keys.
+4. Shows a config preview and prompts for metadata (name, description, category).
+5. Submits to registry for review.
+
+### Git analysis flow (`--git`)
 
 1. Shallow-clones the repo.
 2. Detects the MCP framework (FastMCP, MCP SDK, TypeScript SDK, Go SDK).
 3. Extracts server name, description, and exposed tools via AST.
-4. Scans for required env vars (`os.environ`, `os.getenv`, `.env.example`, Dockerfile `ENV`/`ARG`).
-5. Prompts for metadata (description, owner, category, supported IDEs, setup instructions).
-6. Shows detected env vars — confirm, reject, or add more.
-7. Submits to the server with `client_analysis` attached. The server stores the analysis directly without re-cloning.
-
-If local analysis fails (e.g., git not available), falls back to server-side analysis.
+4. Scans for required env vars (`os.environ`, `os.getenv`, `.env.example`, `server.json`).
+5. Prompts for metadata confirmation.
+6. Submits to registry for review.
 
 ### Examples
 
 ```bash
-# Interactive
-observal registry mcp submit https://github.com/MarkusPfundstein/mcp-obsidian
+# Paste config (default — recommended)
+observal registry mcp submit
 
-# Non-interactive, accept defaults
-observal registry mcp submit https://github.com/sooperset/mcp-atlassian -y
+# Non-interactive with piped JSON
+echo '{"command": "npx", "args": ["-y", "@example/mcp-server"]}' | observal registry mcp submit -y -n my-server -c developer-tools
+
+# Save as draft
+observal registry mcp submit --draft
+
+# Analyze a git repo
+observal registry mcp submit --git https://github.com/MarkusPfundstein/mcp-obsidian
+
+# Non-interactive git analysis
+observal registry mcp submit --git https://github.com/sooperset/mcp-atlassian -y
 ```
 
 ### Valid categories

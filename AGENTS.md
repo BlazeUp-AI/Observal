@@ -226,7 +226,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml -
 - `telemetry_buffer.py` : SQLite buffer (`~/.observal/telemetry_buffer.db`) for offline telemetry; stores events when server is unreachable and flushes on reconnect
 - `settings_reconciler.py` : Non-destructive reconciler for Claude Code `settings.json`; Terraform-style declarative reconciliation — reads current state, diffs against desired, applies only deltas
 - `cmd_auth.py` : `auth_app` subgroup: login (smart — auto-bootstrap on fresh server, supports --key for API keys, email+password), register, reset-password, logout, whoami, status. Also `config_app` subgroup: show, set, path, alias, aliases
-- `cmd_mcp.py` : `mcp_app` subgroup: submit (with --yes for non-interactive, client-side repo analysis via `analyzer.py`), list (--sort, --limit, --output), show, install (--raw), delete
+- `cmd_mcp.py` : `mcp_app` subgroup: submit (JSON paste default, --git for repo analysis, --draft, --yes for non-interactive), list (--sort, --limit, --output), show, install (--raw), delete
 - `cmd_agent.py` : `agent_app` subgroup: create (--from-file), list, show, install, delete; authoring: init, add, build, publish
 - `cmd_skill.py` : `skill_app` subgroup: submit, list, show, install, delete
 - `cmd_hook.py` : `hook_app` subgroup: submit, list, show, install, delete

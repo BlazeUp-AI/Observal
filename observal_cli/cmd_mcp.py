@@ -243,14 +243,87 @@ def _unwrap_mcp_config(cfg: dict) -> tuple[dict, str | None]:
     return cfg, None
 
 
-def _parse_direct_config(cfg: dict) -> dict:
-    """Normalize a JSON config dict (mcp.json style) into submit-ready fields.
+def _parse_server_json_manifest(cfg: dict) -> dict | None:
+    """Parse a server.json manifest format (packages[]/remotes[] arrays).
 
-    Accepts wrapped (mcpServers) or bare configs.
+    Also handles the MCP registry format where data is nested under a "server" key:
+      {"server": {"name": "...", "remotes": [...]}, "_meta": {...}}
+
+    Returns parsed dict if this looks like a server.json manifest, None otherwise.
+    """
+    # Handle registry format: unwrap "server" envelope
+    manifest = cfg
+    server_meta = cfg.get("server")
+    if isinstance(server_meta, dict) and ("remotes" in server_meta or "packages" in server_meta):
+        manifest = server_meta
+
+    if "packages" not in manifest and "remotes" not in manifest:
+        return None
+
+    parsed: dict = {}
+    env_vars: list[dict] = []
+
+    # Extract server name/description from registry metadata
+    if server_meta and isinstance(server_meta, dict):
+        reg_name = server_meta.get("title") or server_meta.get("name")
+        if reg_name:
+            parsed["_server_name"] = reg_name
+        reg_desc = server_meta.get("description")
+        if reg_desc:
+            parsed["_description"] = reg_desc
+
+    # packages[].runtimeArguments — Docker -e flags
+    for pkg in manifest.get("packages", []):
+        for arg in pkg.get("runtimeArguments", []):
+            value = arg.get("value", "")
+            # Pattern: "ENV_VAR={placeholder}" — extract the var name before '='
+            if "=" in value:
+                var_name = value.split("=", 1)[0]
+                if var_name and var_name == var_name.upper():
+                    desc = arg.get("description", "")
+                    env_vars.append({"name": var_name, "description": desc, "required": True})
+
+    # remotes[].variables — URL-interpolated secrets
+    for remote in manifest.get("remotes", []):
+        url = remote.get("url", "")
+        if url and not parsed.get("url"):
+            parsed["url"] = url
+            parsed["transport"] = remote.get("type", "sse")
+        for var_key, var_meta in (remote.get("variables") or {}).items():
+            desc = var_meta.get("description", "") if isinstance(var_meta, dict) else ""
+            env_vars.append({"name": var_key, "description": desc, "required": True})
+
+    if env_vars:
+        parsed["environment_variables"] = env_vars
+
+    # Determine transport: URL means SSE/HTTP, packages-only means stdio/docker
+    if not parsed.get("url"):
+        has_remotes = bool(manifest.get("remotes"))
+        if not has_remotes:
+            # Packages-only manifest implies stdio (Docker typically)
+            parsed["transport"] = "stdio"
+            parsed["framework"] = "docker"
+        # else: remotes without a URL — don't assume transport
+
+    return parsed
+
+
+def _parse_direct_config(cfg: dict) -> dict:
+    """Normalize a JSON config dict into submit-ready fields.
+
+    Accepts:
+    - IDE config: wrapped (mcpServers) or bare {command, args} / {url, type}
+    - server.json manifest: {packages: [...]} / {remotes: [...]}
+
     Handles two transport shapes:
     - stdio: {command, args, env}
     - SSE/HTTP: {url, type, headers, autoApprove}
     """
+    # Try server.json manifest format first
+    manifest_result = _parse_server_json_manifest(cfg)
+    if manifest_result is not None:
+        return manifest_result
+
     inner, server_name = _unwrap_mcp_config(cfg)
     parsed: dict = {}
     if server_name:
@@ -421,6 +494,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
 
         parsed = _parse_direct_config(cfg)
         _name = name or parsed.pop("_server_name", None) or "my-mcp-server"
+        _parsed_desc = parsed.pop("_description", None)
 
         # Extract dollar-sign input variables before preview
         dollar_vars = parsed.pop("_dollar_vars_detected", None)
@@ -446,7 +520,12 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
                 parsed["environment_variables"] = _review_env_vars(parsed.get("environment_variables", []))
 
             _name = name or typer.prompt("Server name", default=_name)
-            _desc = typer.prompt("Description (what does this server do?)", default="")
+            _desc_default = _parsed_desc or ""
+            _desc = typer.prompt("Description (what does this server do?)", default=_desc_default or None)
+            while not _desc.strip():
+                rprint("[yellow]Description is required.[/yellow]")
+                _desc = typer.prompt("Description (what does this server do?)")
+            _desc = _desc.strip()
             _owner = typer.prompt(
                 "Owner / Team (e.g. your GitHub username)", default=config.load().get("user_name", "default")
             )
@@ -454,7 +533,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         else:
             if dollar_vars:
                 rprint(f"\n[dim]Auto-detected {len(dollar_vars)} input variable(s) from $VAR patterns.[/dim]")
-            _desc = ""
+            _desc = _parsed_desc or _name
             _owner = config.load().get("user_name", "") or "default"
             _category = category or "general"
 
@@ -504,15 +583,16 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
                 rprint("[dim]Falling back to server-side analysis...[/dim]")
                 try:
                     prefill = client.post("/api/v1/mcps/analyze", {"git_url": git_url})
-                except (Exception, SystemExit):
+                except SystemExit:
                     rprint("[yellow]Server analysis also failed. Fill in details manually.[/yellow]")
                     prefill = {}
             else:
                 analyzed_locally = True
-        except Exception:
+        except (OSError, ValueError, RuntimeError):
+            # Local analysis can fail with filesystem/git/parsing errors
             try:
                 prefill = client.post("/api/v1/mcps/analyze", {"git_url": git_url})
-            except (Exception, SystemExit):
+            except SystemExit:
                 rprint("[yellow]Could not analyze repo. Fill in details manually.[/yellow]")
                 prefill = {}
 
@@ -1003,15 +1083,18 @@ def _delete_impl(mcp_id, yes):
 
 @mcp_app.command()
 def submit(
-    git_url: str = typer.Argument(None, help="Git repository URL (optional if --config used)"),
+    git_url: str = typer.Option(None, "--git", "-g", help="Analyze a git repository instead of pasting config"),
     name: str = typer.Option(None, "--name", "-n", help="Skip name prompt"),
     category: str = typer.Option(None, "--category", "-c", help="Skip category prompt"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults from repo analysis"),
-    config: bool = typer.Option(False, "--config", help="Submit via direct JSON config (paste mode)"),
+    config: bool = typer.Option(False, "--config", hidden=True, help="(deprecated) JSON paste is now the default"),
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (MCP ID)"),
 ):
-    """Submit an MCP server for review.
+    """Submit an MCP server to the registry.
+
+    By default, paste your server's JSON config (the same format you use in
+    your IDE). Use --git to analyze a git repository instead.
 
     Only submit servers you created or are the point-of-contact for.
     """
@@ -1028,11 +1111,12 @@ def submit(
             result = client.post(f"/api/v1/mcps/{resolved}/submit")
         rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
         return
-    if not git_url and not config:
-        rprint("[red]Provide a git URL or use --config[/red]")
-        raise typer.Exit(1)
+    if config:
+        rprint("[dim]Note: --config is now the default. You can just run `observal mcp submit`.[/dim]")
     rprint("[dim]Note: Only submit components you created (private) or are the point-of-contact for (external).[/dim]")
-    _submit_impl(git_url, name, category, yes, config, draft=draft)
+    # Default is JSON paste (direct_config=True), unless --git is provided
+    direct_config = not git_url
+    _submit_impl(git_url, name, category, yes, direct_config, draft=draft)
 
 
 @mcp_app.command(name="list")
@@ -1146,26 +1230,137 @@ def edit_mcp(
             updates["url"] = url
 
     if not updates:
-        rprint("[yellow]No changes specified.[/yellow] Use --from-file or field options (--name, --description, etc.)")
+        # Interactive JSON paste mode (like submit)
+        rprint("[bold]Paste your updated MCP server JSON config below.[/bold]")
+        rprint("[dim]Press Enter on an empty line when done.[/dim]\n")
+        lines: list[str] = []
+        has_content = False
+        while True:
+            try:
+                line = input()
+            except EOFError:
+                break
+            if line.strip() == "":
+                if has_content:
+                    break
+            else:
+                has_content = True
+                lines.append(line)
+        raw_text = "\n".join(lines).strip()
+        if not raw_text:
+            rprint("[yellow]No input received.[/yellow]")
+            raise typer.Exit(code=1)
+        try:
+            cfg = json.loads(raw_text)
+        except json.JSONDecodeError:
+            try:
+                cfg = json.loads("".join(part.strip() for part in lines))
+            except json.JSONDecodeError as e:
+                rprint(f"[red]Invalid JSON:[/red] {e}")
+                raise typer.Exit(1)
+
+        parsed = _parse_direct_config(cfg)
+        _name = parsed.pop("_server_name", None)
+        _desc = parsed.pop("_description", None)
+        parsed.pop("_dollar_vars_detected", None)
+
+        # Build updates from parsed config
+        if _name:
+            updates["name"] = _name
+        if _desc:
+            updates["description"] = _desc
+        if parsed.get("command"):
+            updates["command"] = parsed["command"]
+        if parsed.get("args") is not None:
+            updates["args"] = parsed["args"]
+        if parsed.get("url"):
+            updates["url"] = parsed["url"]
+        if parsed.get("transport"):
+            updates["transport"] = parsed["transport"]
+        if parsed.get("framework"):
+            updates["framework"] = parsed["framework"]
+        if parsed.get("environment_variables"):
+            updates["environment_variables"] = parsed["environment_variables"]
+
+        rprint("\n[bold]Config preview:[/bold]")
+        preview_name = _name or mcp_id
+        console.print_json(json.dumps(_build_config_preview(preview_name, parsed), indent=2))
+
+        if not typer.confirm("\nApply these changes?", default=True):
+            raise typer.Abort()
+
+    if not updates:
+        rprint("[yellow]No changes could be parsed from input.[/yellow]")
         raise typer.Exit(code=1)
 
+    # Check listing status — approved listings need a new version, drafts can be edited directly
+    is_approved = False
+    listing = None
     try:
-        client.post(f"/api/v1/mcps/{resolved}/start-edit")
-    except Exception as exc:
-        if "409" in str(exc) or "currently being edited" in str(exc):
-            rprint(f"[red]✗ Cannot edit:[/red] {exc}")
-            raise typer.Exit(code=1)
-    try:
-        with spinner("Saving changes..."):
-            result = client.put(f"/api/v1/mcps/{resolved}/draft", updates)
-        rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
-    except Exception as exc:
+        with spinner("Checking listing status..."):
+            listing = client.get(f"/api/v1/mcps/{resolved}")
+        if listing.get("status") == "approved":
+            is_approved = True
+    except SystemExit:
+        # client raises typer.Exit on API failure — fall through to draft edit flow
+        pass
+
+    if is_approved:
+        # Approved listing → publish a new version with semver bump
+        current_ver = listing.get("version", "0.1.0") if listing else "0.1.0"
+        rprint(f"[dim]Current version: {current_ver}[/dim]")
+        bump_type = select_one("Version bump", ["patch", "minor", "major"], default="patch")
+
+        parts = current_ver.split(".")
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+            if bump_type == "major":
+                _new_version = f"{major + 1}.0.0"
+            elif bump_type == "minor":
+                _new_version = f"{major}.{minor + 1}.0"
+            else:
+                _new_version = f"{major}.{minor}.{patch + 1}"
+        else:
+            _new_version = "0.2.0"
+
+        rprint(f"[bold]New version:[/bold] {_new_version}")
+        _changelog = typer.prompt("Changelog (what changed?)", default="")
+
+        # Separate top-level fields from extra (version-specific) fields
+        version_description = updates.pop("description", None) or (listing.get("description", "") if listing else "")
+        updates.pop("name", None)  # name is a listing field, not a version field
+
+        version_body: dict = {
+            "version": _new_version.strip(),
+            "description": version_description,
+        }
+        if updates:
+            version_body["extra"] = updates
+        if _changelog.strip():
+            version_body["changelog"] = _changelog.strip()
+
+        # client.post prints its own error message and raises typer.Exit on failure — let it propagate
+        with spinner("Publishing new version..."):
+            result = client.post(f"/api/v1/mcps/{resolved}/versions", version_body)
+        rprint(f"[green]✓ Published v{_new_version.strip()}[/green] for [bold]{result.get('name', mcp_id)}[/bold]")
+    else:
+        # Draft/pending/rejected → edit in place
         try:
-            client.post(f"/api/v1/mcps/{resolved}/cancel-edit")
-        except Exception:
+            client.post(f"/api/v1/mcps/{resolved}/start-edit")
+        except SystemExit:
+            # start-edit may 409 if already locked — client prints the error, proceed anyway
             pass
-        rprint(f"[red]Failed to update:[/red] {exc}")
-        raise typer.Exit(code=1)
+        try:
+            with spinner("Saving changes..."):
+                result = client.put(f"/api/v1/mcps/{resolved}/draft", updates)
+            rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
+        except SystemExit:
+            # Save failed — attempt to release the edit lock before exiting
+            try:
+                client.post(f"/api/v1/mcps/{resolved}/cancel-edit")
+            except SystemExit:
+                pass
+            raise typer.Exit(code=1)
 
 
 @mcp_app.command(name="delete")
