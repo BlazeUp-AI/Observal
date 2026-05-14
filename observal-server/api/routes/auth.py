@@ -92,7 +92,7 @@ async def _issue_tokens(user: User, groups: list[str] | None = None) -> tuple[st
     return access_token, refresh_token, expires_in
 
 
-@router.post("/init", response_model=InitResponse)
+@router.post("/init", response_model=InitResponse, dependencies=[Depends(require_password_auth)])
 async def init_admin(req: InitRequest, db: AsyncSession = Depends(get_db)):
     count = await db.scalar(select(func.count()).select_from(User))
     if count and count > 0:
@@ -603,7 +603,7 @@ async def revoke_token(request: Request, req: RevokeRequest):
     return {"detail": "Token revoked"}
 
 
-@router.put("/profile/password")
+@router.put("/profile/password", dependencies=[Depends(require_password_auth)])
 @limiter.limit("5/minute")
 async def change_password(
     request: Request,
