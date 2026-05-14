@@ -574,6 +574,11 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         return
 
     # ── Path A: Git URL analysis ─────────────────────────────
+    rprint(
+        "\n[yellow]Note:[/yellow] Git analysis is best-effort and not a long-term supported feature."
+        "\n      Environment variable detection may not cover all cases — please review"
+        "\n      and add any missing variables manually.\n"
+    )
     analyzed_locally = False
     with spinner("Analyzing repository..."):
         try:
