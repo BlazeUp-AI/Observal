@@ -60,9 +60,14 @@ const STORAGE_KEY_USER_EMAIL = "observal_user_email";
 const STORAGE_KEY_USER_USERNAME = "observal_user_username";
 const STORAGE_KEY_USER_AVATAR = "observal_user_avatar";
 
+// Access token is stored in sessionStorage (clears on tab close) to reduce
+// the XSS exposure window. Refresh token stays in localStorage so silent
+// refresh survives page reloads across tabs.
+// TODO(SEC-025): migrate to HttpOnly cookies via a Next.js API route for
+// full XSS protection.
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+  return sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
 }
 
 function getRefreshToken(): string | null {
@@ -71,12 +76,12 @@ function getRefreshToken(): string | null {
 }
 
 export function setTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, accessToken);
+  sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, accessToken);
   localStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshToken);
 }
 
 export function clearSession() {
-  localStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
+  sessionStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
   localStorage.removeItem(STORAGE_KEY_REFRESH_TOKEN);
   localStorage.removeItem("observal_api_key"); // clean up legacy
   localStorage.removeItem(STORAGE_KEY_USER_ROLE);
