@@ -55,7 +55,7 @@ class TestIsPrivateUrl:
     def test_public_domain_is_not_private(self):
         from services.alert_evaluator import is_private_url
 
-        with patch("services.alert_evaluator.socket.getaddrinfo") as mock_gai:
+        with patch("services.ssrf_guard.socket.getaddrinfo") as mock_gai:
             mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
             assert is_private_url("https://example.com/webhook") is False
 
@@ -68,7 +68,7 @@ class TestIsPrivateUrl:
         from services.alert_evaluator import is_private_url
 
         with patch(
-            "services.alert_evaluator.socket.getaddrinfo",
+            "services.ssrf_guard.socket.getaddrinfo",
             side_effect=OSError("DNS failed"),
         ):
             assert is_private_url("http://nonexistent.invalid/hook") is True

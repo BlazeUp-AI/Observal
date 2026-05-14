@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from config import settings
+from services.ssrf_guard import is_private_url as _ssrf_is_private
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,14 @@ def _run_git(args: list[str], cwd: str | None = None, timeout: int = 120) -> sub
 
 def clone_or_update(git_url: str, branch: str = "main", base: Path = DEFAULT_MIRROR_BASE) -> Path:
     """Shallow clone or update a repo mirror. Returns the mirror directory path."""
+    # Block SSRF via git clone (SEC-013).
+    # Set ALLOW_INTERNAL_GIT_URLS=true for self-hosted GitLab / GitHub Enterprise.
+    if (
+        git_url.startswith(("http://", "https://"))
+        and not settings.ALLOW_INTERNAL_GIT_URLS
+        and _ssrf_is_private(git_url)
+    ):
+        raise ValueError(f"Repository URL resolves to a private/internal address: {git_url}")
     base.mkdir(parents=True, exist_ok=True)
     mirror_dir = _mirror_path(git_url, base)
 

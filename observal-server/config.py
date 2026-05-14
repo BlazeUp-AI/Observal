@@ -74,6 +74,9 @@ class Settings(BaseSettings):
 
     # Git mirror storage (empty = system tempdir; set to shared path for multi-instance)
     GIT_MIRROR_BASE_PATH: str = ""
+    # Set to true to allow git clone and MCP analysis against internal/private hosts.
+    # For self-hosted GitLab, GitHub Enterprise, or Gitea on a private network.
+    ALLOW_INTERNAL_GIT_URLS: bool = False
 
     # Multi-instance startup: skip DDL when using a dedicated init container
     SKIP_DDL_ON_STARTUP: bool = False

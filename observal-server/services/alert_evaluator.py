@@ -4,12 +4,9 @@
 
 """Alert evaluation engine: periodic metric checks and webhook delivery."""
 
-import ipaddress
 import logging
-import socket
 import uuid
 from datetime import UTC, datetime
-from urllib.parse import urlparse
 
 from sqlalchemy import select
 
@@ -17,39 +14,12 @@ from database import async_session
 from models.alert import AlertRule
 from models.alert_history import AlertHistory
 from services.clickhouse import _query
+from services.ssrf_guard import is_private_url  # noqa: F401 -- re-exported for callers
 
 logger = logging.getLogger(__name__)
 
-_PRIVATE_CIDRS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("::1/128"),
-]
-
 LOOKBACK_MINUTES = 5
 WEBHOOK_TIMEOUT = 5
-
-
-def is_private_url(url: str) -> bool:
-    """Check if a URL resolves to a private/internal IP address (SSRF protection)."""
-    parsed = urlparse(url)
-    hostname = parsed.hostname
-    if not hostname:
-        return True
-    try:
-        addr = ipaddress.ip_address(hostname)
-    except ValueError:
-        try:
-            resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-            if not resolved:
-                return True
-            addr = ipaddress.ip_address(resolved[0][4][0])
-        except (socket.gaierror, OSError):
-            return True
-    return any(addr in cidr for cidr in _PRIVATE_CIDRS)
 
 
 async def _query_error_rate(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
