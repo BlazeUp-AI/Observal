@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Per-type field validation for component version publishing."""
@@ -47,6 +48,16 @@ MCP_FIELDS = {
     "source_url",
     "source_ref",
     "resolved_sha",
+    "transport",
+    "framework",
+    "docker_image",
+    "command",
+    "args",
+    "url",
+    "headers",
+    "auto_approve",
+    "environment_variables",
+    "setup_instructions",
 }
 
 SANDBOX_FIELDS = {
@@ -87,6 +98,12 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "source_url": str,
     "source_ref": str,
     "resolved_sha": str,
+    "transport": str,
+    "framework": str,
+    "docker_image": str,
+    "command": str,
+    "url": str,
+    "setup_instructions": str,
     # int fields
     "priority": int,
     # bool fields — must come before int since bool is a subclass of int
@@ -107,6 +124,10 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "activation_keywords": list,
     "tags": list,
     "variables": list,
+    "args": list,
+    "headers": list,
+    "auto_approve": list,
+    "environment_variables": list,
 }
 
 
