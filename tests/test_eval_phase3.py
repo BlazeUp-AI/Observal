@@ -38,7 +38,7 @@ class TestScorecardModel:
         assert "checks_json" in Scorecard.__table__.columns
 
 
-# ── Migration: 0003 references 0002 ──
+# ── Migration: eval revisions follow mainline Alembic head ──
 
 
 class TestMigrations:
@@ -46,10 +46,17 @@ class TestMigrations:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "observal-server" / "alembic" / "versions"))
         import importlib
 
-        m2 = importlib.import_module("0002_add_eval_spec_dags")
-        m3 = importlib.import_module("0003_add_scorecard_scoring_method")
-        assert m2.revision == "0002" and m2.down_revision == "0001"
-        assert m3.revision == "0003" and m3.down_revision == "0002"
+        m5 = importlib.import_module("0005_add_eval_spec_dags")
+        m6 = importlib.import_module("0006_add_scorecard_scoring_method")
+        assert m5.revision == "0005" and m5.down_revision == "0004"
+        assert m6.revision == "0006" and m6.down_revision == "0005"
+
+    def test_eval_spec_dag_model_registered_in_metadata(self):
+        from models import Base, EvalSpecDAG
+
+        table = Base.metadata.tables["eval_spec_dags"]
+        assert EvalSpecDAG.__table__ is table
+        assert any(c.name == "ux_eval_spec_dags_task_type_version" for c in table.constraints)
 
 
 # ── New router endpoints registered ──

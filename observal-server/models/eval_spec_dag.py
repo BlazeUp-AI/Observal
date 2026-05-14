@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,6 +18,7 @@ from models.base import Base
 
 class EvalSpecDAG(Base):
     __tablename__ = "eval_spec_dags"
+    __table_args__ = (UniqueConstraint("task_type", "version", name="ux_eval_spec_dags_task_type_version"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     task_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
