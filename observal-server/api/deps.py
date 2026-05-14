@@ -360,3 +360,57 @@ async def resolve_prefix_id(
     if len(records) > MAX_AMBIGUOUS_MATCHES_SHOWN:
         detail += " and more..."
     raise HTTPException(status_code=400, detail=detail)
+
+
+def apply_visibility_filter(stmt, model, current_user):
+    """Exclude private listings from orgs other than the requesting user's.
+
+    Rules:
+    - Public items (is_private=False) are always visible.
+    - Private items are only visible to users in the same org, or to the
+      submitter directly, or to admins/reviewers.
+    """
+    from sqlalchemy import or_
+
+    from models.user import UserRole
+
+    if not hasattr(model, "is_private"):
+        return stmt
+
+    is_admin = (
+        current_user is not None and ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
+    )
+    if is_admin:
+        return stmt  # admins see everything
+
+    public = model.is_private == False  # noqa: E712
+    if current_user is None:
+        return stmt.where(public)
+
+    # Guard: only match same-org if user actually has an org (not NULL)
+    if current_user.org_id is not None:
+        same_org = (model.is_private == True) & (model.owner_org_id == current_user.org_id)  # noqa: E712
+        own = (model.is_private == True) & (model.submitted_by == current_user.id)  # noqa: E712
+        return stmt.where(or_(public, same_org, own))
+    # User has no org — can only see their own private items
+    own = (model.is_private == True) & (model.submitted_by == current_user.id)  # noqa: E712
+    return stmt.where(or_(public, own))
+
+
+def check_listing_visibility(listing, current_user) -> bool:
+    """Return True if current_user may see this listing.
+
+    Used on detail routes to gate access to private items.
+    """
+    from models.user import UserRole
+
+    if not getattr(listing, "is_private", False):
+        return True
+    if current_user is None:
+        return False
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
+    if is_admin:
+        return True
+    if listing.submitted_by == current_user.id:
+        return True
+    return current_user.org_id is not None and listing.owner_org_id == current_user.org_id
