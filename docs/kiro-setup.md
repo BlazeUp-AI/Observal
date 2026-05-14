@@ -1,3 +1,7 @@
+<!-- SPDX-FileCopyrightText: 2026 0xSHSH -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+
 # Kiro IDE Setup Guide for Observal
 
 This guide walks you through setting up Observal with Kiro IDE/CLI.
