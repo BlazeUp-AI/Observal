@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 0xSHSH 
+<156781261+0xSHSH@users.noreply.github.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Gitleaks - Secret Detection
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+jobs:
+  gitleaks:
+    name: Detect secrets and env leaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
