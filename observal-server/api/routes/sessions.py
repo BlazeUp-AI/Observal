@@ -162,7 +162,7 @@ async def _list_sessions_query(
     return await _ch_json(
         "SELECT "
         "session_id, "
-        "if(first_event_time > '1970-01-02 00:00:00' AND first_event_time < '2099-01-01 00:00:00', "
+        "if(first_event_time > '2020-01-01 00:00:00' AND first_event_time < '2099-01-01 00:00:00', "
         "   first_event_time, last_event_time) AS first_event_time, "
         "last_event_time, "
         "(last_event_time > now() - INTERVAL 30 MINUTE) AS is_active, "
