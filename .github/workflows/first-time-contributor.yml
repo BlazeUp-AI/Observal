@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 0xSHSH <156781261+0xSHSH@users.noreply.github.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Label First-Time Contributors
+
+on:
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Label first-time contributor
+        uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          pr-message: |
+            👋 Thanks for opening your first PR in Observal!
+            A maintainer will review it shortly.
+          pr-label: "first-time-contributor"
