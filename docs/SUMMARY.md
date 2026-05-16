@@ -26,6 +26,7 @@
 * [observal pull](cli/pull.md)
 * [observal registry](cli/registry.md)
 * [observal agent](cli/agent.md)
+* [observal ](cli/auth.md)mcp
 * [observal ops](cli/ops.md)
 * [observal admin](cli/admin.md)
 * [observal doctor](cli/doctor.md)
@@ -71,3 +72,4 @@
 * [API endpoints](reference/api-endpoints.md)
 * [Hooks specification](reference/hooks-spec.md)
 * [Config files](reference/config-files.md)
+
