@@ -5,7 +5,7 @@
 
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState } from "react";
 import { FlaskConical, Zap } from "lucide-react";
 import { useEvalScorecards, useEvalAggregate, useRegistryItem, useEvalRun, useEvalPenalties, useAgentEvaluatedSessions, useSessionEfficiency } from "@/hooks/use-api";
 import type { RegistryItem, Scorecard } from "@/lib/types";

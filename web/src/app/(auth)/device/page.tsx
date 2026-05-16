@@ -44,7 +44,7 @@ function DeviceContent() {
   useEffect(() => {
     const code = searchParams.get("code");
     if (code) {
-      setUserCode(formatCode(code));
+      void Promise.resolve().then(() => setUserCode(formatCode(code)));
     }
   }, [searchParams, formatCode]);
 

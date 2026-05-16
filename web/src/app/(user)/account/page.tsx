@@ -193,14 +193,14 @@ function getServerSnapshot() {
 	return "";
 }
 
-function initials(name: string) {
-	return name
-		.split(" ")
-		.map((w) => w[0])
-		.join("")
-		.toUpperCase()
-		.slice(0, 2);
-}
+// function (name: string) {
+// 	return name
+// 		.split(" ")
+// 		.map((w) => w[0])
+// 		.join("")
+// 		.toUpperCase()
+// 		.slice(0, 2);
+// }
 
 // ── Change Username ───────────────────────────────────────────────────────
 function ChangeUsernameSection() {
@@ -413,13 +413,12 @@ function ChangePasswordSection() {
 								setNewPassword(e.target.value);
 								setTouched(true);
 							}}
-							className={`h-8 text-sm ${
-								touched && newPassword
+							className={`h-8 text-sm ${touched && newPassword
 									? strong
 										? "border-green-500 focus-visible:ring-green-500"
 										: "border-destructive focus-visible:ring-destructive"
 									: ""
-							}`}
+								}`}
 							placeholder="At least 12 characters"
 						/>
 						{/* Requirements checklist — shown once user starts typing */}
@@ -430,11 +429,10 @@ function ChangePasswordSection() {
 									return (
 										<li
 											key={rule.id}
-											className={`flex items-center gap-1.5 text-xs ${
-												ok
+											className={`flex items-center gap-1.5 text-xs ${ok
 													? "text-green-600 dark:text-green-400"
 													: "text-muted-foreground"
-											}`}
+												}`}
 										>
 											<span>{ok ? "✓" : "○"}</span>
 											{rule.label}
@@ -452,13 +450,12 @@ function ChangePasswordSection() {
 							type="password"
 							value={confirmPassword}
 							onChange={(e) => setConfirmPassword(e.target.value)}
-							className={`h-8 text-sm ${
-								confirmPassword
+							className={`h-8 text-sm ${confirmPassword
 									? matches
 										? "border-green-500 focus-visible:ring-green-500"
 										: "border-destructive focus-visible:ring-destructive"
 									: ""
-							}`}
+								}`}
 							placeholder="Re-enter new password"
 							onKeyDown={(e) => {
 								if (e.key === "Enter") handleSubmit();

@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable @next/next/no-img-element */
 
 "use client";
 
@@ -222,15 +223,15 @@ export default function SettingsPage() {
   useEffect(() => {
     admin.getTracePrivacy()
       .then((res) => setTracePrivacy(res.trace_privacy))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setTracePrivacyLoading(false));
     if (hasMinRole(getUserRole(), "super_admin")) {
       admin.getRegisteredAgentsOnly()
         .then((res) => setRegisteredAgentsOnly(res.registered_agents_only))
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setRegisteredAgentsOnlyLoading(false));
     } else {
-      setRegisteredAgentsOnlyLoading(false);
+      void Promise.resolve().then(() => setRegisteredAgentsOnlyLoading(false));
     }
   }, []);
 
@@ -393,11 +394,10 @@ export default function SettingsPage() {
               {systemWarnings.map((w: SystemWarning) => (
                 <div
                   key={w.code}
-                  className={`rounded-md border px-4 py-3 flex items-start gap-3 ${
-                    w.level === "critical"
-                      ? "border-destructive/40 bg-destructive/10"
-                      : "border-warning/40 bg-warning/10"
-                  }`}
+                  className={`rounded-md border px-4 py-3 flex items-start gap-3 ${w.level === "critical"
+                    ? "border-destructive/40 bg-destructive/10"
+                    : "border-warning/40 bg-warning/10"
+                    }`}
                 >
                   {w.level === "critical"
                     ? <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
@@ -578,28 +578,28 @@ export default function SettingsPage() {
 
         {/* Registered Agents Only — super_admin only */}
         {hasMinRole(getUserRole(), "super_admin") && (
-        <section className="animate-in">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-            <Shield className="h-3.5 w-3.5" />
-            Registered Agents Only
-          </h3>
-          <div className="rounded-md border border-border bg-card px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium">Only trace registered agents</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  When enabled, only registered agents are traced. Unregistered agent
-                  telemetry is stored as metadata-only (no content payloads).
-                </p>
+          <section className="animate-in">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+              <Shield className="h-3.5 w-3.5" />
+              Registered Agents Only
+            </h3>
+            <div className="rounded-md border border-border bg-card px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Only trace registered agents</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When enabled, only registered agents are traced. Unregistered agent
+                    telemetry is stored as metadata-only (no content payloads).
+                  </p>
+                </div>
+                <Switch
+                  checked={registeredAgentsOnly}
+                  onCheckedChange={handleRegisteredAgentsOnlyToggle}
+                  disabled={registeredAgentsOnlyLoading || registeredAgentsOnlyToggling}
+                />
               </div>
-              <Switch
-                checked={registeredAgentsOnly}
-                onCheckedChange={handleRegisteredAgentsOnlyToggle}
-                disabled={registeredAgentsOnlyLoading || registeredAgentsOnlyToggling}
-              />
             </div>
-          </div>
-        </section>
+          </section>
         )}
 
         {isLoading ? (

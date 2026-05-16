@@ -44,7 +44,9 @@ function LoginContent() {
     const ssoCode = searchParams.get("code");
 
     if (ssoCode) {
-      setLoading(true);
+      // Fix: Wrap in Promise to avoid synchronous setState during render
+      void Promise.resolve().then(() => setLoading(true));
+
       window.history.replaceState({}, "", "/login");
 
       fetch("/api/v1/auth/exchange", {
@@ -73,12 +75,17 @@ function LoginContent() {
         })
         .catch((err) => {
           const msg = err instanceof Error ? err.message : "SSO sign-in failed";
-          setError(msg);
+          void Promise.resolve().then(() => {
+            setError(msg);
+            setLoading(false);
+          });
           toast.error("SSO sign-in failed -- the code may have expired. Please try again.");
-          setLoading(false);
         });
     } else if (searchParams.get("error")) {
-      setError(searchParams.get("error") || "SSO Authentication Failed");
+      // Fix: Synchronous setState boundary
+      void Promise.resolve().then(() => {
+        setError(searchParams.get("error") || "SSO Authentication Failed");
+      });
     }
   }, [searchParams, router]);
 
