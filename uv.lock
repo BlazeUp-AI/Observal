@@ -477,17 +477,22 @@ dependencies = [
     { name = "asyncpg" },
     { name = "docker" },
     { name = "httpx" },
-    { name = "hypothesis" },
-    { name = "pyarrow" },
     { name = "pyyaml" },
     { name = "questionary" },
     { name = "rich" },
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+migrate = [
+    { name = "pyarrow" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "fastapi" },
+    { name = "hypothesis" },
+    { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pytest" },
@@ -502,17 +507,19 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "docker", specifier = ">=7.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "hypothesis" },
-    { name = "pyarrow" },
+    { name = "pyarrow", marker = "extra == 'migrate'", specifier = ">=15.0.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "questionary", specifier = ">=2.0.0" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
+provides-extras = ["migrate"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "fastapi", specifier = ">=0.135.3" },
+    { name = "hypothesis", specifier = ">=6.0" },
+    { name = "pyarrow", specifier = ">=15.0.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "pytest", specifier = ">=9.0.3" },
