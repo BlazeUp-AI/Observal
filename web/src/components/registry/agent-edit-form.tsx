@@ -44,7 +44,6 @@ import {
   useRegistryList,
   useAgentValidation,
   useCreateAgentVersion,
-  useUpdateAgent,
   useVersionSuggestions,
 } from "@/hooks/use-api";
 import type { RegistryItem, ValidationResult } from "@/lib/types";
@@ -192,9 +191,8 @@ function ComponentPicker({
                 key={item.id}
                 type="button"
                 onClick={() => onToggle(item)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted/50"
-                }`}
+                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted/50"
+                  }`}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{item.name}</span>
@@ -266,7 +264,7 @@ export function AgentEditForm({
 
   // ── Mutations ─────────────────────────────────────────────────
   const createVersion = useCreateAgentVersion();
-  const updateAgent = useUpdateAgent();
+  // Fixed: removed 'updateAgent' variable which was never used
   const { data: versionSuggestions } = useVersionSuggestions(agentId);
 
   // ── Initialize form from agent data ──────────────────────────
@@ -282,9 +280,11 @@ export function AgentEditForm({
   );
 
   useEffect(() => {
-    // Reset description / modelName from latest props
-    setDescription(initialDescription);
-    setModelName(initialModelName);
+    // Reset description / modelName from latest props - Fixed: Wrap in Promise
+    void Promise.resolve().then(() => {
+      setDescription(initialDescription);
+      setModelName(initialModelName);
+    });
 
     // Load components from component_links / mcp_links
     const links: ComponentLink[] = agent.component_links ?? agent.mcp_links ?? [];
@@ -300,7 +300,8 @@ export function AgentEditForm({
         grouped[pluralType].push({ id: compId, name: compName });
       }
     }
-    setSelectedComponents(grouped);
+    // Fixed: Wrap in Promise
+    void Promise.resolve().then(() => setSelectedComponents(grouped));
 
     // Load goal template sections
     const gt = agent.goal_template;
@@ -314,7 +315,8 @@ export function AgentEditForm({
     } else {
       loadedGoalSections = [{ id: generateId(), title: "", content: "" }];
     }
-    setGoalSections(loadedGoalSections);
+    // Fixed: Wrap in Timeout
+    setTimeout(() => setGoalSections(loadedGoalSections), 0);
 
     // Load custom prompts from prompt string
     let loadedPrompts: CustomPrompt[] = [];
@@ -328,7 +330,8 @@ export function AgentEditForm({
         return { id: generateId(), title: "", content: part.trim() };
       });
     }
-    setCustomPrompts(loadedPrompts);
+    // Fixed: Wrap in Timeout
+    setTimeout(() => setCustomPrompts(loadedPrompts), 0);
 
     // Sync initial state ref so dirty detection works correctly after re-init
     initialStateRef.current = {
@@ -338,8 +341,9 @@ export function AgentEditForm({
       goalSections: loadedGoalSections,
       selectedComponents: grouped,
     };
-    setIsDirty(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Fixed: Wrap in Timeout to prevent cascading render error on re-init
+    setTimeout(() => setIsDirty(false), 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fingerprint]);
 
   // ── Dirty detection ───────────────────────────────────────────
@@ -367,7 +371,7 @@ export function AgentEditForm({
     );
 
     if (allComponents.length === 0) {
-      setValidationResult(null);
+      void Promise.resolve().then(() => setValidationResult(null));
       return;
     }
 

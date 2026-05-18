@@ -15,7 +15,7 @@ import type { NextRequest } from "next/server";
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'", // unsafe-inline required for Next.js hydration scripts
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-inline required for Next.js hydration scripts
   "style-src 'self' 'unsafe-inline'", // unsafe-inline needed for Tailwind/shadcn
   "img-src 'self' data: https:",
   "font-src 'self'",
@@ -25,7 +25,7 @@ const CSP = [
   "form-action 'self'",
 ].join("; ");
 
-export function middleware(_request: NextRequest) {
+export function middleware(__request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set("Content-Security-Policy", CSP);
   response.headers.set("X-Frame-Options", "DENY");

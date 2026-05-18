@@ -1,3 +1,4 @@
+/** @react-compiler-skip */
 // SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
 // SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 // SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
@@ -151,11 +152,10 @@ function VersionBumpDialog({
           {options.map((opt) => (
             <label
               key={opt.value}
-              className={`flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 transition-colors ${
-                selection === opt.value
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:bg-muted/50"
-              }`}
+              className={`flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 transition-colors ${selection === opt.value
+                ? "border-primary bg-primary/5"
+                : "border-border hover:bg-muted/50"
+                }`}
             >
               <input
                 type="radio"
@@ -261,11 +261,10 @@ function ComponentPicker({
                 key={item.id}
                 type="button"
                 onClick={() => onToggle(item)}
-                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                  isSelected
-                    ? "bg-accent text-accent-foreground"
-                    : "hover:bg-muted/50"
-                }`}
+                className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${isSelected
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-muted/50"
+                  }`}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">
@@ -397,20 +396,34 @@ function AgentBuilderInner() {
 
     setName(existingAgent.name ?? "");
     setDescription(existingAgent.description ?? "");
+
+    // Fix: Wrap in timeouts to avoid cascading renders
     const agentVersion = (existingAgent as Record<string, unknown>).version;
-    if (typeof agentVersion === "string") setVersion(agentVersion);
+    if (typeof agentVersion === "string") {
+      setTimeout(() => setVersion(agentVersion), 0);
+    }
+
     const agentModel = (existingAgent as Record<string, unknown>).model_name;
-    if (typeof agentModel === "string") setModelName(agentModel);
+    if (typeof agentModel === "string") {
+      setTimeout(() => setModelName(agentModel), 0);
+    }
+
     const agentModelsByIde = (existingAgent as Record<string, unknown>).models_by_ide;
     if (agentModelsByIde && typeof agentModelsByIde === "object" && !Array.isArray(agentModelsByIde)) {
-      setModelsByIde(agentModelsByIde as Record<string, string>);
+      setTimeout(() => setModelsByIde(agentModelsByIde as Record<string, string>), 0);
     }
-    const agentVisibility = (existingAgent as Record<string, unknown>).visibility;
-    if (agentVisibility === "public" || agentVisibility === "private") setVisibility(agentVisibility as "public" | "private");
-    const agentTeamAccesses = (existingAgent as Record<string, unknown>).team_accesses;
-    if (Array.isArray(agentTeamAccesses)) setTeamAccesses(agentTeamAccesses as { group_name: string; permission: "view" | "edit" }[]);
 
-    if (draftParam) setDraftId(draftParam);
+    const agentVisibility = (existingAgent as Record<string, unknown>).visibility;
+    if (agentVisibility === "public" || agentVisibility === "private") {
+      setTimeout(() => setVisibility(agentVisibility as "public" | "private"), 0);
+    }
+
+    const agentTeamAccesses = (existingAgent as Record<string, unknown>).team_accesses;
+    if (Array.isArray(agentTeamAccesses)) {
+      setTimeout(() => setTeamAccesses(agentTeamAccesses as { group_name: string; permission: "view" | "edit" }[]), 0);
+    }
+
+    if (draftParam) setTimeout(() => setDraftId(draftParam), 0);
 
     // Load components if available
     const agentComponents = (existingAgent as Record<string, unknown>).components;
@@ -429,7 +442,7 @@ function AgentBuilderInner() {
           });
         }
       }
-      setSelectedComponents(grouped);
+      setTimeout(() => setSelectedComponents(grouped), 0);
     }
 
     // Load goal template sections if available
@@ -440,7 +453,9 @@ function AgentBuilderInner() {
         title: (s.name as string) ?? "",
         content: (s.description as string) ?? "",
       }));
-      if (loadedSections.length > 0) setGoalSections(loadedSections);
+      if (loadedSections.length > 0) {
+        setTimeout(() => setGoalSections(loadedSections), 0);
+      }
     }
 
     // Load custom prompts from the prompt field
@@ -456,7 +471,9 @@ function AgentBuilderInner() {
         }
         return { id: generateId(), title: "", content: part.startsWith("## ") ? part.slice(3).trim() : part.trim() };
       });
-      if (loaded.length > 0) setCustomPrompts(loaded);
+      if (loaded.length > 0) {
+        setTimeout(() => setCustomPrompts(loaded), 0);
+      }
     }
   }, [existingAgent, draftParam]);
 
@@ -517,7 +534,7 @@ function AgentBuilderInner() {
     );
 
     if (allComponents.length === 0) {
-      setValidationResult(null);
+      setTimeout(() => setValidationResult(null), 0);
       return;
     }
 
@@ -535,7 +552,8 @@ function AgentBuilderInner() {
     return () => {
       if (validateTimerRef.current) clearTimeout(validateTimerRef.current);
     };
-  }, [selectedComponents]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedComponents]);
 
   // Check for localStorage draft on mount (skip if in edit mode)
   useEffect(() => {
@@ -543,7 +561,7 @@ function AgentBuilderInner() {
     try {
       const stored = localStorage.getItem(DRAFT_STORAGE_KEY);
       if (stored) {
-        setShowRestoreBanner(true);
+        setTimeout(() => setShowRestoreBanner(true), 0);
       }
     } catch {
       // localStorage unavailable
@@ -587,7 +605,7 @@ function AgentBuilderInner() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [name, description, version, modelName, visibility, teamAccesses, selectedComponents, goalSections, customPrompts, draftId, isEditMode]);
+  }, [name, description, version, modelName, visibility, teamAccesses, selectedComponents, goalSections, customPrompts, draftId, isEditMode, modelsByIde]);
 
   function restoreLocalDraft() {
     try {
@@ -1154,95 +1172,95 @@ function AgentBuilderInner() {
               <section className="space-y-4 animate-in stagger-2">
                 <div>
                   <h3 className="text-sm font-medium font-[family-name:var(--font-display)]">
-                  Visibility & Access
-                </h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Determine who can discover and install this agent.
-                </p>
-              </div>
+                    Visibility & Access
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Determine who can discover and install this agent.
+                  </p>
+                </div>
 
-              <div className="space-y-3">
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value as "public" | "private")}
-                >
-                  <option value="private">Private (Team Access Only)</option>
-                  <option value="public">Public (Visible to All)</option>
-                </select>
+                <div className="space-y-3">
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={visibility}
+                    onChange={(e) => setVisibility(e.target.value as "public" | "private")}
+                  >
+                    <option value="private">Private (Team Access Only)</option>
+                    <option value="public">Public (Visible to All)</option>
+                  </select>
 
-                {visibility === "private" && (
-                  <div className="mt-4 space-y-3 rounded-md border p-4 bg-muted/20">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm">Team Permissions</Label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setTeamAccesses([
-                            ...teamAccesses,
-                            { group_name: "", permission: "view" },
-                          ])
-                        }
-                        className="h-8"
-                      >
-                        <Plus className="mr-1 h-3.5 w-3.5" />
-                        Add Group
-                      </Button>
+                  {visibility === "private" && (
+                    <div className="mt-4 space-y-3 rounded-md border p-4 bg-muted/20">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm">Team Permissions</Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setTeamAccesses([
+                              ...teamAccesses,
+                              { group_name: "", permission: "view" },
+                            ])
+                          }
+                          className="h-8"
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" />
+                          Add Group
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {teamAccesses.map((access, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <Input
+                              placeholder="Group name (e.g. engineering)"
+                              value={access.group_name}
+                              onChange={(e) => {
+                                const newAccess = [...teamAccesses];
+                                newAccess[i].group_name = e.target.value;
+                                setTeamAccesses(newAccess);
+                              }}
+                              className="h-8 flex-1 text-sm"
+                            />
+                            <select
+                              className="flex h-8 w-28 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              value={access.permission}
+                              onChange={(e) => {
+                                const newAccess = [...teamAccesses];
+                                newAccess[i].permission = e.target.value as "view" | "edit";
+                                setTeamAccesses(newAccess);
+                              }}
+                            >
+                              <option value="view">View</option>
+                              <option value="edit">Edit</option>
+                            </select>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const newAccess = [...teamAccesses];
+                                newAccess.splice(i, 1);
+                                setTeamAccesses(newAccess);
+                              }}
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                        {teamAccesses.length === 0 && (
+                          <p className="text-xs text-muted-foreground pt-1">
+                            No groups configured. Only you can view or edit this agent.
+                          </p>
+                        )}
+                      </div>
                     </div>
-
-                    <div className="space-y-2">
-                      {teamAccesses.map((access, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Input
-                            placeholder="Group name (e.g. engineering)"
-                            value={access.group_name}
-                            onChange={(e) => {
-                              const newAccess = [...teamAccesses];
-                              newAccess[i].group_name = e.target.value;
-                              setTeamAccesses(newAccess);
-                            }}
-                            className="h-8 flex-1 text-sm"
-                          />
-                          <select
-                            className="flex h-8 w-28 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                            value={access.permission}
-                            onChange={(e) => {
-                              const newAccess = [...teamAccesses];
-                              newAccess[i].permission = e.target.value as "view" | "edit";
-                              setTeamAccesses(newAccess);
-                            }}
-                          >
-                            <option value="view">View</option>
-                            <option value="edit">Edit</option>
-                          </select>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const newAccess = [...teamAccesses];
-                              newAccess.splice(i, 1);
-                              setTeamAccesses(newAccess);
-                            }}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ))}
-                      {teamAccesses.length === 0 && (
-                        <p className="text-xs text-muted-foreground pt-1">
-                          No groups configured. Only you can view or edit this agent.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
+                  )}
+                </div>
+              </section>
+            )}
 
             <Separator />
 

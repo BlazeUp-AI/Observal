@@ -26,7 +26,6 @@ import {
 	Sparkles,
 	ArrowUpRight,
 	ArrowDownRight,
-	Target,
 	Shield,
 	Download,
 } from "lucide-react";
@@ -142,13 +141,12 @@ function AtAGlance({ data }: { data: unknown }) {
 				</div>
 				{obj.health && (
 					<span
-						className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-							obj.health === "healthy"
+						className={`text-xs px-2 py-0.5 rounded-full font-medium ${obj.health === "healthy"
 								? "bg-success/20 text-success"
 								: obj.health === "concerning"
 									? "bg-destructive/20 text-destructive"
 									: "bg-warning/20 text-warning"
-						}`}
+							}`}
 					>
 						{obj.health}
 					</span>
@@ -356,12 +354,12 @@ function FrictionSection({ data }: { data: unknown }) {
 	const intro = obj.intro as string | undefined;
 	const categories = obj.categories as
 		| {
-				title: string;
-				severity: string;
-				description: string;
-				evidence: string;
-				impact: string;
-		  }[]
+			title: string;
+			severity: string;
+			description: string;
+			evidence: string;
+			impact: string;
+		}[]
 		| undefined;
 
 	if (!categories || categories.length === 0) return null;
@@ -387,13 +385,12 @@ function FrictionSection({ data }: { data: unknown }) {
 									{cat.title}
 								</div>
 								<span
-									className={`text-xs px-2 py-0.5 rounded-full ${
-										cat.severity === "high"
+									className={`text-xs px-2 py-0.5 rounded-full ${cat.severity === "high"
 											? "bg-destructive/20 text-destructive"
 											: cat.severity === "medium"
 												? "bg-warning/20 text-warning"
 												: "bg-muted text-muted-foreground"
-									}`}
+										}`}
 								>
 									{cat.severity}
 								</span>
@@ -456,13 +453,12 @@ function SuggestionsSection({ data }: { data: unknown }) {
 						<div className="flex items-center justify-between mb-1">
 							<div className="font-medium text-sm">{item.title}</div>
 							<span
-								className={`text-xs px-2 py-0.5 rounded-full ${
-									item.priority === "high"
+								className={`text-xs px-2 py-0.5 rounded-full ${item.priority === "high"
 										? "bg-destructive/20 text-destructive"
 										: item.priority === "medium"
 											? "bg-warning/20 text-warning"
 											: "bg-muted text-muted-foreground"
-								}`}
+									}`}
 							>
 								{item.priority}
 							</span>
@@ -497,10 +493,10 @@ function TokenSection({
 		const summary = obj.summary as string | undefined;
 		const costMetrics = obj.metrics as
 			| {
-					total_cost_usd: number;
-					cost_per_session: number;
-					cache_efficiency_pct: number;
-			  }
+				total_cost_usd: number;
+				cost_per_session: number;
+				cache_efficiency_pct: number;
+			}
 			| undefined;
 		const opportunities = obj.opportunities as
 			| { title: string; description: string; estimated_savings: string }[]
@@ -729,13 +725,13 @@ function RegressionSection({
 		if (obj.has_previous_data === false) return null;
 		const changes = obj.changes as
 			| {
-					metric: string;
-					direction: string;
-					previous_value: string;
-					current_value: string;
-					magnitude_pct: number;
-					significance: string;
-			  }[]
+				metric: string;
+				direction: string;
+				previous_value: string;
+				current_value: string;
+				magnitude_pct: number;
+				significance: string;
+			}[]
 			| undefined;
 		if (!changes || changes.length === 0) return null;
 
@@ -783,11 +779,10 @@ function RegressionSection({
 							</span>
 							{c.significance && (
 								<span
-									className={`text-xs px-2 py-0.5 rounded-full ${
-										c.significance === "meaningful"
+									className={`text-xs px-2 py-0.5 rounded-full ${c.significance === "meaningful"
 											? "bg-primary-accent/20 text-primary-accent"
 											: "bg-muted text-muted-foreground"
-									}`}
+										}`}
 								>
 									{c.significance}
 								</span>
@@ -986,8 +981,8 @@ function ErrorCategories({
 	toolErrors,
 }: {
 	toolErrors:
-		| { total_categorized: number; categories: Record<string, number> }
-		| undefined;
+	| { total_categorized: number; categories: Record<string, number> }
+	| undefined;
 }) {
 	if (!toolErrors || toolErrors.total_categorized === 0) return null;
 

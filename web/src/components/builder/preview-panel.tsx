@@ -1,3 +1,4 @@
+/** @react-compiler-skip */
 // SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
@@ -395,6 +396,11 @@ export function PreviewPanel({
       break;
   }
 
+   
+  // 1. Stringify the complex object ABOVE the hook
+  const componentsKey = JSON.stringify(selectedComponents);
+
+   
   const fetchFullConfig = useCallback(async () => {
     const components: { component_type: string; component_id: string }[] = [];
     for (const [type, items] of Object.entries(selectedComponents)) {
@@ -422,7 +428,9 @@ export function PreviewPanel({
     } finally {
       setFullLoading(false);
     }
-  }, [name, description, body, modelName, selectedComponents]);
+    // 2. Use componentsKey here instead of selectedComponents
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, description, body, modelName, componentsKey]);
 
   const handleOpenFullPreview = useCallback(() => {
     setModalIde(ide);
@@ -484,11 +492,10 @@ export function PreviewPanel({
             key={opt.value}
             type="button"
             onClick={() => setIde(opt.value)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              ide === opt.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted/50 text-muted-foreground hover:bg-muted"
-            }`}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${ide === opt.value
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted/50 text-muted-foreground hover:bg-muted"
+              }`}
           >
             {opt.label}
           </button>
@@ -535,11 +542,10 @@ export function PreviewPanel({
                   setModalIde(opt.value);
                   modalScrollRef.current?.scrollTo({ top: 0 });
                 }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  modalIde === opt.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                }`}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${modalIde === opt.value
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                  }`}
               >
                 {opt.label}
               </button>

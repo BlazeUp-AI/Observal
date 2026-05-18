@@ -318,7 +318,7 @@ function AccessSettingsWidget({ agentId, visibility, teamAccesses, canEdit }: { 
         },
       });
       setIsEditing(false);
-    } catch (e) {
+    } catch (_e) {
       // toast is handled in the mutation
     }
   }
@@ -695,76 +695,76 @@ export default function AgentDetailPage({
 
                 <TabsContent value="components" className="mt-6">
                   <div className="min-h-[300px]">
-                  {components.length === 0 ? (
-                    versionPrompt ? (
-                      <div className="space-y-3">
-                        <p className="text-xs text-muted-foreground">
-                          This agent was registered via scan and uses an inline system prompt instead of linked components.
-                        </p>
-                        <div className="rounded-md border border-border bg-muted/20 p-4">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">System Prompt</h4>
-                          <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words text-foreground/80 leading-relaxed max-h-[400px] overflow-y-auto">
-                            {String(versionPrompt)}
-                          </pre>
-                        </div>
-                      </div>
-                    ) : (
-                      <EmptyState
-                        icon={Puzzle}
-                        title="No components linked"
-                        description="This agent does not have any linked MCP servers or components."
-                      />
-                    )
-                  ) : (
-                    <div className="space-y-2">
-                      {components.map((comp: ComponentLink, i: number) => {
-                        const compName =
-                          comp.mcp_name ??
-                          comp.component_name ??
-                          comp.name ??
-                          "-";
-                        const compType = comp.component_type ?? "mcp";
-                        const compId = comp.component_id ?? comp.mcp_id;
-                        const content = (
-                          <div
-                            className={[
-                              "flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-border",
-                              "transition-colors",
-                              compId
-                                ? "hover:bg-accent/40 cursor-pointer"
-                                : "",
-                            ].join(" ")}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] shrink-0"
-                              >
-                                {compType}
-                              </Badge>
-                              <span className="text-sm font-medium truncate">
-                                {compName}
-                              </span>
-                            </div>
-                            {comp.status && (
-                              <StatusBadge status={comp.status} />
-                            )}
+                    {components.length === 0 ? (
+                      versionPrompt ? (
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground">
+                            This agent was registered via scan and uses an inline system prompt instead of linked components.
+                          </p>
+                          <div className="rounded-md border border-border bg-muted/20 p-4">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">System Prompt</h4>
+                            <pre className="text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words text-foreground/80 leading-relaxed max-h-[400px] overflow-y-auto">
+                              {String(versionPrompt)}
+                            </pre>
                           </div>
-                        );
+                        </div>
+                      ) : (
+                        <EmptyState
+                          icon={Puzzle}
+                          title="No components linked"
+                          description="This agent does not have any linked MCP servers or components."
+                        />
+                      )
+                    ) : (
+                      <div className="space-y-2">
+                        {components.map((comp: ComponentLink, i: number) => {
+                          const compName =
+                            comp.mcp_name ??
+                            comp.component_name ??
+                            comp.name ??
+                            "-";
+                          const compType = comp.component_type ?? "mcp";
+                          const compId = comp.component_id ?? comp.mcp_id;
+                          const content = (
+                            <div
+                              className={[
+                                "flex items-center justify-between gap-3 px-4 py-3 rounded-md border border-border",
+                                "transition-colors",
+                                compId
+                                  ? "hover:bg-accent/40 cursor-pointer"
+                                  : "",
+                              ].join(" ")}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] shrink-0"
+                                >
+                                  {compType}
+                                </Badge>
+                                <span className="text-sm font-medium truncate">
+                                  {compName}
+                                </span>
+                              </div>
+                              {comp.status && (
+                                <StatusBadge status={comp.status} />
+                              )}
+                            </div>
+                          );
 
-                        return compId ? (
-                          <Link
-                            key={i}
-                            href={`/components/${compId}?type=${compType}s`}
-                          >
-                            {content}
-                          </Link>
-                        ) : (
-                          <div key={i}>{content}</div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          return compId ? (
+                            <Link
+                              key={i}
+                              href={`/components/${compId}?type=${compType}s`}
+                            >
+                              {content}
+                            </Link>
+                          ) : (
+                            <div key={i}>{content}</div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 
@@ -805,11 +805,10 @@ export default function AgentDetailPage({
                               {Array.from({ length: 5 }).map((_, i) => (
                                 <Star
                                   key={i}
-                                  className={`h-3.5 w-3.5 ${
-                                    i < fb.rating
+                                  className={`h-3.5 w-3.5 ${i < fb.rating
                                       ? "fill-current text-amber-500"
                                       : "text-muted-foreground/30"
-                                  }`}
+                                    }`}
                                 />
                               ))}
                             </div>

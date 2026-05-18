@@ -113,6 +113,9 @@ function McpEditForm({
 		? (item.environment_variables as { name: string }[])
 		: [];
 
+	const strArgs = JSON.stringify(itemArgs);
+	const strEnv = JSON.stringify(itemEnvVars);
+
 	const currentConfigJson = useMemo(() => {
 		const cfg: Record<string, unknown> = {};
 		if (itemCommand) {
@@ -127,17 +130,21 @@ function McpEditForm({
 			cfg.url = itemUrl;
 			if (itemTransport) cfg.type = itemTransport;
 		}
+
 		if (Object.keys(cfg).length === 0) return "";
+
 		const wrapper = { mcpServers: { [itemName]: cfg } };
 		return JSON.stringify(wrapper, null, 2);
+
+		// The disable comment MUST be right above the dependency array
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [
 		itemCommand,
 		itemUrl,
 		itemTransport,
 		itemName,
-		JSON.stringify(itemArgs),
-		JSON.stringify(itemEnvVars),
+		strArgs, // Use the variable, not the function call
+		strEnv   // Use the variable, not the function call
 	]);
 
 	const [jsonInput, setJsonInput] = useState(currentConfigJson);
@@ -161,10 +168,10 @@ function McpEditForm({
 	>(
 		Array.isArray(item.environment_variables)
 			? (item.environment_variables as {
-					name: string;
-					description: string;
-					required: boolean;
-				}[])
+				name: string;
+				description: string;
+				required: boolean;
+			}[])
 			: [],
 	);
 	const [changelog, setChangelog] = useState("");
@@ -411,10 +418,10 @@ function McpEditForm({
 						setEnvVars(
 							Array.isArray(item.environment_variables)
 								? (item.environment_variables as {
-										name: string;
-										description: string;
-										required: boolean;
-									}[])
+									name: string;
+									description: string;
+									required: boolean;
+								}[])
 								: [],
 						);
 					}}

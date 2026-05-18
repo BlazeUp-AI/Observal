@@ -87,7 +87,7 @@ export function ModelPicker({
           )}
           <SelectGroup>
             <SelectLabel>Models</SelectLabel>
-            {rows.map((m) => {
+            {rows.map((m, index) => {
               const fm = formatModel({
                 display_name: m.display_name,
                 model_id: m.model_id,
@@ -98,7 +98,7 @@ export function ModelPicker({
                 ? `${fm.primary} (${fm.secondary})`
                 : fm.primary;
               return (
-                <SelectItem key={m.model_id} value={m.model_id}>
+                <SelectItem key={`${m.model_id}-${index}`} value={m.model_id}>
                   {label}
                   {m.deprecated ? " · deprecated" : ""}
                 </SelectItem>
