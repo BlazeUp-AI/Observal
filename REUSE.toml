@@ -343,6 +343,26 @@ SPDX-FileCopyrightText = [
 SPDX-License-Identifier = "AGPL-3.0-only"
 
 [[annotations]]
+path = "pnpm-lock.yaml"
+SPDX-FileCopyrightText = "SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = "package.json"
+SPDX-FileCopyrightText = "SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = "pnpm-workspace.yaml"
+SPDX-FileCopyrightText = "SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = "tests/e2e/package.json"
+SPDX-FileCopyrightText = "SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
 path = "infra/terraform/aws/tf.plan"
 SPDX-FileCopyrightText = "SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>"
 SPDX-License-Identifier = "AGPL-3.0-only"

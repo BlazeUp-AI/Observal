@@ -71,7 +71,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - 'web/package.json'
-              - 'web/pnpm-lock.yaml'
+              - 'pnpm-lock.yaml'
               - '.env.example'
               - '.github/workflows/ci.yml'
 
@@ -195,18 +195,17 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         if: needs.changes.outputs.web == 'true'
-        with:
-          version: 10
 
       - uses: actions/setup-node@v6
         if: needs.changes.outputs.web == 'true'
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         if: needs.changes.outputs.web == 'true'
+        working-directory: .
         run: pnpm install --frozen-lockfile
 
       - name: ESLint
@@ -301,10 +300,7 @@ jobs:
 
       - name: JS dependency audit
         uses: pnpm/action-setup@v6
-        with:
-          version: 10
       - name: Run pnpm audit
         run: |
-          cd web
           pnpm install --frozen-lockfile
           pnpm audit --prod || true

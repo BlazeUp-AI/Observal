@@ -64,3 +64,4 @@ migration/
 observal-insights/
 .observal/
 .pi-lens/
+node_modules

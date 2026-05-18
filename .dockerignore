@@ -25,6 +25,7 @@ screenshots/
 
 # Testing (not shipped in images)
 tests/
+!tests/e2e/package.json
 
 # CLI tool (separate distribution, not in API or web image)
 observal_cli/
