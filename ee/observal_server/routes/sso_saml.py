@@ -11,6 +11,7 @@ import json
 import logging
 import secrets
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
@@ -111,10 +112,12 @@ def _decrypt_sp_key(config) -> str:
 
 
 def _prepare_saml_request(request: Request) -> dict:
+    parsed = urlparse(settings.FRONTEND_URL)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return {
-        "https": "on" if request.url.scheme == "https" else "off",
-        "http_host": request.headers.get("host", request.url.hostname or "localhost"),
-        "server_port": str(request.url.port or (443 if request.url.scheme == "https" else 80)),
+        "https": "on" if parsed.scheme == "https" else "off",
+        "http_host": f"{parsed.hostname}:{port}" if port not in (80, 443) else parsed.hostname,
+        "server_port": str(port),
         "script_name": request.url.path,
         "get_data": dict(request.query_params),
         "post_data": {},

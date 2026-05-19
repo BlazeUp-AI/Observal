@@ -35,7 +35,10 @@ _SKIP_PATHS: set[str] = {
     "/v1/metrics",
 }
 
-_SKIP_PREFIXES: tuple[str, ...] = ("/api/v1/graphql",)
+_SKIP_PREFIXES: tuple[str, ...] = (
+    "/api/v1/graphql",
+    "/api/v1/sso/saml",
+)
 
 # Accepted content types for normal endpoints.
 _ALLOWED_TYPES = {

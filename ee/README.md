@@ -12,7 +12,7 @@ Source-available enterprise features for Observal. This module is loaded only wh
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Audit Logging | Implemented | Writes all admin and auth events to a ClickHouse `audit_log` table. Queryable and exportable as CSV. |
-| SAML 2.0 SSO | Stub (501) | Routes defined for SAML login, ACS callback, and SP metadata. Not yet implemented. |
+| SAML 2.0 SSO |Implemented | Working SAML SSO tested with Entra ID and Okta as IDPs|
 | SCIM 2.0 Provisioning | Stub (501) | Routes defined for user sync from an identity provider. Not yet implemented. |
 | Plugin Registry | Placeholder | Future home for Grafana, Prometheus, Datadog, and SIEM integrations. |
 
