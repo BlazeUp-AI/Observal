@@ -357,6 +357,13 @@ class TestRedactDict:
         assert "very-secret-token-value" not in str(result["tool_input"])
         assert result["session_id"] == "abc123"
 
+    def test_selected_field_preserves_non_string_scalar(self):
+        data = {"tool_input": 42, "tool_name": "Read"}
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert result["tool_input"] == 42
+        assert result["tool_name"] == "Read"
+
     def test_unselected_list_values_are_preserved(self):
         data = {
             "tool_name": ["sk-proj-abc123def456ghi789jkl012mno345"],
@@ -370,6 +377,17 @@ class TestRedactDict:
     def test_nested_selected_fields_inside_lists_still_redact(self):
         data = {
             "events": [{"tool_input": "OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345"}],
+            "tool_name": "Read",
+        }
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert "sk-proj-" not in result["events"][0]["tool_input"]
+        assert result["tool_name"] == "Read"
+        assert "sk-proj-" in data["events"][0]["tool_input"]
+
+    def test_nested_selected_fields_inside_tuples_still_redact(self):
+        data = {
+            "events": ({"tool_input": "OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345"},),
             "tool_name": "Read",
         }
         result = redact_dict(data, fields={"tool_input"})
