@@ -425,3 +425,13 @@ SPDX-License-Identifier = "AGPL-3.0-only"
 path = "observal-server/alembic/versions/0003_add_insight_meta_cache.py"
 SPDX-FileCopyrightText = "SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>"
 SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = "LICENSE"
+SPDX-FileCopyrightText = "2026-present BlazeUp AI LLP"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = "ee/LICENSE"
+SPDX-FileCopyrightText = "2026-present BlazeUp AI LLP"
+SPDX-License-Identifier = "LicenseRef-Observal-Enterprise"
