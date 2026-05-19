@@ -188,6 +188,38 @@ def test_tail_flush_retries_and_logs_failure(home, payload, file_path, changes, 
     )
 
 
+def test_tail_flush_retries_success(home, payload, file_path, changes, read_cursor_values):
+    """POST fails on first attempt, succeeds on retry → cursor finalized."""
+    offset, line_count = read_cursor_values
+    bytes_read = 38
+    new_offset = offset + bytes_read
+    with (
+        patch("observal_cli.hooks.session_push.load_config") as mock_config,
+        patch("observal_cli.cmd_reconcile._find_session_file") as mock_session_file,
+        patch("observal_cli.hooks.session_push.read_cursor") as mock_read,
+        patch("observal_cli.hooks.session_push.read_new_lines") as mock_read_new_lines,
+        patch("observal_cli.hooks.session_push.write_cursor") as mock_write_cursor,
+        patch("observal_cli.hooks.session_push.build_payload") as mock_build_payload,
+        patch("observal_cli.hooks.session_push.post_to_server") as mock_post,
+        patch("time.sleep") as mock_sleep,
+    ):
+        mock_config.return_value = payload
+        mock_session_file.return_value = file_path
+        mock_read.return_value = read_cursor_values
+        mock_read_new_lines.return_value = (changes, 38)
+        mock_build_payload.return_value = {"session_id": SESSION_ID}
+        mock_post.side_effect = [False, True]
+        result = tail_flush(SESSION_ID, home=home)
+    assert result is None
+    assert mock_sleep.call_count == 2
+    assert mock_post.call_count == 2
+    mock_config.assert_called_once_with(home=home)
+    mock_session_file.assert_called_once_with(SESSION_ID, home=home)
+    mock_write_cursor.assert_called_once_with(
+        SESSION_ID, new_offset, line_count + len(changes), finalized=True, home=home
+    )
+
+
 def test_main_returns_when_no_args():
     """len(sys.argv) < 2 → early return, tail_flush not called."""
     with (
