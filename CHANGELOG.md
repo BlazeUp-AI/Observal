@@ -10,6 +10,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-05-19
+
+### Added
+
+- add Gitleaks workflow to scan PRs for secret leaks (**ci**) ([8ba0c76](https://github.com/BlazeUp-AI/Observal/commit/8ba0c76afba5d67710d2228ed2d74700926cc731))
+- auto-label PRs with merge conflicts (**ci**) ([abc12a5](https://github.com/BlazeUp-AI/Observal/commit/abc12a527c539ff3a1efec0eda43503e1490bdf1))
+- auto-label PRs touching tests or enterprise code (**ci**) ([cd7f50d](https://github.com/BlazeUp-AI/Observal/commit/cd7f50d69c00890c13dfcf69ec372f73008eaef4))
+- add workflow to label PRs from first-time contributors (**ci**) ([0e27e9f](https://github.com/BlazeUp-AI/Observal/commit/0e27e9fbe2e9823d62ab94ebc2a87e3cb1afffd4))
+
+### Changed
+
+- migrate e2e tests to tests/e2e with pnpm workspace ([8d3394e](https://github.com/BlazeUp-AI/Observal/commit/8d3394e7a2108756fd1765375c9a9a4fd4fba3e3))
+
+### Documentation
+
+- clarify agent install and pull ([596f210](https://github.com/BlazeUp-AI/Observal/commit/596f210f1a873237efd0909b4d2c6c18a6728978))
+- update agent pull command ([17372aa](https://github.com/BlazeUp-AI/Observal/commit/17372aade157dfbaaf40ba997c0ba7d2cafa9c45))
+- rewrite landing page for clarity and completeness ([6c02a60](https://github.com/BlazeUp-AI/Observal/commit/6c02a60730b65f7d2bc2e74af0a6cd221c703ee9))
+- update migrate workflow with org-id and structured steps ([6fa6c78](https://github.com/BlazeUp-AI/Observal/commit/6fa6c783c21f1c2f991bba142b23d47cb4233c68))
+
+### Fixed
+
+- redact nested structured secrets (**security**) ([3ab8e70](https://github.com/BlazeUp-AI/Observal/commit/3ab8e708fa37091bb3e5ae915f85d1f69bc27509))
+- bump gitpython to 3.1.50 and urllib3 to 2.7.0 (**deps**) ([b62f861](https://github.com/BlazeUp-AI/Observal/commit/b62f861a1445488d2394e8db1fa17bb475fbd07c))
+- use search API, bump to @v9, fix error handling in new-contributor workflow (**ci**) ([2eb853b](https://github.com/BlazeUp-AI/Observal/commit/2eb853be5c04207a7c88f525b30360be66ba3a1d))
+- fix SPDX header corruption and improve e2e-frontend health check (**ci**) ([1f3d05d](https://github.com/BlazeUp-AI/Observal/commit/1f3d05d89e61e41c01a2007e7559e99930194fc1))
+- add repository guard to deploy, release, and SBOM workflows (**ci**) ([f6724e5](https://github.com/BlazeUp-AI/Observal/commit/f6724e535f9b96070e49528c599b9cb337ca4cd9))
+- fix SAML SSO (**ee**) ([2af7611](https://github.com/BlazeUp-AI/Observal/commit/2af76119b20e6b278bd451f052ba92e012407989))
+- update web frontend (minor/patch) (**deps**) ([da825f8](https://github.com/BlazeUp-AI/Observal/commit/da825f8432d3e7392f7311549c5a65ac3fa835ea))
+- restrict migrate commands to super admin (#1048) ([eda06e0](https://github.com/BlazeUp-AI/Observal/commit/eda06e0948af343e440adbc550ec499e1133d36d))
+- add missing pyarrow dep to make test targets (#1044) ([1bfb94c](https://github.com/BlazeUp-AI/Observal/commit/1bfb94cf4685b26faca085d90347d613b771b76f))
+
+### Other
+
+- move SPDX identifiers for LICENSE and ee/LICENSE to REUSE.toml ([bfd6145](https://github.com/BlazeUp-AI/Observal/commit/bfd6145810f910b9c578fdd84e593f302b2a071b))
+- clean up CI pipeline (**ci**) ([4575a26](https://github.com/BlazeUp-AI/Observal/commit/4575a26242d143dccb8314b62e648ac6214d1d5d))
+- fold PR label workflows into one file (**ci**) ([77e8538](https://github.com/BlazeUp-AI/Observal/commit/77e853860f5e21ffb4886d03215884853f443b10))
+- update codecov/codecov-action action to v6 (**deps**) ([3bb1b1c](https://github.com/BlazeUp-AI/Observal/commit/3bb1b1c8f0e5769abd34e2b517fd0791bd2c4439))
+- update dependency ruff to v0.15.13 (**deps**) ([a1192e4](https://github.com/BlazeUp-AI/Observal/commit/a1192e49a568fa538be828a270a9e0549511eade))
+- update fsfe/reuse-action action to v6 (**deps**) ([11cdcff](https://github.com/BlazeUp-AI/Observal/commit/11cdcff4d5b07749b5a94ff4eece7392ea7e381b))
+- update dependency node to v24 (**deps**) ([31f8cb6](https://github.com/BlazeUp-AI/Observal/commit/31f8cb6aeb8e9c3012f1376ec394298d6ba3a836))
+- update actions/upload-artifact action to v7 (**deps**) ([f684f52](https://github.com/BlazeUp-AI/Observal/commit/f684f52d2c73ad003b20d9739b98ae9f34a172b9))
+- update ghcr.io/astral-sh/uv docker tag to v0.11.15 (**deps**) ([2c789e4](https://github.com/BlazeUp-AI/Observal/commit/2c789e48e9ce85a895e8f8668e57e0600b790cd0))
+- update pnpm/action-setup action to v6 (**deps**) ([e70c6a9](https://github.com/BlazeUp-AI/Observal/commit/e70c6a97252c8b234b117bf69091e503a297ef3d))
+- prep CLI for Homebrew (**packaging**) ([d2bf23b](https://github.com/BlazeUp-AI/Observal/commit/d2bf23b0658486f06ec67e2fbcc1c0fa6b6d2cf4))
+
+### Testing
+
+- cover redactor fallbacks (**security**) ([a6c4d40](https://github.com/BlazeUp-AI/Observal/commit/a6c4d40a4d538ba83b13ba8cd1843b6c6adf0763))
 ## [0.6.0] - 2026-05-16
 
 ### Added
