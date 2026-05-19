@@ -1,4 +1,4 @@
-okaokay# SPDX-FileCopyrightText: 2025 Observal Contributors
+# SPDX-FileCopyrightText: 2025 Observal Contributors
 # SPDX-License-Identifier: AGPL-3.0-only
 
 name: E2E Frontend
@@ -37,13 +37,21 @@ jobs:
 
       - name: Wait for API health
         run: |
+          echo "Waiting for API health check..."
           for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/health && exit 0
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "✓ API is healthy"
+              exit 0
+            fi
+            echo "[$i/30] Waiting for API to be ready..."
             sleep 2
           done
-          echo "API not healthy" && exit 1
+          echo "::error::API failed health check"
+          echo "Docker logs:"
+          cd docker && docker compose logs --tail 50 observal-api observal-init observal-db || true
+          exit 1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
