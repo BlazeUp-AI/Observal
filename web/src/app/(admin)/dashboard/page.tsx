@@ -2,7 +2,6 @@
 
 "use client";
 
-import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layouts/page-header";
 import { AdoptionTab } from "./components/adoption-tab";
