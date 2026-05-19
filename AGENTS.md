@@ -498,6 +498,17 @@ NEVER guess or hallucinate library APIs. Lookup docs first to ensure code matche
 - Server endpoint discovery (`api/routes/config.py`) eliminates hardcoded URLs — clients derive endpoints from server config at runtime.
 - The `observal reconcile` command parses local Claude Code session JSONL files and uploads enrichment data to the server — this is the mechanism for populating traces with full conversation context (assistant messages, thinking blocks, tool results) rather than just hook-captured metadata.
 
+### AI contribution policy
+
+This repository has an explicit [AI Policy](AI_POLICY.md). Key rules that apply to AI coding agents working in this codebase:
+
+- **Autonomous agent submissions are prohibited.** Do not open PRs on behalf of a user without meaningful human authorship of the code. The US Copyright Office (January 2025) confirms purely AI-generated code has no copyright owner, which breaks the project CLA and AGPL licensing chain.
+- **Every contribution must be explainable.** If a reviewer asks about a change, the human contributor must be able to explain it. Do not generate code the contributor cannot defend.
+- **Do not use AI tools to fill in the PR template or write GitHub comments.** The PR template must be completed by the human contributor.
+- **Label AI use.** If a contribution makes nontrivial use of AI tools, the PR description must state the tool name and version.
+- **Frontend changes require screenshots** attached to the PR body.
+- **No slop.** Do not generate low-effort, unreviewed output. Tests must pass, the diff must compile, and the contributor must have read through it.
+
 ### Paths to never commit
 
 The following paths are developer-local AI agent and IDE configurations. They are gitignored but listed here so agents don't try to remove the gitignore entries or create these files in PRs:

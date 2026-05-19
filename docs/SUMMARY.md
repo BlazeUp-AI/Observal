@@ -75,3 +75,9 @@
 * [API endpoints](reference/api-endpoints.md)
 * [Hooks specification](reference/hooks-spec.md)
 * [Config files](reference/config-files.md)
+
+## Contributing
+
+* [Contributing Guide](../CONTRIBUTING.md)
+* [Development Guide](DEVELOPMENT_GUIDE.md)
+* [AI Policy](../AI_POLICY.md)
