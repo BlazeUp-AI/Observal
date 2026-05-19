@@ -16,46 +16,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check if author is a first-time contributor
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const author = context.payload.pull_request.user.login;
             const repo = context.repo;
 
-            // Search for previously merged PRs by this author
-            const { data: pulls } = await github.rest.pulls.list({
-              ...repo,
-              state: 'closed',
-              sort: 'created',
-              direction: 'desc',
-              per_page: 100,
+            const { data: results } = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${repo.owner}/${repo.repo} is:pr is:merged author:${author}`,
+              per_page: 1,
             });
 
-            const hasMergedPR = pulls.some(
-              (pr) => pr.user.login === author && pr.merged_at !== null && pr.number !== context.payload.pull_request.number
-            );
+            const hasMergedPR = results.total_count > 0;
 
             if (hasMergedPR) {
-              console.log(`${author} has previous merged PRs — skipping label.`);
+              console.log(`${author} has previous merged PRs, skipping label.`);
               return;
             }
 
-            console.log(`${author} is a new contributor — adding label.`);
+            console.log(`${author} is a new contributor, adding label.`);
 
             // Ensure the label exists
             const labelName = 'new contributor';
             try {
               await github.rest.issues.getLabel({ ...repo, name: labelName });
             } catch (e) {
-              if (e.status === 404) {
-                await github.rest.issues.createLabel({
-                  ...repo,
-                  name: labelName,
-                  color: '7057ff',
-                  description: 'Pull request from a first-time contributor',
-                });
-              }
+              if (e.status !== 404) throw e;
+              await github.rest.issues.createLabel({
+                ...repo,
+                name: labelName,
+                color: '7057ff',
+                description: 'Pull request from a first-time contributor',
+              });
             }
 
             // Apply the label
