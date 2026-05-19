@@ -1076,6 +1076,18 @@ export function useExecTopAgents(limit?: number) {
   return useQuery({ queryKey: ["exec", "top-agents", limit], queryFn: () => exec.topAgents(limit) });
 }
 
+export function useExecDepartments(range?: string) {
+  return useQuery({ queryKey: ["exec", "departments", range], queryFn: () => exec.departments(range) });
+}
+
+export function useExecDeptTokens(range?: string) {
+  return useQuery({ queryKey: ["exec", "dept-tokens", range], queryFn: () => exec.deptTokens(range) });
+}
+
+export function useExecCostSummary(range?: string) {
+  return useQuery({ queryKey: ["exec", "cost-summary", range], queryFn: () => exec.costSummary(range) });
+}
+
 export function useExecConfig() {
   return useQuery({ queryKey: ["exec", "config"], queryFn: exec.config });
 }

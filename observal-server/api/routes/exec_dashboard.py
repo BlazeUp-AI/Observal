@@ -688,3 +688,325 @@ async def get_top_agents(
 
     scored.sort(key=lambda x: -x.composite_score)
     return scored[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Departments Tab
+# ---------------------------------------------------------------------------
+
+
+class DepartmentItem(BaseModel):
+    department: str
+    user_count: int
+    agent_count: int
+    utilization_pct: float
+    sessions_per_user: float
+
+
+class DepartmentsResponse(BaseModel):
+    departments: list[DepartmentItem]
+
+
+@router.get("/departments", response_model=DepartmentsResponse)
+async def get_departments(
+    range_: str | None = Query(None, alias="range"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Per-department breakdown: users, agents, utilization, sessions/user."""
+    org_id = current_user.org_id
+    days = _range_days(range_)
+
+    dept_map = await resolve_user_departments(db, org_id)
+    if not dept_map:
+        return DepartmentsResponse(departments=[])
+
+    # Agent count per department (via AgentTeamAccess)
+    agent_access_rows = (
+        await db.execute(
+            select(AgentTeamAccess.group_name, func.count(AgentTeamAccess.agent_id.distinct()))
+            .group_by(AgentTeamAccess.group_name)
+        )
+    ).all()
+    agent_count_by_dept: dict[str, int] = {r[0]: r[1] for r in agent_access_rows}
+
+    # Get trace counts per user from ClickHouse
+    all_user_ids = []
+    for uids in dept_map.values():
+        all_user_ids.extend(uids)
+
+    user_sessions: dict[str, int] = {}
+    if all_user_ids:
+        # Batch query — get session count per user in period
+        session_rows = await _ch_json_scoped(
+            "SELECT user_id, count() AS sessions "
+            "FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+            "AND start_time >= now() - INTERVAL {days:UInt32} DAY "
+            "GROUP BY user_id",
+            current_user,
+            {"param_days": str(days)},
+        )
+        user_sessions = {r["user_id"]: int(r["sessions"]) for r in session_rows}
+
+    departments = []
+    for dept_name, user_ids in sorted(dept_map.items()):
+        user_count = len(user_ids)
+        agent_count = agent_count_by_dept.get(dept_name, 0)
+
+        # Utilization: users with >= 1 session in period
+        active_in_dept = sum(1 for uid in user_ids if user_sessions.get(uid, 0) > 0)
+        utilization = round((active_in_dept / user_count) * 100, 1) if user_count > 0 else 0.0
+
+        # Sessions per user
+        total_sessions = sum(user_sessions.get(uid, 0) for uid in user_ids)
+        sessions_per_user = round(total_sessions / user_count, 1) if user_count > 0 else 0.0
+
+        departments.append(DepartmentItem(
+            department=dept_name,
+            user_count=user_count,
+            agent_count=agent_count,
+            utilization_pct=utilization,
+            sessions_per_user=sessions_per_user,
+        ))
+
+    return DepartmentsResponse(departments=departments)
+
+
+class DeptTokenItem(BaseModel):
+    department: str
+    tokens_used: int
+    cost_per_task: float
+    sessions_per_user: float
+    trend_pct: float
+
+
+@router.get("/dept-tokens", response_model=list[DeptTokenItem])
+async def get_dept_tokens(
+    range_: str | None = Query(None, alias="range"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Token usage and cost per department with trend."""
+    org_id = current_user.org_id
+    days = _range_days(range_)
+
+    dept_map = await resolve_user_departments(db, org_id)
+    if not dept_map:
+        return []
+
+    # Current period: tokens + cost per user
+    current_rows = await _ch_json_scoped(
+        "SELECT s.user_id AS user_id, "
+        "sumIf(s.token_count_total, s.token_count_total IS NOT NULL) AS tokens, "
+        "count(DISTINCT t.trace_id) AS traces, "
+        "sum(s.cost) AS total_cost "
+        "FROM spans AS s FINAL "
+        "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id "
+        "AND t.project_id = 'default' AND t.is_deleted = 0 "
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 "
+        "AND s.start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY s.user_id",
+        current_user,
+        {"param_days": str(days)},
+    )
+    current_by_user: dict[str, dict] = {
+        r["user_id"]: {"tokens": int(r["tokens"]), "traces": int(r["traces"]), "cost": float(r.get("total_cost") or 0)}
+        for r in current_rows
+    }
+
+    # Previous period: tokens per user (for trend)
+    prev_rows = await _ch_json_scoped(
+        "SELECT s.user_id AS user_id, "
+        "sumIf(s.token_count_total, s.token_count_total IS NOT NULL) AS tokens "
+        "FROM spans AS s FINAL "
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 "
+        "AND s.start_time >= now() - INTERVAL {days2:UInt32} DAY "
+        "AND s.start_time < now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY s.user_id",
+        current_user,
+        {"param_days": str(days), "param_days2": str(days * 2)},
+    )
+    prev_by_user: dict[str, int] = {r["user_id"]: int(r["tokens"]) for r in prev_rows}
+
+    result = []
+    for dept_name, user_ids in sorted(dept_map.items()):
+        user_count = len(user_ids)
+        tokens = sum(current_by_user.get(uid, {}).get("tokens", 0) for uid in user_ids)
+        traces = sum(current_by_user.get(uid, {}).get("traces", 0) for uid in user_ids)
+        cost = sum(current_by_user.get(uid, {}).get("cost", 0) for uid in user_ids)
+        prev_tokens = sum(prev_by_user.get(uid, 0) for uid in user_ids)
+
+        cost_per_task = round(cost / traces, 4) if traces > 0 else 0.0
+        sessions_per_user = round(traces / user_count, 1) if user_count > 0 else 0.0
+        trend = compute_trend_percent(tokens, prev_tokens)
+
+        result.append(DeptTokenItem(
+            department=dept_name,
+            tokens_used=tokens,
+            cost_per_task=cost_per_task,
+            sessions_per_user=sessions_per_user,
+            trend_pct=trend,
+        ))
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Cost Intelligence Tab
+# ---------------------------------------------------------------------------
+
+
+class MonthlyCostPoint(BaseModel):
+    month: str
+    ai_spend: float
+    savings: float
+
+
+class CostByCategory(BaseModel):
+    category: str
+    baseline_cost: float
+    actual_cost: float
+    saved_pct: float
+
+
+class CostSummaryResponse(BaseModel):
+    monthly_savings: float
+    cost_reduction_pct: float
+    projected_annual_savings: float
+    cost_per_task: float
+    monthly_trend: list[MonthlyCostPoint]
+    by_category: list[CostByCategory]
+    configured: bool
+
+
+@router.get("/cost-summary", response_model=CostSummaryResponse)
+async def get_cost_summary(
+    range_: str | None = Query(None, alias="range"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Cost savings, spend, and ROI. Requires exec_dashboard_config baselines."""
+    org_id = current_user.org_id
+    days = _range_days(range_)
+
+    # Load config
+    config = None
+    if org_id:
+        result = await db.execute(
+            select(ExecDashboardConfig).where(ExecDashboardConfig.org_id == org_id)
+        )
+        config = result.scalar_one_or_none()
+
+    if not config:
+        return CostSummaryResponse(
+            monthly_savings=0,
+            cost_reduction_pct=0,
+            projected_annual_savings=0,
+            cost_per_task=0,
+            monthly_trend=[],
+            by_category=[],
+            configured=False,
+        )
+
+    baselines = config.pre_ai_baselines or {}
+
+    # Monthly AI spend from ClickHouse
+    monthly_rows = await _ch_json_scoped(
+        "SELECT toStartOfMonth(start_time) AS month, "
+        "sum(cost) AS spend, count(DISTINCT trace_id) AS traces "
+        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND start_time >= now() - INTERVAL 12 MONTH "
+        "AND cost IS NOT NULL AND cost > 0 "
+        "GROUP BY month ORDER BY month",
+        current_user,
+    )
+
+    # Compute average baseline cost (mean of all category baselines)
+    avg_baseline = sum(baselines.values()) / len(baselines) if baselines else 0
+
+    monthly_trend = []
+    total_spend = 0.0
+    total_traces = 0
+    for r in monthly_rows:
+        spend = float(r.get("spend") or 0)
+        traces = int(r.get("traces") or 0)
+        savings = max(0, (avg_baseline * traces) - spend) if avg_baseline > 0 else 0
+        monthly_trend.append(MonthlyCostPoint(
+            month=str(r["month"])[:7],
+            ai_spend=round(spend, 2),
+            savings=round(savings, 2),
+        ))
+        total_spend += spend
+        total_traces += traces
+
+    # Current month stats
+    current_month = monthly_trend[-1] if monthly_trend else None
+    monthly_savings = current_month.savings if current_month else 0
+    cost_per_task = round(total_spend / total_traces, 4) if total_traces > 0 else 0
+
+    # Cost reduction %
+    baseline_total = avg_baseline * total_traces if avg_baseline > 0 else 0
+    cost_reduction_pct = round(((baseline_total - total_spend) / baseline_total) * 100, 1) if baseline_total > 0 else 0
+
+    # Projected annual (latest month × 12)
+    projected_annual = round(monthly_savings * 12, 2)
+
+    # Cost by category
+    cat_rows = await _ch_json_scoped(
+        "SELECT t.agent_id AS agent_id, "
+        "round(avg(s.cost), 4) AS avg_cost, count(DISTINCT t.trace_id) AS traces "
+        "FROM spans AS s FINAL "
+        "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id "
+        "AND t.project_id = 'default' AND t.is_deleted = 0 "
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 "
+        "AND s.cost IS NOT NULL AND s.cost > 0 "
+        "AND t.agent_id != '' "
+        "AND s.start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY t.agent_id",
+        current_user,
+        {"param_days": str(days)},
+    )
+
+    # Resolve agent categories
+    agent_ids = [r["agent_id"] for r in cat_rows if r.get("agent_id")]
+    cat_map: dict[str, str] = {}
+    if agent_ids:
+        import uuid as _uuid
+
+        valid_ids = []
+        for aid in agent_ids:
+            try:
+                valid_ids.append(_uuid.UUID(aid))
+            except (ValueError, AttributeError):
+                pass
+        if valid_ids:
+            rows = (await db.execute(select(Agent.id, Agent.category).where(Agent.id.in_(valid_ids)))).all()
+            cat_map = {str(r.id): r.category or "Uncategorized" for r in rows}
+
+    # Aggregate cost by category
+    cost_by_cat: dict[str, list[float]] = {}
+    for r in cat_rows:
+        cat = cat_map.get(r["agent_id"], "Uncategorized")
+        cost_by_cat.setdefault(cat, []).append(float(r.get("avg_cost") or 0))
+
+    by_category = []
+    for cat, costs in sorted(cost_by_cat.items()):
+        actual = round(sum(costs) / len(costs), 4) if costs else 0
+        baseline = baselines.get(cat, avg_baseline)
+        saved = round(((baseline - actual) / baseline) * 100, 1) if baseline > 0 else 0
+        by_category.append(CostByCategory(
+            category=cat,
+            baseline_cost=round(baseline, 2),
+            actual_cost=actual,
+            saved_pct=max(saved, 0),
+        ))
+
+    return CostSummaryResponse(
+        monthly_savings=round(monthly_savings, 2),
+        cost_reduction_pct=cost_reduction_pct,
+        projected_annual_savings=projected_annual,
+        cost_per_task=cost_per_task,
+        monthly_trend=monthly_trend,
+        by_category=by_category,
+        configured=True,
+    )

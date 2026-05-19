@@ -57,6 +57,9 @@ import type {
   ExecVelocityResponse,
   ExecTopAgent,
   ExecConfig,
+  ExecDepartmentsResponse,
+  ExecDeptTokenItem,
+  ExecCostSummary,
 } from "./types";
 
 const API = "/api/v1";
@@ -668,6 +671,9 @@ export const exec = {
   platforms: () => get<ExecPlatformScore[]>("/exec/platforms"),
   velocity: () => get<ExecVelocityResponse>("/exec/velocity"),
   topAgents: (limit?: number) => get<ExecTopAgent[]>(`/exec/top-agents${limit ? `?limit=${limit}` : ""}`),
+  departments: (range?: string) => get<ExecDepartmentsResponse>(`/exec/departments${range ? `?range=${range}` : ""}`),
+  deptTokens: (range?: string) => get<ExecDeptTokenItem[]>(`/exec/dept-tokens${range ? `?range=${range}` : ""}`),
+  costSummary: (range?: string) => get<ExecCostSummary>(`/exec/cost-summary${range ? `?range=${range}` : ""}`),
   config: () => get<ExecConfig | null>("/exec/config"),
   updateConfig: (data: Partial<ExecConfig>) => put<ExecConfig>("/exec/config", data),
 };

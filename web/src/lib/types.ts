@@ -842,3 +842,40 @@ export interface ExecConfig {
 	target_adoption_pct: number;
 	target_adoption_date: string | null;
 }
+
+export interface ExecDepartmentItem {
+	department: string;
+	user_count: number;
+	agent_count: number;
+	utilization_pct: number;
+	sessions_per_user: number;
+}
+
+export interface ExecDepartmentsResponse {
+	departments: ExecDepartmentItem[];
+}
+
+export interface ExecDeptTokenItem {
+	department: string;
+	tokens_used: number;
+	cost_per_task: number;
+	sessions_per_user: number;
+	trend_pct: number;
+}
+
+export interface ExecCostByCategory {
+	category: string;
+	baseline_cost: number;
+	actual_cost: number;
+	saved_pct: number;
+}
+
+export interface ExecCostSummary {
+	monthly_savings: number;
+	cost_reduction_pct: number;
+	projected_annual_savings: number;
+	cost_per_task: number;
+	monthly_trend: { month: string; ai_spend: number; savings: number }[];
+	by_category: ExecCostByCategory[];
+	configured: boolean;
+}
