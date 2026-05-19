@@ -14,6 +14,7 @@ from models.component_bundle import ComponentBundle
 from models.component_source import ComponentSource
 from models.download import AgentDownloadRecord, ComponentDownloadRecord
 from models.enterprise_config import EnterpriseConfig
+from models.exec_config import ExecDashboardConfig
 from models.eval import EvalRun, EvalRunStatus, Scorecard, ScorecardDimension
 from models.exporter_config import ExporterConfig
 from models.feedback import Feedback
@@ -41,6 +42,7 @@ from models.scoring import (
 from models.skill import SkillDownload, SkillListing
 from models.submission import Submission
 from models.user import User, UserRole
+from models.user_group import UserGroup
 
 __all__ = [
     "DEFAULT_DIMENSION_WEIGHTS",
@@ -59,6 +61,7 @@ __all__ = [
     "ComponentSource",
     "DimensionWeight",
     "EnterpriseConfig",
+    "ExecDashboardConfig",
     "EvalRun",
     "EvalRunStatus",
     "ExporterConfig",
@@ -92,5 +95,6 @@ __all__ = [
     "Submission",
     "TracePenalty",
     "User",
+    "UserGroup",
     "UserRole",
 ]

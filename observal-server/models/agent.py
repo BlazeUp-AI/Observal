@@ -113,6 +113,7 @@ class Agent(Base):
         ForeignKey("agent_versions.id", use_alter=True, ondelete="SET NULL"),
         nullable=True,
     )
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(

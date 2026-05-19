@@ -345,6 +345,18 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             if not user:
                 raise HTTPException(status_code=500, detail="Failed to create or find user")
 
+    # Persist SSO groups for exec dashboard department mapping
+    if groups:
+        try:
+            from models.user_group import UserGroup
+
+            from sqlalchemy import delete as sa_delete
+
+            await db.execute(sa_delete(UserGroup).where(UserGroup.user_id == user.id))
+            db.add_all([UserGroup(user_id=user.id, group_name=g) for g in groups])
+        except Exception as e:
+            logger.warning("Failed to persist SSO groups: %s", e)
+
     # Issue JWT tokens for the OAuth login
     access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
     await db.commit()
