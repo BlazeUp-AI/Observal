@@ -22,44 +22,24 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from observal_cli.shared.utils import (
+    OBSERVAL_METADATA_KEY,  # re-exported for backward compatibility
+    _OBSERVAL_HOOK_MARKERS as _LEGACY_HOOK_MARKERS,
+    is_observal_hook_entry,  # re-exported for backward compatibility
+    is_observal_matcher_group,  # re-exported for backward compatibility
+)
+
 # Bump this when hook definitions change.
 HOOKS_SPEC_VERSION = "10"
 
-# Metadata key injected into every Observal matcher group.
-OBSERVAL_METADATA_KEY = "_observal"
 
 # Parent of the observal_cli package directory
 _PKG_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 
-# Legacy marker substrings used to detect old-style hooks for cleanup.
-_LEGACY_HOOK_MARKERS = (
-    "observal-hook",
-    "observal-stop-hook",
-    "/api/v1/otel/hooks",
-    "/api/v1/telemetry/hooks",
-    "observal_cli.hooks.kiro_hook",
-    "observal_cli.hooks.kiro_stop_hook",
-    "observal_cli.hooks.gemini_hook",
-    "observal_cli.hooks.gemini_stop_hook",
-    "observal_cli.hooks.copilot_cli_hook",
-    "observal_cli.hooks.copilot_cli_stop_hook",
-    "observal_cli.hooks.buffer_event",
-    "observal_cli.hooks.flush_buffer",
-)
 
 
-def is_observal_hook_entry(hook_entry: dict) -> bool:
-    """Return True if a single hook handler dict belongs to Observal."""
-    cmd = hook_entry.get("command", "")
-    url = hook_entry.get("url", "")
-    return any(m in cmd or m in url for m in _LEGACY_HOOK_MARKERS) or "observal_cli.hooks.session_push" in cmd
 
 
-def is_observal_matcher_group(matcher_group: dict) -> bool:
-    """Return True if a matcher group is Observal-managed."""
-    if OBSERVAL_METADATA_KEY in matcher_group:
-        return True
-    return any(is_observal_hook_entry(h) for h in matcher_group.get("hooks", []))
 
 
 def _python_cmd() -> str:

@@ -23,15 +23,19 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli.render import console, spinner
+from observal_cli.shared.utils import (
+    _OBSERVAL_HOOK_MARKERS,
+)
+from observal_cli.shared.utils import (
+    extract_mcp_servers as _extract_mcp_servers,
+)
+from observal_cli.shared.utils import (
+    is_already_shimmed as _is_already_shimmed,
+)
 
 _OBSERVAL_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
-def _load_jsonc(path: Path) -> dict:
-    """Load a JSON file that may contain // line comments (JSONC)."""
-    text = path.read_text()
-    stripped = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
-    return json.loads(stripped)
 
 
 def _deterministic_mcp_id(name: str) -> str:
@@ -582,15 +586,6 @@ def _scan_opencode_home(
     return mcps, skills, hooks, agents
 
 
-def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
-    """Extract server entries from .mcp.json, handling both formats."""
-    if "mcpServers" in mcp_data:
-        return mcp_data["mcpServers"]
-    servers = {}
-    for key, val in mcp_data.items():
-        if isinstance(val, dict) and ("command" in val or "url" in val or "type" in val):
-            servers[key] = val
-    return servers
 
 
 def _parse_frontmatter_field(content: str, field: str) -> str | None:
@@ -700,30 +695,10 @@ def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
     return config.get("mcpServers", config.get("servers", {}))
 
 
-def _is_already_shimmed(entry: dict) -> bool:
-    """Check if an MCP entry is already wrapped with observal-shim."""
-    cmd = entry.get("command", "")
-    args = entry.get("args", [])
-    if cmd == "observal-shim" or "observal-shim" in cmd:
-        return True
-    return bool(any("observal-shim" in str(a) for a in args))
 
 
 # ── Hook status detection ─────────────────────────────────────
 
-_OBSERVAL_HOOK_MARKERS = (
-    "observal-hook",
-    "observal-stop-hook",
-    "observal_cli",
-    "telemetry/hooks",
-    "otel/hooks",
-    "kiro_hook",
-    "kiro_stop_hook",
-    "gemini_hook",
-    "gemini_stop_hook",
-    "copilot_cli_hook",
-    "copilot_cli_stop_hook",
-)
 
 
 def _has_observal_hooks_claude(claude_dir: Path) -> str:

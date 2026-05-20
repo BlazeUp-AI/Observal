@@ -22,6 +22,7 @@ from observal_cli import client, config
 from observal_cli.constants import VALID_SKILL_TASK_TYPES
 from observal_cli.prompts import select_one
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
+from observal_cli.shared.utils import sanitize_name as _sanitize_name
 
 skill_app = typer.Typer(help="Skill registry commands")
 
@@ -33,12 +34,6 @@ def register_skill(app: typer.Typer):
 # ── Security helpers (port of vercel-labs installer.ts) ─────────────────────
 
 
-def _sanitize_name(name: str) -> str:
-    """Normalise a skill name to a safe directory name (lowercase, hyphenated)."""
-    name = name.lower().strip()
-    name = re.sub(r"[^a-z0-9_-]", "-", name)
-    name = re.sub(r"-{2,}", "-", name).strip("-")
-    return name or "skill"
 
 
 def _is_path_safe(path: Path, base: Path) -> bool:

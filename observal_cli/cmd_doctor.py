@@ -26,44 +26,28 @@ from observal_cli import config
 from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
-    OBSERVAL_METADATA_KEY,
     get_desired_hooks,
+)
+from observal_cli.shared.utils import (
+    is_already_shimmed as _is_already_shimmed,
+)
+from observal_cli.shared.utils import (
+    is_observal_hook_entry as _is_observal_hook_entry,
+)
+from observal_cli.shared.utils import (
+    is_observal_matcher_group as _is_observal_matcher_group,
+)
+from observal_cli.shared.utils import (
+    load_jsonc as _load_jsonc,
 )
 
 doctor_app = typer.Typer(help="Diagnose and patch IDE settings for Observal telemetry")
 
 
-# ── Markers that identify old Observal-injected content ──────
-
-_LEGACY_HOOK_MARKERS = (
-    "observal-hook",
-    "observal-stop-hook",
-    "observal_cli.hooks.kiro_hook",
-    "observal_cli.hooks.kiro_stop_hook",
-    "observal_cli.hooks.gemini_hook",
-    "observal_cli.hooks.gemini_stop_hook",
-    "observal_cli.hooks.copilot_cli_hook",
-    "observal_cli.hooks.copilot_cli_stop_hook",
-    "observal_cli.hooks.buffer_event",
-    "observal_cli.hooks.flush_buffer",
-    "observal_cli.hooks.session_push",
-    "observal_cli.hooks.kiro_session_push",
-    "observal_cli.hooks.cursor_session_push",
-    "/api/v1/telemetry/hooks",
-    "/api/v1/otel/hooks",
-)
 
 
-def _is_observal_hook_entry(entry: dict) -> bool:
-    cmd = entry.get("command", "")
-    url = entry.get("url", "")
-    return any(m in cmd or m in url for m in _LEGACY_HOOK_MARKERS)
 
 
-def _is_observal_matcher_group(group: dict) -> bool:
-    if OBSERVAL_METADATA_KEY in group:
-        return True
-    return any(_is_observal_hook_entry(h) for h in group.get("hooks", []))
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -71,9 +55,7 @@ def _is_observal_matcher_group(group: dict) -> bool:
 
 def _load_json(path: Path) -> dict | None:
     try:
-        text = path.read_text()
-        stripped = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
-        return json.loads(stripped)
+        return _load_jsonc(path)
     except Exception:
         return None
 
@@ -394,13 +376,6 @@ def _cleanup_kiro(dry_run: bool) -> bool:
 # ── Shim helpers ────────────────────────────────────────────
 
 
-def _is_already_shimmed(entry: dict) -> bool:
-    """Check if an MCP entry is already wrapped with observal-shim."""
-    cmd = entry.get("command", "")
-    args = entry.get("args", [])
-    if cmd == "observal-shim" or "observal-shim" in cmd:
-        return True
-    return bool(any("observal-shim" in str(a) for a in args))
 
 
 def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
