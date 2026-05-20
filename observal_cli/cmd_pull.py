@@ -480,6 +480,13 @@ def register_pull(app: typer.Typer):
                 # Resolve hook paths inside JSON content (command fields)
                 raw = json.dumps(content)
                 raw = _resolve_hook_paths(raw)
+                import re
+
+                raw = re.sub(
+                    r"(?<!/)python3? -m observal_cli\.",
+                    f"{sys.executable} -m observal_cli.",
+                    raw,
+                )
                 content = json.loads(raw)
             if dry_run:
                 written.append((str(p), "would write"))
@@ -487,14 +494,17 @@ def register_pull(app: typer.Typer):
                 status = _write_file(p, content, merge_mcp=hooks_cfg.get("merge", False))
                 written.append((str(p), status))
 
-        # ── agent_file (Kiro) ───────────────────────────────
+        # ── agent_file (Kiro, Cursor) ────────────────────────
         agent_file = snippet.get("agent_file")
         if agent_file:
             # Rewrite hook commands to use the current Python interpreter
             # so they work regardless of which directory Kiro is launched from.
             if isinstance(agent_file.get("content"), dict):
                 agent_file["content"] = _rewrite_kiro_hooks(agent_file["content"])
-            p = _resolve_path(agent_file["path"], target_dir, allow_home=is_user_scope)
+            # Cursor only reads .cursor/agents/ from the project directory,
+            # never from ~/.cursor/agents/, so always resolve to project scope.
+            agent_file_allow_home = is_user_scope and ide != "cursor"
+            p = _resolve_path(agent_file["path"], target_dir, allow_home=agent_file_allow_home)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
