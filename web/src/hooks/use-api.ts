@@ -320,6 +320,21 @@ export function useUpdateUserRole() {
   });
 }
 
+export function useUpdateUserDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; department: string | null }) =>
+      admin.updateDepartment(vars.id, { department: vars.department }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success("Department updated");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update department");
+    },
+  });
+}
+
 export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({

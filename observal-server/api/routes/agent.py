@@ -294,6 +294,7 @@ async def create_agent(
         name=req.name,
         owner=req.owner or current_user.username or current_user.email,
         visibility=req.visibility,
+        category=req.category,
         created_by=current_user.id,
         owner_org_id=current_user.org_id,
     )
@@ -729,6 +730,7 @@ async def update_agent(
         "name",
         "version",
         "description",
+        "category",
         "owner",
         "prompt",
         "model_name",

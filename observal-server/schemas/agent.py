@@ -58,6 +58,7 @@ class AgentCreateRequest(BaseModel):
     name: str
     version: str
     description: str = ""
+    category: str | None = None
     owner: str
     prompt: str = ""
     model_name: str
@@ -94,6 +95,7 @@ class AgentUpdateRequest(BaseModel):
     version: str | None = None
     version_bump_type: Literal["patch", "minor", "major"] | None = None
     description: str | None = None
+    category: str | None = None
     owner: str | None = None
     prompt: str | None = None
     model_name: str | None = None

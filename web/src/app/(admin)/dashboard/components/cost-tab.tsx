@@ -2,12 +2,109 @@
 
 "use client";
 
+import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line } from "recharts";
-import { useExecCostSummary } from "@/hooks/use-api";
+import { useExecCostSummary, useExecConfig } from "@/hooks/use-api";
+import { exec } from "@/lib/api";
 import { StatCard } from "./stat-card";
+import { Loader2 } from "lucide-react";
+
+const DEFAULT_CATEGORIES = [
+  "Code Review",
+  "Testing",
+  "Documentation",
+  "Incident Response",
+  "Deployment",
+  "Security Scanning",
+];
+
+function BaselinesConfigForm({ onSaved }: { onSaved: () => void }) {
+  const [hourlyDevCost, setHourlyDevCost] = useState("75");
+  const [baselines, setBaselines] = useState<Record<string, string>>(
+    Object.fromEntries(DEFAULT_CATEGORIES.map((c) => [c, ""]))
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const preAiBaselines: Record<string, number> = {};
+      for (const [key, val] of Object.entries(baselines) as [string, string][]) {
+        const num = parseFloat(val);
+        if (!isNaN(num) && num > 0) preAiBaselines[key] = num;
+      }
+      await exec.updateConfig({
+        hourly_dev_cost: parseFloat(hourlyDevCost) || 75,
+        pre_ai_baselines: preAiBaselines,
+      });
+      onSaved();
+    } catch {
+      // error handled by React Query elsewhere
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6 pt-4">
+      <div className="rounded-lg border border-border p-6 max-w-2xl">
+        <h3 className="text-sm font-semibold mb-1">Configure Cost Baselines</h3>
+        <p className="text-xs text-muted-foreground mb-6">
+          Enter what tasks cost before AI agents were deployed. This allows the dashboard to compute savings and ROI.
+        </p>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Hourly Developer Cost ($)</label>
+            <input
+              type="number"
+              value={hourlyDevCost}
+              onChange={(e) => setHourlyDevCost(e.target.value)}
+              className="flex h-8 w-40 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="75"
+            />
+            <p className="text-[11px] text-muted-foreground">Used to compute developer hours reclaimed.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Pre-AI Cost per Task by Category ($)</label>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              Average cost to complete one task manually, before AI. Leave blank for categories that don't apply.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {DEFAULT_CATEGORIES.map((cat) => (
+                <div key={cat} className="flex items-center gap-2">
+                  <span className="text-xs w-32 truncate">{cat}</span>
+                  <input
+                    type="number"
+                    value={baselines[cat] ?? ""}
+                    onChange={(e) => setBaselines({ ...baselines, [cat]: e.target.value })}
+                    className="flex h-7 w-20 rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="0.00"
+                    step="0.01"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+            Save Baselines
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function CostTab() {
-  const { data: cost, isLoading } = useExecCostSummary();
+  const { data: cost, isLoading, refetch } = useExecCostSummary();
+  const { data: config } = useExecConfig();
 
   if (isLoading) {
     return (
@@ -23,23 +120,7 @@ export function CostTab() {
   }
 
   if (!cost?.configured) {
-    return (
-      <div className="space-y-6 pt-4">
-        <div className="rounded-md border border-dashed border-border p-8 text-center">
-          <p className="text-sm font-medium mb-2">Cost baselines not configured</p>
-          <p className="text-xs text-muted-foreground mb-4">
-            To see cost savings and ROI data, configure your pre-AI cost baselines in Settings.
-            This tells the dashboard what tasks cost before AI agents were deployed.
-          </p>
-          <a
-            href="/settings"
-            className="inline-flex items-center px-4 py-2 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            Configure Baselines
-          </a>
-        </div>
-      </div>
-    );
+    return <BaselinesConfigForm onSaved={() => refetch()} />;
   }
 
   return (
@@ -86,7 +167,7 @@ export function CostTab() {
             <span>Savings</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-red-600 rounded border-dashed" />
+            <div className="w-3 h-0.5 bg-red-600 rounded" />
             <span>AI Spend</span>
           </div>
         </div>

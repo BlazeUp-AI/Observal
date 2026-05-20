@@ -473,6 +473,7 @@ export interface AdminUser {
 	name?: string;
 	email?: string;
 	role: string;
+	department?: string | null;
 	created_at?: string;
 }
 

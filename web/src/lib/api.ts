@@ -517,6 +517,8 @@ export const admin = {
     post<{ id: string; email: string; name: string; username?: string; role: string; password: string }>("/admin/users", body),
   updateRole: (id: string, body: { role: string }) =>
     put<AdminUser>(`/admin/users/${id}/role`, body),
+  updateDepartment: (id: string, body: { department: string | null }) =>
+    put<AdminUser>(`/admin/users/${id}/department`, body),
   resetPassword: (id: string, body: { new_password?: string; generate?: boolean }) =>
     put<{ message: string; generated_password?: string; must_change_password?: string }>(`/admin/users/${id}/password`, body),
   deleteUser: (id: string) => del(`/admin/users/${id}`),

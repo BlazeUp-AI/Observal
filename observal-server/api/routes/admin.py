@@ -34,6 +34,7 @@ from schemas.admin import (
     UserAdminResponse,
     UserCreateRequest,
     UserCreateResponse,
+    UserDepartmentUpdate,
     UserRoleUpdate,
 )
 from schemas.retention import RetentionConfigResponse, RetentionConfigUpdate
@@ -482,6 +483,26 @@ async def update_user_role(
         resource_name=user.email,
         detail=json.dumps({"old_role": old_role, "new_role": new_role.value}),
     )
+    return UserAdminResponse.model_validate(user)
+
+
+@router.put("/users/{user_id}/department", response_model=UserAdminResponse)
+async def update_user_department(
+    user_id: uuid.UUID,
+    req: UserDepartmentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    stmt = select(User).where(User.id == user_id)
+    if current_user.org_id is not None:
+        stmt = stmt.where(User.org_id == current_user.org_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.department = req.department
+    await db.commit()
+    await db.refresh(user)
     return UserAdminResponse.model_validate(user)
 
 

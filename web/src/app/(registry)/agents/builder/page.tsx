@@ -332,6 +332,7 @@ function AgentBuilderInner() {
   const [promptError, setPromptError] = useState("");
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1.0.0");
+  const [category, setCategory] = useState("");
   const [modelName, setModelName] = useState("");
   const [modelsByIde, setModelsByIde] = useState<Record<string, string>>({});
   const [visibility, setVisibility] = useState<"public" | "private">("private");
@@ -397,6 +398,8 @@ function AgentBuilderInner() {
     if (agentModelsByIde && typeof agentModelsByIde === "object" && !Array.isArray(agentModelsByIde)) {
       setModelsByIde(agentModelsByIde as Record<string, string>);
     }
+    const agentCategory = (existingAgent as Record<string, unknown>).category;
+    if (typeof agentCategory === "string") setCategory(agentCategory);
     const agentVisibility = (existingAgent as Record<string, unknown>).visibility;
     if (agentVisibility === "public" || agentVisibility === "private") setVisibility(agentVisibility as "public" | "private");
     const agentTeamAccesses = (existingAgent as Record<string, unknown>).team_accesses;
@@ -684,6 +687,7 @@ function AgentBuilderInner() {
       name: name.trim(),
       version: (versionOverride ?? version).trim() || "1.0.0",
       description: description.trim(),
+      category: category || undefined,
       owner: whoami?.name || whoami?.email || "unknown",
       visibility,
       team_accesses: teamAccesses,
@@ -872,6 +876,29 @@ function AgentBuilderInner() {
                     value={version}
                     onChange={(e) => setVersion(e.target.value)}
                   />
+                </div>
+                <div className="space-y-2 flex-1 max-w-[200px]">
+                  <Label htmlFor="agent-category" className="text-sm font-medium">
+                    Category
+                  </Label>
+                  <select
+                    id="agent-category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">Select category...</option>
+                    <option value="Code Review">Code Review</option>
+                    <option value="Testing">Testing</option>
+                    <option value="Documentation">Documentation</option>
+                    <option value="DevOps">DevOps</option>
+                    <option value="Security">Security</option>
+                    <option value="Data">Data</option>
+                    <option value="Incident Response">Incident Response</option>
+                    <option value="Deployment">Deployment</option>
+                    <option value="Cost Optimization">Cost Optimization</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <div className="flex-1">
                   <ModelPicker

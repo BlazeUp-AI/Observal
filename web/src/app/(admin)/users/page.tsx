@@ -10,7 +10,7 @@
 import { useState, useCallback } from "react";
 import { Users, Plus, Copy, Check, Loader2, Key, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { useAdminUsers, useCreateUser, useUpdateUserRole, useDeleteUser, useResetPassword } from "@/hooks/use-api";
+import { useAdminUsers, useCreateUser, useUpdateUserRole, useUpdateUserDepartment, useDeleteUser, useResetPassword } from "@/hooks/use-api";
 import type { AdminUser } from "@/lib/types";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,45 @@ function RoleSelect({ userId, currentRole }: { userId: string; currentRole: stri
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function DepartmentInput({ userId, currentDept }: { userId: string; currentDept: string | null | undefined }) {
+  const mutation = useUpdateUserDepartment();
+  const [value, setValue] = useState(currentDept ?? "");
+  const [editing, setEditing] = useState(false);
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        title="Click to set department"
+      >
+        {currentDept || "—"}
+      </button>
+    );
+  }
+
+  return (
+    <Input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        const trimmed = value.trim() || null;
+        if (trimmed !== (currentDept ?? null)) {
+          mutation.mutate({ id: userId, department: trimmed });
+        }
+        setEditing(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") { setValue(currentDept ?? ""); setEditing(false); }
+      }}
+      className="h-6 w-[120px] text-xs px-1.5"
+      placeholder="Department"
+      autoFocus
+    />
   );
 }
 
@@ -174,6 +213,7 @@ export default function UsersPage() {
                     <TableHead className="h-8 text-xs">Username</TableHead>
                     <TableHead className="h-8 text-xs">Email</TableHead>
                     <TableHead className="h-8 text-xs">Role</TableHead>
+                    <TableHead className="h-8 text-xs">Department</TableHead>
                     <TableHead className="h-8 text-xs text-right">Joined</TableHead>
                     <TableHead className="h-8 text-xs w-[60px]" />
                   </TableRow>
@@ -192,6 +232,9 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="py-1.5">
                         <RoleSelect userId={u.id} currentRole={u.role} />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <DepartmentInput userId={u.id} currentDept={u.department} />
                       </TableCell>
                       <TableCell className="py-1.5 text-xs text-muted-foreground text-right tabular-nums">
                         {u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}

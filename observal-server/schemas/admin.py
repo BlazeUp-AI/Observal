@@ -26,12 +26,17 @@ class UserAdminResponse(BaseModel):
     username: str | None = None
     name: str
     role: str
+    department: str | None = None
     created_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
 class UserRoleUpdate(BaseModel):
     role: str
+
+
+class UserDepartmentUpdate(BaseModel):
+    department: str | None = None
 
 
 class UserCreateRequest(BaseModel):
