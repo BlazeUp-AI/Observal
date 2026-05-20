@@ -347,6 +347,34 @@ class TestGenerateCursorVscode:
         cfg = generate_agent_config(agent, "cursor")
         assert "mcpServers" in cfg["mcp_config"]["content"]
 
+    def test_cursor_hooks_config_present(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor")
+        assert "hooks_config" in cfg
+        hooks = cfg["hooks_config"]["content"]["hooks"]
+        assert "beforeSubmitPrompt" in hooks
+        assert "stop" in hooks
+
+    def test_cursor_hooks_use_cursor_session_push(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor")
+        cmd = cfg["hooks_config"]["content"]["hooks"]["beforeSubmitPrompt"][0]["command"]
+        assert "cursor_session_push" in cmd
+
+    def test_cursor_hooks_win32_uses_python(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor", platform="win32")
+        cmd = cfg["hooks_config"]["content"]["hooks"]["beforeSubmitPrompt"][0]["command"]
+        assert cmd.startswith("python -m")
+        assert "cursor_session_push" in cmd
+
+    def test_cursor_hooks_unix_uses_python3(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor", platform="linux")
+        cmd = cfg["hooks_config"]["content"]["hooks"]["beforeSubmitPrompt"][0]["command"]
+        assert cmd.startswith("python3 -m")
+        assert "cursor_session_push" in cmd
+
 
 # ═══════════════════════════════════════════════════════════════════
 # 6. generate_agent_config — Kiro
@@ -908,9 +936,9 @@ class TestGenerateKiroPreservation:
         assert "sed " not in cmd
         assert "curl" not in cmd
 
-    def test_non_kiro_ides_unaffected_by_platform(self):
+    def test_non_kiro_cursor_ides_unaffected_by_platform(self):
         agent = _make_agent()
-        for ide in ("cursor", "vscode", "codex", "copilot"):
+        for ide in ("vscode", "codex", "copilot"):
             cfg_default = generate_agent_config(agent, ide)
             cfg_win32 = generate_agent_config(agent, ide, platform="win32")
             assert cfg_default == cfg_win32, f"{ide} config changed with platform=win32"

@@ -41,6 +41,7 @@ _KIRO_EVENT_MAP = {
 
 # Session push hook command — reads JSONL incrementally, only needs 2 events.
 _SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.session_push"
+_CURSOR_SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.cursor_session_push"
 
 
 # The two events that drive JSONL-based telemetry collection.
@@ -115,22 +116,17 @@ def _custom_hook_matcher_lines(hook: dict) -> list[str]:
     return lines
 
 
-def _cursor_hooks_config() -> dict:
+def _cursor_hooks_config(platform: str = "") -> dict:
     """Build .cursor/hooks.json content with Observal telemetry hooks.
 
-    Cursor uses camelCase event names.  Only userPromptSubmit + stop needed.
-
-    TODO: Cursor does not have a JSONL session push implementation yet
-    (no observal_cli/hooks/cursor_session_push.py).  The command below
-    invokes the Claude Code session_push script which expects Claude's
-    JSONL layout.  This is a stub — it will no-op gracefully until a
-    Cursor-specific pusher is written.
+    Cursor uses beforeSubmitPrompt (fires after user hits send) and stop
+    (fires when the agent loop ends).
     """
-    cmd = _SESSION_PUSH_CMD
+    cmd = "python -m observal_cli.hooks.cursor_session_push" if platform == "win32" else _CURSOR_SESSION_PUSH_CMD
     return {
         "version": 1,
         "hooks": {
-            "userPromptSubmit": [{"command": cmd, "type": "command"}],
+            "beforeSubmitPrompt": [{"command": cmd, "type": "command"}],
             "stop": [{"command": cmd, "type": "command"}],
         },
     }
@@ -900,17 +896,33 @@ def generate_agent_config(
     mcp_path = mcp_paths.get(ide_scope, next(iter(mcp_paths.values()), ".mcp.json"))
     skill_files = [_generate_skill_file(s, ide, ide_scope) for s in skill_configs]
     skill_files = [f for f in skill_files if f]
+
+    # Cursor uses .cursor/agents/<name>.md for subagent registration (Task tool)
+    # and .cursor/rules/<name>.mdc for context rules. We write BOTH so the
+    # agent appears as a subagent type AND applies rules when active.
+    if ide == "cursor":
+        desc_line = (agent.description or safe_name).replace("\n", " ").strip()[:200]
+        cursor_rules_content = f"---\ndescription: {desc_line}\nalwaysApply: false\n---\n\n{rules_content}"
+        cursor_agent_content = f"---\nname: {safe_name}\ndescription: {desc_line}\n---\n\n{rules_content}"
+    else:
+        cursor_rules_content = rules_content
+        cursor_agent_content = None
+
     result = {
-        "rules_file": {"path": rules_path.format(name=safe_name), "content": rules_content},
+        "rules_file": {"path": rules_path.format(name=safe_name), "content": cursor_rules_content},
         "mcp_config": {"path": mcp_path, "content": {spec.get("mcp_servers_key", "mcpServers"): mcp_configs}},
         "scope": ide_scope,
     }
+    # Write the agent file for Cursor subagent registration
+    if ide == "cursor" and cursor_agent_content:
+        agent_dir = ".cursor/agents" if ide_scope == "project" else "~/.cursor/agents"
+        result["agent_file"] = {"path": f"{agent_dir}/{safe_name}.md", "content": cursor_agent_content}
     # Add hooks config for IDEs with command hook support
     if ide == "cursor":
         hooks_path = ".cursor/hooks.json" if ide_scope == "project" else "~/.cursor/hooks.json"
         result["hooks_config"] = {
             "path": hooks_path,
-            "content": _cursor_hooks_config(),
+            "content": _cursor_hooks_config(platform=platform),
         }
     elif ide == "vscode":
         result["hooks_config"] = {
