@@ -65,7 +65,7 @@ export default function RegistryHome() {
   }
 
   const handleHeroCopy = useCallback(() => {
-    copyToClipboard("observal pull my-agent --ide cursor");
+    copyToClipboard("observal agent pull my-agent --ide cursor");
     setHeroCopied(true);
     toast.success("Copied to clipboard");
     setTimeout(() => setHeroCopied(false), 2000);
@@ -137,7 +137,7 @@ export default function RegistryHome() {
               <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <code className="flex-1 text-sm font-mono text-foreground select-all">
                 <span className="text-muted-foreground">$</span>{" "}
-                observal pull my-agent --ide cursor
+                observal agent pull my-agent --ide cursor
               </code>
               <Button
                 type="button"
