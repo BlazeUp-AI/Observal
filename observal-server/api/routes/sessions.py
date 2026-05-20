@@ -113,17 +113,50 @@ async def list_sessions(
     _platform_names = {
         "kiro": "Kiro",
         "claude-code": "Claude Code",
+        "cursor": "Cursor",
+        "copilot-cli": "Copilot CLI",
+        "gemini-cli": "Gemini CLI",
+        "vscode": "VS Code",
+        "codex-cli": "Codex CLI",
+        "opencode": "OpenCode",
     }
+
+    # Resolve agent names from PostgreSQL
+    from models.agent import Agent
+
+    agent_id_to_name: dict[str, str] = {}
+    agent_ids_to_resolve: set[str] = set()
+    for row in rows:
+        aid = row.get("agent_id") or ""
+        if aid:
+            agent_ids_to_resolve.add(aid)
+
+    if agent_ids_to_resolve:
+        try:
+            agent_uuids = []
+            for aid in agent_ids_to_resolve:
+                try:
+                    agent_uuids.append(_uuid.UUID(aid))
+                except ValueError:
+                    pass
+            if agent_uuids:
+                async with async_session() as db:
+                    result = await db.execute(select(Agent.id, Agent.name).where(Agent.id.in_(agent_uuids)))
+                    for a_id, a_name in result.all():
+                        agent_id_to_name[str(a_id)] = a_name
+        except Exception:
+            logger.warning("Agent name resolution failed", exc_info=True)
 
     for row in rows:
         uid = row.get("user_id", "")
         row["user_name"] = uid_to_name.get(uid, current_user.name)
         ide = row.pop("ide", "") or ""
-        row["platform"] = _platform_names.get(ide, "Claude Code")
+        row["platform"] = _platform_names.get(ide, ide.replace("-", " ").title() if ide else "Claude Code")
         row["service_name"] = ide
         row["is_active"] = bool(int(row.get("is_active", 0)))
         agent_id = row.get("agent_id") or None
         row["agent_id"] = agent_id if agent_id else None
+        row["agent_name"] = agent_id_to_name.get(agent_id) if agent_id else None
 
     if status == "active":
         rows = [r for r in rows if r["is_active"]]
@@ -145,7 +178,7 @@ async def _list_sessions_query(
     FINAL merges parts at read time; at ~1 row per session this is fast and
     avoids illegal nested-aggregation errors with SimpleAggregateFunction columns.
     """
-    where_parts = ["session_id != ''", "parent_session_id = ''"]
+    where_parts = ["session_id != ''", "parent_session_id = ''", "prompt_count > 0"]
     params: dict[str, str] = {}
 
     if not is_admin:

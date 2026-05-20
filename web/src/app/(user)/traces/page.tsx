@@ -62,6 +62,10 @@ function isKiroSession(row: Session): boolean {
 	return row.service_name === "kiro" || row.session_id.startsWith("kiro-");
 }
 
+function isCursorSession(row: Session): boolean {
+	return row.service_name === "cursor" || row.platform === "Cursor";
+}
+
 function isCopilotCliSession(row: Session): boolean {
 	return (
 		row.service_name === "copilot-cli" ||
@@ -133,6 +137,7 @@ function shortModel(raw?: string): string {
 
 function derivePlatform(row: Session): string {
 	if (row.platform) return row.platform;
+	if (isCursorSession(row)) return "Cursor";
 	if (isKiroSession(row)) return "Kiro";
 	if (isCopilotCliSession(row)) return "Copilot CLI";
 	return "Claude Code";
@@ -142,8 +147,9 @@ function sessionLabel(row: Session): string {
 	const model = shortModel(row.model);
 	const count = row.prompt_count ?? 0;
 	const suffix = count === 1 ? "prompt" : "prompts";
-	if (model) return `${model} \u00b7 ${count} ${suffix}`;
-	return `${count} ${suffix}`;
+	const agent = row.agent_name ? `${row.agent_name} \u00b7 ` : "";
+	if (model) return `${agent}${model} \u00b7 ${count} ${suffix}`;
+	return `${agent}${count} ${suffix}`;
 }
 
 // ── Column Definitions ───────────────────────────────────────────────
@@ -435,6 +441,7 @@ export default function TracesPage() {
 								<SelectContent>
 									<SelectItem value="all">All platforms</SelectItem>
 									<SelectItem value="claude-code">Claude Code</SelectItem>
+									<SelectItem value="cursor">Cursor</SelectItem>
 									<SelectItem value="copilot-cli">Copilot CLI</SelectItem>
 									<SelectItem value="kiro">Kiro</SelectItem>
 								</SelectContent>

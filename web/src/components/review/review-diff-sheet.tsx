@@ -681,7 +681,7 @@ function DiffDialogBody({
                             componentType={(ch as {component_type?: string; type?: string}).component_type ?? (ch as {type?: string}).type ?? ""}
                             componentId={(ch as {component_id?: string}).component_id ?? ""}
                             onPendingClick={onOpenComponentReview}
-                            isPending={(item.blocking_components as Array<{component_id: string}> | undefined)?.some(
+                            isPending={item.component_blockers?.some(
                               (b) => b.component_id === (ch as {component_id?: string}).component_id
                             ) ?? false}
                           />
