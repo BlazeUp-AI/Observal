@@ -150,6 +150,7 @@ def login(
             rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
             _fetch_server_public_key(server_url)
             _configure_claude_code(server_url, data["access_token"])
+            _configure_cursor(server_url)
             _configure_kiro(server_url)
             _configure_gemini_cli(server_url)
             _configure_codex(server_url)
@@ -471,6 +472,7 @@ def _do_password_login(server_url: str, email: str, password: str):
 
         _fetch_server_public_key(server_url)
         _configure_claude_code(server_url, data["access_token"])
+        _configure_cursor(server_url)
         _configure_kiro(server_url)
         _configure_gemini_cli(server_url)
         _configure_codex(server_url)
@@ -576,6 +578,7 @@ def _do_device_flow_login(server_url: str):
 
                 _fetch_server_public_key(server_url)
                 _configure_claude_code(server_url, token_data["access_token"])
+                _configure_cursor(server_url)
                 _configure_kiro(server_url)
                 _configure_gemini_cli(server_url)
                 _configure_codex(server_url)
@@ -799,6 +802,28 @@ def _run_doctor_patch(ide_name: str):
     except Exception as e:
         rprint(f"[yellow]Could not run doctor patch: {e}[/yellow]")
         rprint(f"Run [bold]observal doctor patch --all --ide {ide_name}[/bold] manually.")
+
+
+def _configure_cursor(server_url: str):
+    """Check for Cursor (IDE or CLI) and offer to configure its telemetry hooks."""
+    cursor_dir = Path.home() / ".cursor"
+
+    try:
+        cursor_exists = cursor_dir.is_dir() or shutil.which("cursor")
+        if not cursor_exists:
+            return
+
+        if not typer.confirm(
+            "\nDetected Cursor. Configure telemetry -> Observal?",
+            default=True,
+        ):
+            return
+
+        _run_doctor_patch("cursor")
+
+    except Exception as e:
+        rprint(f"\n[yellow]Could not configure Cursor automatically: {e}[/yellow]")
+        rprint("Run [bold]observal doctor patch --all --ide cursor[/bold] to set up manually.")
 
 
 def _configure_kiro(server_url: str):
