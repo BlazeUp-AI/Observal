@@ -23,7 +23,7 @@ dependencies = [
     "httpx",
     "gitpython>=3.1.50",
     "boto3",
-    "redis[hiredis]",
+    "redis[hiredis]>=5.2.1",
     "arq",
     "strawberry-graphql[fastapi]>=0.315.4",
     "authlib>=1.6.11",
