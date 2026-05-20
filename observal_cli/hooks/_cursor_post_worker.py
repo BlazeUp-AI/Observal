@@ -66,7 +66,7 @@ def main() -> None:
         return
 
     try:
-        from observal_cli.hooks.session_push import log_error, post_to_server
+        from observal_cli.sessions.base import log_error, post_to_server
     except Exception as e:
         _log(f"WORKER_EXIT: import error: {e}")
         return

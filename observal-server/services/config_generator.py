@@ -32,7 +32,6 @@ def validate_mcp_command(command: str, args: list[str] | None = None) -> None:
 _DOLLAR_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]+)\}|\$([A-Z][A-Z0-9_]+)")
 
 
-
 def _otlp_env(observal_url: str) -> dict:
     """OTLP env vars for IDEs with native OpenTelemetry support."""
     return {

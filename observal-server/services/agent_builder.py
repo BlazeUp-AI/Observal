@@ -312,8 +312,6 @@ def build_composition_summary(resolved: ResolvedAgent) -> dict:
 # ── IDE Agent File Generation ──────────────────────────────────────
 
 
-
-
 def _build_mcp_entries(manifest: AgentManifest) -> dict:
     """Build MCP server config entries from manifest components."""
     entries = {}

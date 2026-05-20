@@ -270,7 +270,6 @@ def _check_ide_compatibility(agent: Agent, ide: str) -> list[str]:
     return warnings
 
 
-
 def _wrap_kiro_prompt(prompt: str, agent_name: str) -> str:
     """Wrap a user prompt in Kiro-compatible framing.
 

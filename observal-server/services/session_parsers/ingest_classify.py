@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from .base import strip_cursor_xml_tags
+
 _PREVIEW_MAX = 500
 
 
@@ -279,8 +281,6 @@ def _classify_cursor(parsed: dict) -> str | None:
         return None
 
     return "system"
-
-
 
 
 def _preview_cursor(parsed: dict, event_type: str) -> str:

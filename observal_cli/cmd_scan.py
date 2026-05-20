@@ -36,8 +36,6 @@ from observal_cli.shared.utils import (
 _OBSERVAL_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
 
 
-
-
 def _deterministic_mcp_id(name: str) -> str:
     """Generate a stable UUID for an MCP based on its name."""
     return str(uuid.uuid5(_OBSERVAL_NS, name))
@@ -586,8 +584,6 @@ def _scan_opencode_home(
     return mcps, skills, hooks, agents
 
 
-
-
 def _parse_frontmatter_field(content: str, field: str) -> str | None:
     """Extract a field from YAML frontmatter (--- delimited)."""
     match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
@@ -695,10 +691,7 @@ def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
     return config.get("mcpServers", config.get("servers", {}))
 
 
-
-
 # ── Hook status detection ─────────────────────────────────────
-
 
 
 def _has_observal_hooks_claude(claude_dir: Path) -> str:

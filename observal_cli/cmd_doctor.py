@@ -44,12 +44,6 @@ from observal_cli.shared.utils import (
 doctor_app = typer.Typer(help="Diagnose and patch IDE settings for Observal telemetry")
 
 
-
-
-
-
-
-
 # ── Helpers ──────────────────────────────────────────────────
 
 
@@ -374,8 +368,6 @@ def _cleanup_kiro(dry_run: bool) -> bool:
 
 
 # ── Shim helpers ────────────────────────────────────────────
-
-
 
 
 def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:

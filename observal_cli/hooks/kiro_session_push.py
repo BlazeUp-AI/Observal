@@ -4,19 +4,8 @@
 
 """Push Kiro JSONL session transcript data to the Observal server.
 
-Mirrors observal_cli.hooks.session_push but for Kiro's file layout:
-
-  Session JSONL:  ~/.kiro/sessions/cli/<session_id>.jsonl
-  Session sidecar: ~/.kiro/sessions/cli/<session_id>.json
-  Cursor state:   ~/.observal/sync_state.json  (shared with Claude Code)
-
 Invoked by Kiro agent hooks for userPromptSubmit and stop events:
     python -m observal_cli.hooks.kiro_session_push
-
-Receives hook event data via stdin (JSON).  Finds the JSONL file by the
-session_id UUID in the payload, reads new lines since last push, and POSTs
-them to the ingest endpoint.  On Stop, marks the session finalized so the
-crash-recovery scanner skips it.
 """
 
 from __future__ import annotations
@@ -25,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from observal_cli.hooks.session_push import (
+from observal_cli.sessions.base import (
     build_payload,
     load_config,
     log_error,
@@ -34,52 +23,11 @@ from observal_cli.hooks.session_push import (
     read_new_lines,
     write_cursor,
 )
-
-# ---------------------------------------------------------------------------
-# Kiro-specific helpers
-# ---------------------------------------------------------------------------
-
-
-def find_kiro_jsonl(session_id: str, home: Path | None = None) -> Path | None:
-    """Return the Path to a Kiro session JSONL file, or None if not found.
-
-    Kiro stores transcripts at ~/.kiro/sessions/cli/<session_id>.jsonl.
-    The session_id is a UUID (e.g. ``08ad8879-476e-4932-a825-3b3575fb2fbd``).
-    """
-    if not session_id:
-        return None
-    if home is None:
-        home = Path.home()
-    path = home / ".kiro" / "sessions" / "cli" / f"{session_id}.jsonl"
-    return path if path.exists() else None
-
-
-def _resolve_session_id(event: dict, home: Path | None = None) -> str:
-    """Return the session_id for a Kiro hook event.
-
-    Kiro sends ``session_id`` on userPromptSubmit / agentSpawn, but NOT
-    on stop events.  For stop, fall back to the value persisted by the
-    non-stop hook in ~/.observal/.kiro-session.
-    """
-    session_id = event.get("session_id", "")
-    if session_id:
-        return session_id
-
-    if home is None:
-        home = Path.home()
-    session_file = home / ".observal" / ".kiro-session"
-    try:
-        if session_file.exists():
-            cached = json.loads(session_file.read_text())
-            session_id = cached.get("session_id", "")
-    except Exception:
-        pass
-    return session_id
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+from observal_cli.sessions.kiro import (
+    find_kiro_jsonl,
+    read_kiro_credits,
+    resolve_session_id,
+)
 
 
 def main(home: Path | None = None) -> None:
@@ -88,33 +36,6 @@ def main(home: Path | None = None) -> None:
         _run(home=home)
     except Exception:
         pass
-
-
-def _read_kiro_credits(session_id: str, home: Path | None = None) -> float | None:
-    """Read total credit usage from the Kiro session companion .json file.
-
-    The .json file (alongside the .jsonl) contains per-turn metering_usage
-    with credit values.  We sum ALL turns so the sessions page shows lifetime
-    credit spend for the session rather than just the latest turn.
-
-    Returns None if the file is absent or has no metering_usage yet.
-    """
-    if not session_id:
-        return None
-    if home is None:
-        home = Path.home()
-    json_path = home / ".kiro" / "sessions" / "cli" / f"{session_id}.json"
-    if not json_path.exists():
-        return None
-    try:
-        session = json.loads(json_path.read_text())
-        turns = session.get("session_state", {}).get("conversation_metadata", {}).get("user_turn_metadatas", [])
-        total = sum(
-            u.get("value", 0.0) for turn in turns for u in turn.get("metering_usage", []) if u.get("unit") == "credit"
-        )
-        return total if total > 0 else None
-    except Exception:
-        return None
 
 
 def _run(home: Path | None = None) -> None:
@@ -134,8 +55,8 @@ def _run(home: Path | None = None) -> None:
                 hook_event = json.loads(_sf.read_text()).get("hook_event", "")
         except Exception:
             pass
-    session_id = _resolve_session_id(event, home=home)
 
+    session_id = resolve_session_id(event, home=home)
     if not session_id:
         return
 
@@ -157,12 +78,10 @@ def _run(home: Path | None = None) -> None:
     lines, bytes_read = read_new_lines(jsonl_path, offset=offset)
 
     if not lines:
-        # Nothing new — still mark finalized on Stop so recovery skips it.
-        # Even with no new lines, send credits if this is a Stop event.
         is_stop = hook_event.lower() == "stop"
         if is_stop:
             write_cursor(session_id, offset, line_count, finalized=True, home=home)
-            credits = _read_kiro_credits(session_id, home=home)
+            credits = read_kiro_credits(session_id, home=home)
             if credits is not None:
                 payload_credits = build_payload(
                     session_id=session_id,
@@ -192,9 +111,8 @@ def _run(home: Path | None = None) -> None:
         new_offset=new_offset,
         cwd=cwd,
     )
-    # Tag IDE so the server routes to the Kiro parser
     payload["ide"] = "kiro"
-    credits = _read_kiro_credits(session_id, home=home)
+    credits = read_kiro_credits(session_id, home=home)
     if credits is not None:
         payload["total_credits"] = credits
 
@@ -219,7 +137,6 @@ def _run(home: Path | None = None) -> None:
 
 
 def _spawn_crash_recovery() -> None:
-    """Spawn observal_cli.cmd_reconcile as a detached background process."""
     import subprocess
 
     try:

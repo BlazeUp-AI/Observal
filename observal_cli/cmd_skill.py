@@ -34,8 +34,6 @@ def register_skill(app: typer.Typer):
 # ── Security helpers (port of vercel-labs installer.ts) ─────────────────────
 
 
-
-
 def _is_path_safe(path: Path, base: Path) -> bool:
     """Return True only if resolved *path* is inside *base* (no traversal)."""
     try:

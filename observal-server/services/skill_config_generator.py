@@ -31,7 +31,6 @@ def _short_description(desc: str, max_len: int = 200) -> str:
     return sentence.strip()
 
 
-
 def _generate_skill_file(skill_listing, ide: str, scope: str = "project") -> dict | None:
     """Generate an IDE-specific skill file dict with path and content.
 

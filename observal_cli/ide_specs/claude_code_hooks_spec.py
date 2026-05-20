@@ -22,12 +22,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from observal_cli.shared.utils import (
-    OBSERVAL_METADATA_KEY,  # re-exported for backward compatibility
-    _OBSERVAL_HOOK_MARKERS as _LEGACY_HOOK_MARKERS,
-    is_observal_hook_entry,  # re-exported for backward compatibility
-    is_observal_matcher_group,  # re-exported for backward compatibility
-)
+from observal_cli.shared.utils import OBSERVAL_METADATA_KEY
 
 # Bump this when hook definitions change.
 HOOKS_SPEC_VERSION = "10"
@@ -35,11 +30,6 @@ HOOKS_SPEC_VERSION = "10"
 
 # Parent of the observal_cli package directory
 _PKG_ROOT = str(Path(__file__).resolve().parent.parent.parent)
-
-
-
-
-
 
 
 def _python_cmd() -> str:
