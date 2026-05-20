@@ -57,6 +57,7 @@ from api.routes.reconcile import router as reconcile_router
 from api.routes.registry_models import router as registry_models_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
+from api.routes.self_learning import router as self_learning_router
 from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.support import router as support_router
@@ -344,6 +345,7 @@ app.include_router(bulk_router)
 app.include_router(config_router)
 app.include_router(registry_models_router)
 app.include_router(support_router)
+app.include_router(self_learning_router)
 
 # --- Prometheus metrics ---
 _instrumentator = Instrumentator(

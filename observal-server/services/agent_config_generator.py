@@ -481,6 +481,7 @@ def _build_rules_content(
     agent: Agent,
     component_names: dict | None = None,
     prompt_listings: dict | None = None,
+    insight_suggestions: str | None = None,
 ) -> str:
     """Build markdown rules content from the agent and its components.
 
@@ -490,6 +491,9 @@ def _build_rules_content(
     Args:
         prompt_listings: optional {component_id: PromptListing} map. When provided,
             prompt components inject their full template content instead of a bullet name.
+        insight_suggestions: optional pre-formatted markdown block from the self-learning
+            pipeline (synthesized from the latest insight report). Appended after all
+            other content.
     """
     sections: list[str] = []
 
@@ -540,6 +544,10 @@ def _build_rules_content(
                 lines.append(f"- **{n}**")
             sections.append("\n".join(lines))
 
+    # Append self-learning insight suggestions at the end of the rules
+    if insight_suggestions:
+        sections.append(insight_suggestions)
+
     return "\n\n".join(sections) if sections else f"# {agent.name}"
 
 
@@ -556,6 +564,7 @@ def generate_agent_config(
     hook_listings: dict | None = None,
     otlp_http_url: str = "",
     prompt_listings: dict | None = None,
+    insight_suggestions: str | None = None,
 ) -> dict:
     """Generate IDE-specific config for an agent.
 
@@ -567,11 +576,12 @@ def generate_agent_config(
         skill_listings: optional {component_id: SkillListing} map pre-loaded by caller.
         hook_listings: optional {component_id: HookListing} map pre-loaded by caller.
         prompt_listings: optional {component_id: PromptListing} map pre-loaded by caller.
+        insight_suggestions: optional pre-formatted markdown from the self-learning pipeline.
     """
     safe_name = _sanitize_name(agent.name)
     effective_otlp_http = otlp_http_url or observal_url
     mcp_configs = _build_mcp_configs(agent, ide, effective_otlp_http, mcp_listings=mcp_listings, env_values=env_values)
-    rules_content = _build_rules_content(agent, component_names, prompt_listings)
+    rules_content = _build_rules_content(agent, component_names, prompt_listings, insight_suggestions)
     skill_configs = _build_skill_configs(agent, skill_listings)
     hook_configs = _build_hook_configs(agent, hook_listings)
     options = options or {}

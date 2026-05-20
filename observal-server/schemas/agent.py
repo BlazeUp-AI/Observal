@@ -175,6 +175,7 @@ class AgentResponse(BaseModel):
     user_permission: str | None = None
     latest_approved_version: str | None = None
     latest_version: str | None = None
+    self_learning_enabled: bool = False
 
     model_config = {"from_attributes": True}
 

@@ -121,6 +121,10 @@ class Agent(Base):
         onupdate=lambda: datetime.now(UTC),
     )
 
+    # Self-learning: when enabled, the insight pipeline synthesizes behavioral
+    # rules from aggregate telemetry and delivers them to the agent.
+    self_learning_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+
     versions: Mapped[list["AgentVersion"]] = relationship(
         back_populates="agent",
         lazy="selectin",
