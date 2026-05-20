@@ -67,7 +67,6 @@ def _make_version(
     v.reviewed_at = None
     v.created_at = datetime.now(UTC)
     v.components = []
-    v.goal_template = None
     return v
 
 
@@ -193,7 +192,6 @@ def test_agent_to_response_latest_approved_version_none_when_no_approved():
     agent.status = AgentStatus.pending
     agent.rejection_reason = None
     agent.components = []
-    agent.goal_template = None
 
     resp = _agent_to_response(
         agent,

@@ -127,8 +127,6 @@ agent_payload = {
     "supported_ides": ["claude-code", "cursor", "vscode", "kiro"],
     "components": [{"component_type": "skill", "component_id": skill_id}],
     "external_mcps": [],
-],
-    },
 }
 r = requests.post(
     f"{BASE}/api/v1/agents",

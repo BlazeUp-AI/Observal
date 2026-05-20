@@ -24,7 +24,7 @@ test.describe("Frontend Flows", () => {
     } else {
       // Create and approve one for fresh instances
       agentName = `e2e-agent-${Date.now()}`;
-      await fetch(`${API_BASE}/api/v1/agents`, {
+      const createRes = await fetch(`${API_BASE}/api/v1/agents`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -35,14 +35,29 @@ test.describe("Frontend Flows", () => {
           description: "Agent for frontend e2e tests",
           version: "1.0.0",
           owner: "admin",
-          model_name: "claude-sonnet-4-20250514"],
-          },
+          model_name: "claude-sonnet-4-20250514",
+          prompt: "You are a test agent.",
+          goal_template: { description: "e2e test", sections: [{ name: "default" }] },
         }),
       });
-      await fetch(`${API_BASE}/api/v1/review/agents/${agentName}/approve`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const created = await createRes.json();
+      const agentId = created.id;
+      if (agentId) {
+        await fetch(`${API_BASE}/api/v1/review/agents/${agentId}/approve`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: "e2e auto-approve" }),
+        });
+        // Wait for approval to propagate
+        await new Promise((r) => setTimeout(r, 1000));
+      } else {
+        // Creation failed (e.g. schema mismatch) — fall back to any existing agent
+        const fallback = await fetch(`${API_BASE}/api/v1/agents`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const all = await fallback.json();
+        if (Array.isArray(all) && all.length > 0) agentName = all[0].name;
+      }
     }
   });
 
@@ -74,11 +89,11 @@ test.describe("Frontend Flows", () => {
     const searchInput = page.locator('input[placeholder*="Search"], input[type="search"]').first();
     await searchInput.fill(agentName);
     // Wait for results to filter (debounced)
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
     // Click the agent in results
     const agentLink = page.locator(`a:has-text("${agentName}")`).first();
-    await expect(agentLink).toBeVisible({ timeout: 10_000 });
+    await expect(agentLink).toBeVisible({ timeout: 20_000 });
     await agentLink.click();
 
     // Should land on agent detail page

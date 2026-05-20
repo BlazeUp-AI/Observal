@@ -66,3 +66,4 @@ observal-insights/
 .pi-lens/
 node_modules
 .pi/
+.mcp.json

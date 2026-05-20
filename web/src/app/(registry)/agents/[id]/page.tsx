@@ -81,10 +81,6 @@ interface AgentDetail {
   created_by?: string;
   component_links?: ComponentLink[];
   mcp_links?: ComponentLink[];
-  goal_template?: {
-    description?: string;
-    sections?: { name: string; description?: string }[];
-  };
   supported_ides?: string[];
   required_ide_features?: string[];
   inferred_supported_ides?: string[];
@@ -518,7 +514,6 @@ export default function AgentDetailPage({
   const agentStatus = a?.status as string | undefined;
   const canEdit = (isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit") && ["approved", "pending", "draft", "rejected"].includes(agentStatus ?? "");
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
-  const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);
   const totalDownloads = downloadData?.total ?? a?.download_count;
   const uniqueUsers = downloadData?.unique_users;
@@ -659,34 +654,8 @@ export default function AgentDetailPage({
                     </div>
                   )}
 
-                  {goalTemplate && (
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold font-display">
-                        Goal Template
-                      </h3>
-                      {goalTemplate.description && (
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {goalTemplate.description}
-                        </p>
-                      )}
-                      {goalTemplate.sections?.map(
-                        (sec: { name: string; description?: string }, i: number) => (
-                          <div key={i} className="space-y-1">
-                            <h4 className="text-sm font-medium text-foreground">
-                              {sec.name}
-                            </h4>
-                            {sec.description && (
-                              <p className="text-xs text-muted-foreground leading-relaxed pl-3 border-l-2 border-border">
-                                {sec.description}
-                              </p>
-                            )}
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  )}
 
-                  {!versionDescription && !goalTemplate && (
+                  {!versionDescription && (
                     <p className="text-sm text-muted-foreground">
                       No additional details provided for this agent.
                     </p>

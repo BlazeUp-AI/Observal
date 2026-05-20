@@ -643,12 +643,6 @@ def agent_init(
         "prompt": prompt_text,
         "supported_ides": list(VALID_IDES),
         "components": [],
-        "goal_template": {
-            "description": f"Goals for {name}",
-            "sections": [
-                {"name": "default", "description": "Default goal section"},
-            ],
-        },
     }
 
     _save_agent_yaml(dir_path, data)

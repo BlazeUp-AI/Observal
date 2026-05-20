@@ -78,7 +78,7 @@ Maintainers volunteer their time. Treat them accordingly.
 
 ### A note on autonomous coding agents
 
-**Autonomous coding agents (Devin, SWE-agent, OpenHands, etc.) are not permitted to submit PRs.** This is a legal constraint, not a quality judgment. The US Copyright Office's 2025 guidance confirms that purely AI-generated code has no copyright owner, which breaks our CLA, our AGPL licensing chain, and our ability to enforce copyleft. See the [AI Policy](../../AI_POLICY.md) for the full explanation.
+**Autonomous coding agents (Devin, SWE-agent, OpenHands, etc.) are not permitted to submit PRs.** This is a legal constraint, not a quality judgment. The US Copyright Office's 2025 guidance confirms that purely AI-generated code has no copyright owner, which breaks our CLA, our AGPL licensing chain, and our ability to enforce copyleft. See the [AI Policy](../AI_POLICY.md) for the full explanation.
 
 ---
 
@@ -626,8 +626,8 @@ Before opening a PR:
 - [ ] PR template is filled in completely (not by AI)
 - [ ] CHANGELOG.md updated under `[Unreleased]` for user-facing changes
 - [ ] Frontend changes include screenshots in the PR body
-- [ ] AI-assisted contributions labelled with tool name and version (see [AI Policy](../../AI_POLICY.md))
-- [ ] No autonomous agent submissions (see [AI Policy](../../AI_POLICY.md))
+- [ ] AI-assisted contributions labelled with tool name and version (see [AI Policy](../AI_POLICY.md))
+- [ ] No autonomous agent submissions (see [AI Policy](../AI_POLICY.md))
 
 ---
 

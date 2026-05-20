@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 import yaml
 from sqlalchemy import select
 
-from models.agent import AgentVersion  # noqa: TC001
 from models.agent_component import AgentComponent
 from models.hook import HookListing
 from models.mcp import McpListing
@@ -28,6 +27,8 @@ from models.skill import SkillListing
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from models.agent import AgentVersion
 
 _LISTING_MODELS = {
     "mcp": McpListing,

@@ -74,7 +74,6 @@ def _make_version(agent_id: uuid.UUID, ver: str = SEMVER_VALID, status: AgentSta
     v.reviewed_at = None
     v.created_at = datetime.now(UTC)
     v.components = []
-    v.goal_template = None
     return v
 
 

@@ -22,8 +22,8 @@ test.describe("Agent unarchive", () => {
         description: "Agent to test unarchive flow",
         owner: "admin@demo.example",
         version: "1.0.0",
-        model_name: "claude-sonnet-4-20250514"],
-        },
+        model_name: "claude-sonnet-4-20250514",
+          prompt: "You are a test agent.",
       }),
     });
     const created = await createRes.json();

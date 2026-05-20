@@ -38,8 +38,7 @@ interface PreviewPanelProps {
   description: string;
   modelName?: string;
   selectedComponents: Record<string, { id: string; name: string }[]>;
-  goalSections: { id: string; title: string; content: string }[];
-  customPrompts?: { id: string; title: string; content: string }[];
+  prompt?: string;
   validationResult: ValidationResult | null;
 }
 
@@ -48,14 +47,9 @@ interface PreviewPanelProps {
 function buildMarkdownBody(
   description: string,
   selectedComponents: Record<string, { id: string; name: string }[]>,
-  goalSections: { id: string; title: string; content: string }[],
-  customPrompts?: { id: string; title: string; content: string }[],
+  prompt?: string,
 ): string {
   const lines: string[] = [];
-
-  if (description) {
-    lines.push(description);
-  }
 
   for (const [type, items] of Object.entries(selectedComponents)) {
     if (items.length === 0) continue;
@@ -69,33 +63,11 @@ function buildMarkdownBody(
     items.forEach((item) => lines.push(`- **${item.name}**`));
   }
 
-  const nonEmptyPrompts = (customPrompts ?? []).filter(
-    (p) => p.content.trim(),
-  );
-  if (nonEmptyPrompts.length > 0) {
+  if (prompt?.trim()) {
     lines.push("");
-    lines.push("## Custom Prompts");
-    lines.push("");
-    nonEmptyPrompts.forEach((prompt) => {
-      if (prompt.title.trim()) {
-        lines.push(`### ${prompt.title.trim()}`);
-      }
-      lines.push(prompt.content.trim());
-    });
+    lines.push(prompt.trim());
   }
 
-  const nonEmptyGoals = goalSections.filter((s) => s.title || s.content);
-  if (nonEmptyGoals.length > 0) {
-    lines.push("");
-    lines.push("## Goals");
-    lines.push("");
-    nonEmptyGoals.forEach((section) => {
-      lines.push(`### ${section.title || "(section)"}`);
-      if (section.content) {
-        lines.push(section.content);
-      }
-    });
-  }
 
   return lines.join("\n");
 }
@@ -134,10 +106,6 @@ function generateClaudeCode(
 
   lines.push("---");
   lines.push(`name: ${safeName}`);
-  if (description) {
-    const descLine = description.replace(/\n/g, " ").trim();
-    lines.push(`description: "${descLine}"`);
-  }
   if (modelName) {
     lines.push(`model: ${modelName}`);
   }
@@ -351,8 +319,7 @@ export function PreviewPanel({
   description,
   modelName,
   selectedComponents,
-  goalSections,
-  customPrompts,
+  prompt,
   validationResult,
 }: PreviewPanelProps) {
   const [ide, setIde] = useState<Ide>("claude-code");
@@ -364,7 +331,7 @@ export function PreviewPanel({
   const modalScrollRef = useRef<HTMLDivElement>(null);
 
   const mcps = selectedComponents.mcps ?? [];
-  const body = buildMarkdownBody(description, selectedComponents, goalSections, customPrompts);
+  const body = buildMarkdownBody(description, selectedComponents, prompt);
 
   // Simplified mode: client-side generators
   let files: PreviewFile[];
