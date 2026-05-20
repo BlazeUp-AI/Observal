@@ -880,3 +880,60 @@ export interface ExecCostSummary {
 	by_category: ExecCostByCategory[];
 	configured: boolean;
 }
+
+export interface ExecROIProjectionPoint {
+	quarter: string;
+	projected_savings: number;
+	cumulative_savings: number;
+	confidence: number;
+}
+
+export interface ExecROIProjectionsResponse {
+	projections: ExecROIProjectionPoint[];
+	growth_rate_pct: number;
+	time_to_breakeven_months: number | null;
+	total_invested: number;
+	total_saved: number;
+	roi_multiple: number;
+}
+
+export interface ExecModelComparison {
+	model: string;
+	sessions: number;
+	avg_cost: number;
+	avg_tokens: number;
+	success_rate: number;
+	best_at: string;
+}
+
+export interface ExecDepartmentGap {
+	department: string;
+	adoption_pct: number;
+	sessions: number;
+	opportunity: string;
+}
+
+export interface ExecQuickWin {
+	title: string;
+	detail: string;
+	estimated_savings: number;
+	effort: string;
+}
+
+export interface ExecPlatformComparison {
+	platform: string;
+	avg_task_time_ms: number;
+	sessions: number;
+	success_rate: number;
+}
+
+export interface ExecStrategicInsightsResponse {
+	model_comparison: ExecModelComparison[];
+	department_gaps: ExecDepartmentGap[];
+	quick_wins: ExecQuickWin[];
+	platform_comparison: ExecPlatformComparison[];
+	power_user_pct: number;
+	power_user_value_pct: number;
+	total_active_users: number;
+	automatable_pct: number;
+}

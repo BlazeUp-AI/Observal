@@ -66,7 +66,7 @@ export function VelocityTab() {
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
               <XAxis dataKey="week" className="text-xs" />
               <YAxis className="text-xs" />
-              <Tooltip formatter={(value: number) => [value.toLocaleString(), "Traces"]} />
+              <Tooltip formatter={(value) => [Number(value).toLocaleString(), "Traces"]} />
               <Area type="monotone" dataKey="traces" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#velGrad)" />
             </AreaChart>
           </ResponsiveContainer>

@@ -3,11 +3,11 @@
 "use client";
 
 import { useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line } from "recharts";
-import { useExecCostSummary, useExecConfig } from "@/hooks/use-api";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, BarChart, Bar } from "recharts";
+import { useExecCostSummary, useExecConfig, useExecROIProjections } from "@/hooks/use-api";
 import { exec } from "@/lib/api";
 import { StatCard } from "./stat-card";
-import { Loader2 } from "lucide-react";
+import { Loader2, TrendingUp } from "lucide-react";
 
 const DEFAULT_CATEGORIES = [
   "Code Review",
@@ -102,6 +102,105 @@ function BaselinesConfigForm({ onSaved }: { onSaved: () => void }) {
   );
 }
 
+function ROIProjections() {
+  const { data: roi, isLoading } = useExecROIProjections();
+
+  if (isLoading) {
+    return <div className="h-64 rounded-lg border border-border animate-pulse bg-muted/30" />;
+  }
+
+  if (!roi || roi.projections.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-border p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <h3 className="text-sm font-semibold">ROI Projections</h3>
+          </div>
+          <p className="text-xs text-muted-foreground">Quarterly savings forecast based on current growth trajectory</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-emerald-500">{roi.roi_multiple}x</p>
+          <p className="text-[11px] text-muted-foreground">ROI multiple</p>
+        </div>
+      </div>
+
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="rounded-md bg-muted/20 p-3 text-center">
+          <p className="text-lg font-bold text-foreground">
+            ${roi.total_saved >= 1000 ? `${(roi.total_saved / 1000).toFixed(1)}K` : roi.total_saved.toFixed(0)}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Total Saved</p>
+        </div>
+        <div className="rounded-md bg-muted/20 p-3 text-center">
+          <p className="text-lg font-bold text-foreground">
+            ${roi.total_invested >= 1000 ? `${(roi.total_invested / 1000).toFixed(1)}K` : roi.total_invested.toFixed(0)}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Total Invested</p>
+        </div>
+        <div className="rounded-md bg-muted/20 p-3 text-center">
+          <p className="text-lg font-bold text-emerald-500">{roi.growth_rate_pct}%</p>
+          <p className="text-[11px] text-muted-foreground">Growth Rate</p>
+        </div>
+        <div className="rounded-md bg-muted/20 p-3 text-center">
+          <p className="text-lg font-bold text-foreground">
+            {roi.time_to_breakeven_months === null
+              ? "—"
+              : roi.time_to_breakeven_months === 0
+              ? "Done"
+              : `${roi.time_to_breakeven_months}mo`}
+          </p>
+          <p className="text-[11px] text-muted-foreground">To Breakeven</p>
+        </div>
+      </div>
+
+      {/* Quarterly Projections Chart */}
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={roi.projections} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+          <XAxis dataKey="quarter" className="text-xs" />
+          <YAxis className="text-xs" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
+          <Tooltip
+            formatter={(value, name) => [
+              `$${(Number(value) / 1000).toFixed(1)}K`,
+              name === "projected_savings" ? "Quarterly Savings" : "Cumulative",
+            ]}
+          />
+          <Bar dataKey="projected_savings" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+
+      {/* Cumulative timeline */}
+      <div className="grid grid-cols-4 gap-3 mt-4 pt-4 border-t border-border">
+        {roi.projections.map((p) => (
+          <div
+            key={p.quarter}
+            className={`rounded-md p-3 text-center border ${
+              p.confidence >= 0.8 ? "border-border" : "border-dashed border-muted-foreground/30"
+            }`}
+          >
+            <p className="text-[11px] text-muted-foreground mb-1">{p.quarter}</p>
+            <p className="text-sm font-bold text-emerald-500">
+              ${(p.projected_savings / 1000).toFixed(1)}K
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              Cum: ${(p.cumulative_savings / 1000).toFixed(1)}K
+            </p>
+            <p className="text-[10px] text-muted-foreground/50">
+              {Math.round(p.confidence * 100)}% confidence
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CostTab() {
   const { data: cost, isLoading, refetch } = useExecCostSummary();
   const { data: config } = useExecConfig();
@@ -150,7 +249,7 @@ export function CostTab() {
               <XAxis dataKey="month" className="text-xs" />
               <YAxis className="text-xs" tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`} />
               <Tooltip
-                formatter={(value: number, name: string) => [`$${value.toFixed(2)}`, name === "savings" ? "Savings" : "AI Spend"]}
+                formatter={(value, name) => [`$${Number(value).toFixed(2)}`, name === "savings" ? "Savings" : "AI Spend"]}
               />
               <Area type="monotone" dataKey="savings" stroke="#16a34a" strokeWidth={2.5} fill="url(#savingsGrad)" />
               <Line type="monotone" dataKey="ai_spend" stroke="#e11d48" strokeWidth={2} strokeDasharray="4 4" dot={false} />
@@ -216,6 +315,9 @@ export function CostTab() {
           </div>
         </div>
       )}
+
+      {/* ROI Projections */}
+      <ROIProjections />
     </div>
   );
 }

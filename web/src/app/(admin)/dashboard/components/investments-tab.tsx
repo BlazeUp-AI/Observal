@@ -72,7 +72,7 @@ export function InvestmentsTab() {
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
             <XAxis dataKey="name" className="text-xs" />
             <YAxis domain={[0, 100]} className="text-xs" />
-            <Tooltip formatter={(value: number) => [`${value}/100`, "Score"]} />
+            <Tooltip formatter={(value) => [`${value}/100`, "Score"]} />
             <Bar dataKey="score" radius={[6, 6, 0, 0]} barSize={48} onClick={(_, index) => setSelected(index)} className="cursor-pointer">
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={i === selected ? entry.color : `${entry.color}66`} />

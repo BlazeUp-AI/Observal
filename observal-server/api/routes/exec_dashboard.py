@@ -1010,3 +1010,442 @@ async def get_cost_summary(
         by_category=by_category,
         configured=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# ROI Projections
+# ---------------------------------------------------------------------------
+
+
+class ROIProjectionPoint(BaseModel):
+    quarter: str
+    projected_savings: float
+    cumulative_savings: float
+    confidence: float
+
+
+class ROIProjectionsResponse(BaseModel):
+    projections: list[ROIProjectionPoint]
+    growth_rate_pct: float
+    time_to_breakeven_months: int | None
+    total_invested: float
+    total_saved: float
+    roi_multiple: float
+
+
+@router.get("/roi-projections", response_model=ROIProjectionsResponse)
+async def get_roi_projections(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Project future savings using linear regression on historical monthly data."""
+    org_id = current_user.org_id
+
+    config = None
+    if org_id:
+        result = await db.execute(
+            select(ExecDashboardConfig).where(ExecDashboardConfig.org_id == org_id)
+        )
+        config = result.scalar_one_or_none()
+
+    if not config:
+        return ROIProjectionsResponse(
+            projections=[], growth_rate_pct=0, time_to_breakeven_months=None,
+            total_invested=0, total_saved=0, roi_multiple=0,
+        )
+
+    baselines = config.pre_ai_baselines or {}
+    avg_baseline = sum(baselines.values()) / len(baselines) if baselines else 0
+
+    monthly_rows = await _ch_json_scoped(
+        "SELECT toStartOfMonth(start_time) AS month, "
+        "sum(cost) AS spend, count(DISTINCT trace_id) AS traces "
+        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND start_time >= now() - INTERVAL 12 MONTH "
+        "AND cost IS NOT NULL AND cost > 0 "
+        "GROUP BY month ORDER BY month",
+        current_user,
+    )
+
+    if not monthly_rows or avg_baseline == 0:
+        return ROIProjectionsResponse(
+            projections=[], growth_rate_pct=0, time_to_breakeven_months=None,
+            total_invested=0, total_saved=0, roi_multiple=0,
+        )
+
+    monthly_savings_list: list[float] = []
+    monthly_spend_list: list[float] = []
+    for r in monthly_rows:
+        spend = float(r.get("spend") or 0)
+        traces = int(r.get("traces") or 0)
+        savings = max(0, (avg_baseline * traces) - spend)
+        monthly_savings_list.append(savings)
+        monthly_spend_list.append(spend)
+
+    total_invested = sum(monthly_spend_list)
+    total_saved = sum(monthly_savings_list)
+    roi_multiple = round(total_saved / total_invested, 2) if total_invested > 0 else 0
+
+    # Linear regression on savings for growth rate
+    n = len(monthly_savings_list)
+    if n >= 3:
+        x_mean = (n - 1) / 2
+        y_mean = sum(monthly_savings_list) / n
+        numerator = sum((i - x_mean) * (y - y_mean) for i, y in enumerate(monthly_savings_list))
+        denominator = sum((i - x_mean) ** 2 for i in range(n))
+        slope = numerator / denominator if denominator != 0 else 0
+        intercept = y_mean - slope * x_mean
+        growth_rate = round((slope / y_mean) * 100, 1) if y_mean > 0 else 0
+    else:
+        slope = 0
+        intercept = monthly_savings_list[-1] if monthly_savings_list else 0
+        growth_rate = 0
+
+    # Project next 4 quarters
+    now = dt.now(UTC)
+    projections = []
+    cumulative = total_saved
+    for q_offset in range(1, 5):
+        quarter_start_month = n + (q_offset - 1) * 3
+        quarter_savings = 0.0
+        for m in range(3):
+            month_idx = quarter_start_month + m
+            projected = max(0, slope * month_idx + intercept)
+            quarter_savings += projected
+
+        cumulative += quarter_savings
+        confidence = max(0.5, 1.0 - (q_offset * 0.12))
+
+        quarter_num = ((now.month - 1) // 3 + q_offset) % 4 + 1
+        quarter_year = now.year + ((now.month - 1) // 3 + q_offset) // 4
+        quarter_label = f"Q{quarter_num} {quarter_year}"
+
+        projections.append(ROIProjectionPoint(
+            quarter=quarter_label,
+            projected_savings=round(quarter_savings, 2),
+            cumulative_savings=round(cumulative, 2),
+            confidence=round(confidence, 2),
+        ))
+
+    # Time to breakeven
+    if total_invested > total_saved and slope > 0:
+        months_remaining = (total_invested - total_saved) / slope if slope > 0 else None
+        time_to_breakeven = int(months_remaining) if months_remaining and months_remaining > 0 else None
+    elif total_saved >= total_invested:
+        time_to_breakeven = 0
+    else:
+        time_to_breakeven = None
+
+    return ROIProjectionsResponse(
+        projections=projections,
+        growth_rate_pct=growth_rate,
+        time_to_breakeven_months=time_to_breakeven,
+        total_invested=round(total_invested, 2),
+        total_saved=round(total_saved, 2),
+        roi_multiple=roi_multiple,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Strategic Insights (cross-org analysis from real telemetry)
+# ---------------------------------------------------------------------------
+
+
+class ModelComparisonItem(BaseModel):
+    model: str
+    sessions: int
+    avg_cost: float
+    avg_tokens: int
+    success_rate: float
+    best_at: str
+
+
+class DepartmentGap(BaseModel):
+    department: str
+    adoption_pct: float
+    sessions: int
+    opportunity: str
+
+
+class QuickWin(BaseModel):
+    title: str
+    detail: str
+    estimated_savings: float
+    effort: str
+
+
+class PlatformComparison(BaseModel):
+    platform: str
+    avg_task_time_ms: float
+    sessions: int
+    success_rate: float
+
+
+class StrategicInsightsResponse(BaseModel):
+    model_comparison: list[ModelComparisonItem]
+    department_gaps: list[DepartmentGap]
+    quick_wins: list[QuickWin]
+    platform_comparison: list[PlatformComparison]
+    power_user_pct: float
+    power_user_value_pct: float
+    total_active_users: int
+    automatable_pct: float
+
+
+@router.get("/strategic-insights", response_model=StrategicInsightsResponse)
+async def get_strategic_insights(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Cross-org strategic insights derived from real telemetry data."""
+    org_id = current_user.org_id
+
+    # 1. Model comparison from session_stats_agg
+    model_rows = await _ch_json_scoped(
+        "SELECT model, "
+        "count() AS sessions, "
+        "round(avg(total_credits), 4) AS avg_cost, "
+        "round(avg(input_tokens + output_tokens)) AS avg_tokens "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND model != '' "
+        "GROUP BY model "
+        "HAVING sessions >= 5 "
+        "ORDER BY sessions DESC "
+        "LIMIT 10",
+        current_user,
+    )
+
+    # Success rate per model from spans
+    model_success_rows = await _ch_json_scoped(
+        "SELECT s.name AS model, "
+        "countIf(s.status = 'success') AS successes, "
+        "count() AS total "
+        "FROM spans AS s FINAL "
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 "
+        "AND s.type = 'llm' AND s.name != '' "
+        "AND s.start_time >= now() - INTERVAL 30 DAY "
+        "GROUP BY s.name "
+        "HAVING total >= 5",
+        current_user,
+    )
+    model_success_map = {
+        r["model"]: round(int(r["successes"]) / int(r["total"]) * 100, 1)
+        for r in model_success_rows if int(r.get("total", 0)) > 0
+    }
+
+    model_comparison = []
+    if model_rows:
+        cheapest = min(model_rows, key=lambda r: float(r.get("avg_cost") or 999))
+        most_used = model_rows[0] if model_rows else None
+
+        for r in model_rows:
+            model_name = r["model"]
+            avg_cost = float(r.get("avg_cost") or 0)
+            sessions = int(r.get("sessions", 0))
+            avg_tokens = int(float(r.get("avg_tokens") or 0))
+            success = model_success_map.get(model_name, 0)
+
+            if model_name == cheapest["model"]:
+                best_at = "Most cost-efficient"
+            elif sessions == int(most_used.get("sessions", 0)):
+                best_at = "Most popular, proven reliability"
+            elif avg_tokens > 5000:
+                best_at = "Complex/long-context tasks"
+            else:
+                best_at = "General purpose"
+
+            model_comparison.append(ModelComparisonItem(
+                model=model_name,
+                sessions=sessions,
+                avg_cost=avg_cost,
+                avg_tokens=avg_tokens,
+                success_rate=success,
+                best_at=best_at,
+            ))
+
+    # 2. Department gaps
+    dept_map = await resolve_user_departments(db, org_id)
+    all_user_ids = []
+    for uids in dept_map.values():
+        all_user_ids.extend(uids)
+
+    user_session_rows = await _ch_json_scoped(
+        "SELECT user_id, count() AS sessions "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' "
+        "GROUP BY user_id",
+        current_user,
+    )
+    user_sessions = {r["user_id"]: int(r["sessions"]) for r in user_session_rows}
+
+    department_gaps = []
+    for dept_name, user_ids in sorted(dept_map.items()):
+        if dept_name == "Unassigned":
+            continue
+        user_count = len(user_ids)
+        active_count = sum(1 for uid in user_ids if user_sessions.get(uid, 0) > 0)
+        adoption = round((active_count / user_count) * 100, 1) if user_count > 0 else 0
+        total_sessions = sum(user_sessions.get(uid, 0) for uid in user_ids)
+
+        if adoption < 50:
+            opportunity = f"{user_count - active_count} users not using AI — potential for automation"
+        elif adoption < 80:
+            opportunity = "Moderate adoption, room for deeper integration"
+        else:
+            opportunity = "High adoption — focus on optimization"
+
+        department_gaps.append(DepartmentGap(
+            department=dept_name,
+            adoption_pct=adoption,
+            sessions=total_sessions,
+            opportunity=opportunity,
+        ))
+
+    department_gaps.sort(key=lambda d: d.adoption_pct)
+
+    # 3. Quick wins — identify real cost-saving opportunities
+    quick_wins = []
+
+    # Win: expensive model used for simple tasks (low token count)
+    expensive_simple_rows = await _ch_json_scoped(
+        "SELECT model, count() AS sessions, round(sum(total_credits), 2) AS total_cost "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND model != '' "
+        "AND (input_tokens + output_tokens) < 2000 "
+        "AND total_credits > 0.10 "
+        "GROUP BY model "
+        "HAVING sessions >= 10 "
+        "ORDER BY total_cost DESC "
+        "LIMIT 3",
+        current_user,
+    )
+    for r in expensive_simple_rows:
+        sessions = int(r["sessions"])
+        total_cost = float(r["total_cost"])
+        cheap_cost = sessions * 0.04
+        savings = total_cost - cheap_cost
+        if savings > 10:
+            quick_wins.append(QuickWin(
+                title=f"Route simple tasks away from {r['model']}",
+                detail=f"{sessions} sessions with <2K tokens are using an expensive model. "
+                       f"A cheaper model handles these identically.",
+                estimated_savings=round(savings, 2),
+                effort="low",
+            ))
+
+    # Win: inactive agents still consuming resources
+    inactive_agent_rows = await _ch_json_scoped(
+        "SELECT agent_id, count() AS sessions, round(sum(total_credits), 2) AS cost "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND agent_id != '' "
+        "AND first_event_time < now() - INTERVAL 14 DAY "
+        "GROUP BY agent_id "
+        "HAVING sessions <= 3 AND cost > 5 "
+        "ORDER BY cost DESC "
+        "LIMIT 3",
+        current_user,
+    )
+    for r in inactive_agent_rows:
+        quick_wins.append(QuickWin(
+            title="Decommission low-usage agent",
+            detail=f"Agent with only {r['sessions']} sessions in 14 days is still costing ${r['cost']}. "
+                   f"Consider retiring or consolidating.",
+            estimated_savings=float(r["cost"]),
+            effort="low",
+        ))
+
+    # Win: high error-rate patterns
+    error_rows = await _ch_json_scoped(
+        "SELECT agent_id, "
+        "countIf(status = 'error') AS errors, count() AS total, "
+        "round(sum(cost), 2) AS wasted_cost "
+        "FROM spans FINAL "
+        "WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND agent_id != '' AND cost > 0 "
+        "AND start_time >= now() - INTERVAL 30 DAY "
+        "GROUP BY agent_id "
+        "HAVING errors > 10 AND (errors / total) > 0.2 "
+        "ORDER BY wasted_cost DESC "
+        "LIMIT 3",
+        current_user,
+    )
+    for r in error_rows:
+        errors = int(r["errors"])
+        total = int(r["total"])
+        error_pct = round(errors / total * 100)
+        quick_wins.append(QuickWin(
+            title="Fix high-error agent to recover wasted spend",
+            detail=f"Agent has {error_pct}% error rate ({errors}/{total} calls). "
+                   f"Fixing this recovers ~${r['wasted_cost']} in failed request costs.",
+            estimated_savings=float(r["wasted_cost"]),
+            effort="medium",
+        ))
+
+    # 4. Platform comparison (task completion speed)
+    platform_rows = await _ch_json_scoped(
+        "SELECT ide, "
+        "round(avg(dateDiff('millisecond', first_event_time, last_event_time))) AS avg_time_ms, "
+        "count() AS sessions, "
+        "countIf(event_count > 2) AS completed "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND ide != '' "
+        "AND first_event_time != last_event_time "
+        "GROUP BY ide "
+        "HAVING sessions >= 5 "
+        "ORDER BY sessions DESC",
+        current_user,
+    )
+    platform_comparison = [
+        PlatformComparison(
+            platform=r["ide"],
+            avg_task_time_ms=float(r.get("avg_time_ms") or 0),
+            sessions=int(r["sessions"]),
+            success_rate=round(int(r["completed"]) / int(r["sessions"]) * 100, 1) if int(r["sessions"]) > 0 else 0,
+        )
+        for r in platform_rows
+    ]
+
+    # 5. Power user analysis
+    user_value_rows = await _ch_json_scoped(
+        "SELECT user_id, count() AS sessions, sum(total_credits) AS value "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' "
+        "AND first_event_time >= now() - INTERVAL 30 DAY "
+        "GROUP BY user_id "
+        "ORDER BY value DESC",
+        current_user,
+    )
+
+    total_active = len(user_value_rows)
+    if total_active > 0:
+        top_20_count = max(1, total_active // 5)
+        total_value = sum(float(r.get("value") or 0) for r in user_value_rows)
+        top_20_value = sum(float(r.get("value") or 0) for r in user_value_rows[:top_20_count])
+        power_user_value_pct = round((top_20_value / total_value) * 100, 1) if total_value > 0 else 0
+    else:
+        power_user_value_pct = 0
+
+    # 6. Automatable task estimation (simple tasks = low tokens + high success)
+    auto_rows = await _ch_json_scoped(
+        "SELECT "
+        "countIf((input_tokens + output_tokens) < 3000 AND event_count <= 5) AS simple, "
+        "count() AS total "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' "
+        "AND first_event_time >= now() - INTERVAL 30 DAY",
+        current_user,
+    )
+    simple = int(auto_rows[0]["simple"]) if auto_rows else 0
+    total_tasks = int(auto_rows[0]["total"]) if auto_rows else 0
+    automatable_pct = round((simple / total_tasks) * 100, 1) if total_tasks > 0 else 0
+
+    return StrategicInsightsResponse(
+        model_comparison=model_comparison,
+        department_gaps=department_gaps,
+        quick_wins=quick_wins,
+        platform_comparison=platform_comparison,
+        power_user_pct=20.0,
+        power_user_value_pct=power_user_value_pct,
+        total_active_users=total_active,
+        automatable_pct=automatable_pct,
+    )

@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Add exec dashboard tables: user_groups, exec_dashboard_config, users.department, agents.category.
 
-Revision ID: 0009
-Revises: 0008
+Revision ID: 0010
+Revises: 0009
 Create Date: 2026-05-20
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0009"
-down_revision = "0008"
+revision = "0010"
+down_revision = "0009"
 branch_labels = None
 depends_on = None
 

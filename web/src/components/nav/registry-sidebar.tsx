@@ -69,7 +69,7 @@ const userNav: NavItem[] = [
 ];
 
 const adminNav: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, minRole: "admin" },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, minRole: "admin", enterpriseOnly: true },
   { title: "Evals", href: "/eval", icon: FlaskConical, minRole: "admin" },
   { title: "Insights", href: "/insights", icon: Lightbulb, minRole: "admin", requiresInsights: true },
   { title: "Users", href: "/users", icon: Users, minRole: "admin" },

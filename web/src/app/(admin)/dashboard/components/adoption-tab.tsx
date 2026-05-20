@@ -52,7 +52,7 @@ export function AdoptionTab() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis dataKey="month" className="text-xs" />
                 <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs" />
-                <Tooltip formatter={(value: number) => [`${value}%`, "Adoption"]} />
+                <Tooltip formatter={(value) => [`${value}%`, "Adoption"]} />
                 <Area type="monotone" dataKey="adoption_pct" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#adoptionGrad)" />
               </AreaChart>
             </ResponsiveContainer>

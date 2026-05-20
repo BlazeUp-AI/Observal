@@ -60,6 +60,8 @@ import type {
   ExecDepartmentsResponse,
   ExecDeptTokenItem,
   ExecCostSummary,
+  ExecROIProjectionsResponse,
+  ExecStrategicInsightsResponse,
 } from "./types";
 
 const API = "/api/v1";
@@ -676,6 +678,8 @@ export const exec = {
   departments: (range?: string) => get<ExecDepartmentsResponse>(`/exec/departments${range ? `?range=${range}` : ""}`),
   deptTokens: (range?: string) => get<ExecDeptTokenItem[]>(`/exec/dept-tokens${range ? `?range=${range}` : ""}`),
   costSummary: (range?: string) => get<ExecCostSummary>(`/exec/cost-summary${range ? `?range=${range}` : ""}`),
+  roiProjections: () => get<ExecROIProjectionsResponse>("/exec/roi-projections"),
+  strategicInsights: () => get<ExecStrategicInsightsResponse>("/exec/strategic-insights"),
   config: () => get<ExecConfig | null>("/exec/config"),
   updateConfig: (data: Partial<ExecConfig>) => put<ExecConfig>("/exec/config", data),
 };

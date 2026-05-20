@@ -1106,3 +1106,11 @@ export function useExecCostSummary(range?: string) {
 export function useExecConfig() {
   return useQuery({ queryKey: ["exec", "config"], queryFn: exec.config });
 }
+
+export function useExecROIProjections() {
+  return useQuery({ queryKey: ["exec", "roi-projections"], queryFn: exec.roiProjections });
+}
+
+export function useExecStrategicInsights() {
+  return useQuery({ queryKey: ["exec", "strategic-insights"], queryFn: exec.strategicInsights });
+}
