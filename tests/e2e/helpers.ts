@@ -4,7 +4,7 @@
 import { Page } from "@playwright/test";
 
 /** Base URL for the Observal API */
-export const API_BASE = process.env.API_BASE ?? "http://localhost:8000";
+export const API_BASE = process.env.API_BASE ?? "http://localhost";
 
 let _cachedToken: string | null = null;
 

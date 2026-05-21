@@ -15,7 +15,7 @@ test.describe("Kiro CLI Commands", () => {
   test.beforeAll(() => {
     try {
       execSync(
-        'observal auth login --server http://localhost:8000 --email admin@demo.example --password admin-changeme 2>&1',
+        'observal auth login --server http://localhost --email admin@demo.example --password admin-changeme 2>&1',
         { encoding: "utf-8", timeout: CLI_TIMEOUT, cwd: CWD },
       );
     } catch {
