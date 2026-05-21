@@ -14,6 +14,7 @@ Complete reference for every environment variable the server and CLI read. Defau
 | --- | --- | --- |
 | `SECRET_KEY` | `change-me-to-a-random-string` | Session signing key. Generate: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `DEPLOYMENT_MODE` | `local` | `local` (self-registration + bootstrap) or `enterprise` (SSO / SCIM only) |
+| `OBSERVAL_LICENSE_KEY` | — | Ed25519-signed enterprise license key. Enables enterprise features (SAML, SCIM, insight reports). Validated at startup; leave unset for community edition. |
 | `FRONTEND_URL` | `http://localhost:3000` | External frontend URL (OAuth redirects, email links) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated allowed CORS origins |
 | `MAX_REQUEST_SIZE_MB` | `10` | Maximum request body size |

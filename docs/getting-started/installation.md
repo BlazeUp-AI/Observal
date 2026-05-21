@@ -16,9 +16,19 @@ If you also want to **self-host** the Observal server (API + web UI + databases)
 
 The standalone binary is the simplest way to install. No Python required.
 
+**Community edition (default):**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 ```
+
+**Enterprise edition** (requires a valid license key):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash -s -- --license-key YOUR_KEY
+```
+
+A valid Ed25519-signed license key downloads the enterprise binary and saves the key to `~/.observal/config.json`. Without a key (or with an invalid one), the installer falls back to community edition.
 
 This downloads the latest release binary for your platform and places it on your `PATH`.
 
@@ -54,11 +64,11 @@ pip install --user observal-cli
 
 Observal ships with two opt-in extras for the Python install:
 
-| Extra | What it adds | When to install |
-| --- | --- | --- |
-| `sandbox` | Docker SDK (for sandbox execution) | If you run agents inside Observal sandboxes |
+| Extra     | What it adds                                   | When to install                                              |
+| --------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| `sandbox` | Docker SDK (for sandbox execution)             | If you run agents inside Observal sandboxes                  |
 | `migrate` | `asyncpg` (for the `observal migrate` command) | If you operate the server and run DB migrations from the CLI |
-| `all` | Both of the above | If you do both |
+| `all`     | Both of the above                              | If you do both                                               |
 
 Install an extra:
 
@@ -78,12 +88,12 @@ uv tool install --editable .
 
 Four entry points land on your `PATH`:
 
-| Command | Purpose |
-| --- | --- |
-| `observal` | The main CLI |
-| `observal-shim` | stdio shim between your IDE and stdio MCP servers |
-| `observal-proxy` | HTTP proxy between your IDE and HTTP/SSE MCP servers |
-| `observal-sandbox-run` | Sandbox runner invoked by Observal sandboxes |
+| Command                | Purpose                                              |
+| ---------------------- | ---------------------------------------------------- |
+| `observal`             | The main CLI                                         |
+| `observal-shim`        | stdio shim between your IDE and stdio MCP servers    |
+| `observal-proxy`       | HTTP proxy between your IDE and HTTP/SSE MCP servers |
+| `observal-sandbox-run` | Sandbox runner invoked by Observal sandboxes         |
 
 You will almost never call the shim, proxy, or sandbox runner directly. The CLI wires them into your IDE config for you.
 

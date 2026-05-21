@@ -36,6 +36,16 @@ DEPLOYMENT_MODE=local
 
 Switch to `enterprise` when you want IdP-only access.
 
+## Enterprise license key
+
+```
+OBSERVAL_LICENSE_KEY=
+```
+
+Set this to your Ed25519-signed license key to enable enterprise features (SAML, SCIM, AI insight reports). Leave it unset for community edition. The server validates the key at startup and logs the result.
+
+The `setup.sh` interactive setup and both installer scripts (`install.sh`, `install-server.sh`) also accept the key via `--license-key` or this env var and write it into `.env` automatically.
+
 ## Demo accounts
 
 Seeded on first startup *only* when no users exist:
