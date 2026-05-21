@@ -4,12 +4,71 @@
 <!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 SrihariLegend <sriharilegend23@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 DoomsCoder <vedantkakade05@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 feroake <avi04.kavi07@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-05-21
+
+### Added
+
+- add settings UI, dashboard widget, and warning banner (**retention**) ([893432b](https://github.com/BlazeUp-AI/Observal/commit/893432bcd0b9264af9e2bfe6e9999e1d53fc1b7f))
+- add admin API endpoints and 6-hour purge cron (**retention**) ([862992f](https://github.com/BlazeUp-AI/Observal/commit/862992f6ea4cdbc682d9504f2ff5a3208b7f3e94))
+- add per-org data retention model, schema, and purge service (**retention**) ([bb746af](https://github.com/BlazeUp-AI/Observal/commit/bb746af2696bd35e50a91d20985edbbdebed5e32))
+- license-gated install across all deployment methods ([f327c95](https://github.com/BlazeUp-AI/Observal/commit/f327c95e74064b8b2d8e1be8c21e6e59e9ae5956))
+- extend custom branding to login, home, device pages and SVG logo (**web**) ([c2e9fe2](https://github.com/BlazeUp-AI/Observal/commit/c2e9fe28652e179dd26547a59c1d263c6b60b4be))
+- default LB to port 80 for single-port access (**docker**) ([fd29b8b](https://github.com/BlazeUp-AI/Observal/commit/fd29b8bc7fc31c83f32a03c28f98da1d0598c231))
+- add Cursor to platform filter and show agent name in trace list (**web**) ([deb5989](https://github.com/BlazeUp-AI/Observal/commit/deb598967cf1c8a138c2a402bd7d3d39b908bab5))
+- enable hook_bridge and set cursor session parser in IDE registry (**cursor**) ([7011847](https://github.com/BlazeUp-AI/Observal/commit/7011847b298228be1953463f8052cf52d749a1d9))
+- add doctor patch for Cursor hook installation (**cursor**) ([9f39c21](https://github.com/BlazeUp-AI/Observal/commit/9f39c219808c531fb03bbb6374d3cee7d27bfb2d))
+- detect and configure Cursor on auth login (**cursor**) ([c0c068d](https://github.com/BlazeUp-AI/Observal/commit/c0c068d4986c05712717516f8b393b6d3d4782a9))
+- emit Cursor hook config from agent config generator (**cursor**) ([8d3e8f4](https://github.com/BlazeUp-AI/Observal/commit/8d3e8f46df3a96ce55f663e650e4411b9ec1fbd1))
+- add cursor_session_push hook and background post worker (**cursor**) ([42a9057](https://github.com/BlazeUp-AI/Observal/commit/42a905747efc80d2d74096a38ed8ba3a8e2e0feb))
+- add server-side JSONL session parser and ingest classifier (**cursor**) ([81c6c36](https://github.com/BlazeUp-AI/Observal/commit/81c6c36d4afa75161b3b0b07c59aacba25635681))
+- create components in-memory, cascade submit with agent (**builder**) ([53d7b75](https://github.com/BlazeUp-AI/Observal/commit/53d7b75bf780ef08b565d1d72b53107e9dc2a7af))
+
+### Changed
+
+- split monolithic module into subpackage (**clickhouse**) ([dbf4964](https://github.com/BlazeUp-AI/Observal/commit/dbf4964793611cdc5a3f5448e43b5a6e3f3462bc))
+- rewrite hook scripts as thin wrappers over sessions/ domain (**cli**) ([a2b2ca1](https://github.com/BlazeUp-AI/Observal/commit/a2b2ca1fe38b9514bdeebf1d557d4ceb9ec3d33c))
+- introduce sessions/ domain with base, claude_code, kiro, and cursor modules (**cli**) ([d53e10e](https://github.com/BlazeUp-AI/Observal/commit/d53e10e07d0ad3a35d430c8a380ee54423f413f2))
+- extract sanitize_name, load_jsonc, hook markers, and shim detection to shared utils (**cli**) ([912f586](https://github.com/BlazeUp-AI/Observal/commit/912f58668f7fbc711d6bdb95a7f1582534884529))
+- extract sanitize_name and strip_cursor_xml_tags to shared utils (**server**) ([65c7506](https://github.com/BlazeUp-AI/Observal/commit/65c75067cb20b39c25b82a7884d901075e96543e))
+- remove goal template, replace with required prompt field (**agent**) ([3b04a3e](https://github.com/BlazeUp-AI/Observal/commit/3b04a3eee42cc59856b7b7b11a722468ca37ad31))
+
+### Documentation
+
+- remove GitHub stars shield (**readme**) ([b3bc715](https://github.com/BlazeUp-AI/Observal/commit/b3bc715345716c40d5400cbd02869c4025f3835e))
+- document license-gated install and OBSERVAL_LICENSE_KEY ([940a606](https://github.com/BlazeUp-AI/Observal/commit/940a606a9929cdac1944660ec1ddac879e707140))
+- expand badge bar with live GHCR pulls, PyPI, and community badges (**readme**) ([7945bbb](https://github.com/BlazeUp-AI/Observal/commit/7945bbbddfbd366edcd2aa8b6b2a05501b5e6a15))
+- add AI policy, development guide, and overhaul contributing guide ([afd90f4](https://github.com/BlazeUp-AI/Observal/commit/afd90f4ae5a28fd0f93e344c884066d8c71a43f7))
+
+### Fixed
+
+- update default server URL to match new LB port 80 (**cli**) ([92454d4](https://github.com/BlazeUp-AI/Observal/commit/92454d42ca2fc9fb8e5914628e39648510c43d6e))
+- add license field to package.json (**web**) ([c193090](https://github.com/BlazeUp-AI/Observal/commit/c19309095c59cb2d75cd02155a3e001db4a4f443))
+- query packages via repository scope instead of org (**badges**) ([818c6d6](https://github.com/BlazeUp-AI/Observal/commit/818c6d65a6e44d0204ee4f2fd8602c505db06fb2))
+- use GraphQL to fetch GHCR pull counts, require read:org scope (**badges**) ([834e83d](https://github.com/BlazeUp-AI/Observal/commit/834e83de576bacb9c38667086376fd8d0755e135))
+- update localhost URLs from port 8000 to port 80 after LB change (**e2e**) ([6c61312](https://github.com/BlazeUp-AI/Observal/commit/6c6131272bdee3d6cad220208b7aa07688313e6e))
+- route frontend traffic through LB on port 80 (**nginx**) ([61e7060](https://github.com/BlazeUp-AI/Observal/commit/61e70604429b5e610481bafe00bd1ac6bed4419c))
+- correct agent pull command in registry home (**web**) ([3392a1b](https://github.com/BlazeUp-AI/Observal/commit/3392a1b00a60feb659514b310fe575c154af4c9a))
+- resolve agent files to project scope and use sys.executable in pull (**cursor**) ([809ca65](https://github.com/BlazeUp-AI/Observal/commit/809ca651f0595b5ce16be55ce252d6a5c4888629))
+- render YAML instead of JSON, expand all components by default (**review**) ([70e106a](https://github.com/BlazeUp-AI/Observal/commit/70e106a01e337cad77319917a12cae99bfbdfa10))
+- default installation scope to user for agent pull (**cli**) ([a57f410](https://github.com/BlazeUp-AI/Observal/commit/a57f410d305574313f3bcd0e6b71b6c26b7f4dea))
+- description is registry metadata, never inject into agent files (**agent**) ([87688be](https://github.com/BlazeUp-AI/Observal/commit/87688be09755b0ca39851c67b44e416da6b7055a))
+
+### Other
+
+- remove demo directory ([0824422](https://github.com/BlazeUp-AI/Observal/commit/082442209003bd60b286f2758ff055b3a0c54197))
+- add refactor-guide, security-auditor, and test-writer skill definitions ([becae20](https://github.com/BlazeUp-AI/Observal/commit/becae20de5281aff5123938a166ad45b4ca07dbe))
+- fix broken AI_POLICY.md links in development guide (**docs**) ([caae9a1](https://github.com/BlazeUp-AI/Observal/commit/caae9a117aebabd444e81237a137a8d8984fc312))
+
+### Testing
+
+- add unit, integration, and simulation tests (**retention**) ([36a13fa](https://github.com/BlazeUp-AI/Observal/commit/36a13faeb5b6ec403b0118761dc910f79e6535ad))
 ## [0.7.0] - 2026-05-19
 
 ### Added
@@ -1245,4 +1304,3 @@ All notable changes to this project will be documented in this file.
 ### Ui
 
 - brighter borders, responsive text scaling, observal favicon ([909a9b6](https://github.com/BlazeUp-AI/Observal/commit/909a9b6dd7cedc9ddaff31b208f09ace9d35be7e))
-

@@ -132,6 +132,7 @@ Every source file needs SPDX headers. The pre-commit hook adds them automaticall
 
 ```python
 # SPDX-FileCopyrightText: 2026 Your Name <your@email.com>
+<!-- SPDX-FileCopyrightText: 2026 feroake <avi04.kavi07@gmail.com> -->
 # SPDX-License-Identifier: AGPL-3.0-only
 ```
 
@@ -142,6 +143,7 @@ Use `// ` for TypeScript, `<!-- -->` for Markdown. CI will block merge if any fi
 ```bash
 make test      # quick
 make test-v    # verbose
+make test-cov  # with coverage (produces coverage.xml + htmlcov/)
 ```
 
 All tests must pass before submitting. Tests mock all external services so Docker is not required. Include tests for any feature or bug fix.
