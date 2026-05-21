@@ -482,8 +482,6 @@ async def get_platforms(
     if not rows:
         return []
 
-    # Compute normalized scores for composite
-    max_sessions = max(int(r.get("sessions", 1)) for r in rows) or 1
     results = []
     for r in rows:
         sessions = int(r.get("sessions", 0))
@@ -496,20 +494,9 @@ async def get_platforms(
         error_rate = round(errors / total_spans, 4)
         success_rate = round(1 - error_rate, 4)
 
-        # Normalized 0-100 components
-        success_score = success_rate * 100
-        cost_score = max(0, 100 - (avg_cost * 1000)) if avg_cost > 0 else 100
-        speed_score = max(0, 100 - (avg_latency / 50)) if avg_latency > 0 else 100
-        volume_score = (sessions / max_sessions) * 100
-
-        composite = round(
-            success_score * 0.30 + cost_score * 0.25 + speed_score * 0.25 + volume_score * 0.20,
-            1,
-        )
-
         results.append(PlatformScore(
             platform=r["ide"],
-            composite_score=min(composite, 100),
+            composite_score=0,
             sessions=sessions,
             avg_cost=avg_cost,
             avg_latency_ms=avg_latency,
@@ -517,6 +504,12 @@ async def get_platforms(
             error_rate=round(error_rate * 100, 2),
             users=users,
         ))
+
+    # Score = session-based rank (most adopted = highest score, no opaque weighting)
+    if results:
+        max_sessions = results[0].sessions or 1
+        for r in results:
+            r.composite_score = round((r.sessions / max_sessions) * 100, 1)
 
     return results
 
@@ -942,7 +935,18 @@ async def get_cost_summary(
     # Current month stats
     current_month = monthly_trend[-1] if monthly_trend else None
     monthly_savings = current_month.savings if current_month else 0
-    cost_per_task = round(total_spend / total_traces, 4) if total_traces > 0 else 0
+
+    # Cost per session (from session_stats_agg — one row per user-initiated session)
+    cost_per_session_rows = await _ch_json_scoped(
+        "SELECT round(avg(total_credits), 4) AS avg_cost "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' "
+        "AND first_event_time >= now() - INTERVAL {days:UInt32} DAY "
+        "AND total_credits > 0",
+        current_user,
+        {"param_days": str(days)},
+    )
+    cost_per_task = float((cost_per_session_rows[0] if cost_per_session_rows else {}).get("avg_cost", 0))
 
     # Cost reduction %
     baseline_total = avg_baseline * total_traces if avg_baseline > 0 else 0
@@ -1101,6 +1105,16 @@ async def get_roi_projections(
         intercept = monthly_savings_list[-1] if monthly_savings_list else 0
         growth_rate = 0
 
+    # Confidence decay based on actual data variance (coefficient of variation)
+    y_mean = sum(monthly_savings_list) / n if n > 0 else 0
+    if n >= 3 and y_mean > 0:
+        variance = sum((y - y_mean) ** 2 for y in monthly_savings_list) / n
+        std_dev = variance ** 0.5
+        cv = std_dev / y_mean
+        decay_per_quarter = min(0.20, max(0.05, cv))
+    else:
+        decay_per_quarter = 0.15
+
     # Project next 4 quarters
     now = dt.now(UTC)
     projections = []
@@ -1114,7 +1128,7 @@ async def get_roi_projections(
             quarter_savings += projected
 
         cumulative += quarter_savings
-        confidence = max(0.5, 1.0 - (q_offset * 0.12))
+        confidence = max(0.5, 1.0 - (q_offset * decay_per_quarter))
 
         quarter_num = ((now.month - 1) // 3 + q_offset) % 4 + 1
         quarter_year = now.year + ((now.month - 1) // 3 + q_offset) // 4

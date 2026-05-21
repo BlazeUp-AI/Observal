@@ -231,7 +231,7 @@ export function CostTab() {
         <StatCard label="Monthly Savings" value={`$${(cost.monthly_savings / 1000).toFixed(1)}K`} />
         <StatCard label="Cost Reduction" value={`${cost.cost_reduction_pct}%`} />
         <StatCard label="Projected Annual" value={`$${(cost.projected_annual_savings / 1000).toFixed(0)}K`} />
-        <StatCard label="Cost per Task" value={`$${cost.cost_per_task.toFixed(3)}`} />
+        <StatCard label="Avg Cost/Session" value={`$${cost.cost_per_task.toFixed(3)}`} />
       </div>
 
       {/* Savings vs Spend Chart */}

@@ -57,23 +57,23 @@ export function InvestmentsTab() {
 
   const chartData = platforms.map((p, i) => ({
     name: p.platform,
-    score: p.composite_score,
+    sessions: p.sessions,
     color: COLORS[i % COLORS.length],
   }));
 
   return (
     <div className="space-y-6 pt-4">
-      {/* Score Overview Bar Chart */}
+      {/* Sessions Bar Chart — sorted by adoption (most used = most validated) */}
       <div className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium mb-1">Platform Investment Analysis</h3>
-        <p className="text-xs text-muted-foreground mb-4">Click a bar to view platform details</p>
+        <h3 className="text-sm font-medium mb-1">Platform Adoption</h3>
+        <p className="text-xs text-muted-foreground mb-4">Sorted by usage volume — click a bar to view platform details</p>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
             <XAxis dataKey="name" className="text-xs" />
-            <YAxis domain={[0, 100]} className="text-xs" />
-            <Tooltip formatter={(value) => [`${value}/100`, "Score"]} />
-            <Bar dataKey="score" radius={[6, 6, 0, 0]} barSize={48} onClick={(_, index) => setSelected(index)} className="cursor-pointer">
+            <YAxis className="text-xs" tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
+            <Tooltip formatter={(value) => [Number(value).toLocaleString(), "Sessions"]} />
+            <Bar dataKey="sessions" radius={[6, 6, 0, 0]} barSize={48} onClick={(_, index) => setSelected(index)} className="cursor-pointer">
               {chartData.map((entry, i) => (
                 <Cell key={i} fill={i === selected ? entry.color : `${entry.color}66`} />
               ))}
@@ -91,8 +91,9 @@ export function InvestmentsTab() {
               <div className="w-3 h-3 rounded" style={{ background: COLORS[selected % COLORS.length] }} />
               <h3 className="text-lg font-semibold">{platform.platform}</h3>
             </div>
-            <div className="text-2xl font-bold" style={{ color: COLORS[selected % COLORS.length] }}>
-              {platform.composite_score}
+            <div className="text-2xl font-bold tabular-nums" style={{ color: COLORS[selected % COLORS.length] }}>
+              {(platform.sessions / 1000).toFixed(1)}K
+              <span className="text-xs font-normal text-muted-foreground ml-1">sessions</span>
             </div>
           </div>
 
@@ -153,9 +154,9 @@ export function InvestmentsTab() {
           <thead>
             <tr className="border-b border-border bg-muted/30">
               <th className="text-left p-3 font-medium">Platform</th>
-              <th className="text-left p-3 font-medium">Score</th>
               <th className="text-left p-3 font-medium">Sessions</th>
-              <th className="text-left p-3 font-medium">Cost/Task</th>
+              <th className="text-left p-3 font-medium">Users</th>
+              <th className="text-left p-3 font-medium">Avg Cost</th>
               <th className="text-left p-3 font-medium">Success</th>
               <th className="text-left p-3 font-medium">Latency</th>
             </tr>
@@ -173,8 +174,8 @@ export function InvestmentsTab() {
                     {p.platform}
                   </div>
                 </td>
-                <td className="p-3 tabular-nums font-semibold">{p.composite_score}</td>
-                <td className="p-3 tabular-nums">{(p.sessions / 1000).toFixed(1)}K</td>
+                <td className="p-3 tabular-nums font-semibold">{(p.sessions / 1000).toFixed(1)}K</td>
+                <td className="p-3 tabular-nums">{p.users}</td>
                 <td className="p-3 tabular-nums font-mono text-xs">${p.avg_cost.toFixed(3)}</td>
                 <td className="p-3 tabular-nums">{p.success_rate}%</td>
                 <td className="p-3 tabular-nums">{p.avg_latency_ms.toFixed(0)}ms</td>
