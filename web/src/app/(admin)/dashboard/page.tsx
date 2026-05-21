@@ -14,8 +14,8 @@ import { InsightsTab } from "./components/insights-tab";
 import { DepartmentsTab } from "./components/departments-tab";
 import { VelocityTab } from "./components/velocity-tab";
 import { useExecAdoption, useExecAgentCounts, useExecConfig } from "@/hooks/use-api";
-import { RefreshCw, Calendar, Rocket } from "lucide-react";
-import { useState, useCallback, createContext, useContext } from "react";
+import { RefreshCw, Calendar, Rocket, Download } from "lucide-react";
+import { useState, useCallback, useRef, createContext, useContext } from "react";
 
 const TABS = ["adoption", "cost", "investments", "insights", "departments", "velocity"] as const;
 type TabId = typeof TABS[number];
@@ -77,6 +77,76 @@ function OnboardingWizard({ onDismiss }: { onDismiss: () => void }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ExportDropdown({ activeTab }: { activeTab: string }) {
+  const [open, setOpen] = useState(false);
+
+  const handleCSV = useCallback(() => {
+    setOpen(false);
+    // Collect visible table data from the DOM
+    const tables = document.querySelectorAll("table");
+    if (tables.length === 0) {
+      alert("No table data to export on this tab.");
+      return;
+    }
+    const rows: string[] = [];
+    tables.forEach((table) => {
+      const headers = Array.from(table.querySelectorAll("thead th")).map((th) => th.textContent?.trim() ?? "");
+      if (headers.length > 0) rows.push(headers.join(","));
+      table.querySelectorAll("tbody tr").forEach((tr) => {
+        const cells = Array.from(tr.querySelectorAll("td")).map((td) => {
+          const text = td.textContent?.trim()?.replace(/,/g, " ") ?? "";
+          return text;
+        });
+        if (cells.length > 0) rows.push(cells.join(","));
+      });
+      rows.push("");
+    });
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `observal-dashboard-${activeTab}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [activeTab]);
+
+  const handlePrint = useCallback(() => {
+    setOpen(false);
+    window.print();
+  }, []);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted/50 transition-colors"
+      >
+        <Download className="h-3 w-3" />
+        Export
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 rounded-md border border-border bg-background shadow-md py-1 min-w-[120px]">
+            <button
+              onClick={handleCSV}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors"
+            >
+              Export as CSV
+            </button>
+            <button
+              onClick={handlePrint}
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors"
+            >
+              Print / PDF
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -167,15 +237,20 @@ function DashboardContent() {
             </div>
           </div>
 
-          {/* Refresh button */}
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Export */}
+            <ExportDropdown activeTab={activeTab} />
+
+            {/* Refresh button */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">

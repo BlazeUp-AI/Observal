@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line,
 } from "recharts";
@@ -51,31 +52,7 @@ export function VelocityTab() {
       </div>
 
       {/* Velocity Chart */}
-      <div className="rounded-lg border border-border p-4">
-        <h3 className="text-sm font-medium mb-1">Development Velocity</h3>
-        <p className="text-xs text-muted-foreground mb-4">Traces per week over the last 12 weeks</p>
-        {velocity?.weekly && velocity.weekly.length > 0 ? (
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={velocity.weekly} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-              <defs>
-                <linearGradient id="velGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-              <XAxis dataKey="week" className="text-xs" />
-              <YAxis className="text-xs" />
-              <Tooltip formatter={(value) => [Number(value).toLocaleString(), "Traces"]} />
-              <Area type="monotone" dataKey="traces" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#velGrad)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-            Not enough data yet — need at least 4 weeks of traces.
-          </div>
-        )}
-      </div>
+      <VelocityChart weekly={velocity?.weekly ?? []} />
 
       {/* Best Agents Table */}
       <div className="rounded-lg border border-border overflow-hidden">
@@ -127,6 +104,79 @@ export function VelocityTab() {
 
       {/* Time to Value */}
       <TimeToValue />
+    </div>
+  );
+}
+
+function VelocityChart({ weekly }: { weekly: { week: string; traces: number }[] }) {
+  const [showBaseline, setShowBaseline] = useState(false);
+
+  // Baseline: repeat the avg of first 4 weeks as a flat dashed line
+  const baselineAvg = weekly.length >= 4
+    ? Math.round(weekly.slice(0, 4).reduce((s, w) => s + w.traces, 0) / 4)
+    : 0;
+
+  const chartData = weekly.map((point) => ({
+    ...point,
+    baseline: showBaseline ? baselineAvg : undefined,
+  }));
+
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-medium">Development Velocity</h3>
+        {weekly.length >= 4 && (
+          <button
+            onClick={() => setShowBaseline(!showBaseline)}
+            className={`text-[11px] px-2.5 py-1 rounded border transition-colors ${
+              showBaseline
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            vs baseline period
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">Traces per week over the last 12 weeks</p>
+      {weekly.length > 0 ? (
+        <>
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+              <defs>
+                <linearGradient id="velGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis dataKey="week" className="text-xs" />
+              <YAxis className="text-xs" />
+              <Tooltip formatter={(value, name) => [Number(value).toLocaleString(), name === "baseline" ? "Baseline (first 4 weeks)" : "Traces"]} />
+              <Area type="monotone" dataKey="traces" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#velGrad)" />
+              {showBaseline && (
+                <Line type="monotone" dataKey="baseline" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="6 3" dot={false} />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+          {showBaseline && (
+            <div className="flex gap-4 mt-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 bg-primary rounded" />
+                <span>Current</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 bg-muted-foreground rounded" />
+                <span>Baseline avg ({baselineAvg}/week)</span>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+          Not enough data yet — need at least 4 weeks of traces.
+        </div>
+      )}
     </div>
   );
 }

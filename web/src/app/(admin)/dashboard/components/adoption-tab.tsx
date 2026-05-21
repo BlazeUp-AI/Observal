@@ -2,8 +2,8 @@
 
 "use client";
 
-import { useContext } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
+import { useContext, useState } from "react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Line } from "recharts";
 import { useExecAdoption, useExecAgentCounts, useExecUsageByCategory, useExecPlatformCoverage } from "@/hooks/use-api";
 import { StatCard } from "./stat-card";
 import { DashboardRangeContext } from "../page";
@@ -41,30 +41,8 @@ export function AdoptionTab() {
       {/* Adoption curve + Agent counts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Adoption Chart */}
-        <div className="lg:col-span-2 rounded-lg border border-border p-4">
-          <h3 className="text-sm font-medium mb-4">AI Adoption Over Time</h3>
-          {adoption?.monthly && adoption.monthly.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={adoption.monthly} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-                <defs>
-                  <linearGradient id="adoptionGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis dataKey="month" className="text-xs" />
-                <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs" />
-                <Tooltip formatter={(value) => [`${value}%`, "Adoption"]} />
-                <Area type="monotone" dataKey="adoption_pct" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#adoptionGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-              No adoption data yet — traces will populate this chart.
-            </div>
-          )}
-        </div>
+        <AdoptionChart monthly={adoption?.monthly ?? []} />
+
 
         {/* Agent Count Breakdown */}
         <div className="rounded-lg border border-border p-4">
@@ -135,6 +113,77 @@ export function AdoptionTab() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AdoptionChart({ monthly }: { monthly: { month: string; adoption_pct: number }[] }) {
+  const [showPrevious, setShowPrevious] = useState(false);
+
+  // Build comparison data: overlay previous N months as a dashed line
+  const halfLen = Math.ceil(monthly.length / 2);
+  const chartData = monthly.map((point, i) => ({
+    ...point,
+    previous_pct: showPrevious && i >= halfLen && monthly[i - halfLen]
+      ? monthly[i - halfLen].adoption_pct
+      : undefined,
+  }));
+
+  return (
+    <div className="lg:col-span-2 rounded-lg border border-border p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium">AI Adoption Over Time</h3>
+        {monthly.length >= 4 && (
+          <button
+            onClick={() => setShowPrevious(!showPrevious)}
+            className={`text-[11px] px-2.5 py-1 rounded border transition-colors ${
+              showPrevious
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            vs previous period
+          </button>
+        )}
+      </div>
+      {monthly.length > 0 ? (
+        <>
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+              <defs>
+                <linearGradient id="adoptionGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis dataKey="month" className="text-xs" />
+              <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs" />
+              <Tooltip formatter={(value, name) => [`${value}%`, name === "previous_pct" ? "Previous Period" : "Current"]} />
+              <Area type="monotone" dataKey="adoption_pct" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#adoptionGrad)" />
+              {showPrevious && (
+                <Line type="monotone" dataKey="previous_pct" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="4 4" dot={false} connectNulls={false} />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+          {showPrevious && (
+            <div className="flex gap-4 mt-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 bg-primary rounded" />
+                <span>Current</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-0.5 bg-muted-foreground rounded border-dashed" />
+                <span>Previous period</span>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+          No adoption data yet — traces will populate this chart.
+        </div>
+      )}
     </div>
   );
 }
