@@ -2,12 +2,15 @@
 
 "use client";
 
+import { useContext } from "react";
 import { useExecDepartments, useExecDeptTokens } from "@/hooks/use-api";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { DashboardRangeContext } from "../page";
 
 export function DepartmentsTab() {
-  const { data: depts, isLoading: deptsLoading } = useExecDepartments();
-  const { data: tokens, isLoading: tokensLoading } = useExecDeptTokens();
+  const range = useContext(DashboardRangeContext);
+  const { data: depts, isLoading: deptsLoading } = useExecDepartments(range);
+  const { data: tokens, isLoading: tokensLoading } = useExecDeptTokens(range);
 
   if (deptsLoading) {
     return (

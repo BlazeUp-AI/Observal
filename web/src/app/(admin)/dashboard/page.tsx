@@ -2,6 +2,9 @@
 
 "use client";
 
+import { Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layouts/page-header";
 import { AdoptionTab } from "./components/adoption-tab";
@@ -10,16 +13,172 @@ import { InvestmentsTab } from "./components/investments-tab";
 import { InsightsTab } from "./components/insights-tab";
 import { DepartmentsTab } from "./components/departments-tab";
 import { VelocityTab } from "./components/velocity-tab";
+import { useExecAdoption, useExecAgentCounts, useExecConfig } from "@/hooks/use-api";
+import { RefreshCw, Calendar, Rocket } from "lucide-react";
+import { useState, useCallback, createContext, useContext } from "react";
 
-export default function DashboardPage() {
+const TABS = ["adoption", "cost", "investments", "insights", "departments", "velocity"] as const;
+type TabId = typeof TABS[number];
+
+const RANGES = [
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "90d", label: "90 days" },
+] as const;
+
+export const DashboardRangeContext = createContext<string>("30d");
+
+function OnboardingWizard({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <>
+    <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-6">
+      <div className="flex items-start gap-4">
+        <div className="rounded-full bg-primary/10 p-2.5 mt-0.5">
+          <Rocket className="h-5 w-5 text-primary" />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-base font-semibold mb-1">Welcome to the Executive Dashboard</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Set up these three things to unlock the full dashboard experience:
+          </p>
+          <ol className="space-y-3">
+            <li className="flex items-start gap-3">
+              <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">1</span>
+              <div>
+                <p className="text-sm font-medium">Assign departments to users</p>
+                <p className="text-xs text-muted-foreground">
+                  Go to Users &rarr; click a user &rarr; set their department. Or configure SSO groups for automatic mapping.
+                </p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">2</span>
+              <div>
+                <p className="text-sm font-medium">Set cost baselines</p>
+                <p className="text-xs text-muted-foreground">
+                  Open the Cost Intelligence tab and enter what tasks cost before AI. This enables savings calculations and ROI projections.
+                </p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold">3</span>
+              <div>
+                <p className="text-sm font-medium">Categorize your agents</p>
+                <p className="text-xs text-muted-foreground">
+                  In the Agent Builder, assign categories (Code Review, Testing, etc.) so the dashboard can group usage and costs.
+                </p>
+              </div>
+            </li>
+          </ol>
+          <button
+            onClick={onDismiss}
+            className="mt-4 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+          >
+            Dismiss — I&apos;ll set this up later
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const queryClient = useQueryClient();
+
+  const tabParam = searchParams.get("tab") as TabId | null;
+  const activeTab = tabParam && TABS.includes(tabParam) ? tabParam : "adoption";
+
+  const rangeParam = searchParams.get("range");
+  const activeRange = (rangeParam && ["7d", "30d", "90d"].includes(rangeParam)) ? rangeParam : "30d";
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [wizardDismissed, setWizardDismissed] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("observal_dash_onboarding_dismissed") === "1";
+    }
+    return false;
+  });
+
+  const { data: adoption } = useExecAdoption();
+  const { data: agents } = useExecAgentCounts();
+  const { data: config } = useExecConfig();
+
+  const showOnboarding = !wizardDismissed && (
+    (adoption?.departments_covered ?? 0) === 0 &&
+    !config &&
+    (agents?.total ?? 0) === 0
+  );
+
+  const updateParams = useCallback((key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(key, value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, router, pathname]);
+
+  const handleTabChange = useCallback((value: string) => {
+    updateParams("tab", value);
+  }, [updateParams]);
+
+  const handleRangeChange = useCallback((value: string) => {
+    updateParams("range", value);
+  }, [updateParams]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await queryClient.invalidateQueries({ queryKey: ["exec"] });
+    setTimeout(() => setRefreshing(false), 600);
+  }, [queryClient]);
+
+  const handleDismissWizard = useCallback(() => {
+    setWizardDismissed(true);
+    localStorage.setItem("observal_dash_onboarding_dismissed", "1");
+  }, []);
+
+  return (
+    <DashboardRangeContext.Provider value={activeRange}>
       <PageHeader
         title="Executive Dashboard"
         breadcrumbs={[{ label: "Dashboard" }]}
       />
       <div className="p-6 w-full mx-auto space-y-6">
-        <Tabs defaultValue="adoption" className="w-full">
+        {showOnboarding && <OnboardingWizard onDismiss={handleDismissWizard} />}
+
+        {/* Controls row */}
+        <div className="flex items-center justify-between">
+          {/* Range picker */}
+          <div className="flex items-center gap-2">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/40 border border-border">
+              {RANGES.map((r) => (
+                <button
+                  key={r.value}
+                  onClick={() => handleRangeChange(r.value)}
+                  className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                    activeRange === r.value
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Refresh button */}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="adoption">AI Adoption</TabsTrigger>
             <TabsTrigger value="cost">Cost Intelligence</TabsTrigger>
@@ -54,6 +213,14 @@ export default function DashboardPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </>
+    </DashboardRangeContext.Provider>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="p-6 animate-pulse" />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

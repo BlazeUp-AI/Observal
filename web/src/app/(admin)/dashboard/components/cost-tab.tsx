@@ -2,12 +2,13 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, BarChart, Bar } from "recharts";
 import { useExecCostSummary, useExecConfig, useExecROIProjections } from "@/hooks/use-api";
 import { exec } from "@/lib/api";
 import { StatCard } from "./stat-card";
 import { Loader2, TrendingUp } from "lucide-react";
+import { DashboardRangeContext } from "../page";
 
 const DEFAULT_CATEGORIES = [
   "Code Review",
@@ -202,7 +203,8 @@ function ROIProjections() {
 }
 
 export function CostTab() {
-  const { data: cost, isLoading, refetch } = useExecCostSummary();
+  const range = useContext(DashboardRangeContext);
+  const { data: cost, isLoading, refetch } = useExecCostSummary(range);
   const { data: config } = useExecConfig();
 
   if (isLoading) {

@@ -2,14 +2,17 @@
 
 "use client";
 
+import { useContext } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { useExecAdoption, useExecAgentCounts, useExecUsageByCategory, useExecPlatformCoverage } from "@/hooks/use-api";
 import { StatCard } from "./stat-card";
+import { DashboardRangeContext } from "../page";
 
 export function AdoptionTab() {
+  const range = useContext(DashboardRangeContext);
   const { data: adoption, isLoading: adoptionLoading } = useExecAdoption();
   const { data: agents, isLoading: agentsLoading } = useExecAgentCounts();
-  const { data: usage } = useExecUsageByCategory();
+  const { data: usage } = useExecUsageByCategory(range);
   const { data: platforms } = useExecPlatformCoverage();
 
   if (adoptionLoading || agentsLoading) {
