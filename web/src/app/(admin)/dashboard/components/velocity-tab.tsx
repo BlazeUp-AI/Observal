@@ -144,18 +144,18 @@ function VelocityChart({ weekly }: { weekly: { week: string; traces: number }[] 
       {weekly.length > 0 ? (
         <>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 5 }}>
               <defs>
                 <linearGradient id="velGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-              <XAxis dataKey="week" className="text-xs" />
-              <YAxis className="text-xs" />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} vertical={false} />
+              <XAxis dataKey="week" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip formatter={(value, name) => [Number(value).toLocaleString(), name === "baseline" ? "Baseline (first 4 weeks)" : "Traces"]} contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-              <Area type="monotone" dataKey="traces" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#velGrad)" />
+              <Area type="natural" dataKey="traces" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#velGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--background))" }} />
               {showBaseline && (
                 <Line type="monotone" dataKey="baseline" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="6 3" dot={false} />
               )}

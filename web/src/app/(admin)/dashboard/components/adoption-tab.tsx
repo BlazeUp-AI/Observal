@@ -151,20 +151,20 @@ function AdoptionChart({ monthly }: { monthly: { month: string; adoption_pct: nu
       {monthly.length > 0 ? (
         <>
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 5 }}>
               <defs>
                 <linearGradient id="adoptionGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-              <XAxis dataKey="month" className="text-xs" />
-              <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} className="text-xs" />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip formatter={(value, name) => [`${value}%`, name === "previous_pct" ? "Previous Period" : "Current"]} contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} />
-              <Area type="monotone" dataKey="adoption_pct" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#adoptionGrad)" />
+              <Area type="natural" dataKey="adoption_pct" stroke="hsl(var(--primary))" strokeWidth={2.5} fill="url(#adoptionGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--background))" }} />
               {showPrevious && (
-                <Line type="monotone" dataKey="previous_pct" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="4 4" dot={false} connectNulls={false} />
+                <Line type="natural" dataKey="previous_pct" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} strokeDasharray="4 4" dot={false} connectNulls={false} />
               )}
             </AreaChart>
           </ResponsiveContainer>

@@ -164,10 +164,10 @@ function ROIProjections() {
 
       {/* Quarterly Projections Chart */}
       <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={roi.projections} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-          <XAxis dataKey="quarter" className="text-xs" />
-          <YAxis className="text-xs" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
+        <BarChart data={roi.projections} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} vertical={false} />
+          <XAxis dataKey="quarter" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} axisLine={false} tickLine={false} />
           <Tooltip
             formatter={(value, name) => [
               `$${(Number(value) / 1000).toFixed(1)}K`,
@@ -256,19 +256,19 @@ export function CostTab() {
             <AreaChart data={cost.monthly_trend} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <defs>
                 <linearGradient id="savingsGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#16a34a" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#16a34a" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#16a34a" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-              <XAxis dataKey="month" className="text-xs" />
-              <YAxis className="text-xs" tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`} />
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(value, name) => [`$${Number(value).toFixed(2)}`, name === "savings" ? "Savings" : "AI Spend"]}
                 contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
               />
-              <Area type="monotone" dataKey="savings" stroke="#16a34a" strokeWidth={2.5} fill="url(#savingsGrad)" />
-              <Line type="monotone" dataKey="ai_spend" stroke="#e11d48" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+              <Area type="natural" dataKey="savings" stroke="#16a34a" strokeWidth={2.5} fill="url(#savingsGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, fill: "hsl(var(--background))", stroke: "#16a34a" }} />
+              <Line type="natural" dataKey="ai_spend" stroke="#e11d48" strokeWidth={2} strokeDasharray="4 4" dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         ) : (

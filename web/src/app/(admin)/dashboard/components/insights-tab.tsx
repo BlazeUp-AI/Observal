@@ -55,7 +55,7 @@ function DeveloperBreakdown() {
                 <td className="p-2.5 font-medium">{dev.name}</td>
                 <td className="p-2.5 text-muted-foreground">{dev.department}</td>
                 <td className="p-2.5 tabular-nums">{dev.sessions.toLocaleString()}</td>
-                <td className="p-2.5 tabular-nums text-xs">{(dev.tokens_consumed / 1000).toFixed(0)}K</td>
+                <td className="p-2.5 tabular-nums text-xs">{dev.tokens_consumed >= 1000000 ? `${(dev.tokens_consumed / 1000000).toFixed(1)}M` : `${(dev.tokens_consumed / 1000).toFixed(0)}K`}</td>
                 <td className="p-2.5 tabular-nums text-xs font-mono">${dev.cost.toFixed(3)}</td>
                 <td className="p-2.5">
                   <span className={`text-xs px-1.5 py-0.5 rounded ${

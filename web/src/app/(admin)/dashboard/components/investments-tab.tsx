@@ -70,10 +70,10 @@ export function InvestmentsTab() {
         <h3 className="text-sm font-medium mb-1">Platform Adoption</h3>
         <p className="text-xs text-muted-foreground mb-4">Sorted by usage volume — click a bar to view platform details</p>
         <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-            <XAxis dataKey="name" className="text-xs" />
-            <YAxis className="text-xs" tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} />
+          <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.5} vertical={false} />
+            <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v} axisLine={false} tickLine={false} />
             <Tooltip formatter={(value) => [Number(value).toLocaleString(), "Sessions"]} contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }} />
             <Bar dataKey="sessions" radius={[6, 6, 0, 0]} barSize={48} onClick={(_, index) => setSelected(index)} className="cursor-pointer" activeBar={false}>
               {chartData.map((entry, i) => (
@@ -134,16 +134,16 @@ export function InvestmentsTab() {
         <div className="rounded-lg border border-border p-4">
           <h3 className="text-sm font-medium mb-2">Performance Radar</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-              <PolarGrid className="stroke-border" />
-              <PolarAngleAxis dataKey="metric" className="text-xs" />
-              <PolarRadiusAxis domain={[0, 100]} className="text-xs" />
+            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="80%">
+              <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.5} />
+              <PolarAngleAxis dataKey="metric" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+              <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
               <Radar
                 dataKey="value"
                 stroke={COLORS[selected % COLORS.length]}
                 fill={COLORS[selected % COLORS.length]}
-                fillOpacity={0.15}
-                strokeWidth={2}
+                fillOpacity={0.2}
+                strokeWidth={2.5}
               />
             </RadarChart>
           </ResponsiveContainer>
@@ -243,16 +243,16 @@ function ModelComparison() {
           {/* Radar for selected model */}
           <div>
             <ResponsiveContainer width="100%" height={260}>
-              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-                <PolarGrid className="stroke-border" />
-                <PolarAngleAxis dataKey="metric" className="text-xs" />
-                <PolarRadiusAxis domain={[0, 100]} className="text-xs" />
+              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="80%">
+                <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                <PolarAngleAxis dataKey="metric" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
+                <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
                 <Radar
                   dataKey="value"
                   stroke={COLORS[selectedModel % COLORS.length]}
                   fill={COLORS[selectedModel % COLORS.length]}
-                  fillOpacity={0.15}
-                  strokeWidth={2}
+                  fillOpacity={0.2}
+                  strokeWidth={2.5}
                 />
               </RadarChart>
             </ResponsiveContainer>
