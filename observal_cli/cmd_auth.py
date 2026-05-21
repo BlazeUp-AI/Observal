@@ -86,7 +86,7 @@ def login(
     With --sso: authenticates via browser-based SSO using the device flow.
     """
     welcome_banner()
-    server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
+    server_url = server or typer.prompt("Server URL", default="http://localhost:80")
     server_url = server_url.rstrip("/")
 
     # 1. Check connectivity + initialization state
