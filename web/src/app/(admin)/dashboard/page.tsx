@@ -258,7 +258,7 @@ function DashboardContent() {
             <TabsTrigger value="adoption">AI Adoption</TabsTrigger>
             <TabsTrigger value="cost">Cost Intelligence</TabsTrigger>
             <TabsTrigger value="investments">Investments</TabsTrigger>
-            <TabsTrigger value="insights">Agent Insights</TabsTrigger>
+            <TabsTrigger value="insights">AI Insights</TabsTrigger>
             <TabsTrigger value="departments">Departments</TabsTrigger>
             <TabsTrigger value="velocity">Velocity</TabsTrigger>
           </TabsList>

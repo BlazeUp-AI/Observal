@@ -989,3 +989,13 @@ export interface ExecTimeToValueResponse {
 	agents: ExecTimeToValueItem[];
 	avg_days_to_100: number | null;
 }
+
+export interface ExecAIInsightsResponse {
+	quick_wins: { title: string; detail: string; estimated_savings: string; effort: string }[];
+	adoption_gaps: { title: string; detail: string; impact: string }[];
+	platform_insight: { title: string; detail: string };
+	model_insight: { title: string; detail: string };
+	automation_opportunity: { title: string; detail: string };
+	usage_pattern: { title: string; detail: string };
+	generated: boolean;
+}

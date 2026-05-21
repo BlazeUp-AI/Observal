@@ -1126,3 +1126,7 @@ export function useExecInactivityAlerts() {
 export function useExecTimeToValue() {
   return useQuery({ queryKey: ["exec", "time-to-value"], queryFn: exec.timeToValue });
 }
+
+export function useExecAIInsights() {
+  return useQuery({ queryKey: ["exec", "ai-insights"], queryFn: exec.aiInsights, staleTime: 10 * 60 * 1000 });
+}

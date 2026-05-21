@@ -1826,3 +1826,196 @@ async def get_time_to_value(
     avg_days = round(sum(days_list) / len(days_list), 1) if days_list else None
 
     return TimeToValueResponse(agents=items[:20], avg_days_to_100=avg_days)
+# AI Insights (LLM-generated strategic recommendations)
+# ---------------------------------------------------------------------------
+
+
+class AIInsightsResponse(BaseModel):
+    quick_wins: list[dict]
+    adoption_gaps: list[dict]
+    platform_insight: dict
+    model_insight: dict
+    automation_opportunity: dict
+    usage_pattern: dict
+    generated: bool
+
+
+@router.get("/ai-insights", response_model=AIInsightsResponse)
+async def get_ai_insights(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Generate LLM-powered strategic insights from org telemetry.
+
+    Collects metrics from multiple sources, sends to the eval model,
+    and returns business-language recommendations.
+    """
+    from services.strategic_insights import generate_strategic_insights
+
+    org_id = current_user.org_id
+
+    # Collect all metrics needed for the LLM
+    # 1. Adoption
+    user_stmt = select(func.count(User.id))
+    if org_id:
+        user_stmt = user_stmt.where(User.org_id == org_id)
+    total_users = await db.scalar(user_stmt) or 0
+
+    active_rows = await _ch_json_scoped(
+        "SELECT count(DISTINCT user_id) AS active "
+        "FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND start_time >= now() - INTERVAL 30 DAY",
+        current_user,
+    )
+    active_users = int(active_rows[0]["active"]) if active_rows else 0
+    adoption_pct = round((active_users / total_users) * 100, 1) if total_users > 0 else 0
+
+    # 2. Model comparison
+    model_rows = await _ch_json_scoped(
+        "SELECT model, count() AS sessions, "
+        "round(avg(total_credits), 4) AS avg_cost, "
+        "round(avg(input_tokens + output_tokens)) AS avg_tokens "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND model != '' "
+        "GROUP BY model HAVING sessions >= 3 "
+        "ORDER BY sessions DESC LIMIT 10",
+        current_user,
+    )
+
+    # 3. Platform comparison
+    platform_rows = await _ch_json_scoped(
+        "SELECT ide, count() AS sessions, "
+        "count(DISTINCT user_id) AS users, "
+        "round(avg(dateDiff('millisecond', first_event_time, last_event_time)) / 1000) AS avg_task_seconds "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND ide != '' "
+        "AND first_event_time != last_event_time "
+        "GROUP BY ide HAVING sessions >= 3 "
+        "ORDER BY sessions DESC",
+        current_user,
+    )
+
+    # 4. Department gaps
+    dept_map = await resolve_user_departments(db, org_id)
+    user_session_rows = await _ch_json_scoped(
+        "SELECT user_id, count() AS sessions "
+        "FROM session_stats_agg WHERE project_id = 'default' "
+        "AND first_event_time >= now() - INTERVAL 30 DAY "
+        "GROUP BY user_id",
+        current_user,
+    )
+    user_sessions = {r["user_id"]: int(r["sessions"]) for r in user_session_rows}
+
+    dept_data = []
+    for dept_name, user_ids in sorted(dept_map.items()):
+        if dept_name == "Unassigned":
+            continue
+        user_count = len(user_ids)
+        active_count = sum(1 for uid in user_ids if user_sessions.get(uid, 0) > 0)
+        dept_adoption = round((active_count / user_count) * 100, 1) if user_count > 0 else 0
+        total_sessions = sum(user_sessions.get(uid, 0) for uid in user_ids)
+        dept_data.append({
+            "department": dept_name,
+            "users": user_count,
+            "active_users": active_count,
+            "adoption_pct": dept_adoption,
+            "sessions": total_sessions,
+        })
+
+    # 5. Expensive simple tasks (quick win candidates)
+    expensive_rows = await _ch_json_scoped(
+        "SELECT model, count() AS sessions, round(sum(total_credits), 2) AS total_cost, "
+        "round(avg(input_tokens + output_tokens)) AS avg_tokens "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' AND model != '' "
+        "AND (input_tokens + output_tokens) < 2000 "
+        "AND total_credits > 0.05 "
+        "GROUP BY model HAVING sessions >= 5 "
+        "ORDER BY total_cost DESC LIMIT 5",
+        current_user,
+    )
+
+    # 6. Automatable estimate
+    auto_rows = await _ch_json_scoped(
+        "SELECT "
+        "countIf((input_tokens + output_tokens) < 3000 AND event_count <= 5) AS simple, "
+        "count() AS total "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' "
+        "AND first_event_time >= now() - INTERVAL 30 DAY",
+        current_user,
+    )
+    simple_count = int(auto_rows[0]["simple"]) if auto_rows else 0
+    total_count = int(auto_rows[0]["total"]) if auto_rows else 0
+
+    # 7. Developer activity summary
+    dev_rows = await _ch_json_scoped(
+        "SELECT user_id, count() AS sessions, sum(total_credits) AS cost "
+        "FROM session_stats_agg "
+        "WHERE project_id = 'default' "
+        "AND first_event_time >= now() - INTERVAL 30 DAY "
+        "GROUP BY user_id ORDER BY sessions DESC",
+        current_user,
+    )
+
+    # Build metrics dict for LLM
+    metrics_data = {
+        "adoption": {
+            "total_users": total_users,
+            "active_users": active_users,
+            "adoption_pct": adoption_pct,
+        },
+        "model_comparison": [
+            {"model": r["model"], "sessions": int(r["sessions"]),
+             "avg_cost": float(r.get("avg_cost") or 0),
+             "avg_tokens": int(float(r.get("avg_tokens") or 0))}
+            for r in model_rows
+        ],
+        "platform_comparison": [
+            {"platform": r["ide"], "sessions": int(r["sessions"]),
+             "users": int(r["users"]),
+             "avg_task_seconds": float(r.get("avg_task_seconds") or 0)}
+            for r in platform_rows
+        ],
+        "department_gaps": dept_data,
+        "quick_win_candidates": [
+            {"model": r["model"], "sessions": int(r["sessions"]),
+             "total_cost": float(r["total_cost"]),
+             "avg_tokens": int(float(r.get("avg_tokens") or 0))}
+            for r in expensive_rows
+        ],
+        "automatable": {
+            "simple_sessions": simple_count,
+            "total_sessions": total_count,
+            "automatable_pct": round((simple_count / total_count) * 100, 1) if total_count > 0 else 0,
+        },
+        "developer_breakdown": {
+            "total_active": len(dev_rows),
+            "total_sessions": sum(int(r.get("sessions", 0)) for r in dev_rows),
+            "total_cost": round(sum(float(r.get("cost") or 0) for r in dev_rows), 2),
+            "top_20_sessions": sum(int(r.get("sessions", 0)) for r in dev_rows[:max(1, len(dev_rows) // 5)]),
+        },
+    }
+
+    result = await generate_strategic_insights(metrics_data)
+
+    if not result:
+        return AIInsightsResponse(
+            quick_wins=[],
+            adoption_gaps=[],
+            platform_insight={"title": "Insufficient data", "detail": "Configure EVAL_MODEL_NAME to enable AI insights."},
+            model_insight={"title": "Insufficient data", "detail": "Configure EVAL_MODEL_NAME to enable AI insights."},
+            automation_opportunity={"title": "Insufficient data", "detail": "Configure EVAL_MODEL_NAME to enable AI insights."},
+            usage_pattern={"title": "Insufficient data", "detail": "Configure EVAL_MODEL_NAME to enable AI insights."},
+            generated=False,
+        )
+
+    return AIInsightsResponse(
+        quick_wins=result.get("quick_wins", []),
+        adoption_gaps=result.get("adoption_gaps", []),
+        platform_insight=result.get("platform_insight", {}),
+        model_insight=result.get("model_insight", {}),
+        automation_opportunity=result.get("automation_opportunity", {}),
+        usage_pattern=result.get("usage_pattern", {}),
+        generated=True,
+    )
