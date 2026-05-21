@@ -184,10 +184,10 @@ export function useReviewList(typeFilter?: string) {
 export function useReviewAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string; type?: string; action: "approve" | "reject"; reason?: string }) => {
+    mutationFn: (vars: { id: string; type?: string; action: "approve" | "reject"; reason?: string; category?: string }) => {
       if (vars.type === "agent") {
         return vars.action === "approve"
-          ? review.approveAgent(vars.id)
+          ? review.approveAgent(vars.id, vars.category ? { category: vars.category } : undefined)
           : review.rejectAgent(vars.id, { reason: vars.reason ?? "" });
       }
       return vars.action === "approve"

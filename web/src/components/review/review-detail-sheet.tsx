@@ -344,7 +344,7 @@ interface ReviewDetailSheetProps {
 	item: ReviewItem | null;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onApprove: (id: string, type?: string) => void;
+	onApprove: (id: string, type?: string, category?: string) => void;
 	onReject: (id: string, reason: string, type?: string) => void;
 	onDelete: (id: string, type?: string) => void;
 }
@@ -393,7 +393,7 @@ function SheetBody({
 	item: ReviewItem;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onApprove: (id: string, type?: string) => void;
+	onApprove: (id: string, type?: string, category?: string) => void;
 	onReject: (id: string, reason: string, type?: string) => void;
 	onDelete: (id: string, type?: string) => void;
 }) {

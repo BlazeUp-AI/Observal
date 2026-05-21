@@ -17,6 +17,7 @@ import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from redis.exceptions import RedisError
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
@@ -504,6 +505,46 @@ async def update_user_department(
     await db.commit()
     await db.refresh(user)
     return UserAdminResponse.model_validate(user)
+
+
+class BulkDepartmentEntry(BaseModel):
+    email: str
+    department: str
+
+
+class BulkDepartmentRequest(BaseModel):
+    entries: list[BulkDepartmentEntry]
+
+
+class BulkDepartmentResult(BaseModel):
+    updated: int
+    not_found: list[str]
+
+
+@router.post("/users/bulk-department", response_model=BulkDepartmentResult)
+async def bulk_update_departments(
+    req: BulkDepartmentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Bulk-assign departments to users by email."""
+    updated = 0
+    not_found = []
+
+    for entry in req.entries:
+        stmt = select(User).where(User.email == entry.email.strip().lower())
+        if current_user.org_id is not None:
+            stmt = stmt.where(User.org_id == current_user.org_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user:
+            user.department = entry.department.strip()
+            updated += 1
+        else:
+            not_found.append(entry.email)
+
+    await db.commit()
+    return BulkDepartmentResult(updated=updated, not_found=not_found)
 
 
 @router.put("/users/{user_id}/password", dependencies=[Depends(require_password_auth)])

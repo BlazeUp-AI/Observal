@@ -641,9 +641,14 @@ class AgentRejectRequest(BaseModel):
     reason: str
 
 
+class AgentApproveRequest(BaseModel):
+    category: str | None = None
+
+
 @router.post("/agents/{agent_id}/approve")
 async def approve_agent(
     agent_id: uuid.UUID,
+    req: AgentApproveRequest | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
@@ -703,6 +708,9 @@ async def approve_agent(
     current_parsed = parse_semver(current_latest.version) if current_latest else None
     if not current_latest or (new_parsed is not None and current_parsed is not None and new_parsed >= current_parsed):
         agent.latest_version_id = newest_pending.id
+
+    if req and req.category:
+        agent.category = req.category
 
     await db.commit()
     await audit(

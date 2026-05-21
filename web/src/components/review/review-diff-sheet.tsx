@@ -235,7 +235,7 @@ interface ReviewDiffSheetProps {
   item: ReviewItem | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApprove: (id: string, type?: string) => void;
+  onApprove: (id: string, type?: string, category?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
   onOpenComponentReview?: (id: string, type: string) => void;
 }
@@ -280,12 +280,13 @@ function DiffDialogBody({
 }: {
   item: ReviewItem;
   onOpenChange: (open: boolean) => void;
-  onApprove: (id: string, type?: string) => void;
+  onApprove: (id: string, type?: string, category?: string) => void;
   onReject: (id: string, reason: string, type?: string) => void;
   onOpenComponentReview?: (id: string, type: string) => void;
 }) {
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [approveCategory, setApproveCategory] = useState("");
 
   const isAgent = item.type === "agent";
   const registryType = !isAgent && item.type ? pluralizeType(item.type) as RegistryType : undefined;
@@ -378,9 +379,9 @@ function DiffDialogBody({
   }, [isAgent, compDetail, compPrevDetail, previousVersion, item.version]);
 
   const handleApprove = useCallback(() => {
-    onApprove(item.id, item.type);
+    onApprove(item.id, item.type, approveCategory || undefined);
     onOpenChange(false);
-  }, [item, onApprove, onOpenChange]);
+  }, [item, onApprove, onOpenChange, approveCategory]);
 
   const handleRejectConfirm = useCallback(() => {
     if (!rejectReason.trim()) return;
@@ -790,7 +791,29 @@ function DiffDialogBody({
       </div>
 
       {/* Footer actions */}
-      <div className="shrink-0 border-t border-border px-5 py-4">
+      <div className="shrink-0 border-t border-border px-5 py-4 space-y-3">
+        {isAgent && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Category:</span>
+            <select
+              value={approveCategory}
+              onChange={(e) => setApproveCategory(e.target.value)}
+              className="flex h-7 flex-1 rounded-md border border-input bg-transparent px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">None (keep existing)</option>
+              <option value="Code Review">Code Review</option>
+              <option value="Testing">Testing</option>
+              <option value="Documentation">Documentation</option>
+              <option value="DevOps">DevOps</option>
+              <option value="Security">Security</option>
+              <option value="Data">Data</option>
+              <option value="Incident Response">Incident Response</option>
+              <option value="Deployment">Deployment</option>
+              <option value="Cost Optimization">Cost Optimization</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {disableApprove ? (
             <TooltipProvider>

@@ -406,7 +406,7 @@ export const review = {
   approve: (id: string) => post(`/review/${id}/approve`),
   reject: (id: string, body: { reason: string }) =>
     post(`/review/${id}/reject`, body),
-  approveAgent: (id: string) => post(`/review/agents/${id}/approve`),
+  approveAgent: (id: string, body?: { category?: string }) => post(`/review/agents/${id}/approve`, body),
   rejectAgent: (id: string, body: { reason: string }) =>
     post(`/review/agents/${id}/reject`, body),
   approveBundle: (id: string) => post(`/review/bundles/${id}/approve`),
@@ -522,6 +522,8 @@ export const admin = {
     put<AdminUser>(`/admin/users/${id}/role`, body),
   updateDepartment: (id: string, body: { department: string | null }) =>
     put<AdminUser>(`/admin/users/${id}/department`, body),
+  bulkDepartment: (entries: { email: string; department: string }[]) =>
+    post<{ updated: number; not_found: string[] }>("/admin/users/bulk-department", { entries }),
   resetPassword: (id: string, body: { new_password?: string; generate?: boolean }) =>
     put<{ message: string; generated_password?: string; must_change_password?: string }>(`/admin/users/${id}/password`, body),
   deleteUser: (id: string) => del(`/admin/users/${id}`),

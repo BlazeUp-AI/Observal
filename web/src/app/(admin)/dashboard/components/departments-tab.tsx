@@ -35,8 +35,35 @@ export function DepartmentsTab() {
     );
   }
 
+  // Compute per-dept cost KPIs from token data
+  const deptCosts = (tokens ?? []).map((t) => ({
+    name: t.department,
+    totalCost: t.cost_per_task * t.sessions_per_user * (departments.find((d) => d.department === t.department)?.user_count ?? 1),
+    costPerTask: t.cost_per_task,
+  })).sort((a, b) => b.totalCost - a.totalCost);
+
+  const totalOrgCost = deptCosts.reduce((s, d) => s + d.totalCost, 0);
+
   return (
     <div className="space-y-6 pt-4">
+      {/* Cost per Department KPIs */}
+      {deptCosts.length > 0 && (
+        <div className="rounded-lg border border-border p-4">
+          <h3 className="text-sm font-medium mb-3">Monthly AI Spend by Department</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {deptCosts.slice(0, 8).map((d) => (
+              <div key={d.name} className="rounded-md border border-border p-3 text-center">
+                <p className="text-xs text-muted-foreground truncate">{d.name}</p>
+                <p className="text-lg font-bold tabular-nums">${d.totalCost.toFixed(0)}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {totalOrgCost > 0 ? `${((d.totalCost / totalOrgCost) * 100).toFixed(0)}% of total` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Department Breakdown Table */}
       <div className="rounded-lg border border-border overflow-hidden">
         <div className="p-4 border-b border-border">

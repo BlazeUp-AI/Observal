@@ -356,7 +356,7 @@ export default function ReviewPage() {
   const totalPending = agentCount + componentCount;
 
   const handleApprove = useCallback(
-    (id: string, type?: string) => reviewAction.mutate({ id, type, action: "approve" }),
+    (id: string, type?: string, category?: string) => reviewAction.mutate({ id, type, action: "approve", category }),
     [reviewAction],
   );
 

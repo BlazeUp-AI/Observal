@@ -11,6 +11,7 @@ import { useState, useCallback } from "react";
 import { Users, Plus, Copy, Check, Loader2, Key, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminUsers, useCreateUser, useUpdateUserRole, useUpdateUserDepartment, useDeleteUser, useResetPassword } from "@/hooks/use-api";
+import { admin } from "@/lib/api";
 import type { AdminUser } from "@/lib/types";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,9 @@ export default function UsersPage() {
   const assignableRoles = useAssignableRoles();
   const { ssoOnly } = useDeploymentConfig();
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulkDept, setShowBulkDept] = useState(false);
+  const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [resetResult, setResetResult] = useState<string | null>(null);
@@ -184,11 +188,16 @@ export default function UsersPage() {
           { label: "Users" },
         ]}
         actionButtonsRight={
-          !ssoOnly ? (
-            <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add User
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowBulkDept(true)} className="h-8">
+              <Users className="mr-1 h-3.5 w-3.5" /> Bulk Departments
             </Button>
-          ) : undefined
+            {!ssoOnly && (
+              <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add User
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="p-6 w-full mx-auto space-y-4">
@@ -446,6 +455,58 @@ export default function UsersPage() {
                 <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Deleting...</>
               ) : (
                 "Delete User"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Department Import Dialog */}
+      <Dialog open={showBulkDept} onOpenChange={(open) => { if (!open) { setShowBulkDept(false); setBulkCsv(""); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Import Departments</DialogTitle>
+            <DialogDescription>
+              Paste CSV data with one user per line: <code className="text-xs bg-muted px-1 rounded">email,department</code>
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={bulkCsv}
+            onChange={(e) => setBulkCsv(e.target.value)}
+            placeholder={"alice@company.com,Engineering\nbob@company.com,Product\ncharlie@company.com,DevOps"}
+            className="w-full h-40 rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => { setShowBulkDept(false); setBulkCsv(""); }}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={bulkLoading || !bulkCsv.trim()}
+              onClick={async () => {
+                setBulkLoading(true);
+                try {
+                  const entries = bulkCsv.trim().split("\n").map((line) => {
+                    const [email, ...rest] = line.split(",");
+                    return { email: email.trim(), department: rest.join(",").trim() };
+                  }).filter((e) => e.email && e.department);
+                  const result = await admin.bulkDepartment(entries);
+                  toast.success(`Updated ${result.updated} users${result.not_found.length > 0 ? `, ${result.not_found.length} not found` : ""}`);
+                  if (result.not_found.length > 0) {
+                    toast.error(`Not found: ${result.not_found.slice(0, 5).join(", ")}${result.not_found.length > 5 ? "..." : ""}`);
+                  }
+                  setShowBulkDept(false);
+                  setBulkCsv("");
+                  refetch();
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Bulk import failed");
+                } finally {
+                  setBulkLoading(false);
+                }
+              }}
+            >
+              {bulkLoading ? (
+                <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Importing...</>
+              ) : (
+                "Import"
               )}
             </Button>
           </DialogFooter>
