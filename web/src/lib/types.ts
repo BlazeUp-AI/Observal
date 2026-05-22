@@ -366,12 +366,11 @@ export interface ReviewItem {
 	// Sandbox-specific
 	runtime_type?: string;
 	image?: string;
-	dockerfile_url?: string;
 	resource_limits?: Record<string, unknown>;
 	network_policy?: string;
-	allowed_mounts?: string[];
-	env_vars?: Record<string, unknown>;
 	entrypoint?: string;
+	sandbox_path?: string;
+	validated_at?: string;
 
 	// Agent-specific
 	prompt?: string;

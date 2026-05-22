@@ -69,7 +69,8 @@ interface HookFieldState {
 	handler_config: string;
 	scope: string;
 	tool_filter: string;
-	file_pattern: string;
+	source_url: string;
+	source_ref: string;
 }
 
 interface SkillFieldState {
@@ -564,16 +565,16 @@ function HookFields({
 
 				<div className="space-y-2">
 					<Label htmlFor="hook-file-pattern" className="text-sm font-medium">
-						File Pattern
+						Source URL (optional)
 					</Label>
 					<Input
-						id="hook-file-pattern"
-						placeholder="*.ts, *.py (comma-separated)"
-						value={state.file_pattern}
-						onChange={(e) => onChange({ file_pattern: e.target.value })}
+						id="hook-source-url"
+						placeholder="https://github.com/org/hooks"
+						value={state.source_url}
+						onChange={(e) => onChange({ source_url: e.target.value })}
 					/>
 					<p className="text-xs text-muted-foreground">
-						Comma-separated glob patterns.
+						Git repo containing hook script (for auditability).
 					</p>
 				</div>
 			</div>
@@ -831,7 +832,8 @@ function EditFormInner({
 		handler_config: safeJson(item.handler_config),
 		scope: (item.scope as string) ?? "",
 		tool_filter: safeJson(item.tool_filter),
-		file_pattern: commaList(item.file_pattern),
+		source_url: (item.source_url as string) ?? "",
+		source_ref: (item.source_ref as string) ?? "",
 	};
 	const initialSkill: SkillFieldState = {
 		task_type: (item.task_type as string) ?? "",
@@ -912,12 +914,8 @@ function EditFormInner({
 				extra.handler_config = tryParseJson(hookState.handler_config);
 			if (hookState.tool_filter)
 				extra.tool_filter = tryParseJson(hookState.tool_filter);
-			if (hookState.file_pattern) {
-				extra.file_pattern = hookState.file_pattern
-					.split(",")
-					.map((s) => s.trim())
-					.filter(Boolean);
-			}
+			if (hookState.source_url) extra.source_url = hookState.source_url;
+			if (hookState.source_ref) extra.source_ref = hookState.source_ref;
 		} else if (singularType === "skill") {
 			if (skillState.task_type) extra.task_type = skillState.task_type;
 			if (skillState.skill_path) extra.skill_path = skillState.skill_path;
