@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""Claude Code IDE adapter for agent config generation."""
+
+from __future__ import annotations
+
+from schemas.ide_registry import IDE_REGISTRY
+from services.agent_config_generator import (
+    _claude_code_hooks_frontmatter_lines,
+    _collect_hook_script_files,
+    _generate_skill_file,
+    _model_name_to_frontmatter,
+)
+from services.config_generator import _claude_otlp_env
+from services.ide import ConfigContext, register_adapter
+
+
+class ClaudeCodeAdapter:
+    """Claude Code IDE adapter."""
+
+    @property
+    def ide_name(self) -> str:
+        return "claude-code"
+
+    def format_config(self, ctx: ConfigContext) -> dict:
+        safe_name = ctx.safe_name
+        options = ctx.options
+        mcp_configs = ctx.mcp_configs
+        rules_content = ctx.rules_content
+        hook_configs = ctx.hook_configs
+        skill_configs = ctx.skill_configs
+        effective_otlp_http = ctx.effective_otlp_http
+
+        otlp = _claude_otlp_env(effective_otlp_http)
+        setup_commands = []
+        claude_mcps = {}
+        for name, cfg in mcp_configs.items():
+            cmd = cfg.get("command", "observal-shim")
+            args = cfg.get("args", [])
+            setup_commands.append(["claude", "mcp", "add", name, "--", cmd, *args])
+            claude_mcps[name] = {"command": cmd, "args": args, "env": cfg.get("env", {})}
+
+        scope = options.get("scope", IDE_REGISTRY["claude-code"]["default_scope"])
+        tools = options.get("tools", "")
+        color = options.get("color", "")
+
+        # Model resolution
+        if "_resolved_model" in options:
+            model_choice = options.get("_resolved_model") or ""
+        else:
+            model_choice = options.get("model", "")
+            if not model_choice or model_choice == "inherit":
+                model_choice = _model_name_to_frontmatter(getattr(ctx.agent, "model_name", ""))
+
+        # Build YAML frontmatter
+        frontmatter_lines = [
+            "---",
+            f"name: {safe_name}",
+        ]
+        agent_desc = getattr(ctx.agent, "description", "") or ""
+        if agent_desc:
+            frontmatter_lines.append(f'description: "{agent_desc}"')
+        if model_choice:
+            frontmatter_lines.append(f"model: {model_choice}")
+        if tools:
+            frontmatter_lines.append(f"tools: {tools}")
+        if color:
+            frontmatter_lines.append(f"color: {color}")
+        if claude_mcps:
+            frontmatter_lines.append("mcpServers:")
+            for mcp_name in claude_mcps:
+                frontmatter_lines.append(f"  - {mcp_name}")
+        frontmatter_lines.extend(
+            _claude_code_hooks_frontmatter_lines(custom_hooks=hook_configs)
+        )
+        frontmatter_lines.append("---")
+        agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
+
+        agent_path = IDE_REGISTRY["claude-code"]["rules_file"][scope].format(name=safe_name)
+
+        skill_files = [_generate_skill_file(s, "claude-code", scope) for s in skill_configs]
+        skill_files = [f for f in skill_files if f]
+
+        result: dict = {
+            "rules_file": {"path": agent_path, "content": agent_content},
+            "mcp_config": claude_mcps,
+            "mcp_setup_commands": setup_commands,
+            "otlp_env": otlp,
+            "claude_settings_snippet": {"env": otlp},
+            "scope": scope,
+        }
+        if skill_files:
+            result["skill_files"] = skill_files
+            result["skill_components"] = [s for s in skill_configs if s.get("git_url")]
+
+        cc_hook_files = _collect_hook_script_files(hook_configs, ctx.hook_listings, "claude-code")
+        if cc_hook_files:
+            result["hook_files"] = cc_hook_files
+
+        warnings_combined = list(ctx.compatibility_warnings)
+        warnings_combined.extend(options.get("_model_warnings") or [])
+        if warnings_combined:
+            result["_warnings"] = warnings_combined
+
+        return result
+
+
+register_adapter(ClaudeCodeAdapter())

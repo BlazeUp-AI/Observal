@@ -726,6 +726,33 @@ def generate_agent_config(
     options = options or {}
     compatibility_warnings = _check_ide_compatibility(agent, ide)
 
+    # ── Adapter delegation ────────────────────────────────────────────
+    # If an adapter is registered for this IDE, delegate to it.
+    import services.ide.load_all  # noqa: F401 — ensure all adapters are registered
+    from services.ide import ConfigContext, get_adapter
+
+    adapter = get_adapter(ide)
+    if adapter is not None:
+        ctx = ConfigContext(
+            agent=agent,
+            safe_name=safe_name,
+            ide=ide,
+            observal_url=observal_url,
+            effective_otlp_http=effective_otlp_http,
+            mcp_configs=mcp_configs,
+            rules_content=rules_content,
+            skill_configs=skill_configs,
+            hook_configs=hook_configs,
+            options=options,
+            platform=platform,
+            compatibility_warnings=compatibility_warnings,
+            mcp_listings=mcp_listings,
+            hook_listings=hook_listings,
+            skill_listings=skill_listings,
+            sandbox_listings=sandbox_listings,
+        )
+        return adapter.format_config(ctx)
+
     if ide == "kiro":
         # Kiro agent JSON: drop into ~/.kiro/agents/<name>.json
         # Telemetry via JSONL session push — only 2 events needed.

@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""Gemini CLI IDE adapter for agent config generation."""
+
+from __future__ import annotations
+
+from schemas.ide_registry import IDE_REGISTRY
+from services.agent_config_generator import _gemini_hooks_config
+from services.config_generator import _gemini_otlp_env, _gemini_settings
+from services.ide import ConfigContext, register_adapter
+
+
+class GeminiCliAdapter:
+    """Gemini CLI IDE adapter."""
+
+    @property
+    def ide_name(self) -> str:
+        return "gemini-cli"
+
+    def format_config(self, ctx: ConfigContext) -> dict:
+        options = ctx.options
+        mcp_configs = ctx.mcp_configs
+        rules_content = ctx.rules_content
+        effective_otlp_http = ctx.effective_otlp_http
+
+        gemini_spec = IDE_REGISTRY["gemini-cli"]
+        gemini_scope = options.get("scope", gemini_spec["default_scope"])
+        rules_path = gemini_spec["rules_file"][gemini_scope]
+        mcp_path = gemini_spec["mcp_config_path"][gemini_scope]
+        hooks_path = gemini_spec["mcp_config_path"][gemini_scope]
+
+        gemini_settings_content: dict = {"mcpServers": mcp_configs}
+        gemini_model = options.get("_resolved_model")
+        if gemini_model:
+            gemini_settings_content["model"] = gemini_model
+
+        result: dict = {
+            "rules_file": {"path": rules_path, "content": rules_content},
+            "mcp_config": {"path": mcp_path, "content": gemini_settings_content},
+            "hooks_config": {
+                "path": hooks_path,
+                "content": _gemini_hooks_config(),
+            },
+            "otlp_env": _gemini_otlp_env(effective_otlp_http),
+            "gemini_settings_snippet": _gemini_settings(effective_otlp_http),
+            "scope": gemini_scope,
+        }
+
+        warnings_combined = list(ctx.compatibility_warnings)
+        warnings_combined.extend(options.get("_model_warnings") or [])
+        if warnings_combined:
+            result["_warnings"] = warnings_combined
+
+        return result
+
+
+register_adapter(GeminiCliAdapter())
