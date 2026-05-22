@@ -13,11 +13,54 @@ test.describe("Traces - List and detail view (#946)", () => {
   test.beforeAll(async () => {
     token = await getAccessToken();
 
-    // Ingest a session via the session ingest endpoint so it appears in traces
+    // Simulate a real Claude Code session via the hook ingest endpoint.
+    // This is the same path the IDE hooks use: UserPromptSubmit fires,
+    // sends JSONL lines to /api/v1/ingest/session.
     const lines = [
-      JSON.stringify({ type: "user", message: "Hello from e2e test", timestamp: new Date().toISOString() }),
-      JSON.stringify({ type: "assistant", message: "Hi! How can I help?", timestamp: new Date().toISOString(), model: "claude-sonnet-4-20250514", input_tokens: 100, output_tokens: 200 }),
-      JSON.stringify({ type: "tool_use", tool_name: "Read", result: "file contents", timestamp: new Date().toISOString() }),
+      // User prompt
+      JSON.stringify({
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "Write a hello world in Python" }],
+        },
+        timestamp: new Date().toISOString(),
+      }),
+      // Assistant response with token usage
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Here's a hello world:\n```python\nprint('hello')\n```" }],
+          model: "claude-sonnet-4-20250514",
+          usage: {
+            input_tokens: 150,
+            output_tokens: 85,
+            cache_read_input_tokens: 50,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      }),
+      // Tool use
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "tool_1", name: "Write", input: { path: "/tmp/hello.py", content: "print('hello')" } }],
+          model: "claude-sonnet-4-20250514",
+          usage: { input_tokens: 200, output_tokens: 50 },
+        },
+        timestamp: new Date().toISOString(),
+      }),
+      // Tool result
+      JSON.stringify({
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool_1", content: "File written successfully" }],
+        },
+        timestamp: new Date().toISOString(),
+      }),
     ];
 
     const res = await fetch(`${API_BASE}/api/v1/ingest/session`, {
@@ -28,30 +71,40 @@ test.describe("Traces - List and detail view (#946)", () => {
       },
       body: JSON.stringify({
         session_id: sessionId,
-        ide: "kiro",
+        ide: "claude-code",
         lines,
+        hook_event: "UserPromptSubmit",
       }),
     });
-    // If ingest endpoint doesn't exist or fails, tests will gracefully skip
-    if (!res.ok) {
-      console.warn(`Session ingest returned ${res.status}: ${await res.text()}`);
-    }
 
-    // Wait for ClickHouse materialization
-    await new Promise((r) => setTimeout(r, 5000));
+    if (!res.ok) {
+      throw new Error(`Session ingest failed: ${res.status} ${await res.text()}`);
+    }
+    const result = await res.json();
+    expect(result.ingested).toBeGreaterThanOrEqual(3);
+
+    // Poll until session appears in the API (ClickHouse MV needs time)
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const sessRes = await fetch(`${API_BASE}/api/v1/sessions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const sessions = await sessRes.json();
+      if (Array.isArray(sessions) && sessions.some((s: { session_id: string }) => s.session_id === sessionId)) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    throw new Error(`Session ${sessionId} did not appear in /sessions after 20s — pipeline broken`);
   });
 
-  test("traces page loads without error", async ({ page }) => {
+  test("traces page shows the ingested session", async ({ page }) => {
     await loginToWebUI(page);
     await page.goto("/traces");
     await page.waitForLoadState("networkidle");
 
     await expect(page.locator("body")).not.toContainText("Something went wrong");
-
-    // Page should render — either with trace rows or an empty state
-    const hasRows = await page.locator("table tbody tr").first().isVisible({ timeout: 5000 }).catch(() => false);
-    const hasEmptyState = await page.locator("text=/no.*session|no.*trace|empty/i").first().isVisible({ timeout: 2000 }).catch(() => false);
-    expect(hasRows || hasEmptyState).toBe(true);
+    // Table must have rows — if not, the pipeline is broken
+    await expect(page.locator("table tbody tr").first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("click trace navigates to detail page", async ({ page }) => {
@@ -59,33 +112,30 @@ test.describe("Traces - List and detail view (#946)", () => {
     await page.goto("/traces");
     await page.waitForLoadState("networkidle");
 
-    const rows = page.locator("table tbody tr");
-    if (await rows.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-      await rows.first().click();
-      await page.waitForURL(/\/traces\//, { timeout: 10_000 });
-      await page.waitForLoadState("networkidle");
-      await expect(page.locator("body")).not.toContainText("Something went wrong");
-    } else {
-      test.skip();
-    }
+    await page.locator("table tbody tr").first().click();
+    await page.waitForURL(/\/traces\//, { timeout: 10_000 });
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(2000);
+
+    await expect(page.locator("body")).not.toContainText("Something went wrong");
+    // Page should have rendered (heading visible = hydration complete)
+    await expect(page.locator("h1, h2, h3").first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test("trace detail shows session info", async ({ page }) => {
+  test("trace detail shows non-zero token counts", async ({ page }) => {
     await loginToWebUI(page);
     await page.goto("/traces");
     await page.waitForLoadState("networkidle");
 
-    const rows = page.locator("table tbody tr");
-    if (await rows.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-      await rows.first().click();
-      await page.waitForURL(/\/traces\//, { timeout: 10_000 });
-      await page.waitForLoadState("networkidle");
+    await page.locator("table tbody tr").first().click();
+    await page.waitForURL(/\/traces\//, { timeout: 10_000 });
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(3000);
 
-      // Detail page should show token/model/session info
-      const body = await page.locator("body").textContent();
-      expect(body).toMatch(/token|model|session|turn|span/i);
-    } else {
-      test.skip();
-    }
+    // Get the main content area (SidebarInset wraps the content)
+    const content = page.locator('[data-sidebar="inset"], main').last();
+    const pageText = await content.innerText();
+    // Should contain non-zero numbers (token counts, turn counts, etc.)
+    expect(pageText).toMatch(/[1-9]\d*/);
   });
 });
