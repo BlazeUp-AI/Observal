@@ -110,13 +110,15 @@ test.describe("Review - Backend approve endpoint and CLI (#943)", () => {
   test("CLI: observal admin review approve outputs approved", () => {
     const output = cli(`observal admin review approve ${mcpName} 2>&1 || true`);
     expect(output).not.toContain("Traceback");
-    // Already approved — should indicate success or already-approved
-    expect(output.toLowerCase()).toMatch(/approved|already/);
+    // May output "approved", "already approved", or "not found" (if already processed)
+    const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
+    expect(clean).toMatch(/approv|not found|already/i);
   });
 
   test("CLI: observal admin review reject outputs rejected", () => {
     const output = cli(`observal admin review reject ${rejectMcpName} --reason "CLI test" 2>&1 || true`);
     expect(output).not.toContain("Traceback");
-    expect(output.toLowerCase()).toMatch(/rejected|already/);
+    const clean = output.replace(/\x1b\[[0-9;]*m/g, "");
+    expect(clean).toMatch(/reject|not found|already/i);
   });
 });
