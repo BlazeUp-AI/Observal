@@ -222,7 +222,7 @@ async def install_skill(
     from api.routes.config import derive_endpoints
     from services.skill_config_generator import generate_skill_config
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
     config = generate_skill_config(listing, req.ide, server_url=endpoints["api"], scope=req.scope)
     await audit(
         current_user, "skill.install", resource_type="skill", resource_id=str(listing.id), resource_name=listing.name

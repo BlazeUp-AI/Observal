@@ -26,15 +26,21 @@ def _server_version() -> str:
 @router.get("/version")
 async def get_version():
     """Server version and minimum compatible CLI version. No auth required."""
+    import services.dynamic_settings as ds
+
+    min_cli = await ds.get("misc.min_cli_version")
     return {
         "server_version": _server_version(),
-        "min_cli_version": settings.MIN_CLI_VERSION,
+        "min_cli_version": min_cli,
     }
 
 
-def derive_endpoints(request: Request | None = None) -> dict[str, str]:
+async def derive_endpoints(request: Request | None = None) -> dict[str, str]:
     """Derive all endpoint URLs from settings, falling back to request context."""
-    public_url = settings.PUBLIC_URL.rstrip("/") if settings.PUBLIC_URL else ""
+    import services.dynamic_settings as ds
+
+    public_url_setting = await ds.get("deployment.public_url")
+    public_url = public_url_setting.rstrip("/") if public_url_setting else ""
     if not public_url and request:
         public_url = str(request.base_url).rstrip("/")
     if not public_url:
@@ -44,8 +50,10 @@ def derive_endpoints(request: Request | None = None) -> dict[str, str]:
     hostname = parsed.hostname or "localhost"
     scheme = parsed.scheme or ("http" if hostname in ("localhost", "127.0.0.1") else "https")
 
-    otlp_http = settings.OTLP_HTTP_URL.rstrip("/") if settings.OTLP_HTTP_URL else public_url
-    web = settings.FRONTEND_URL.rstrip("/") if settings.FRONTEND_URL else f"{scheme}://{hostname}:3000"
+    otlp_setting = await ds.get("deployment.otlp_http_url")
+    frontend_setting = await ds.get("deployment.frontend_url")
+    otlp_http = otlp_setting.rstrip("/") if otlp_setting else public_url
+    web = frontend_setting.rstrip("/") if frontend_setting else f"{scheme}://{hostname}:3000"
 
     return {
         "api": public_url,
@@ -57,15 +65,23 @@ def derive_endpoints(request: Request | None = None) -> dict[str, str]:
 @router.get("/endpoints")
 async def get_endpoints(request: Request):
     """Endpoint discovery — returns all service URLs. No auth required."""
-    return derive_endpoints(request)
+    return await derive_endpoints(request)
 
 
 @router.get("/public")
 async def get_public_config(db=Depends(get_db)):
     """Public configuration for frontend. No auth required."""
-    saml_enabled = bool(settings.SAML_IDP_ENTITY_ID and settings.SAML_IDP_SSO_URL)
+    import services.dynamic_settings as ds
 
-    if not saml_enabled and settings.DEPLOYMENT_MODE == "enterprise":
+    # Deployment mode is a boot-time env var (controls route registration)
+    deployment_mode = settings.DEPLOYMENT_MODE
+
+    # SAML: check DB-backed dynamic settings, then fall back to SamlConfig model
+    saml_idp_entity = await ds.get("saml.idp_entity_id")
+    saml_idp_sso = await ds.get("saml.idp_sso_url")
+    saml_enabled = bool(saml_idp_entity and saml_idp_sso)
+
+    if not saml_enabled and deployment_mode == "enterprise":
         try:
             from models.saml_config import SamlConfig
 
@@ -93,20 +109,23 @@ async def get_public_config(db=Depends(get_db)):
     except Exception:
         pass
 
+    # Feature availability derived from license — no env var
     from services.insights import INSIGHTS_AVAILABLE
+    from services.insights import licensed_features as _get_licensed
 
-    # Licensed features exposed through the insights gate — no direct ee/ import
-    from services.insights import licensed_features as _lf
-
-    licensed_features: list[str] = _lf()
+    licensed_features: list[str] = _get_licensed()
     exec_dashboard_available = "all" in licensed_features or "exec_dashboard" in licensed_features
 
+    # eval_configured: check dynamic settings
+    eval_model_name = await ds.get("eval.model_name")
+    sso_only = await ds.get_bool("deployment.sso_only")
+
     return {
-        "deployment_mode": settings.DEPLOYMENT_MODE,
+        "deployment_mode": deployment_mode,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
-        "sso_only": settings.SSO_ONLY,
+        "sso_only": sso_only,
         "saml_enabled": saml_enabled,
-        "eval_configured": bool(settings.EVAL_MODEL_NAME),
+        "eval_configured": bool(eval_model_name),
         "insights_available": INSIGHTS_AVAILABLE,
         "exec_dashboard_available": exec_dashboard_available,
         "licensed_features": licensed_features,

@@ -23,6 +23,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import services.dynamic_settings as ds
 from api.deps import ROLE_HIERARCHY, get_db, get_or_create_default_org, require_password_auth, require_role
 from config import settings
 from models.enterprise_config import EnterpriseConfig
@@ -64,9 +65,10 @@ async def diagnostics(
     """Authenticated system health — full status for ops dashboards."""
     from services.crypto import get_key_manager
 
+    deployment_mode = settings.DEPLOYMENT_MODE
     diag: dict[str, object] = {
         "status": "ok",
-        "deployment_mode": settings.DEPLOYMENT_MODE,
+        "deployment_mode": deployment_mode,
         "checks": {},
     }
 
@@ -98,17 +100,19 @@ async def diagnostics(
         }
 
     # Enterprise config
-    if settings.DEPLOYMENT_MODE == "enterprise":
+    if deployment_mode == "enterprise":
         issues: list[str] = []
         if settings.SECRET_KEY == "change-me-to-a-random-string":
             issues.append("SECRET_KEY is using default value")
-        if settings.SSO_ONLY and not settings.OAUTH_CLIENT_ID:
+        sso_only = await ds.get_bool("deployment.sso_only")
+        frontend_url = await ds.get("deployment.frontend_url")
+        if sso_only and not settings.OAUTH_CLIENT_ID:
             issues.append("OAUTH_CLIENT_ID is not set (required for SSO-only mode)")
-        if settings.FRONTEND_URL in ("http://localhost:3000", ""):
-            issues.append("FRONTEND_URL is localhost")
+        if frontend_url in ("http://localhost:3000", ""):
+            issues.append("deployment.frontend_url is localhost")
         diag["checks"]["enterprise"] = {
             "status": "ok" if not issues else "misconfigured",
-            "sso_only": settings.SSO_ONLY,
+            "sso_only": sso_only,
             "sso_configured": bool(settings.OAUTH_CLIENT_ID),
             "issues": issues,
         }
@@ -274,10 +278,37 @@ async def list_settings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
+    from services.dynamic_settings import SENSITIVE_KEYS, decrypt_value, mask_value
+
     result = await db.execute(select(EnterpriseConfig).order_by(EnterpriseConfig.key))
-    configs = [EnterpriseConfigResponse.model_validate(c) for c in result.scalars().all()]
+    configs = []
+    for c in result.scalars().all():
+        resp = EnterpriseConfigResponse.model_validate(c)
+        # Decrypt then mask sensitive values for display
+        if resp.key in SENSITIVE_KEYS:
+            decrypted = decrypt_value(resp.value)
+            resp.value = mask_value(resp.key, decrypted)
+        configs.append(resp)
     await audit(current_user, "admin.settings.list", "settings")
     return configs
+
+
+@router.get("/settings/schema")
+async def get_settings_schema(
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Return the settings schema — section definitions, keys, descriptions, and metadata.
+
+    Used by the frontend to render the settings page with proper grouping,
+    danger-zone styling, and sensitive field masking.
+    """
+    from services.dynamic_settings import DEFAULTS, SECTIONS, SENSITIVE_KEYS
+
+    return {
+        "sections": SECTIONS,
+        "sensitive_keys": list(SENSITIVE_KEYS),
+        "defaults": DEFAULTS,
+    }
 
 
 @router.get("/settings/{key}", response_model=EnterpriseConfigResponse)
@@ -299,22 +330,33 @@ async def upsert_setting(
     key: str,
     req: EnterpriseConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.super_admin)),
 ):
     if key in ("branding.logo", "branding.wordmark"):
         _validate_branding_logo(req.value)
     elif key == "branding.app_name":
         _validate_branding_app_name(req.value)
 
+    # Encrypt sensitive values before storing
+    from services.dynamic_settings import SENSITIVE_KEYS, encrypt_value
+
+    store_value = encrypt_value(req.value) if key in SENSITIVE_KEYS and req.value else req.value
+
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
     if cfg:
-        cfg.value = req.value
+        cfg.value = store_value
     else:
-        cfg = EnterpriseConfig(key=key, value=req.value)
+        cfg = EnterpriseConfig(key=key, value=store_value)
         db.add(cfg)
     await db.commit()
     await db.refresh(cfg)
+
+    # Invalidate settings cache
+
+    await ds.invalidate(key)
+    await ds.refresh_sync_cache()
+
     await emit_security_event(
         SecurityEvent(
             event_type=EventType.SETTING_CHANGED,
@@ -335,7 +377,7 @@ async def upsert_setting(
 async def delete_setting(
     key: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.super_admin)),
 ):
     result = await db.execute(select(EnterpriseConfig).where(EnterpriseConfig.key == key))
     cfg = result.scalar_one_or_none()
@@ -343,6 +385,12 @@ async def delete_setting(
         raise HTTPException(status_code=404, detail="Setting not found")
     await db.delete(cfg)
     await db.commit()
+
+    # Invalidate settings cache
+
+    await ds.invalidate(key)
+    await ds.refresh_sync_cache()
+
     await audit(current_user, "admin.settings.delete", "settings", resource_name=key)
     return {"deleted": key}
 
@@ -1247,13 +1295,15 @@ async def get_retention_config(
     current_user: User = Depends(require_role(UserRole.admin)),
 ) -> RetentionConfigResponse:
     """Get the organization's data retention configuration."""
+
     org = await _get_user_org(db, current_user)
+    global_retention = await ds.get_int("data.retention_days")
     return RetentionConfigResponse(
         retention_enabled=org.retention_enabled,
         data_retention_days=org.data_retention_days,
         score_retention_days=org.score_retention_days,
         max_trace_count=org.max_trace_count,
-        global_retention_days=settings.DATA_RETENTION_DAYS,
+        global_retention_days=global_retention,
     )
 
 
@@ -1264,14 +1314,12 @@ async def update_retention_config(
     current_user: User = Depends(require_role(UserRole.super_admin)),
 ) -> RetentionConfigResponse:
     """Update the organization's data retention configuration. Super admin only."""
-    if (
-        body.data_retention_days is not None
-        and settings.DATA_RETENTION_DAYS > 0
-        and body.data_retention_days > settings.DATA_RETENTION_DAYS
-    ):
+
+    global_retention = await ds.get_int("data.retention_days")
+    if body.data_retention_days is not None and global_retention > 0 and body.data_retention_days > global_retention:
         raise HTTPException(
             status_code=422,
-            detail=f"data_retention_days cannot exceed global ceiling of {settings.DATA_RETENTION_DAYS} days",
+            detail=f"data_retention_days cannot exceed global ceiling of {global_retention} days",
         )
 
     org = await _get_user_org(db, current_user)
@@ -1316,7 +1364,7 @@ async def update_retention_config(
         data_retention_days=org.data_retention_days,
         score_retention_days=org.score_retention_days,
         max_trace_count=org.max_trace_count,
-        global_retention_days=settings.DATA_RETENTION_DAYS,
+        global_retention_days=global_retention,
     )
 
 

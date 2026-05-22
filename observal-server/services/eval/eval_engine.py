@@ -17,7 +17,6 @@ from datetime import UTC, datetime
 import httpx
 import structlog
 
-from config import settings
 from services.clickhouse import insert_scores, query_spans, query_trace_by_id
 
 logger = structlog.get_logger(__name__)
@@ -117,8 +116,20 @@ class FallbackBackend(EvalBackend):
 
 
 def get_backend() -> EvalBackend:
-    """Get the configured eval backend."""
-    if getattr(settings, "EVAL_MODEL_NAME", ""):
+    """Get the configured eval backend (sync — reads from sync cache)."""
+    import services.dynamic_settings as ds
+
+    if ds.get_sync("eval.model_name"):
+        return LLMJudgeBackend()
+    return FallbackBackend()
+
+
+async def get_backend_async() -> EvalBackend:
+    """Get the configured eval backend (async — reads from dynamic settings)."""
+    import services.dynamic_settings as ds
+
+    model_name = await ds.get("eval.model_name")
+    if model_name:
         return LLMJudgeBackend()
     return FallbackBackend()
 
@@ -127,8 +138,10 @@ def get_backend() -> EvalBackend:
 
 
 async def _call_model(prompt: str) -> dict:
-    provider = getattr(settings, "EVAL_MODEL_PROVIDER", "") or ""
-    model = getattr(settings, "EVAL_MODEL_NAME", "") or ""
+    import services.dynamic_settings as ds
+
+    provider = await ds.get("eval.model_provider")
+    model = await ds.get("eval.model_name")
     if not model:
         return {}
     if provider == "bedrock" or (not provider and "anthropic" in model):
@@ -141,10 +154,14 @@ async def _call_model(prompt: str) -> dict:
 async def _call_bedrock(prompt: str, model_id: str) -> dict:
     import asyncio
 
+    import services.dynamic_settings as ds
+
+    aws_region = await ds.get("eval.aws_region")
+
     def _sync():
         import boto3
 
-        client = boto3.client("bedrock-runtime", region_name=getattr(settings, "AWS_REGION", "us-east-1"))
+        client = boto3.client("bedrock-runtime", region_name=aws_region or "us-east-1")
         r = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
@@ -170,10 +187,10 @@ def _build_openai_body(model: str, prompt: str, provider: str = "", extra: dict 
     return body
 
 
-def _openai_url_and_headers(provider: str = "") -> tuple[str, dict]:
+def _openai_url_and_headers(provider: str = "", url_override: str = "", key_override: str = "") -> tuple[str, dict]:
     default_url = "https://api.moonshot.ai/v1" if provider == "moonshot" else "http://localhost:11434/v1"
-    url = getattr(settings, "EVAL_MODEL_URL", "") or default_url
-    key = getattr(settings, "EVAL_MODEL_API_KEY", "") or ""
+    url = url_override or default_url
+    key = key_override or ""
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = f"Bearer {key}"
@@ -181,7 +198,11 @@ def _openai_url_and_headers(provider: str = "") -> tuple[str, dict]:
 
 
 async def _call_openai(prompt: str, model: str, provider: str = "") -> dict:
-    url, headers = _openai_url_and_headers(provider)
+    import services.dynamic_settings as ds
+
+    model_url = await ds.get("eval.model_url")
+    model_key = await ds.get("eval.model_api_key")
+    url, headers = _openai_url_and_headers(provider, url_override=model_url, key_override=model_key)
     body = _build_openai_body(model, prompt, provider)
     try:
         async with httpx.AsyncClient(timeout=60) as client:

@@ -23,6 +23,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import services.dynamic_settings as ds
 from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode, require_password_auth
 from api.ratelimit import limiter
 from config import settings
@@ -121,7 +122,7 @@ async def _issue_tokens(user: User, groups: list[str] | None = None) -> tuple[st
 
     try:
         redis = get_redis()
-        refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        refresh_ttl = ds.get_sync_int("jwt.refresh_token_expire_days", 7) * 86400
         await redis.setex(f"refresh_jti:{jti}", refresh_ttl, str(user.id))
         # Clear any logout revocation so hooks resume after re-login
         await redis.delete(f"revoked_user:{user.id}")
@@ -280,7 +281,9 @@ async def oauth_login(request: Request):
     # Use FRONTEND_URL as the base so the redirect works through the Next.js proxy.
     # This avoids Docker-internal hostnames (e.g. observal-api:8000) leaking into
     # the redirect URI, which would fail Azure AD's redirect URI validation.
-    redirect_uri = settings.FRONTEND_URL.rstrip("/") + "/api/v1/auth/oauth/callback"
+    redirect_uri = (
+        ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + "/api/v1/auth/oauth/callback"
+    )
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
@@ -398,7 +401,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     await audit(
         user, "auth.oauth_callback", resource_type="session", resource_id=str(user.id), detail="OAuth SSO login"
     )
-    frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}"
+    frontend_redirect = f"{ds.get_sync('deployment.frontend_url', 'http://localhost:3000')}/login?code={code}"
     return RedirectResponse(url=frontend_redirect)
 
 
@@ -531,7 +534,7 @@ async def logout(
 
 
 @router.post("/token", response_model=TokenResponse, dependencies=[Depends(require_password_auth)])
-@limiter.limit(settings.RATE_LIMIT_AUTH)
+@limiter.limit(ds.get_sync("security.rate_limit_auth", "10/minute"))
 async def issue_token(request: Request, req: TokenRequest, db: AsyncSession = Depends(get_db)):
     """Exchange email/username + password for JWT access + refresh tokens."""
     source_ip, user_agent = _extract_request_info(request)
@@ -578,7 +581,7 @@ async def issue_token(request: Request, req: TokenRequest, db: AsyncSession = De
 
 
 @router.post("/token/refresh", response_model=TokenResponse)
-@limiter.limit(settings.RATE_LIMIT_AUTH)
+@limiter.limit(ds.get_sync("security.rate_limit_auth", "10/minute"))
 async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession = Depends(get_db)):
     """Exchange a valid refresh token for a new access token (and rotated refresh token)."""
     try:
@@ -620,7 +623,7 @@ async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession 
     new_refresh_token, new_jti = create_refresh_token(user.id, user.role, groups=groups)
 
     try:
-        refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        refresh_ttl = ds.get_sync_int("jwt.refresh_token_expire_days", 7) * 86400
         await redis.setex(f"refresh_jti:{new_jti}", refresh_ttl, str(user.id))
     except RedisError as e:
         logger.warning("Redis unavailable when storing new refresh JTI: %s", e)
@@ -635,7 +638,7 @@ async def refresh_token(request: Request, req: RefreshRequest, db: AsyncSession 
 
 
 @router.post("/token/revoke")
-@limiter.limit(settings.RATE_LIMIT_AUTH)
+@limiter.limit(ds.get_sync("security.rate_limit_auth", "10/minute"))
 async def revoke_token(request: Request, req: RevokeRequest):
     """Revoke a refresh token so it can no longer be used."""
     try:
@@ -726,7 +729,7 @@ async def create_hooks_token(current_user: User = Depends(get_current_user)):
     token, expires_in = create_access_token(
         current_user.id,
         current_user.role,
-        expires_in_minutes=settings.JWT_HOOKS_TOKEN_EXPIRE_MINUTES,
+        expires_in_minutes=ds.get_sync_int("jwt.hooks_token_expire_minutes", 43200),
         groups=getattr(current_user, "_groups", []),
     )
     await emit_security_event(

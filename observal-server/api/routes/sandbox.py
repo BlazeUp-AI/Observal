@@ -183,7 +183,7 @@ async def install_sandbox(
     from api.routes.config import derive_endpoints
     from services.sandbox_config_generator import generate_sandbox_config
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
     config = generate_sandbox_config(listing, req.ide, server_url=endpoints["api"])
     await audit(
         current_user,

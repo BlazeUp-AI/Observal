@@ -179,7 +179,7 @@ async def install_hook(
     from api.routes.config import derive_endpoints
     from services.hook_config_generator import generate_hook_telemetry_config
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
     config = generate_hook_telemetry_config(listing, req.ide, server_url=endpoints["api"], platform=req.platform)
     await audit(
         current_user, "hook.install", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name

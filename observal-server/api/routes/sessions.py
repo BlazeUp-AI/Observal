@@ -24,8 +24,8 @@ from fastapi import APIRouter, Depends, Query
 from fastapi_cache.decorator import cache
 from sqlalchemy import select
 
+import services.dynamic_settings as ds
 from api.deps import require_role
-from config import settings
 from database import async_session
 from models.user import User, UserRole
 from services.audit_helpers import audit
@@ -250,7 +250,7 @@ async def sessions_summary(
 
 
 @router.get("/stats")
-@cache(expire=settings.CACHE_TTL_DEFAULT, namespace="otel")
+@cache(expire=ds.get_sync_int("data.cache_ttl_default", 30), namespace="otel")
 async def sessions_stats(current_user: User = Depends(require_role(UserRole.admin))):
     # Use pre-aggregated session_stats_agg — avoids a full session_events FINAL scan.
     # prompt_count / tool_call_count in the MV correspond to 'user_prompt' / 'tool_call'

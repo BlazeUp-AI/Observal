@@ -15,7 +15,6 @@ import json
 
 import structlog
 
-from config import settings
 from services.eval.eval_service import call_eval_model
 
 logger = structlog.get_logger(__name__)
@@ -97,14 +96,18 @@ async def generate_strategic_insights(metrics_data: dict) -> dict:
     Returns:
         Dict with structured strategic recommendations.
     """
-    if not settings.EVAL_MODEL_NAME:
-        logger.warning("strategic_insights_no_model", reason="EVAL_MODEL_NAME not configured")
+    import services.dynamic_settings as ds
+
+    eval_model = await ds.get("eval.model_name")
+    if not eval_model:
+        logger.warning("strategic_insights_no_model", reason="eval.model_name not configured")
         return {}
 
     data_block = _build_data_block(metrics_data)
     prompt = SYSTEM_PREAMBLE + "\n\n" + STRATEGIC_PROMPT.format(data_block=data_block)
 
-    model = settings.INSIGHT_MODEL_SYNTHESIS or settings.EVAL_MODEL_NAME
+    synthesis_model = await ds.get("insights.model_synthesis")
+    model = synthesis_model or eval_model
     try:
         result = await call_eval_model(prompt, model_override=model, max_tokens=4096)
         if result and isinstance(result, dict):

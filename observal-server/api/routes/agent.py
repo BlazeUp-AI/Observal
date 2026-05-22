@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+import services.dynamic_settings as _ds
 from api.deps import (
     ROLE_HIERARCHY,
     get_db,
@@ -897,7 +898,7 @@ async def install_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     if agent.status != AgentStatus.approved and not (
-        settings.ALLOW_DRAFT_INSTALL and agent.created_by == current_user.id
+        _ds.get_sync_bool("security.allow_draft_install") and agent.created_by == current_user.id
     ):
         raise HTTPException(status_code=404, detail="Agent not found or not approved for installation")
     if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
@@ -967,7 +968,7 @@ async def install_agent(
     from api.routes.config import derive_endpoints
     from services.model_resolver import resolve_model_for_ide
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
 
     install_options: dict = dict(req.options or {})
     raw_override = install_options.get("model") or None

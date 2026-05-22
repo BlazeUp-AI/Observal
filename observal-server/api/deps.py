@@ -279,7 +279,10 @@ async def require_local_mode() -> None:
 
 async def require_password_auth() -> None:
     """FastAPI dependency that blocks the endpoint when SSO_ONLY is enabled."""
-    if settings.SSO_ONLY:
+    import services.dynamic_settings as ds
+
+    sso_only = await ds.get_bool("deployment.sso_only")
+    if sso_only:
         raise HTTPException(status_code=403, detail="Password authentication is disabled (SSO-only mode)")
 
 

@@ -30,6 +30,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
 
+import services.dynamic_settings as ds
 from api.deps import get_db, get_or_create_default_org
 from api.graphql import get_context_dep, schema
 from api.middleware.content_type import ContentTypeMiddleware
@@ -61,7 +62,7 @@ from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.support import router as support_router
 from api.routes.telemetry import router as telemetry_router
-from config import settings
+from config import check_legacy_env_vars, settings
 from database import engine
 from logging_config import setup_logging
 from models import Base
@@ -98,8 +99,18 @@ async def _ensure_columns(conn):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Refuse to start if legacy env vars are set
+    check_legacy_env_vars()
+    # Load dynamic settings cache before anything else
+
+    await ds.load_sync_cache()
+
+    # Re-encrypt sensitive values if SECRET_KEY was rotated
+    await ds.reencrypt_on_key_rotation()
+
     # ── Unsafe-default guards (non-local deployments only) ─────────────────
-    if settings.DEPLOYMENT_MODE != "local":
+    deployment_mode = settings.DEPLOYMENT_MODE
+    if deployment_mode != "local":
         weak_secrets = {"change-me-to-a-random-string", "changeme", "secret", "dev", ""}
         if settings.SECRET_KEY in weak_secrets or len(settings.SECRET_KEY) < 32:
             raise RuntimeError(
@@ -107,7 +118,8 @@ async def lifespan(app: FastAPI):
                 "before running in non-local mode."
             )
 
-    if not settings.SKIP_DDL_ON_STARTUP:
+    skip_ddl = settings.SKIP_DDL_ON_STARTUP
+    if not skip_ddl:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await _ensure_columns(conn)
@@ -134,7 +146,7 @@ async def lifespan(app: FastAPI):
         await seed_demo_accounts(db)
 
     # Register audit event bus handlers during startup
-    if settings.DEPLOYMENT_MODE == "enterprise":
+    if deployment_mode == "enterprise":
         try:
             from ee.observal_server.services.audit import register_audit_handlers
 
@@ -154,7 +166,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if settings.DEPLOYMENT_MODE == "enterprise":
+    if deployment_mode == "enterprise":
         try:
             from ee.observal_server.services.audit import shutdown_audit
 
@@ -170,7 +182,7 @@ async def lifespan(app: FastAPI):
 
 
 # Create the FastAPI app
-_expose_openapi = settings.ENABLE_OPENAPI or settings.DEPLOYMENT_MODE == "local"
+_expose_openapi = ds.get_sync_bool("observability.enable_openapi") or settings.DEPLOYMENT_MODE == "local"
 app = FastAPI(
     title="Observal API",
     description="API for Observal Agents & Capabilities Hub",
@@ -294,7 +306,7 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         cache_header = response.headers.get("X-FastAPI-Cache")
         if cache_header == "HIT" or (request.method == "GET" and cache_header == "MISS"):
-            response.headers["Cache-Control"] = f"public, max-age={settings.CACHE_TTL_DEFAULT}"
+            response.headers["Cache-Control"] = f"public, max-age={ds.get_sync_int('data.cache_ttl_default', 30)}"
         return response
 
 
@@ -349,7 +361,7 @@ app.include_router(support_router)
 _instrumentator = Instrumentator(
     excluded_handlers=["/livez", "/healthz", "/readyz", "/metrics"],
 ).instrument(app)
-if settings.ENABLE_METRICS or settings.DEPLOYMENT_MODE == "local":
+if ds.get_sync_bool("observability.enable_metrics") or settings.DEPLOYMENT_MODE == "local":
     _instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
 
 

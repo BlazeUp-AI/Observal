@@ -14,16 +14,13 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import settings
+import services.dynamic_settings as ds
 from services.ssrf_guard import is_private_url as _ssrf_is_private
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MIRROR_BASE = (
-    Path(settings.GIT_MIRROR_BASE_PATH)
-    if settings.GIT_MIRROR_BASE_PATH
-    else Path(tempfile.gettempdir()) / "observal_mirrors"
-)
+_git_mirror_path = ds.get_sync("misc.git_mirror_base_path")
+DEFAULT_MIRROR_BASE = Path(_git_mirror_path) if _git_mirror_path else Path(tempfile.gettempdir()) / "observal_mirrors"
 
 
 @dataclass
@@ -65,7 +62,7 @@ def clone_or_update(git_url: str, branch: str = "main", base: Path = DEFAULT_MIR
     # Set ALLOW_INTERNAL_GIT_URLS=true for self-hosted GitLab / GitHub Enterprise.
     if (
         git_url.startswith(("http://", "https://"))
-        and not settings.ALLOW_INTERNAL_GIT_URLS
+        and not ds.get_sync_bool("security.allow_internal_git_urls")
         and _ssrf_is_private(git_url)
     ):
         raise ValueError(f"Repository URL resolves to a private/internal address: {git_url}")

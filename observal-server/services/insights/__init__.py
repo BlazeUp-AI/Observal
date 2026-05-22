@@ -5,29 +5,26 @@
 
 """Insights plugin loader.
 
-Delegates to the enterprise insights engine (ee/observal_insights/) when:
-1. INSIGHTS_AVAILABLE=true in config
-2. A valid OBSERVAL_LICENSE_KEY is present
+Delegates to the enterprise insights engine (ee/observal_insights/) when
+a valid OBSERVAL_LICENSE_KEY with the "insights" feature is present.
 
-If either condition is unmet, all insight operations raise RuntimeError
-or return 403 via the API layer.
+Feature availability is derived entirely from the license — no env var needed.
 """
 
 from config import settings
 
-INSIGHTS_AVAILABLE: bool = settings.INSIGHTS_AVAILABLE
-
 _generate = None
 _render = None
-
 _run_single_report = None
 _discover_and_queue = None
 
-if INSIGHTS_AVAILABLE:
-    try:
-        from ee.license import require_license
+# Derive INSIGHTS_AVAILABLE purely from license
+INSIGHTS_AVAILABLE: bool = False
 
-        require_license("insights")
+try:
+    from ee.license import is_feature_licensed
+
+    if is_feature_licensed("insights"):
         from ee.observal_insights import generate_report_content as _generate  # type: ignore[assignment]
         from ee.observal_insights import render_report_html as _render  # type: ignore[assignment]
         from ee.observal_insights.batch import (
@@ -36,9 +33,11 @@ if INSIGHTS_AVAILABLE:
         from ee.observal_insights.batch import (
             run_single_report as _run_single_report,  # type: ignore[assignment]  # noqa: F401
         )
-    except (ImportError, RuntimeError):
-        # ee/ not present or license invalid — degrade gracefully
-        INSIGHTS_AVAILABLE = False
+
+        INSIGHTS_AVAILABLE = True
+except (ImportError, RuntimeError):
+    # ee/ not present or license invalid — degrade gracefully
+    pass
 
 
 def _not_available():

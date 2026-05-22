@@ -12,7 +12,6 @@ import uuid
 import httpx
 import structlog
 
-from config import settings
 from models.agent import Agent
 from models.eval import Scorecard, ScorecardDimension
 from models.scoring import DEFAULT_PENALTIES
@@ -104,11 +103,13 @@ async def call_eval_model(prompt: str, model_override: str | None = None, max_to
 
     Args:
         prompt: The prompt to send to the model.
-        model_override: Optional model ID to use instead of EVAL_MODEL_NAME.
+        model_override: Optional model ID to use instead of eval.model_name setting.
         max_tokens: Maximum output tokens (default 4096, use 8192 for detailed sections).
     """
-    provider = getattr(settings, "EVAL_MODEL_PROVIDER", "") or ""
-    eval_model = model_override or getattr(settings, "EVAL_MODEL_NAME", "") or ""
+    import services.dynamic_settings as ds
+
+    provider = await ds.get("eval.model_provider")
+    eval_model = model_override or await ds.get("eval.model_name")
 
     if not eval_model:
         return {}
@@ -124,11 +125,14 @@ async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 4096) -> d
     """Call AWS Bedrock Converse API."""
     import asyncio
 
+    import services.dynamic_settings as ds
+
+    aws_region = await ds.get("eval.aws_region")
+
     def _sync_call():
         import boto3
 
-        region = getattr(settings, "AWS_REGION", "us-east-1")
-        client = boto3.client("bedrock-runtime", region_name=region)
+        client = boto3.client("bedrock-runtime", region_name=aws_region or "us-east-1")
         response = client.converse(
             modelId=model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
@@ -150,7 +154,11 @@ async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 4096) -> d
 
 async def _call_openai_compatible(prompt: str, model: str, provider: str = "") -> dict:
     """Call an OpenAI-compatible API."""
-    eval_url, headers = _openai_url_and_headers(provider)
+    import services.dynamic_settings as ds
+
+    model_url = await ds.get("eval.model_url")
+    model_key = await ds.get("eval.model_api_key")
+    eval_url, headers = _openai_url_and_headers(provider, url_override=model_url, key_override=model_key)
     body = _build_openai_body(model, prompt, provider, extra={"response_format": {"type": "json_object"}})
 
     async with httpx.AsyncClient(timeout=120) as client:

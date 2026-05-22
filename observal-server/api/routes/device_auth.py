@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_current_user, get_db
 from api.ratelimit import limiter
 from api.routes.auth import _issue_tokens
-from config import settings
 from models.user import User
 from schemas.auth import (
     DeviceAuthRequest,
@@ -59,8 +58,10 @@ def _normalize_user_code(code: str) -> str:
 
 
 def _resolve_frontend_url(request: Request) -> str:
-    """Derive the frontend base URL from the request when FRONTEND_URL is not configured."""
-    configured = settings.FRONTEND_URL
+    """Derive the frontend base URL from the request when frontend_url is not configured."""
+    import services.dynamic_settings as ds
+
+    configured = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
     if configured and configured != "http://localhost:3000":
         return configured.rstrip("/")
     # Only infer from headers when behind a TLS-terminating proxy (https)

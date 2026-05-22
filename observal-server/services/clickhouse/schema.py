@@ -10,7 +10,6 @@ the SQL constant cannot be compressed further.
 import structlog
 
 import services.clickhouse.client as _client
-from config import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -521,7 +520,9 @@ async def init_clickhouse():
     await _materialize_if_needed()
     await apply_resource_settings()
 
-    retention_days = settings.DATA_RETENTION_DAYS
+    import services.dynamic_settings as ds
+
+    retention_days = await ds.get_int("data.retention_days")
     if retention_days > 0:
         ttl_stmts = [
             f"ALTER TABLE traces MODIFY TTL toDate(start_time) + INTERVAL {retention_days} DAY",

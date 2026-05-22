@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from config import settings
+import services.dynamic_settings as ds
 from models.user import UserRole
 
 ALGORITHM = "ES256"
@@ -30,7 +30,7 @@ def create_access_token(
     from services.crypto import sign_token
 
     now = datetime.now(UTC)
-    expires_delta = timedelta(minutes=expires_in_minutes or settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+    expires_delta = timedelta(minutes=expires_in_minutes or ds.get_sync_int("jwt.access_token_expire_minutes", 60))
     expires_in = int(expires_delta.total_seconds())
     payload = {
         "sub": str(user_id),
@@ -62,7 +62,7 @@ def create_refresh_token(user_id: uuid.UUID, role: UserRole, groups: list[str] |
         "groups": groups or [],
         "jti": jti,
         "iat": now,
-        "exp": now + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS),
+        "exp": now + timedelta(days=ds.get_sync_int("jwt.refresh_token_expire_days", 7)),
     }
     token = sign_token(payload)
     return token, jti

@@ -17,10 +17,9 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select
 
-from config import settings
-
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+from config import settings
 from models.organization import Organization
 from models.user import User, UserRole
 from services.events import UserCreated, bus

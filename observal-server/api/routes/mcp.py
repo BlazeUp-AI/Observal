@@ -274,7 +274,7 @@ async def install_mcp(
 
     from api.routes.config import derive_endpoints
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
     snippet = generate_config(
         listing,
         req.ide,

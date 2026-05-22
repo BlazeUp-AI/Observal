@@ -191,35 +191,43 @@ CONFIG_ALLOWLIST = frozenset(
         "DATABASE_URL",
         "CLICKHOUSE_URL",
         "REDIS_URL",
-        "REDIS_SOCKET_TIMEOUT",
-        "EVAL_MODEL_NAME",
-        "EVAL_MODEL_PROVIDER",
-        "AWS_REGION",
-        "FRONTEND_URL",
-        "JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
-        "JWT_REFRESH_TOKEN_EXPIRE_DAYS",
         "JWT_SIGNING_ALGORITHM",
-        "JWT_HOOKS_TOKEN_EXPIRE_MINUTES",
-        "RATE_LIMIT_AUTH",
-        "RATE_LIMIT_AUTH_STRICT",
-        "DATA_RETENTION_DAYS",
-        "DEPLOYMENT_MODE",
     }
 )
 
+# Dynamic settings to include in support bundle
+_DYNAMIC_CONFIG_KEYS = [
+    "eval.model_name",
+    "eval.model_provider",
+    "eval.aws_region",
+    "deployment.frontend_url",
+    "jwt.access_token_expire_minutes",
+    "jwt.refresh_token_expire_days",
+    "jwt.hooks_token_expire_minutes",
+    "security.rate_limit_auth",
+    "security.rate_limit_auth_strict",
+    "data.retention_days",
+    "deployment.mode",
+]
+
 
 async def _collect_config() -> dict:
-    """Return only allowlisted Settings fields as a dict.
+    """Return only allowlisted Settings fields plus dynamic settings.
 
     Secrets like SECRET_KEY, OAUTH_CLIENT_SECRET, etc. are never sent
-    over the wire.  The CLI applies its own allowlist filter and
-    redaction as a second layer of defence.
+    over the wire.
     """
-    return {
+    import services.dynamic_settings as ds
+
+    result = {
         field_name: getattr(settings, field_name)
         for field_name in Settings.model_fields
         if field_name in CONFIG_ALLOWLIST
     }
+    # Add dynamic settings
+    for key in _DYNAMIC_CONFIG_KEYS:
+        result[key] = await ds.get(key)
+    return result
 
 
 async def _collect_aggregates(db: AsyncSession) -> dict:

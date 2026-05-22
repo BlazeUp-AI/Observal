@@ -16,9 +16,9 @@ from fastapi_cache.decorator import cache
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import services.dynamic_settings as ds
 from api.deps import get_db, require_role
 from api.sanitize import escape_like
-from config import settings
 from models.agent import Agent, AgentStatus, AgentVersion
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
@@ -99,7 +99,7 @@ async def _ch_json_scoped(sql: str, current_user, params: dict | None = None) ->
 
 
 @router.get("/overview/stats", response_model=OverviewStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def overview_stats(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
@@ -142,7 +142,7 @@ async def overview_stats(
 
 
 @router.get("/overview/top-mcps", response_model=list[TopItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def top_mcps(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(McpDownload.listing_id, func.count(McpDownload.id).label("cnt"), McpListing.name)
@@ -155,7 +155,7 @@ async def top_mcps(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/overview/top-agents", response_model=list[TopAgentItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def top_agents(
     limit: int = Query(6, le=50),
     db: AsyncSession = Depends(get_db),
@@ -204,7 +204,7 @@ async def top_agents(
 
 
 @router.get("/overview/leaderboard", response_model=list[LeaderboardItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def agent_leaderboard(
     window: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
     limit: int = Query(20, le=50),
@@ -318,7 +318,7 @@ async def agent_leaderboard(
 
 
 @router.get("/overview/component-leaderboard", response_model=list[ComponentLeaderboardItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def component_leaderboard(
     window: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
     limit: int = Query(20, le=50),
@@ -464,7 +464,7 @@ async def component_leaderboard(
 
 
 @router.get("/overview/trends", response_model=list[TrendPoint])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def trends(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
@@ -501,7 +501,7 @@ async def trends(
 
 
 @router.get("/dashboard/tokens", response_model=TokenStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def token_stats(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
@@ -650,7 +650,7 @@ async def token_stats(
 
 
 @router.get("/dashboard/ide-usage", response_model=IdeUsage)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def ide_usage(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -687,7 +687,7 @@ async def ide_usage(
 
 
 @router.get("/dashboard/sandbox-metrics", response_model=SandboxStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def sandbox_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -762,7 +762,7 @@ async def sandbox_metrics(
 
 
 @router.get("/dashboard/graphrag-metrics", response_model=GraphRagStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def graphrag_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -866,7 +866,7 @@ async def run_graphrag_ragas_eval(
 
 
 @router.get("/dashboard/graphrag-ragas-scores", response_model=RagasScores)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def graphrag_ragas_scores(
     graphrag_id: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -902,7 +902,7 @@ async def graphrag_ragas_scores(
 
 
 @router.get("/dashboard/latency-heatmap", response_model=list[LatencyCell])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def latency_heatmap(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -940,7 +940,7 @@ async def latency_heatmap(
 
 
 @router.get("/dashboard/unannotated-traces", response_model=list[UnannotatedTrace])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def unannotated_traces(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
