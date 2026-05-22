@@ -24,6 +24,7 @@ dependencies = [
     "questionary>=2.0.0",
     "docker>=7.0.0",
     "asyncpg>=0.29.0",
+    "packaging>=21.0",
 ]
 
 keywords = ["mcp", "model-context-protocol", "registry", "cli", "agents", "observability"]

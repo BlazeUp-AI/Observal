@@ -1637,47 +1637,434 @@ def _spans_impl(trace_id, output):
 
 self_app = typer.Typer(
     name="self",
-    help="CLI self-management commands (upgrade, downgrade)",
+    help="CLI self-management commands (upgrade, downgrade, rollback, status)",
     no_args_is_help=True,
 )
 
 
-def _upgrade_impl():
-    """Upgrade observal CLI to the latest version."""
-    import subprocess
+def _get_server_min_version() -> str | None:
+    """Fetch MIN_CLI_VERSION from connected server (if configured)."""
+    try:
+        cfg = config.load()
+        server_url = cfg.get("server_url", "").rstrip("/")
+        token = cfg.get("access_token", "")
+        if not server_url or not token:
+            return None
+        import httpx as _httpx
 
-    with spinner("Upgrading..."):
-        result = subprocess.run(
-            ["uv", "tool", "upgrade", "observal-cli"],
-            capture_output=True,
-            text=True,
-            timeout=120,
+        resp = _httpx.get(
+            f"{server_url}/api/v1/config/version",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
         )
-    if result.returncode == 0:
-        rprint("[green]✓ Upgraded![/green]")
-        if result.stdout.strip():
-            rprint(f"[dim]{result.stdout.strip()}[/dim]")
+        if resp.status_code == 200:
+            return resp.json().get("min_cli_version")
+    except Exception:
+        pass
+    return None
+
+
+def _do_install(install_info, target_version: str, direction: str) -> None:
+    """Execute the actual version change for uv/pip/binary installs."""
+    import hashlib
+    import os
+    import platform
+    import subprocess
+    import sys
+    import tempfile
+    from pathlib import Path
+    from urllib.parse import urlparse
+
+    from observal_cli.install_detector import InstallMethod
+    from observal_cli.version_check import REDIRECT_ALLOWLIST, get_current_version
+
+    GITHUB_REPO = "BlazeUp-AI/Observal"
+
+    if install_info.method == InstallMethod.UV_TOOL:
+        with spinner(f"{direction.capitalize()}ing to v{target_version}..."):
+            result = subprocess.run(
+                ["uv", "tool", "install", f"observal-cli=={target_version}", "--force"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        if result.returncode != 0:
+            rprint(f"[red]{direction.capitalize()} failed:[/red] {result.stderr.strip()}")
+            raise typer.Exit(1)
+
+    elif install_info.method == InstallMethod.PIP:
+        with spinner(f"{direction.capitalize()}ing to v{target_version}..."):
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", f"observal-cli=={target_version}", "--quiet"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        if result.returncode != 0:
+            rprint(f"[red]{direction.capitalize()} failed:[/red] {result.stderr.strip()}")
+            raise typer.Exit(1)
+
+    elif install_info.method == InstallMethod.BINARY:
+        # Determine platform artifact name
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+        if machine in ("x86_64", "amd64"):
+            arch = "x64"
+        elif machine in ("aarch64", "arm64"):
+            arch = "arm64"
+        else:
+            rprint(f"[red]Unsupported architecture: {machine}[/red]")
+            raise typer.Exit(1)
+
+        os_name = {"linux": "linux", "darwin": "macos", "windows": "windows"}.get(system)
+        if not os_name:
+            rprint(f"[red]Unsupported OS: {system}[/red]")
+            raise typer.Exit(1)
+
+        suffix = ".exe" if system == "windows" else ""
+        artifact_name = f"observal-{os_name}-{arch}{suffix}"
+
+        # Fetch release by tag
+        with spinner("Fetching release info..."):
+            resp = httpx.get(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v{target_version}",
+                timeout=15,
+                headers={"Accept": "application/vnd.github+json"},
+            )
+        if resp.status_code != 200:
+            rprint(f"[red]Release v{target_version} not found on GitHub.[/red]")
+            raise typer.Exit(1)
+
+        release_data = resp.json()
+        assets = {a["name"]: a["browser_download_url"] for a in release_data.get("assets", [])}
+
+        if artifact_name not in assets:
+            rprint(f"[red]Binary '{artifact_name}' not found in release assets.[/red]")
+            raise typer.Exit(1)
+
+        # Download checksums
+        checksums: dict[str, str] = {}
+        if "checksums.txt" in assets:
+            ck_resp = httpx.get(assets["checksums.txt"], timeout=15, follow_redirects=True)
+            if ck_resp.status_code == 200:
+                for line in ck_resp.text.strip().splitlines():
+                    parts = line.split()
+                    if len(parts) == 2:
+                        checksums[parts[1]] = parts[0]
+
+        # Download binary (with redirect validation)
+        download_url = assets[artifact_name]
+        with spinner(f"Downloading {artifact_name}..."):
+            bin_resp = httpx.get(download_url, timeout=120, follow_redirects=True)
+
+        if bin_resp.status_code != 200:
+            rprint("[red]Download failed.[/red]")
+            raise typer.Exit(1)
+
+        # Validate final URL domain
+        final_host = urlparse(str(bin_resp.url)).hostname
+        if final_host and final_host not in REDIRECT_ALLOWLIST:
+            rprint(f"[red]Download redirected to untrusted host: {final_host}[/red]")
+            raise typer.Exit(1)
+
+        # Verify checksum
+        actual_hash = hashlib.sha256(bin_resp.content).hexdigest()
+        expected_hash = checksums.get(artifact_name)
+        if expected_hash:
+            if actual_hash != expected_hash:
+                rprint("[red]✗ CHECKSUM MISMATCH — download may be corrupted or tampered.[/red]")
+                rprint(f"  Expected: {expected_hash}")
+                rprint(f"  Got:      {actual_hash}")
+                raise typer.Exit(1)
+            rprint(f"[dim]✓ SHA-256 verified: {actual_hash[:16]}...[/dim]")
+        else:
+            rprint("[yellow]⚠ No checksum available for verification.[/yellow]")
+            if not typer.confirm("Install without verification?", default=False):
+                raise typer.Abort()
+
+        # Backup current binary
+        target_path = install_info.path
+        if not install_info.writable:
+            rprint(f"[red]Cannot write to {target_path} — permission denied.[/red]")
+            raise typer.Exit(1)
+
+        backup_dir = config.CONFIG_DIR / "bin"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = backup_dir / "observal.prev"
+        if target_path.exists():
+            import shutil
+
+            shutil.copy2(str(target_path), str(backup_path))
+
+        # Atomic replacement
+        fd, tmp_path = tempfile.mkstemp(
+            dir=target_path.parent,
+            prefix=".observal-update-",
+            suffix=suffix,
+        )
+        try:
+            os.write(fd, bin_resp.content)
+            os.close(fd)
+            os.chmod(tmp_path, 0o755)
+
+            if system == "windows":
+                old_path = target_path.with_suffix(".old")
+                target_path.rename(old_path)
+                Path(tmp_path).rename(target_path)
+            else:
+                Path(tmp_path).rename(target_path)
+        except Exception as e:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            rprint(f"[red]Failed to replace binary: {e}[/red]")
+            raise typer.Exit(1)
     else:
-        rprint(f"[red]Upgrade failed:[/red] {result.stderr.strip()}")
+        rprint(f"[red]Cannot {direction} — unsupported install method: {install_info.method.value}[/red]")
         raise typer.Exit(1)
 
-
-def _downgrade_impl():
-    """Downgrade observal CLI to a previous version."""
-    rprint("[yellow]WIP: not yet implemented.[/yellow]")
-    rprint("[dim]Track: https://github.com/BlazeUp-AI/Observal/issues/19[/dim]")
-
-
-@self_app.command()
-def upgrade():
-    """Upgrade observal CLI to the latest version."""
-    _upgrade_impl()
+    # Post-install verification
+    try:
+        result = subprocess.run(["observal", "--version"], capture_output=True, text=True, timeout=10)
+        new_version = result.stdout.strip().split()[-1] if result.returncode == 0 else "unknown"
+        rprint(f"[green]✓ {direction.capitalize()}d to v{new_version}[/green]")
+    except Exception:
+        rprint(f"[green]✓ {direction.capitalize()} complete. Restart your shell to use the new version.[/green]")
 
 
 @self_app.command()
-def downgrade():
+def upgrade(
+    version: str | None = typer.Option(None, "--version", "-v", help="Target version (default: latest stable)"),
+    pre: bool = typer.Option(False, "--pre", help="Include pre-release versions"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
+):
+    """Upgrade observal CLI to the latest (or specified) version."""
+    from packaging.version import InvalidVersion, Version
+
+    from observal_cli import install_detector, version_check
+    from observal_cli.install_detector import InstallMethod
+    from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
+
+    current = version_check.get_current_version()
+    install = install_detector.detect()
+
+    # Block managed installs
+    if install.method in (InstallMethod.HOMEBREW, InstallMethod.SYSTEM_PACKAGE):
+        mgr = install.managed_by or "your package manager"
+        rprint(f"[yellow]Observal is managed by {mgr}.[/yellow]")
+        rprint(f"[dim]Upgrade with: {mgr} upgrade observal[/dim]")
+        raise typer.Exit(1)
+
+    # Resolve target
+    if version:
+        try:
+            Version(version)
+        except InvalidVersion:
+            rprint(f"[red]Invalid version: {version}[/red]")
+            raise typer.Exit(1)
+        target = version
+    else:
+        with spinner("Checking for updates..."):
+            rel = version_check._fetch_from_github(include_pre=pre)
+        if not rel:
+            rprint("[red]Failed to fetch latest release from GitHub.[/red]")
+            raise typer.Exit(1)
+        target = rel["latest_version"]
+
+    if target == current:
+        rprint(f"[green]Already on v{current} (latest).[/green]")
+        raise typer.Exit(0)
+
+    try:
+        if Version(target) < Version(current):
+            rprint(f"[yellow]v{target} is older than current v{current}.[/yellow]")
+            rprint(f"[dim]Use: observal self downgrade --version {target}[/dim]")
+            raise typer.Exit(1)
+    except InvalidVersion:
+        pass
+
+    # Confirm
+    if not force:
+        rprint(f"  Current: [dim]v{current}[/dim]")
+        rprint(f"  Target:  [green]v{target}[/green]")
+        rprint(f"  Method:  [dim]{install.method.value} ({install.path})[/dim]")
+        if not typer.confirm("\nProceed with upgrade?"):
+            raise typer.Abort()
+
+    # Lock + execute
+    try:
+        lock = acquire_lock("cli")
+    except UpgradeLockError as e:
+        rprint(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    try:
+        _do_install(install, target, direction="upgrade")
+    finally:
+        release_lock(lock)
+
+
+@self_app.command()
+def downgrade(
+    version: str | None = typer.Option(None, "--version", "-v", help="Target version to downgrade to"),
+    list_versions: bool = typer.Option(False, "--list", "-l", help="List all available versions"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation and MIN_CLI_VERSION warning"),
+):
     """Downgrade observal CLI to a previous version."""
-    _downgrade_impl()
+    from packaging.version import InvalidVersion, Version
+
+    from observal_cli import install_detector, version_check
+    from observal_cli.install_detector import InstallMethod
+    from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
+
+    current = version_check.get_current_version()
+
+    if list_versions:
+        releases = version_check.fetch_all_releases()
+        if not releases:
+            rprint("[red]Failed to fetch releases from GitHub.[/red]")
+            raise typer.Exit(1)
+
+        min_ver = _get_server_min_version()
+        table = Table(title="Available Versions")
+        table.add_column("Version", style="bold")
+        table.add_column("Published")
+        table.add_column("Status")
+
+        for r in releases:
+            status = ""
+            if r["version"] == current:
+                status = "← current"
+            elif min_ver:
+                try:
+                    if Version(r["version"]) < Version(min_ver):
+                        status = "⚠ below server minimum"
+                    elif r["version"] == min_ver:
+                        status = "(server minimum)"
+                except InvalidVersion:
+                    pass
+            table.add_row(r["version"], r.get("published_at", "")[:10], status)
+
+        from rich.console import Console
+        Console().print(table)
+        raise typer.Exit(0)
+
+    if not version:
+        rprint("[red]--version is required for downgrade.[/red]")
+        rprint("[dim]Use --list to see available versions.[/dim]")
+        raise typer.Exit(1)
+
+    try:
+        target = Version(version)
+    except InvalidVersion:
+        rprint(f"[red]Invalid version: {version}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        if target >= Version(current):
+            rprint(f"[yellow]v{version} is not older than current v{current}.[/yellow]")
+            rprint("[dim]Use: observal self upgrade[/dim]")
+            raise typer.Exit(1)
+    except InvalidVersion:
+        pass
+
+    install = install_detector.detect()
+    if install.method in (InstallMethod.HOMEBREW, InstallMethod.SYSTEM_PACKAGE):
+        mgr = install.managed_by or "your package manager"
+        rprint(f"[yellow]Observal is managed by {mgr}.[/yellow]")
+        raise typer.Exit(1)
+
+    # MIN_CLI_VERSION check
+    min_ver = _get_server_min_version()
+    if min_ver:
+        try:
+            if target < Version(min_ver):
+                rprint(f"[red]⚠ Warning: v{version} is below server minimum (v{min_ver}).[/red]")
+                rprint("[red]API calls may fail with this version.[/red]")
+                if not force and not typer.confirm("Downgrade anyway?", default=False):
+                    raise typer.Abort()
+        except InvalidVersion:
+            pass
+
+    if not force:
+        rprint(f"  Current: [dim]v{current}[/dim]")
+        rprint(f"  Target:  [yellow]v{version}[/yellow]")
+        if not typer.confirm("\nProceed with downgrade?"):
+            raise typer.Abort()
+
+    try:
+        lock = acquire_lock("cli")
+    except UpgradeLockError as e:
+        rprint(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    try:
+        _do_install(install, version, direction="downgrade")
+    finally:
+        release_lock(lock)
+
+
+@self_app.command()
+def rollback():
+    """Restore CLI to the version before the last upgrade/downgrade."""
+    from observal_cli import install_detector
+    from observal_cli.install_detector import InstallMethod
+
+    install = install_detector.detect()
+    backup = config.CONFIG_DIR / "bin" / "observal.prev"
+
+    if not backup.exists():
+        rprint("[red]No backup found. Nothing to rollback to.[/red]")
+        raise typer.Exit(1)
+
+    if install.method != InstallMethod.BINARY:
+        rprint("[yellow]Rollback only supported for binary installs.[/yellow]")
+        rprint(f"[dim]For {install.managed_by}: install the previous version explicitly.[/dim]")
+        raise typer.Exit(1)
+
+    import os
+    import shutil
+
+    target_path = install.path
+    rprint(f"  Restore: {backup} → {target_path}")
+    if not typer.confirm("Proceed?"):
+        raise typer.Abort()
+
+    shutil.copy2(str(backup), str(target_path))
+    os.chmod(str(target_path), 0o755)
+    rprint("[green]✓ Rolled back to previous version.[/green]")
+
+
+@self_app.command()
+def status():
+    """Show current CLI version and update availability."""
+    from observal_cli import version_check
+
+    current = version_check.get_current_version()
+    rprint(f"  Version:  [bold]v{current}[/bold]")
+
+    from observal_cli import install_detector
+
+    install = install_detector.detect()
+    rprint(f"  Install:  [dim]{install.method.value} ({install.path})[/dim]")
+
+    # Always check (bypass OBSERVAL_NO_UPDATE_CHECK for explicit status command)
+    with spinner("Checking for updates..."):
+        rel = version_check._fetch_from_github()
+
+    if rel:
+        latest = rel["latest_version"]
+        if version_check._is_newer(latest, current):
+            rprint(f"  Latest:   [green]v{latest}[/green] (update available)")
+            rprint(f"\n  Run: [bold]observal self upgrade[/bold]")
+        else:
+            rprint(f"  Latest:   [green]v{latest}[/green] (up to date)")
+    else:
+        rprint("  Latest:   [dim]could not reach GitHub[/dim]")
+
+    # Server version if connected
+    min_ver = _get_server_min_version()
+    if min_ver:
+        rprint(f"  Server minimum: [dim]v{min_ver}[/dim]")
 
 
 # ═══════════════════════════════════════════════════════════
