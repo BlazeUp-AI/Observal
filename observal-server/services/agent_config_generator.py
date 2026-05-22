@@ -453,14 +453,15 @@ def _build_hook_configs(
         listing = hook_listings.get(comp.component_id)
         if not listing:
             continue
-        hooks.append(
-            {
-                "event": getattr(listing, "event", None),
-                "handler_type": getattr(listing, "handler_type", "command"),
-                "handler_config": getattr(listing, "handler_config", {}) or {},
-                "name": getattr(listing, "name", ""),
-            }
-        )
+        entry = {
+            "event": getattr(listing, "event", None),
+            "handler_type": getattr(listing, "handler_type", "command"),
+            "handler_config": getattr(listing, "handler_config", {}) or {},
+            "name": getattr(listing, "name", ""),
+            "script_filename": getattr(listing, "script_filename", None),
+            "script_content": getattr(listing, "script_content", None),
+        }
+        hooks.append(entry)
 
     return hooks
 
@@ -523,23 +524,13 @@ def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[d
 def _collect_hook_script_files(hook_configs: list[dict], hook_listings: dict | None, ide: str) -> list[dict]:
     """Collect script files from hook components that need to be written on install."""
     scripts_dir = _HOOK_SCRIPTS_DIR.get(ide, "")
-    if not scripts_dir or not hook_listings:
+    if not scripts_dir:
         return []
 
     files: list[dict] = []
     for hc in hook_configs:
-        name = hc.get("name", "")
-        # Find the listing to check for script_content
-        listing = None
-        for lid, l in hook_listings.items():
-            if getattr(l, "name", None) == name:
-                listing = l
-                break
-        if not listing:
-            continue
-
-        script_content = getattr(listing, "script_content", None)
-        script_filename = getattr(listing, "script_filename", None)
+        script_content = hc.get("script_content")
+        script_filename = hc.get("script_filename")
         if script_content and script_filename:
             files.append({
                 "path": f"{scripts_dir}/{script_filename}",
@@ -790,6 +781,10 @@ def generate_agent_config(
         if skill_files:
             result["skill_files"] = skill_files
             result["skill_components"] = [s for s in skill_configs if s.get("git_url")]
+        # Collect hook script files for Claude Code
+        cc_hook_files = _collect_hook_script_files(hook_configs, hook_listings, "claude-code")
+        if cc_hook_files:
+            result["hook_files"] = cc_hook_files
         warnings_combined = list(compatibility_warnings)
         warnings_combined.extend(options.get("_model_warnings") or [])
         if warnings_combined:
