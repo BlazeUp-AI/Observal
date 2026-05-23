@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
-from services.ide.helpers import _gemini_hooks_config, _gemini_otlp_env, _gemini_settings
+from services.ide.helpers import _gemini_hooks_config, _gemini_settings
 
 
 class GeminiCliAdapter:
@@ -41,7 +41,6 @@ class GeminiCliAdapter:
                 "path": hooks_path,
                 "content": _gemini_hooks_config(),
             },
-            "otlp_env": _gemini_otlp_env(effective_otlp_http),
             "gemini_settings_snippet": _gemini_settings(effective_otlp_http),
             "scope": gemini_scope,
         }

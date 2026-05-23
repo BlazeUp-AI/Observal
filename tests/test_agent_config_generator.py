@@ -253,11 +253,11 @@ class TestGenerateClaudeCode:
         cmd = cfg["mcp_setup_commands"][0]
         assert cmd[0:4] == ["claude", "mcp", "add", "srv"]
 
-    def test_otlp_env_present(self):
+    def test_no_otlp_env_in_config(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude-code")
-        assert "otlp_env" in cfg
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in cfg["otlp_env"]
+        assert "otlp_env" not in cfg
+        assert "claude_settings_snippet" not in cfg
 
     def test_claude_code_underscore_alias(self):
         agent = _make_agent()
@@ -458,10 +458,10 @@ class TestGenerateGemini:
         cfg = generate_agent_config(agent, "gemini_cli")
         assert cfg["rules_file"]["path"] == "GEMINI.md"
 
-    def test_otlp_env_present(self):
+    def test_no_otlp_env_in_config(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" in cfg
+        assert "otlp_env" not in cfg
 
 
 # ═══════════════════════════════════════════════════════════════════

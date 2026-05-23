@@ -9,7 +9,6 @@ from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _claude_code_hooks_frontmatter_lines,
-    _claude_otlp_env,
     _collect_hook_script_files,
     _generate_skill_file,
     _model_name_to_frontmatter,
@@ -30,9 +29,6 @@ class ClaudeCodeAdapter:
         rules_content = ctx.rules_content
         hook_configs = ctx.hook_configs
         skill_configs = ctx.skill_configs
-        effective_otlp_http = ctx.effective_otlp_http
-
-        otlp = _claude_otlp_env(effective_otlp_http)
         setup_commands = []
         claude_mcps = {}
         for name, cfg in mcp_configs.items():
@@ -84,8 +80,6 @@ class ClaudeCodeAdapter:
             "rules_file": {"path": agent_path, "content": agent_content},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
-            "otlp_env": otlp,
-            "claude_settings_snippet": {"env": otlp},
             "scope": scope,
         }
         if skill_files:

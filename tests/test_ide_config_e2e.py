@@ -422,10 +422,10 @@ class TestGenerateGeminiConfig:
         assert "mcpServers" in cfg["mcp_config"]["content"]
         assert "my-server" in cfg["mcp_config"]["content"]["mcpServers"]
 
-    def test_gemini_otlp_env_present(self):
+    def test_gemini_no_otlp_env(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" in cfg
+        assert "otlp_env" not in cfg
 
     def test_gemini_settings_snippet_present(self):
         agent = _make_agent()
@@ -965,7 +965,6 @@ class TestPullGemini:
                         }
                     },
                 },
-                "otlp_env": {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:8000"},
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
@@ -1449,11 +1448,11 @@ class TestGeminiConfigGenerator:
         assert "target" not in settings["telemetry"]
         assert "otlpEndpoint" not in settings["telemetry"]
 
-    def test_gemini_otlp_env_uses_observal_url(self):
-        from services.config_generator import _gemini_otlp_env
-
-        env = _gemini_otlp_env("http://custom-host:8000")
-        assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://custom-host:8000"
+    def test_gemini_otlp_env_removed(self):
+        """OTLP env vars are no longer generated for Gemini CLI."""
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "gemini-cli")
+        assert "otlp_env" not in cfg
 
     def test_gemini_settings_snippet_in_agent_config(self):
         agent = _make_agent()

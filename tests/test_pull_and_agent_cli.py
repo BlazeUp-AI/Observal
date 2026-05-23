@@ -120,10 +120,6 @@ def _claude_code_snippet() -> dict:
             },
             "mcp_config": {"observal-mcp": {"command": "observal-mcp", "args": ["--agent", "abc"]}},
             "mcp_setup_commands": [["claude", "mcp", "add", "observal-mcp", "--", "observal-mcp", "--agent", "abc"]],
-            "otlp_env": {
-                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:8000",
-                "OTEL_SERVICE_NAME": "my-agent",
-            },
         }
     }
 
@@ -268,14 +264,15 @@ class TestPullClaudeCode:
         assert "Would run these setup commands" in result.output
         assert "claude mcp add" in result.output
 
-    def test_shows_otlp_env(self, tmp_path: Path):
+    def test_no_otlp_env_in_output(self, tmp_path: Path):
+        """OTLP env vars should not be shown in pull output."""
         with _patch_config(), _patch_get_agent(), _patch_post(_claude_code_snippet()):
             result = runner.invoke(
                 cli_app, ["agent", "pull", "abc123", "--ide", "claude-code", "--dir", str(tmp_path), "--no-prompt"]
             )
 
-        assert "OTEL_EXPORTER_OTLP_ENDPOINT" in result.output
-        assert "OTEL_SERVICE_NAME" in result.output
+        assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in result.output
+        assert "OTEL_SERVICE_NAME" not in result.output
 
     def test_mcp_config_without_path_not_written(self, tmp_path: Path):
         """Claude Code mcp_config has no 'path' key — should not write a file for it."""

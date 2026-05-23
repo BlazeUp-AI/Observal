@@ -32,38 +32,6 @@ def validate_mcp_command(command: str, args: list[str] | None = None) -> None:
 _DOLLAR_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]+)\}|\$([A-Z][A-Z0-9_]+)")
 
 
-def _otlp_env(observal_url: str) -> dict:
-    """OTLP env vars for IDEs with native OpenTelemetry support."""
-    return {
-        "OTEL_EXPORTER_OTLP_ENDPOINT": observal_url,
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-        "OTEL_METRICS_EXPORTER": "otlp",
-        "OTEL_LOGS_EXPORTER": "otlp",
-        "OTEL_TRACES_EXPORTER": "otlp",
-    }
-
-
-def _claude_otlp_env(observal_url: str) -> dict:
-    """Claude Code specific OTLP env vars."""
-    return {
-        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-        "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA": "1",
-        "OTEL_LOG_USER_PROMPTS": "1",
-        "OTEL_LOG_TOOL_DETAILS": "1",
-        "OTEL_LOG_TOOL_CONTENT": "1",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": observal_url,
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-        "OTEL_METRICS_EXPORTER": "otlp",
-        "OTEL_LOGS_EXPORTER": "otlp",
-        "OTEL_TRACES_EXPORTER": "otlp",
-    }
-
-
-def _gemini_otlp_env(observal_url: str) -> dict:
-    """Gemini CLI specific OTLP env vars."""
-    return _otlp_env(observal_url)
-
-
 def _gemini_settings(observal_url: str) -> dict:
     """Gemini CLI .gemini/settings.json telemetry block.
 
@@ -200,13 +168,10 @@ def generate_config(
             return {
                 "command": ["claude", "mcp", "add", name, "--url", proxy_url],
                 "type": "shell_command",
-                "otlp_env": _claude_otlp_env(observal_url),
-                "claude_settings_snippet": {"env": {**_claude_otlp_env(observal_url), **server_env}},
             }
         if ide == "gemini-cli":
             return {
                 "mcpServers": {name: {"url": proxy_url, "env": server_env}},
-                "otlp_env": _gemini_otlp_env(observal_url),
                 "gemini_settings_snippet": _gemini_settings(observal_url),
             }
         if ide == "codex":
@@ -238,22 +203,15 @@ def generate_config(
         auto_approve_fields = {"autoApprove": listing.auto_approve, "disabled": False}
 
     if ide == "claude-code":
-        otlp = _claude_otlp_env(observal_url)
-        combined_env = {**otlp, **server_env}
-        env_prefix = " ".join(f"{k}={v}" for k, v in combined_env.items())
         return {
             "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
-            "shell_env_prefix": env_prefix,
-            "otlp_env": otlp,
-            "claude_settings_snippet": {"env": combined_env},
         }
     if ide == "gemini-cli":
         return {
             "mcpServers": {
                 name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
             },
-            "otlp_env": _gemini_otlp_env(observal_url),
             "gemini_settings_snippet": _gemini_settings(observal_url),
         }
     if ide == "codex":
