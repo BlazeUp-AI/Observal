@@ -7,7 +7,6 @@
 import re
 
 from models.mcp import McpListing
-from services.codex_config_generator import generate_codex_config
 from services.shared.utils import sanitize_name as _sanitize_name
 
 _SHELL_META_RE = re.compile(r"[|;&`><\n\r]|\$\(|\$\{")
@@ -35,8 +34,7 @@ _DOLLAR_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]+)\}|\$([A-Z][A-Z0-9_]+)")
 def _gemini_settings() -> dict:
     """Gemini CLI .gemini/settings.json telemetry block.
 
-    Native OTLP is disabled because Gemini CLI hardcodes gRPC export
-    which is incompatible with Observal's HTTP/JSON endpoint.
+    Native telemetry is disabled.
     Telemetry is captured via the hook bridge instead.
     """
     return {
@@ -157,7 +155,6 @@ def generate_config(
                 codex_entry["env"] = server_env
             return {
                 "mcp.servers": {name: codex_entry},
-                "codex_config": generate_codex_config(observal_url),
             }
         return {"mcpServers": {name: config}}
 
@@ -177,7 +174,6 @@ def generate_config(
         if ide == "codex":
             return {
                 "mcp.servers": {name: {"url": proxy_url, "env": server_env}},
-                "codex_config": generate_codex_config(observal_url),
             }
         if ide == "copilot":
             return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env}}}
@@ -219,7 +215,6 @@ def generate_config(
             "mcp.servers": {
                 name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
             },
-            "codex_config": generate_codex_config(observal_url),
         }
 
     if ide == "copilot":
@@ -256,7 +251,7 @@ def generate_config(
             entry["env"] = server_env
         return {"mcp": {name: entry}}
 
-    # cursor, vscode, kiro, kiro-cli — no native OTel; telemetry collected via observal-shim
+    # cursor, kiro: telemetry collected via observal-shim
     return {
         "mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}}
     }

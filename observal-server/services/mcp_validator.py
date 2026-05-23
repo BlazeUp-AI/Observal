@@ -162,7 +162,6 @@ _FILTERED_PREFIXES = (
     "NPM_",
     "PIP_",
     "UV_",
-    "OTEL_",
     "MCP_LOG_",
 )
 

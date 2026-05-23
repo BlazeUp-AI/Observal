@@ -75,13 +75,6 @@ def get_desired_env(*_args, **_kwargs) -> dict[str, str]:
 # Keys in settings.env that Observal manages (for cleanup).
 MANAGED_ENV_KEYS = frozenset(
     {
-        "CLAUDE_CODE_ENABLE_TELEMETRY",
-        "OTEL_METRICS_EXPORTER",
-        "OTEL_LOGS_EXPORTER",
-        "OTEL_EXPORTER_OTLP_PROTOCOL",
-        "OTEL_EXPORTER_OTLP_HEADERS",
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "OTEL_RESOURCE_ATTRIBUTES",
         "OBSERVAL_HOOKS_URL",
         "OBSERVAL_HOOKS_SPEC_VERSION",
         "OBSERVAL_USER_ID",

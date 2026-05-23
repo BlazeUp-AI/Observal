@@ -161,7 +161,6 @@ async def install_agent(
         platform=req.platform,
         skill_listings=skill_listings_map,
         hook_listings=hook_listings_map,
-        otlp_http_url=endpoints["otlp_http"],
         prompt_listings=prompt_listings_map,
         sandbox_listings=sandbox_listings_map,
     )

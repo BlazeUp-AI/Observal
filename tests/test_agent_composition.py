@@ -1175,14 +1175,6 @@ class TestGenerateIdeAgentFiles:
         assert config.setup_commands[0][:3] == ["claude", "mcp", "add"]
         assert "github-mcp" in config.setup_commands[0]
 
-    def test_claude_code_env_includes_telemetry(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "claude-code")
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in config.env
-        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
-
     def test_claude_code_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files
 
@@ -1218,13 +1210,6 @@ class TestGenerateIdeAgentFiles:
         gemini_md = [f for f in config.files if f.path == "GEMINI.md"]
         assert len(gemini_md) == 1
         assert "You are a helpful coding assistant." in gemini_md[0].content
-
-    def test_gemini_cli_env_includes_otel(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini-cli")
-        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
 
     def test_gemini_cli_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files

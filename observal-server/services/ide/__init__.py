@@ -27,7 +27,6 @@ class ConfigContext:
     safe_name: str
     ide: str
     observal_url: str
-    effective_otlp_http: str
     mcp_configs: dict = field(default_factory=dict)
     rules_content: str = ""
     skill_configs: list = field(default_factory=list)
@@ -59,7 +58,7 @@ class IdeAdapter(Protocol):
         """Format the pre-computed context into IDE-specific config output.
 
         Returns a dict with IDE-specific keys (rules_file, agent_file,
-        mcp_config, steering_files, hooks_config, etc.).
+        mcp_config, hooks_config, etc.).
         """
         ...
 
@@ -106,7 +105,6 @@ def generate_agent_config(
     platform: str = "",
     skill_listings: dict | None = None,
     hook_listings: dict | None = None,
-    otlp_http_url: str = "",
     prompt_listings: dict | None = None,
     sandbox_listings: dict | None = None,
 ) -> dict:
@@ -127,8 +125,7 @@ def generate_agent_config(
     )
 
     safe_name = _sanitize_name(agent.name)
-    effective_otlp_http = otlp_http_url or observal_url
-    mcp_configs = _build_mcp_configs(agent, ide, effective_otlp_http, mcp_listings=mcp_listings, env_values=env_values)
+    mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings, env_values=env_values)
 
     if sandbox_listings:
         sandbox_mcp = _build_sandbox_mcp_entry(sandbox_listings, ide)
@@ -150,7 +147,6 @@ def generate_agent_config(
         safe_name=safe_name,
         ide=ide,
         observal_url=observal_url,
-        effective_otlp_http=effective_otlp_http,
         mcp_configs=mcp_configs,
         rules_content=rules_content,
         skill_configs=skill_configs,
@@ -176,7 +172,6 @@ async def generate_all_ide_configs(
     hook_listings: dict | None = None,
     component_names: dict | None = None,
     env_values: dict | None = None,
-    otlp_http_url: str = "",
 ) -> dict[str, dict[str, str]]:
     """Generate IDE config files for all target IDEs from an AgentVersion."""
     import json as _json
@@ -198,7 +193,6 @@ async def generate_all_ide_configs(
             hook_listings=hook_listings,
             component_names=component_names,
             env_values=env_values,
-            otlp_http_url=otlp_http_url,
         )
 
         files = {}

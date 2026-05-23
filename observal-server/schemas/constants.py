@@ -36,12 +36,8 @@ VALID_IDES: list[str] = get_valid_ides()
 
 IDE_FEATURES: list[str] = [
     "skills",
-    "superpowers",
-    "hook_bridge",
+    "hooks",
     "mcp_servers",
-    "rules",
-    "steering_files",
-    "otlp_telemetry",
 ]
 
 IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()

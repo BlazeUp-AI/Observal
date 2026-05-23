@@ -53,14 +53,11 @@ async def derive_endpoints(request: Request | None = None) -> dict[str, str]:
     hostname = parsed.hostname or "localhost"
     scheme = parsed.scheme or ("http" if hostname in ("localhost", "127.0.0.1") else "https")
 
-    otlp_setting = await ds.get("deployment.otlp_http_url")
     frontend_setting = await ds.get("deployment.frontend_url")
-    otlp_http = otlp_setting.rstrip("/") if otlp_setting else public_url
     web = frontend_setting.rstrip("/") if frontend_setting else f"{scheme}://{hostname}:3000"
 
     return {
         "api": public_url,
-        "otlp_http": otlp_http,
         "web": web,
     }
 

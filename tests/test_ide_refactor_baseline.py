@@ -176,7 +176,7 @@ class TestGenerateAgentConfigBaseline:
         result = generate_agent_config(agent, ide)
         assert isinstance(result, dict)
         # All IDEs should produce at least one of these keys
-        assert any(k in result for k in ("rules_file", "agent_file", "mcp_config", "steering_files", "config_file")), (
+        assert any(k in result for k in ("rules_file", "agent_file", "mcp_config", "config_file")), (
             f"IDE {ide} produced empty config: {list(result.keys())}"
         )
 

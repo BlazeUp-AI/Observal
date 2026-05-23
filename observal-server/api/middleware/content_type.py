@@ -26,13 +26,9 @@ logger = logging.getLogger(__name__)
 _BODY_METHODS = {"POST", "PUT", "PATCH"}
 
 # Paths that are exempt from strict Content-Type enforcement.
-# OTLP endpoints may receive application/x-protobuf in addition to JSON.
 # GraphQL may receive multipart for file variables.
 _SKIP_PATHS: set[str] = {
     "/health",
-    "/v1/traces",
-    "/v1/logs",
-    "/v1/metrics",
 }
 
 _SKIP_PREFIXES: tuple[str, ...] = (
@@ -44,11 +40,6 @@ _SKIP_PREFIXES: tuple[str, ...] = (
 _ALLOWED_TYPES = {
     "application/json",
     "multipart/form-data",
-}
-
-# OTLP endpoints additionally accept protobuf.
-_OTLP_EXTRA_TYPES = {
-    "application/x-protobuf",
 }
 
 # Maximum allowed nesting depth for JSON payloads.
@@ -106,8 +97,6 @@ class ContentTypeMiddleware(BaseHTTPMiddleware):
 
         # Determine allowed set based on path.
         allowed = _ALLOWED_TYPES
-        if path in ("/v1/traces", "/v1/logs", "/v1/metrics"):
-            allowed = allowed | _OTLP_EXTRA_TYPES
 
         if ct not in allowed:
             logger.warning(

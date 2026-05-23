@@ -697,11 +697,6 @@ class TestBuilderClaudeCode:
         assert len(result.setup_commands) == 1
         assert result.setup_commands[0][:4] == ["claude", "mcp", "add", "my-srv"]
 
-    def test_env_contains_telemetry_vars(self):
-        manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "claude-code")
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in result.env
-
 
 class TestBuilderCursor:
     def test_files_include_rules_and_mcp_json(self):

@@ -5,10 +5,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+import json
+from pathlib import Path
 
 from observal_cli.ide import (
     DiscoveredMcp,
@@ -17,6 +15,7 @@ from observal_cli.ide import (
     register_adapter,
 )
 from observal_cli.ide.base import BaseAdapter
+from observal_cli.shared.utils import extract_mcp_servers
 
 
 class CursorAdapter(BaseAdapter):
@@ -27,11 +26,53 @@ class CursorAdapter(BaseAdapter):
         return "cursor"
 
     def scan_home(self, home: Path | None = None) -> ScanResult:
-        # Cursor uses project-level config, no global home scan
-        return ScanResult()
+        home = home or Path.home()
+        mcp_file = home / ".cursor" / "mcp.json"
+        if not mcp_file.exists():
+            return ScanResult()
+        try:
+            data = json.loads(mcp_file.read_text())
+            servers = extract_mcp_servers(data)
+            mcps = []
+            for name, cfg in servers.items():
+                if isinstance(cfg, dict):
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=name,
+                            command=cfg.get("command"),
+                            args=cfg.get("args", []),
+                            url=cfg.get("url"),
+                            description=f"Cursor global MCP: {name}",
+                            source="cursor:global",
+                        )
+                    )
+            return ScanResult(mcps=mcps)
+        except (json.JSONDecodeError, OSError):
+            return ScanResult()
 
     def scan_project(self, project_dir: Path) -> ScanResult:
-        return ScanResult()
+        mcp_file = project_dir / ".cursor" / "mcp.json"
+        if not mcp_file.exists():
+            return ScanResult()
+        try:
+            data = json.loads(mcp_file.read_text())
+            servers = extract_mcp_servers(data)
+            mcps = []
+            for name, cfg in servers.items():
+                if isinstance(cfg, dict):
+                    mcps.append(
+                        DiscoveredMcp(
+                            name=name,
+                            command=cfg.get("command"),
+                            args=cfg.get("args", []),
+                            url=cfg.get("url"),
+                            description=f"Cursor project MCP: {name}",
+                            source="cursor:project",
+                        )
+                    )
+            return ScanResult(mcps=mcps)
+        except (json.JSONDecodeError, OSError):
+            return ScanResult()
 
     def get_hook_spec(self) -> HookSpec:
         return HookSpec(

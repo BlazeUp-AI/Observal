@@ -20,7 +20,7 @@ from __future__ import annotations
 IDE_REGISTRY: dict[str, dict] = {
     "cursor": {
         "display_name": "Cursor",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
+        "features": {"hooks", "mcp_servers"},
         "session_parser": "cursor",
         "scopes": ["project", "user"],
         "default_scope": "project",
@@ -61,7 +61,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "kiro": {
         "display_name": "Kiro",
-        "features": {"superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"},
+        "features": {"hooks", "mcp_servers"},
         "session_parser": "kiro",
         "scopes": ["project", "user"],
         "default_scope": "user",
@@ -99,7 +99,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "claude-code": {
         "display_name": "Claude Code",
-        "features": {"skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
+        "features": {"skills", "hooks", "mcp_servers"},
         "session_parser": "claude-code",
         "scopes": ["project", "user"],
         "default_scope": "project",
@@ -141,7 +141,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "gemini-cli": {
         "display_name": "Gemini CLI",
-        "features": {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "project",
         "scope_labels": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
@@ -181,7 +181,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "codex": {
         "display_name": "Codex",
-        "features": {"rules", "mcp_servers"},
+        "features": {"mcp_servers"},
         "scopes": ["user"],
         "default_scope": "user",
         "scope_labels": None,
@@ -214,7 +214,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "copilot": {
         "display_name": "Copilot",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -246,7 +246,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "copilot-cli": {
         "display_name": "Copilot CLI",
-        "features": {"mcp_servers", "rules", "hook_bridge", "skills"},
+        "features": {"mcp_servers", "hooks", "skills"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -281,7 +281,7 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "opencode": {
         "display_name": "OpenCode",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "user",
         "scope_labels": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),

@@ -25,21 +25,15 @@ def infer_required_features(
     features: set[str] = set()
     skill_listings = skill_listings or {}
 
-    # Every agent has a prompt / rules file
-    features.add("rules")
-
     for comp in getattr(agent, "components", []):
         if comp.component_type == "mcp":
             features.add("mcp_servers")
         elif comp.component_type == "hook":
-            features.add("hook_bridge")
+            features.add("hooks")
         elif comp.component_type == "skill":
             listing = skill_listings.get(comp.component_id)
-            if listing:
-                if getattr(listing, "slash_command", None):
-                    features.add("skills")
-                if getattr(listing, "is_power", False):
-                    features.add("superpowers")
+            if listing and getattr(listing, "slash_command", None):
+                features.add("skills")
 
     if getattr(agent, "external_mcps", None):
         features.add("mcp_servers")

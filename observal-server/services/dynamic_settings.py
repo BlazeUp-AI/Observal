@@ -179,7 +179,6 @@ DEFAULTS: dict[str, str] = {
     "deployment.sso_only": "false",
     "deployment.frontend_url": "http://localhost:3000",
     "deployment.public_url": "",
-    "deployment.otlp_http_url": "",
     "deployment.cors_origins": "http://localhost:3000",
     # Security
     "security.allow_internal_git_urls": "false",
@@ -214,7 +213,6 @@ DEFAULTS: dict[str, str] = {
     "data.retention_days": "90",
     "data.cache_ttl_default": "30",
     "data.cache_ttl_dashboard": "60",
-    "data.cache_ttl_otel": "15",
     # Observability
     "observability.log_level": "INFO",
     "observability.log_format": "json",

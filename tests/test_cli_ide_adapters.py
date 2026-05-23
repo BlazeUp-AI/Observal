@@ -308,12 +308,12 @@ class TestShimStatus:
 class TestFeatureGating:
     """Test that IDE_Registry feature flags gate method access."""
 
-    def test_codex_lacks_hook_bridge_raises_on_get_hook_spec(self):
+    def test_codex_lacks_hooks_raises_on_get_hook_spec(self):
         adapter = get_adapter("codex")
         with pytest.raises(NotSupported, match="does not support get_hook_spec"):
             adapter.get_hook_spec()
 
-    def test_codex_lacks_hook_bridge_raises_on_detect_hooks(self):
+    def test_codex_lacks_hooks_raises_on_detect_hooks(self):
         import tempfile
         from pathlib import Path
 

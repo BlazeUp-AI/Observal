@@ -91,7 +91,11 @@ def get_all_adapters() -> dict[str, IdeAdapter]:
     return dict(_ADAPTER_REGISTRY)
 
 
+# Expected number of adapters (updated when new IDEs are added)
+_EXPECTED_ADAPTER_COUNT = 8
+
+
 def ensure_loaded() -> None:
     """Ensure all adapter modules have been imported and registered."""
-    if not _ADAPTER_REGISTRY:
+    if len(_ADAPTER_REGISTRY) < _EXPECTED_ADAPTER_COUNT:
         import observal_cli.ide.load_all  # noqa: F401

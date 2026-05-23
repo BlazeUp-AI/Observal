@@ -24,7 +24,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from schemas.ide_registry import IDE_REGISTRY, get_valid_ides
+from schemas.ide_registry import get_valid_ides
 from services.agent_resolver import ResolvedAgent, ResolvedComponent
 from services.ide.helpers import _KIRO_EVENT_MAP, _wrap_kiro_prompt
 from services.model_resolver import resolve_saved_value
@@ -331,57 +331,16 @@ def build_composition_summary(resolved: ResolvedAgent) -> dict:
 
 def _build_mcp_entries(manifest: AgentManifest) -> dict:
     """Build MCP server config entries from manifest components."""
-    entries = {}
-    for mcp in manifest.components.mcps:
-        shim_args = ["--mcp-id", mcp.name, "--", "python", "-m", mcp.name]
-        entries[mcp.name] = {
-            "command": "observal-shim",
-            "args": shim_args,
-            "env": {},
-        }
-    return entries
+    from services.config.mcp_builder import build_mcp_entries
+
+    return build_mcp_entries(manifest)
 
 
 def _build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
-    """Generate IDE-specific skill files from manifest skills.
+    """Generate IDE-specific skill files from manifest skills."""
+    from services.config.skill_builder import build_skill_files
 
-    Fast path: if skill_md_content is cached (stored verbatim from the repo),
-    use it as-is as the SKILL.md body.  Fallback: synthesize a minimal stub
-    from description + slash_command (same as before).
-    """
-    ide_key = ide.replace("_", "-")
-    spec = IDE_REGISTRY.get(ide_key, {})
-    skill_paths = spec.get("skill_file")
-    if not skill_paths:
-        return []
-
-    files: list[AgentFile] = []
-    skill_format = spec.get("skill_format")
-    for skill in manifest.components.skills:
-        name = _sanitize_name(skill.name)
-        desc = skill.description or ""
-        path = next(iter(skill_paths.values())).format(name=name)
-
-        # --- Fast path: verbatim SKILL.md from git repo ---
-        skill_md_content: str | None = (skill.config_override or {}).get("skill_md_content")
-        if skill_md_content:
-            files.append(AgentFile(path=path, content=skill_md_content, format="markdown"))
-            continue
-
-        # --- Fallback: synthetic stub ---
-        if skill_format == "yaml_frontmatter":
-            content = f"---\nname: {name}\n"
-            if desc:
-                content += f'description: "{desc}"\n'
-            if skill.slash_command and ide_key == "claude-code":
-                content += f"command: /{skill.slash_command}\n"
-            content += f"---\n\n{desc}\n"
-        else:
-            content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-
-        files.append(AgentFile(path=path, content=content, format="markdown"))
-
-    return files
+    return build_skill_files(manifest, ide)
 
 
 def _build_rules_markdown(manifest: AgentManifest) -> str:
@@ -542,13 +501,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
 
     skill_files = _build_skill_files(manifest, "claude-code")
 
-    env: dict[str, str] = {
-        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-    }
-    otlp_url = getattr(manifest, "_observal_url", "") or ""
-    if otlp_url:
-        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_url
+    env: dict[str, str] = {}
 
     return IdeAgentConfig(
         ide="claude-code",
@@ -597,7 +550,6 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Gemini CLI agent config (GEMINI.md + .gemini/settings.json)."""
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
-    otlp_url = getattr(manifest, "_observal_url", "") or ""
 
     settings: dict = {
         "telemetry": {
@@ -612,11 +564,7 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     if saved_model:
         settings["model"] = saved_model
 
-    env: dict[str, str] = {
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-    }
-    if otlp_url:
-        env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_url
+    env: dict[str, str] = {}
 
     return IdeAgentConfig(
         ide="gemini-cli",
@@ -730,7 +678,6 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
 def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Codex agent config (AGENTS.md + ~/.codex/config.toml)."""
     rules_content = _build_rules_markdown(manifest)
-    otlp_url = getattr(manifest, "_observal_url", "") or ""
 
     files = [
         AgentFile(
@@ -741,27 +688,8 @@ def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
     ]
 
     saved_model = _saved_model_for(manifest, "codex")
-    if otlp_url or saved_model:
-        toml_lines: list[str] = []
-        if saved_model:
-            toml_lines.append(f'model = "{saved_model}"')
-            toml_lines.append("")
-        if otlp_url:
-            toml_lines.extend(
-                [
-                    "[otel]",
-                    'environment = "production"',
-                    "log_user_prompt = true",
-                    "",
-                    "[otel.exporter.otlp-http]",
-                    f'endpoint = "{otlp_url}/v1/logs"',
-                    'protocol = "http"',
-                    "",
-                    "[otel.trace_exporter.otlp-http]",
-                    f'endpoint = "{otlp_url}/v1/traces"',
-                    'protocol = "http"',
-                ]
-            )
+    if saved_model:
+        toml_lines: list[str] = [f'model = "{saved_model}"', ""]
         toml_snippet = "\n".join(toml_lines) + "\n"
         files.append(
             AgentFile(
@@ -884,7 +812,6 @@ def generate_ide_agent_files(
     if generator is None:
         raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")
     if observal_url:
-        manifest._otlp_http_url = observal_url  # type: ignore[attr-defined]
         manifest._observal_url = observal_url  # type: ignore[attr-defined]
     if platform:
         manifest._platform = platform  # type: ignore[attr-defined]

@@ -151,7 +151,6 @@ def login(
                 "user_name": user.get("name", ""),
             }
             if endpoints:
-                cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
                 cfg_data["web_url"] = endpoints.get("web", "")
             config.save(cfg_data)
 
@@ -440,7 +439,7 @@ def version_callback():
 def _fetch_endpoints(server_url: str) -> dict:
     """Fetch service endpoint URLs from the discovery endpoint.
 
-    Returns a dict with api, otlp_http, web URLs.
+    Returns a dict with api, web URLs.
     Falls back to sensible defaults if the endpoint is unavailable.
     """
     try:
@@ -515,7 +514,6 @@ def _do_password_login(server_url: str, email: str, password: str):
             "user_name": user.get("name", ""),
         }
         if endpoints:
-            cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
             cfg_data["web_url"] = endpoints.get("web", "")
         config.save(cfg_data)
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
@@ -609,7 +607,6 @@ def _do_device_flow_login(server_url: str):
                     "user_name": user.get("name", ""),
                 }
                 if endpoints:
-                    cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
                     cfg_data["web_url"] = endpoints.get("web", "")
                 config.save(cfg_data)
 
@@ -800,59 +797,16 @@ def _post_auth_onboarding():
             if not dir_path.is_dir():
                 continue
             agents = mcps = 0
-            if ide_key == "claude-code":
-                from observal_cli.cmd_scan import _scan_claude_home
+            try:
+                from observal_cli.ide import NotSupportedError, ensure_loaded, get_adapter
 
-                m, _s, _h, a = _scan_claude_home(dir_path)
-                agents, mcps = len(a), len(m)
-            elif ide_key == "kiro":
-                from observal_cli.cmd_scan import _scan_kiro_home
-
-                m, _s, _h, a = _scan_kiro_home(dir_path)
-                agents, mcps = len(a), len(m)
-            elif ide_key == "gemini-cli":
-                from observal_cli.cmd_scan import _scan_gemini_home
-
-                m, _s, _h, _a = _scan_gemini_home(dir_path)
-                mcps = len(m)
-            elif ide_key == "codex":
-                # Codex: parse ~/.codex/config.toml for [mcp.servers]
-                toml_file = dir_path / "config.toml"
-                if toml_file.exists():
-                    try:
-                        try:
-                            import tomllib as _toml
-                        except ImportError:
-                            try:
-                                import tomli as _toml  # type: ignore[no-redef]
-                            except ImportError:
-                                import toml as _toml  # type: ignore[no-redef]
-                        content = toml_file.read_text()
-                        data = _toml.loads(content) if hasattr(_toml, "loads") else _toml.load(toml_file.open("rb"))  # type: ignore[call-arg]
-                        mcps = len(data.get("mcp", {}).get("servers", {}))
-                    except Exception:
-                        pass
-            elif ide_key == "opencode":
-                # OpenCode: parse ~/.config/opencode/opencode.json for `mcp` key
-                oc_file = dir_path / "opencode.json"
-                if oc_file.exists():
-                    try:
-                        import json as _j
-
-                        oc_data = _j.loads(oc_file.read_text())
-                        mcps = len(oc_data.get("mcp", {}))
-                    except Exception:
-                        pass
-            else:
-                mcp_file = dir_path / "mcp.json"
-                if mcp_file.exists():
-                    try:
-                        import json as _j
-
-                        data = _j.loads(mcp_file.read_text())
-                        mcps = len(data.get("mcpServers", data.get("servers", {})))
-                    except Exception:
-                        pass
+                ensure_loaded()
+                adapter = get_adapter(ide_key)
+                result = adapter.scan_home(dir_path.parent)
+                agents = len(result.agents)
+                mcps = len(result.mcps)
+            except (KeyError, NotSupportedError):
+                pass
             if agents > 0 or mcps > 0:
                 found.append((label, ide_key, agents, mcps))
 
@@ -1051,7 +1005,7 @@ def _configure_codex(server_url: str):
             return
 
         if not typer.confirm(
-            "\nDetected Codex CLI. Configure OTLP telemetry -> Observal?",
+            "\nDetected Codex CLI. Configure telemetry -> Observal?",
             default=True,
         ):
             return
@@ -1166,7 +1120,7 @@ def _configure_claude_code(server_url: str, access_token: str):
 
 
 def _fetch_hooks_token(server_url: str, access_token: str) -> str:
-    """Call /auth/hooks-token to get a long-lived token for OTEL hooks.
+    """Call /auth/hooks-token to get a long-lived token for telemetry hooks.
 
     Falls back to the session access_token if the endpoint fails.
     """

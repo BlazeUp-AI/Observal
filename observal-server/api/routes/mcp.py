@@ -278,7 +278,7 @@ async def install_mcp(
     snippet = generate_config(
         listing,
         req.ide,
-        observal_url=endpoints["otlp_http"],
+        observal_url=endpoints["api"],
         env_values=req.env_values,
         header_values=req.header_values,
     )

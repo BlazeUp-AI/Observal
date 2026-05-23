@@ -61,7 +61,6 @@ def load_jsonc(path: Path) -> dict:
 # IDE-specific top-level keys for MCP server maps.
 _MCP_KEY_BY_IDE: dict[str, str] = {
     "copilot": "servers",
-    "copilot-cli": "servers",
     "opencode": "mcp",
 }
 
@@ -155,6 +154,7 @@ _OBSERVAL_HOOK_MARKERS = (
     "observal_cli",
     # API endpoints
     "/api/v1/telemetry/hooks",
+    # Legacy endpoint (removed, still detected for cleanup)
     "/api/v1/otel/hooks",
 )
 
@@ -181,3 +181,48 @@ def is_observal_matcher_group(group: dict) -> bool:
     if OBSERVAL_METADATA_KEY in group:
         return True
     return any(is_observal_hook_entry(h) for h in group.get("hooks", []))
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter / markdown helpers (used by scanning adapters)
+# ---------------------------------------------------------------------------
+
+
+def parse_frontmatter_field(content: str, field: str) -> str | None:
+    """Extract a field from YAML frontmatter (--- delimited)."""
+    match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if not match:
+        return None
+    for line in match.group(1).splitlines():
+        if line.startswith(f"{field}:"):
+            val = line[len(field) + 1 :].strip().strip('"').strip("'")
+            return val
+    return None
+
+
+def extract_body(content: str) -> str:
+    """Extract everything after YAML frontmatter."""
+    match = re.match(r"^---\s*\n.*?\n---\s*\n?", content, re.DOTALL)
+    if match:
+        return content[match.end() :]
+    return content
+
+
+def first_content_line(content: str) -> str:
+    """Get first non-empty, non-heading content line after frontmatter."""
+    in_frontmatter = False
+    past_frontmatter = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "---":
+            if not in_frontmatter:
+                in_frontmatter = True
+                continue
+            else:
+                past_frontmatter = True
+                continue
+        if not past_frontmatter and in_frontmatter:
+            continue
+        if past_frontmatter and stripped and not stripped.startswith("#"):
+            return stripped[:200]
+    return ""

@@ -241,15 +241,6 @@ def _check_claude_code(issues: list, warnings: list):
             "Run `observal doctor cleanup --ide claude-code` to remove them."
         )
 
-    # Check for stale OTEL env vars
-    env = data.get("env", {})
-    stale_otel = [k for k in env if k.startswith("OTEL_")]
-    if stale_otel:
-        warnings.append(
-            f"Stale OTEL env vars in settings.json: {', '.join(stale_otel)}. "
-            "Run `observal doctor cleanup --ide claude-code` to remove them."
-        )
-
 
 def _check_kiro(issues: list, warnings: list):
     agents_dir = Path.home() / ".kiro" / "agents"
@@ -299,7 +290,7 @@ def doctor_cleanup(
 ):
     """Remove ALL Observal hooks, env vars, and legacy telemetry config.
 
-    Strips Observal-managed hooks and OTEL env vars from Claude Code and
+    Strips Observal-managed hooks and env vars from Claude Code and
     Kiro settings. Leaves non-Observal hooks untouched. Useful when you
     want to fully uninstall Observal instrumentation from an IDE without
     removing the IDE config files themselves.
@@ -349,7 +340,7 @@ def _cleanup_claude_code(dry_run: bool) -> bool:
 
     changed = False
 
-    # Remove Observal-managed env vars (OTEL_*, OBSERVAL_*)
+    # Remove Observal-managed env vars (OBSERVAL_*)
     env = data.get("env", {})
     removed_env = []
     for key in list(env):

@@ -11,7 +11,7 @@ The BaseAdapter enforces that methods raise NotSupportedError when the
 IDE lacks the required feature.
 
 Method → Feature mapping:
-    generate_hook_config, detect_hooks, get_hook_spec → "hook_bridge"
+    generate_hook_config, detect_hooks, get_hook_spec → "hooks"
     scan_home, scan_project, shim_status              → "mcp_servers"
 """
 
@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 # ── Feature → Method mapping ──────────────────────────────────────
 
 METHOD_FEATURE_MAP: dict[str, str] = {
-    "generate_hook_config": "hook_bridge",
-    "detect_hooks": "hook_bridge",
-    "get_hook_spec": "hook_bridge",
+    "generate_hook_config": "hooks",
+    "detect_hooks": "hooks",
+    "get_hook_spec": "hooks",
     "scan_home": "mcp_servers",
     "scan_project": "mcp_servers",
     "shim_status": "mcp_servers",
@@ -188,10 +188,10 @@ class IdeAdapter(Protocol):
 
         Returns:
             HookSpec describing available hooks, or empty HookSpec
-            if this IDE does not support hook_bridge.
+            if this IDE does not support hooks.
 
         Raises:
-            NotSupportedError: If this IDE does not have hook_bridge feature.
+            NotSupportedError: If this IDE does not have hooks feature.
         """
         ...
 
@@ -212,7 +212,7 @@ class IdeAdapter(Protocol):
             Dict representing the hook config to write.
 
         Raises:
-            NotSupportedError: If this IDE does not have hook_bridge feature.
+            NotSupportedError: If this IDE does not have hooks feature.
         """
         ...
 
@@ -226,7 +226,7 @@ class IdeAdapter(Protocol):
             Status string: "installed", "partial", "missing", or "none".
 
         Raises:
-            NotSupportedError: If this IDE does not have hook_bridge feature.
+            NotSupportedError: If this IDE does not have hooks feature.
         """
         ...
 

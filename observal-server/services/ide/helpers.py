@@ -249,12 +249,8 @@ def _model_name_to_frontmatter(model_name: str) -> str:
 
 _FEATURE_LABELS: dict[str, str] = {
     "skills": "slash-command skills",
-    "superpowers": "Kiro superpowers",
-    "hook_bridge": "hook bridge",
+    "hooks": "hook bridge",
     "mcp_servers": "MCP servers",
-    "rules": "rules / system prompt",
-    "steering_files": "steering files",
-    "otlp_telemetry": "OTLP telemetry",
 }
 
 
@@ -447,29 +443,9 @@ def _generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict:
     Returns a dict with 'path' and 'content' keys, or None for
     monolithic IDEs (Gemini, Codex, Copilot) that inline skills into rules.
     """
-    ide_key = ide.replace("_", "-")
-    spec = IDE_REGISTRY.get(ide_key, {})
-    skill_paths = spec.get("skill_file")
-    if not skill_paths:
-        return None
+    from services.config.skill_builder import generate_skill_file
 
-    name = skill["name"]
-    desc = skill.get("description", "")
-    slash_cmd = skill.get("slash_command")
-    path = skill_paths.get(scope, next(iter(skill_paths.values()))).format(name=name)
-
-    skill_format = spec.get("skill_format")
-    if skill_format == "yaml_frontmatter":
-        content = f"---\nname: {name}\n"
-        if desc:
-            content += f'description: "{desc}"\n'
-        if slash_cmd and ide_key == "claude-code":
-            content += f"command: /{slash_cmd}\n"
-        content += f"---\n\n{desc}\n"
-    else:
-        content = f"---\ndescription: {desc}\nalwaysApply: false\n---\n\n# {name}\n\n{desc}\n"
-
-    return {"path": path, "content": content}
+    return generate_skill_file(skill, ide, scope)
 
 
 def _build_hook_configs(
