@@ -4,12 +4,14 @@
 """Maintenance background jobs: ClickHouse optimization, component source sync, retention."""
 
 import structlog
+from loguru import logger as optic
 
 logger = structlog.get_logger(__name__)
 
 
 async def sync_component_sources(ctx: dict):
     """Background job: sync component sources that are due for re-sync."""
+    optic.debug("job: sync_component_sources")
     from datetime import UTC, datetime
 
     from sqlalchemy import or_, select
@@ -58,6 +60,7 @@ async def maintain_clickhouse(ctx: dict):
     month-long agent session accumulates thousands of tiny parts that
     bloat memory during merges and FINAL queries.
     """
+    optic.debug("job: maintain_clickhouse")
     from services.clickhouse.client import _query
 
     tables = ["traces", "spans", "scores", "session_events", "session_stats_agg"]
