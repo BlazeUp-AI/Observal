@@ -112,25 +112,10 @@ class TestSelfDowngrade:
                 {"version": "0.6.0", "published_at": "2026-05-10", "prerelease": False},
             ],
         )
-        monkeypatch.setattr("observal_cli.cmd_ops._get_server_min_version", lambda: None)
         app = _get_app()
         result = runner.invoke(app, ["self", "downgrade", "--list"])
         assert "0.7.0" in result.output
         assert "0.6.0" in result.output
-
-    def test_downgrade_below_minimum_warns(self, mock_version, mock_install_uv, mock_lock, monkeypatch):
-        """Downgrading below MIN_CLI_VERSION should warn."""
-        monkeypatch.setattr("observal_cli.cmd_ops._get_server_min_version", lambda: "0.6.0")
-
-        def mock_do_install(info, target, direction):
-            pass
-
-        monkeypatch.setattr("observal_cli.cmd_ops._do_install", mock_do_install)
-        app = _get_app()
-        # Without --force, prompt appears. With --force, it bypasses.
-        result = runner.invoke(app, ["self", "downgrade", "--version", "0.4.0", "--force"])
-        # Should still proceed with --force (no error exit)
-        assert result.exit_code == 0 or "below server minimum" in result.output
 
     def test_downgrade_target_is_newer(self, mock_version, monkeypatch):
         """Downgrade to a newer version should error."""
@@ -159,7 +144,6 @@ class TestSelfStatus:
             "observal_cli.version_check._fetch_from_github",
             lambda include_pre=False: {"latest_version": "0.8.0", "source": "github"},
         )
-        monkeypatch.setattr("observal_cli.cmd_ops._get_server_min_version", lambda: None)
         app = _get_app()
         result = runner.invoke(app, ["self", "status"])
         assert "0.7.0" in result.output

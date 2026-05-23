@@ -2108,28 +2108,6 @@ self_app = typer.Typer(
 )
 
 
-def _get_server_min_version() -> str | None:
-    """Fetch MIN_CLI_VERSION from connected server (if configured)."""
-    try:
-        cfg = config.load()
-        server_url = cfg.get("server_url", "").rstrip("/")
-        token = cfg.get("access_token", "")
-        if not server_url or not token:
-            return None
-        import httpx as _httpx
-
-        resp = _httpx.get(
-            f"{server_url}/api/v1/config/version",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=5,
-        )
-        if resp.status_code == 200:
-            return resp.json().get("min_cli_version")
-    except Exception:
-        pass
-    return None
-
-
 def _do_install(install_info, target_version: str, direction: str) -> None:
     """Execute the actual version change. Delegates to upgrade_executor module."""
     # Lazy import to avoid circular dependency (upgrade_executor imports from version_check)
@@ -2231,15 +2209,11 @@ def downgrade(
     list_versions: bool = typer.Option(
         False, "--list", "-l", help="List all available versions with compatibility status"
     ),
-    force: bool = typer.Option(
-        False, "--force", "-f", help="Skip confirmation and MIN_CLI_VERSION compatibility warning"
-    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
 ):
     """Downgrade the observal CLI to a previous version.
 
     Downloads and installs a specific older version from GitHub releases.
-    Warns if the target version is below the server's minimum supported
-    CLI version (API calls may fail).
 
     Use --list to see all available versions with their publication dates
     and compatibility status.
@@ -2263,7 +2237,6 @@ def downgrade(
             rprint("[red]Failed to fetch releases from GitHub.[/red]")
             raise typer.Exit(1)
 
-        min_ver = _get_server_min_version()
         table = Table(title="Available Versions")
         table.add_column("Version", style="bold")
         table.add_column("Published")
@@ -2273,14 +2246,6 @@ def downgrade(
             status = ""
             if r["version"] == current:
                 status = "← current"
-            elif min_ver:
-                try:
-                    if Version(r["version"]) < Version(min_ver):
-                        status = "⚠ below server minimum"
-                    elif r["version"] == min_ver:
-                        status = "(server minimum)"
-                except InvalidVersion:
-                    pass
             table.add_row(r["version"], r.get("published_at", "")[:10], status)
 
         from rich.console import Console
@@ -2312,18 +2277,6 @@ def downgrade(
         mgr = install.managed_by or "your package manager"
         rprint(f"[yellow]Observal is managed by {mgr}.[/yellow]")
         raise typer.Exit(1)
-
-    # MIN_CLI_VERSION check
-    min_ver = _get_server_min_version()
-    if min_ver:
-        try:
-            if target < Version(min_ver):
-                rprint(f"[red]⚠ Warning: v{version} is below server minimum (v{min_ver}).[/red]")
-                rprint("[red]API calls may fail with this version.[/red]")
-                if not force and not typer.confirm("Downgrade anyway?", default=False):
-                    raise typer.Abort()
-        except InvalidVersion:
-            pass
 
     if not force:
         rprint(f"  Current: [dim]v{current}[/dim]")
@@ -2414,11 +2367,6 @@ def status():
             rprint(f"  Latest:   [green]v{latest}[/green] (up to date)")
     else:
         rprint("  Latest:   [dim]could not reach GitHub[/dim]")
-
-    # Server version if connected
-    min_ver = _get_server_min_version()
-    if min_ver:
-        rprint(f"  Server minimum: [dim]v{min_ver}[/dim]")
 
 
 # ═══════════════════════════════════════════════════════════

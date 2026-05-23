@@ -146,7 +146,6 @@ function getPlaceholder(key: string): string {
 		"observability.enable_openapi": "true | false",
 		"observability.enable_metrics": "true | false",
 		// Misc
-		"misc.min_cli_version": "0.4.0",
 		"misc.git_mirror_base_path": "/var/lib/observal/mirrors",
 	};
 	return placeholders[key] || "Enter value...";
@@ -670,13 +669,6 @@ const SETTING_SECTIONS: SettingSection[] = [
 		icon: <Settings className="h-3.5 w-3.5" />,
 		description: "Other system settings.",
 		settings: [
-			{
-				key: "misc.min_cli_version",
-				label: "Minimum CLI Version",
-				subtitle: "Warn users with older CLI versions to upgrade",
-				tooltip:
-					"The Observal CLI checks this on startup and shows an upgrade warning if the user's version is older. Useful to enforce breaking changes or required features in new CLI releases.",
-			},
 			{
 				key: "misc.git_mirror_base_path",
 				label: "Git Mirror Path",

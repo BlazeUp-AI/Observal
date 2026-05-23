@@ -21,7 +21,6 @@ async def get_version():
     """Server version and compatibility info. No auth required."""
     import services.dynamic_settings as ds
 
-    min_cli = await ds.get("misc.min_cli_version")
     max_cli = await ds.get("misc.max_cli_version")
     api_version = await ds.get("misc.api_version")
     frontend_version = await ds.get("misc.frontend_version")
@@ -30,7 +29,6 @@ async def get_version():
     server_ver = get_server_version()
     return {
         "server_version": server_ver,
-        "min_cli_version": min_cli,
         "max_cli_version": max_cli or None,
         "api_version": api_version or None,
         "frontend_version": frontend_version or server_ver,
