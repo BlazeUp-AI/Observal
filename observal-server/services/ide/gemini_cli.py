@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
-from services.agent_config_generator import _gemini_hooks_config
-from services.config_generator import _gemini_otlp_env, _gemini_settings
+from services.ide.helpers import _gemini_hooks_config
+from services.ide.helpers import _gemini_otlp_env, _gemini_settings
 from services.ide import ConfigContext, register_adapter
 
 

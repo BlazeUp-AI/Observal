@@ -6,13 +6,13 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
-from services.agent_config_generator import (
+from services.ide.helpers import (
     _claude_code_hooks_frontmatter_lines,
     _collect_hook_script_files,
     _generate_skill_file,
     _model_name_to_frontmatter,
 )
-from services.config_generator import _claude_otlp_env
+from services.ide.helpers import _claude_otlp_env
 from services.ide import ConfigContext, register_adapter
 
 
@@ -71,9 +71,7 @@ class ClaudeCodeAdapter:
             frontmatter_lines.append("mcpServers:")
             for mcp_name in claude_mcps:
                 frontmatter_lines.append(f"  - {mcp_name}")
-        frontmatter_lines.extend(
-            _claude_code_hooks_frontmatter_lines(custom_hooks=hook_configs)
-        )
+        frontmatter_lines.extend(_claude_code_hooks_frontmatter_lines(custom_hooks=hook_configs))
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 

@@ -21,7 +21,7 @@ from models.mcp import McpListing
 from models.prompt import PromptListing
 from models.skill import SkillListing
 from schemas.ide_registry import IDE_REGISTRY
-from services.agent_config_generator import generate_agent_config
+from services.ide import generate_agent_config
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

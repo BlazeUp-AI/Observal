@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
-from services.agent_config_generator import (
+from services.ide.helpers import (
     _collect_hook_script_files,
     _cursor_hooks_config,
     _generate_skill_file,

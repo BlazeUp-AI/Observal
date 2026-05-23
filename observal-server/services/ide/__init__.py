@@ -90,3 +90,135 @@ _IDE_ALIASES: dict[str, str] = {
 def get_all_adapters() -> dict[str, IdeAdapter]:
     """Return all registered adapters."""
     return dict(_ADAPTER_REGISTRY)
+
+
+# ── Orchestrator ──────────────────────────────────────────────────
+
+
+def generate_agent_config(
+    agent: Any,
+    ide: str,
+    observal_url: str = "http://localhost:8000",
+    mcp_listings: dict | None = None,
+    component_names: dict | None = None,
+    env_values: dict | None = None,
+    options: dict | None = None,
+    platform: str = "",
+    skill_listings: dict | None = None,
+    hook_listings: dict | None = None,
+    otlp_http_url: str = "",
+    prompt_listings: dict | None = None,
+    sandbox_listings: dict | None = None,
+) -> dict:
+    """Generate IDE-specific config for an agent.
+
+    This is the single entry point for all IDE config generation.
+    It builds a shared ConfigContext, resolves the adapter, and delegates.
+    """
+    import services.ide.load_all  # noqa: F401
+    from services.ide.helpers import (
+        _build_hook_configs,
+        _build_mcp_configs,
+        _build_rules_content,
+        _build_sandbox_mcp_entry,
+        _build_skill_configs,
+        _check_ide_compatibility,
+        _sanitize_name,
+    )
+
+    safe_name = _sanitize_name(agent.name)
+    effective_otlp_http = otlp_http_url or observal_url
+    mcp_configs = _build_mcp_configs(agent, ide, effective_otlp_http, mcp_listings=mcp_listings, env_values=env_values)
+
+    if sandbox_listings:
+        sandbox_mcp = _build_sandbox_mcp_entry(sandbox_listings, ide)
+        if sandbox_mcp:
+            mcp_configs.update(sandbox_mcp)
+
+    rules_content = _build_rules_content(agent, component_names, prompt_listings, sandbox_listings)
+    skill_configs = _build_skill_configs(agent, skill_listings)
+    hook_configs = _build_hook_configs(agent, hook_listings)
+    options = options or {}
+    compatibility_warnings = _check_ide_compatibility(agent, ide)
+
+    adapter = get_adapter(ide)
+    if adapter is None:
+        raise ValueError(f"No adapter registered for IDE: {ide!r}")
+
+    ctx = ConfigContext(
+        agent=agent,
+        safe_name=safe_name,
+        ide=ide,
+        observal_url=observal_url,
+        effective_otlp_http=effective_otlp_http,
+        mcp_configs=mcp_configs,
+        rules_content=rules_content,
+        skill_configs=skill_configs,
+        hook_configs=hook_configs,
+        options=options,
+        platform=platform,
+        compatibility_warnings=compatibility_warnings,
+        mcp_listings=mcp_listings,
+        hook_listings=hook_listings,
+        skill_listings=skill_listings,
+        sandbox_listings=sandbox_listings,
+    )
+    return adapter.format_config(ctx)
+
+
+async def generate_all_ide_configs(
+    agent_version: Any,
+    agent: Any,
+    target_ides: list[str] | None = None,
+    observal_url: str = "http://localhost:8000",
+    mcp_listings: dict | None = None,
+    skill_listings: dict | None = None,
+    hook_listings: dict | None = None,
+    component_names: dict | None = None,
+    env_values: dict | None = None,
+    otlp_http_url: str = "",
+) -> dict[str, dict[str, str]]:
+    """Generate IDE config files for all target IDEs from an AgentVersion."""
+    import json as _json
+
+    from schemas.ide_registry import IDE_REGISTRY
+
+    ides = target_ides or agent_version.supported_ides or list(IDE_REGISTRY.keys())
+    result = {}
+
+    for ide in ides:
+        if ide not in IDE_REGISTRY:
+            continue
+        config = generate_agent_config(
+            agent=agent,
+            ide=ide,
+            observal_url=observal_url,
+            mcp_listings=mcp_listings,
+            skill_listings=skill_listings,
+            hook_listings=hook_listings,
+            component_names=component_names,
+            env_values=env_values,
+            otlp_http_url=otlp_http_url,
+        )
+
+        files = {}
+        if "rules_file" in config:
+            rf = config["rules_file"]
+            files[rf["path"]] = rf["content"]
+        if "agent_file" in config:
+            af = config["agent_file"]
+            content = af["content"]
+            files[af["path"]] = _json.dumps(content, indent=2) if isinstance(content, dict) else content
+        if "mcp_config" in config:
+            mc = config["mcp_config"]
+            if isinstance(mc, dict) and "path" in mc:
+                content = mc["content"]
+                files[mc["path"]] = _json.dumps(content, indent=2) if isinstance(content, dict) else content
+        if "skill_files" in config:
+            for sf in config["skill_files"]:
+                files[sf["path"]] = sf["content"]
+
+        if files:
+            result[ide] = {"files": files}
+
+    return result

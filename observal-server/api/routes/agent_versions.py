@@ -35,7 +35,7 @@ from schemas.agent import (  # noqa: TC001
     AgentVersionCreateRequest,
     AgentVersionReviewRequest,
 )
-from services.agent_config_generator import generate_agent_config
+from services.ide import generate_agent_config
 from services.agent_resolver import validate_component_ids
 from services.audit_helpers import audit
 from services.ide_feature_inference import compute_supported_ides, infer_required_features

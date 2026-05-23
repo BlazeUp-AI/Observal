@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
-from services.agent_config_generator import (
+from services.ide.helpers import (
     _vscode_copilot_hooks_config,
     _vscode_copilot_hooks_frontmatter_lines,
 )

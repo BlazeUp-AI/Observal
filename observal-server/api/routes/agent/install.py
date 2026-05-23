@@ -29,7 +29,7 @@ from schemas.agent import (
     ValidationIssue,
     ValidationResult,
 )
-from services.agent_config_generator import generate_agent_config
+from services.ide import generate_agent_config
 from services.audit_helpers import audit
 from services.registry_telemetry import emit_registry_event
 

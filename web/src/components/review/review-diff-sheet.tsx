@@ -152,9 +152,9 @@ function formatBlockYaml(obj: Record<string, unknown>, indent = 2): string {
 			if (typeof value[0] === "object" && value[0] !== null) {
 				lines.push(`${key}:`);
 				for (const item of value) {
-					const entries = Object.entries(item as Record<string, unknown>).filter(
-						([, v]) => v !== null && v !== undefined && v !== "",
-					);
+					const entries = Object.entries(
+						item as Record<string, unknown>,
+					).filter(([, v]) => v !== null && v !== undefined && v !== "");
 					if (entries.length === 0) continue;
 					const [firstKey, firstVal] = entries[0];
 					lines.push(`${pad}- ${firstKey}: ${formatScalar(firstVal)}`);
@@ -197,7 +197,11 @@ function formatBlockYaml(obj: Record<string, unknown>, indent = 2): string {
 function formatScalar(value: unknown): string {
 	if (value === null || value === undefined) return "";
 	if (typeof value === "object") {
-		try { return JSON.stringify(value); } catch { return String(value); }
+		try {
+			return JSON.stringify(value);
+		} catch {
+			return String(value);
+		}
 	}
 	return String(value);
 }
