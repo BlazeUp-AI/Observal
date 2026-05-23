@@ -427,7 +427,6 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
     ("claude-code", ".claude"),
     ("cursor", ".cursor"),
     ("kiro", ".kiro"),
-    ("vscode", ".vscode"),
     ("gemini-cli", ".gemini"),
     ("opencode", ".opencode"),
 ]
@@ -439,7 +438,6 @@ _USER_SKILL_DIRS: dict[str, str] = {
     "gemini-cli": "~/.gemini/skills",
     "opencode": "~/.config/opencode/skills",
     "cursor": "~/.cursor/rules",
-    "vscode": "~/.vscode/skills",
     "copilot": "~/.copilot/skills",
 }
 

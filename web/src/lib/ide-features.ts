@@ -21,7 +21,6 @@ export const VALID_IDES = [
   "gemini-cli",
   "kiro",
   "opencode",
-  "vscode",
 ] as const;
 
 export type IdeName = (typeof VALID_IDES)[number];
@@ -47,7 +46,6 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   copilot: new Set(["mcp_servers", "rules"]),
   "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   opencode: new Set(["mcp_servers", "rules"]),
-  vscode: new Set(["mcp_servers", "rules"]),
 };
 
 export const IDE_DISPLAY_NAMES: Record<IdeName, string> = {
@@ -59,7 +57,6 @@ export const IDE_DISPLAY_NAMES: Record<IdeName, string> = {
   copilot: "Copilot",
   "copilot-cli": "Copilot CLI",
   opencode: "OpenCode",
-  vscode: "VS Code",
 };
 
 export const FEATURE_LABELS: Record<IdeFeature, string> = {
@@ -86,7 +83,6 @@ export const IDE_ACCEPTS_MODEL_CHOICE: Record<IdeName, boolean> = {
   cursor: false,
   copilot: false,
   "copilot-cli": false,
-  vscode: false,
 };
 
 export function ideAcceptsModelChoice(ide: string): boolean {

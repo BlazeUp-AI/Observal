@@ -13,7 +13,6 @@ Generates IDE-specific agent files from a ResolvedAgent:
 - Cursor: .cursor/rules/<name>.md (markdown) + .cursor/mcp.json
 - Gemini CLI: GEMINI.md (markdown) + MCP JSON config
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
-- VSCode: .vscode/rules/<name>.md + .vscode/mcp.json
 - Codex: AGENTS.md (markdown)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)
 - OpenCode: AGENTS.md (markdown) + opencode.json (MCP config)
@@ -594,33 +593,6 @@ def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
     )
 
 
-def _generate_vscode(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate VS Code agent config (.vscode/rules/<name>.md + .vscode/mcp.json)."""
-    safe_name = _sanitize_name(manifest.name)
-    mcp_entries = _build_mcp_entries(manifest)
-    rules_content = _build_rules_markdown(manifest)
-
-    skill_files = _build_skill_files(manifest, "vscode")
-
-    return IdeAgentConfig(
-        ide="vscode",
-        files=[
-            AgentFile(
-                path=f".vscode/rules/{safe_name}.md",
-                content=rules_content,
-                format="markdown",
-            ),
-            AgentFile(
-                path=".vscode/mcp.json",
-                content={"servers": mcp_entries},
-                format="json",
-            ),
-            *skill_files,
-        ],
-        mcp_servers=mcp_entries,
-    )
-
-
 def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
     """Generate Gemini CLI agent config (GEMINI.md + .gemini/settings.json)."""
     mcp_entries = _build_mcp_entries(manifest)
@@ -664,8 +636,6 @@ def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
         mcp_servers=mcp_entries,
         env=env,
     )
-
-
 
 
 def _build_kiro_hooks(safe_name: str, observal_url: str, platform: str = "") -> dict:
@@ -888,7 +858,6 @@ _IDE_GENERATORS = {
     "claude-code": _generate_claude_code,
     "claude_code": _generate_claude_code,
     "cursor": _generate_cursor,
-    "vscode": _generate_vscode,
     "gemini-cli": _generate_gemini_cli,
     "gemini_cli": _generate_gemini_cli,
     "kiro": _generate_kiro,

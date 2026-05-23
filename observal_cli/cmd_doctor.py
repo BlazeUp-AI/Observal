@@ -468,7 +468,7 @@ def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
         return config_data.get("mcp", {}).get("servers", {})
     if key == "mcp":
         return config_data.get("mcp", {})
-    if key == "servers" or ide == "vscode":
+    if key == "servers":
         return config_data.get("servers", config_data.get("mcpServers", {}))
     if ide == "copilot-cli":
         return config_data.get("mcpServers", {})

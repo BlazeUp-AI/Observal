@@ -1207,17 +1207,6 @@ class TestGenerateIdeAgentFiles:
 
     # ── VS Code ────────────────────────────────────────────────
 
-    def test_vscode_generates_rules_and_mcp_json(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "vscode")
-        assert config.ide == "vscode"
-        rules = next(f for f in config.files if f.format == "markdown")
-        mcp_json = next(f for f in config.files if f.format == "json")
-        assert rules.path == ".vscode/rules/test-agent.md"
-        assert mcp_json.path == ".vscode/mcp.json"
-
     # ── Gemini CLI ─────────────────────────────────────────────
 
     def test_gemini_cli_generates_gemini_md(self):

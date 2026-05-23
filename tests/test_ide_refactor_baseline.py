@@ -29,7 +29,6 @@ ALL_IDES = [
     "cursor",
     "kiro",
     "gemini-cli",
-    "vscode",
     "codex",
     "copilot",
     "copilot-cli",

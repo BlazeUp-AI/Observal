@@ -1046,7 +1046,6 @@ def _install_impl(mcp_id, ide, raw):
     ide_config_paths = {
         "kiro": ".kiro/settings/mcp.json",
         "cursor": ".cursor/mcp.json",
-        "vscode": ".vscode/mcp.json",
         "claude-code": "(run the command below)",
         "claude_code": "(run the command below)",
         "gemini-cli": ".gemini/settings.json",

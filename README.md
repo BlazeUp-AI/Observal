@@ -166,16 +166,16 @@ See [SETUP.md](SETUP.md) for the full setup guide.
 
 ## Supported IDEs
 
-| IDE         | Support                                                        |
-| ----------- | -------------------------------------------------------------- |
-| Claude Code | Full — skills, hooks, MCP, rules, OTLP telemetry               |
-| Kiro CLI    | Full — superpowers, hooks, MCP, steering files, OTLP telemetry |
-| Gemini CLI  | Tested — hooks, MCP, rules, OTLP telemetry                     |
-| Cursor      | Tested — MCP + shim telemetry, rules                           |
-| VS Code     | Limited — MCP + shim telemetry, rules                          |
-| Copilot CLI | Limited — hooks, MCP + shim telemetry, rules                   |
-| Codex CLI   | Limited — rules                                                |
-| OpenCode    | Limited — JS plugin hooks, MCP + shim telemetry, rules         |
+| IDE         | Support                                    |
+| ----------- | ------------------------------------------ |
+| Claude Code | Full: hooks, skills, MCPs, sandboxes       |
+| Kiro        | Full: hooks, skills, MCPs, sandboxes       |
+| Cursor      | Full: hooks, skills, MCPs, sandboxes       |
+| Gemini CLI  | Planned                                    |
+| Copilot CLI | Planned                                    |
+| Codex CLI   | Planned                                    |
+| Copilot     | Planned                                    |
+| OpenCode    | Planned                                    |
 
 Compatibility matrix and per-IDE setup: [Integrations](docs/integrations/README.md).
 

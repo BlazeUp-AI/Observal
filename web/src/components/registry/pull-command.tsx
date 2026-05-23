@@ -19,7 +19,6 @@ import {
 
 const IDES = [
   { value: "cursor", label: "Cursor" },
-  { value: "vscode", label: "VS Code" },
   { value: "claude-code", label: "Claude Code" },
   { value: "gemini-cli", label: "Gemini CLI" },
   { value: "kiro", label: "Kiro" },

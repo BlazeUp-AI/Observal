@@ -11,4 +11,3 @@ from observal_cli.ide import cursor as _cursor  # noqa: F401
 from observal_cli.ide import gemini_cli as _gemini_cli  # noqa: F401
 from observal_cli.ide import kiro as _kiro  # noqa: F401
 from observal_cli.ide import opencode as _opencode  # noqa: F401
-from observal_cli.ide import vscode as _vscode  # noqa: F401

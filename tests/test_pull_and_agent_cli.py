@@ -87,21 +87,6 @@ def _cursor_snippet() -> dict:
     }
 
 
-def _vscode_snippet() -> dict:
-    return {
-        "config_snippet": {
-            "rules_file": {
-                "path": ".vscode/rules/my-agent.md",
-                "content": "# VSCode Agent\n",
-            },
-            "mcp_config": {
-                "path": ".vscode/mcp.json",
-                "content": {"mcpServers": {"vscode-srv": {"command": "node", "args": ["server.js"]}}},
-            },
-        }
-    }
-
-
 def _claude_code_snippet() -> dict:
     return {
         "config_snippet": {
@@ -211,18 +196,6 @@ class TestPullCursor:
         flat = result.output.replace("\n", "").replace(" ", "")
         assert "my-agent.md" in flat
         assert "mcp.json" in flat
-
-
-class TestPullVSCode:
-    def test_writes_rules_and_mcp(self, tmp_path: Path):
-        with _patch_config(), _patch_get_agent(), _patch_post(_vscode_snippet()):
-            result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "vscode", "--dir", str(tmp_path), "--no-prompt"]
-            )
-
-        assert result.exit_code == 0, result.output
-        assert (tmp_path / ".vscode" / "rules" / "my-agent.md").exists()
-        assert (tmp_path / ".vscode" / "mcp.json").exists()
 
 
 # ═══════════════════════════════════════════════════════════════

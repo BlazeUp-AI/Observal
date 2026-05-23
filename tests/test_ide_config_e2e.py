@@ -86,7 +86,7 @@ class TestConstants:
 
     def test_codex_feature_matrix(self):
         assert "codex" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["codex"] == {"rules"}
+        assert IDE_FEATURE_MATRIX["codex"] == {"rules", "mcp_servers"}
 
     def test_copilot_feature_matrix(self):
         assert "copilot" in IDE_FEATURE_MATRIX
@@ -449,12 +449,11 @@ class TestGenerateGeminiConfig:
 
 
 class TestIdeCompatibilityWarnings:
-    def test_codex_warns_on_mcp_requirement(self):
+    def test_codex_no_longer_warns_on_mcp_requirement(self):
         agent = _make_agent()
         agent.required_ide_features = ["mcp_servers"]
         warnings = _check_ide_compatibility(agent, "codex")
-        assert len(warnings) > 0
-        assert any("mcp" in w.lower() or "MCP" in w for w in warnings)
+        assert len(warnings) == 0
 
     def test_copilot_no_longer_warns_on_mcp_requirement(self):
         agent = _make_agent()
@@ -559,11 +558,6 @@ class TestParseProjectMcpServers:
     def test_opencode_extracts_mcp_key(self):
         config = {"mcp": {"my-srv": {"type": "local", "command": ["npx", "-y", "my-srv"]}}}
         result = _parse_project_mcp_servers(config, "opencode")
-        assert "my-srv" in result
-
-    def test_vscode_extracts_servers_key(self):
-        config = {"servers": {"my-srv": {"type": "stdio", "command": "npx"}}}
-        result = _parse_project_mcp_servers(config, "vscode")
         assert "my-srv" in result
 
     def test_cursor_extracts_mcpservers(self):

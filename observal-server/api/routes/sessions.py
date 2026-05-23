@@ -116,7 +116,6 @@ async def list_sessions(
         "cursor": "Cursor",
         "copilot-cli": "Copilot CLI",
         "gemini-cli": "Gemini CLI",
-        "vscode": "VS Code",
         "codex-cli": "Codex CLI",
         "opencode": "OpenCode",
     }

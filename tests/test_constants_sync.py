@@ -80,7 +80,6 @@ def test_ide_registry_model_choice_fields():
         "gemini-cli": True,
         "opencode": True,
         "cursor": False,
-        "vscode": False,
         "copilot": False,
         "copilot-cli": False,
     }

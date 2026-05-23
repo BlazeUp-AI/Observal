@@ -515,7 +515,6 @@ def _get_hook_scripts_dir(ide: str) -> str:
 
 _HOOK_SCRIPTS_DIR: dict[str, str] = {
     "cursor": ".cursor/hooks",
-    "vscode": ".github/hooks/scripts",
     "gemini-cli": ".gemini/hooks",
     "codex": ".codex/hooks",
     "copilot": ".github/hooks/scripts",
@@ -548,7 +547,7 @@ def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[d
 
         if ide == "cursor":
             hooks_dict.setdefault(ide_event, []).append({"command": command})
-        elif ide in ("vscode", "copilot", "copilot-cli"):
+        elif ide in ("copilot", "copilot-cli"):
             hooks_dict.setdefault(ide_event, []).append({"type": "command", "command": command})
         elif ide == "gemini-cli":
             entry: dict = {"matcher": "*", "command": command}

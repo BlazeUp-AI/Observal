@@ -27,14 +27,13 @@ def _load_adapters():
 class TestAdapterRegistry:
     """Test adapter registration and lookup."""
 
-    def test_all_nine_adapters_registered(self):
+    def test_all_eight_adapters_registered(self):
         adapters = get_all_adapters()
         expected = {
             "claude-code",
             "cursor",
             "kiro",
             "gemini-cli",
-            "vscode",
             "codex",
             "copilot",
             "copilot-cli",
@@ -80,7 +79,6 @@ class TestAdapterProtocol:
             "cursor",
             "kiro",
             "gemini-cli",
-            "vscode",
             "codex",
             "copilot",
             "copilot-cli",
@@ -103,7 +101,6 @@ class TestAdapterProtocol:
             "cursor",
             "kiro",
             "gemini-cli",
-            "vscode",
             "codex",
             "copilot",
             "copilot-cli",
@@ -122,8 +119,6 @@ class TestAdapterProtocol:
             "cursor",
             "kiro",
             "gemini-cli",
-            "vscode",
-            "codex",
             "copilot",
             "copilot-cli",
             "opencode",
@@ -141,8 +136,6 @@ class TestAdapterProtocol:
             "cursor",
             "kiro",
             "gemini-cli",
-            "vscode",
-            "codex",
             "copilot",
             "copilot-cli",
             "opencode",
@@ -160,7 +153,6 @@ class TestAdapterProtocol:
             "cursor",
             "kiro",
             "gemini-cli",
-            "vscode",
             "codex",
             "copilot",
             "copilot-cli",
@@ -245,7 +237,7 @@ class TestKiroAdapter:
 class TestStubAdapters:
     """Tests for stub adapters that raise NotSupported for unsupported ops."""
 
-    @pytest.mark.parametrize("ide_name", ["vscode", "cursor"])
+    @pytest.mark.parametrize("ide_name", ["codex"])
     def test_generate_hook_config_raises_not_supported(self, ide_name):
         adapter = get_adapter(ide_name)
         with pytest.raises(NotSupported):
@@ -311,3 +303,41 @@ class TestShimStatus:
             ),
         ]
         assert adapter.shim_status(mcps) == "partial"
+
+
+class TestFeatureGating:
+    """Test that IDE_Registry feature flags gate method access."""
+
+    def test_codex_lacks_hook_bridge_raises_on_get_hook_spec(self):
+        adapter = get_adapter("codex")
+        with pytest.raises(NotSupported, match="does not support get_hook_spec"):
+            adapter.get_hook_spec()
+
+    def test_codex_lacks_hook_bridge_raises_on_detect_hooks(self):
+        import tempfile
+        from pathlib import Path
+
+        adapter = get_adapter("codex")
+        with pytest.raises(NotSupported, match="does not support detect_hooks"):
+            adapter.detect_hooks(Path(tempfile.mkdtemp()))
+
+    def test_codex_has_mcp_servers_allows_scan_home(self):
+        import tempfile
+        from pathlib import Path
+
+        adapter = get_adapter("codex")
+        # Should not raise, codex has mcp_servers feature
+        result = adapter.scan_home(home=Path(tempfile.mkdtemp()))
+        assert isinstance(result, ScanResult)
+
+    def test_codex_has_mcp_servers_allows_shim_status(self):
+        adapter = get_adapter("codex")
+        # Should not raise, codex has mcp_servers feature
+        assert adapter.shim_status([]) == "none"
+
+    def test_claude_code_has_all_features_no_gating(self):
+        adapter = get_adapter("claude-code")
+        # All methods should work without raising
+        spec = adapter.get_hook_spec()
+        assert len(spec.events) > 0
+        assert adapter.shim_status([]) == "none"

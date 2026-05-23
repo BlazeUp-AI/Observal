@@ -331,12 +331,6 @@ class TestGenerateCursorVscode:
         assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.mdc"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
 
-    def test_vscode_paths(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "vscode")
-        assert cfg["rules_file"]["path"] == ".github/instructions/test-agent.instructions.md"
-        assert cfg["mcp_config"]["path"] == ".vscode/mcp.json"
-
     def test_rules_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
@@ -718,15 +712,6 @@ class TestBuilderCursor:
         assert any("mcp.json" in p for p in paths)
 
 
-class TestBuilderVscode:
-    def test_files_include_rules_and_mcp_json(self):
-        manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "vscode")
-        paths = [f.path for f in result.files]
-        assert any(".vscode/rules/" in p for p in paths)
-        assert any("mcp.json" in p for p in paths)
-
-
 class TestBuilderKiro:
     def test_json_agent_file(self):
         manifest = _make_manifest()
@@ -938,7 +923,7 @@ class TestGenerateKiroPreservation:
 
     def test_non_kiro_cursor_ides_unaffected_by_platform(self):
         agent = _make_agent()
-        for ide in ("vscode", "codex", "copilot"):
+        for ide in ["claude-code", "gemini-cli", "codex", "copilot", "opencode"]:
             cfg_default = generate_agent_config(agent, ide)
             cfg_win32 = generate_agent_config(agent, ide, platform="win32")
             assert cfg_default == cfg_win32, f"{ide} config changed with platform=win32"

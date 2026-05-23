@@ -61,7 +61,6 @@ const VALID_IDES = [
 	"kiro",
 	"claude-code",
 	"gemini-cli",
-	"vscode",
 	"codex",
 	"copilot",
 	"opencode",
@@ -221,7 +220,7 @@ export function SubmitComponentDialog({
 					// Filter: find SKILL.md files, excluding IDE config copies
 					// IDE dirs (.claude/, .kiro/, .agents/, etc.) are installed copies, not sources
 					const INSTALLED_PREFIX =
-						/^(\.agents|\.(claude|kiro|cursor|gemini|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)\//;
+						/^(\.agents|\.(claude|kiro|cursor|gemini|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)\//;
 					const allSkillFiles = (data.tree || []).filter(
 						(f: { path: string }) =>
 							f.path.endsWith("/SKILL.md") || f.path === "SKILL.md",
@@ -1073,7 +1072,9 @@ export function SubmitComponentDialog({
 								/>
 							</div>
 							<div className="space-y-1.5">
-								<Label htmlFor="hook-script-filename">Script Filename (optional)</Label>
+								<Label htmlFor="hook-script-filename">
+									Script Filename (optional)
+								</Label>
 								<input
 									id="hook-script-filename"
 									type="text"
@@ -1092,12 +1093,15 @@ export function SubmitComponentDialog({
 									id="hook-script"
 									value={scriptContent}
 									onChange={(e) => setScriptContent(e.target.value)}
-									placeholder={"#!/bin/bash\nINPUT=$(cat)\n# Your hook logic here\nexit 0"}
+									placeholder={
+										"#!/bin/bash\nINPUT=$(cat)\n# Your hook logic here\nexit 0"
+									}
 									rows={8}
 									className="font-mono text-sm"
 								/>
 								<p className="text-xs text-muted-foreground">
-									Script content stored in the registry and delivered on install. Leave empty for inline commands.
+									Script content stored in the registry and delivered on
+									install. Leave empty for inline commands.
 								</p>
 							</div>
 						</>

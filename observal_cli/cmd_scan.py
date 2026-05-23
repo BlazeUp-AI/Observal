@@ -47,7 +47,6 @@ def _deterministic_mcp_id(name: str) -> str:
 _IDE_PROJECT_CONFIGS = {
     "cursor": ".cursor/mcp.json",
     "kiro": ".kiro/settings/mcp.json",
-    "vscode": ".vscode/mcp.json",
     "copilot": ".vscode/mcp.json",
     "copilot-cli": ".mcp.json",
     "gemini-cli": ".gemini/settings.json",
@@ -637,7 +636,7 @@ def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[s
 
 def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
     """Extract MCP servers dict from project-level IDE config."""
-    if ide in ("vscode", "copilot"):
+    if ide == "copilot":
         return config.get("servers", config.get("mcpServers", {}))
     if ide == "copilot-cli":
         return config.get("mcpServers", {})

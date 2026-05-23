@@ -60,7 +60,6 @@ def load_jsonc(path: Path) -> dict:
 
 # IDE-specific top-level keys for MCP server maps.
 _MCP_KEY_BY_IDE: dict[str, str] = {
-    "vscode": "servers",
     "copilot": "servers",
     "copilot-cli": "servers",
     "opencode": "mcp",

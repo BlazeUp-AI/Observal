@@ -162,7 +162,7 @@ def _build_config_snippet(
             hook_entry["timeout"] = timeout
         return {"hooks": {ide_event: [hook_entry]}}
 
-    if ide in ("vscode", "copilot", "copilot-cli"):
+    if ide in ("copilot", "copilot-cli"):
         hook_entry = {"command": command}
         return {"hooks": {ide_event: [hook_entry]}}
 
