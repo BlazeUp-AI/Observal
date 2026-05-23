@@ -8,6 +8,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from loguru import logger as optic
 from sqlalchemy import select
 
 from database import async_session
@@ -24,6 +25,7 @@ WEBHOOK_TIMEOUT = 5
 
 async def _query_error_rate(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query the error rate from ClickHouse spans table."""
+    optic.debug("_query_error_rate: target_type={}, target_id={}", target_type, target_id)
     sql = (
         "SELECT countIf(status='error') / count(*) AS error_rate "
         "FROM spans "
@@ -50,6 +52,7 @@ async def _query_error_rate(target_type: str, target_id: str, lookback_minutes: 
 
 async def _query_latency_p99(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query the p99 latency from ClickHouse spans table."""
+    optic.debug("_query_latency_p99: target_type={}, target_id={}", target_type, target_id)
     sql = (
         "SELECT quantile(0.99)(latency_ms) AS latency_p99 "
         "FROM spans "
@@ -76,6 +79,7 @@ async def _query_latency_p99(target_type: str, target_id: str, lookback_minutes:
 
 async def _query_token_usage(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query total token usage from ClickHouse spans table."""
+    optic.debug("_query_token_usage: target_type={}, target_id={}", target_type, target_id)
     sql = (
         "SELECT sum(token_count_total) AS token_usage "
         "FROM spans "
@@ -102,6 +106,7 @@ async def _query_token_usage(target_type: str, target_id: str, lookback_minutes:
 
 async def _query_metric(metric: str, target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Dispatch to the appropriate metric query helper."""
+    optic.debug("_query_metric: metric={}, target_type={}", metric, target_type)
     if metric == "error_rate":
         return await _query_error_rate(target_type, target_id, lookback_minutes)
     elif metric == "latency_p99":
@@ -121,6 +126,7 @@ async def _deliver_webhook_signed(
     Returns (status_code, error) tuple for AlertHistory compatibility.
     If secret is empty (legacy rule), delivers without signature (AD-4).
     """
+    optic.debug("_deliver_webhook_signed: url={}", url)
     from services.webhook_delivery import deliver_webhook
 
     result = await deliver_webhook(
@@ -136,6 +142,7 @@ async def _deliver_webhook_signed(
 
 def _condition_met(condition: str, value: float, threshold: float) -> bool:
     """Check if the alert condition is met."""
+    optic.debug("_condition_met: condition={}, value={}", condition, value)
     if condition == "above":
         return value > threshold
     elif condition == "below":
@@ -145,6 +152,7 @@ def _condition_met(condition: str, value: float, threshold: float) -> bool:
 
 async def evaluate_alerts(ctx: dict) -> None:
     """Main arq cron job: evaluate all active alert rules and fire webhooks."""
+    optic.debug("alert_evaluator: cycle started")
     from services.webhook_delivery import flush_delivery_records
 
     logger.info("Starting alert evaluation cycle")
