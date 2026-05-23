@@ -31,10 +31,8 @@ from observal_cli.cmd_scan import (
 )
 from observal_cli.constants import IDE_FEATURE_MATRIX, VALID_IDES
 from observal_cli.main import app as cli_app
-from services.agent_config_generator import (
-    _check_ide_compatibility,
-    generate_agent_config,
-)
+from services.ide import generate_agent_config
+from services.ide.helpers import _check_ide_compatibility
 
 # ═══════════════════════════════════════════════════════════════════
 # Helpers

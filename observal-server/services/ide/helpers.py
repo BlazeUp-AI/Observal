@@ -19,12 +19,12 @@ from schemas.ide_registry import IDE_REGISTRY
 from services.shared.utils import sanitize_name as _sanitize_name
 
 if TYPE_CHECKING:
-    from models.agent import Agent, AgentVersion
+    from models.agent import Agent
 from services.config_generator import (
     _build_run_command,
-    _claude_otlp_env,
-    _gemini_otlp_env,
-    _gemini_settings,
+    _claude_otlp_env,  # noqa: F401 (re-exported for adapters)
+    _gemini_otlp_env,  # noqa: F401 (re-exported for adapters)
+    _gemini_settings,  # noqa: F401 (re-exported for adapters)
     generate_config,
 )
 
@@ -682,5 +682,3 @@ def _build_rules_content(
             sections.append("\n".join(lines))
 
     return "\n\n".join(sections) if sections else f"# {agent.name}"
-
-

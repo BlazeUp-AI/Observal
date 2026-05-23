@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
+from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _vscode_copilot_hooks_config,
     _vscode_copilot_hooks_frontmatter_lines,
 )
-from services.ide import ConfigContext, register_adapter
 
 
 class CopilotCliAdapter:

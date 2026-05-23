@@ -329,14 +329,14 @@ class TestAgentConfigGenerator:
         return agent
 
     def test_injects_agent_id(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         cfg = generate_agent_config(self._make_agent(), "cursor")
         mcp_cfg = cfg["mcp_config"]["content"]["mcpServers"]["ext-mcp"]
         assert mcp_cfg["env"]["OBSERVAL_AGENT_ID"] == "agent-xyz"
 
     def test_external_mcp_wrapped_with_shim(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         cfg = generate_agent_config(self._make_agent(), "cursor")
         mcp_cfg = cfg["mcp_config"]["content"]["mcpServers"]["ext-mcp"]
@@ -344,7 +344,7 @@ class TestAgentConfigGenerator:
         assert "--mcp-id" in mcp_cfg["args"]
 
     def test_kiro_format(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         cfg = generate_agent_config(self._make_agent(), "kiro")
         assert "agent_file" in cfg

@@ -29,8 +29,8 @@ from schemas.agent import (
     ValidationIssue,
     ValidationResult,
 )
-from services.ide import generate_agent_config
 from services.audit_helpers import audit
+from services.ide import generate_agent_config
 from services.registry_telemetry import emit_registry_event
 
 from ._router import router

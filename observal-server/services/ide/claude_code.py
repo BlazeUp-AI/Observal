@@ -6,14 +6,14 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
+from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _claude_code_hooks_frontmatter_lines,
+    _claude_otlp_env,
     _collect_hook_script_files,
     _generate_skill_file,
     _model_name_to_frontmatter,
 )
-from services.ide.helpers import _claude_otlp_env
-from services.ide import ConfigContext, register_adapter
 
 
 class ClaudeCodeAdapter:

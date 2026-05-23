@@ -22,7 +22,7 @@ from services.agent_builder import (
     ManifestComponents,
     generate_ide_agent_files,
 )
-from services.agent_config_generator import generate_agent_config
+from services.ide import generate_agent_config
 
 ALL_IDES = [
     "claude-code",

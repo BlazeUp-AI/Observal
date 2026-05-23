@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from services.agent_config_generator import generate_all_ide_configs
 from services.agent_lock_file import compute_integrity_hash, generate_lock_file
+from services.ide import generate_all_ide_configs
 
 # ── Lock file tests ──────────────────────────────────────────────
 
@@ -211,7 +211,7 @@ class TestBuildRulesContentPromptInjection:
         return listing
 
     def test_prompt_template_injected_when_listings_provided(self):
-        from services.agent_config_generator import _build_rules_content
+        from services.ide.helpers import _build_rules_content
 
         agent, comp_id = self._make_agent_with_prompt_component()
         listing = self._make_prompt_listing(comp_id, name="Test", template="Do something useful.")
@@ -225,7 +225,7 @@ class TestBuildRulesContentPromptInjection:
         assert "- **Test**" not in result
 
     def test_prompt_bullet_fallback_without_listings(self):
-        from services.agent_config_generator import _build_rules_content
+        from services.ide.helpers import _build_rules_content
 
         agent, comp_id = self._make_agent_with_prompt_component()
         names = {str(comp_id): "Test"}
@@ -236,7 +236,7 @@ class TestBuildRulesContentPromptInjection:
         assert "Do something useful." not in result
 
     def test_prompt_bullet_fallback_when_listing_has_empty_template(self):
-        from services.agent_config_generator import _build_rules_content
+        from services.ide.helpers import _build_rules_content
 
         agent, comp_id = self._make_agent_with_prompt_component()
         listing = self._make_prompt_listing(comp_id, name="Test", template="")
@@ -247,7 +247,7 @@ class TestBuildRulesContentPromptInjection:
         assert "- **Test**" in result
 
     def test_non_prompt_components_still_use_bullets(self):
-        from services.agent_config_generator import _build_rules_content
+        from services.ide.helpers import _build_rules_content
 
         mcp_id = uuid.uuid4()
         agent = MagicMock()
@@ -270,7 +270,7 @@ class TestBuildRulesContentPromptInjection:
 
     def test_generate_agent_config_accepts_prompt_listings(self):
         """Ensure generate_agent_config passes prompt_listings through to rules content."""
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         agent, comp_id = self._make_agent_with_prompt_component()
         agent.prompt = ""

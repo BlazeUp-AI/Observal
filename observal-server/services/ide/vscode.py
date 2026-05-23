@@ -6,13 +6,13 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
+from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _collect_hook_script_files,
     _generate_skill_file,
     _merge_hook_components_into_config,
     _vscode_copilot_hooks_config,
 )
-from services.ide import ConfigContext, register_adapter
 
 
 class VscodeAdapter:

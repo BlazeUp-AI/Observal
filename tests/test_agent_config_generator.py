@@ -25,12 +25,12 @@ from services.agent_builder import (
     ManifestComponents,
     generate_ide_agent_files,
 )
-from services.agent_config_generator import (
+from services.ide import generate_agent_config
+from services.ide.helpers import (
     _build_rules_content,
     _inject_agent_id,
     _model_name_to_frontmatter,
     _sanitize_name,
-    generate_agent_config,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -625,7 +625,7 @@ class TestMcpListingClaudeCodeFallback:
         from unittest.mock import patch
 
         with patch(
-            "services.agent_config_generator.generate_config",
+            "services.ide.helpers.generate_config",
             return_value={"command": "observal-shim", "args": ["--mcp-id", str(comp_id)]},
         ):
             cfg = generate_agent_config(

@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 from schemas.ide_registry import IDE_REGISTRY
-from services.ide.helpers import _opencode_plugin_js
 from services.ide import ConfigContext, register_adapter
+from services.ide.helpers import _opencode_plugin_js
 
 
 class OpenCodeAdapter:
