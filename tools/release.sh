@@ -115,6 +115,16 @@ git checkout -b "$RELEASE_BRANCH"
 set_version_in_file "$PYPROJECT" "$NEW_VERSION"
 set_version_in_file "observal-server/pyproject.toml" "$NEW_VERSION"
 
+# Bump web/package.json
+info "Bumping web/package.json..."
+python3 -c "
+import json, pathlib
+pkg = pathlib.Path('web/package.json')
+data = json.loads(pkg.read_text())
+data['version'] = '$NEW_VERSION'
+pkg.write_text(json.dumps(data, indent=2) + '\n')
+"
+
 # ── Update uv.lock ──────────────────────────────────────────
 
 info "Updating uv.lock..."
@@ -127,7 +137,7 @@ run_git_cliff --config "$CLIFF_CONFIG" --tag "v$NEW_VERSION" --output CHANGELOG.
 
 # ── Commit and push branch ──────────────────────────────────
 
-git add "$PYPROJECT" observal-server/pyproject.toml uv.lock CHANGELOG.md
+git add "$PYPROJECT" observal-server/pyproject.toml web/package.json uv.lock CHANGELOG.md
 git commit -s -m "bump(release): v$NEW_VERSION"
 
 info "Pushing release branch to $FORK_REMOTE..."

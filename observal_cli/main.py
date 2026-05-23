@@ -116,7 +116,7 @@ from observal_cli.cmd_support import support_app
 from observal_cli.cmd_uninstall import register_uninstall
 
 # ═══════════════════════════════════════════════════════════
-# registry_app — Component registry parent group
+# registry_app: Component registry parent group
 # ═══════════════════════════════════════════════════════════
 
 registry_app = typer.Typer(

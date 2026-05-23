@@ -84,6 +84,13 @@ jobs:
             exit 1
           fi
 
+          # Validate version matches web/package.json
+          WEB_VERSION=$(python3 -c "import json, pathlib; print(json.loads(pathlib.Path('web/package.json').read_text())['version'])")
+          if [ "$VERSION" != "$WEB_VERSION" ]; then
+            echo "::error::Release version v$VERSION does not match web/package.json ($WEB_VERSION)"
+            exit 1
+          fi
+
           # Detect bump type by comparing to previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "v0.0.0")
           PREV="${PREV_TAG#v}"

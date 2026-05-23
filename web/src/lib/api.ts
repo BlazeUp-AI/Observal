@@ -232,7 +232,7 @@ async function request<T = unknown>(
 				}
 			}
 
-			// Refresh failed or retry failed — clear session
+			// Refresh failed or retry failed, clear session
 			clearSession();
 			if (typeof window !== "undefined") {
 				window.location.href = "/login?reason=session_expired";
@@ -264,7 +264,7 @@ async function request<T = unknown>(
 						: JSON.stringify(parsed.error);
 			}
 		} catch {
-			// not JSON — use raw text
+			// not JSON, use raw text
 		}
 		const err = new Error(detail);
 		(err as Error & { status: number }).status = response.status;

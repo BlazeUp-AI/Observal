@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Feature version registry — maps features to the minimum version that supports them.
+"""Feature version registry: maps features to the minimum version that supports them.
 
 This file is the CANONICAL SOURCE OF TRUTH for feature versioning.
 The TypeScript equivalent at `web/src/lib/features.ts` is auto-generated from

@@ -61,9 +61,9 @@ class TestServerSupports:
 
         from observal_cli.client import server_supports
 
-        # agent_insights requires 0.7.0 — effective is 0.6.0 → not available
+        # agent_insights requires 0.7.0, effective is 0.6.0 → not available
         assert server_supports("agent_insights") is False
-        # basic_agents requires 0.5.0 — effective is 0.6.0 → available
+        # basic_agents requires 0.5.0, effective is 0.6.0 → available
         assert server_supports("basic_agents") is True
 
 
@@ -80,7 +80,7 @@ class TestHeaderSpoofingSafe:
 
         # At effective 0.1.0, almost no features are available
         features = available_set(effective)
-        # This is safe — server returns less data, not broken data
+        # This is safe: server returns less data, not broken data
         assert "agent_builder" not in features
         assert "agent_insights" not in features
 

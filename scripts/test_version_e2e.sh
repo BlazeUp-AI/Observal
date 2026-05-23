@@ -47,10 +47,10 @@ echo "Verify version changed:"
 VER=$(observal --version)
 echo "$VER"
 if [[ "$VER" == *"0.7.0"* ]]; then
-  pass "CLI is now v0.7.0"
+    pass "CLI is now v0.7.0"
 else
-  echo "FAIL: Expected 0.7.0, got $VER"
-  exit 1
+    echo "FAIL: Expected 0.7.0, got $VER"
+    exit 1
 fi
 
 echo ""
@@ -61,9 +61,9 @@ pass "Commands work on v0.7.0"
 echo ""
 echo "Check: 'self status' should NOT exist on v0.7.0:"
 if observal self status 2>&1 | grep -q "No such command"; then
-  pass "'self status' correctly missing on v0.7.0"
+    pass "'self status' correctly missing on v0.7.0"
 else
-  echo -e "${YELLOW}⚠ self status exists on v0.7.0 (might be a different 0.7.0 build)${NC}"
+    echo -e "${YELLOW}⚠ self status exists on v0.7.0 (might be a different 0.7.0 build)${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════
@@ -71,7 +71,7 @@ section "3. UPGRADE CLI BACK"
 # ═══════════════════════════════════════════════════════════
 
 echo "Reinstalling from branch to get upgrade command back..."
-uv tool install --force --editable . > /dev/null 2>&1
+uv tool install --force --editable . >/dev/null 2>&1
 echo ""
 
 echo "Now use the new upgrade command:"
@@ -79,10 +79,10 @@ observal self upgrade --force
 VER=$(observal --version)
 echo "$VER"
 if [[ "$VER" == *"0.8.0"* ]]; then
-  pass "CLI upgraded back to v0.8.0"
+    pass "CLI upgraded back to v0.8.0"
 else
-  echo "FAIL: Expected 0.8.0"
-  exit 1
+    echo "FAIL: Expected 0.8.0"
+    exit 1
 fi
 
 # ═══════════════════════════════════════════════════════════
@@ -99,17 +99,17 @@ section "5. VERSION NEGOTIATION HEADERS"
 
 echo "CLI v0.8.0 → Server:"
 curl -s -I $API/api/v1/config/version \
-  -H "X-Observal-CLI-Version: 0.8.0" 2>&1 | grep -i "x-observal"
+    -H "X-Observal-CLI-Version: 0.8.0" 2>&1 | grep -i "x-observal"
 echo ""
 
 echo "CLI v0.5.0 → Server (degrades to min):"
 curl -s -I $API/api/v1/config/version \
-  -H "X-Observal-CLI-Version: 0.5.0" 2>&1 | grep -i "x-observal"
+    -H "X-Observal-CLI-Version: 0.5.0" 2>&1 | grep -i "x-observal"
 echo ""
 
 echo "CLI v0.3.0 → Server (below min, still works):"
 curl -s -I $API/api/v1/config/version \
-  -H "X-Observal-CLI-Version: 0.3.0" 2>&1 | grep -i "x-observal"
+    -H "X-Observal-CLI-Version: 0.3.0" 2>&1 | grep -i "x-observal"
 echo ""
 
 echo "No CLI header → defaults to server version:"
@@ -139,9 +139,9 @@ section "7. FRONTEND VERSION MISMATCH"
 echo "Check frontend is serving:"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)
 if [[ "$HTTP_CODE" == "200" ]]; then
-  pass "Frontend serving on :3000 (HTTP $HTTP_CODE)"
+    pass "Frontend serving on :3000 (HTTP $HTTP_CODE)"
 else
-  echo "FAIL: Frontend not reachable (HTTP $HTTP_CODE)"
+    echo "FAIL: Frontend not reachable (HTTP $HTTP_CODE)"
 fi
 
 echo ""
@@ -164,14 +164,14 @@ echo "Downgrade to see the notification:"
 observal self downgrade --version 0.7.0 --force
 echo ""
 
-echo "Run any command — banner should appear at bottom:"
+echo "Run any command, banner should appear at bottom:"
 echo -e "${DIM}(Looking for 'Update available' in output)${NC}"
-OUTPUT=$(uv tool install --force --editable . > /dev/null 2>&1 && observal ops list 2>&1 || true)
+OUTPUT=$(uv tool install --force --editable . >/dev/null 2>&1 && observal ops list 2>&1 || true)
 echo "$OUTPUT" | tail -3
 if echo "$OUTPUT" | grep -q "Update available\|update available\|self upgrade"; then
-  pass "Update notification banner shown"
+    pass "Update notification banner shown"
 else
-  echo -e "${YELLOW}⚠ Banner not shown (cache may be fresh — check ~/.observal/version_cache.json)${NC}"
+    echo -e "${YELLOW}⚠ Banner not shown (cache may be fresh, check ~/.observal/version_cache.json)${NC}"
 fi
 
 # ═══════════════════════════════════════════════════════════
@@ -182,9 +182,9 @@ echo "Disable via config:"
 observal config set update_check false
 OUTPUT=$(observal auth whoami 2>&1)
 if echo "$OUTPUT" | grep -q "Update available"; then
-  echo "FAIL: Banner shown despite disabled"
+    echo "FAIL: Banner shown despite disabled"
 else
-  pass "No banner when update_check=false"
+    pass "No banner when update_check=false"
 fi
 
 echo ""
@@ -192,9 +192,9 @@ echo "Disable via env var:"
 observal config set update_check true
 OUTPUT=$(OBSERVAL_NO_UPDATE_CHECK=1 observal auth whoami 2>&1)
 if echo "$OUTPUT" | grep -q "Update available"; then
-  echo "FAIL: Banner shown despite env var"
+    echo "FAIL: Banner shown despite env var"
 else
-  pass "No banner with OBSERVAL_NO_UPDATE_CHECK=1"
+    pass "No banner with OBSERVAL_NO_UPDATE_CHECK=1"
 fi
 
 # ═══════════════════════════════════════════════════════════
@@ -203,14 +203,14 @@ section "10. CONCURRENT LOCK TEST"
 
 echo "Creating fake lock to simulate concurrent upgrade..."
 mkdir -p ~/.observal
-echo '{"pid": '$$', "timestamp": '$(date +%s)'}' > ~/.observal/.cli-upgrade.lock
+echo '{"pid": '$$', "timestamp": '$(date +%s)'}' >~/.observal/.cli-upgrade.lock
 
 OUTPUT=$(observal self downgrade --version 0.6.0 --force 2>&1 || true)
 if echo "$OUTPUT" | grep -qi "another upgrade\|in progress"; then
-  pass "Concurrent upgrade correctly blocked"
+    pass "Concurrent upgrade correctly blocked"
 else
-  echo "$OUTPUT"
-  echo -e "${YELLOW}⚠ Lock test inconclusive${NC}"
+    echo "$OUTPUT"
+    echo -e "${YELLOW}⚠ Lock test inconclusive${NC}"
 fi
 
 rm -f ~/.observal/.cli-upgrade.lock
@@ -221,7 +221,7 @@ section "CLEANUP"
 # ═══════════════════════════════════════════════════════════
 
 echo "Ensuring CLI is back on v0.8.0..."
-uv tool install --force --editable . > /dev/null 2>&1
+uv tool install --force --editable . >/dev/null 2>&1
 observal --version
 
 echo ""

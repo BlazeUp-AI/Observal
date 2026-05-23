@@ -66,7 +66,7 @@ class TestStaleLock:
     def test_orphaned_lock_from_dead_pid(self, isolated_lock_dir):
         """Lock from a dead PID (within threshold) is broken."""
         lock_path = isolated_lock_dir / ".cli-upgrade.lock"
-        # PID 1 is always init — use a likely-dead PID
+        # PID 1 is always init, use a likely-dead PID
         lock_path.write_text(
             json.dumps(
                 {

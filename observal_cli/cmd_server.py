@@ -43,6 +43,25 @@ server_app = typer.Typer(
 console = Console()
 
 
+def _require_super_admin() -> None:
+    """Verify the current user has super_admin role. Exit if not."""
+    from rich import print as rprint
+
+    from observal_cli import client
+
+    try:
+        user = client.get("/api/v1/auth/whoami")
+    except SystemExit as exc:
+        rprint("[red]Authentication required.[/red]")
+        rprint("[dim]  Run [bold]observal auth login[/bold] first.[/dim]")
+        raise typer.Exit(1) from exc
+    role = user.get("role", "")
+    if role != "super_admin":
+        rprint("[red]Permission denied.[/red] Server management requires super_admin role.")
+        rprint(f"[dim]  Current role: {role}[/dim]")
+        raise typer.Exit(1)
+
+
 @server_app.command()
 def start(
     port: int = typer.Option(API_PORT, "--port", "-p", help="API port"),
@@ -418,12 +437,28 @@ def _update_env_version(compose_dir: Path, version: str) -> None:
 
 @server_app.command(name="upgrade")
 def server_upgrade(
-    version: str | None = typer.Option(None, "--version", "-v", help="Target version"),
-    skip_backup: bool = typer.Option(False, "--skip-backup", help="Skip database backup"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would happen without doing it"),
-    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    version: str | None = typer.Option(
+        None, "--version", "-v", help="Target version (e.g. 0.9.0). Defaults to latest."
+    ),
+    skip_backup: bool = typer.Option(False, "--skip-backup", help="Skip pre-upgrade database backup"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show upgrade plan without applying changes"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip interactive confirmation prompt"),
 ) -> None:
-    """Upgrade server to latest or specified version (pulls from GHCR)."""
+    """Upgrade the Observal server to the latest or a specified version.
+
+    Pulls new Docker images from GHCR, creates a database backup (unless
+    skipped), and recreates containers. Runs a health check after upgrade
+    and automatically rolls back if the server fails to start.
+
+    Requires super_admin role.
+
+    Examples:
+        observal server upgrade
+        observal server upgrade --version 0.9.0
+        observal server upgrade --dry-run
+        observal server upgrade --skip-backup --force
+    """
+    _require_super_admin()
     from observal_cli import version_check
     from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
 
@@ -551,10 +586,25 @@ def server_upgrade(
 
 @server_app.command(name="rollback")
 def server_rollback(
-    from_backup: str | None = typer.Option(None, "--from-backup", help="Path to backup directory"),
-    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+    from_backup: str | None = typer.Option(
+        None, "--from-backup", help="Path to a specific backup directory to restore from"
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip interactive confirmation prompt"),
 ) -> None:
-    """Rollback server to previous version."""
+    """Rollback the server to a previous version from backup.
+
+    Restores the database from the most recent backup (or a specified one),
+    reverts the Docker images, and recreates containers. Runs a health check
+    after rollback.
+
+    Requires super_admin role.
+
+    Examples:
+        observal server rollback
+        observal server rollback --from-backup ~/.observal/backups/v0.7.0-20260521T120000
+        observal server rollback --force
+    """
+    _require_super_admin()
     from observal_cli.server.backup import list_backups, restore_backup
     from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
 
@@ -634,7 +684,17 @@ def server_rollback(
 
 @server_app.command(name="versions")
 def server_versions() -> None:
-    """List available server versions and backup status."""
+    """List available server versions from GHCR and local backup status.
+
+    Shows the current running version, available versions on the container
+    registry, and which versions have local database backups.
+
+    Requires super_admin role.
+
+    Examples:
+        observal server versions
+    """
+    _require_super_admin()
     from observal_cli import version_check
     from observal_cli.server.backup import list_backups
 

@@ -12,11 +12,11 @@ from __future__ import annotations
 import json
 import os
 import time
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path  # noqa: TC003 (used at runtime)
 
 from observal_cli.config import CONFIG_DIR
 
-STALE_THRESHOLD = 1800  # 30 minutes — after this, assume lock is orphaned
+STALE_THRESHOLD = 1800  # 30 minutes; after this, assume lock is orphaned
 
 
 class UpgradeLockError(RuntimeError):
@@ -55,10 +55,10 @@ def acquire_lock(scope: str) -> Path:
                     f"If this is stale, delete: {lock_path}"
                 )
             else:
-                # PID is dead — lock is orphaned
+                # PID is dead, lock is orphaned
                 lock_path.unlink(missing_ok=True)
         except (json.JSONDecodeError, OSError, KeyError):
-            # Corrupt lock file — remove it
+            # Corrupt lock file, remove it
             lock_path.unlink(missing_ok=True)
 
     # Write new lock

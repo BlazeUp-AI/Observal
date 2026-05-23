@@ -280,7 +280,7 @@ def delete(path: str) -> dict:
 def get_registered_agents_only() -> bool:
     """Check if the org has registered-agents-only mode enabled.
 
-    Returns False on any error (fail-open, silent — no printed messages).
+    Returns False on any error (fail-open, silent, no printed messages).
     """
     try:
         cfg = config.load()

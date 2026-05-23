@@ -36,6 +36,7 @@ def compose_dir(tmp_path):
 
 class TestServerUpgrade:
     def test_already_on_version(self, compose_dir, monkeypatch):
+        monkeypatch.setattr("observal_cli.cmd_server._require_super_admin", lambda: None)
         monkeypatch.setattr("observal_cli.cmd_server._find_compose_dir", lambda: compose_dir)
         monkeypatch.setattr(
             "observal_cli.version_check._fetch_from_github",
@@ -46,6 +47,7 @@ class TestServerUpgrade:
         assert "Already on v0.7.0" in result.output
 
     def test_image_not_found_aborts(self, compose_dir, monkeypatch):
+        monkeypatch.setattr("observal_cli.cmd_server._require_super_admin", lambda: None)
         monkeypatch.setattr("observal_cli.cmd_server._find_compose_dir", lambda: compose_dir)
         monkeypatch.setattr(
             "observal_cli.version_check.verify_server_image_exists",
@@ -56,6 +58,7 @@ class TestServerUpgrade:
         assert "not found on GHCR" in result.output
 
     def test_dry_run(self, compose_dir, monkeypatch):
+        monkeypatch.setattr("observal_cli.cmd_server._require_super_admin", lambda: None)
         monkeypatch.setattr("observal_cli.cmd_server._find_compose_dir", lambda: compose_dir)
         monkeypatch.setattr("observal_cli.version_check.verify_server_image_exists", lambda v: True)
         app = _get_app()
@@ -66,6 +69,7 @@ class TestServerUpgrade:
 
 class TestServerRollback:
     def test_no_backups_exits(self, compose_dir, monkeypatch):
+        monkeypatch.setattr("observal_cli.cmd_server._require_super_admin", lambda: None)
         monkeypatch.setattr("observal_cli.cmd_server._find_compose_dir", lambda: compose_dir)
         monkeypatch.setattr("observal_cli.server.backup.list_backups", lambda: [])
         app = _get_app()
@@ -75,6 +79,7 @@ class TestServerRollback:
 
 class TestServerVersions:
     def test_versions_output(self, compose_dir, monkeypatch):
+        monkeypatch.setattr("observal_cli.cmd_server._require_super_admin", lambda: None)
         monkeypatch.setattr("observal_cli.cmd_server._find_compose_dir", lambda: compose_dir)
         monkeypatch.setattr(
             "observal_cli.version_check.fetch_available_server_images",
