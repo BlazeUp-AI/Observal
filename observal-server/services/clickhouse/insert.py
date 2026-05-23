@@ -5,6 +5,7 @@
 import json
 
 import structlog
+from loguru import logger as optic
 
 import services.clickhouse.client as _client
 
@@ -13,6 +14,7 @@ logger = structlog.get_logger(__name__)
 
 async def insert_traces(traces: list[dict]):
     """Batch insert traces into ClickHouse using JSONEachRow."""
+    optic.debug("insert_traces: traces={}", traces)
     if not traces:
         return
     event_ts = _client._now_ms()
@@ -65,6 +67,7 @@ async def insert_traces(traces: list[dict]):
 
 async def insert_spans(spans: list[dict]):
     """Batch insert spans into ClickHouse using JSONEachRow."""
+    optic.debug("insert_spans: spans={}", spans)
     if not spans:
         return
     event_ts = _client._now_ms()
@@ -152,6 +155,7 @@ async def insert_spans(spans: list[dict]):
 
 async def insert_scores(scores: list[dict]):
     """Batch insert scores into ClickHouse using JSONEachRow."""
+    optic.debug("clickhouse: inserting scores")
     if not scores:
         return
     event_ts = _client._now_ms()
@@ -199,6 +203,7 @@ async def insert_scores(scores: list[dict]):
 
 async def insert_otel_logs(rows: list[dict]):
     """Batch insert rows into the otel_logs table (OTEL Collector schema)."""
+    optic.debug("insert_otel_logs: rows={}", rows)
     if not rows:
         return
     lines = []
@@ -229,6 +234,7 @@ async def insert_otel_logs(rows: list[dict]):
 
 async def insert_audit_log(events: list[dict]):
     """Batch insert audit log events into ClickHouse."""
+    optic.debug("insert_audit_log: events={}", events)
     if not events:
         return
     lines = []
@@ -263,6 +269,7 @@ async def insert_audit_log(events: list[dict]):
 
 async def _insert_webhook_deliveries(records: list[dict]):
     """Batch insert webhook delivery records into ClickHouse."""
+    optic.debug("_insert_webhook_deliveries: records={}", records)
     if not records:
         return
     lines = []
@@ -296,6 +303,7 @@ async def _insert_webhook_deliveries(records: list[dict]):
 
 async def insert_session_events(rows: list[dict]):
     """Batch insert session event rows into ClickHouse using JSONEachRow."""
+    optic.debug("clickhouse: inserting session events")
     if not rows:
         return
     lines = []
