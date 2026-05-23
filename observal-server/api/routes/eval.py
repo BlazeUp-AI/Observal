@@ -384,7 +384,7 @@ async def eval_agent_in_session(
     - SLM scoring with full session context + delegation prompt as goal
     """
     # Load agent from DB (by UUID or name)
-    from api.routes.agent import _load_agent
+    from api.routes.agent.helpers import _load_agent
 
     agent = await _load_agent(db, agent_id, prefer_user_id=current_user.id)
     if not agent:
