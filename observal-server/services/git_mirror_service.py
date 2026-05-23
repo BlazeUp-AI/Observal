@@ -14,6 +14,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from loguru import logger as optic
+
 import services.dynamic_settings as ds
 from services.ssrf_guard import is_private_url as _ssrf_is_private
 
@@ -41,12 +43,14 @@ class SyncResult:
 
 def _mirror_path(git_url: str, base: Path = DEFAULT_MIRROR_BASE) -> Path:
     """Content-addressed mirror directory."""
+    optic.debug("_mirror_path: git_url={}, base={}", git_url, base)
     url_hash = hashlib.sha256(git_url.encode()).hexdigest()[:16]
     return base / url_hash
 
 
 def _run_git(args: list[str], cwd: str | None = None, timeout: int = 120) -> subprocess.CompletedProcess:
     """Run a git command with timeout."""
+    optic.debug("_run_git: args={}, cwd={}, timeout={}", args, cwd, timeout)
     return subprocess.run(
         ["git", *args],
         cwd=cwd,
@@ -58,6 +62,7 @@ def _run_git(args: list[str], cwd: str | None = None, timeout: int = 120) -> sub
 
 def clone_or_update(git_url: str, branch: str = "main", base: Path = DEFAULT_MIRROR_BASE) -> Path:
     """Shallow clone or update a repo mirror. Returns the mirror directory path."""
+    optic.debug("clone_or_update: git_url={}, branch={}, base={}", git_url, branch, base)
     # Block SSRF via git clone (SEC-013).
     # Set ALLOW_INTERNAL_GIT_URLS=true for self-hosted GitLab / GitHub Enterprise.
     if (
@@ -101,6 +106,7 @@ def clone_or_update(git_url: str, branch: str = "main", base: Path = DEFAULT_MIR
 
 def get_commit_sha(mirror_dir: Path) -> str:
     """Get the current HEAD commit SHA."""
+    optic.debug("get_commit_sha: mirror_dir={}", mirror_dir)
     result = _run_git(["rev-parse", "HEAD"], cwd=str(mirror_dir))
     if result.returncode != 0:
         return ""
@@ -109,6 +115,7 @@ def get_commit_sha(mirror_dir: Path) -> str:
 
 def discover_components(mirror_dir: Path, component_type: str | None = None) -> list[DiscoveredComponent]:
     """Discover components using manifest (primary) or convention scan (fallback)."""
+    optic.debug("discover_components: mirror_dir={}, component_type={}", mirror_dir, component_type)
     # Try manifest first
     for manifest_name in (".observal.json", "observal.json"):
         manifest_path = mirror_dir / manifest_name
@@ -126,6 +133,7 @@ def discover_components(mirror_dir: Path, component_type: str | None = None) -> 
 
 def _safe_path(base: Path, rel: str) -> bool:
     """Check that a relative path stays within base (no traversal)."""
+    optic.debug("_safe_path: base={}, rel={}", base, rel)
     try:
         resolved = (base / rel).resolve()
         return resolved == base.resolve() or str(resolved).startswith(str(base.resolve()) + "/")
@@ -137,6 +145,7 @@ def _parse_manifest(
     manifest: dict, component_type: str | None = None, mirror_dir: Path | None = None
 ) -> list[DiscoveredComponent]:
     """Parse .observal.json manifest."""
+    optic.debug("_parse_manifest: manifest={}, component_type={}, mirror_dir={}", manifest, component_type, mirror_dir)
     components = []
     type_keys = {
         "mcp": "mcps",
@@ -190,6 +199,7 @@ _COMPONENT_MARKERS = {
 
 def _scan_by_convention(mirror_dir: Path, component_type: str | None = None) -> list[DiscoveredComponent]:
     """Discover components by scanning conventional directories."""
+    optic.debug("_scan_by_convention: mirror_dir={}, component_type={}", mirror_dir, component_type)
     components = []
     types_to_scan = (
         {component_type: _CONVENTION_DIRS[component_type]}
@@ -225,6 +235,7 @@ _FASTMCP_PATTERN = re.compile(r"FastMCP\(|from\s+mcp\.server\.fastmcp\s+import|f
 
 def validate_mcp_component(component_path: Path) -> tuple[bool, str]:
     """Validate an MCP component uses FastMCP. Returns (passed, detail)."""
+    optic.debug("validate_mcp_component: component_path={}", component_path)
     for py_file in component_path.rglob("*.py"):
         if ".git" in py_file.parts or py_file.is_symlink():
             continue
@@ -241,6 +252,7 @@ def sync_source(
     git_url: str, component_type: str, branch: str = "main", base: Path = DEFAULT_MIRROR_BASE
 ) -> SyncResult:
     """Full sync pipeline: clone -> discover -> validate. Returns SyncResult."""
+    optic.debug("sync_source: git_url={}, component_type={}, branch={}", git_url, component_type, branch)
     try:
         mirror_dir = clone_or_update(git_url, branch=branch, base=base)
         commit_sha = get_commit_sha(mirror_dir)
