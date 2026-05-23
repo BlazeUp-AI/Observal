@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 feroake <avi04.kavi07@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,6 +166,13 @@ jobs:
             --with pytest-cov \
             pytest ../tests/ -q \
               ${{ matrix.python-version == '3.13' && '--cov=../observal_cli --cov=. --cov-report=xml' || '' }}
+
+      - name: Upload coverage artefact
+        if: needs.changes.outputs.python == 'true' && matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage
+          path: observal-server/coverage.xml
 
       - name: Upload coverage to Codecov
         if: needs.changes.outputs.python == 'true' && matrix.python-version == '3.13'

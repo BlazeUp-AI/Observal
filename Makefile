@@ -2,9 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 feroake <avi04.kavi07@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-enterprise rebuild-local release-major release-feature release-patch
+.PHONY: lint format check test test-cov test-v test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-enterprise rebuild-local release-major release-feature release-patch
 
 # ── Linting ──────────────────────────────────────────────
 
@@ -22,6 +23,9 @@ check:  ## Full pre-commit check on all files
 
 test:  ## Run Python tests
 	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis --with pyarrow pytest ../tests/ -q
+
+test-cov:  ## Run Python tests with coverage (produces coverage.xml + htmlcov/)
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis --with pyarrow --with pytest-cov pytest ../tests/ -q --cov=../observal_cli --cov=. --cov-report=xml --cov-report=html
 
 test-v:  ## Run Python tests (verbose)
 	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis --with pyarrow pytest ../tests/ -v
