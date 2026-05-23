@@ -29,12 +29,16 @@
 * [observal scan](cli/scan.md)
 * [observal agent pull](cli/pull.md)
 * [observal registry](cli/registry.md)
+* [observal component](cli/component.md)
+* [observal models](cli/models.md)
 * [observal agent](cli/agent.md)
 * [observal ops](cli/ops.md)
 * [observal admin](cli/admin.md)
 * [observal doctor](cli/doctor.md)
 * [observal profile](cli/profile.md)
 * [observal self](cli/self.md)
+* [observal server](cli/server.md)
+* [observal uninstall](cli/uninstall.md)
 
 ## Self-Hosting
 
