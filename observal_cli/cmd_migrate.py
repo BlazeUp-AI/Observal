@@ -44,7 +44,6 @@ INSERT_ORDER: list[str] = [
     "organizations",
     "enterprise_config",
     "component_sources",
-    "penalty_definitions",
     # Tier 1 — FK to organizations
     "users",
     "exporter_configs",
@@ -81,21 +80,13 @@ INSERT_ORDER: list[str] = [
     # Tier 4 — FK to agents/agent_versions
     "agent_download_records",
     "component_download_records",
-    "dimension_weights",
     # Tier 6 — FK to agent_versions (polymorphic component_id)
     "agent_components",
     # Tier 7 — FK to users (polymorphic listing_id)
     "feedback",
     # Tier 8 — FK to alert_rules
     "alert_history",
-    # Tier 9 — FK to agents + users
-    "eval_runs",
-    # Tier 10 — FK to eval_runs
-    "scorecards",
-    # Tier 11 — FK to scorecards + penalty_definitions
-    "scorecard_dimensions",
-    "trace_penalties",
-    # Tier 12 — FK to agents + users (insight tables)
+    # Tier 9 — FK to agents + users (insight tables)
     "insight_meta_cache",
     "insight_session_facets",
     "insight_session_meta",
@@ -124,7 +115,6 @@ JSONB_COLUMNS: dict[str, list[str]] = {
     "prompt_versions": ["variables", "model_hints", "tags", "supported_ides"],
     "sandbox_listings": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
     "sandbox_versions": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
-    "scorecards": ["raw_output", "dimension_scores", "scoring_recommendations", "dimensions_skipped", "warnings"],
     "agent_components": ["config_override"],
     "exporter_configs": ["config"],
     "insight_reports": ["metrics", "narrative", "aggregated_data"],

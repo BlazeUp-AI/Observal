@@ -35,7 +35,6 @@ FEATURE_VERSIONS: dict[str, str] = {
     "skills": "0.7.0",
     # v0.8.0
     "agent_builder": "0.8.0",
-    "eval_ragas": "0.8.0",
     "version_negotiation": "0.8.0",
     "self_upgrade": "0.8.0",
 }
