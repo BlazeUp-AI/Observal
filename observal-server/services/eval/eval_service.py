@@ -80,14 +80,26 @@ def _score_to_grade(score: float) -> str:
     return "F"
 
 
-async def fetch_traces(agent_id: str, limit: int = 20, trace_id: str | None = None) -> list[dict]:
+async def fetch_traces(
+    agent_id: str,
+    limit: int = 20,
+    trace_id: str | None = None,
+    project_id: str | None = None,
+) -> list[dict]:
     """Fetch recent agent traces from ClickHouse."""
+    conditions = ["agent_id = {aid:String}", "is_deleted = 0"]
+    params = {"param_aid": agent_id}
     if trace_id:
-        sql = "SELECT * FROM traces WHERE agent_id = {aid:String} AND trace_id = {tid:String} AND is_deleted = 0 FORMAT JSON"
-        params = {"param_aid": agent_id, "param_tid": trace_id}
+        conditions.append("trace_id = {tid:String}")
+        params["param_tid"] = trace_id
+    if project_id is not None:
+        conditions.append("project_id = {pid:String}")
+        params["param_pid"] = project_id
+    where = " AND ".join(conditions)
+    if trace_id:
+        sql = f"SELECT * FROM traces WHERE {where} FORMAT JSON"
     else:
-        sql = f"SELECT * FROM traces WHERE agent_id = {{aid:String}} AND is_deleted = 0 ORDER BY start_time DESC LIMIT {int(limit)} FORMAT JSON"
-        params = {"param_aid": agent_id}
+        sql = f"SELECT * FROM traces WHERE {where} ORDER BY start_time DESC LIMIT {int(limit)} FORMAT JSON"
 
     try:
         r = await _query(sql, params)

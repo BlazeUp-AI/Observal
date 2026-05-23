@@ -202,6 +202,8 @@ async def ingest(
 
                 attrs: dict[str, str] = {
                     "session.id": session_id,
+                    "project_id": project_id,
+                    "user.id": user_id,
                     "event.name": event_name,
                     "source": "shim",
                     "tool_name": tool_name,

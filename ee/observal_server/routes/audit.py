@@ -25,6 +25,7 @@ class AuditLogEntry(BaseModel):
     actor_id: str
     actor_email: str
     actor_role: str
+    org_id: str = ""
     action: str
     resource_type: str
     resource_id: str
@@ -61,6 +62,9 @@ async def list_audit_logs(
     if resource_type:
         conditions.append("resource_type = {rtype:String}")
         params["param_rtype"] = resource_type
+    if current_user.org_id is not None:
+        conditions.append("org_id = {org_id:String}")
+        params["param_org_id"] = str(current_user.org_id)
     if start_date:
         conditions.append("timestamp >= {start:String}")
         params["param_start"] = start_date.strftime("%Y-%m-%d %H:%M:%S")
@@ -69,7 +73,7 @@ async def list_audit_logs(
         params["param_end"] = end_date.strftime("%Y-%m-%d %H:%M:%S")
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
-    sql = f"""SELECT event_id, timestamp, actor_id, actor_email, actor_role,
+    sql = f"""SELECT event_id, timestamp, actor_id, actor_email, actor_role, org_id,
               action, resource_type, resource_id, resource_name, http_method,
               http_path, status_code, ip_address, user_agent, detail
               FROM audit_log
@@ -116,6 +120,9 @@ async def export_audit_logs(
     if resource_type:
         conditions.append("resource_type = {rtype:String}")
         params["param_rtype"] = resource_type
+    if current_user.org_id is not None:
+        conditions.append("org_id = {org_id:String}")
+        params["param_org_id"] = str(current_user.org_id)
     if start_date:
         conditions.append("timestamp >= {start:String}")
         params["param_start"] = start_date.strftime("%Y-%m-%d %H:%M:%S")
@@ -124,7 +131,7 @@ async def export_audit_logs(
         params["param_end"] = end_date.strftime("%Y-%m-%d %H:%M:%S")
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
-    sql = f"""SELECT event_id, timestamp, actor_id, actor_email, actor_role,
+    sql = f"""SELECT event_id, timestamp, actor_id, actor_email, actor_role, org_id,
               action, resource_type, resource_id, resource_name, http_method,
               http_path, status_code, ip_address, user_agent, detail
               FROM audit_log WHERE {where_clause}

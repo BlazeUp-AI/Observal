@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.deps import get_db, require_role, resolve_prefix_id
+from api.deps import get_db, get_project_id, require_role, resolve_prefix_id
 from models.agent import Agent
 from models.eval import EvalRun, EvalRunStatus, Scorecard
 from models.user import User, UserRole
@@ -39,6 +39,10 @@ router = APIRouter(prefix="/api/v1/eval", tags=["eval"])
 
 _scorecard_load = [selectinload(Scorecard.dimensions)]
 _eval_run_load = [selectinload(EvalRun.scorecards).selectinload(Scorecard.dimensions)]
+
+
+def _tenant_project_scope(current_user: User) -> str | None:
+    return get_project_id(current_user) if current_user.org_id is not None else None
 
 
 @router.post("/agents/{agent_id}", response_model=EvalRunDetailResponse)
@@ -67,11 +71,13 @@ async def run_evaluation(
 
     trace_id = req.trace_id if req else None
     session_id = req.session_id if req and hasattr(req, "session_id") else None
-    traces = await fetch_traces(str(agent.id), trace_id=trace_id)
+    project_scope = _tenant_project_scope(current_user)
+    project_id = get_project_id(current_user)
+    traces = await fetch_traces(str(agent.id), trace_id=trace_id, project_id=project_scope)
 
     # If no traces from agent_interactions, try materializing from hook events
     if not traces and session_id:
-        mat_trace, mat_spans = await materialize_session_spans(session_id)
+        mat_trace, mat_spans = await materialize_session_spans(session_id, project_id=project_scope)
         if mat_trace and mat_spans:
             traces = [mat_trace]
 
@@ -79,17 +85,28 @@ async def run_evaluation(
     if not traces:
         agent_name = agent.name
         _log.info("eval_fallback_start", agent_name=agent_name, agent_id=str(agent.id))
+        project_filter = ""
+        params = {
+            "param_aname": agent_name,
+            "param_prompt_pattern": f"%@agent-{agent_name}%",
+            "param_name_pattern": f"%{agent_name}%",
+        }
+        if project_scope is not None:
+            project_filter = "  AND LogAttributes['project_id'] = {project_id:String} "
+            params["param_project_id"] = project_scope
         sql = (
             "SELECT DISTINCT sid, latest FROM ("
             "  SELECT LogAttributes['session.id'] AS sid, max(Timestamp) AS latest "
             "  FROM otel_logs "
             "  WHERE LogAttributes['agent_name'] = {aname:String} "
+            f"{project_filter}"
             "  AND LogAttributes['session.id'] != '' "
             "  GROUP BY sid "
             "  UNION ALL "
             "  SELECT LogAttributes['session.id'] AS sid, max(Timestamp) AS latest "
             "  FROM otel_logs "
             "  WHERE LogAttributes['session.id'] != '' "
+            f"{project_filter}"
             "  AND (LogAttributes['tool_input'] LIKE {prompt_pattern:String} "
             "       OR LogAttributes['tool_input'] LIKE {name_pattern:String} "
             "       OR LogAttributes['agent_name'] LIKE {name_pattern:String}) "
@@ -99,14 +116,7 @@ async def run_evaluation(
             "LIMIT 5 "
         )
         try:
-            r = await _query(
-                f"{sql} FORMAT JSON",
-                {
-                    "param_aname": agent_name,
-                    "param_prompt_pattern": f"%@agent-{agent_name}%",
-                    "param_name_pattern": f"%{agent_name}%",
-                },
-            )
+            r = await _query(f"{sql} FORMAT JSON", params)
             _log.info("eval_fallback_ch_response", status=r.status_code, body=r.text[:500])
             if r.status_code == 200:
                 sessions = r.json().get("data", [])
@@ -114,7 +124,7 @@ async def run_evaluation(
                 for row in sessions:
                     sid = row.get("sid", "")
                     if sid:
-                        mat_trace, mat_spans = await materialize_session_spans(sid)
+                        mat_trace, mat_spans = await materialize_session_spans(sid, project_id=project_scope)
                         _log.info(
                             "eval_materialize_result",
                             sid=sid,
@@ -139,10 +149,10 @@ async def run_evaluation(
             tid = trace.get("event_id", trace.get("trace_id", str(uuid.uuid4())))
 
             # Try new structured eval first (uses spans from ClickHouse)
-            spans = await query_spans("default", tid, limit=500)
+            spans = await query_spans(project_id, tid, limit=500)
             if not spans and trace.get("source") == "hook_materializer":
                 # Use materialized spans from hook events
-                _, spans = await materialize_session_spans(tid)
+                _, spans = await materialize_session_spans(tid, project_id=project_scope)
             if spans:
                 sc = await run_structured_eval(agent, trace, spans, eval_run.id)
             else:
@@ -289,10 +299,6 @@ async def eval_session(
     Works for Kiro and any other hook-sourced session. If agent_id is provided,
     the eval uses the agent's goal template; otherwise a generic eval is run.
     """
-    trace, spans = await materialize_session_spans(session_id)
-    if not trace or not spans:
-        raise HTTPException(status_code=404, detail="No hook events found for session")
-
     agent = None
     if agent_id:
         agent = await resolve_prefix_id(
@@ -304,6 +310,15 @@ async def eval_session(
         # Org-scope check: verify agent belongs to user's org
         if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
             raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    elif current_user.org_id is not None:
+        raise HTTPException(status_code=400, detail="agent_id is required for organization-scoped session eval")
+
+    trace, spans = await materialize_session_spans(session_id, project_id=_tenant_project_scope(current_user))
+    if not trace or not spans:
+        raise HTTPException(status_code=404, detail="No hook events found for session")
+
+    if current_user.org_id is not None and trace.get("project_id") != str(current_user.org_id):
+        raise HTTPException(status_code=404, detail="No hook events found for session")
 
     if agent:
         eval_run = EvalRun(agent_id=agent.id, triggered_by=current_user.id)
@@ -380,14 +395,22 @@ async def eval_agent_in_session(
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     # Materialize session and find the agent's spans
-    trace, all_spans, agent_ctx = await materialize_agent_eval(session_id, agent.name)
+    trace, all_spans, agent_ctx = await materialize_agent_eval(
+        session_id,
+        agent.name,
+        project_id=_tenant_project_scope(current_user),
+    )
 
     if not all_spans:
         raise HTTPException(status_code=404, detail="No hook events found for session")
 
     # If not found by name, try by agent ID
     if agent_ctx is None:
-        trace, all_spans, agent_ctx = await materialize_agent_eval(session_id, str(agent.id))
+        trace, all_spans, agent_ctx = await materialize_agent_eval(
+            session_id,
+            str(agent.id),
+            project_id=_tenant_project_scope(current_user),
+        )
 
     if agent_ctx is None:
         # Agent wasn't found as a subagent — check if this is a single-agent
@@ -562,6 +585,12 @@ async def list_agent_evaluated_sessions(
     # Query ClickHouse directly for sessions where this agent was used
     # Uses strict agent_name matching (works for Kiro and any IDE that sets agent_name)
     # No heuristics = zero false positives
+    project_filter = ""
+    params = {"param_agent_name": agent.name}
+    if current_user.org_id is not None:
+        project_filter = "AND LogAttributes['project_id'] = {project_id:String} "
+        params["param_project_id"] = get_project_id(current_user)
+
     sql = (
         "SELECT DISTINCT "
         "LogAttributes['session.id'] AS session_id, "
@@ -572,6 +601,7 @@ async def list_agent_evaluated_sessions(
         "any(ServiceName) AS service_name "
         "FROM otel_logs "
         "WHERE LogAttributes['agent_name'] = {agent_name:String} "
+        f"{project_filter}"
         "AND LogAttributes['session.id'] != '' "
         "GROUP BY session_id "
         "ORDER BY start_time DESC "
@@ -581,7 +611,7 @@ async def list_agent_evaluated_sessions(
     session_map: dict[str, dict] = {}
 
     try:
-        ch_result = await _query(f"{sql} FORMAT JSON", {"param_agent_name": agent.name})
+        ch_result = await _query(f"{sql} FORMAT JSON", params)
         _log.info("clickhouse_query_result", status_code=ch_result.status_code, agent_name=agent.name)
         if ch_result.status_code == 200:
             data = ch_result.json().get("data", [])

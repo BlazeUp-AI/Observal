@@ -183,11 +183,14 @@ INIT_SQL = [
         INDEX idx_event_type event_type TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_severity severity TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_actor_id actor_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_security_events_org_id org_id TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_outcome outcome TYPE bloom_filter(0.01) GRANULARITY 1
     ) ENGINE = MergeTree()
     TTL toDateTime(timestamp) + INTERVAL 730 DAY
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (event_type, severity, timestamp)""",
+    """ALTER TABLE security_events ADD COLUMN IF NOT EXISTS org_id String DEFAULT ''""",
+    """ALTER TABLE security_events ADD INDEX IF NOT EXISTS idx_security_events_org_id org_id TYPE bloom_filter(0.01) GRANULARITY 1""",
     # Audit log table (enterprise compliance — SOC 2 / ISO 27001)
     """CREATE TABLE IF NOT EXISTS audit_log (
         event_id    UUID,
@@ -195,6 +198,7 @@ INIT_SQL = [
         actor_id    String,
         actor_email String,
         actor_role  LowCardinality(String),
+        org_id      String DEFAULT '',
         action      LowCardinality(String),
         resource_type LowCardinality(String),
         resource_id String DEFAULT '',
@@ -206,12 +210,15 @@ INIT_SQL = [
         user_agent  String DEFAULT '',
         detail      String DEFAULT '',
         INDEX idx_actor_id actor_id TYPE bloom_filter(0.01) GRANULARITY 1,
+        INDEX idx_audit_org_id org_id TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_action action TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_resource_type resource_type TYPE bloom_filter(0.01) GRANULARITY 1
     ) ENGINE = MergeTree()
     TTL toDateTime(timestamp) + INTERVAL 730 DAY
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (action, resource_type, timestamp)""",
+    """ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS org_id String DEFAULT ''""",
+    """ALTER TABLE audit_log ADD INDEX IF NOT EXISTS idx_audit_org_id org_id TYPE bloom_filter(0.01) GRANULARITY 1""",
     # Webhook delivery tracking
     """CREATE TABLE IF NOT EXISTS webhook_deliveries (
         delivery_id     UUID,

@@ -37,6 +37,7 @@ async def audit(
             actor_id=str(user.id),
             actor_email=user.email or "",
             actor_role=user.role.value if hasattr(user.role, "value") else str(user.role),
+            org_id=str(user.org_id) if user.org_id else "",
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,

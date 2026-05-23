@@ -239,6 +239,7 @@ async def insert_audit_log(events: list[dict]):
             "actor_id": e.get("actor_id", ""),
             "actor_email": e.get("actor_email", ""),
             "actor_role": e.get("actor_role", ""),
+            "org_id": e.get("org_id", ""),
             "action": e["action"],
             "resource_type": e.get("resource_type", ""),
             "resource_id": e.get("resource_id", ""),

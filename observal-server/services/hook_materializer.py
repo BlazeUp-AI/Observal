@@ -51,13 +51,13 @@ class AgentContext:
     invocations: list[dict] = field(default_factory=list)
 
 
-async def materialize_session_spans(session_id: str) -> tuple[dict, list[dict]]:
+async def materialize_session_spans(session_id: str, project_id: str | None = None) -> tuple[dict, list[dict]]:
     """Convert otel_logs hook events for a session into a trace + spans.
 
     Returns:
         (trace_dict, spans_list) compatible with run_structured_eval().
     """
-    events = await _fetch_session_events(session_id)
+    events = await _fetch_session_events(session_id, project_id=project_id)
     if not events:
         return {}, []
 
@@ -67,6 +67,7 @@ async def materialize_session_spans(session_id: str) -> tuple[dict, list[dict]]:
 async def materialize_agent_eval(
     session_id: str,
     target_agent: str,
+    project_id: str | None = None,
 ) -> tuple[dict, list[dict], AgentContext | None]:
     """Materialize a full session and annotate spans for a target agent.
 
@@ -76,7 +77,7 @@ async def materialize_agent_eval(
         field on each span so the eval pipeline knows which belong to the
         target agent. Returns (trace, spans, None) if agent not found.
     """
-    events = await _fetch_session_events(session_id)
+    events = await _fetch_session_events(session_id, project_id=project_id)
     if not events:
         return {}, [], None
 
@@ -93,8 +94,14 @@ async def materialize_agent_eval(
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_session_events(session_id: str) -> list[dict]:
+async def _fetch_session_events(session_id: str, project_id: str | None = None) -> list[dict]:
     """Fetch all otel_logs events for a session, with shim span side-load."""
+    project_filter = ""
+    params = {"param_sid": session_id}
+    if project_id is not None:
+        project_filter = "AND LogAttributes['project_id'] = {pid:String} "
+        params["param_pid"] = project_id
+
     sql = (
         "SELECT "
         "Timestamp AS timestamp, "
@@ -104,10 +111,10 @@ async def _fetch_session_events(session_id: str) -> list[dict]:
         "ServiceName AS service_name "
         "FROM otel_logs "
         "WHERE LogAttributes['session.id'] = {sid:String} "
+        f"{project_filter}"
         "ORDER BY Timestamp ASC "
         "FORMAT JSON"
     )
-    params = {"param_sid": session_id}
 
     try:
         r = await _query(sql, params)
@@ -267,6 +274,8 @@ def _build_trace_and_spans(session_id: str, events: list[dict]) -> tuple[dict, l
     trace_output = ""
     model = ""
     agent_name = ""
+    project_id = ""
+    user_id = ""
     first_ts = events[0].get("timestamp", "")
     last_ts = events[-1].get("timestamp", "")
 
@@ -281,6 +290,10 @@ def _build_trace_and_spans(session_id: str, events: list[dict]) -> tuple[dict, l
             model = attrs["model"]
         if not agent_name and attrs.get("agent_name"):
             agent_name = attrs["agent_name"]
+        if not project_id and attrs.get("project_id"):
+            project_id = attrs["project_id"]
+        if not user_id and attrs.get("user.id"):
+            user_id = attrs["user.id"]
 
         # Common agent attribution from the event
         span_agent_id = attrs.get("agent_id", "")
@@ -452,6 +465,8 @@ def _build_trace_and_spans(session_id: str, events: list[dict]) -> tuple[dict, l
         "trace_id": session_id,
         "event_id": session_id,
         "agent_id": agent_name,
+        "project_id": project_id,
+        "user_id": user_id,
         "model": model,
         "output": trace_output,
         "status": "completed",
