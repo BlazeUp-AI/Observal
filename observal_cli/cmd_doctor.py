@@ -597,6 +597,14 @@ def doctor_patch(
         rprint("\n[yellow]Dry run - no changes made.[/yellow]")
     elif any_changes:
         rprint("\n[green]✓ Patch complete.[/green] Restart your IDE sessions to pick up changes.")
+        from observal_cli.audit import emit_cli_audit
+
+        emit_cli_audit(
+            "doctor.patch",
+            resource_type="ide",
+            detail=f"ides={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
+            sensitivity="high",
+        )
     else:
         rprint("\n[dim]Everything already up to date.[/dim]")
 

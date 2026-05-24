@@ -40,6 +40,7 @@ from api.ratelimit import limiter
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.alert import router as alert_router
+from api.routes.audit import router as audit_router
 from api.routes.auth import router as auth_router
 from api.routes.bulk import router as bulk_router
 from api.routes.component_source import router as component_source_router
@@ -384,6 +385,9 @@ app.include_router(bulk_router)
 app.include_router(config_router)
 app.include_router(registry_models_router)
 app.include_router(support_router)
+# Audit CLI event endpoint (license-gated internally, mounted always so
+# CLI gets a clean 200 "skipped" response rather than 404 when unlicensed)
+app.include_router(audit_router)
 
 # --- Prometheus metrics ---
 _instrumentator = Instrumentator(

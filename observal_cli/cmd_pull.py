@@ -614,6 +614,17 @@ def register_pull(app: typer.Typer):
                 )
             )
 
+            from observal_cli.audit import emit_cli_audit
+
+            emit_cli_audit(
+                "agent.pull",
+                resource_type="agent",
+                resource_id=str(agent_uuid),
+                resource_name=agent_detail.get("name", resolved),
+                detail=f"ide={ide}",
+                sensitivity="high",
+            )
+
         # ── Output summary ──────────────────────────────────
         if not written:
             rprint("[yellow]No files to write from the config snippet.[/yellow]")

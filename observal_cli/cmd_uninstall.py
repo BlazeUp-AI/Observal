@@ -282,6 +282,16 @@ def register_uninstall(app: typer.Typer):
 
         rprint()
 
+        # Emit audit event before teardown (server may become unreachable after)
+        from observal_cli.audit import emit_cli_audit
+
+        emit_cli_audit(
+            "system.uninstall",
+            resource_type="system",
+            detail=f"keep_config={keep_config}, keep_cli={keep_cli}, keep_repo={keep_repo}",
+            sensitivity="admin",
+        )
+
         # ── Phase 1: Docker teardown ──────────────────────
         _docker_teardown(repo_root)
 
