@@ -125,6 +125,18 @@ data['version'] = '$NEW_VERSION'
 pkg.write_text(json.dumps(data, indent=2) + '\n')
 "
 
+# Bump packages/pi-extension/package.json
+if [ -f packages/pi-extension/package.json ]; then
+  info "Bumping packages/pi-extension/package.json..."
+  python3 -c "
+import json, pathlib
+pkg = pathlib.Path('packages/pi-extension/package.json')
+data = json.loads(pkg.read_text())
+data['version'] = '$NEW_VERSION'
+pkg.write_text(json.dumps(data, indent=2) + '\n')
+"
+fi
+
 # ── Update uv.lock ──────────────────────────────────────────
 
 info "Updating uv.lock..."
@@ -137,7 +149,7 @@ run_git_cliff --config "$CLIFF_CONFIG" --tag "v$NEW_VERSION" --output CHANGELOG.
 
 # ── Commit and push branch ──────────────────────────────────
 
-git add "$PYPROJECT" observal-server/pyproject.toml web/package.json uv.lock CHANGELOG.md
+git add "$PYPROJECT" observal-server/pyproject.toml web/package.json packages/pi-extension/package.json uv.lock CHANGELOG.md
 git commit -s -m "bump(release): v$NEW_VERSION"
 
 info "Pushing release branch to $FORK_REMOTE..."
