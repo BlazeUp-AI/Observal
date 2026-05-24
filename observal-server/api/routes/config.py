@@ -153,4 +153,9 @@ async def get_ides():
                 "accepts_model_choice": spec.get("accepts_model_choice", False),
             }
         )
-    return {"ides": ides}
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        content={"ides": ides},
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

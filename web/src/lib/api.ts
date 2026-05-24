@@ -196,6 +196,7 @@ async function request<T = unknown>(
 			method,
 			headers,
 			body: body !== undefined ? JSON.stringify(body) : undefined,
+			cache: "no-store",
 		});
 		if (res.status < 500) break;
 		// Brief pause before retry on 5xx
@@ -222,6 +223,7 @@ async function request<T = unknown>(
 					method,
 					headers,
 					body: body !== undefined ? JSON.stringify(body) : undefined,
+					cache: "no-store",
 				});
 				if (retryRes.ok) {
 					if (retryRes.status === 204) return undefined as T;

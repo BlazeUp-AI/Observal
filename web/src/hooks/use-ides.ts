@@ -15,5 +15,6 @@ export function useIdes() {
 		queryKey: ["config", "ides"],
 		queryFn: config.ides,
 		staleTime: Infinity,
+		gcTime: Infinity,
 	});
 }
