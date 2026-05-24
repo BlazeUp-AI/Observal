@@ -460,6 +460,13 @@ export interface AuditLogEntry {
 	ip_address: string;
 	user_agent: string;
 	detail: string;
+	org_id: string;
+	sensitivity: string;
+	request_id: string;
+	outcome: string;
+	duration_ms: number;
+	chain_hash: string;
+	source: string;
 }
 
 export interface SecurityEvent {
@@ -481,7 +488,7 @@ export interface SecurityEvent {
 
 export interface DiagnosticsResponse {
 	status: "ok" | "degraded" | "unhealthy";
-	deployment_mode: string;
+	licensed: boolean;
 	checks: Record<string, Record<string, unknown>>;
 }
 

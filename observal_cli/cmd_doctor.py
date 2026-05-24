@@ -62,7 +62,9 @@ def _load_json(path: Path) -> dict | None:
 
 
 @doctor_app.callback(invoke_without_command=True)
-def doctor(ctx: typer.Context):
+def doctor(
+    ctx: typer.Context, yes: bool = typer.Option(False, "--yes", "-y", help="Auto-fix all issues without prompting")
+):
     """Diagnose IDE settings and offer to configure telemetry + AI skill."""
     optic.debug("cli: doctor")
     if ctx.invoked_subcommand is not None:
@@ -115,28 +117,30 @@ def doctor(ctx: typer.Context):
 
     # Offer to fix everything in one go
     fixable = len(warnings) > 0
-    if fixable and sys.stdin.isatty():
+    should_fix = yes
+    if fixable and not yes and sys.stdin.isatty():
         rprint("")
-        if typer.confirm(
+        should_fix = typer.confirm(
             "Fix all issues? (configures telemetry + installs AI skill for all detected IDEs)", default=True
-        ):
-            import subprocess
+        )
+    if fixable and should_fix:
+        import subprocess
 
-            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-            subprocess.run(
-                [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--all-ides"],
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=60,
-                env=env,
-            )
-            # Install the observal skill
-            from observal_cli.cmd_auth import _install_observal_skill
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        subprocess.run(
+            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--all-ides"],
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            env=env,
+        )
+        # Install the observal skill
+        from observal_cli.cmd_auth import _install_observal_skill
 
-            _install_observal_skill()
-        else:
-            rprint("[dim]  Run [bold]observal doctor patch --all --all-ides[/bold] anytime to fix.[/dim]")
+        _install_observal_skill()
+    elif fixable and not should_fix:
+        rprint("[dim]  Run [bold]observal doctor patch --all --all-ides[/bold] anytime to fix.[/dim]")
 
     raise typer.Exit(1 if issues else 0)
 
@@ -230,7 +234,7 @@ def _check_claude_code(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Claude Code session push hooks not installed. "
-            "Run `observal doctor patch --ide claude-code` to inject them."
+            "Run `observal doctor patch --all --ide claude-code` to inject them."
         )
 
     # Check for stale legacy hooks
@@ -282,7 +286,7 @@ def _check_kiro(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Kiro session push hooks not installed in any agent config. "
-            "Run `observal doctor patch --ide kiro` to inject them."
+            "Run `observal doctor patch --all --ide kiro` to inject them."
         )
 
 
@@ -627,6 +631,14 @@ def doctor_patch(
         rprint("\n[yellow]Dry run - no changes made.[/yellow]")
     elif any_changes:
         rprint("\n[green]✓ Patch complete.[/green] Restart your IDE sessions to pick up changes.")
+        from observal_cli.audit import emit_cli_audit
+
+        emit_cli_audit(
+            "doctor.patch",
+            resource_type="ide",
+            detail=f"ides={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
+            sensitivity="high",
+        )
     else:
         rprint("\n[dim]Everything already up to date.[/dim]")
 

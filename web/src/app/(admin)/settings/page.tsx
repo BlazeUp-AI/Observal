@@ -154,6 +154,8 @@ interface SettingDef {
 	label: string;
 	subtitle: string;
 	tooltip: string;
+	/** If set, setting is only shown when this license feature is active (or "all"). */
+	requiresFeature?: string;
 }
 
 interface SettingSection {
@@ -161,6 +163,8 @@ interface SettingSection {
 	icon: React.ReactNode;
 	description?: string;
 	danger?: boolean;
+	/** If set, section is only shown when this license feature is active (or "all"). */
+	requiresFeature?: string;
 	settings: SettingDef[];
 }
 
@@ -170,6 +174,7 @@ const SETTING_SECTIONS: SettingSection[] = [
 		icon: <Activity className="h-3.5 w-3.5" />,
 		description:
 			"Configure the LLM and batch processing for the insights engine. Requires 'insights' license feature.",
+		requiresFeature: "insights",
 		settings: [
 			{
 				key: "eval.model_url",
@@ -298,6 +303,7 @@ const SETTING_SECTIONS: SettingSection[] = [
 				subtitle: "Disable all password-based authentication",
 				tooltip:
 					"When enabled, password login, registration, and admin password reset are all blocked. Users must authenticate via OAuth/OIDC SSO. Ensure OAuth is configured before enabling or you will lock everyone out.",
+				requiresFeature: "saml",
 			},
 			{
 				key: "deployment.frontend_url",
@@ -379,6 +385,7 @@ const SETTING_SECTIONS: SettingSection[] = [
 		description:
 			"SAML identity provider configuration. Requires 'saml' license feature.",
 		danger: true,
+		requiresFeature: "saml",
 		settings: [
 			{
 				key: "saml.idp_entity_id",
@@ -673,10 +680,10 @@ export default function SettingsPage() {
 	} = useAdminSettings();
 	const { data: systemWarnings } = useSystemWarnings();
 	const {
-		deploymentMode,
+		licensed,
 		ssoEnabled,
 		samlEnabled,
-		isLicensed,
+		licensedFeatures,
 		brandingLogo,
 		brandingAppName,
 		brandingWordmark,
@@ -1092,10 +1099,10 @@ export default function SettingsPage() {
 					<div className="rounded-md border border-border bg-card px-4 py-3 space-y-2">
 						<div className="flex items-center justify-between py-1">
 							<span className="text-xs text-muted-foreground">
-								Deployment Mode
+								License
 							</span>
 							<span className="text-xs font-medium font-[family-name:var(--font-mono)]">
-								{deploymentMode}
+								{licensed ? "Enterprise" : "Community"}
 							</span>
 						</div>
 						<div className="flex items-center justify-between py-1 border-t border-border">
@@ -1117,7 +1124,7 @@ export default function SettingsPage() {
 							</span>
 						</div>
 					</div>
-					{isLicensed && (
+					{licensedFeatures.length > 0 && (
 						<div className="flex items-start gap-2 mt-2 text-xs text-muted-foreground">
 							<Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
 							<span>
@@ -1597,7 +1604,10 @@ export default function SettingsPage() {
 						{/* Add new setting form */}
 						{/* Unified sections — each setting stays in its section */}
 						<TooltipProvider delayDuration={300}>
-							{SETTING_SECTIONS.filter((s) => !s.danger).map((section) => (
+							{SETTING_SECTIONS.filter((s) => !s.danger && (!s.requiresFeature || licensedFeatures.includes(s.requiresFeature) || licensedFeatures.includes("all"))).map((section) => {
+								const visibleSettings = section.settings.filter((d) => !d.requiresFeature || licensedFeatures.includes(d.requiresFeature) || licensedFeatures.includes("all"));
+								if (visibleSettings.length === 0) return null;
+								return (
 								<section key={section.title} className="mb-6">
 									<h3 className="text-sm font-semibold uppercase tracking-wider text-foreground/80 mb-1 flex items-center gap-1.5">
 										{section.icon}
@@ -1607,7 +1617,7 @@ export default function SettingsPage() {
 										<p className="text-xs text-foreground/60 mb-3">{section.description}</p>
 									)}
 									<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-									{section.settings.map((d) => {
+									{visibleSettings.map((d) => {
 										const existing = entries.find((e) => e.key === d.key);
 										const isEditing = editingKey === d.key;
 										if (isEditing) {
@@ -1644,10 +1654,11 @@ export default function SettingsPage() {
 									})}
 									</div>
 								</section>
-							))}
+								);
+							})}
 
 							{/* Danger Zone */}
-							{SETTING_SECTIONS.some((s) => s.danger) && (
+							{SETTING_SECTIONS.some((s) => s.danger && (!s.requiresFeature || licensedFeatures.includes(s.requiresFeature) || licensedFeatures.includes("all"))) && (
 								<section className="mt-8">
 									<div className="border-t-2 border-amber-500/30 pt-6">
 										<h2 className="text-sm font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-2 mb-1">
@@ -1656,7 +1667,10 @@ export default function SettingsPage() {
 										</h2>
 										<p className="text-xs text-foreground/60 mb-4">These settings can affect authentication, security, and data integrity.</p>
 										<div className="space-y-4">
-											{SETTING_SECTIONS.filter((s) => s.danger).map((section) => (
+											{SETTING_SECTIONS.filter((s) => s.danger && (!s.requiresFeature || licensedFeatures.includes(s.requiresFeature) || licensedFeatures.includes("all"))).map((section) => {
+												const visibleDangerSettings = section.settings.filter((d) => !d.requiresFeature || licensedFeatures.includes(d.requiresFeature) || licensedFeatures.includes("all"));
+												if (visibleDangerSettings.length === 0) return null;
+												return (
 												<details key={section.title} className="group rounded-md border-l-4 border-amber-500/60 border-2 border-border/70 bg-card">
 													<summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none hover:bg-muted/30 transition-colors">
 														{section.icon}
@@ -1668,7 +1682,7 @@ export default function SettingsPage() {
 															<p className="text-xs text-foreground/60 mb-3">{section.description}</p>
 														)}
 														<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-															{section.settings.map((d) => {
+															{visibleDangerSettings.map((d) => {
 														const existing = entries.find((e) => e.key === d.key);
 														const isEditing = editingKey === d.key;
 														if (isEditing) {
@@ -1706,7 +1720,7 @@ export default function SettingsPage() {
 														</div>
 													</div>
 												</details>
-											))}
+											); })}
 										</div>
 									</div>
 								</section>
