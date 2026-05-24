@@ -784,7 +784,7 @@ def _post_login_setup():
     try:
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         subprocess.run(
-            [sys.executable, "-m", "observal_cli.main", "doctor"],
+            [sys.executable, "-m", "observal_cli.main", "doctor", "--yes"],
             text=True,
             encoding="utf-8",
             errors="replace",
