@@ -3,12 +3,36 @@
 
 # Concepts
 
-Deep dives on the mental models Observal is built around. Read these when you want to know *why*, not just *how*.
+Understand the mental models that power Observal.
 
-| Page | What it covers |
-| --- | --- |
-| [Data model](data-model.md) | Traces, spans, sessions, scores — the shapes everything flows into |
-| [Evaluation engine](evaluation.md) | The six scoring dimensions, BenchJack hardening, the sanitizer/canary/watchdog pipeline |
-| [Shim vs proxy](shim-vs-proxy.md) | How interception works, when each is used, and why it's transparent |
+This section goes beyond setup and commands to explain the architectural ideas behind the platform — how telemetry flows through the system, how evaluations are computed, and why Observal is designed the way it is.
 
-New to Observal? Start with [Getting Started → Core Concepts](../getting-started/core-concepts.md) — that's the 10-minute tour. This section is the 45-minute deep dive.
+If you're looking to contribute, extend integrations, or deeply understand the platform internals, start here.
+
+| Page                  | What it covers                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Data model**        | How traces, spans, sessions, scores, and evaluations are structured and connected                      |
+| **Evaluation engine** | The scoring pipeline, BenchJack hardening, sanitization layers, canary checks, and watchdog safeguards |
+| **Shim vs proxy**     | How transparent interception works, when each strategy is used, and the tradeoffs between them         |
+
+## Recommended Reading Path
+
+New to Observal?
+
+Start with **Getting Started → Core Concepts** for the fast 10-minute overview.
+
+Then return to this section for the deeper architectural dive into how the platform operates internally.
+
+## Why These Concepts Matter
+
+Observal is not just an observability dashboard.
+
+It is a full telemetry and evaluation layer for AI coding agents — designed to make agent behavior measurable, inspectable, reproducible, and improvable across different IDEs, models, and execution environments.
+
+Understanding these concepts will help you:
+
+* Debug agent behavior faster
+* Build better integrations
+* Contribute to the platform confidently
+* Interpret traces and evaluations correctly
+* Extend Observal’s telemetry pipeline safely
