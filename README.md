@@ -107,6 +107,24 @@ Admin approve/reject workflow for submissions
 </tr>
 </table>
 
+## Architecture Overview
+
+```mermaid
+flowchart LR
+    IDE[IDE / CLI] --> Shim[observal-shim]
+    Shim --> API[Observal API Server]
+    API --> PG[(PostgreSQL)]
+
+    Shim --> OTEL[OTEL Collector]
+    OTEL --> CH[(ClickHouse)]
+
+    API --> Web[Web Dashboard]
+    Worker[Background Worker] --> API
+    Worker --> CH
+    CH --> Grafana
+```
+The platform uses a transparent telemetry pipeline to capture MCP tool activity, process traces and spans, and surface analytics through the dashboard and Grafana integrations.
+
 ## Documentation
 
 **Full docs live at [docs.observal.io](https://docs.observal.io/)**
