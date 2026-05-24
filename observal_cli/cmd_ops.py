@@ -501,6 +501,20 @@ def _rate(
 
 def _rate_impl(listing_id, stars, listing_type, comment):
     resolved = config.resolve_alias(listing_id)
+    # Resolve name to UUID if not already a UUID
+    try:
+        import uuid as _uuid
+
+        _uuid.UUID(resolved)
+    except ValueError:
+        # Not a UUID, resolve via server show endpoint (handles name lookup)
+        endpoint = "/api/v1/agents" if listing_type == "agent" else f"/api/v1/{listing_type}s"
+        try:
+            item = client.get(f"{endpoint}/{resolved}")
+            resolved = item["id"]
+        except Exception:
+            rprint(f"[red]Could not find {listing_type} named '{resolved}'[/red]")
+            raise typer.Exit(1)
     with spinner("Submitting rating..."):
         client.post(
             "/api/v1/feedback",
@@ -511,7 +525,7 @@ def _rate_impl(listing_id, stars, listing_type, comment):
                 "comment": comment,
             },
         )
-    rprint(f"[green]✓ Rated {star_rating(stars)}[/green]")
+    rprint(f"[green]u2713 Rated {star_rating(stars)}[/green]")
 
 
 @ops_app.command(name="feedback")
@@ -1338,11 +1352,13 @@ def _traces_impl(trace_type, mcp_id, agent_id, limit, output):
     import httpx
 
     cfg = config.get_or_exit()
+    token = cfg.get("api_key") or cfg.get("access_token", "")
     with spinner("Querying traces..."):
         try:
             r = httpx.post(
                 f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
                 json={"query": query, "variables": variables},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=30,
             )
             r.raise_for_status()
@@ -1423,11 +1439,13 @@ def _spans_impl(trace_id, output):
     import httpx
 
     cfg = config.get_or_exit()
+    token = cfg.get("api_key") or cfg.get("access_token", "")
     with spinner("Querying spans..."):
         try:
             r = httpx.post(
                 f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
                 json={"query": query, "variables": {"traceId": trace_id}},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=30,
             )
             r.raise_for_status()
