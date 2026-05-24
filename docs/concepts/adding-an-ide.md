@@ -120,10 +120,11 @@ Add tests covering:
 |---|------|-------------------|
 | 1 | `observal_cli/cmd_scan.py` | Add config file path + MCP key for auto-detection |
 | 2 | `observal-server/services/config_generator.py` | Add install snippet generator |
-| 3 | `observal-server/services/hook_config_generator.py` | Add hook config generator |
-| 4 | `observal-server/api/routes/` | Add IDE name to validation lists |
-| 5 | `observal_cli/cmd_scan.py` | Add IDE to `--ide` flag's valid values |
-| 6 | `README.md` | Add IDE to supported IDEs list |
+| 3 | `observal-server/services/agent_config_generator.py` | Add agent configuration generator |
+| 4 | `observal-server/services/hook_config_generator.py` | Add hook config generator |
+| 5 | `observal-server/api/routes/` | Add IDE name to validation lists |
+| 6 | `observal_cli/cmd_scan.py` | Add IDE to `--ide` flag's valid values |
+| 7 | `README.md` | Add IDE to supported IDEs list |
 
 ---
 
