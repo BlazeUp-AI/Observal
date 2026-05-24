@@ -1,7 +1,6 @@
-<!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
-<!-- SPDX-License-Identifier: AGPL-3.0-only -->
-
 ---
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
 name: observal
 command: observal
 description: Use the Observal agent registry and component platform. Handles creating, updating, versioning, and pulling agents. Browse and submit MCPs, skills, and prompts. Use when the user asks to interact with their Observal server.
