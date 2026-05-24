@@ -18,7 +18,7 @@ from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from config import settings
+from config import HAS_LICENSE
 from database import async_session
 from models.organization import Organization
 from models.user import User, UserRole
@@ -273,7 +273,7 @@ async def require_local_mode() -> None:
 
     Usage: @router.post("/bootstrap", dependencies=[Depends(require_local_mode)])
     """
-    if settings.DEPLOYMENT_MODE != "local":
+    if HAS_LICENSE:
         raise HTTPException(status_code=403, detail="Disabled in enterprise mode")
 
 

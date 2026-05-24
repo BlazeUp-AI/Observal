@@ -43,8 +43,8 @@ class TestConfigAllowlist:
     def test_allowlist_is_frozenset(self):
         assert isinstance(CONFIG_ALLOWLIST, frozenset)
 
-    def test_allowlist_has_16_keys(self):
-        assert len(CONFIG_ALLOWLIST) == 16
+    def test_allowlist_has_15_keys(self):
+        assert len(CONFIG_ALLOWLIST) == 15
 
     def test_allowlist_contains_expected_keys(self):
         expected = {

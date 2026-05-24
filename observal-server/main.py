@@ -145,7 +145,6 @@ async def lifespan(app: FastAPI):
     async with _session_factory() as db:
         await seed_demo_accounts(db)
 
-
     # Register enterprise audit event bus handlers (legacy, supplements middleware)
     if HAS_LICENSE:
         try:
@@ -166,7 +165,6 @@ async def lifespan(app: FastAPI):
     await start_registry_cache()
 
     yield
-
 
     if HAS_LICENSE:
         try:

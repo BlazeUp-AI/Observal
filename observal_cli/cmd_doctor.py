@@ -62,7 +62,9 @@ def _load_json(path: Path) -> dict | None:
 
 
 @doctor_app.callback(invoke_without_command=True)
-def doctor(ctx: typer.Context, yes: bool = typer.Option(False, "--yes", "-y", help="Auto-fix all issues without prompting")):
+def doctor(
+    ctx: typer.Context, yes: bool = typer.Option(False, "--yes", "-y", help="Auto-fix all issues without prompting")
+):
     """Diagnose IDE settings and offer to configure telemetry + AI skill."""
     optic.debug("cli: doctor")
     if ctx.invoked_subcommand is not None:

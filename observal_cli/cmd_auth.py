@@ -430,7 +430,6 @@ def set_username(
 
 def version_callback():
     """Show CLI version."""
-    optic.debug("version_callback called")
     from importlib.metadata import version as pkg_version
 
     try:
@@ -775,22 +774,21 @@ def register_config(app: typer.Typer):
 
 
 def _post_login_setup():
-    """Post-login setup: run observal doctor which checks and offers to fix everything."""
+    """Post-login setup: run observal doctor which checks and offers to fix."""
     optic.debug("_post_login_setup called")
-    import subprocess
-    import sys
-
     rprint()
     try:
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-        subprocess.run(
-            [sys.executable, "-m", "observal_cli.main", "doctor", "--yes"],
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-            env=env,
-        )
+        from unittest.mock import MagicMock
+
+        from observal_cli.cmd_doctor import doctor
+
+        # Call doctor inline so stdin prompts work naturally.
+        # Pass a fake ctx with invoked_subcommand=None so it runs the check logic.
+        ctx = MagicMock()
+        ctx.invoked_subcommand = None
+        doctor(ctx=ctx, yes=False)
+    except (SystemExit, typer.Exit, typer.Abort):
+        pass  # Normal exit from doctor
     except Exception as e:
         rprint(f"[yellow]Could not run doctor: {e}[/yellow]")
         rprint("  Run [bold]observal doctor[/bold] manually to configure your IDEs.")

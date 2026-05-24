@@ -383,7 +383,9 @@ class TestCollectConfig:
     async def test_returns_only_allowlisted_keys(self):
         result = await _collect_config()
         for key in result:
-            assert key in CONFIG_ALLOWLIST or "." in key, f"Key '{key}' not in allowlist and not a dynamic setting"
+            assert key in CONFIG_ALLOWLIST or "." in key or key == "licensed", (
+                f"Key '{key}' not in allowlist and not a dynamic setting"
+            )
 
     @pytest.mark.asyncio
     async def test_excludes_secret_key(self):

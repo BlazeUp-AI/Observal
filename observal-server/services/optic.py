@@ -35,15 +35,18 @@ def setup_optic(*, mode: str = "dev", level: str = "DEBUG") -> None:
               'prod' = plain JSON to stderr.
         level: Minimum log level for file sink (default: DEBUG).
     """
-    # Try to read the dynamic setting (sync cache may be loaded already)
+    # Try to read the dynamic setting (only overrides if explicitly configured)
     try:
         import services.dynamic_settings as ds
 
         fmt = ds.get_sync("observability.log_format")
-        if fmt == "console":
-            mode = "dev"
-        elif fmt == "json":
-            mode = "prod"
+        # Only override if the sync cache has been loaded from DB
+        # (get_sync returns DEFAULTS values even without DB connection)
+        if fmt and ds._sync_cache_loaded:
+            if fmt == "console":
+                mode = "dev"
+            elif fmt == "json":
+                mode = "prod"
     except Exception:
         pass
 
