@@ -1,8 +1,9 @@
 <!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
-
 ---
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
 name: observal
 command: observal
 description: "Core Observal CLI operations: pull agents into your IDE, scan installed components, diagnose and patch IDE configs, authenticate, and manage CLI settings. Use when the user wants to install an agent, check their IDE setup, login, or configure the CLI."

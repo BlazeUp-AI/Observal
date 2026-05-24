@@ -441,6 +441,7 @@ _USER_SKILL_DIRS: dict[str, str] = {
     "opencode": "~/.config/opencode/skills",
     "cursor": "~/.cursor/rules",
     "copilot": "~/.copilot/skills",
+    "pi": "~/.pi/agent/skills",
 }
 
 

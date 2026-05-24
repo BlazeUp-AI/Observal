@@ -810,6 +810,7 @@ def _post_auth_onboarding():
             "Codex": (Path.home() / ".codex", "codex"),
             "Copilot": (Path.home() / ".vscode", "copilot"),
             "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
+            "Pi": (Path.home() / ".pi" / "agent", "pi"),
         }
 
         found: list[tuple[str, str, int, int]] = []  # (label, ide_key, agents, mcps)

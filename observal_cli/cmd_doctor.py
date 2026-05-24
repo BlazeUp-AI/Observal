@@ -26,7 +26,7 @@ from loguru import logger as optic
 from rich import print as rprint
 
 from observal_cli import config
-from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key
+from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key, get_valid_ides
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
     get_desired_hooks,
@@ -87,7 +87,11 @@ def doctor(
     rprint("[cyan]Checking Kiro...[/cyan]")
     _check_kiro(issues, warnings)
 
-    # 4. Check if observal skill is installed
+    # 4. Check Pi
+    rprint("[cyan]Checking Pi...[/cyan]")
+    _check_pi(issues, warnings)
+
+    # 5. Check if observal skill is installed
     skill_missing = _check_observal_skill_missing()
     if skill_missing:
         warnings.append(
@@ -283,6 +287,33 @@ def _check_kiro(issues: list, warnings: list):
         warnings.append(
             "Kiro session push hooks not installed in any agent config. "
             "Run `observal doctor patch --all --ide kiro` to inject them."
+        )
+
+
+def _check_pi(issues: list, warnings: list):
+    """Check if Observal pi extension is installed."""
+    optic.debug("_check_pi")
+    pi_dir = Path.home() / ".pi" / "agent"
+    if not pi_dir.exists():
+        rprint("  [dim]Pi not detected[/dim]")
+        return
+
+    settings_path = pi_dir / "settings.json"
+    if not settings_path.exists():
+        rprint("  [dim]No ~/.pi/agent/settings.json found[/dim]")
+        return
+
+    data = _load_json(settings_path)
+    if data is None:
+        issues.append(f"{settings_path}: not valid JSON.")
+        return
+
+    packages = data.get("packages", [])
+    has_observal = any("observal-pi" in (p if isinstance(p, str) else p.get("source", "")) for p in packages)
+
+    if not has_observal:
+        warnings.append(
+            "Observal pi extension not installed. Run `pi install npm:observal-pi` to enable session telemetry."
         )
 
 
@@ -512,7 +543,7 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
 
 
 _SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items() if path}
-_VALID_IDES = list(_SHIM_TARGETS.keys())
+_VALID_IDES = get_valid_ides()
 
 
 # ── Patch command ────────────────────────────────────────────
@@ -579,6 +610,9 @@ def doctor_patch(
                 any_changes = any_changes or changed
             elif target == "cursor":
                 changed = _patch_cursor(dry_run)
+                any_changes = any_changes or changed
+            elif target == "pi":
+                changed = _patch_pi(dry_run)
                 any_changes = any_changes or changed
 
         # ── Shims (all IDEs with home MCP config) ──
@@ -753,4 +787,51 @@ def _patch_cursor(dry_run: bool) -> bool:
 
     verb = "Would install" if dry_run else "Installed"
     rprint(f"  {verb} hooks in {hooks_path}")
+    return True
+
+
+def _patch_pi(dry_run: bool) -> bool:
+    """Install observal-pi into ~/.pi/agent/settings.json packages."""
+    optic.debug("_patch_pi: dry_run={}", dry_run)
+
+    rprint("[cyan]Pi - session telemetry extension[/cyan]")
+
+    pi_dir = Path.home() / ".pi" / "agent"
+    if not pi_dir.is_dir():
+        rprint("  [dim]No ~/.pi/agent/ directory - skipping[/dim]")
+        return False
+
+    settings_path = pi_dir / "settings.json"
+    package_spec = "npm:observal-pi"
+
+    # Load existing settings
+    data: dict = {}
+    if settings_path.exists():
+        try:
+            data = json.loads(settings_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            data = {}
+
+    packages = data.get("packages", [])
+
+    # Check if already installed
+    already_installed = any(package_spec in (p if isinstance(p, str) else p.get("source", "")) for p in packages)
+
+    if already_installed:
+        rprint("  [dim]Already installed[/dim]")
+        return False
+
+    # Add the package
+    packages.append(package_spec)
+    data["packages"] = packages
+
+    if not dry_run:
+        if settings_path.exists():
+            _backup_config(settings_path)
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    verb = "Would install" if dry_run else "Installed"
+    rprint(f"  {verb} {package_spec} in {settings_path}")
+    rprint("  [dim]Restart pi or run /reload to activate[/dim]")
     return True
