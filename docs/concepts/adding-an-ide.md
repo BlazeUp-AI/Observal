@@ -9,7 +9,7 @@ Observal currently supports Cursor, Kiro, VS Code, Windsurf, Claude Code, and Ge
 
 ---
 
-## The 6 files you need to touch
+## The 7 files you need to touch
 
 ### 1. `observal_cli/cmd_scan.py` — teach `observal scan` to detect the IDE
 
@@ -33,7 +33,22 @@ When a user runs `observal registry mcp install <name> --ide <your-ide>`, this s
 
 ---
 
-### 3. `observal-server/services/hook_config_generator.py` — generate hook configs for the IDE
+### 3. `observal-server/services/agent_config_generator.py` — generate bundled agent configs
+
+When a user runs `observal pull <agent> --ide <your-ide>`, this service generates 
+the full bundled agent config (rules file + MCP configs) for the IDE. It injects 
+the `OBSERVAL_AGENT_ID` env var into the generated config.
+
+**What to look for:** Find where other IDEs generate their agent config format. 
+Add a branch that outputs the rules/config file format your IDE expects.
+
+**If your IDE doesn't support agent bundles:** Add a branch that returns a clear error.
+
+**Why this matters:** Without this, `observal pull` for agents won't work for your IDE.
+
+---
+
+### 4. `observal-server/services/hook_config_generator.py` — generate hook configs for the IDE
 
 Hooks are lifecycle events (pre/post tool call, session start/end). Each IDE registers hooks differently. This file currently supports Claude Code, Kiro, and Cursor.
 
@@ -45,7 +60,7 @@ Hooks are lifecycle events (pre/post tool call, session start/end). Each IDE reg
 
 ---
 
-### 4. `observal-server/api/routes/` — add the IDE to any validation lists
+### 5. `observal-server/api/routes/` — add the IDE to any validation lists
 
 Some API routes validate the `--ide` parameter against a fixed list of accepted values. You need to find every place that does this and add your IDE's identifier.
 
@@ -60,7 +75,7 @@ Any file that shows up needs your IDE added in the same spot.
 
 ---
 
-### 5. `observal_cli/cmd_scan.py` *(second pass)* — add the `--ide` flag value
+### 6. `observal_cli/cmd_scan.py` *(second pass)* — add the `--ide` flag value
 
 The `--ide` flag in `observal scan` and `observal registry <type> install` accepts a fixed set of valid values. Your IDE's identifier needs to be in that set.
 
@@ -70,11 +85,11 @@ The `--ide` flag in `observal scan` and `observal registry <type> install` accep
 
 ---
 
-### 6. `README.md` — add the IDE to the supported IDEs list
+### 7. `README.md` — add the IDE to the supported IDEs list
 
 The README mentions supported IDEs in the intro paragraph. Find the sentence:
 
-> "It works with Cursor, Kiro, Claude Code, Gemini CLI, VS Code, Windsurf, Codex CLI, and GitHub Copilot."
+> "**Supported tools:** Claude Code, Codex CLI, Gemini CLI, and Kiro CLI are fully supported. Cursor and VS Code have MCP/rules file support."
 
 Add your IDE to this list.
 
