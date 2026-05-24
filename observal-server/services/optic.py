@@ -26,13 +26,13 @@ from pathlib import Path
 from loguru import logger
 
 
-def setup_optic(*, mode: str = "local", level: str = "DEBUG") -> None:
+def setup_optic(*, mode: str = "dev", level: str = "DEBUG") -> None:
     """Configure loguru sinks based on log format.
 
     Args:
         mode: Fallback mode when dynamic setting is unavailable.
-              'local' = colorized console + debug file.
-              'enterprise' = plain JSON to stderr.
+              'dev' = colorized console + debug file.
+              'prod' = plain JSON to stderr.
         level: Minimum log level for file sink (default: DEBUG).
     """
     # Try to read the dynamic setting (sync cache may be loaded already)
@@ -41,16 +41,16 @@ def setup_optic(*, mode: str = "local", level: str = "DEBUG") -> None:
 
         fmt = ds.get_sync("observability.log_format")
         if fmt == "console":
-            mode = "local"
+            mode = "dev"
         elif fmt == "json":
-            mode = "enterprise"
+            mode = "prod"
     except Exception:
         pass
 
     # Remove loguru's default stderr sink
     logger.remove()
 
-    if mode == "local":
+    if mode == "dev":
         # Console: INFO+ only to avoid clogging the terminal
         logger.add(
             sys.stderr,

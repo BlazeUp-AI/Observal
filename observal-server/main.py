@@ -61,7 +61,7 @@ from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.support import router as support_router
 from api.routes.telemetry import router as telemetry_router
-from config import check_legacy_env_vars, settings
+from config import HAS_LICENSE, check_legacy_env_vars, settings
 from database import engine
 from logging_config import setup_logging
 from models import Base
@@ -73,7 +73,7 @@ from services.optic import setup_optic
 from services.redis import close as close_redis
 
 setup_logging()
-setup_optic(mode=settings.DEPLOYMENT_MODE)
+setup_optic(mode="prod" if HAS_LICENSE else "dev")
 
 
 async def _ensure_columns(conn):
@@ -110,8 +110,7 @@ async def lifespan(app: FastAPI):
     await ds.reencrypt_on_key_rotation()
 
     # ── Unsafe-default guards (non-local deployments only) ─────────────────
-    deployment_mode = settings.DEPLOYMENT_MODE
-    if deployment_mode != "local":
+    if HAS_LICENSE:
         weak_secrets = {"change-me-to-a-random-string", "changeme", "secret", "dev", ""}
         if settings.SECRET_KEY in weak_secrets or len(settings.SECRET_KEY) < 32:
             raise RuntimeError(
@@ -146,8 +145,9 @@ async def lifespan(app: FastAPI):
     async with _session_factory() as db:
         await seed_demo_accounts(db)
 
-    # Register audit event bus handlers during startup
-    if deployment_mode == "enterprise":
+
+    # Register enterprise audit event bus handlers (legacy, supplements middleware)
+    if HAS_LICENSE:
         try:
             from ee.observal_server.services.audit import register_audit_handlers
 
@@ -167,7 +167,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if deployment_mode == "enterprise":
+
+    if HAS_LICENSE:
         try:
             from ee.observal_server.services.audit import shutdown_audit
 
@@ -183,7 +184,7 @@ async def lifespan(app: FastAPI):
 
 
 # Create the FastAPI app
-_expose_openapi = ds.get_sync_bool("observability.enable_openapi") or settings.DEPLOYMENT_MODE == "local"
+_expose_openapi = ds.get_sync_bool("observability.enable_openapi") or not HAS_LICENSE
 app = FastAPI(
     title="Observal API",
     description="API for Observal Agents & Capabilities Hub",
@@ -347,7 +348,7 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
 app.add_middleware(CacheControlMiddleware)
 
 # Enterprise routes + middleware (must be registered before startup)
-if settings.DEPLOYMENT_MODE == "enterprise":
+if HAS_LICENSE:
     try:
         from ee import register_enterprise_middleware
         from ee.observal_server.routes import mount_ee_routes
@@ -394,7 +395,7 @@ app.include_router(support_router)
 _instrumentator = Instrumentator(
     excluded_handlers=["/livez", "/healthz", "/readyz", "/metrics"],
 ).instrument(app)
-if ds.get_sync_bool("observability.enable_metrics") or settings.DEPLOYMENT_MODE == "local":
+if ds.get_sync_bool("observability.enable_metrics") or not HAS_LICENSE:
     _instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
 
 
@@ -439,7 +440,7 @@ async def readiness(db: AsyncSession = Depends(get_db)):
     else:
         checks["redis"] = "ok"
 
-    if settings.DEPLOYMENT_MODE == "enterprise":
+    if HAS_LICENSE:
         issues = getattr(app.state, "enterprise_issues", [])
         if issues:
             checks["status"] = "degraded"

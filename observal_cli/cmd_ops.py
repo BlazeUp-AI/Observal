@@ -40,8 +40,8 @@ def _require_enterprise():
         if r.status_code == 200:
             pub = r.json()
             if pub.get("deployment_mode") != "enterprise":
-                rprint("[yellow]This feature requires enterprise mode.[/yellow]")
-                rprint("[dim]Set DEPLOYMENT_MODE=enterprise on the server to enable.[/dim]")
+                rprint("[yellow]This feature requires an enterprise license.[/yellow]")
+                rprint("[dim]Set OBSERVAL_LICENSE_KEY on the server to enable.[/dim]")
                 raise typer.Exit(1)
     except (httpx.ConnectError, httpx.TimeoutException):
         pass
