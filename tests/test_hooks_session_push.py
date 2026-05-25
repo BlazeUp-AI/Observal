@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Avaya Aggarwal <aggarwal.avaya@yahoo.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Unit tests for observal_cli/hooks/session_push.py.
+"""Unit tests for Claude Code session push helpers.
 
 Covers: project_key_from_cwd, find_jsonl_file, read_cursor/write_cursor,
 read_new_lines, build_payload, get_parent_session_id, load_config,
@@ -14,28 +14,22 @@ operations or in-memory transformations.
 from __future__ import annotations
 
 import json
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-import pytest
-
-from observal_cli.hooks.session_push import (
+from observal_cli.sessions.base import (
     build_payload,
-    find_jsonl_file,
-    get_parent_session_id,
     load_config,
-    project_key_from_cwd,
-    read_agent_marker,
     read_cursor,
     read_new_lines,
     write_cursor,
 )
-
-if TYPE_CHECKING:
-    pass
-
+from observal_cli.sessions.claude_code import (
+    find_jsonl_file,
+    get_parent_session_id,
+    project_key_from_cwd,
+    read_agent_marker,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -409,8 +403,10 @@ class TestReadAgentMarker:
         assert agent_id == "agent-xyz"
         assert agent_version == "1.2.3"
 
-    def test_first_push_before_pull_time_blocked(self, tmp_path: Path):
+    def test_first_push_before_pull_time_blocked(self, tmp_path: Path, monkeypatch):
         """Session created before pull should be blocked on first push (offset==0)."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
         # Write a marker with a pulled_at time in the future
         pulled_at = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
         marker = tmp_path / ".observal" / "agent"
@@ -424,8 +420,10 @@ class TestReadAgentMarker:
         result = read_agent_marker(str(tmp_path), session_jsonl=session_jsonl)
         assert result == (None, None)
 
-    def test_resumed_session_ignores_pulled_at_guard(self, tmp_path: Path):
+    def test_resumed_session_ignores_pulled_at_guard(self, tmp_path: Path, monkeypatch):
         """Resumed sessions (offset > 0) bypass the pulled_at guard."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
         pulled_at = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
         marker = tmp_path / ".observal" / "agent"
         _write_json(marker, {"agent_id": "agent-resume", "pulled_at": pulled_at})
