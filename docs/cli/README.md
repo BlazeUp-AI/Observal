@@ -2,6 +2,7 @@
 <!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Nithin-Bhargav-07 <gaddamnithinbhargav@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # CLI Reference
@@ -30,6 +31,7 @@ Complete reference for the `observal` CLI. Every subcommand has its own page; th
 | [`observal profile`](profile.md) | Switch IDE configs to a git-hosted profile |
 | [`observal self`](self.md) | Upgrade or downgrade the CLI |
 | [`observal server`](server.md) | Manage the embedded server (start, stop, upgrade, rollback) |
+| [`observal skill`](skill.md) | Submit, browse, and install portable skill packages |
 | [`observal uninstall`](uninstall.md) | Completely remove Observal from the system |
 
 ## Global options
