@@ -158,16 +158,16 @@ _CACHE_TTL = 30  # seconds, short TTL for consistency, Redis is fast
 # DB, these are returned. Once configured via the settings page, DB values win.
 
 DEFAULTS: dict[str, str] = {
-    # Insights — AWS Bedrock auth
+    # Insights: AWS Bedrock auth
     "insights.aws_region": "us-east-1",
     "insights.aws_access_key_id": "",
     "insights.aws_secret_access_key": "",
     "insights.aws_session_token": "",
-    # Insights — per-stage models (Bedrock model IDs)
+    # Insights: per-stage models (Bedrock model IDs)
     "insights.model_sections": "",
     "insights.model_synthesis": "",
     "insights.model_facets": "",
-    # Insights — batch processing
+    # Insights: batch processing
     "insights.batch_enabled": "true",
     "insights.batch_period_days": "14",
     "insights.min_sessions": "5",

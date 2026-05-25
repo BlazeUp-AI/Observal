@@ -381,19 +381,19 @@ async def fetch_all_session_transcripts(
 
     for i in range(0, len(session_ids), batch_size):
         batch_ids = session_ids[i : i + batch_size]
-        ids_str = ",".join(f"'{sid}'" for sid in batch_ids)
 
-        batch_sql = f"""
+        batch_sql = """
             SELECT session_id, raw_line
             FROM session_events FINAL
-            WHERE session_id IN ({ids_str})
+            WHERE session_id IN ({ids:Array(String)})
               AND raw_line != ''
             ORDER BY session_id, line_offset
             FORMAT JSON
         """
+        params = {"param_ids": "[" + ",".join(f"'{sid.replace(chr(39), '')}" + "'" for sid in batch_ids) + "]"}
 
         try:
-            r = await query(batch_sql)
+            r = await query(batch_sql, params)
             r.raise_for_status()
             rows = r.json().get("data", [])
             for row in rows:
@@ -470,7 +470,6 @@ def aggregate_metas(metas: list[dict]) -> dict:
         "user_response_times": [],
         "message_hours": [],
         "days_active": set(),
-        "user_ids": set(),
     }
 
     for meta in metas:

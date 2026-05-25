@@ -634,8 +634,8 @@ export interface InsightMetrics {
 }
 
 export interface InsightNarrative {
-	// V3 structured format — each section is a structured object
-	// V1 fallback — each section is string[] | string
+	// V3 structured format: each section is a structured object
+	// V1 fallback: each section is string[] or string
 	// The frontend handles both formats gracefully
 	at_a_glance: unknown;
 	what_they_work_on?: unknown;

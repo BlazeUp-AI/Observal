@@ -125,10 +125,10 @@ function AtAGlance({ data }: { data: unknown }) {
 	// V3 structured format (4-panel like pi /insights)
 	const obj = data as Record<string, string>;
 	const panels = [
-		{ key: "whats_working", label: "What's Working", color: "text-success", borderColor: "border-success/30" },
-		{ key: "whats_hindering", label: "What's Hindering", color: "text-destructive", borderColor: "border-destructive/30" },
-		{ key: "quick_win", label: "Quick Wins", color: "text-primary-accent", borderColor: "border-primary-accent/30" },
-		{ key: "ambitious_workflows", label: "Ambitious Workflows", color: "text-purple-400", borderColor: "border-purple-400/30" },
+		{ key: "whats_working", label: "What's Working", color: "text-success" },
+		{ key: "whats_hindering", label: "What's Hindering", color: "text-destructive" },
+		{ key: "quick_win", label: "Quick Wins", color: "text-primary-accent" },
+		{ key: "ambitious_workflows", label: "Ambitious Workflows", color: "text-purple-400" },
 	];
 
 	const hasContent = panels.some(({ key }) => obj[key]);
@@ -427,9 +427,10 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
 		<button
 			className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-border hover:bg-muted/50 text-muted-foreground transition-colors ${className || ""}`}
 			onClick={() => {
-				navigator.clipboard.writeText(text);
-				setCopied(true);
-				setTimeout(() => setCopied(false), 2000);
+				navigator.clipboard.writeText(text).then(() => {
+					setCopied(true);
+					setTimeout(() => setCopied(false), 2000);
+				}).catch(() => {});
 			}}
 		>
 			{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -454,15 +455,15 @@ function InteractionStyleSection({ data }: { data: unknown }) {
 				</h3>
 			</div>
 			<div className="px-5 py-4 space-y-4">
-				<div
-					className="text-sm leading-relaxed text-foreground/80"
-					dangerouslySetInnerHTML={{
-						__html: obj.narrative
-							.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-							.replace(/\n\n/g, "</p><p>")
-							.replace(/\n/g, "<br>"),
-					}}
-				/>
+				<div className="text-sm leading-relaxed text-foreground/80 space-y-3">
+					{obj.narrative.split(/\n\n/).map((para: string, i: number) => (
+						<p key={i}>
+							{para.split(/\*\*(.+?)\*\*/).map((seg: string, j: number) =>
+								j % 2 === 1 ? <strong key={j}>{seg}</strong> : <span key={j}>{seg}</span>
+							)}
+						</p>
+					))}
+				</div>
 				{obj.key_pattern && (
 					<div className="px-4 py-3 rounded-md border border-primary-accent/20 bg-primary-accent/5 text-sm italic text-primary-accent">
 						&ldquo;{obj.key_pattern}&rdquo;
@@ -1379,8 +1380,6 @@ function formatItem(item: unknown): string {
 	}
 	return String(item);
 }
-
-// ── Main Report Content ─────────────────────────────────────────────────
 
 // ── Main Report Content ─────────────────────────────────────────────────
 
