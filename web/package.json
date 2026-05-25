@@ -79,12 +79,12 @@
     "tailwindcss": "^4",
     "typescript": "^6.0.0",
     "zod": "^4.3.6",
-    "vitest": "^2.2.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-v8": "^2.2.0",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/user-event": "^14.5.2",
-    "jsdom": "^26.1.0"
+    "vitest": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@vitejs/plugin-react": "^6.0.2",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/user-event": "^14.6.1",
+    "jsdom": "^29.1.1"
   }
 }
