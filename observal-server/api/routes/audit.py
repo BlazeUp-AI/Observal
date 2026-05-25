@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """CLI audit event ingestion endpoint."""
@@ -45,9 +46,8 @@ async def receive_cli_audit_event(
 
     from services.clickhouse import insert_audit_log
 
-    ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    if not ip:
-        ip = request.client.host if request.client else "127.0.0.1"
+    # Real IP is resolved by TrustedProxyMiddleware into request.scope["client"]
+    ip = request.client.host if request.client else "127.0.0.1"
 
     row = {
         "event_id": event.event_id,
