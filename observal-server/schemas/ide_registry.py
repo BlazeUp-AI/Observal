@@ -142,6 +142,7 @@ IDE_REGISTRY: dict[str, dict] = {
     "gemini-cli": {
         "display_name": "Gemini CLI",
         "features": {"hooks", "mcp_servers"},
+        "session_parser": "claude-code",
         "scopes": ["project", "user"],
         "default_scope": "project",
         "scope_labels": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
