@@ -42,7 +42,7 @@ def mock_catalog():
                 "deprecated": True,
             },
             # Malformed entry (missing fields)
-            {"model_id": "malformed-model"}
+            {"model_id": "malformed-model"},
         ],
         "_source": "https://models.dev",
         "degraded": False,
@@ -136,6 +136,7 @@ class TestModelsList:
 
     def test_list_models_fetch_catalog_error(self):
         """Test that fetch_catalog exceptions are handled gracefully (non-zero exit)."""
+
         def _raise_error(*_a, **_kw):
             raise Exception("Network error: connection timeout")
 
