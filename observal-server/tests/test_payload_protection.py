@@ -8,11 +8,11 @@ Uses a minimal FastAPI app (no DB / external services) that exercises the
 ContentTypeMiddleware, RequestIDMiddleware, and JSON depth protection.
 """
 
-from fastapi import status
 import json
 import uuid
+
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
