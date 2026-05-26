@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Cursor session file helpers.
@@ -11,6 +12,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+
+def find_sessions_dir(home: Path | None = None) -> Path:
+    """Return ~/.cursor/projects/ (the root of all Cursor session JSONL files)."""
+    if home is None:
+        home = Path.home()
+    return home / ".cursor" / "projects"
 
 
 def project_key_from_cwd(cwd: str) -> str:

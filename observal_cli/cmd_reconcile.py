@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Crash recovery and session reconciliation for Observal CLI.
@@ -27,11 +28,17 @@ from pathlib import Path
 from loguru import logger
 
 from observal_cli.sessions.claude_code import find_sessions_dir as _find_claude_sessions_dir_impl
+from observal_cli.sessions.cursor import find_sessions_dir as _find_cursor_sessions_dir_impl
 from observal_cli.sessions.kiro import find_sessions_dir as _find_kiro_sessions_dir_impl
 
 # ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------
+
+
+def _find_cursor_sessions_dir(home: Path | None = None) -> Path:
+    """Return ~/.cursor/projects/ (the root of all Cursor session JSONL files)."""
+    return _find_cursor_sessions_dir_impl(home)
 
 
 def _find_claude_sessions_dir(home: Path | None = None) -> Path:
@@ -51,14 +58,35 @@ def _find_recent_sessions(
     """Return (jsonl_path, session_id) pairs for recently-modified session files.
 
     Discovers:
-    - Top-level files:  ~/.claude/projects/<project>/<session_id>.jsonl
-    - Subagent files:   ~/.claude/projects/<project>/<session_id>/subagents/<agent_id>.jsonl
-    - Kiro files:       ~/.kiro/sessions/cli/<session_id>.jsonl
+    - Cursor:       ~/.cursor/projects/<project>/agent-transcripts/<session_id>/<session_id>.jsonl
+    - Claude Code:  ~/.claude/projects/<project>/<session_id>.jsonl
+    - Claude Code subagent: ~/.claude/projects/<project>/<session_id>/subagents/<agent_id>.jsonl
+    - Kiro:         ~/.kiro/sessions/cli/<session_id>.jsonl
 
     Files older than *since_hours* are excluded.
     """
     cutoff = time.time() - since_hours * 3600
     results: list[tuple[Path, str]] = []
+
+    # Cursor sessions
+    cursor_dir = _find_cursor_sessions_dir(home)
+    if cursor_dir.exists():
+        for project_dir in cursor_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            transcripts_dir = project_dir / "agent-transcripts"
+            if not transcripts_dir.is_dir():
+                continue
+            for session_dir in transcripts_dir.iterdir():
+                if not session_dir.is_dir():
+                    continue
+                jsonl_file = session_dir / f"{session_dir.name}.jsonl"
+                if jsonl_file.exists():
+                    try:
+                        if jsonl_file.stat().st_mtime >= cutoff:
+                            results.append((jsonl_file, jsonl_file.stem))
+                    except OSError:
+                        pass
 
     # Claude Code sessions
     sessions_dir = _find_claude_sessions_dir(home)
@@ -107,10 +135,21 @@ def _find_session_file(
     """Return the Path for *session_id*.jsonl across all supported IDEs.
 
     Search order:
-    1. Claude Code top-level: ~/.claude/projects/<project>/<session_id>.jsonl
-    2. Claude Code subagent:  ~/.claude/projects/<project>/<id>/subagents/<session_id>.jsonl
-    3. Kiro:                  ~/.kiro/sessions/cli/<session_id>.jsonl
+    1. Cursor:                ~/.cursor/projects/<project>/agent-transcripts/<session_id>/<session_id>.jsonl
+    2. Claude Code top-level: ~/.claude/projects/<project>/<session_id>.jsonl
+    3. Claude Code subagent:  ~/.claude/projects/<project>/<id>/subagents/<session_id>.jsonl
+    4. Kiro:                  ~/.kiro/sessions/cli/<session_id>.jsonl
     """
+    # --- Cursor ---
+    cursor_dir = _find_cursor_sessions_dir(home)
+    if cursor_dir.exists():
+        for project_dir in cursor_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            candidate = project_dir / "agent-transcripts" / session_id / f"{session_id}.jsonl"
+            if candidate.exists():
+                return candidate
+
     # --- Claude Code ---
     claude_dir = _find_claude_sessions_dir(home)
     if claude_dir.exists():
