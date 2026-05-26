@@ -21,7 +21,7 @@ export const VALID_IDES = [
   "gemini-cli",
   "kiro",
   "opencode",
-  "vscode",
+  "pi",
 ] as const;
 
 export type IdeName = (typeof VALID_IDES)[number];
@@ -41,13 +41,13 @@ export type IdeFeature = (typeof IDE_FEATURES)[number];
 export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   "claude-code": new Set(["skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   kiro: new Set(["superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"]),
-  cursor: new Set(["mcp_servers", "rules"]),
+  cursor: new Set(["hook_bridge", "mcp_servers", "rules"]),
   "gemini-cli": new Set(["hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   codex: new Set(["rules"]),
   copilot: new Set(["mcp_servers", "rules"]),
   "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   opencode: new Set(["mcp_servers", "rules"]),
-  vscode: new Set(["mcp_servers", "rules"]),
+  pi: new Set(["skills", "hook_bridge", "mcp_servers", "rules"]),
 };
 
 export const IDE_DISPLAY_NAMES: Record<IdeName, string> = {
@@ -59,7 +59,7 @@ export const IDE_DISPLAY_NAMES: Record<IdeName, string> = {
   copilot: "Copilot",
   "copilot-cli": "Copilot CLI",
   opencode: "OpenCode",
-  vscode: "VS Code",
+  pi: "Pi",
 };
 
 export const FEATURE_LABELS: Record<IdeFeature, string> = {
@@ -83,10 +83,10 @@ export const IDE_ACCEPTS_MODEL_CHOICE: Record<IdeName, boolean> = {
   "gemini-cli": true,
   codex: true,
   opencode: true,
+  pi: true,
   cursor: false,
   copilot: false,
   "copilot-cli": false,
-  vscode: false,
 };
 
 export function ideAcceptsModelChoice(ide: string): boolean {

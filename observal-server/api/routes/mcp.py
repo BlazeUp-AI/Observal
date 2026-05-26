@@ -9,6 +9,7 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from loguru import logger as optic
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +39,6 @@ from schemas.mcp import (
     McpSubmitRequest,
     McpUpdateRequest,
 )
-from services.audit_helpers import audit
 from services.config_generator import generate_config
 from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
 from services.mcp_validator import analyze_repo, run_validation
@@ -52,13 +52,14 @@ async def analyze_mcp(
     req: McpAnalyzeRequest,
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("analyze_mcp: user_id={}", current_user.id)
     result = await analyze_repo(req.git_url)
-    await audit(current_user, "mcp.analyze", resource_type="mcp", detail=req.git_url)
     return McpAnalyzeResponse(**result)
 
 
 async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, db: AsyncSession) -> None:
     """Store validation results from client-side (CLI) analysis."""
+    optic.debug("_store_client_analysis: listing={}, analysis={}", listing, analysis)
     await db.execute(delete(McpValidationResult).where(McpValidationResult.listing_id == listing.id))
 
     has_entry = bool(analysis.entry_point or analysis.framework)
@@ -103,6 +104,7 @@ async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, 
 
 async def _run_validation_background(listing_id: str) -> None:
     """Run validation in the background with its own DB session."""
+    optic.debug("_run_validation_background: listing_id={}", listing_id)
     async with async_session() as db:
         result = await db.execute(select(McpListing).where(McpListing.id == listing_id))
         listing = result.scalar_one_or_none()
@@ -124,7 +126,8 @@ async def submit_mcp(
     # Prevent duplicate names for the same user.
     # Pending/rejected listings are replaced automatically so the user isn't
     # blocked when re-submitting after a mistake.  Approved listings are
-    # protected — use the update flow instead.
+    # protected - use the update flow instead.
+    optic.debug("mcp submit: name={}", req.name)
     existing = (
         (
             await db.execute(
@@ -180,16 +183,12 @@ async def submit_mcp(
     await db.refresh(listing)
 
     if req.client_analysis:
-        # CLI already cloned and analyzed locally — store results directly
+        # CLI already cloned and analyzed locally - store results directly
         await _store_client_analysis(listing, req.client_analysis, db)
     elif req.git_url:
         # Only run background validation if we have a git URL to clone
         background_tasks.add_task(_run_validation_background, str(listing.id))
-    # Direct config submissions (no git_url) skip validation — config is user-provided
-
-    await audit(
-        current_user, "mcp.submit", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
-    )
+    # Direct config submissions (no git_url) skip validation - config is user-provided
     return McpListingResponse.model_validate(listing)
 
 
@@ -200,6 +199,7 @@ async def list_mcps(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("mcp list: search={}", search)
     stmt = (
         select(McpListing)
         .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
@@ -213,7 +213,6 @@ async def list_mcps(
     stmt = apply_visibility_filter(stmt, McpListing, current_user)
     result = await db.execute(stmt.order_by(McpListing.created_at.desc()))
     listings = [McpListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(None, "mcp.list", resource_type="mcp")
     return listings
 
 
@@ -222,10 +221,10 @@ async def my_mcps(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("my_mcps called")
     stmt = select(McpListing).where(McpListing.submitted_by == current_user.id).order_by(McpListing.created_at.desc())
     result = await db.execute(stmt)
     listings = [McpListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(current_user, "mcp.my_list", resource_type="mcp")
     return listings
 
 
@@ -235,11 +234,9 @@ async def get_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("mcp get: listing_id={}", listing_id)
     listing = await resolve_listing(McpListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(
-            current_user, "mcp.view", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
-        )
         return McpListingResponse.model_validate(listing)
 
     listing = await resolve_listing(McpListing, listing_id, db)
@@ -247,9 +244,6 @@ async def get_mcp(
         raise HTTPException(status_code=404, detail="Listing not found")
 
     if check_listing_visibility(listing, current_user):
-        await audit(
-            current_user, "mcp.view", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
-        )
         return McpListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -263,6 +257,7 @@ async def install_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("mcp install: listing_id={}", listing_id)
     listing = await resolve_listing(McpListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
         listing = await resolve_listing(McpListing, listing_id, db)
@@ -274,16 +269,13 @@ async def install_mcp(
 
     from api.routes.config import derive_endpoints
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
     snippet = generate_config(
         listing,
         req.ide,
-        observal_url=endpoints["otlp_http"],
+        observal_url=endpoints["api"],
         env_values=req.env_values,
         header_values=req.header_values,
-    )
-    await audit(
-        current_user, "mcp.install", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
     )
     return McpInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=snippet)
 
@@ -294,6 +286,7 @@ async def save_mcp_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("save_mcp_draft: req={}", req)
     listing = McpListing(
         name=req.name,
         category=req.category,
@@ -331,9 +324,6 @@ async def save_mcp_draft(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "mcp.draft.create", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
-    )
     return McpListingResponse.model_validate(listing)
 
 
@@ -344,6 +334,7 @@ async def update_mcp_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("update_mcp_draft: listing_id={}", listing_id)
     listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -397,13 +388,10 @@ async def update_mcp_draft(
 
     await db.commit()
     await db.refresh(listing)
-    if listing.status == ListingStatus.pending:
-        action = "mcp.pending.update"
-    elif listing.status == ListingStatus.rejected:
-        action = "mcp.rejected.update"
+    if listing.status == ListingStatus.pending or listing.status == ListingStatus.rejected:
+        pass
     else:
-        action = "mcp.draft.update"
-    await audit(current_user, action, resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name)
+        pass
     return McpListingResponse.model_validate(listing)
 
 
@@ -413,6 +401,7 @@ async def start_edit_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("start_edit_mcp: listing_id={}", listing_id)
     listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -436,6 +425,7 @@ async def cancel_edit_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("cancel_edit_mcp: listing_id={}", listing_id)
     listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -455,6 +445,7 @@ async def submit_mcp_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("submit_mcp_draft: listing_id={}", listing_id)
     listing = await resolve_listing(McpListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -471,9 +462,6 @@ async def submit_mcp_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "mcp.draft.submit", resource_type="mcp", resource_id=str(listing.id), resource_name=listing.name
-    )
     return McpListingResponse.model_validate(listing)
 
 
@@ -483,6 +471,7 @@ async def delete_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("mcp delete: listing_id={}", listing_id)
     from models.feedback import Feedback
 
     listing = await resolve_listing(McpListing, listing_id, db)
@@ -504,7 +493,6 @@ async def delete_mcp(
         await db.delete(r)
 
     # Break the circular FK (listing → latest_version → listing) before delete
-    listing_name = listing.name
     listing.latest_version_id = None
     listing.latest_version = None
     await db.flush()
@@ -514,9 +502,6 @@ async def delete_mcp(
     await db.flush()
     await db.delete(listing)
     await db.commit()
-    await audit(
-        current_user, "mcp.delete", resource_type="mcp", resource_id=str(listing_id), resource_name=listing_name
-    )
     return {"deleted": str(listing_id)}
 
 

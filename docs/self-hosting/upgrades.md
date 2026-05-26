@@ -6,7 +6,20 @@
 
 Safe upgrade flow for the Observal server stack.
 
-## Before every upgrade
+## Quick upgrade (recommended)
+
+If you installed Observal via `observal server start` (the embedded stack), the CLI handles upgrades automatically:
+
+```bash
+observal server upgrade
+observal server upgrade --version 0.9.0
+```
+
+This pulls new Docker images, backs up your database, recreates containers, and runs health checks. If the health check fails, it rolls back automatically. Requires **super_admin** role.
+
+See [`observal server upgrade`](../cli/server.md#observal-server-upgrade) for full details.
+
+## Before a manual upgrade
 
 1. **Back up `pgdata`** and **`apidata`**. See [Backup and restore](backup-and-restore.md). Backing up `chdata` is nice-to-have — losing telemetry is painful but not catastrophic.
 2. **Read the [CHANGELOG](https://github.com/BlazeUp-AI/Observal/blob/main/CHANGELOG.md)** for the releases you're jumping across. Note any breaking changes.

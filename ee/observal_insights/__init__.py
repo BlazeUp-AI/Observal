@@ -1,34 +1,21 @@
-# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: LicenseRef-Observal-Enterprise
 
-"""Observal Insights — enterprise insight generation engine.
+"""Observal Insights, enterprise insight generation engine.
 
-This module lives under ee/ and is covered by the Observal Enterprise License.
-It is only available when DEPLOYMENT_MODE=enterprise.
-
-Usage:
-    from ee.observal_insights import configure, generate_report_content, render_report_html
-
-    # 1. Configure at app startup
-    configure(
-        settings=settings,
-        query_fn=clickhouse_query,
-        call_model_fn=call_eval_model,
-        db_session_factory=async_session,
-        meta_model=InsightSessionMeta,
-        facets_model=InsightSessionFacets,
-    )
-
-    # 2. Generate reports
-    result = await generate_report_content(...)
+V5 ground-up rewrite modeled after pi /insights. Reads raw session JSONL
+from ClickHouse, extracts deterministic stats + LLM facets, generates
+personal narrative sections, and renders HTML reports.
 """
 
 from __future__ import annotations
 
 from . import _deps
+from .generator import generate_report_content
+from .html_export import render_report_html
 
 INSIGHTS_AVAILABLE = True
-__version__ = "0.1.0"
+__version__ = "5.0.0"
 
 
 def configure(
@@ -41,27 +28,22 @@ def configure(
     facets_model=None,
     meta_cache_model=None,
 ):
-    """Wire up dependencies from the host application.
-
-    Must be called before any insight generation functions are used.
-    """
+    """Wire up dependencies from the host application."""
     _deps.settings = settings
     _deps.query = query_fn
     _deps.call_model = call_model_fn
     _deps.db_session = db_session_factory
-    _deps.InsightSessionMeta = meta_model
-    _deps.InsightSessionFacets = facets_model
-    _deps.InsightMetaCache = meta_cache_model
+    if meta_model:
+        _deps.InsightSessionMeta = meta_model
+    if facets_model:
+        _deps.InsightSessionFacets = facets_model
+    if meta_cache_model:
+        _deps.InsightMetaCache = meta_cache_model
 
 
-# Lazy imports for public API — avoids import-time dependency checks
-def generate_report_content(*args, **kwargs):
-    from .generator import generate_report_content as _impl
-
-    return _impl(*args, **kwargs)
-
-
-def render_report_html(*args, **kwargs):
-    from .html_export import render_report_html as _impl
-
-    return _impl(*args, **kwargs)
+__all__ = [
+    "INSIGHTS_AVAILABLE",
+    "configure",
+    "generate_report_content",
+    "render_report_html",
+]

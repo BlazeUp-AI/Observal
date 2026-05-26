@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
+from loguru import logger
 
 # Fields allowed in extra dict per component type
 HOOK_FIELDS = {
@@ -15,11 +16,15 @@ HOOK_FIELDS = {
     "priority",
     "handler_type",
     "handler_config",
-    "input_schema",
-    "output_schema",
     "scope",
     "tool_filter",
-    "file_pattern",
+    "source_url",
+    "source_ref",
+    "source_path",
+    "resolved_sha",
+    "script_content",
+    "script_filename",
+    "requirements",
 }
 
 SKILL_FIELDS = {
@@ -60,6 +65,7 @@ SANDBOX_FIELDS = {
     "source_url",
     "source_ref",
     "resolved_sha",
+    "sandbox_path",
 }
 
 REQUIRED_FIELDS: dict[str, set[str]] = {
@@ -135,6 +141,7 @@ def validate_and_extract(component_type: str, extra: dict | None) -> dict:
     Returns a dict of field_name -> value to set on the version model.
     Raises HTTPException(422) on validation errors.
     """
+    logger.debug("validate_and_extract: component_type={}, extra={}", component_type, extra)
     allowed = ALLOWED_FIELDS.get(component_type)
     if allowed is None:
         raise HTTPException(status_code=422, detail=f"Unknown component type: {component_type!r}")

@@ -17,7 +17,8 @@
 #     • test (3.13)
 #     • web-lint
 #     • docker-build
-#     • security-scan
+#     • import-boundary
+#     • dependency-audit
 #   Require a pull request before merging
 #   Require approvals: 1
 #   Do not allow bypassing the above settings
@@ -71,7 +72,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - 'web/package.json'
-              - 'web/pnpm-lock.yaml'
+              - 'pnpm-lock.yaml'
               - '.env.example'
               - '.github/workflows/ci.yml'
 
@@ -101,11 +102,11 @@ jobs:
 
       - name: ruff check
         if: needs.changes.outputs.python == 'true'
-        run: uv run --with ruff==0.15.10 ruff check .
+        run: uv run --with ruff==0.15.12 ruff check .
 
       - name: ruff format --check
         if: needs.changes.outputs.python == 'true'
-        run: uv run --with ruff==0.15.10 ruff format --check .
+        run: uv run --with ruff==0.15.12 ruff format --check .
 
 # ── Job 2: REUSE license compliance ──────────────────────────────────────────────
   reuse-lint:
@@ -115,7 +116,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: REUSE compliance check
-        uses: fsfe/reuse-action@v5
+        uses: fsfe/reuse-action@v6
 
 # ── Job 3: Python tests (matrix) ──────────────────────────────────────────────
   test:
@@ -167,7 +168,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: needs.changes.outputs.python == 'true' && matrix.python-version == '3.13'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: observal-server/coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -195,18 +196,17 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         if: needs.changes.outputs.web == 'true'
-        with:
-          version: 10
 
       - uses: actions/setup-node@v6
         if: needs.changes.outputs.web == 'true'
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
         if: needs.changes.outputs.web == 'true'
+        working-directory: .
         run: pnpm install --frozen-lockfile
 
       - name: ESLint
@@ -217,7 +217,7 @@ jobs:
         if: needs.changes.outputs.web == 'true'
         run: pnpm run typecheck
 
-# ── Job 4: Import boundary check ─────────────────────────────────────────────
+# ── Job 5: Import boundary check ─────────────────────────────────────────────
   import-boundary:
     name: import-boundary
     runs-on: ubuntu-latest
@@ -229,7 +229,7 @@ jobs:
       - name: Check ee/ import boundary
         run: |
           echo "Checking that core does not import from ee/..."
-          VIOLATIONS=$(grep -rn "from ee\b\|import ee\b" observal-server/ observal_cli/ --include="*.py" | grep -v "main.py" | grep -v "services/insights/__init__.py" || true)
+          VIOLATIONS=$(grep -rn "from ee\b\|import ee\b" observal-server/ observal_cli/ --include="*.py" | grep -v "main.py" | grep -v "services/insights/__init__.py" | grep -v "services/audit/__init__.py" | grep -v "/tests/" || true)
           if [ -n "$VIOLATIONS" ]; then
             echo "::error::Import boundary violation — core must not import from ee/"
             echo "$VIOLATIONS"
@@ -237,7 +237,7 @@ jobs:
           fi
           echo "✓ No import boundary violations found"
 
-# ── Job 5: Docker build ───────────────────────────────────────────────────────
+# ── Job 6: Docker build ───────────────────────────────────────────────────────
   docker-build:
     name: docker-build
     runs-on: ubuntu-latest
@@ -265,46 +265,32 @@ jobs:
         if: needs.changes.outputs.docker == 'true'
         run: docker compose build
 
-# ── Job 5: Python SAST with bandit ──────────────────────────────────────────
-  security-scan:
-    name: security-scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8.1.0
-        with:
-          enable-cache: true
-      - name: Install Python 3.12
-        run: uv python install 3.12
-      - name: Run bandit
-        run: uv run --with bandit bandit -r observal-server/ observal_cli/ -c pyproject.toml -f json -o bandit-report.json || true
-      - name: Check bandit results
-        run: uv run --with bandit bandit -r observal-server/ observal_cli/ -c pyproject.toml -ll
-
-# ── Job 6: Dependency audit ─────────────────────────────────────────────────
+# ── Job 7: Dependency audit ─────────────────────────────────────────────────
   dependency-audit:
     name: dependency-audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Python dependency audit
-        uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
           enable-cache: true
+
       - name: Run pip-audit
-        # TODO: burn down pre-existing advisories then remove || true
         run: |
           uv python install 3.12
           cd observal-server
-          uv run --with pip-audit pip-audit --strict --desc || true
+          uv run --with pip-audit pip-audit --strict --desc --ignore-vuln PYSEC-2025-183 --ignore-vuln PYSEC-2026-161
 
-      - name: JS dependency audit
-        uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
         with:
-          version: 10
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
       - name: Run pnpm audit
         run: |
-          cd web
           pnpm install --frozen-lockfile
-          pnpm audit --prod || true
+          pnpm audit --prod

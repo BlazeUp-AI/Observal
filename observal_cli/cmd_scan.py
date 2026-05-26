@@ -13,38 +13,28 @@
 
 from __future__ import annotations
 
-import json
-import re
-import uuid
 from pathlib import Path
 
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
+from observal_cli.ide import (
+    DiscoveredMcp,
+    NotSupportedError,
+    ensure_loaded,
+    get_adapter,
+    get_all_adapters,
+)
 from observal_cli.render import console, spinner
+from observal_cli.shared.utils import is_already_shimmed as _is_already_shimmed
 
-_OBSERVAL_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
-
-
-def _load_jsonc(path: Path) -> dict:
-    """Load a JSON file that may contain // line comments (JSONC)."""
-    text = path.read_text()
-    stripped = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
-    return json.loads(stripped)
-
-
-def _deterministic_mcp_id(name: str) -> str:
-    """Generate a stable UUID for an MCP based on its name."""
-    return str(uuid.uuid5(_OBSERVAL_NS, name))
-
-
-# ── IDE config file locations (relative to project root) ────
+# ── Backward-compat exports (used by tests, will be removed in Phase 6) ──
 
 _IDE_PROJECT_CONFIGS = {
     "cursor": ".cursor/mcp.json",
     "kiro": ".kiro/settings/mcp.json",
-    "vscode": ".vscode/mcp.json",
     "copilot": ".vscode/mcp.json",
     "copilot-cli": ".mcp.json",
     "gemini-cli": ".gemini/settings.json",
@@ -53,776 +43,86 @@ _IDE_PROJECT_CONFIGS = {
 }
 
 
-# ── Data containers for discovered items ────────────────────
-
-
-class DiscoveredMcp:
-    def __init__(self, name: str, command: str | None, args: list[str], url: str | None, description: str, source: str):
-        self.name = name
-        self.command = command
-        self.args = args
-        self.url = url
-        self.description = description
-        self.source = source
-
-    def display_cmd(self) -> str:
-        if self.url:
-            return self.url[:60]
-        cmd = f"{self.command or '?'} {' '.join(self.args[:3])}"
-        return cmd[:60] + "..." if len(cmd) > 60 else cmd
-
-
-class DiscoveredSkill:
-    def __init__(self, name: str, description: str, source: str, task_type: str = "general"):
-        self.name = name
-        self.description = description
-        self.source = source
-        self.task_type = task_type
-
-
-class DiscoveredHook:
-    def __init__(self, name: str, event: str, handler_type: str, handler_config: dict, description: str, source: str):
-        self.name = name
-        self.event = event
-        self.handler_type = handler_type
-        self.handler_config = handler_config
-        self.description = description
-        self.source = source
-
-
-class DiscoveredAgent:
-    def __init__(self, name: str, description: str, model_name: str, prompt: str, source_file: str):
-        self.name = name
-        self.description = description
-        self.model_name = model_name
-        self.prompt = prompt
-        self.source_file = source_file
-
-
-# ── Claude Code ~/.claude scanner ───────────────────────────
-
-
-def _scan_claude_home(
-    claude_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.claude for all component types using the real plugin system."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    settings_file = claude_dir / "settings.json"
-    if not settings_file.exists():
-        return mcps, skills, hooks, agents
-
-    try:
-        settings = json.loads(settings_file.read_text())
-    except (json.JSONDecodeError, OSError):
-        return mcps, skills, hooks, agents
-
-    enabled_plugins = settings.get("enabledPlugins", {})
-    active_plugins = {name for name, enabled in enabled_plugins.items() if enabled}
-
-    # Load installed_plugins.json to get install paths
-    installed_file = claude_dir / "plugins" / "installed_plugins.json"
-    plugin_paths: dict[str, Path] = {}
-    if installed_file.exists():
-        try:
-            installed = json.loads(installed_file.read_text())
-            for plugin_key, entries in installed.get("plugins", {}).items():
-                if plugin_key in active_plugins and entries:
-                    install_path = entries[0].get("installPath")
-                    if install_path:
-                        plugin_paths[plugin_key] = Path(install_path)
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    # Fallback: also scan plugin cache directly for active plugins
-    cache_dir = claude_dir / "plugins" / "cache"
-    if cache_dir.exists():
-        for plugin_key in active_plugins:
-            if plugin_key in plugin_paths:
-                continue
-            parts = plugin_key.split("@", 1)
-            name = parts[0]
-            marketplace = parts[1] if len(parts) > 1 else ""
-            market_dir = cache_dir / marketplace / name if marketplace else cache_dir / name / name
-            if market_dir.exists():
-                versions = sorted(market_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
-                if versions:
-                    plugin_paths[plugin_key] = versions[0]
-
-    for plugin_key, plugin_dir in plugin_paths.items():
-        if not plugin_dir.is_dir():
-            continue
-
-        plugin_name = plugin_key.split("@")[0]
-
-        plugin_desc = f"Plugin: {plugin_name}"
-        plugin_json = plugin_dir / ".claude-plugin" / "plugin.json"
-        if plugin_json.exists():
-            try:
-                meta = json.loads(plugin_json.read_text())
-                plugin_desc = meta.get("description", plugin_desc)
-            except (json.JSONDecodeError, OSError):
-                pass
-
-        mcp_file = plugin_dir / ".mcp.json"
-        if mcp_file.exists():
-            try:
-                mcp_data = json.loads(mcp_file.read_text())
-                servers = _extract_mcp_servers(mcp_data)
-                for srv_name, srv_config in servers.items():
-                    mcps.append(
-                        DiscoveredMcp(
-                            name=srv_name,
-                            command=srv_config.get("command"),
-                            args=srv_config.get("args", []),
-                            url=srv_config.get("url"),
-                            description=plugin_desc,
-                            source=f"plugin:{plugin_name}",
-                        )
-                    )
-            except (json.JSONDecodeError, OSError):
-                pass
-
-        for skill_md in plugin_dir.rglob("SKILL.md"):
-            skill_name_part = skill_md.parent.name
-            full_name = f"{plugin_name}/{skill_name_part}"
-            desc = ""
-            try:
-                content = skill_md.read_text()
-                desc = _parse_frontmatter_field(content, "description") or ""
-                if not desc:
-                    desc = _first_content_line(content)
-            except OSError:
-                pass
-            skills.append(
-                DiscoveredSkill(
-                    name=full_name,
-                    description=desc or f"Skill from {plugin_name}",
-                    source=f"plugin:{plugin_name}",
-                )
-            )
-
-        for hooks_file in plugin_dir.rglob("hooks.json"):
-            try:
-                hooks_data = json.loads(hooks_file.read_text())
-                hook_events = hooks_data.get("hooks", {})
-                for event_name, event_hooks in hook_events.items():
-                    hook_full_name = f"{plugin_name}/{event_name}"
-                    handler_type = "command"
-                    handler_config = {}
-                    if isinstance(event_hooks, list) and event_hooks:
-                        first = event_hooks[0]
-                        if isinstance(first, dict):
-                            inner = first.get("hooks", [first])
-                            if inner and isinstance(inner[0], dict):
-                                handler_type = inner[0].get("type", "command")
-                                handler_config = inner[0]
-                    hooks.append(
-                        DiscoveredHook(
-                            name=hook_full_name,
-                            event=event_name,
-                            handler_type=handler_type,
-                            handler_config=handler_config,
-                            description=f"Hook from {plugin_name}: {event_name}",
-                            source=f"plugin:{plugin_name}",
-                        )
-                    )
-            except (json.JSONDecodeError, OSError):
-                pass
-
-    skills_dir = claude_dir / "skills"
-    if skills_dir.is_dir():
-        for skill_md in sorted(skills_dir.rglob("SKILL.md")):
-            skill_name = skill_md.parent.name
-            desc = ""
-            task_type = "general"
-            try:
-                content = skill_md.read_text()
-                desc = _parse_frontmatter_field(content, "description") or ""
-                task_type = _parse_frontmatter_field(content, "task_type") or "general"
-                if not desc:
-                    desc = _first_content_line(content)
-            except OSError:
-                pass
-            skills.append(
-                DiscoveredSkill(
-                    name=skill_name,
-                    description=desc or f"Skill: {skill_name}",
-                    source="claude:skills",
-                    task_type=task_type,
-                )
-            )
-
-    agents_dir = claude_dir / "agents"
-    if agents_dir.is_dir():
-        for agent_md in sorted(agents_dir.glob("*.md")):
-            try:
-                content = agent_md.read_text()
-                name = agent_md.stem
-                model = _parse_frontmatter_field(content, "model") or ""
-                desc = _first_content_line(content)
-                prompt_body = _extract_body(content)
-                agents.append(
-                    DiscoveredAgent(
-                        name=name,
-                        description=desc or f"Agent: {name}",
-                        model_name=model,
-                        prompt=prompt_body,
-                        source_file=str(agent_md),
-                    )
-                )
-            except OSError:
-                pass
-
-    return mcps, skills, hooks, agents
-
-
-# ── Kiro ~/.kiro scanner ────────────────────────────────────
-
-
-def _scan_kiro_home(
-    kiro_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.kiro for agents, MCP servers, and hooks."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    mcp_file = kiro_dir / "settings" / "mcp.json"
-    if mcp_file.exists():
-        try:
-            mcp_data = json.loads(mcp_file.read_text())
-            servers = _extract_mcp_servers(mcp_data)
-            for srv_name, srv_config in servers.items():
-                mcps.append(
-                    DiscoveredMcp(
-                        name=srv_name,
-                        command=srv_config.get("command"),
-                        args=srv_config.get("args", []),
-                        url=srv_config.get("url"),
-                        description=f"Kiro global MCP: {srv_name}",
-                        source="kiro:global",
-                    )
-                )
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    agents_dir = kiro_dir / "agents"
-    if agents_dir.is_dir():
-        for agent_file in sorted(agents_dir.glob("*.json")):
-            if agent_file.stem == "kiro_default":
-                continue
-            try:
-                data = json.loads(agent_file.read_text())
-                name = data.get("name", agent_file.stem)
-                desc = data.get("description") or ""
-                model = data.get("model") or ""
-                prompt = data.get("prompt") or ""
-
-                agents.append(
-                    DiscoveredAgent(
-                        name=name,
-                        description=desc or f"Kiro agent: {name}",
-                        model_name=model,
-                        prompt=prompt,
-                        source_file=str(agent_file),
-                    )
-                )
-
-                agent_mcps = data.get("mcpServers", {})
-                for srv_name, srv_config in agent_mcps.items():
-                    if isinstance(srv_config, dict):
-                        mcps.append(
-                            DiscoveredMcp(
-                                name=srv_name,
-                                command=srv_config.get("command"),
-                                args=srv_config.get("args", []),
-                                url=srv_config.get("url"),
-                                description=f"From Kiro agent: {name}",
-                                source=f"kiro:agent:{name}",
-                            )
-                        )
-
-                agent_hooks = data.get("hooks", {})
-                for event_name, event_handlers in agent_hooks.items():
-                    hook_name = f"kiro:{name}/{event_name}"
-                    handler_config = {}
-                    if isinstance(event_handlers, list) and event_handlers:
-                        handler_config = event_handlers[0] if isinstance(event_handlers[0], dict) else {}
-                    hooks.append(
-                        DiscoveredHook(
-                            name=hook_name,
-                            event=event_name,
-                            handler_type="command",
-                            handler_config=handler_config,
-                            description=f"Kiro hook: {event_name} on agent {name}",
-                            source=f"kiro:agent:{name}",
-                        )
-                    )
-            except (json.JSONDecodeError, OSError):
-                pass
-
-    skills_dir = kiro_dir / "skills"
-    if skills_dir.is_dir():
-        for skill_md in sorted(skills_dir.rglob("SKILL.md")):
-            skill_name = skill_md.parent.name
-            desc = ""
-            task_type = "general"
-            try:
-                content = skill_md.read_text()
-                desc = _parse_frontmatter_field(content, "description") or ""
-                task_type = _parse_frontmatter_field(content, "task_type") or "general"
-                if not desc:
-                    has_frontmatter = content.startswith("---")
-                    if has_frontmatter:
-                        desc = _first_content_line(content)
-                    else:
-                        for line in content.splitlines():
-                            stripped = line.strip()
-                            if stripped and not stripped.startswith("#"):
-                                desc = stripped[:200]
-                                break
-            except OSError:
-                pass
-            skills.append(
-                DiscoveredSkill(
-                    name=skill_name,
-                    description=desc or f"Kiro skill: {skill_name}",
-                    source="kiro:skills",
-                    task_type=task_type,
-                )
-            )
-
-    seen: set[str] = set()
-    deduped: list[DiscoveredMcp] = []
-    for m in mcps:
-        if m.name not in seen:
-            deduped.append(m)
-            seen.add(m.name)
-    mcps = deduped
-
-    return mcps, skills, hooks, agents
-
-
-def _scan_gemini_home(
-    gemini_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.gemini for MCP servers from settings.json."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    settings_file = gemini_dir / "settings.json"
-    if settings_file.exists():
-        try:
-            settings = json.loads(settings_file.read_text())
-            servers = _extract_mcp_servers(settings)
-            for srv_name, srv_config in servers.items():
-                mcps.append(
-                    DiscoveredMcp(
-                        name=srv_name,
-                        command=srv_config.get("command"),
-                        args=srv_config.get("args", []),
-                        url=srv_config.get("url"),
-                        description=f"Gemini MCP: {srv_name}",
-                        source="gemini:global",
-                    )
-                )
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    return mcps, skills, hooks, agents
-
-
-def _scan_codex_home(
-    codex_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.codex for MCP servers from config.toml."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    config_file = codex_dir / "config.toml"
-    if config_file.exists():
-        try:
-            try:
-                import tomllib as toml
-            except ImportError:
-                try:
-                    import tomli as toml  # type: ignore[no-redef]
-                except ImportError:
-                    import toml  # type: ignore[no-redef]
-            content = config_file.read_text()
-            data = toml.loads(content) if hasattr(toml, "loads") else toml.load(config_file.open("rb"))  # type: ignore[call-arg]
-            servers = data.get("mcp", {}).get("servers", {})
-            for srv_name, srv_config in servers.items():
-                if isinstance(srv_config, dict):
-                    mcps.append(
-                        DiscoveredMcp(
-                            name=srv_name,
-                            command=srv_config.get("command"),
-                            args=srv_config.get("args", []),
-                            url=srv_config.get("url"),
-                            description=f"Codex MCP: {srv_name}",
-                            source="codex:global",
-                        )
-                    )
-        except Exception:
-            pass
-
-    return mcps, skills, hooks, agents
-
-
-def _scan_copilot_home(
-    vscode_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.vscode or project .vscode for Copilot MCP servers from mcp.json."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    mcp_file = vscode_dir / "mcp.json"
-    if mcp_file.exists():
-        try:
-            data = json.loads(mcp_file.read_text())
-            servers = data.get("servers", data.get("mcpServers", {}))
-            for srv_name, srv_config in servers.items():
-                if isinstance(srv_config, dict):
-                    mcps.append(
-                        DiscoveredMcp(
-                            name=srv_name,
-                            command=srv_config.get("command"),
-                            args=srv_config.get("args", []),
-                            url=srv_config.get("url"),
-                            description=f"Copilot MCP: {srv_name}",
-                            source="copilot:global",
-                        )
-                    )
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    return mcps, skills, hooks, agents
-
-
-def _scan_copilot_cli_home(
-    copilot_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.copilot for MCP servers from mcp-config.json."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    mcp_file = copilot_dir / "mcp-config.json"
-    if mcp_file.exists():
-        try:
-            data = json.loads(mcp_file.read_text())
-            servers = data.get("mcpServers", {})
-            for srv_name, srv_config in servers.items():
-                if isinstance(srv_config, dict):
-                    mcps.append(
-                        DiscoveredMcp(
-                            name=srv_name,
-                            command=srv_config.get("command"),
-                            args=srv_config.get("args", []),
-                            url=srv_config.get("url"),
-                            description=f"Copilot CLI MCP: {srv_name}",
-                            source="copilot-cli:global",
-                        )
-                    )
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    return mcps, skills, hooks, agents
-
-
-def _scan_opencode_home(
-    opencode_dir: Path,
-) -> tuple[list[DiscoveredMcp], list[DiscoveredSkill], list[DiscoveredHook], list[DiscoveredAgent]]:
-    """Scan ~/.config/opencode for MCP servers from opencode.json."""
-    mcps: list[DiscoveredMcp] = []
-    skills: list[DiscoveredSkill] = []
-    hooks: list[DiscoveredHook] = []
-    agents: list[DiscoveredAgent] = []
-
-    config_file = opencode_dir / "opencode.json"
-    if config_file.exists():
-        try:
-            data = json.loads(config_file.read_text())
-            servers = data.get("mcp", {})
-            for srv_name, srv_config in servers.items():
-                if isinstance(srv_config, dict):
-                    cmd = srv_config.get("command")
-                    if isinstance(cmd, list):
-                        command = cmd[0] if cmd else None
-                        args = cmd[1:] if len(cmd) > 1 else []
-                    else:
-                        command = cmd
-                        args = srv_config.get("args", [])
-                    mcps.append(
-                        DiscoveredMcp(
-                            name=srv_name,
-                            command=command,
-                            args=args,
-                            url=srv_config.get("url"),
-                            description=f"OpenCode MCP: {srv_name}",
-                            source="opencode:global",
-                        )
-                    )
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    return mcps, skills, hooks, agents
-
-
-def _extract_mcp_servers(mcp_data: dict) -> dict[str, dict]:
-    """Extract server entries from .mcp.json, handling both formats."""
-    if "mcpServers" in mcp_data:
-        return mcp_data["mcpServers"]
-    servers = {}
-    for key, val in mcp_data.items():
-        if isinstance(val, dict) and ("command" in val or "url" in val or "type" in val):
-            servers[key] = val
-    return servers
-
-
-def _parse_frontmatter_field(content: str, field: str) -> str | None:
-    """Extract a field from YAML frontmatter (--- delimited)."""
-    match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if not match:
-        return None
-    for line in match.group(1).splitlines():
-        if line.startswith(f"{field}:"):
-            val = line[len(field) + 1 :].strip().strip('"').strip("'")
-            return val
-    return None
-
-
-def _extract_body(content: str) -> str:
-    """Extract everything after YAML frontmatter."""
-    match = re.match(r"^---\s*\n.*?\n---\s*\n?", content, re.DOTALL)
-    if match:
-        return content[match.end() :]
-    return content
-
-
-def _first_content_line(content: str) -> str:
-    """Get first non-empty, non-heading content line after frontmatter."""
-    in_frontmatter = False
-    past_frontmatter = False
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped == "---":
-            if not in_frontmatter:
-                in_frontmatter = True
-                continue
-            else:
-                past_frontmatter = True
-                continue
-        if not past_frontmatter and in_frontmatter:
-            continue
-        if past_frontmatter and stripped and not stripped.startswith("#"):
-            return stripped[:200]
-    return ""
-
-
-# ── Project-dir scanner (Cursor, VS Code, Kiro, Gemini) ────
+def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
+    """Backward-compat wrapper delegating to shared.utils.extract_mcp_servers."""
+    from observal_cli.shared.utils import extract_mcp_servers
+
+    return extract_mcp_servers(config, ide)
 
 
 def _scan_project_dir(project_dir: Path, ide_filter: str | None) -> list[tuple[str, str, DiscoveredMcp, Path, bool]]:
-    """Scan project directory for IDE MCP configs. Returns (ide, name, mcp, config_path, shimmed) tuples."""
-    found = []
-    for ide, rel in _IDE_PROJECT_CONFIGS.items():
-        if ide_filter and ide != ide_filter:
-            continue
-        config_path = project_dir / rel
-        if not config_path.exists():
-            continue
+    """Backward-compat wrapper: scan project dir and return old-style tuples."""
+    ensure_loaded()
+    found: list[tuple[str, str, DiscoveredMcp, Path, bool]] = []
 
+    adapters_to_scan = {ide_filter: get_adapter(ide_filter)} if ide_filter else get_all_adapters()
+
+    for ide_name, adapter in adapters_to_scan.items():
         try:
-            if config_path.suffix == ".toml":
-                try:
-                    import tomllib as toml
-                except ImportError:
-                    try:
-                        import tomli as toml
-                    except ImportError:
-                        try:
-                            import toml
-                        except ImportError:
-                            rprint("[yellow]Warning: no toml parser found. Skipping .toml config.[/yellow]")
-                            continue
-                config = toml.loads(config_path.read_text())
-            else:
-                config = json.loads(config_path.read_text())
-        except (Exception, OSError):
+            result = adapter.scan_project(project_dir)
+        except NotSupportedError:
             continue
+        rel_path = _IDE_PROJECT_CONFIGS.get(ide_name, "")
+        config_path = project_dir / rel_path if rel_path else project_dir
+        for mcp in result.mcps:
+            shimmed = _is_already_shimmed({"command": mcp.command or "", "args": mcp.args})
+            found.append((ide_name, mcp.name, mcp, config_path, shimmed))
 
-        servers = _parse_project_mcp_servers(config, ide)
-        for name, entry in servers.items():
-            shimmed = _is_already_shimmed(entry)
-            found.append(
-                (
-                    ide,
-                    name,
-                    DiscoveredMcp(
-                        name=name,
-                        command=entry.get("command"),
-                        args=entry.get("args", []),
-                        url=entry.get("url"),
-                        description=f"MCP from {ide} config",
-                        source=f"ide:{ide}",
-                    ),
-                    config_path,
-                    shimmed,
-                )
-            )
     return found
 
 
-def _parse_project_mcp_servers(config: dict, ide: str) -> dict[str, dict]:
-    """Extract MCP servers dict from project-level IDE config."""
-    if ide in ("vscode", "copilot"):
-        return config.get("servers", config.get("mcpServers", {}))
-    if ide == "copilot-cli":
-        return config.get("mcpServers", {})
-    if ide == "opencode":
-        return config.get("mcp", {})
-    if ide == "codex":
-        return config.get("mcp", {}).get("servers", {})
-    return config.get("mcpServers", config.get("servers", {}))
+def _scan_copilot_cli_home(copilot_dir: Path):
+    """Backward-compat wrapper for tests."""
+    from observal_cli.ide.copilot_cli import CopilotCliAdapter
+
+    adapter = CopilotCliAdapter()
+    result = adapter.scan_home(copilot_dir.parent)
+    return result.mcps, result.skills, result.hooks, result.agents
 
 
-def _is_already_shimmed(entry: dict) -> bool:
-    """Check if an MCP entry is already wrapped with observal-shim."""
-    cmd = entry.get("command", "")
-    args = entry.get("args", [])
-    if cmd == "observal-shim" or "observal-shim" in cmd:
-        return True
-    return bool(any("observal-shim" in str(a) for a in args))
+def _scan_gemini_home(gemini_dir: Path):
+    """Backward-compat wrapper for tests."""
+    from observal_cli.ide.gemini_cli import GeminiCliAdapter
+
+    adapter = GeminiCliAdapter()
+    result = adapter.scan_home(gemini_dir.parent)
+    return result.mcps, result.skills, result.hooks, result.agents
 
 
-# ── Hook status detection ─────────────────────────────────────
+def _scan_claude_home(claude_dir: Path):
+    """Backward-compat wrapper for tests."""
+    from observal_cli.ide.claude_code import ClaudeCodeAdapter
 
-_OBSERVAL_HOOK_MARKERS = (
-    "observal-hook",
-    "observal-stop-hook",
-    "observal_cli",
-    "telemetry/hooks",
-    "otel/hooks",
-    "kiro_hook",
-    "kiro_stop_hook",
-    "gemini_hook",
-    "gemini_stop_hook",
-    "copilot_cli_hook",
-    "copilot_cli_stop_hook",
-)
+    adapter = ClaudeCodeAdapter()
+    result = adapter.scan_home(claude_dir.parent)
+    return result.mcps, result.skills, result.hooks, result.agents
 
 
-def _has_observal_hooks_claude(claude_dir: Path) -> str:
-    """Return hook status for Claude Code: 'installed', 'partial', or 'missing'."""
-    settings = claude_dir / "settings.json"
-    if not settings.exists():
-        return "missing"
-    try:
-        data = json.loads(settings.read_text())
-    except (json.JSONDecodeError, OSError):
-        return "missing"
-    hooks = data.get("hooks", {})
-    if not hooks:
-        return "missing"
-    found = 0
-    for _evt, groups in hooks.items():
-        if not isinstance(groups, list):
-            continue
-        for g in groups:
-            for h in g.get("hooks", []):
-                cmd = h.get("command", "")
-                url = h.get("url", "")
-                if any(m in cmd or m in url for m in _OBSERVAL_HOOK_MARKERS):
-                    found += 1
-                    break
-    return "installed" if found >= 3 else ("partial" if found > 0 else "missing")
+def _scan_kiro_home(kiro_dir: Path):
+    """Backward-compat wrapper for tests."""
+    from observal_cli.ide.kiro import KiroAdapter
+
+    adapter = KiroAdapter()
+    result = adapter._scan_kiro_dir(kiro_dir)
+    return result.mcps, result.skills, result.hooks, result.agents
 
 
-def _has_observal_hooks_kiro(kiro_dir: Path) -> str:
-    """Return hook status for Kiro agents."""
-    agents_dir = kiro_dir / "agents"
-    if not agents_dir.is_dir():
-        return "missing"
-    agent_files = [f for f in agents_dir.glob("*.json") if f.stem != "kiro_default"]
-    if not agent_files:
-        return "missing"
-    hooked = 0
-    for af in agent_files:
-        try:
-            data = json.loads(af.read_text())
-            hooks = data.get("hooks", {})
-            for _evt, entries in hooks.items():
-                if isinstance(entries, list) and any(
-                    any(m in h.get("command", "") for m in _OBSERVAL_HOOK_MARKERS)
-                    for h in entries
-                    if isinstance(h, dict)
-                ):
-                    hooked += 1
-                    break
-        except (json.JSONDecodeError, OSError):
-            pass
-    if hooked == len(agent_files):
-        return "installed"
-    return "partial" if hooked > 0 else "missing"
+# ── IDE home directory paths (for status display) ────────────────
+
+_IDE_HOME_DIRS: dict[str, str] = {
+    "claude-code": "~/.claude",
+    "kiro": "~/.kiro",
+    "gemini-cli": "~/.gemini",
+    "codex": "~/.codex",
+    "copilot": "~/.vscode",
+    "copilot-cli": "~/.copilot",
+    "opencode": "~/.config/opencode",
+    "cursor": "~/.cursor",
+    "pi": "~/.pi/agent",
+}
 
 
-def _has_observal_hooks_gemini(gemini_dir: Path) -> str:
-    """Return hook status for Gemini CLI."""
-    settings = gemini_dir / "settings.json"
-    if not settings.exists():
-        return "missing"
-    try:
-        data = json.loads(settings.read_text())
-    except (json.JSONDecodeError, OSError):
-        return "missing"
-    hooks = data.get("hooks", {})
-    if not hooks:
-        return "missing"
-    for _evt, groups in hooks.items():
-        if not isinstance(groups, list):
-            continue
-        for g in groups:
-            for h in g.get("hooks", []):
-                if any(m in h.get("command", "") for m in _OBSERVAL_HOOK_MARKERS):
-                    return "installed"
-    return "missing"
-
-
-def _has_observal_hooks_copilot_cli(copilot_dir: Path) -> str:
-    """Return hook status for Copilot CLI."""
-    config = copilot_dir / "config.json"
-    if not config.exists():
-        return "missing"
-    try:
-        data = json.loads(config.read_text())
-    except (json.JSONDecodeError, OSError):
-        return "missing"
-    hooks = data.get("hooks", {})
-    if not hooks:
-        return "missing"
-    for _evt, entries in hooks.items():
-        if isinstance(entries, list):
-            for h in entries:
-                if isinstance(h, dict) and "telemetry/hooks" in h.get("bash", ""):
-                    return "installed"
-    return "missing"
-
-
-def _mcp_shim_status(mcps: list[DiscoveredMcp], project_entries: list) -> str:
+def _mcp_shim_status(mcps: list[DiscoveredMcp]) -> str:
     """Return shim summary like '3 of 5 shimmed' or 'all shimmed'."""
     total = 0
     shimmed = 0
@@ -834,12 +134,6 @@ def _mcp_shim_status(mcps: list[DiscoveredMcp], project_entries: list) -> str:
         args_str = " ".join(str(a) for a in m.args)
         if "observal-shim" in cmd or "observal-shim" in args_str:
             shimmed += 1
-    for _ide, _name, _mcp, _path, is_shimmed in project_entries:
-        if _mcp.url:
-            continue
-        total += 1
-        if is_shimmed:
-            shimmed += 1
     if total == 0:
         return "n/a"
     if shimmed == total:
@@ -847,23 +141,6 @@ def _mcp_shim_status(mcps: list[DiscoveredMcp], project_entries: list) -> str:
     if shimmed == 0:
         return "no shims"
     return f"{shimmed} of {total} shimmed"
-
-
-def _otel_status_gemini(gemini_dir: Path) -> str:
-    """Check if Gemini native OTLP is properly disabled."""
-    settings = gemini_dir / "settings.json"
-    if not settings.exists():
-        return "n/a"
-    try:
-        data = json.loads(settings.read_text())
-    except (json.JSONDecodeError, OSError):
-        return "unknown"
-    telemetry = data.get("telemetry", {})
-    if isinstance(telemetry, dict) and telemetry.get("enabled") is False:
-        return "ok (native OTLP disabled)"
-    if isinstance(telemetry, dict) and telemetry.get("enabled", False):
-        return "needs fix (native OTLP enabled)"
-    return "ok"
 
 
 # ── CLI command ─────────────────────────────────────────────
@@ -884,66 +161,84 @@ def register_scan(app: typer.Typer):
 
         This command never modifies files. To instrument, run:
           observal doctor patch --all --all-ides
+
+        Examples:
+            observal scan
+            observal scan --ide claude-code
+            observal scan --ide kiro
         """
+        ensure_loaded()
+        optic.debug("scan: ide={}", ide)
+
+        # Validate IDE filter
+        if ide:
+            try:
+                get_adapter(ide)
+            except KeyError:
+                valid = sorted(get_all_adapters().keys())
+                rprint(f"[red]Unknown IDE: {ide}[/red]")
+                rprint(f"Valid IDEs: {', '.join(valid)}")
+                raise typer.Exit(1)
+
+        adapters = {ide: get_adapter(ide)} if ide else get_all_adapters()
+        home = Path.home()
+        project_dir = Path(".").resolve()
+
         all_mcps: list[DiscoveredMcp] = []
-        all_skills: list[DiscoveredSkill] = []
-        all_hooks: list[DiscoveredHook] = []
-        all_agents: list[DiscoveredAgent] = []
-        project_mcp_entries: list[tuple[str, str, DiscoveredMcp, Path, bool]] = []
-        ide_status: list[tuple[str, str, str, str]] = []  # (name, hooks, shims, otel)
+        all_skills = []
+        all_hooks = []
+        all_agents = []
+        seen_mcp_names: set[str] = set()
+        ide_status: list[tuple[str, str, str]] = []  # (name, hooks, shims)
 
-        home_scanners = [
-            ("claude-code", Path.home() / ".claude", _scan_claude_home, "~/.claude"),
-            ("kiro", Path.home() / ".kiro", _scan_kiro_home, "~/.kiro"),
-            ("gemini-cli", Path.home() / ".gemini", _scan_gemini_home, "~/.gemini"),
-            ("codex", Path.home() / ".codex", _scan_codex_home, "~/.codex"),
-            ("copilot", Path.home() / ".vscode", _scan_copilot_home, "~/.vscode"),
-            ("copilot-cli", Path.home() / ".copilot", _scan_copilot_cli_home, "~/.copilot"),
-            ("opencode", Path.home() / ".config" / "opencode", _scan_opencode_home, "~/.config/opencode"),
-        ]
+        for ide_name, adapter in adapters.items():
+            home_label = _IDE_HOME_DIRS.get(ide_name, "")
+            home_dir = Path(home_label.replace("~", str(home))) if home_label else None
 
-        hook_checkers = {
-            "claude-code": lambda: _has_observal_hooks_claude(Path.home() / ".claude"),
-            "kiro": lambda: _has_observal_hooks_kiro(Path.home() / ".kiro"),
-            "gemini-cli": lambda: _has_observal_hooks_gemini(Path.home() / ".gemini"),
-            "copilot-cli": lambda: _has_observal_hooks_copilot_cli(Path.home() / ".copilot"),
-        }
-
-        for ide_name, dir_path, scan_fn, label in home_scanners:
-            if ide and ide_name != ide:
+            # Skip if home dir doesn't exist
+            if home_dir and not home_dir.is_dir():
                 continue
-            if not dir_path.is_dir():
-                continue
-            with spinner(f"Scanning {label}..."):
-                h_mcps, h_skills, h_hooks, h_agents = scan_fn(dir_path)
-            all_mcps.extend(h_mcps)
-            all_skills.extend(h_skills)
-            all_hooks.extend(h_hooks)
-            all_agents.extend(h_agents)
+
+            with spinner(f"Scanning {home_label or ide_name}..."):
+                try:
+                    home_result = adapter.scan_home(home)
+                except NotSupportedError:
+                    home_result = type("R", (), {"mcps": [], "skills": [], "hooks": [], "agents": []})()
+
+                try:
+                    proj_result = adapter.scan_project(project_dir)
+                except NotSupportedError:
+                    proj_result = type("R", (), {"mcps": [], "skills": [], "hooks": [], "agents": []})()
+
+            # Merge with deduplication
+            for mcp in home_result.mcps + proj_result.mcps:
+                if mcp.name not in seen_mcp_names:
+                    all_mcps.append(mcp)
+                    seen_mcp_names.add(mcp.name)
+            all_skills.extend(home_result.skills + proj_result.skills)
+            all_hooks.extend(home_result.hooks + proj_result.hooks)
+            all_agents.extend(home_result.agents + proj_result.agents)
 
             # Determine status for this IDE
-            hook_check = hook_checkers.get(ide_name)
-            hook_status = hook_check() if hook_check else "n/a"
-            shim_status = _mcp_shim_status(h_mcps, [])
-            otel = _otel_status_gemini(dir_path) if ide_name == "gemini-cli" else "n/a"
-            ide_status.append((ide_name, hook_status, shim_status, otel))
+            try:
+                config_dir = home_dir or (home / ".config" / ide_name)
+                hook_status = adapter.detect_hooks(config_dir)
+            except NotSupportedError:
+                hook_status = "n/a"
+            shim_stat = _mcp_shim_status(home_result.mcps + proj_result.mcps)
+            ide_status.append((ide_name, hook_status, shim_stat))
 
-        # Scan project directory
-        root = Path(".").resolve()
-        project_mcp_entries = _scan_project_dir(root, ide)
-        seen_names = {m.name for m in all_mcps}
-        for _ide_name, _name, mcp, _config_path, _shimmed in project_mcp_entries:
-            if mcp.name not in seen_names:
-                all_mcps.append(mcp)
-                seen_names.add(mcp.name)
-
-        if root != Path.home():
-            home_project = _scan_project_dir(Path.home(), ide)
-            for entry in home_project:
-                if entry[2].name not in seen_names:
-                    project_mcp_entries.append(entry)
-                    all_mcps.append(entry[2])
-                    seen_names.add(entry[2].name)
+        # Also scan home as project if different from cwd
+        if project_dir != home:
+            for _ide_name, adapter in adapters.items():
+                try:
+                    extra = adapter.scan_project(home)
+                    for mcp in extra.mcps:
+                        if mcp.name not in seen_mcp_names:
+                            all_mcps.append(mcp)
+                            seen_mcp_names.add(mcp.name)
+                except NotSupportedError:
+                    pass
 
         total = len(all_mcps) + len(all_skills) + len(all_hooks) + len(all_agents)
 
@@ -951,7 +246,7 @@ def register_scan(app: typer.Typer):
             rprint("[yellow]No IDE configurations found.[/yellow]")
             raise typer.Exit(1)
 
-        rprint(f"\n[bold]Observal Scan[/bold] — {total} components discovered\n")
+        rprint(f"\n[bold]Observal Scan[/bold] - {total} components discovered\n")
 
         # ── IDEs Detected table ──
         if ide_status:
@@ -959,8 +254,7 @@ def register_scan(app: typer.Typer):
             tbl.add_column("IDE", style="bold")
             tbl.add_column("Hooks", style="cyan")
             tbl.add_column("Shims", style="cyan")
-            tbl.add_column("OTel", style="dim")
-            for name, hooks_s, shims_s, otel_s in ide_status:
+            for name, hooks_s, shims_s in ide_status:
                 hooks_style = "green" if hooks_s == "installed" else ("yellow" if hooks_s == "partial" else "red")
                 shims_style = (
                     "green"
@@ -971,7 +265,6 @@ def register_scan(app: typer.Typer):
                     name,
                     f"[{hooks_style}]{hooks_s}[/{hooks_style}]",
                     f"[{shims_style}]{shims_s}[/{shims_style}]",
-                    otel_s,
                 )
             console.print(tbl)
             rprint()
@@ -1074,7 +367,6 @@ def register_scan(app: typer.Typer):
                         unregistered.append(("agent", a.name))
 
                 if unregistered:
-                    # Check if registered-agents-only mode is ON
                     from observal_cli import client as obs_client
 
                     _reg_only_enabled = obs_client.get_registered_agents_only()
@@ -1101,8 +393,8 @@ def register_scan(app: typer.Typer):
             pass
 
         # ── Footer with suggestions ──
-        missing_hooks = any(h == "missing" or h == "partial" for _, h, _, _ in ide_status)
-        missing_shims = any(s not in ("all shimmed", "n/a") for _, _, s, _ in ide_status)
+        missing_hooks = any(h == "missing" or h == "partial" for _, h, _ in ide_status)
+        missing_shims = any(s not in ("all shimmed", "n/a") for _, _, s in ide_status)
 
         suggestions = []
         if missing_hooks and missing_shims:

@@ -15,6 +15,8 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from loguru import logger as optic
+
 from services.clickhouse import insert_audit_log, insert_spans, insert_traces
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ _background_tasks: set[asyncio.Task] = set()
 
 async def _emit(trace: dict, span: dict, audit: dict):
     """Insert a trace + span + audit_log entry. Swallows errors."""
+    optic.debug("_emit: trace={}, span={}, audit={}", trace, span, audit)
     try:
         await insert_traces([trace])
         await insert_spans([span])
@@ -44,6 +47,7 @@ def emit_registry_event(
     metadata: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget a registry trace + span + audit_log entry into ClickHouse."""
+    optic.debug("emit_registry_event: action={}, user_id={}, user_email={}", action, user_id, user_email)
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     trace_id = str(uuid.uuid4())
     span_id = str(uuid.uuid4())

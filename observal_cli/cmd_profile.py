@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
+from loguru import logger
 from rich import print as rprint
 
 BACKUP_DIR = Path.home() / ".observal" / "backups"
@@ -201,6 +202,7 @@ def register_use(app: typer.Typer):
             observal use ./local-profile
             observal use default
         """
+        logger.debug("use_profile: profile={}, ref={}", profile, ref)
         state = _load_state()
 
         # Restore default (previous backup)
@@ -298,7 +300,16 @@ def register_use(app: typer.Typer):
 
     @app.command("profile")
     def profile_status():
-        """Show active profile and backup info."""
+        """Show active profile and backup info.
+
+        Displays which profile is currently active, when it was applied,
+        lists cached profiles available for quick reuse, and shows recent
+        backups with file counts.
+
+        \b
+        Examples:
+          observal profile
+        """
         state = _load_state()
         active = state.get("active_profile_name")
         if active:

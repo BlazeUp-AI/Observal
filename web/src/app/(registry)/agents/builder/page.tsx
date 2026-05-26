@@ -18,7 +18,6 @@ import {
   Loader2,
   ArrowRight,
   Save,
-  FileText,
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,33 +51,21 @@ import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 const DRAFT_STORAGE_KEY = "observal_agent_draft";
 
 import { SortableComponentList } from "@/components/builder/sortable-component-list";
+import { SubmitComponentDialog } from "@/components/registry/submit-component-dialog";
 import { ValidationPanel } from "@/components/builder/validation-panel";
 import { PreviewPanel } from "@/components/builder/preview-panel";
 import { ModelPicker } from "@/components/builder/model-picker";
 
-const COMPONENT_TYPES: { value: RegistryType; label: string }[] = [
-  { value: "mcps", label: "MCPs" },
-  { value: "skills", label: "Skills" },
-  { value: "hooks", label: "Hooks" },
-  { value: "prompts", label: "Prompts" },
-  { value: "sandboxes", label: "Sandboxes" },
+const COMPONENT_TYPES: { value: RegistryType; label: string; singular: string }[] = [
+  { value: "mcps", label: "MCPs", singular: "MCP" },
+  { value: "skills", label: "Skills", singular: "Skill" },
+  { value: "hooks", label: "Hooks", singular: "Hook" },
+  { value: "prompts", label: "Prompts", singular: "Prompt" },
+  { value: "sandboxes", label: "Sandboxes", singular: "Sandbox" },
 ];
 
-interface CustomPrompt {
-  id: string;
-  title: string;
-  content: string;
-}
 
-interface GoalSection {
-  id: string;
-  title: string;
-  content: string;
-}
 
-function generateId() {
-  return Math.random().toString(36).slice(2, 10);
-}
 
 // ── Version bump utility ──────────────────────────────────────────
 
@@ -209,12 +196,16 @@ function VersionBumpDialog({
 
 function ComponentPicker({
   type,
+  label,
   selected,
   onToggle,
+  onCreateNew,
 }: {
   type: RegistryType;
+  label: string;
   selected: Set<string>;
   onToggle: (item: RegistryItem) => void;
+  onCreateNew: () => void;
 }) {
   const { data: items, isLoading } = useRegistryList(type);
   const [search, setSearch] = useState("");
@@ -232,14 +223,26 @@ function ComponentPicker({
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder={`Search ${type}...`}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="h-8 pl-9 text-sm"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder={`Search ${label}...`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 pl-9 text-sm"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 text-xs"
+          onClick={onCreateNew}
+        >
+          <Plus className="mr-1 h-3 w-3" />
+          Create new
+        </Button>
       </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
@@ -329,6 +332,7 @@ export default function AgentBuilderPage() {
 function AgentBuilderInner() {
   // Require auth for builder
   const { ready } = useAuthGuard();
+  const { licensedFeatures } = useDeploymentConfig();
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -336,14 +340,15 @@ function AgentBuilderInner() {
   const draftParam = searchParams.get("draft");
   const isEditMode = !!editId;
 
-  const { deploymentMode } = useDeploymentConfig();
   const { data: whoami } = useWhoami();
   const { data: existingAgent } = useRegistryItem("agents", editId ?? draftParam ?? undefined);
 
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState("");
+  const [promptError, setPromptError] = useState("");
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1.0.0");
+  const [category, setCategory] = useState("");
   const [modelName, setModelName] = useState("");
   const [modelsByIde, setModelsByIde] = useState<Record<string, string>>({});
   const [visibility, setVisibility] = useState<"public" | "private">("private");
@@ -358,6 +363,14 @@ function AgentBuilderInner() {
   const [draftId, setDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+  // Components created in-builder, held in memory until agent submit
+  const [pendingComponents, setPendingComponents] = useState<Array<{
+    id: string; // local temp id
+    type: RegistryType;
+    name: string;
+    body: Record<string, unknown>;
+  }>>([]);
+  const [createDialogType, setCreateDialogType] = useState<RegistryType | null>(null);
   const saveDraft = useSaveDraft();
   const updateDraft = useUpdateDraft();
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -376,13 +389,9 @@ function AgentBuilderInner() {
     sandboxes: [],
   });
 
-  // Custom inline prompts
-  const [customPrompts, setCustomPrompts] = useState<CustomPrompt[]>([]);
+  const [systemPrompt, setSystemPrompt] = useState<string>("");
 
   // Goal template sections
-  const [goalSections, setGoalSections] = useState<GoalSection[]>([
-    { id: generateId(), title: "", content: "" },
-  ]);
 
   // Validation
   const validation = useAgentValidation();
@@ -405,6 +414,8 @@ function AgentBuilderInner() {
     if (agentModelsByIde && typeof agentModelsByIde === "object" && !Array.isArray(agentModelsByIde)) {
       setModelsByIde(agentModelsByIde as Record<string, string>);
     }
+    const agentCategory = (existingAgent as Record<string, unknown>).category;
+    if (typeof agentCategory === "string") setCategory(agentCategory);
     const agentVisibility = (existingAgent as Record<string, unknown>).visibility;
     if (agentVisibility === "public" || agentVisibility === "private") setVisibility(agentVisibility as "public" | "private");
     const agentTeamAccesses = (existingAgent as Record<string, unknown>).team_accesses;
@@ -432,32 +443,9 @@ function AgentBuilderInner() {
       setSelectedComponents(grouped);
     }
 
-    // Load goal template sections if available
-    const goalTemplate = (existingAgent as Record<string, unknown>).goal_template as Record<string, unknown> | undefined;
-    if (goalTemplate && Array.isArray(goalTemplate.sections)) {
-      const loadedSections = (goalTemplate.sections as Array<Record<string, unknown>>).map((s) => ({
-        id: generateId(),
-        title: (s.name as string) ?? "",
-        content: (s.description as string) ?? "",
-      }));
-      if (loadedSections.length > 0) setGoalSections(loadedSections);
-    }
 
-    // Load custom prompts from the prompt field
     const promptField = (existingAgent as Record<string, unknown>).prompt;
-    if (typeof promptField === "string" && promptField.trim()) {
-      const parts = promptField.split(/\n## /).filter(Boolean);
-      const loaded: CustomPrompt[] = parts.map((part) => {
-        const lines = part.startsWith("## ") ? part.slice(3).split("\n") : part.split("\n");
-        const title = lines[0]?.trim() ?? "";
-        const content = lines.slice(1).join("\n").trim();
-        if (title && content) {
-          return { id: generateId(), title, content };
-        }
-        return { id: generateId(), title: "", content: part.startsWith("## ") ? part.slice(3).trim() : part.trim() };
-      });
-      if (loaded.length > 0) setCustomPrompts(loaded);
-    }
+    if (typeof promptField === "string") setSystemPrompt(promptField);
   }, [existingAgent, draftParam]);
 
   // Edit lock for pending agents — acquire on mount, release on unmount
@@ -558,8 +546,7 @@ function AgentBuilderInner() {
     autoSaveTimerRef.current = setTimeout(() => {
       const hasContent = name || description || modelName || version !== "1.0.0" || visibility !== "private" || teamAccesses.length > 0 ||
         Object.values(selectedComponents).some((items) => items.length > 0) ||
-        goalSections.some((s) => s.title || s.content) ||
-        customPrompts.some((p) => p.title || p.content);
+        systemPrompt.trim().length > 0;
 
       if (!hasContent) return;
 
@@ -573,8 +560,7 @@ function AgentBuilderInner() {
           visibility,
           team_accesses: teamAccesses,
           components: selectedComponents,
-          goal_sections: goalSections,
-          custom_prompts: customPrompts,
+          prompt: systemPrompt,
           draft_id: draftId,
           saved_at: new Date().toISOString(),
         };
@@ -587,7 +573,7 @@ function AgentBuilderInner() {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [name, description, version, modelName, visibility, teamAccesses, selectedComponents, goalSections, customPrompts, draftId, isEditMode]);
+  }, [name, description, version, modelName, visibility, teamAccesses, selectedComponents, systemPrompt, draftId, isEditMode]);
 
   function restoreLocalDraft() {
     try {
@@ -604,8 +590,7 @@ function AgentBuilderInner() {
       if (draft.visibility) setVisibility(draft.visibility);
       if (draft.team_accesses) setTeamAccesses(draft.team_accesses);
       if (draft.components) setSelectedComponents(draft.components);
-      if (draft.goal_sections) setGoalSections(draft.goal_sections);
-      if (Array.isArray(draft.custom_prompts)) setCustomPrompts(draft.custom_prompts);
+      if (typeof draft.prompt === "string") setSystemPrompt(draft.prompt);
       if (draft.draft_id) setDraftId(draft.draft_id);
       setShowRestoreBanner(false);
       toast.success("Draft restored");
@@ -626,6 +611,14 @@ function AgentBuilderInner() {
   async function handleSaveDraft() {
     if (!name.trim()) {
       toast.error("Agent name is required");
+      return;
+    }
+    const hasPromptComponent = Object.values(selectedComponents).flat().some(
+      (item: RegistryItem) => selectedComponents.prompts?.find((p) => p.id === item.id)
+    ) || (selectedComponents.prompts ?? []).length > 0;
+    if (!systemPrompt.trim() && !hasPromptComponent) {
+      setPromptError("An agent prompt is required.");
+      toast.error("An agent prompt is required.");
       return;
     }
 
@@ -677,25 +670,7 @@ function AgentBuilderInner() {
     }));
   }, []);
 
-  const addCustomPrompt = useCallback(() => {
-    setCustomPrompts((prev) => [
-      ...prev,
-      { id: generateId(), title: "", content: "" },
-    ]);
-  }, []);
 
-  const updateCustomPrompt = useCallback(
-    (id: string, field: "title" | "content", value: string) => {
-      setCustomPrompts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)),
-      );
-    },
-    [],
-  );
-
-  const removeCustomPrompt = useCallback((id: string) => {
-    setCustomPrompts((prev) => prev.filter((p) => p.id !== id));
-  }, []);
 
   const handleReorder = useCallback(
     (type: string) => (items: { id: string; name: string }[]) => {
@@ -711,25 +686,8 @@ function AgentBuilderInner() {
     [],
   );
 
-  const addGoalSection = useCallback(() => {
-    setGoalSections((prev) => [
-      ...prev,
-      { id: generateId(), title: "", content: "" },
-    ]);
-  }, []);
 
-  const removeGoalSection = useCallback((id: string) => {
-    setGoalSections((prev) => prev.filter((s) => s.id !== id));
-  }, []);
 
-  const updateGoalSection = useCallback(
-    (id: string, field: "title" | "content", value: string) => {
-      setGoalSections((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
-      );
-    },
-    [],
-  );
 
   function buildRequestBody(versionOverride?: string) {
     const components: { component_type: string; component_id: string }[] = [];
@@ -740,45 +698,33 @@ function AgentBuilderInner() {
       }
     }
 
-    const sections = goalSections
-      .filter((s) => s.title.trim())
-      .map((s) => ({
-        name: s.title.trim(),
-        description: s.content.trim() || null,
-      }));
-
-    const goalDescription = description.trim() || name.trim();
-
-    // Build prompt field from custom inline prompts
-    const promptParts = customPrompts
-      .filter((p) => p.content.trim())
-      .map((p) =>
-        p.title.trim()
-          ? `## ${p.title.trim()}\n${p.content.trim()}`
-          : p.content.trim(),
-      );
 
     return {
       name: name.trim(),
       version: (versionOverride ?? version).trim() || "1.0.0",
       description: description.trim(),
+      category: category || undefined,
       owner: whoami?.name || whoami?.email || "unknown",
       visibility,
       team_accesses: teamAccesses,
-      prompt: promptParts.join("\n\n"),
+      prompt: systemPrompt.trim(),
       model_name: modelName,
       models_by_ide: modelsByIde,
       components: components.length > 0 ? components : [],
-      goal_template: {
-        description: goalDescription,
-        sections: sections.length > 0 ? sections : [{ name: "Default", description: goalDescription }],
-      },
     };
   }
 
   async function handlePublish() {
     if (!name.trim()) {
       toast.error("Agent name is required");
+      return;
+    }
+    const hasPromptComponent = Object.values(selectedComponents).flat().some(
+      (item: RegistryItem) => selectedComponents.prompts?.find((p) => p.id === item.id)
+    ) || (selectedComponents.prompts ?? []).length > 0;
+    if (!systemPrompt.trim() && !hasPromptComponent) {
+      setPromptError("An agent prompt is required.");
+      toast.error("An agent prompt is required.");
       return;
     }
     if (!AGENT_NAME_REGEX.test(name)) {
@@ -796,6 +742,26 @@ function AgentBuilderInner() {
 
     setPublishing(true);
     try {
+      // Flush in-memory components to registry first, collect real IDs
+      const flushedIds: { type: RegistryType; id: string; name: string }[] = [];
+      for (const pc of pendingComponents) {
+        const created = await registry.submit(pc.type, pc.body);
+        flushedIds.push({ type: pc.type, id: created.id, name: created.name });
+      }
+      if (flushedIds.length) {
+        // Merge flushed IDs into selectedComponents
+        const next = { ...selectedComponents };
+        for (const { type, id, name } of flushedIds) {
+          const plural = type as string;
+          next[plural] = [...(next[plural] ?? []), { id, name }];
+        }
+        // Update selected components synchronously via ref trick — rebuild body after
+        for (const { type, id, name } of flushedIds) {
+          const plural = type as string;
+          selectedComponents[plural] = [...(selectedComponents[plural] ?? []), { id, name }];
+        }
+        setPendingComponents([]);
+      }
       const body = buildRequestBody();
       if (draftId) {
         await updateDraft.mutateAsync({ id: draftId, body });
@@ -874,6 +840,7 @@ function AgentBuilderInner() {
               <div className="space-y-2">
                 <Label htmlFor="agent-name" className="text-sm font-medium">
                   Agent Name
+                  <span className="ml-1 text-destructive">*</span>
                 </Label>
                 <Input
                   id="agent-name"
@@ -904,6 +871,7 @@ function AgentBuilderInner() {
                   className="text-sm font-medium"
                 >
                   Description
+                  <span className="ml-1 text-destructive">*</span>
                 </Label>
                 <Textarea
                   id="agent-description"
@@ -926,6 +894,29 @@ function AgentBuilderInner() {
                     onChange={(e) => setVersion(e.target.value)}
                   />
                 </div>
+                <div className="space-y-2 flex-1 max-w-[200px]">
+                  <Label htmlFor="agent-category" className="text-sm font-medium">
+                    Category
+                  </Label>
+                  <select
+                    id="agent-category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">Select category...</option>
+                    <option value="Code Review">Code Review</option>
+                    <option value="Testing">Testing</option>
+                    <option value="Documentation">Documentation</option>
+                    <option value="DevOps">DevOps</option>
+                    <option value="Security">Security</option>
+                    <option value="Data">Data</option>
+                    <option value="Incident Response">Incident Response</option>
+                    <option value="Deployment">Deployment</option>
+                    <option value="Cost Optimization">Cost Optimization</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
                 <div className="flex-1">
                   <ModelPicker
                     modelName={modelName}
@@ -934,6 +925,29 @@ function AgentBuilderInner() {
                     onModelsByIdeChange={setModelsByIde}
                   />
                 </div>
+              </div>
+            </section>
+
+            {/* Agent Prompt */}
+            <section className="space-y-4 animate-in stagger-1">
+              <div className="space-y-2">
+                <Label htmlFor="agent-prompt" className="text-sm font-medium">
+                  Agent Prompt
+                  <span className="ml-1 text-destructive">*</span>
+                </Label>
+                <Textarea
+                  id="agent-prompt"
+                  placeholder="You are a senior Python engineer. You write tests first, prefer composition over inheritance, always explain your reasoning, and never delete existing tests."
+                  value={systemPrompt}
+                  onChange={(e) => { setSystemPrompt(e.target.value); if (e.target.value.trim()) setPromptError(""); }}
+                  rows={8}
+                  className={`resize-y text-sm font-mono${promptError ? " border-destructive" : ""}`}
+                />
+                {promptError ? (
+                  <p className="text-sm text-destructive">{promptError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Required. Or link a Prompt component in the Components section below.</p>
+                )}
               </div>
             </section>
 
@@ -959,7 +973,7 @@ function AgentBuilderInner() {
                   {COMPONENT_TYPES.map((ct) => {
                     const count =
                       (selectedComponents[ct.value] ?? []).length +
-                      (ct.value === "prompts" ? customPrompts.length : 0);
+                      0;
                     return (
                       <TabsTrigger key={ct.value} value={ct.value}>
                         {ct.label}
@@ -977,9 +991,23 @@ function AgentBuilderInner() {
                   <TabsContent key={ct.value} value={ct.value}>
                     <ComponentPicker
                       type={ct.value}
+                      label={ct.label}
                       selected={selectedIds}
                       onToggle={handleToggle(ct.value)}
+                      onCreateNew={() => setCreateDialogType(ct.value)}
                     />
+                    {/* In-memory components not yet submitted */}
+                    {pendingComponents.filter((p) => p.type === ct.value).map((p) => (
+                      <div key={p.id} className="mt-2 flex items-center gap-2 rounded border border-dashed border-border px-3 py-1.5 text-xs">
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-muted-foreground italic">not yet submitted</span>
+                        <button
+                          type="button"
+                          className="ml-auto text-muted-foreground hover:text-destructive"
+                          onClick={() => setPendingComponents((prev) => prev.filter((x) => x.id !== p.id))}
+                        >✕</button>
+                      </div>
+                    ))}
 
                     {/* Sortable selected list */}
                     {(selectedComponents[ct.value] ?? []).length > 0 && (
@@ -994,74 +1022,6 @@ function AgentBuilderInner() {
                       </div>
                     )}
 
-                    {/* Custom prompt input — Prompts tab only */}
-                    {ct.value === "prompts" && (
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-center gap-3">
-                          <Separator className="flex-1" />
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            or add custom prompt text
-                          </span>
-                          <Separator className="flex-1" />
-                        </div>
-
-                        {customPrompts.map((prompt) => (
-                          <div
-                            key={prompt.id}
-                            className="rounded-md border bg-muted/20 p-4 space-y-3"
-                          >
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                              <Input
-                                placeholder="Prompt title (optional)"
-                                value={prompt.title}
-                                onChange={(e) =>
-                                  updateCustomPrompt(
-                                    prompt.id,
-                                    "title",
-                                    e.target.value,
-                                  )
-                                }
-                                className="h-8 max-w-xs text-sm font-medium"
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeCustomPrompt(prompt.id)}
-                                className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                            <Textarea
-                              placeholder="Enter prompt text..."
-                              value={prompt.content}
-                              onChange={(e) =>
-                                updateCustomPrompt(
-                                  prompt.id,
-                                  "content",
-                                  e.target.value,
-                                )
-                              }
-                              rows={4}
-                              className="resize-y text-sm"
-                            />
-                          </div>
-                        ))}
-
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={addCustomPrompt}
-                          className="h-8"
-                        >
-                          <Plus className="mr-1 h-3.5 w-3.5" />
-                          Add Custom Prompt
-                        </Button>
-                      </div>
-                    )}
                   </TabsContent>
                 ))}
               </Tabs>
@@ -1073,85 +1033,10 @@ function AgentBuilderInner() {
               />
             </section>
 
-            <Separator />
 
-            {/* Goal Template */}
+            {/* Visibility & Access (requires rbac feature) */}
+            {(licensedFeatures.includes("rebac") || licensedFeatures.includes("all")) && (
             <section className="space-y-4 animate-in stagger-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium font-[family-name:var(--font-display)]">
-                    Goal Template
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Define the agent&apos;s objective in structured sections.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={addGoalSection}
-                  className="h-8"
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Add Section
-                </Button>
-              </div>
-
-              <div className="space-y-3">
-                {goalSections.map((section) => (
-                  <div
-                    key={section.id}
-                    className="rounded-md border bg-muted/20 p-4 space-y-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="Section title"
-                        value={section.title}
-                        onChange={(e) =>
-                          updateGoalSection(
-                            section.id,
-                            "title",
-                            e.target.value,
-                          )
-                        }
-                        className="h-8 max-w-xs text-sm font-medium"
-                      />
-                      {goalSections.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeGoalSection(section.id)}
-                          className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                    <Textarea
-                      placeholder="Section content..."
-                      value={section.content}
-                      onChange={(e) =>
-                        updateGoalSection(
-                          section.id,
-                          "content",
-                          e.target.value,
-                        )
-                      }
-                      rows={3}
-                      className="resize-y text-sm"
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <Separator />
-
-            {/* Visibility & Access */}
-            {deploymentMode === "enterprise" && (
-              <section className="space-y-4 animate-in stagger-2">
                 <div>
                   <h3 className="text-sm font-medium font-[family-name:var(--font-display)]">
                   Visibility & Access
@@ -1242,7 +1127,7 @@ function AgentBuilderInner() {
                 )}
               </div>
             </section>
-          )}
+            )}
 
             <Separator />
 
@@ -1290,18 +1175,54 @@ function AgentBuilderInner() {
                 description={description}
                 modelName={modelName}
                 selectedComponents={Object.fromEntries(
-                  Object.entries(selectedComponents).map(([k, v]) =>
-                    [k, v.map((item) => ({ id: item.id, name: item.name }))]
-                  ),
+                  Object.entries({
+                    ...Object.fromEntries(
+                      Object.entries(selectedComponents).map(([k, v]) =>
+                        [k, v.map((item) => ({ id: item.id, name: item.name }))]
+                      )
+                    ),
+                    // Merge in-memory pending components so they show in preview
+                    ...pendingComponents.reduce((acc, pc) => {
+                      acc[pc.type as string] = [...(acc[pc.type as string] ?? []), { id: pc.id, name: `${pc.name} (pending)` }];
+                      return acc;
+                    }, {} as Record<string, { id: string; name: string }[]>),
+                  }).map(([k, v]) => [k, v])
                 )}
-                goalSections={goalSections}
-                customPrompts={customPrompts}
+                prompt={systemPrompt}
+                pendingComponentBodies={Object.fromEntries(pendingComponents.map((pc) => [pc.id, pc.body]))}
                 validationResult={validationResult}
               />
             </div>
           </aside>
         </div>
       </div>
+
+      {/* Create in-memory component dialog */}
+      {createDialogType && (
+        <SubmitComponentDialog
+          key={createDialogType}
+          open={!!createDialogType}
+          onOpenChange={(v) => { if (!v) setCreateDialogType(null); }}
+          type={createDialogType}
+          editItem={null}
+          onSubmit={(body) => {
+            const tempId = Math.random().toString(36).slice(2);
+            const name = (body.name as string) || createDialogType.replace(/s$/, "");
+            setPendingComponents((prev) => [...prev, { id: tempId, type: createDialogType!, name, body }]);
+            setCreateDialogType(null);
+            toast.success(`${name} added — will be submitted with the agent.`);
+          }}
+          onSaveDraft={(body) => {
+            const tempId = Math.random().toString(36).slice(2);
+            const name = (body.name as string) || createDialogType.replace(/s$/, "");
+            setPendingComponents((prev) => [...prev, { id: tempId, type: createDialogType!, name, body }]);
+            setCreateDialogType(null);
+            toast.success(`${name} added — will be submitted with the agent.`);
+          }}
+          isSubmitting={false}
+          isSavingDraft={false}
+        />
+      )}
 
       {/* Version Bump Dialog — shown when updating an existing agent */}
       <VersionBumpDialog

@@ -7,6 +7,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,7 +34,6 @@ from schemas.sandbox import (
     SandboxSubmitRequest,
     SandboxUpdateRequest,
 )
-from services.audit_helpers import audit
 from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
 
 router = APIRouter(prefix="/api/v1/sandboxes", tags=["sandboxes"])
@@ -45,6 +45,7 @@ async def submit_sandbox(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("sandbox submit: name={}", req.name)
     existing = await db.execute(
         select(SandboxListing).where(SandboxListing.name == req.name, SandboxListing.submitted_by == current_user.id)
     )
@@ -66,13 +67,13 @@ async def submit_sandbox(
         description=req.description,
         runtime_type=req.runtime_type,
         image=req.image,
-        dockerfile_url=req.dockerfile_url,
         resource_limits=req.resource_limits,
         network_policy=req.network_policy,
-        allowed_mounts=req.allowed_mounts,
-        env_vars=req.env_vars,
         entrypoint=req.entrypoint,
         supported_ides=req.supported_ides,
+        source_url=req.source_url,
+        source_ref=req.source_ref,
+        sandbox_path=req.sandbox_path,
         status=ListingStatus.pending,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -83,9 +84,6 @@ async def submit_sandbox(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "sandbox.submit", resource_type="sandbox", resource_id=str(listing.id), resource_name=listing.name
-    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -96,6 +94,7 @@ async def list_sandboxes(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("sandbox list: search={}", search)
     stmt = (
         select(SandboxListing)
         .join(SandboxVersion, SandboxListing.latest_version_id == SandboxVersion.id)
@@ -109,7 +108,6 @@ async def list_sandboxes(
     stmt = apply_visibility_filter(stmt, SandboxListing, current_user)
     result = await db.execute(stmt.order_by(SandboxListing.created_at.desc()))
     listings = [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(None, "sandbox.list", resource_type="sandbox")
     return listings
 
 
@@ -118,6 +116,7 @@ async def my_sandboxes(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("my_sandboxes called")
     stmt = (
         select(SandboxListing)
         .where(SandboxListing.submitted_by == current_user.id)
@@ -125,7 +124,6 @@ async def my_sandboxes(
     )
     result = await db.execute(stmt)
     listings = [SandboxListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(current_user, "sandbox.my_list", resource_type="sandbox")
     return listings
 
 
@@ -135,15 +133,9 @@ async def get_sandbox(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("sandbox get: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(
-            current_user,
-            "sandbox.view",
-            resource_type="sandbox",
-            resource_id=str(listing.id),
-            resource_name=listing.name,
-        )
         return SandboxListingResponse.model_validate(listing)
 
     listing = await resolve_listing(SandboxListing, listing_id, db)
@@ -151,13 +143,6 @@ async def get_sandbox(
         raise HTTPException(status_code=404, detail="Listing not found")
 
     if check_listing_visibility(listing, current_user):
-        await audit(
-            current_user,
-            "sandbox.view",
-            resource_type="sandbox",
-            resource_id=str(listing.id),
-            resource_name=listing.name,
-        )
         return SandboxListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -171,6 +156,7 @@ async def install_sandbox(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("sandbox install: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
         listing = await resolve_listing(SandboxListing, listing_id, db)
@@ -183,15 +169,8 @@ async def install_sandbox(
     from api.routes.config import derive_endpoints
     from services.sandbox_config_generator import generate_sandbox_config
 
-    endpoints = derive_endpoints(request)
+    endpoints = await derive_endpoints(request)
     config = generate_sandbox_config(listing, req.ide, server_url=endpoints["api"])
-    await audit(
-        current_user,
-        "sandbox.install",
-        resource_type="sandbox",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-    )
     return SandboxInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
@@ -201,6 +180,7 @@ async def save_sandbox_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("save_sandbox_draft: req={}", req)
     listing = SandboxListing(
         name=req.name,
         owner=req.owner or current_user.username or current_user.email,
@@ -216,13 +196,13 @@ async def save_sandbox_draft(
         description=req.description,
         runtime_type=req.runtime_type,
         image=req.image,
-        dockerfile_url=req.dockerfile_url,
         resource_limits=req.resource_limits,
         network_policy=req.network_policy,
-        allowed_mounts=req.allowed_mounts,
-        env_vars=req.env_vars,
         entrypoint=req.entrypoint,
         supported_ides=req.supported_ides,
+        source_url=req.source_url,
+        source_ref=req.source_ref,
+        sandbox_path=req.sandbox_path,
         status=ListingStatus.draft,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -233,13 +213,6 @@ async def save_sandbox_draft(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user,
-        "sandbox.draft.create",
-        resource_type="sandbox",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -250,6 +223,7 @@ async def update_sandbox_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("update_sandbox_draft: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -267,13 +241,13 @@ async def update_sandbox_draft(
         "description",
         "runtime_type",
         "image",
-        "dockerfile_url",
         "resource_limits",
         "network_policy",
-        "allowed_mounts",
-        "env_vars",
         "entrypoint",
         "supported_ides",
+        "source_url",
+        "source_ref",
+        "sandbox_path",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -295,19 +269,10 @@ async def update_sandbox_draft(
 
     await db.commit()
     await db.refresh(listing)
-    if listing.status == ListingStatus.pending:
-        action = "sandbox.pending.update"
-    elif listing.status == ListingStatus.rejected:
-        action = "sandbox.rejected.update"
+    if listing.status == ListingStatus.pending or listing.status == ListingStatus.rejected:
+        pass
     else:
-        action = "sandbox.draft.update"
-    await audit(
-        current_user,
-        action,
-        resource_type="sandbox",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-    )
+        pass
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -317,6 +282,7 @@ async def start_edit_sandbox(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("start_edit_sandbox: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -340,6 +306,7 @@ async def cancel_edit_sandbox(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("cancel_edit_sandbox: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -359,6 +326,7 @@ async def submit_sandbox_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("submit_sandbox_draft: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -375,13 +343,6 @@ async def submit_sandbox_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user,
-        "sandbox.draft.submit",
-        resource_type="sandbox",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-    )
     return SandboxListingResponse.model_validate(listing)
 
 
@@ -391,6 +352,7 @@ async def delete_sandbox(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("sandbox delete: listing_id={}", listing_id)
     listing = await resolve_listing(SandboxListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -406,7 +368,6 @@ async def delete_sandbox(
         await db.delete(r)
 
     # Break the circular FK (listing → latest_version → listing) before delete
-    listing_name = listing.name
     listing.latest_version_id = None
     listing.latest_version = None
     await db.flush()
@@ -416,9 +377,6 @@ async def delete_sandbox(
     await db.flush()
     await db.delete(listing)
     await db.commit()
-    await audit(
-        current_user, "sandbox.delete", resource_type="sandbox", resource_id=str(listing_id), resource_name=listing_name
-    )
     return {"deleted": str(listing_id)}
 
 

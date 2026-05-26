@@ -7,6 +7,7 @@
 import hashlib
 import logging
 
+from loguru import logger as optic
 from redis import asyncio as aioredis
 from starlette.requests import Request
 
@@ -29,6 +30,7 @@ def _request_key_builder(func, namespace="", *, request: Request | None = None, 
     Anonymous requests use the literal identity ``anon`` so they can
     still share a cache bucket with each other.
     """
+    optic.debug("_request_key_builder: func={}, namespace={}", func, namespace)
     prefix = f"{CACHE_PREFIX}:{namespace}" if namespace else CACHE_PREFIX
     url = request.url.path if request else func.__name__
     qs = str(request.query_params) if request and request.query_params else ""
@@ -50,6 +52,7 @@ async def init_cache() -> None:
     Uses a separate Redis connection with ``decode_responses=False``
     because fastapi-cache2 stores binary (bytes) values.
     """
+    optic.debug("cache: initializing")
     global _redis
     from fastapi_cache import FastAPICache
     from fastapi_cache.backends.redis import RedisBackend
@@ -66,6 +69,7 @@ async def init_cache() -> None:
 
 
 async def close_cache() -> None:
+    optic.debug("close_cache called")
     global _redis
     if _redis:
         await _redis.aclose()
@@ -74,6 +78,7 @@ async def close_cache() -> None:
 
 async def invalidate_all() -> int:
     """Delete every key under the cache prefix. Returns count deleted."""
+    optic.debug("invalidate_all called")
     if not _redis:
         return 0
     cursor, keys = 0, []
@@ -91,6 +96,7 @@ async def invalidate_all() -> int:
 
 async def invalidate_namespace(namespace: str) -> int:
     """Delete keys matching a specific namespace."""
+    optic.debug("invalidate_namespace: namespace={}", namespace)
     if not _redis:
         return 0
     pattern = f"{CACHE_PREFIX}:{namespace}:*"

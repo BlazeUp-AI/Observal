@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Comprehensive end-to-end tests for issue #434: first-class IDE support.
@@ -27,14 +28,14 @@ from observal_cli.cmd_pull import _dict_to_toml, _write_file
 from observal_cli.cmd_scan import (
     _IDE_PROJECT_CONFIGS,
     _parse_project_mcp_servers,
+    _scan_copilot_cli_home,
+    _scan_gemini_home,
     _scan_project_dir,
 )
 from observal_cli.constants import IDE_FEATURE_MATRIX, VALID_IDES
 from observal_cli.main import app as cli_app
-from services.agent_config_generator import (
-    _check_ide_compatibility,
-    generate_agent_config,
-)
+from services.ide import generate_agent_config
+from services.ide.helpers import _check_ide_compatibility
 
 # ═══════════════════════════════════════════════════════════════════
 # Helpers
@@ -88,26 +89,26 @@ class TestConstants:
 
     def test_codex_feature_matrix(self):
         assert "codex" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["codex"] == {"rules"}
+        assert IDE_FEATURE_MATRIX["codex"] == {"mcp_servers"}
 
     def test_copilot_feature_matrix(self):
         assert "copilot" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot"] == {"hook_bridge", "mcp_servers", "rules"}
+        assert IDE_FEATURE_MATRIX["copilot"] == {"hooks", "mcp_servers"}
 
     def test_gemini_cli_feature_matrix(self):
         assert "gemini-cli" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["gemini-cli"] == {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"}
+        assert IDE_FEATURE_MATRIX["gemini-cli"] == {"hooks", "mcp_servers"}
 
     def test_opencode_feature_matrix(self):
         assert "opencode" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["opencode"] == {"hook_bridge", "mcp_servers", "rules"}
+        assert IDE_FEATURE_MATRIX["opencode"] == {"hooks", "mcp_servers"}
 
     def test_copilot_cli_in_valid_ides(self):
         assert "copilot-cli" in VALID_IDES
 
     def test_copilot_cli_feature_matrix(self):
         assert "copilot-cli" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "rules", "hook_bridge", "skills"}
+        assert IDE_FEATURE_MATRIX["copilot-cli"] == {"mcp_servers", "hooks", "skills"}
 
     def test_ide_project_configs_include_all_new_ides(self):
         assert "codex" in _IDE_PROJECT_CONFIGS
@@ -395,6 +396,16 @@ class TestGenerateOpenCodeConfig:
         assert "args" not in entry, "OpenCode entries should not have separate 'args' key"
         assert isinstance(entry["command"], list), "OpenCode 'command' should be a flat array"
 
+    def test_hooks_plugin_is_valid_javascript_source(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "opencode")
+        plugin = cfg["hooks_config"]["content"]
+        assert 'import { execSync } from "child_process";' in plugin
+        assert "from loguru import logger" not in plugin
+        assert "export const ObservalPlugin" in plugin
+        assert '"session.created"' in plugin
+        assert '"session.idle"' in plugin
+
 
 class TestGenerateGeminiConfig:
     def test_rules_path_project_scope(self):
@@ -424,10 +435,10 @@ class TestGenerateGeminiConfig:
         assert "mcpServers" in cfg["mcp_config"]["content"]
         assert "my-server" in cfg["mcp_config"]["content"]["mcpServers"]
 
-    def test_gemini_otlp_env_present(self):
+    def test_gemini_no_otlp_env(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" in cfg
+        assert "otlp_env" not in cfg
 
     def test_gemini_settings_snippet_present(self):
         agent = _make_agent()
@@ -451,12 +462,11 @@ class TestGenerateGeminiConfig:
 
 
 class TestIdeCompatibilityWarnings:
-    def test_codex_warns_on_mcp_requirement(self):
+    def test_codex_no_longer_warns_on_mcp_requirement(self):
         agent = _make_agent()
         agent.required_ide_features = ["mcp_servers"]
         warnings = _check_ide_compatibility(agent, "codex")
-        assert len(warnings) > 0
-        assert any("mcp" in w.lower() or "MCP" in w for w in warnings)
+        assert len(warnings) == 0
 
     def test_copilot_no_longer_warns_on_mcp_requirement(self):
         agent = _make_agent()
@@ -466,20 +476,20 @@ class TestIdeCompatibilityWarnings:
 
     def test_gemini_supports_mcp(self):
         agent = _make_agent()
-        agent.required_ide_features = ["mcp_servers", "rules"]
+        agent.required_ide_features = ["mcp_servers"]
         warnings = _check_ide_compatibility(agent, "gemini-cli")
         assert len(warnings) == 0
 
     def test_opencode_warns_on_unsupported_features(self):
         agent = _make_agent()
-        agent.required_ide_features = ["skills", "hook_bridge"]
+        agent.required_ide_features = ["skills", "hooks"]
         warnings = _check_ide_compatibility(agent, "opencode")
-        # opencode now supports hook_bridge (via plugins), only "skills" is unsupported
+        # opencode now supports hooks (via plugins), only "skills" is unsupported
         assert len(warnings) == 1
 
     def test_no_warnings_for_supported_features(self):
         agent = _make_agent()
-        agent.required_ide_features = ["rules"]
+        agent.required_ide_features = []
         for ide in ("codex", "copilot", "gemini-cli", "opencode"):
             if ide in IDE_FEATURE_MATRIX:
                 warnings = _check_ide_compatibility(agent, ide)
@@ -487,20 +497,20 @@ class TestIdeCompatibilityWarnings:
 
     def test_copilot_supports_mcp_servers(self):
         agent = _make_agent()
-        agent.required_ide_features = ["mcp_servers", "rules"]
+        agent.required_ide_features = ["mcp_servers"]
         warnings = _check_ide_compatibility(agent, "copilot")
         assert len(warnings) == 0
 
-    def test_copilot_cli_supports_hook_bridge(self):
+    def test_copilot_cli_supports_hooks(self):
         agent = _make_agent()
-        agent.required_ide_features = ["mcp_servers", "rules", "hook_bridge"]
+        agent.required_ide_features = ["mcp_servers", "hooks"]
         warnings = _check_ide_compatibility(agent, "copilot-cli")
         assert len(warnings) == 0
 
-    def test_copilot_cli_warns_on_unsupported_features(self):
+    def test_codex_warns_on_unsupported_features(self):
         agent = _make_agent()
-        agent.required_ide_features = ["otlp_telemetry", "superpowers"]
-        warnings = _check_ide_compatibility(agent, "copilot-cli")
+        agent.required_ide_features = ["skills", "hooks"]
+        warnings = _check_ide_compatibility(agent, "codex")
         assert len(warnings) == 2
 
     def test_codex_warns_on_skills_requirement(self):
@@ -561,11 +571,6 @@ class TestParseProjectMcpServers:
     def test_opencode_extracts_mcp_key(self):
         config = {"mcp": {"my-srv": {"type": "local", "command": ["npx", "-y", "my-srv"]}}}
         result = _parse_project_mcp_servers(config, "opencode")
-        assert "my-srv" in result
-
-    def test_vscode_extracts_servers_key(self):
-        config = {"servers": {"my-srv": {"type": "stdio", "command": "npx"}}}
-        result = _parse_project_mcp_servers(config, "vscode")
         assert "my-srv" in result
 
     def test_cursor_extracts_mcpservers(self):
@@ -907,7 +912,19 @@ class TestPullOpenCode:
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
             result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "opencode", "--dir", str(tmp_path), "--no-prompt"]
+                cli_app,
+                [
+                    "agent",
+                    "pull",
+                    "abc123",
+                    "--ide",
+                    "opencode",
+                    "--dir",
+                    str(tmp_path),
+                    "--no-prompt",
+                    "--scope",
+                    "project",
+                ],
             )
         assert result.exit_code == 0, result.output
         rules = tmp_path / "AGENTS.md"
@@ -955,7 +972,6 @@ class TestPullGemini:
                         }
                     },
                 },
-                "otlp_env": {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:8000"},
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
@@ -1167,7 +1183,6 @@ class TestParseCopilotCliMcpServers:
 
 class TestScanCopilotCliHome:
     def test_scan_copilot_cli_home_finds_mcp_servers(self, tmp_path):
-        from observal_cli.cmd_scan import _scan_copilot_cli_home
 
         copilot_dir = tmp_path / ".copilot"
         copilot_dir.mkdir()
@@ -1181,7 +1196,6 @@ class TestScanCopilotCliHome:
         assert mcps[0].source == "copilot-cli:global"
 
     def test_scan_copilot_cli_home_empty_dir(self, tmp_path):
-        from observal_cli.cmd_scan import _scan_copilot_cli_home
 
         copilot_dir = tmp_path / ".copilot"
         copilot_dir.mkdir()
@@ -1189,7 +1203,6 @@ class TestScanCopilotCliHome:
         assert len(mcps) == 0
 
     def test_scan_copilot_cli_home_no_skills_or_agents(self, tmp_path):
-        from observal_cli.cmd_scan import _scan_copilot_cli_home
 
         copilot_dir = tmp_path / ".copilot"
         copilot_dir.mkdir()
@@ -1428,22 +1441,22 @@ class TestGeminiConfigGenerator:
     def test_gemini_settings_disables_native_otlp(self):
         from services.config_generator import _gemini_settings
 
-        settings = _gemini_settings("http://custom-host:8000")
+        settings = _gemini_settings()
         assert settings["telemetry"]["enabled"] is False
         assert settings["telemetry"]["logPrompts"] is True
 
     def test_gemini_settings_no_target(self):
         from services.config_generator import _gemini_settings
 
-        settings = _gemini_settings("http://localhost:8000")
+        settings = _gemini_settings()
         assert "target" not in settings["telemetry"]
         assert "otlpEndpoint" not in settings["telemetry"]
 
-    def test_gemini_otlp_env_uses_observal_url(self):
-        from services.config_generator import _gemini_otlp_env
-
-        env = _gemini_otlp_env("http://custom-host:8000")
-        assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://custom-host:8000"
+    def test_gemini_otlp_env_removed(self):
+        """OTLP env vars are no longer generated for Gemini CLI."""
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "gemini-cli")
+        assert "otlp_env" not in cfg
 
     def test_gemini_settings_snippet_in_agent_config(self):
         agent = _make_agent()
@@ -1463,7 +1476,6 @@ class TestGeminiConfigGenerator:
 
 class TestScanGeminiHome:
     def test_scan_gemini_home_finds_mcp_servers(self, tmp_path):
-        from observal_cli.cmd_scan import _scan_gemini_home
 
         gemini_dir = tmp_path / ".gemini"
         gemini_dir.mkdir()
@@ -1475,7 +1487,6 @@ class TestScanGeminiHome:
         assert mcps[0].source == "gemini:global"
 
     def test_scan_gemini_home_empty_dir(self, tmp_path):
-        from observal_cli.cmd_scan import _scan_gemini_home
 
         gemini_dir = tmp_path / ".gemini"
         gemini_dir.mkdir()
@@ -1483,7 +1494,6 @@ class TestScanGeminiHome:
         assert len(mcps) == 0
 
     def test_scan_gemini_home_handles_mcp_servers_wrapper(self, tmp_path):
-        from observal_cli.cmd_scan import _scan_gemini_home
 
         gemini_dir = tmp_path / ".gemini"
         gemini_dir.mkdir()
@@ -1538,14 +1548,6 @@ class TestConfigGeneratorCodexFormat:
         assert len(servers) == 1
         entry = next(iter(servers.values()))
         assert entry["command"] == "observal-shim"
-
-    def test_stdio_codex_includes_codex_config(self):
-        from services.config_generator import generate_config
-
-        listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
-        cfg = generate_config(listing, "codex")
-        assert "codex_config" in cfg
-        assert "toml_snippet" in cfg["codex_config"]
 
     def test_proxy_codex_uses_mcp_servers_key(self):
         from services.config_generator import generate_config

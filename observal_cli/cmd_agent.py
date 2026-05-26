@@ -16,14 +16,14 @@ from pathlib import Path
 
 import typer
 import yaml
+from loguru import logger
 from rich import print as rprint
 from rich.panel import Panel
 from rich.table import Table
-from rich.tree import Tree
 
 from observal_cli import client, config
 from observal_cli.constants import AGENT_NAME_REGEX, VALID_IDES
-from observal_cli.prompts import fuzzy_select, select_many, select_one
+from observal_cli.prompts import fuzzy_select, select_many, select_one, text_input
 from observal_cli.render import (
     console,
     ide_tags,
@@ -102,8 +102,29 @@ agent_app = typer.Typer(help="Agent registry commands")
 @agent_app.command(name="create")
 def agent_create(
     from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Agent name (lowercase, hyphens, underscores)"),
+    version: str | None = typer.Option(None, "--version", "-v", help="Version (semver, e.g. 1.0.0)"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Short description"),
+    owner: str | None = typer.Option(None, "--owner", help="Owner / team name"),
+    prompt: str | None = typer.Option(None, "--prompt", "-p", help="System prompt text"),
+    prompt_file: str | None = typer.Option(None, "--prompt-file", help="Read system prompt from a file"),
+    model_name: str | None = typer.Option(None, "--model", "-m", help="Model name (e.g. claude-sonnet-4)"),
+    supported_ides: list[str] | None = typer.Option(None, "--ide", help="Supported IDEs (repeat for multiple)"),
 ):
-    """Create a new agent (interactive wizard or from file)."""
+    """Create a new agent (interactive wizard, from file, or via flags).
+
+    Three modes:
+      1. --from-file: load a complete JSON definition
+      2. --name + --prompt (or --prompt-file): non-interactive flag-based creation
+      3. No flags: interactive wizard
+
+    Examples:
+      observal agent create --from-file agent.json
+      observal agent create --name my-agent --prompt "You are..." --model claude-sonnet-4
+      observal agent create --name my-agent --prompt-file ./PROMPT.md --model claude-sonnet-4 --ide kiro --ide claude-code
+    """
+    logger.debug("agent_create: from_file={}", from_file)
+    # ── Path A: From JSON file ───────────────────────────────
     if from_file:
         import json
 
@@ -116,11 +137,71 @@ def agent_create(
         rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
         return
 
+    # ── Path B: From flags (non-interactive) ─────────────────
+    if name or prompt or prompt_file:
+        # Resolve prompt from file if provided
+        _prompt = prompt or ""
+        if prompt_file:
+            from pathlib import Path as _Path
+
+            pf = _Path(prompt_file)
+            if not pf.exists():
+                rprint(f"[red]Error:[/red] Prompt file not found: {prompt_file}")
+                raise typer.Exit(1)
+            _prompt = pf.read_text(encoding="utf-8")
+
+        # Validate required fields
+        if not name:
+            rprint("[red]Error:[/red] --name is required when using --prompt or --prompt-file")
+            raise typer.Exit(1)
+        _name = _slugify(name)
+        err = _validate_name(_name)
+        if err:
+            rprint(f"[red]Error:[/red] {err}")
+            raise typer.Exit(1)
+        if not _prompt:
+            rprint("[red]Error:[/red] --prompt or --prompt-file is required")
+            raise typer.Exit(1)
+
+        # Default model
+        _model = model_name or "claude-sonnet-4"
+
+        # Resolve owner from whoami if not provided
+        _owner = owner or ""
+        if not _owner:
+            try:
+                whoami = client.get("/api/v1/auth/whoami")
+                _owner = whoami.get("name") or whoami.get("email", "unknown")
+            except (Exception, SystemExit):
+                _owner = "unknown"
+
+        payload = {
+            "name": _name,
+            "version": version or "1.0.0",
+            "description": description or "",
+            "owner": _owner,
+            "prompt": _prompt,
+            "model_name": _model,
+            "supported_ides": supported_ides or [],
+            "components": [],
+        }
+
+        with spinner("Creating agent..."):
+            result = client.post("/api/v1/agents", payload)
+        status = result.get("status", "pending")
+        rprint(f"[green]✓ Agent created![/green] ID: [bold]{result['id']}[/bold]")
+        rprint(f"[dim]Status: {status}[/dim]")
+        if _name != name:
+            rprint(f"[dim]Name slugified: {name} → {_name}[/dim]")
+        return
+
+    # ── Path C: Interactive wizard ───────────────────────────
+
     rprint("\n[bold cyan]Agent Builder[/bold cyan]\n")
 
     # ── Phase 1: Basics ─────────────────────────────────────
     rprint("[bold]1. Basics[/bold]")
-    raw_name = typer.prompt("  Agent name")
+    raw_name = text_input("  Agent name")
     name = _slugify(raw_name)
     if name != raw_name:
         rprint(f"  [dim]→ Slugified to:[/dim] [bold]{name}[/bold]")
@@ -129,8 +210,8 @@ def agent_create(
         rprint(f"  [red]Error:[/red] {err}")
         raise typer.Exit(1)
 
-    description = typer.prompt("  Description")
-    version = typer.prompt("  Version", default="1.0.0")
+    description = text_input("  Description")
+    version = text_input("  Version", default="1.0.0")
     model_name = select_one("  Model", _MODEL_CHOICES, default="claude-sonnet-4")
 
     # ── Phase 2: Components ──────────────────────────────────
@@ -164,13 +245,13 @@ def agent_create(
 
     # ── Phase 4: Goal Template ───────────────────────────────
     rprint("\n[bold]4. Goal Template[/bold]")
-    goal_desc = typer.prompt("  Goal description", default=description)
+    goal_desc = text_input("  Goal description", default=description)
     sections = []
     while True:
-        sec_name = typer.prompt("  Section name (or 'done' to finish)")
+        sec_name = text_input("  Section name (or 'done' to finish)")
         if sec_name.lower() == "done":
             break
-        sec_desc = typer.prompt(f"    Description for '{sec_name}'", default="")
+        sec_desc = text_input(f"    Description for '{sec_name}'", default="")
         sections.append({"name": sec_name, "description": sec_desc})
 
     if not sections:
@@ -186,10 +267,10 @@ def agent_create(
         default_owner = whoami.get("name") or whoami.get("email", "")
     except (Exception, SystemExit):
         pass
-    owner = typer.prompt("  Owner / Team", default=default_owner or "")
-    prompt_text = typer.prompt("  System prompt (optional)", default="")
-    max_tokens = typer.prompt("  Max tokens", default="4096")
-    temperature = typer.prompt("  Temperature", default="0.2")
+    owner = text_input("  Owner / Team", default=default_owner or "")
+    prompt_text = text_input("  System prompt (optional)", default="")
+    max_tokens = text_input("  Max tokens", default="4096")
+    temperature = text_input("  Temperature", default="0.2")
     model_cfg = {"max_tokens": int(max_tokens), "temperature": float(temperature)}
 
     # ── Phase 6: Review & Confirm ────────────────────────────
@@ -227,7 +308,6 @@ def agent_create(
                 "model_config_json": model_cfg,
                 "supported_ides": supported_ides,
                 "components": components,
-                "goal_template": {"description": goal_desc, "sections": sections},
             },
         )
     status = result.get("status", "pending")
@@ -241,7 +321,17 @@ def agent_bulk_create(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without creating"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Bulk-create agents from a JSON file."""
+    """Bulk-create agents from a JSON file.
+
+    Accepts a JSON file containing an array of agent definitions, or an
+    object with an "agents" key. Shows a preview table before creating.
+    Use --dry-run to validate without actually creating agents.
+
+    Examples:
+      observal agent bulk-create --from-file agents.json
+      observal agent bulk-create --from-file agents.json --dry-run
+      observal agent bulk-create --from-file agents.json --yes
+    """
     import json
 
     path = Path(file_path)
@@ -356,7 +446,20 @@ def agent_list(
     full_id: bool = typer.Option(False, "--full-id", help="Show full UUID (implies --id)"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List active agents (paginated)."""
+    """List active agents (paginated).
+
+    Shows approved agents in the registry with pagination support.
+    Use --interactive for fuzzy search with arrow-key selection.
+    Results are cached locally for numeric shorthand in subsequent commands.
+
+    Examples:
+      observal agent list
+      observal agent list --search my-agent
+      observal agent list --page 2 --limit 20
+      observal agent list --interactive
+      observal agent list --output json
+      observal agent list --full-id
+    """
     params: dict = {"limit": limit, "offset": (page - 1) * limit}
     if search:
         params["search"] = search
@@ -434,7 +537,17 @@ def agent_list(
 def agent_my(
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List your own agents (all statuses)."""
+    """List your own agents (all statuses).
+
+    Shows all agents you created, including pending, approved, rejected,
+    and archived ones. Useful for checking the review status of your
+    submissions.
+
+    Examples:
+      observal agent my
+      observal agent my --output json
+      observal agent my --output plain
+    """
     with spinner("Fetching your agents..."):
         data = client.get("/api/v1/agents/my")
     if not data:
@@ -472,7 +585,19 @@ def agent_show(
     agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Show full agent details."""
+    """Show full agent details.
+
+    Displays the complete agent profile: name, version, model, owner,
+    description, supported IDEs, linked MCP servers, and metadata.
+    Accepts a UUID, agent name, numeric row number from the last list,
+    or an @alias.
+
+    Examples:
+      observal agent show my-agent
+      observal agent show 3
+      observal agent show @myalias
+      observal agent show a1b2c3d4-... --output json
+    """
     resolved = config.resolve_alias(agent_id)
     with spinner():
         item = client.get(f"/api/v1/agents/{resolved}")
@@ -504,19 +629,6 @@ def agent_show(
         for link in item["mcp_links"]:
             rprint(f"  [cyan]•[/cyan] {link.get('mcp_name', '')} [dim]({link.get('mcp_listing_id', '')})[/dim]")
 
-    # Goal template as tree
-    if item.get("goal_template"):
-        gt = item["goal_template"]
-        tree = Tree(f"[bold]Goal:[/bold] {gt.get('description', '')}")
-        for sec in gt.get("sections", []):
-            label = sec["name"]
-            if sec.get("grounding_required"):
-                label += " [yellow](grounding required)[/yellow]"
-            node = tree.add(label)
-            if sec.get("description"):
-                node.add(f"[dim]{sec['description']}[/dim]")
-        console.print(tree)
-
 
 @agent_app.command(name="install")
 def agent_install(
@@ -524,7 +636,19 @@ def agent_install(
     ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
 ):
-    """Get install config for an agent."""
+    """Get install config for an agent.
+
+    Generates the IDE-specific configuration needed to use the agent.
+    Output includes rules files, MCP configs, skill files, and agent
+    files depending on the target IDE. Use --raw to pipe JSON directly
+    to a file.
+
+    Examples:
+      observal agent install my-agent --ide claude-code
+      observal agent install my-agent --ide kiro
+      observal agent install my-agent --ide cursor --raw > config.json
+      observal agent install @myalias --ide gemini-cli
+    """
     resolved = config.resolve_alias(agent_id)
     with spinner(f"Generating {ide} config..."):
         result = client.post(f"/api/v1/agents/{resolved}/install", {"ide": ide})
@@ -583,7 +707,17 @@ def agent_delete(
     agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Archive an agent (soft delete)."""
+    """Archive an agent (soft delete).
+
+    Marks the agent as archived. It will no longer appear in public
+    listings but can be restored with the unarchive command. Prompts
+    for confirmation unless --yes is provided.
+
+    Examples:
+      observal agent delete my-agent
+      observal agent delete my-agent --yes
+      observal agent delete @myalias
+    """
     resolved = config.resolve_alias(agent_id)
     if not yes:
         with spinner():
@@ -600,7 +734,17 @@ def agent_unarchive(
     agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Restore an archived agent back to active status."""
+    """Restore an archived agent back to active status.
+
+    Reverses a previous archive (soft delete) operation, making the
+    agent visible in public listings again. Prompts for confirmation
+    unless --yes is provided.
+
+    Examples:
+      observal agent unarchive my-agent
+      observal agent unarchive my-agent --yes
+      observal agent unarchive a1b2c3d4-...
+    """
     resolved = config.resolve_alias(agent_id)
     if not yes:
         with spinner():
@@ -622,7 +766,18 @@ def agent_init(
     directory: str = typer.Option(".", "--dir", "-d", help="Directory to scaffold in"),
     beta: bool = typer.Option(False, "--beta", help="Start at version 0.1.0 (beta)"),
 ):
-    """Scaffold an observal-agent.yaml definition file."""
+    """Scaffold an observal-agent.yaml definition file.
+
+    Runs an interactive wizard to collect agent metadata (name, version,
+    description, owner, model, system prompt) and writes the result as
+    observal-agent.yaml in the target directory. Use --beta to start
+    at version 0.1.0 instead of 1.0.0.
+
+    Examples:
+      observal agent init
+      observal agent init --dir ./my-agent
+      observal agent init --beta
+    """
     dir_path = Path(directory)
     yaml_path = dir_path / YAML_FILE
 
@@ -630,7 +785,7 @@ def agent_init(
         rprint("[yellow]Aborted.[/yellow]")
         raise typer.Exit(code=1)
 
-    raw_name = typer.prompt("Agent name")
+    raw_name = text_input("Agent name")
     name = _slugify(raw_name)
     if name != raw_name:
         rprint(f"  [dim]→ Slugified to:[/dim] [bold]{name}[/bold]")
@@ -640,11 +795,11 @@ def agent_init(
         raise typer.Exit(1)
 
     default_version = "0.1.0" if beta else "1.0.0"
-    version = typer.prompt("Version", default=default_version)
-    description = typer.prompt("Description")
-    owner = typer.prompt("Owner / Team")
-    model_name = typer.prompt("Model name", default="claude-sonnet-4")
-    prompt_text = typer.prompt("System prompt")
+    version = text_input("Version", default=default_version)
+    description = text_input("Description")
+    owner = text_input("Owner / Team")
+    model_name = text_input("Model name", default="claude-sonnet-4")
+    prompt_text = text_input("System prompt")
 
     data = {
         "name": name,
@@ -658,12 +813,6 @@ def agent_init(
         "prompt": prompt_text,
         "supported_ides": list(VALID_IDES),
         "components": [],
-        "goal_template": {
-            "description": f"Goals for {name}",
-            "sections": [
-                {"name": "default", "description": "Default goal section"},
-            ],
-        },
     }
 
     _save_agent_yaml(dir_path, data)
@@ -676,7 +825,17 @@ def agent_add(
     component_id: str = typer.Argument(..., help="Component ID (UUID)"),
     directory: str = typer.Option(".", "--dir", "-d", help="Directory containing observal-agent.yaml"),
 ):
-    """Add a component reference to observal-agent.yaml."""
+    """Add a component reference to observal-agent.yaml.
+
+    Appends a component entry to the components list in your local
+    observal-agent.yaml file. The component is referenced by type and
+    UUID. Duplicates are rejected.
+
+    Examples:
+      observal agent add mcp a1b2c3d4-e5f6-7890-abcd-ef1234567890
+      observal agent add skill b2c3d4e5-f6a7-8901-bcde-f12345678901
+      observal agent add hook c3d4e5f6-... --dir ./my-agent
+    """
     if component_type not in VALID_COMPONENT_TYPES:
         rprint(
             f"[red]Error:[/red] Invalid component type '{component_type}'. "
@@ -703,7 +862,16 @@ def agent_add(
 def agent_build(
     directory: str = typer.Option(".", "--dir", "-d", help="Directory containing observal-agent.yaml"),
 ):
-    """Validate agent definition against the server (dry-run)."""
+    """Validate agent definition against the server (dry-run).
+
+    Reads observal-agent.yaml and checks each referenced component
+    against the registry API to confirm it exists and is accessible.
+    Exits with code 1 if any component fails validation.
+
+    Examples:
+      observal agent build
+      observal agent build --dir ./my-agent
+    """
     dir_path = Path(directory)
     data = _load_agent_yaml(dir_path)
 
@@ -754,7 +922,18 @@ def agent_publish(
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit: str | None = typer.Option(None, "--submit", help="Submit a draft agent for review (agent ID)"),
 ):
-    """Publish the agent definition to the server."""
+    """Publish the agent definition to the server.
+
+    Reads observal-agent.yaml from the specified directory and submits it.
+    Use --update to modify an existing agent (same name). Use --draft to
+    save without submitting for review.
+
+    Examples:
+      observal agent publish
+      observal agent publish --update
+      observal agent publish --draft
+      observal agent publish --dir /tmp/my-agent
+    """
     if draft and submit:
         rprint(
             "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
@@ -780,7 +959,6 @@ def agent_publish(
         "prompt": data.get("prompt", ""),
         "supported_ides": data.get("supported_ides", []),
         "components": data.get("components", []),
-        "goal_template": data.get("goal_template", {}),
     }
 
     if draft:
@@ -838,7 +1016,17 @@ def agent_release(
     bump: str = typer.Option(..., "--bump", help="Version bump type: patch, minor, or major"),
     directory: str = typer.Option(".", "--dir", "-d", help="Directory containing observal-agent.yaml"),
 ):
-    """Bump version and push a versioned release to the registry."""
+    """Bump version and push a versioned release to the registry.
+
+    Reads observal-agent.yaml, bumps the version, and submits a new version
+    to the review queue. The YAML must contain all required fields including
+    model_config_json: {} and external_mcps: [].
+
+    Examples:
+      observal agent release my-agent --bump patch
+      observal agent release my-agent --bump minor --dir /tmp/my-agent
+      observal agent release my-agent --bump major
+    """
     if bump not in ("patch", "minor", "major"):
         rprint("[red]Error:[/red] --bump must be one of: patch, minor, major")
         raise typer.Exit(code=1)
@@ -874,12 +1062,11 @@ def agent_release(
         "description": data.get("description", ""),
         "prompt": data.get("prompt", ""),
         "model_name": data.get("model_name", "claude-sonnet-4"),
-        "model_config_json": data.get("model_config_json"),
+        "model_config_json": data.get("model_config_json") or {},
         "models_by_ide": data.get("models_by_ide", {}) or {},
-        "external_mcps": data.get("external_mcps"),
+        "external_mcps": data.get("external_mcps") or [],
         "supported_ides": data.get("supported_ides", []),
         "components": data.get("components", []),
-        "goal_template": data.get("goal_template"),
         "yaml_snapshot": raw_yaml,
     }
 
@@ -898,7 +1085,17 @@ def agent_versions(
     name: str = typer.Argument(..., help="Agent name, ID, row number, or @alias"),
     output: str = typer.Option("table", "--output", "-o", help="Output format: table or json"),
 ):
-    """List all versions for an agent."""
+    """List all versions for an agent.
+
+    Shows the version history for a given agent, including version
+    number, review status, release date, author, and component count.
+    Accepts a UUID, agent name, row number, or @alias.
+
+    Examples:
+      observal agent versions my-agent
+      observal agent versions my-agent --output json
+      observal agent versions @myalias
+    """
     resolved = config.resolve_alias(name)
 
     with spinner("Fetching versions..."):

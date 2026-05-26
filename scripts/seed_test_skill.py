@@ -47,7 +47,7 @@ skill_payload = {
     "slash_command": "review",
     "target_agents": ["claude-code", "cursor", "kiro"],
     "activation_keywords": ["review", "check code", "audit"],
-    "supported_ides": ["claude-code", "cursor", "vscode", "kiro"],
+    "supported_ides": ["claude-code", "cursor", "kiro"],
 }
 r = requests.post(
     f"{BASE}/api/v1/skills/submit",
@@ -124,13 +124,9 @@ agent_payload = {
     "prompt": "You are a helpful coding assistant with code review capabilities.",
     "owner": "demo-admin",
     "model_name": "claude-sonnet-4",
-    "supported_ides": ["claude-code", "cursor", "vscode", "kiro"],
+    "supported_ides": ["claude-code", "cursor", "kiro"],
     "components": [{"component_type": "skill", "component_id": skill_id}],
     "external_mcps": [],
-    "goal_template": {
-        "description": "Code review and assistance",
-        "sections": [{"name": "default", "description": "Default goal section"}],
-    },
 }
 r = requests.post(
     f"{BASE}/api/v1/agents",

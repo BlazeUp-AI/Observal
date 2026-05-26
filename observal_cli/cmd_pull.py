@@ -20,10 +20,12 @@ import sys
 from pathlib import Path
 
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 
 from observal_cli import client, config
 from observal_cli.ide_registry import get_scope_aware_ides
+from observal_cli.prompts import select_one, text_input
 from observal_cli.render import spinner
 
 # Hook script names used as placeholders in server-generated agent configs.
@@ -42,6 +44,7 @@ def _resolve_hook_paths(content: str) -> str:
     ``"observal-hook.sh --agent-name foo"`` are resolved correctly,
     but comments or prose mentioning the script name are not affected.
     """
+    optic.debug("_resolve_hook_paths: content={}", content)
     import shutil
 
     hooks_dir = Path(__file__).parent / "hooks"
@@ -66,6 +69,7 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
 
     Returns {mcp_listing_id: {VAR_NAME: value}} for all MCPs that have env vars.
     """
+    optic.debug("_collect_mcp_env_vars: agent_detail={}", agent_detail)
     env_values: dict[str, dict[str, str]] = {}
 
     # Collect MCP component IDs from both mcp_links and component_links
@@ -102,14 +106,14 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
             rprint(f"\n[bold]{mcp_name}[/bold] requires {len(required)} environment variable(s):")
             for ev in required:
                 desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
-                val = typer.prompt(f"  {ev['name']}{desc}")
+                val = text_input(f"  {ev['name']}{desc}")
                 mcp_env[ev["name"]] = val
 
         if optional:
             rprint(f"\n[dim]{mcp_name}: {len(optional)} optional env var(s):[/dim]")
             for ev in optional:
                 desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
-                val = typer.prompt(f"  {ev['name']}{desc} (press Enter to skip)", default="")
+                val = text_input(f"  {ev['name']}{desc} (press Enter to skip)", default="")
                 if val:
                     mcp_env[ev["name"]] = val
 
@@ -122,6 +126,7 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
 
 def _dict_to_toml(d: dict) -> str:
     """Very basic TOML serializer for MCP configs."""
+    optic.debug("_dict_to_toml: d={}", d)
     lines = []
     for section, servers in d.items():
         for name, srv in servers.items():
@@ -151,6 +156,7 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
 
     Returns a human-readable status string ("created", "updated", "merged").
     """
+    optic.debug("_write_file: path={}, len={}", path, len(str(content)))
     path.parent.mkdir(parents=True, exist_ok=True)
     existed = path.exists()
 
@@ -187,6 +193,7 @@ def _rewrite_kiro_hooks(content: dict) -> dict:
     The server generates commands with bare 'python3' which won't find
     observal_cli when installed in a project-local virtual environment.
     """
+    optic.debug("_rewrite_kiro_hooks: content={}", content)
     hooks = content.get("hooks")
     agent_name = content.get("name")
     if not hooks or not agent_name:
@@ -219,6 +226,7 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
     Raises typer.Exit if the resolved path escapes *target_dir* (and home
     expansion is not permitted).
     """
+    optic.debug("_resolve_path: raw_path={}, target_dir={}", raw_path, target_dir)
     if raw_path.startswith("~/") or raw_path.startswith("~\\"):
         if allow_home:
             return Path(raw_path).expanduser().resolve()
@@ -242,12 +250,13 @@ def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str
 
     Two grammars are accepted:
 
-    * ``--model <value>`` — applies to the IDE selected for this pull.
-    * ``--model <ide>=<value>`` — explicit per-IDE override (advanced; lets
+    * ``--model <value>`` - applies to the IDE selected for this pull.
+    * ``--model <ide>=<value>`` - explicit per-IDE override (advanced; lets
       a single command target a specific IDE without ambiguity).
 
     Returns ``(default_value, per_ide_overrides)``.
     """
+    optic.debug("_parse_model_overrides: values={}", values)
     default: str | None = None
     overrides: dict[str, str] = {}
     for raw in values or []:
@@ -270,6 +279,7 @@ def _agent_saved_model(agent_detail: dict | None, ide: str) -> str | None:
     ``services.model_resolver._candidate_for_ide`` rules so the CLI never
     re-prompts when the author has already chosen a model.
     """
+    optic.debug("_agent_saved_model: agent_detail={}, ide={}", agent_detail, ide)
     if not agent_detail:
         return None
     raw = agent_detail.get("models_by_ide") if isinstance(agent_detail, dict) else None
@@ -304,13 +314,13 @@ def _collect_install_options(
 
     When the agent already has a saved model for the target IDE (set in the
     builder) and the user didn't pass ``--model``, the saved value is used
-    silently — the picker is skipped so authoring decisions aren't undone
+    silently - the picker is skipped so authoring decisions aren't undone
     by a stray Enter at the prompt.
     """
+    optic.debug("_collect_install_options: ide={}", ide)
     import sys
 
     from observal_cli.ide_registry import accepts_model_choice
-    from observal_cli.prompts import select_one
     from observal_cli.render import format_model as _format_model
 
     opts: dict = {}
@@ -321,10 +331,10 @@ def _collect_install_options(
             opts["scope"] = scope
         elif interactive:
             project_label, user_label = _SCOPE_AWARE_IDES[ide]
-            choice = select_one("  Scope", [project_label, user_label], default=project_label)
+            choice = select_one("  Scope", [user_label, project_label], default=user_label)
             opts["scope"] = "user" if choice.startswith("user") else "project"
         else:
-            opts["scope"] = "project"
+            opts["scope"] = "user"
 
     if accepts_model_choice(ide):
         explicit = model_overrides.get(ide) or model_default
@@ -402,7 +412,13 @@ def register_pull(app: typer.Typer):
         Calls the server to generate an install config for the specified IDE,
         then writes rules files, MCP configs, and agent files into the target
         directory.  Use --dry-run to preview without writing.
+
+        Examples:
+          observal agent pull my-agent --ide claude-code --no-prompt
+          observal agent pull my-agent --ide kiro --no-prompt --scope user
+          observal agent pull my-agent --ide cursor --no-prompt --dry-run
         """
+        optic.debug("cli: pull started")
         resolved = config.resolve_alias(agent_id)
         target_dir = Path(directory).resolve()
 
@@ -480,6 +496,13 @@ def register_pull(app: typer.Typer):
                 # Resolve hook paths inside JSON content (command fields)
                 raw = json.dumps(content)
                 raw = _resolve_hook_paths(raw)
+                import re
+
+                raw = re.sub(
+                    r"(?<!/)python3? -m observal_cli\.",
+                    f"{sys.executable} -m observal_cli.",
+                    raw,
+                )
                 content = json.loads(raw)
             if dry_run:
                 written.append((str(p), "would write"))
@@ -487,14 +510,17 @@ def register_pull(app: typer.Typer):
                 status = _write_file(p, content, merge_mcp=hooks_cfg.get("merge", False))
                 written.append((str(p), status))
 
-        # ── agent_file (Kiro) ───────────────────────────────
+        # ── agent_file (Kiro, Cursor) ────────────────────────
         agent_file = snippet.get("agent_file")
         if agent_file:
             # Rewrite hook commands to use the current Python interpreter
             # so they work regardless of which directory Kiro is launched from.
             if isinstance(agent_file.get("content"), dict):
                 agent_file["content"] = _rewrite_kiro_hooks(agent_file["content"])
-            p = _resolve_path(agent_file["path"], target_dir, allow_home=is_user_scope)
+            # Cursor only reads .cursor/agents/ from the project directory,
+            # never from ~/.cursor/agents/, so always resolve to project scope.
+            agent_file_allow_home = is_user_scope and ide != "cursor"
+            p = _resolve_path(agent_file["path"], target_dir, allow_home=agent_file_allow_home)
             if dry_run:
                 written.append((str(p), "would write"))
             else:
@@ -510,6 +536,22 @@ def register_pull(app: typer.Typer):
             else:
                 status = _write_file(p, steering_file["content"])
                 written.append((str(p), status))
+
+        # ── hook_files (script files from hook components) ─────
+        hook_files = snippet.get("hook_files") or []
+        for hf in hook_files:
+            p = _resolve_path(hf["path"], target_dir, allow_home=is_user_scope)
+            if dry_run:
+                written.append((str(p), "would write"))
+            else:
+                existed = p.exists()
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(hf["content"])
+                if hf.get("executable"):
+                    import os
+
+                    os.chmod(p, 0o755)
+                written.append((str(p), "updated" if existed else "created"))
 
         # ── skill_files (Claude Code, Kiro, Cursor) ──────────
         # Use shared install_skill_from_git for each skill component.
@@ -572,13 +614,24 @@ def register_pull(app: typer.Typer):
                 )
             )
 
+            from observal_cli.audit import emit_cli_audit
+
+            emit_cli_audit(
+                "agent.pull",
+                resource_type="agent",
+                resource_id=str(agent_uuid),
+                resource_name=agent_detail.get("name", resolved),
+                detail=f"ide={ide}",
+                sensitivity="high",
+            )
+
         # ── Output summary ──────────────────────────────────
         if not written:
             rprint("[yellow]No files to write from the config snippet.[/yellow]")
             raise typer.Exit(1)
 
         if dry_run:
-            rprint("\n[bold yellow]Dry run[/bold yellow] — no files written:\n")
+            rprint("\n[bold yellow]Dry run[/bold yellow] - no files written:\n")
         else:
             rprint(
                 f"\n[bold green]Pulled {ide} config[/bold green] ({len(written)} file{'s' if len(written) != 1 else ''}):\n"
@@ -602,7 +655,7 @@ def register_pull(app: typer.Typer):
                 try:
                     proc = subprocess.run(cmd, capture_output=True, text=True)
                 except FileNotFoundError:
-                    rprint(f"  [yellow]⚠[/yellow]  {cmd[0]} not found — run manually: [cyan]{' '.join(cmd)}[/cyan]")
+                    rprint(f"  [yellow]⚠[/yellow]  {cmd[0]} not found - run manually: [cyan]{' '.join(cmd)}[/cyan]")
                     continue
                 if proc.returncode == 0:
                     rprint(f"  [green]✓[/green]  {' '.join(cmd[:4])}...")
@@ -615,11 +668,3 @@ def register_pull(app: typer.Typer):
             rprint("\n[bold]Would run these setup commands:[/bold]")
             for cmd in setup_cmds:
                 rprint(f"  [cyan]$ {' '.join(cmd)}[/cyan]")
-
-        # ── OTLP env vars (Observal telemetry — optional) ──
-        otlp_env = snippet.get("otlp_env")
-        if otlp_env:
-            rprint("\n[bold dim]Observal telemetry (optional):[/bold dim]")
-            rprint("[dim]These enable usage tracking via Observal — not required by the MCP server itself.[/dim]")
-            for k, v in otlp_env.items():
-                rprint(f"  [dim]{k}={v}[/dim]")

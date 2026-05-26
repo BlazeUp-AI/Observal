@@ -17,6 +17,8 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
+from loguru import logger as optic
+
 logger = logging.getLogger("observal.events")
 
 # Type alias for async event handlers
@@ -91,12 +93,10 @@ class AgentLifecycleEvent(Event):
 
 @dataclass(frozen=True, slots=True)
 class AuditableAction(Event):
-    """Generic audit event for HIPAA-level logging.
+    """Deprecated: retained only for ee/ backward compatibility.
 
-    Covers all reads and writes across every endpoint. The ``action``
-    field uses dotted strings like ``"trace.view"`` or ``"review.approve"``.
-    HTTP context (IP, user agent, method, path) is injected by the
-    ee/ audit handler via contextvars — not carried on this event.
+    The loguru-based audit middleware replaces all manual audit() calls.
+    This event type is no longer emitted by core code.
     """
 
     actor_id: str
@@ -128,7 +128,10 @@ class EventBus:
                 ...
         """
 
+        optic.debug("on: event_type={}", event_type)
+
         def decorator(fn: EventHandler) -> EventHandler:
+            optic.debug("decorator: fn={}", fn)
             self._handlers[event_type].append(fn)
             return fn
 
@@ -136,15 +139,18 @@ class EventBus:
 
     def register(self, event_type: type[Event], handler: EventHandler) -> None:
         """Imperative registration (useful for ee/ modules)."""
+        optic.debug("register: event_type={}, handler={}", event_type, handler)
         self._handlers[event_type].append(handler)
 
     async def emit(self, event: Event) -> None:
         """Fire all handlers for this event type.
 
-        Errors are logged, never raised — a broken handler must not
+        Errors are logged, never raised - a broken handler must not
         prevent the calling operation from completing.
         """
+        optic.debug("emit: event={}", event)
         handlers = self._handlers.get(type(event), [])
+        optic.debug("event emitted: {} ({} handlers)", type(event).__name__, len(handlers))
         for handler in handlers:
             try:
                 await handler(event)
@@ -157,13 +163,15 @@ class EventBus:
 
     def clear(self) -> None:
         """Remove all handlers. Useful for testing."""
+        optic.debug("clear called")
         self._handlers.clear()
 
     @property
     def handler_count(self) -> int:
         """Total number of registered handlers across all event types."""
+        optic.debug("handler_count called")
         return sum(len(h) for h in self._handlers.values())
 
 
-# Module-level singleton — import from anywhere in core
+# Module-level singleton - import from anywhere in core
 bus = EventBus()

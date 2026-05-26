@@ -1,5 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # Telemetry pipeline
@@ -41,7 +42,7 @@ Two channels, one destination. **MCP tool calls** go through `observal-shim` (st
 
 ## Channel 1 — MCP traffic
 
-Full architecture in [Concepts → Shim vs proxy](../concepts/shim-vs-proxy.md).
+The shim and proxy are transparent interceptors that forward MCP traffic unchanged while recording spans asynchronously.
 
 Operational knobs:
 
@@ -61,7 +62,7 @@ Events sent per lifecycle event:
 
 Full schema and handler types: [Hooks specification](../reference/hooks-spec.md).
 
-`observal pull` and `observal doctor patch --hook` wire hooks into the appropriate file:
+`observal agent pull` and `observal doctor patch --hook` wire hooks into the appropriate file:
 
 * Claude Code: `~/.claude/settings.json`
 * Kiro: agent JSON at `.kiro/agents/<name>.json` or `~/.kiro/agents/<name>.json`

@@ -47,3 +47,10 @@ image_tag = "latest"
 deployment_mode     = "enterprise"
 data_retention_days = 90
 log_retention_days  = 30
+
+# ── License / Edition ──────────────────────────────────────────────────────
+# Provide your enterprise license key to enable enterprise features.
+# Without a key, community edition is deployed.
+# observal_license_key = "eyJ...<your-key>..."
+#
+# edition = "auto"  # "auto" (infer from key), "community", or "enterprise"

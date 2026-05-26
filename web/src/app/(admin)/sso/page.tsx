@@ -359,11 +359,11 @@ function ScimTokensSection() {
 
 export default function SsoPage() {
   const { ready } = useRoleGuard("admin");
-  const { deploymentMode } = useDeploymentConfig();
+  const { licensedFeatures } = useDeploymentConfig();
 
   if (!ready) return null;
 
-  if (deploymentMode !== "enterprise") {
+  if (!licensedFeatures.includes("saml") && !licensedFeatures.includes("all")) {
     return (
       <>
         <PageHeader

@@ -1,0 +1,3 @@
+packages:
+  - "web"
+  - "tests/e2e"

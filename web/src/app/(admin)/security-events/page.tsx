@@ -34,7 +34,6 @@ const EVENT_TYPES = [
   "admin.setting.changed",
   "admin.alert_rule.changed",
   "agent.injection_detected",
-  "agent.canary_parroted",
   "ingestion.secrets_redacted",
   "ingestion.malformed_otlp",
 ];
@@ -112,7 +111,7 @@ function EventRow({ event }: { event: SecurityEvent }) {
 }
 
 export default function SecurityEventsPage() {
-  const { deploymentMode } = useDeploymentConfig();
+  const { licensedFeatures } = useDeploymentConfig();
   const [eventType, setEventType] = useState("all");
   const [severity, setSeverity] = useState("all");
   const [actorEmail, setActorEmail] = useState("");
@@ -131,7 +130,7 @@ export default function SecurityEventsPage() {
 
   const { data, isLoading, isError, error, refetch } = useSecurityEvents(filters);
 
-  if (deploymentMode !== "enterprise") {
+  if (!licensedFeatures.includes("security_events") && !licensedFeatures.includes("all")) {
     return (
       <>
         <PageHeader

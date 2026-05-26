@@ -26,6 +26,8 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
+from loguru import logger
+
 # A trailing -YYYYMMDD (claude-3-5-sonnet-20241022) is the most common shape.
 _DATE_SUFFIX_DASH_COMPACT = re.compile(r"[-_\s](\d{8})$")
 # Sometimes models use -YYYY-MM-DD; not in our seed but tolerated.
@@ -41,6 +43,7 @@ _MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 
 def _strip_trailing_date(text: str) -> str:
+    logger.debug("_strip_trailing_date: text={}", text)
     if not text:
         return text
     out = text
@@ -54,6 +57,7 @@ def _strip_trailing_date(text: str) -> str:
 
 def _has_trailing_date(model_id: str) -> tuple[bool, date | None]:
     """Return (has_date_suffix, parsed_date_or_None) for ``model_id``."""
+    logger.debug("_has_trailing_date: model_id={}", model_id)
     m = _DATE_SUFFIX_DASH_COMPACT.search(model_id)
     if m:
         try:
@@ -70,6 +74,7 @@ def _has_trailing_date(model_id: str) -> tuple[bool, date | None]:
 
 
 def _format_date(d: date) -> str:
+    logger.debug("_format_date: d={}", d)
     return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
 
 
@@ -90,6 +95,7 @@ def format_display(
             When True, dated rows render their date as secondary text and
             rolling rows render ``"latest"``.
     """
+    logger.debug("format_display: display_name={}, model_id={}, release_date={}", display_name, model_id, release_date)
     raw = (display_name or model_id).strip()
     primary = _strip_trailing_date(raw) or raw
 

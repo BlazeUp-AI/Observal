@@ -9,13 +9,13 @@ Every Observal server setting lives in `.env`. Defaults are sane for local devel
 
 Override these before going live:
 
-| Variable | Default | Why change |
-| --- | --- | --- |
-| `SECRET_KEY` | `change-me-to-a-random-string` | Session signing key. **The server refuses to start with this default when `DEPLOYMENT_MODE` is not `local`.** Generate a real one. |
-| `POSTGRES_PASSWORD` | `postgres` | Default password is not secure. |
-| `CLICKHOUSE_PASSWORD` | `clickhouse` | Same. |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Scope to your real frontend origin(s). |
-| `FRONTEND_URL` | `http://localhost:3000` | Used for OAuth redirects and email links. |
+| Variable               | Default                        | Why change                                                                                                                         |
+| ---------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`           | `change-me-to-a-random-string` | Session signing key. **The server refuses to start with this default when `DEPLOYMENT_MODE` is not `local`.** Generate a real one. |
+| `POSTGRES_PASSWORD`    | `postgres`                     | Default password is not secure.                                                                                                    |
+| `CLICKHOUSE_PASSWORD`  | `clickhouse`                   | Same.                                                                                                                              |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000`        | Scope to your real frontend origin(s).                                                                                             |
+| `FRONTEND_URL`         | `http://localhost:3000`        | Used for OAuth redirects and email links.                                                                                          |
 
 Generate a secret key:
 
@@ -29,16 +29,26 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 DEPLOYMENT_MODE=local
 ```
 
-| Mode | Self-registration | Bootstrap admin | Auth methods |
-| --- | --- | --- | --- |
-| `local` (default) | Yes | Yes | Email + password, API key, SSO (if configured) |
-| `enterprise` | No | No | SSO only; SCIM provisioning |
+| Mode              | Self-registration | Bootstrap admin | Auth methods                                   |
+| ----------------- | ----------------- | --------------- | ---------------------------------------------- |
+| `local` (default) | Yes               | Yes             | Email + password, API key, SSO (if configured) |
+| `enterprise`      | No                | No              | SSO only; SCIM provisioning                    |
 
 Switch to `enterprise` when you want IdP-only access.
 
+## Enterprise license key
+
+```
+OBSERVAL_LICENSE_KEY=
+```
+
+Set this to your Ed25519-signed license key to enable enterprise features (SAML, SCIM, AI insight reports). Leave it unset for community edition. The server validates the key at startup and logs the result.
+
+The `setup.sh` interactive setup and both installer scripts (`install.sh`, `install-server.sh`) also accept the key via `--license-key` or this env var and write it into `.env` automatically.
+
 ## Demo accounts
 
-Seeded on first startup *only* when no users exist:
+Seeded on first startup _only_ when no users exist:
 
 ```
 DEMO_SUPER_ADMIN_EMAIL=super@demo.example
@@ -143,11 +153,11 @@ GIT_CLONE_TIMEOUT=120              # seconds
 
 Not set in `.env` on the server — these live on the CLI user's machine.
 
-| Variable | Purpose |
-| --- | --- |
-| `OBSERVAL_SERVER_URL` | Default server URL |
+| Variable                                     | Purpose                          |
+| -------------------------------------------- | -------------------------------- |
+| `OBSERVAL_SERVER_URL`                        | Default server URL               |
 | `OBSERVAL_ACCESS_TOKEN` / `OBSERVAL_API_KEY` | Pre-authenticate without `login` |
-| `OBSERVAL_TIMEOUT` | Request timeout (seconds) |
+| `OBSERVAL_TIMEOUT`                           | Request timeout (seconds)        |
 
 Full list: [Environment variables](../reference/environment-variables.md).
 

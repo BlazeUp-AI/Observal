@@ -16,14 +16,14 @@ from sqlalchemy import select
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+
+import services.dynamic_settings as ds
 from api.deps import get_db, get_or_create_default_org, require_role
-from config import settings
 from ee.observal_server.services.saml import encrypt_private_key, generate_sp_key_pair
 from ee.observal_server.services.scim_service import hash_scim_token
 from models.saml_config import SamlConfig
 from models.scim_token import ScimToken
 from models.user import User, UserRole
-from services.audit_helpers import audit
 from services.security_events import (
     EventType,
     SecurityEvent,
@@ -32,6 +32,11 @@ from services.security_events import (
 )
 
 logger = logging.getLogger("observal.ee.admin_sso")
+
+
+def _get_frontend_url() -> str:
+    return ds.get_sync("deployment.frontend_url", "http://localhost:3000")
+
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin-sso"])
 
@@ -49,28 +54,20 @@ async def get_saml_config(
     config = result.scalar_one_or_none()
 
     if not config:
-        has_env = bool(settings.SAML_IDP_ENTITY_ID and settings.SAML_IDP_SSO_URL)
-        await audit(current_user, "admin.saml_config.view", "saml_config")
+        has_env = bool(ds.get_sync("saml.idp_entity_id") and ds.get_sync("saml.idp_sso_url"))
         return {
             "configured": has_env,
             "source": "env" if has_env else "none",
-            "idp_entity_id": settings.SAML_IDP_ENTITY_ID if has_env else None,
-            "idp_sso_url": settings.SAML_IDP_SSO_URL if has_env else None,
-            "idp_slo_url": settings.SAML_IDP_SLO_URL if has_env else None,
-            "sp_entity_id": settings.SAML_SP_ENTITY_ID if has_env else None,
-            "sp_acs_url": settings.SAML_SP_ACS_URL if has_env else None,
-            "jit_provisioning": settings.SAML_JIT_PROVISIONING if has_env else None,
-            "default_role": settings.SAML_DEFAULT_ROLE if has_env else None,
-            "has_idp_cert": bool(settings.SAML_IDP_X509_CERT) if has_env else False,
+            "idp_entity_id": ds.get_sync("saml.idp_entity_id") if has_env else None,
+            "idp_sso_url": ds.get_sync("saml.idp_sso_url") if has_env else None,
+            "idp_slo_url": ds.get_sync("saml.idp_slo_url") if has_env else None,
+            "sp_entity_id": ds.get_sync("saml.sp_entity_id") if has_env else None,
+            "sp_acs_url": ds.get_sync("saml.sp_acs_url") if has_env else None,
+            "jit_provisioning": ds.get_sync_bool("saml.jit_provisioning", True) if has_env else None,
+            "default_role": ds.get_sync("saml.default_role", "user") if has_env else None,
+            "has_idp_cert": bool(ds.get_sync("saml.idp_x509_cert")) if has_env else False,
             "has_sp_key": False,
         }
-
-    await audit(
-        current_user,
-        "admin.saml_config.view",
-        "saml_config",
-        resource_id=str(config.id),
-    )
     return {
         "configured": True,
         "source": "database",
@@ -111,13 +108,13 @@ async def upsert_saml_config(
     default_org = await get_or_create_default_org(db)
     org_id = current_user.org_id or default_org.id
 
-    sp_entity_id = body.get("sp_entity_id") or f"{settings.FRONTEND_URL}/api/v1/sso/saml/metadata"
-    sp_acs_url = body.get("sp_acs_url") or f"{settings.FRONTEND_URL}/api/v1/sso/saml/acs"
+    sp_entity_id = body.get("sp_entity_id") or f"{_get_frontend_url()}/api/v1/sso/saml/metadata"
+    sp_acs_url = body.get("sp_acs_url") or f"{_get_frontend_url()}/api/v1/sso/saml/acs"
 
     result = await db.execute(select(SamlConfig).where(SamlConfig.org_id == org_id))
     config = result.scalar_one_or_none()
 
-    enc_password = settings.SAML_SP_KEY_ENCRYPTION_PASSWORD
+    enc_password = ds.get_sync("saml.sp_key_encryption_password")
 
     if not config:
         private_key_pem, cert_pem = generate_sp_key_pair(common_name=sp_entity_id)
@@ -170,12 +167,6 @@ async def upsert_saml_config(
             detail="SAML configuration updated",
         )
     )
-    await audit(
-        current_user,
-        "admin.saml_config.update",
-        "saml_config",
-        resource_id=str(config.id),
-    )
 
     return {
         "id": str(config.id),
@@ -220,12 +211,6 @@ async def delete_saml_config(
             detail="SAML configuration deleted",
         )
     )
-    await audit(
-        current_user,
-        "admin.saml_config.delete",
-        "saml_config",
-        resource_id=config_id,
-    )
     return {"deleted": config_id}
 
 
@@ -245,8 +230,6 @@ async def list_scim_tokens(
 
     result = await db.execute(select(ScimToken).where(ScimToken.org_id == org_id).order_by(ScimToken.created_at.desc()))
     tokens = result.scalars().all()
-
-    await audit(current_user, "admin.scim_tokens.list", "scim_token")
     return [
         {
             "id": str(t.id),
@@ -298,12 +281,6 @@ async def create_scim_token(
             detail="SCIM token created",
         )
     )
-    await audit(
-        current_user,
-        "admin.scim_tokens.create",
-        "scim_token",
-        resource_id=str(token.id),
-    )
 
     return {
         "id": str(token.id),
@@ -350,11 +327,5 @@ async def revoke_scim_token(
             target_type="scim_token",
             detail="SCIM token revoked",
         )
-    )
-    await audit(
-        current_user,
-        "admin.scim_tokens.revoke",
-        "scim_token",
-        resource_id=str(token.id),
     )
     return {"revoked": str(token.id)}

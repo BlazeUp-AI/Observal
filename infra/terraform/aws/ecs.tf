@@ -32,8 +32,8 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 # ── Common config injected into every Observal task ───────────────────────
 
 locals {
-  api_image = "${var.image_repo_api}:${var.image_tag}"
-  web_image = "${var.image_repo_web}:${var.image_tag}"
+  api_image = "${local.image_repo_api_effective}:${var.image_tag}"
+  web_image = "${local.image_repo_web_effective}:${var.image_tag}"
 
   # Non-secret env vars passed to api/worker/init.
   app_environment = [
@@ -46,13 +46,15 @@ locals {
   ]
 
   # Secrets injected by ECS at task start. Reference SSM Parameter Store ARNs.
-  app_secrets = [
+  app_secrets = concat([
     { name = "DATABASE_URL", valueFrom = aws_ssm_parameter.urls["DATABASE_URL"].arn },
     { name = "REDIS_URL", valueFrom = aws_ssm_parameter.urls["REDIS_URL"].arn },
     { name = "CLICKHOUSE_URL", valueFrom = aws_ssm_parameter.urls["CLICKHOUSE_URL"].arn },
     { name = "CLICKHOUSE_PASSWORD", valueFrom = aws_ssm_parameter.app["CLICKHOUSE_PASSWORD"].arn },
     { name = "SECRET_KEY", valueFrom = aws_ssm_parameter.app["SECRET_KEY"].arn },
-  ]
+    ], local.is_enterprise ? [
+    { name = "OBSERVAL_LICENSE_KEY", valueFrom = aws_ssm_parameter.license_key[0].arn },
+  ] : [])
 }
 
 # ── Task: init (one-shot, runs entrypoint.sh) ─────────────────────────────

@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 import yaml
 from sqlalchemy import select
 
-from models.agent import AgentGoalSection, AgentGoalTemplate, AgentVersion
 from models.agent_component import AgentComponent
 from models.hook import HookListing
 from models.mcp import McpListing
@@ -28,6 +27,9 @@ from models.skill import SkillListing
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from models.agent import AgentVersion
+from loguru import logger
 
 _LISTING_MODELS = {
     "mcp": McpListing,
@@ -40,6 +42,7 @@ _LISTING_MODELS = {
 
 def _normalise_models_by_ide(value: object) -> dict[str, str]:
     """Coerce ``models_by_ide`` into a plain dict for YAML serialisation."""
+    logger.debug("_normalise_models_by_ide: value={}", value)
     if not isinstance(value, dict):
         return {}
     return {str(k): str(v) for k, v in value.items() if v}
@@ -53,6 +56,7 @@ async def _resolve_component_details(ver: AgentVersion, db: AsyncSession) -> lis
     when a freshly created version's components were added in the same
     session but the back-reference wasn't synchronously synced.
     """
+    logger.debug("_resolve_component_details: ver={}", ver)
     rows = (
         (
             await db.execute(
@@ -92,34 +96,6 @@ async def _resolve_component_details(ver: AgentVersion, db: AsyncSession) -> lis
     return details
 
 
-async def _goal_template_dict(ver: AgentVersion, db: AsyncSession) -> dict | None:
-    goal = (
-        await db.execute(select(AgentGoalTemplate).where(AgentGoalTemplate.agent_version_id == ver.id))
-    ).scalar_one_or_none()
-    if not goal:
-        return None
-    section_rows = (
-        (
-            await db.execute(
-                select(AgentGoalSection)
-                .where(AgentGoalSection.goal_template_id == goal.id)
-                .order_by(AgentGoalSection.order)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    sections = [
-        {
-            "name": sec.name,
-            "description": sec.description,
-            "grounding_required": bool(sec.grounding_required),
-        }
-        for sec in section_rows
-    ]
-    return {"description": goal.description, "sections": sections}
-
-
 async def build_yaml_snapshot(ver: AgentVersion, db: AsyncSession) -> str:
     """Render *ver* as a YAML document suitable for ``ver.yaml_snapshot``.
 
@@ -128,6 +104,7 @@ async def build_yaml_snapshot(ver: AgentVersion, db: AsyncSession) -> str:
     didn't override anything) so a reviewer can trust an empty section
     means "no per-IDE overrides", not "missing data".
     """
+    logger.debug("build_yaml_snapshot: ver={}", ver)
     components = await _resolve_component_details(ver, db)
     data: dict = {
         "version": ver.version,
@@ -141,8 +118,5 @@ async def build_yaml_snapshot(ver: AgentVersion, db: AsyncSession) -> str:
     }
     if ver.model_config_json:
         data["model_config_json"] = ver.model_config_json
-    goal = await _goal_template_dict(ver, db)
-    if goal is not None:
-        data["goal_template"] = goal
     header = "# Auto-generated snapshot — review the structured fields above and the prompt below.\n"
     return header + yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True)

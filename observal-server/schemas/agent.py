@@ -14,25 +14,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from config import settings
+from config import HAS_LICENSE
 from models.agent import AgentStatus, AgentVisibility
 from schemas.constants import AGENT_NAME_REGEX, make_name_validator
 from services.versioning import validate_semver
 
-_DEFAULT_VISIBILITY = AgentVisibility.public if settings.DEPLOYMENT_MODE == "local" else AgentVisibility.private
+_DEFAULT_VISIBILITY = AgentVisibility.public if not HAS_LICENSE else AgentVisibility.private
 
 VALID_COMPONENT_TYPES = {"mcp", "skill", "hook", "prompt", "sandbox"}
-
-
-class GoalSectionRequest(BaseModel):
-    name: str
-    description: str | None = None
-    grounding_required: bool = False
-
-
-class GoalTemplateRequest(BaseModel):
-    description: str
-    sections: list[GoalSectionRequest] = Field(min_length=1)
 
 
 class ExternalMcp(BaseModel):
@@ -69,6 +58,7 @@ class AgentCreateRequest(BaseModel):
     name: str
     version: str
     description: str = ""
+    category: str | None = None
     owner: str
     prompt: str = ""
     model_name: str
@@ -78,7 +68,6 @@ class AgentCreateRequest(BaseModel):
     mcp_server_ids: list[uuid.UUID] = []  # kept for backwards compat
     components: list[ComponentRef] = []  # new: all component types
     external_mcps: list[ExternalMcp] = []
-    goal_template: GoalTemplateRequest
     visibility: AgentVisibility = _DEFAULT_VISIBILITY
     team_accesses: list[TeamAccessRequest] = []
 
@@ -91,12 +80,22 @@ class AgentCreateRequest(BaseModel):
             raise ValueError(f"Invalid version '{v}'. Must be semver format: x.y.z (e.g. 1.0.0)")
         return v
 
+    @field_validator("prompt", mode="after")
+    @classmethod
+    def _require_prompt_or_prompt_component(cls, v: str, info) -> str:
+        components = (info.data or {}).get("components", [])
+        has_prompt_component = any(c.component_type == "prompt" for c in components)
+        if not v and not has_prompt_component:
+            raise ValueError("A system prompt is required. Either set a custom prompt or add a Prompt component.")
+        return v
+
 
 class AgentUpdateRequest(BaseModel):
     name: str | None = None
     version: str | None = None
     version_bump_type: Literal["patch", "minor", "major"] | None = None
     description: str | None = None
+    category: str | None = None
     owner: str | None = None
     prompt: str | None = None
     model_name: str | None = None
@@ -106,7 +105,6 @@ class AgentUpdateRequest(BaseModel):
     mcp_server_ids: list[uuid.UUID] | None = None  # kept for backwards compat
     components: list[ComponentRef] | None = None  # new: all component types
     external_mcps: list[ExternalMcp] | None = None
-    goal_template: GoalTemplateRequest | None = None
     visibility: AgentVisibility | None = None
     team_accesses: list[TeamAccessRequest] | None = None
 
@@ -130,20 +128,6 @@ class AgentUpdateRequest(BaseModel):
         if v is not None and not validate_semver(v):
             raise ValueError(f"Invalid version '{v}'. Must be semver format: x.y.z (e.g. 1.0.0)")
         return v
-
-
-class GoalSectionResponse(BaseModel):
-    name: str
-    description: str | None
-    grounding_required: bool
-    order: int
-    model_config = {"from_attributes": True}
-
-
-class GoalTemplateResponse(BaseModel):
-    description: str
-    sections: list[GoalSectionResponse] = []
-    model_config = {"from_attributes": True}
 
 
 class McpLinkResponse(BaseModel):
@@ -188,7 +172,6 @@ class AgentResponse(BaseModel):
     updated_at: datetime
     mcp_links: list[McpLinkResponse] = []
     component_links: list[ComponentLinkResponse] = []
-    goal_template: GoalTemplateResponse | None = None
     visibility: AgentVisibility
     team_accesses: list[TeamAccessResponse] = []
     user_permission: str | None = None
@@ -265,7 +248,6 @@ class AgentVersionCreateRequest(BaseModel):
     external_mcps: list[ExternalMcp] = []
     supported_ides: list[str] = []
     components: list[ComponentRef] = []
-    goal_template: GoalTemplateRequest | None = None
     yaml_snapshot: str | None = None
     is_prerelease: bool = False
     save_as_draft: bool = False

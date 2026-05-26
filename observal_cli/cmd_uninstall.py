@@ -13,9 +13,11 @@ import tempfile
 from pathlib import Path
 
 import typer
+from loguru import logger
 from rich import print as rprint
 
 from observal_cli.config import CONFIG_DIR
+from observal_cli.prompts import text_input
 from observal_cli.render import spinner
 
 CONFIRMATION_PHRASE = "confirm"
@@ -236,7 +238,22 @@ def register_uninstall(app: typer.Typer):
         keep_cli: bool = typer.Option(False, "--keep-cli", help="Keep the CLI tool installed."),
         keep_repo: bool = typer.Option(False, "--keep-repo", help="Keep the repo directory (still tears down Docker)."),
     ):
-        """Completely uninstall Observal: stop containers, remove volumes, delete repo and config."""
+        """Completely uninstall Observal: stop containers, remove volumes, delete repo and config.
+
+        Runs docker compose down -v --rmi all to stop all containers and remove
+        volumes and images. Then deletes the repo directory, config directory
+        (~/.observal), and uninstalls the CLI tool via uv.
+
+        Use --keep-config, --keep-cli, or --keep-repo to preserve specific parts.
+        Requires typing "confirm" to proceed. On Windows, file deletion is
+        deferred to a background PowerShell process after the CLI exits.
+
+        Examples:
+            observal uninstall
+            observal uninstall --keep-config --keep-cli
+            observal uninstall --repo-dir ~/code/Observal --keep-repo
+        """
+        logger.debug("uninstall: repo_dir={}", repo_dir)
         repo_root = _find_repo_root(repo_dir)
 
         # Require repo detection - Docker teardown is mandatory
@@ -259,12 +276,22 @@ def register_uninstall(app: typer.Typer):
         # ── Confirmation ───────────────────────────────────
         rprint("[bold red]WARNING: This action is irreversible.[/bold red]")
         rprint(f'Type [bold]"{CONFIRMATION_PHRASE}"[/bold] to confirm:\n')
-        user_input = typer.prompt("Confirm")
+        user_input = text_input("Confirm")
         if user_input.strip().lower() != CONFIRMATION_PHRASE:
             rprint("[yellow]Confirmation did not match. Aborting.[/yellow]")
             raise typer.Exit(1)
 
         rprint()
+
+        # Emit audit event before teardown (server may become unreachable after)
+        from observal_cli.audit import emit_cli_audit
+
+        emit_cli_audit(
+            "system.uninstall",
+            resource_type="system",
+            detail=f"keep_config={keep_config}, keep_cli={keep_cli}, keep_repo={keep_repo}",
+            sensitivity="admin",
+        )
 
         # ── Phase 1: Docker teardown ──────────────────────
         _docker_teardown(repo_root)

@@ -16,6 +16,7 @@ import sys
 import time
 
 import httpx
+from loguru import logger as optic
 
 from observal_cli.config import load as load_config
 from observal_cli.shim import ShimState
@@ -86,6 +87,7 @@ async def _handle_request(
 
 async def run_proxy(mcp_id: str, target_url: str, port: int = 0):
     """Start the HTTP proxy server."""
+    optic.debug("proxy started")
     # Resolve auth
     access_token = os.environ.get("OBSERVAL_KEY", "")
     server_url = os.environ.get("OBSERVAL_SERVER", "")

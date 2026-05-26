@@ -27,6 +27,7 @@ import { Check, Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { RegistryType } from "@/lib/api";
 import { useWhoami } from "@/hooks/use-api";
+import { useIdes } from "@/hooks/use-ides";
 import { parseMcpConfigJson, applyParsedConfig } from "@/lib/mcp-parser";
 import type { EnvVar } from "@/lib/mcp-parser";
 
@@ -55,17 +56,6 @@ const MCP_CATEGORIES = [
 const MCP_FRAMEWORKS = ["python", "docker", "typescript", "go"];
 
 const MCP_TRANSPORTS = ["stdio", "sse", "streamable-http"];
-
-const VALID_IDES = [
-	"cursor",
-	"kiro",
-	"claude-code",
-	"gemini-cli",
-	"vscode",
-	"codex",
-	"copilot",
-	"opencode",
-];
 
 const SKILL_TASK_TYPES = [
 	"code-review",
@@ -132,6 +122,7 @@ export function SubmitComponentDialog({
 }: SubmitComponentDialogProps) {
 	const d = editItem as Record<string, unknown> | null;
 	const { data: whoami } = useWhoami();
+	const { data: ideList } = useIdes();
 	const defaultOwner =
 		(d?.owner as string) ||
 		whoami?.name ||
@@ -221,7 +212,7 @@ export function SubmitComponentDialog({
 					// Filter: find SKILL.md files, excluding IDE config copies
 					// IDE dirs (.claude/, .kiro/, .agents/, etc.) are installed copies, not sources
 					const INSTALLED_PREFIX =
-						/^(\.agents|\.(claude|kiro|cursor|gemini|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)\//;
+						/^(\.agents|\.(claude|kiro|cursor|gemini|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)\//;
 					const allSkillFiles = (data.tree || []).filter(
 						(f: { path: string }) =>
 							f.path.endsWith("/SKILL.md") || f.path === "SKILL.md",
@@ -270,6 +261,12 @@ export function SubmitComponentDialog({
 		d?.handler_config && typeof d.handler_config === "object"
 			? JSON.stringify(d.handler_config, null, 2)
 			: "",
+	);
+	const [scriptContent, setScriptContent] = useState(
+		(d?.script_content as string) ?? "",
+	);
+	const [scriptFilename, setScriptFilename] = useState(
+		(d?.script_filename as string) ?? "",
 	);
 
 	// ── Prompt ──────────────────────────────────────────────
@@ -440,6 +437,10 @@ export function SubmitComponentDialog({
 					} catch {
 						/* leave as default {} */
 					}
+				}
+				if (scriptContent.trim()) {
+					body.script_content = scriptContent;
+					body.script_filename = scriptFilename || undefined;
 				}
 				return body;
 			}
@@ -1062,6 +1063,39 @@ export function SubmitComponentDialog({
 									className="font-mono text-sm"
 								/>
 							</div>
+							<div className="space-y-1.5">
+								<Label htmlFor="hook-script-filename">
+									Script Filename (optional)
+								</Label>
+								<input
+									id="hook-script-filename"
+									type="text"
+									value={scriptFilename}
+									onChange={(e) => setScriptFilename(e.target.value)}
+									placeholder="my-hook.sh"
+									className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Name of the script file that will be written on install.
+								</p>
+							</div>
+							<div className="space-y-1.5">
+								<Label htmlFor="hook-script">Hook Script (optional)</Label>
+								<Textarea
+									id="hook-script"
+									value={scriptContent}
+									onChange={(e) => setScriptContent(e.target.value)}
+									placeholder={
+										"#!/bin/bash\nINPUT=$(cat)\n# Your hook logic here\nexit 0"
+									}
+									rows={8}
+									className="font-mono text-sm"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Script content stored in the registry and delivered on
+									install. Leave empty for inline commands.
+								</p>
+							</div>
 						</>
 					)}
 
@@ -1167,18 +1201,18 @@ export function SubmitComponentDialog({
 					<div className="space-y-1.5">
 						<Label>Supported IDEs</Label>
 						<div className="flex flex-wrap gap-1.5">
-							{VALID_IDES.map((ide) => (
+							{(ideList ?? []).map((ide) => (
 								<button
-									key={ide}
+									key={ide.name}
 									type="button"
-									onClick={() => toggleIde(ide)}
+									onClick={() => toggleIde(ide.name)}
 									className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-										supportedIdes.includes(ide)
+										supportedIdes.includes(ide.name)
 											? "bg-primary text-primary-foreground"
 											: "bg-muted/50 text-muted-foreground hover:bg-muted"
 									}`}
 								>
-									{ide}
+									{ide.display_name}
 								</button>
 							))}
 						</div>

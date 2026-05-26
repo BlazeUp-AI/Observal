@@ -18,7 +18,7 @@ from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from config import settings
+from config import HAS_LICENSE
 from database import async_session
 from models.organization import Organization
 from models.user import User, UserRole
@@ -113,6 +113,9 @@ async def get_current_user(
     # Block deactivated users (SCIM sets auth_provider to "deactivated")
     if user.auth_provider == "deactivated":
         raise HTTPException(status_code=403, detail="Account deactivated")
+
+    # Expose user to audit middleware
+    request.state.audit_user = user
 
     # Enforce must_change_password — fail closed: if Redis is down we cannot
     # guarantee the gate is enforced, so block non-exempt requests.
@@ -273,13 +276,16 @@ async def require_local_mode() -> None:
 
     Usage: @router.post("/bootstrap", dependencies=[Depends(require_local_mode)])
     """
-    if settings.DEPLOYMENT_MODE != "local":
+    if HAS_LICENSE:
         raise HTTPException(status_code=403, detail="Disabled in enterprise mode")
 
 
 async def require_password_auth() -> None:
     """FastAPI dependency that blocks the endpoint when SSO_ONLY is enabled."""
-    if settings.SSO_ONLY:
+    import services.dynamic_settings as ds
+
+    sso_only = await ds.get_bool("deployment.sso_only")
+    if sso_only:
         raise HTTPException(status_code=403, detail="Password authentication is disabled (SSO-only mode)")
 
 

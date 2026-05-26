@@ -28,6 +28,7 @@ import { StatusBadge } from "@/components/registry/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/dashboard/query-error";
+import { useIdes } from "@/hooks/use-ides";
 import { ListTree } from "lucide-react";
 
 const IDE_BADGE_STYLES: Record<string, string> = {
@@ -35,7 +36,6 @@ const IDE_BADGE_STYLES: Record<string, string> = {
   kiro: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
   cursor: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
   "gemini-cli": "bg-light-red text-dark-red",
-  vscode: "bg-light-blue text-dark-blue",
   codex: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
   copilot: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
   "copilot-cli": "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
@@ -47,7 +47,6 @@ const IDE_LABELS: Record<string, string> = {
   kiro: "Kiro",
   cursor: "Cursor",
   "gemini-cli": "Gemini CLI",
-  vscode: "VS Code",
   codex: "Codex",
   copilot: "Copilot",
   "copilot-cli": "Copilot CLI",
@@ -65,13 +64,12 @@ const TRACE_TYPES = [
   "sandbox",
   "graphrag",
 ];
-const IDES = [
+const IDES_FALLBACK = [
   "all",
   "claude-code",
   "kiro",
   "cursor",
   "gemini-cli",
-  "vscode",
   "codex",
   "copilot",
   "copilot-cli",
@@ -79,9 +77,15 @@ const IDES = [
 
 export function TraceList() {
   const router = useRouter();
+  const { data: ideList } = useIdes();
   const [search, setSearch] = useState("");
   const [traceType, setTraceType] = useState("all");
   const [ide, setIde] = useState("all");
+
+  const ideOptions = ideList ? ["all", ...ideList.map((i) => i.name)] : IDES_FALLBACK;
+  const ideDisplayNames: Record<string, string> = Object.fromEntries(
+    (ideList ?? []).map((i) => [i.name, i.display_name]),
+  );
 
   const filters: Record<string, unknown> = {};
   if (traceType !== "all") filters.trace_type = traceType;
@@ -125,9 +129,9 @@ export function TraceList() {
             <SelectValue placeholder="IDE" />
           </SelectTrigger>
           <SelectContent>
-            {IDES.map((i) => (
+            {ideOptions.map((i) => (
               <SelectItem key={i} value={i} className="text-sm">
-                {i === "all" ? "All IDEs" : i}
+                {i === "all" ? "All IDEs" : (ideDisplayNames[i] || IDE_LABELS[i] || i)}
               </SelectItem>
             ))}
           </SelectContent>

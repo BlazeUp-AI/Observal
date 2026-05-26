@@ -98,7 +98,6 @@ def kv_panel(title: str, fields: list[tuple[str, str]], border_style: str = "blu
 
 _IDE_COLORS = {
     "cursor": "cyan",
-    "vscode": "blue",
     "kiro": "magenta",
     "claude_code": "yellow",
     "claude-code": "yellow",

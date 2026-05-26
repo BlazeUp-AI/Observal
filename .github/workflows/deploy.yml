@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'BlazeUp-AI/Observal'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

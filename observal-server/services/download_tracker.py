@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import Request
+from loguru import logger as optic
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,7 @@ async def record_agent_download(
     db: AsyncSession,
 ) -> bool:
     """Record an agent download with deduplication. Returns True if new download, False if duplicate."""
+    optic.debug("record_agent_download: agent_id={}, user_id={}", agent_id, user_id)
     fingerprint = _anonymous_fingerprint(request) if user_id is None else None
 
     record = AgentDownloadRecord(

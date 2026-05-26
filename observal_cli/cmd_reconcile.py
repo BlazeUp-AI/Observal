@@ -24,6 +24,11 @@ import json
 import time
 from pathlib import Path
 
+from loguru import logger
+
+from observal_cli.sessions.claude_code import find_sessions_dir as _find_claude_sessions_dir_impl
+from observal_cli.sessions.kiro import find_sessions_dir as _find_kiro_sessions_dir_impl
+
 # ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------
@@ -31,16 +36,12 @@ from pathlib import Path
 
 def _find_claude_sessions_dir(home: Path | None = None) -> Path:
     """Return ~/.claude/projects/ (the root of all Claude Code session JSONL files)."""
-    if home is None:
-        home = Path.home()
-    return home / ".claude" / "projects"
+    return _find_claude_sessions_dir_impl(home)
 
 
 def _find_kiro_sessions_dir(home: Path | None = None) -> Path:
     """Return ~/.kiro/sessions/cli/ (the root of all Kiro session JSONL files)."""
-    if home is None:
-        home = Path.home()
-    return home / ".kiro" / "sessions" / "cli"
+    return _find_kiro_sessions_dir_impl(home)
 
 
 def _find_recent_sessions(
@@ -214,6 +215,7 @@ def find_stale_sessions(home: Path | None = None) -> list[dict]:
     - The JSONL mtime is between 2 minutes and 7 days old
       (avoids touching an actively-running session)
     """
+    logger.debug("find_stale_sessions: home={}", home)
     if home is None:
         home = Path.home()
 
@@ -278,7 +280,7 @@ def recover_stale_session(
     can run.  Marks the cursor finalized on success so the session is never
     recovered again.
     """
-    from observal_cli.hooks.session_push import (
+    from observal_cli.sessions.base import (
         build_payload,
         post_to_server,
         read_new_lines,
@@ -351,7 +353,7 @@ def run_recovery(home: Path | None = None) -> None:
 
 
 def _run_recovery(home: Path | None = None) -> None:
-    from observal_cli.hooks.session_push import load_config
+    from observal_cli.sessions.base import load_config
 
     config = load_config(home=home)
     if config is None:

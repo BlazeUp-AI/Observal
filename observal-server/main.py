@@ -30,21 +30,23 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
 
+import services.dynamic_settings as ds
 from api.deps import get_db, get_or_create_default_org
 from api.graphql import get_context_dep, schema
+from api.middleware.audit import AuditMiddleware
 from api.middleware.content_type import ContentTypeMiddleware
 from api.middleware.request_id import RequestIDMiddleware
 from api.ratelimit import limiter
 from api.routes.admin import router as admin_router
 from api.routes.agent import router as agent_router
 from api.routes.alert import router as alert_router
+from api.routes.audit import router as audit_router
 from api.routes.auth import router as auth_router
 from api.routes.bulk import router as bulk_router
 from api.routes.component_source import router as component_source_router
 from api.routes.config import router as config_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.device_auth import router as device_auth_router
-from api.routes.eval import router as eval_router
 from api.routes.feedback import router as feedback_router
 from api.routes.hook import router as hook_router
 from api.routes.ingest import router as ingest_router
@@ -61,17 +63,20 @@ from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.support import router as support_router
 from api.routes.telemetry import router as telemetry_router
-from config import settings
+from config import HAS_LICENSE, check_legacy_env_vars, settings
 from database import engine
 from logging_config import setup_logging
 from models import Base
 from models.user import User
+from services.audit import AUDIT_LICENSED, setup_audit, shutdown_audit
 from services.cache import close_cache, init_cache
 from services.clickhouse import init_clickhouse
 from services.crypto import init_key_manager
+from services.optic import setup_optic
 from services.redis import close as close_redis
 
 setup_logging()
+setup_optic(mode="prod" if HAS_LICENSE else "dev")
 
 
 async def _ensure_columns(conn):
@@ -98,8 +103,17 @@ async def _ensure_columns(conn):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Refuse to start if legacy env vars are set
+    check_legacy_env_vars()
+    # Load dynamic settings cache before anything else
+
+    await ds.load_sync_cache()
+
+    # Re-encrypt sensitive values if SECRET_KEY was rotated
+    await ds.reencrypt_on_key_rotation()
+
     # ── Unsafe-default guards (non-local deployments only) ─────────────────
-    if settings.DEPLOYMENT_MODE != "local":
+    if HAS_LICENSE:
         weak_secrets = {"change-me-to-a-random-string", "changeme", "secret", "dev", ""}
         if settings.SECRET_KEY in weak_secrets or len(settings.SECRET_KEY) < 32:
             raise RuntimeError(
@@ -107,7 +121,8 @@ async def lifespan(app: FastAPI):
                 "before running in non-local mode."
             )
 
-    if not settings.SKIP_DDL_ON_STARTUP:
+    skip_ddl = settings.SKIP_DDL_ON_STARTUP
+    if not skip_ddl:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await _ensure_columns(conn)
@@ -133,14 +148,9 @@ async def lifespan(app: FastAPI):
     async with _session_factory() as db:
         await seed_demo_accounts(db)
 
-    # Register audit event bus handlers during startup
-    if settings.DEPLOYMENT_MODE == "enterprise":
-        try:
-            from ee.observal_server.services.audit import register_audit_handlers
-
-            register_audit_handlers()
-        except ImportError:
-            pass
+    # Initialize HIPAA audit system (enterprise, license-gated)
+    if AUDIT_LICENSED:
+        setup_audit()
 
     # Wire insights dependencies (no-op if package not installed)
     from services.insights import configure_insights
@@ -154,13 +164,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if settings.DEPLOYMENT_MODE == "enterprise":
-        try:
-            from ee.observal_server.services.audit import shutdown_audit
-
-            await shutdown_audit()
-        except ImportError:
-            pass
+    if AUDIT_LICENSED:
+        await shutdown_audit()
 
     from services.agent_registry_cache import stop as stop_registry_cache
 
@@ -170,7 +175,7 @@ async def lifespan(app: FastAPI):
 
 
 # Create the FastAPI app
-_expose_openapi = settings.ENABLE_OPENAPI or settings.DEPLOYMENT_MODE == "local"
+_expose_openapi = ds.get_sync_bool("observability.enable_openapi") or not HAS_LICENSE
 app = FastAPI(
     title="Observal API",
     description="API for Observal Agents & Capabilities Hub",
@@ -193,6 +198,39 @@ async def _set_rate_limit_defaults(request: Request, call_next):
     AttributeError in the post-response header injection."""
     request.state.view_rate_limit = None
     return await call_next(request)
+
+
+@app.middleware("http")
+async def _version_middleware(request: Request, call_next):
+    """Version negotiation middleware.
+
+    Computes effective = min(cli_version, server_version) and sets response headers.
+    Route handlers can access request.state.effective_version for feature gating.
+    """
+    from version import get_server_version
+
+    server_ver = get_server_version()
+
+    cli_ver_str = request.headers.get("x-observal-cli-version")
+    effective = server_ver
+
+    if cli_ver_str:
+        try:
+            from packaging.version import Version
+
+            client_ver = Version(cli_ver_str)
+            sv = Version(server_ver)
+            effective = str(min(client_ver, sv))
+        except Exception:
+            pass
+
+    request.state.effective_version = effective
+
+    response = await call_next(request)
+
+    response.headers["X-Observal-Server"] = server_ver
+    response.headers["X-Observal-Effective"] = effective
+    return response
 
 
 logger = structlog.get_logger("observal")
@@ -283,6 +321,10 @@ app.add_middleware(ContentTypeMiddleware)
 # --- Request ID ---
 app.add_middleware(RequestIDMiddleware)
 
+# --- Audit logging (HIPAA, enterprise license-gated) ---
+if AUDIT_LICENSED:
+    app.add_middleware(AuditMiddleware)
+
 # --- GZip compression for responses >= 500 bytes ---
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
@@ -294,24 +336,24 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         cache_header = response.headers.get("X-FastAPI-Cache")
         if cache_header == "HIT" or (request.method == "GET" and cache_header == "MISS"):
-            response.headers["Cache-Control"] = f"public, max-age={settings.CACHE_TTL_DEFAULT}"
+            response.headers["Cache-Control"] = f"public, max-age={ds.get_sync_int('data.cache_ttl_default', 30)}"
         return response
 
 
 app.add_middleware(CacheControlMiddleware)
 
 # Enterprise routes + middleware (must be registered before startup)
-if settings.DEPLOYMENT_MODE == "enterprise":
+if HAS_LICENSE:
     try:
         from ee import register_enterprise_middleware
         from ee.observal_server.routes import mount_ee_routes
 
         register_enterprise_middleware(app, settings)
         mount_ee_routes(app)
-    except ImportError:
+    except (ImportError, RuntimeError) as _ee_err:
         _logger = structlog.get_logger("observal")
-        _logger.error("enterprise_module_missing", detail="DEPLOYMENT_MODE=enterprise but ee/ module not found")
-        app.state.enterprise_issues = ["ee/ module not installed"]
+        _logger.warning("enterprise_features_unavailable", detail=str(_ee_err))
+        app.state.enterprise_issues = [str(_ee_err)]
 
 # GraphQL (replaces REST dashboard endpoints)
 graphql_app = GraphQLRouter(schema, context_getter=get_context_dep)
@@ -332,7 +374,6 @@ app.include_router(sandbox_router)
 app.include_router(telemetry_router)
 app.include_router(dashboard_router)
 app.include_router(feedback_router)
-app.include_router(eval_router)
 app.include_router(insights_router)
 app.include_router(reconcile_router)
 app.include_router(ingest_router)
@@ -344,12 +385,15 @@ app.include_router(bulk_router)
 app.include_router(config_router)
 app.include_router(registry_models_router)
 app.include_router(support_router)
+# Audit CLI event endpoint (license-gated internally, mounted always so
+# CLI gets a clean 200 "skipped" response rather than 404 when unlicensed)
+app.include_router(audit_router)
 
 # --- Prometheus metrics ---
 _instrumentator = Instrumentator(
     excluded_handlers=["/livez", "/healthz", "/readyz", "/metrics"],
 ).instrument(app)
-if settings.ENABLE_METRICS or settings.DEPLOYMENT_MODE == "local":
+if ds.get_sync_bool("observability.enable_metrics") or not HAS_LICENSE:
     _instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
 
 
@@ -394,7 +438,7 @@ async def readiness(db: AsyncSession = Depends(get_db)):
     else:
         checks["redis"] = "ok"
 
-    if settings.DEPLOYMENT_MODE == "enterprise":
+    if HAS_LICENSE:
         issues = getattr(app.state, "enterprise_issues", [])
         if issues:
             checks["status"] = "degraded"

@@ -1,11 +1,12 @@
 <!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # CLI Reference
 
-Complete reference for the `observal` CLI. Every subcommand has its own page — this overview is the index.
+Complete reference for the `observal` CLI. Every subcommand has its own page; this overview is the index.
 
 > **New to Observal?** Start with [Quickstart](../getting-started/quickstart.md) and come back here when you need a specific command.
 
@@ -16,8 +17,10 @@ Complete reference for the `observal` CLI. Every subcommand has its own page —
 | [`observal auth`](auth.md) | Authentication and account management |
 | [`observal config`](config.md) | Local CLI configuration, aliases |
 | [`observal scan`](scan.md) | Discover what's installed across your IDEs (read-only) |
-| [`observal pull`](pull.md) | Install a published agent into an IDE |
+| [`observal agent pull`](pull.md) | Install a published agent into an IDE |
 | [`observal registry`](registry.md) | Publish and manage components (MCP / skill / hook / prompt / sandbox) |
+| [`observal component`](component.md) | Manage component versions |
+| [`observal models`](models.md) | Browse and manage model configurations |
 | [`observal agent`](agent.md) | Author and publish agents |
 | [`observal ops`](ops.md) | Observability and operations (traces, spans, metrics, feedback) |
 | [`observal admin`](admin.md) | Admin operations (settings, users, review, eval, canaries) |
@@ -27,6 +30,8 @@ Complete reference for the `observal` CLI. Every subcommand has its own page —
 | [`observal profile`](profile.md) | Switch IDE configs to a git-hosted profile |
 | [`observal self`](self.md) | Upgrade or downgrade the CLI |
 | [`observal prompt`](prompt.md) | Manage reusable prompts in the registry |
+| [`observal server`](server.md) | Manage the embedded server (start, stop, upgrade, rollback) |
+| [`observal uninstall`](uninstall.md) | Completely remove Observal from the system |
 
 ## Global options
 
@@ -36,8 +41,8 @@ Any subcommand accepts these.
 | --- | --- | --- |
 | `--version` | `-V` | Print the CLI version and exit |
 | `--verbose` | `-v` | Verbose output |
-| `--debug` | — | Debug-level logging (extremely verbose) |
-| `--help` | — | Show help for any command or subcommand |
+| `--debug` | - | Debug-level logging (extremely verbose) |
+| `--help` | - | Show help for any command or subcommand |
 
 ## Exit codes
 
@@ -87,4 +92,4 @@ See [`observal config`](config.md) for details.
 
 ## Next
 
-→ [`observal auth`](auth.md) — you'll need to log in first.
+→ [`observal auth`](auth.md): you'll need to log in first.

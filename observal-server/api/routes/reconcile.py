@@ -18,6 +18,7 @@ import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger as optic
 from pydantic import BaseModel
 
 from api.deps import get_current_user
@@ -57,8 +58,9 @@ async def _session_has_data(session_id: str) -> bool:
     Intentionally omits FINAL: an existence check does not need full deduplication
     and FINAL on ReplacingMergeTree forces an expensive cross-part merge just to
     count rows.  An approximate count (potentially including not-yet-merged dupes)
-    is correct for the reconcile gate — we only need to know the session exists.
+    is correct for the reconcile gate - we only need to know the session exists.
     """
+    optic.debug("_session_has_data: session_id={}", session_id)
     sql = "SELECT count() AS cnt FROM session_events WHERE session_id = {sid:String} FORMAT JSON"
     try:
         r = await _query(sql, {"param_sid": session_id})
@@ -71,6 +73,7 @@ async def _session_has_data(session_id: str) -> bool:
 
 async def _already_reconciled(dedup_key: str, key_field: str) -> bool:
     """Return True if a reconcile_enrichment row already exists for dedup_key."""
+    optic.debug("_already_reconciled: dedup_key={}, key_field={}", dedup_key, key_field)
     sql = (
         "SELECT count() AS cnt FROM otel_logs "
         f"WHERE LogAttributes['event.name'] = 'reconcile_enrichment' "
@@ -87,6 +90,7 @@ async def _already_reconciled(dedup_key: str, key_field: str) -> bool:
 
 async def _session_owned_by_user(session_id: str, user_id: str) -> bool:
     """Return True if session_events has at least one row owned by this user."""
+    optic.debug("_session_owned_by_user: session_id={}, user_id={}", session_id, user_id)
     sql = (
         "SELECT count() AS cnt FROM session_events "
         "WHERE session_id = {sid:String} AND user_id = {uid:String} FORMAT JSON"
@@ -112,6 +116,7 @@ async def reconcile_session(payload: ReconcilePayload, current_user: User = Depe
     ``{"status": "skipped"}`` if the record was already present,
     ``{"status": "no_data"}`` if the session has no transcript rows yet.
     """
+    optic.debug("reconcile session")
     if not await _session_has_data(payload.session_id):
         return {"status": "no_data"}
 
