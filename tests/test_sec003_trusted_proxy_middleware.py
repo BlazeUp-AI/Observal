@@ -8,8 +8,8 @@ X-Forwarded-For (client IP) and X-Forwarded-Proto (scheme) are only
 honoured from IPs listed in ``security.trusted_proxy_ips``.
 
 Unlike Uvicorn (which takes the leftmost XFF entry), this middleware
-walks XFF right-to-left and skips trusted proxy IPs — making it
-resistant to spoofing.
+walks XFF right-to-left and skips trusted proxy IPs, making it
+resistant to spoofing. Supports both plain IPs and CIDR notation.
 """
 
 from unittest.mock import patch
@@ -170,3 +170,66 @@ class TestClientIpResolution:
             )
         # Reversed: 10.0.0.1 (trusted, skip), 203.0.113.50 (not trusted, use)
         assert resp.json()["ip"] == "203.0.113.50"
+
+
+# ---------------------------------------------------------------------------
+# CIDR notation support
+# ---------------------------------------------------------------------------
+
+
+class TestCidrSupport:
+    def test_cidr_matches_peer_ip(self):
+        """A peer IP within a trusted CIDR range is recognized as trusted."""
+        app = _make_app()
+        client = TestClient(app)
+        with patch("api.middleware.trusted_proxy.ds") as mock_ds:
+            # testclient is not a real IP, so trust the Docker-style subnet
+            # that contains 127.0.0.1 (TestClient uses 'testclient' as host)
+            mock_ds.get_sync.return_value = "testclient,172.16.0.0/12"
+            resp = client.get(
+                "/info",
+                headers={"X-Forwarded-For": "203.0.113.99, 172.18.0.5"},
+            )
+        # 172.18.0.5 is in 172.16.0.0/12 (trusted, skip), 203.0.113.99 used
+        assert resp.json()["ip"] == "203.0.113.99"
+
+    def test_cidr_skips_xff_entries_in_range(self):
+        """XFF entries within a trusted CIDR are skipped during right-to-left walk."""
+        app = _make_app()
+        client = TestClient(app)
+        with patch("api.middleware.trusted_proxy.ds") as mock_ds:
+            mock_ds.get_sync.return_value = "testclient,10.0.0.0/8"
+            resp = client.get(
+                "/info",
+                headers={"X-Forwarded-For": "82.1.2.3, 10.0.0.1, 10.0.0.2"},
+            )
+        # 10.0.0.2 trusted, 10.0.0.1 trusted, 82.1.2.3 not trusted
+        assert resp.json()["ip"] == "82.1.2.3"
+
+    def test_cidr_does_not_match_outside_range(self):
+        """IPs outside the CIDR range are not considered trusted."""
+        app = _make_app()
+        client = TestClient(app)
+        with patch("api.middleware.trusted_proxy.ds") as mock_ds:
+            # Only 192.168.0.0/16 is trusted; testclient is not in that range
+            mock_ds.get_sync.return_value = "192.168.0.0/16"
+            resp = client.get(
+                "/info",
+                headers={"X-Forwarded-For": "1.2.3.4"},
+            )
+        # testclient not trusted, XFF ignored
+        assert resp.json()["ip"] == "testclient"
+
+    def test_default_docker_cidr_trusts_nginx(self):
+        """The default setting (172.16.0.0/12) matches typical Docker bridge IPs."""
+        from services.shared.ip_utils import is_trusted, parse_trusted
+
+        exact, networks = parse_trusted("172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1")
+        # Typical Docker-assigned nginx IPs
+        assert is_trusted("172.18.0.2", exact, networks)
+        assert is_trusted("172.20.0.5", exact, networks)
+        assert is_trusted("10.0.2.1", exact, networks)
+        assert is_trusted("127.0.0.1", exact, networks)
+        # Public IPs should NOT be trusted
+        assert not is_trusted("8.8.8.8", exact, networks)
+        assert not is_trusted("203.0.113.1", exact, networks)

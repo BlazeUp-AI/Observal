@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Trusted proxy middleware (SEC-003).
@@ -15,8 +16,12 @@ When the TCP peer is a trusted proxy this middleware:
 
 Unlike Uvicorn's --proxy-headers (which takes the leftmost XFF entry and
 is trivially spoofable), this walks the header right-to-left and skips
-trusted proxy IPs — the same algorithm used by _get_real_ip() in
+trusted proxy IPs, using the same algorithm as _get_real_ip() in
 api/ratelimit.py.
+
+The setting supports both plain IPs and CIDR notation (e.g.
+"172.16.0.0/12,10.0.0.0/8") so Docker-internal networks are matched
+regardless of the container IP assigned at runtime.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from typing import TYPE_CHECKING
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import services.dynamic_settings as ds
+from services.shared.ip_utils import is_trusted, parse_trusted
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -37,15 +43,19 @@ class TrustedProxyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host if request.client else None
         trusted_str = ds.get_sync("security.trusted_proxy_ips")
-        trusted = {ip.strip() for ip in trusted_str.split(",") if ip.strip()} if trusted_str else set()
 
-        if client_ip and client_ip in trusted:
+        if not trusted_str or not client_ip:
+            return await call_next(request)
+
+        exact, networks = parse_trusted(trusted_str)
+
+        if is_trusted(client_ip, exact, networks):
             # Resolve real client IP from X-Forwarded-For (rightmost non-trusted)
             forwarded = request.headers.get("x-forwarded-for", "")
             if forwarded:
                 ips = [ip.strip() for ip in forwarded.split(",")]
                 for ip in reversed(ips):
-                    if ip not in trusted:
+                    if not is_trusted(ip, exact, networks):
                         # Overwrite scope so all downstream sees the real IP
                         request.scope["client"] = (ip, request.scope["client"][1])
                         break
