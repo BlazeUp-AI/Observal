@@ -320,3 +320,22 @@ variable "enable_public_ops_paths" {
   type        = bool
   default     = false
 }
+
+# ── License / Edition ──────────────────────────────────────────────────────
+
+variable "observal_license_key" {
+  description = "Observal Enterprise license key. If set and valid, enterprise images and features are used. Leave empty for community edition."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "edition" {
+  description = "Edition to deploy: 'community' or 'enterprise'. Auto-set to 'enterprise' if observal_license_key is provided."
+  type        = string
+  default     = "auto"
+  validation {
+    condition     = contains(["auto", "community", "enterprise"], var.edition)
+    error_message = "edition must be 'auto', 'community', or 'enterprise'."
+  }
+}

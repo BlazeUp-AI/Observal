@@ -8,12 +8,15 @@ FROM node:24-alpine AS base
 
 FROM base AS deps
 WORKDIR /app
-COPY web/package.json web/pnpm-lock.yaml* web/pnpm-workspace.yaml* ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/
+RUN mkdir -p tests/e2e && echo '{"name":"@observal/e2e","version":"0.0.0","private":true,"devDependencies":{"@playwright/test":"^1.59.1"}}' > tests/e2e/package.json
 RUN corepack enable pnpm && pnpm install --frozen-lockfile
+RUN pnpm --filter web deploy --legacy /app/deployed
 
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/deployed ./
 COPY web/ .
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL="http://observal-lb:80"

@@ -6,7 +6,7 @@
 
 # CLI Reference
 
-Complete reference for the `observal` CLI. Every subcommand has its own page — this overview is the index.
+Complete reference for the `observal` CLI. Every subcommand has its own page; this overview is the index.
 
 > **New to Observal?** Start with [Quickstart](../getting-started/quickstart.md) and come back here when you need a specific command.
 
@@ -20,6 +20,8 @@ Complete reference for the `observal` CLI. Every subcommand has its own page —
 | [`observal skill`](skill.md) | Create, submit, manage, and install skills |
 | [`observal pull`](pull.md) | Install a published agent into an IDE |
 | [`observal registry`](registry.md) | Publish and manage components (MCP / skill / hook / prompt / sandbox) |
+| [`observal component`](component.md) | Manage component versions |
+| [`observal models`](models.md) | Browse and manage model configurations |
 | [`observal agent`](agent.md) | Author and publish agents |
 | [`observal ops`](ops.md) | Observability and operations (traces, spans, metrics, feedback) |
 | [`observal admin`](admin.md) | Admin operations (settings, users, review, eval, canaries) |
@@ -28,6 +30,8 @@ Complete reference for the `observal` CLI. Every subcommand has its own page —
 | [`observal migrate`](migrate.md) | Export/import PostgreSQL registry (shallow copy) and ClickHouse telemetry (deep copy) |
 | [`observal profile`](profile.md) | Switch IDE configs to a git-hosted profile |
 | [`observal self`](self.md) | Upgrade or downgrade the CLI |
+| [`observal server`](server.md) | Manage the embedded server (start, stop, upgrade, rollback) |
+| [`observal uninstall`](uninstall.md) | Completely remove Observal from the system |
 
 ## Global options
 
@@ -37,8 +41,8 @@ Any subcommand accepts these.
 | --- | --- | --- |
 | `--version` | `-V` | Print the CLI version and exit |
 | `--verbose` | `-v` | Verbose output |
-| `--debug` | — | Debug-level logging (extremely verbose) |
-| `--help` | — | Show help for any command or subcommand |
+| `--debug` | - | Debug-level logging (extremely verbose) |
+| `--help` | - | Show help for any command or subcommand |
 
 ## Exit codes
 
@@ -88,4 +92,4 @@ See [`observal config`](config.md) for details.
 
 ## Next
 
-→ [`observal auth`](auth.md) — you'll need to log in first.
+→ [`observal auth`](auth.md): you'll need to log in first.

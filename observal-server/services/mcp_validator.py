@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from git import Repo
+from loguru import logger
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -162,7 +163,6 @@ _FILTERED_PREFIXES = (
     "NPM_",
     "PIP_",
     "UV_",
-    "OTEL_",
     "MCP_LOG_",
 )
 
@@ -450,6 +450,7 @@ def _extract_repo_name(git_url: str, tmp_dir: str) -> str:
 
 
 async def run_validation(listing: McpListing, db: AsyncSession):
+    logger.debug("run_validation: listing_id={}, git_url={}", listing.id, listing.git_url)
     await db.execute(delete(McpValidationResult).where(McpValidationResult.listing_id == listing.id))
     await db.commit()
 

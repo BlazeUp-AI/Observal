@@ -82,12 +82,6 @@ class TestGenerateSkillFile:
         result = _generate_skill_file(listing, "cursor", scope="user")
         assert result["path"] == "~/.cursor/rules/code-review.mdc"
 
-    def test_vscode(self):
-        listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "vscode")
-        assert result["path"] == ".github/instructions/code-review.instructions.md"
-        assert "alwaysApply: false" in result["content"]
-
     def test_monolithic_ide_returns_none(self):
         listing = _make_skill_listing()
         assert _generate_skill_file(listing, "codex") is None

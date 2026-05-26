@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2025 Observal Contributors
+# SPDX-FileCopyrightText: 2026 Riya Rani <rr1182764@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Backend integration tests — real HTTP against a running Docker stack.
@@ -11,14 +12,15 @@ Run:
     uv run --with pytest --with pytest-asyncio --with httpx pytest ../tests/test_integration.py -v
 """
 
+import os
 import uuid
 
 import httpx
 import pytest
 
-BASE = "http://localhost:8000"
-ADMIN_EMAIL = "admin@demo.example"
-ADMIN_PASSWORD = "admin-changeme"
+BASE = os.getenv("INTEGRATION_BASE_URL", "http://localhost:8000")
+ADMIN_EMAIL = os.getenv("INTEGRATION_ADMIN_EMAIL", "admin@demo.example")
+ADMIN_PASSWORD = os.getenv("INTEGRATION_ADMIN_PASSWORD", "admin-changeme")
 
 
 def _api_reachable() -> bool:
@@ -265,10 +267,7 @@ class TestAgentLifecycle:
                 "version": "1.0.0",
                 "owner": "admin",
                 "model_name": "claude-sonnet-4-20250514",
-                "goal_template": {
-                    "description": "Test agent",
-                    "sections": [{"name": "General", "description": "General purpose"}],
-                },
+                "prompt": "You are a test agent.",
             },
         )
         assert r.status_code == 200, f"Create failed: {r.text}"
@@ -296,10 +295,7 @@ class TestAgentLifecycle:
                 "version": "1.0.0",
                 "owner": "admin",
                 "model_name": "claude-sonnet-4-20250514",
-                "goal_template": {
-                    "description": "Test",
-                    "sections": [{"name": "General", "description": "x"}],
-                },
+                "prompt": "You are a test agent.",
             },
         )
         r = await client.delete(f"/api/v1/agents/{self.agent_name}", headers=admin_headers)

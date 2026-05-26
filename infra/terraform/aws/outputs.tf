@@ -82,3 +82,9 @@ output "log_group_names" {
     flow_logs = aws_cloudwatch_log_group.flow_logs.name
   }
 }
+
+output "edition" {
+  description = "Deployed edition: community or enterprise."
+  sensitive   = true
+  value       = local.effective_edition
+}

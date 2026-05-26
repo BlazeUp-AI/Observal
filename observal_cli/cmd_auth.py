@@ -8,6 +8,7 @@
 # SPDX-FileCopyrightText: 2026 Shreem Seth <shreemseth26@gmail.com>
 # SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 Riya Rani <rr1182764@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Auth & config CLI commands."""
@@ -22,10 +23,12 @@ from pathlib import Path
 
 import httpx
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 
 from observal_cli import client, config
 from observal_cli.branding import welcome_banner
+from observal_cli.prompts import password_input, text_input
 from observal_cli.render import console, kv_panel, spinner, status_badge
 
 # ── Auth subgroup ───────────────────────────────────────────
@@ -52,17 +55,19 @@ _PASSWORD_REQUIREMENTS = [
 
 def _validate_password(password: str) -> list[str]:
     """Return list of unmet requirement descriptions, empty if valid."""
+    optic.debug("_validate_password called")
     return [label for label, check in _PASSWORD_REQUIREMENTS if not check(password)]
 
 
 def _prompt_password(prompt_text: str = "New password") -> str:
     """Prompt for a password, show requirements, retry until valid."""
+    optic.debug("_prompt_password: prompt_text={}", prompt_text)
     rprint("\n[dim]Password requirements:[/dim]")
     for label, _ in _PASSWORD_REQUIREMENTS:
         rprint(f"  [dim]· {label}[/dim]")
 
     while True:
-        pw = typer.prompt(f"\n{prompt_text}", hide_input=True)
+        pw = password_input(prompt_text)
         failed = _validate_password(pw)
         if not failed:
             return pw
@@ -81,12 +86,23 @@ def login(
 ):
     """Connect to Observal.
 
-    On a fresh server: prompts for email, name, and password to create admin.
-    With email+password: logs in with credentials.
-    With --sso: authenticates via browser-based SSO using the device flow.
+    On a fresh server: prompts for email, name, and password to create the
+    first admin account. On an initialized server: logs in with credentials
+    or SSO. After login, runs `observal doctor` to check IDE instrumentation.
+
+    If the server has SSO enabled, you can choose browser-based login via
+    the device authorization flow (opens your default browser).
+
+    Examples:
+        observal auth login
+        observal auth login --server http://observal.internal:80
+        observal auth login -e admin@example.com -p 'MyP@ss1234!'
+        observal auth login --sso
     """
+    optic.debug("cli: auth login")
     welcome_banner()
-    server_url = server or typer.prompt("Server URL", default="http://localhost:8000")
+
+    server_url = server or text_input("Server URL", default="http://localhost:80")
     server_url = server_url.rstrip("/")
 
     # 1. Check connectivity + initialization state
@@ -104,20 +120,17 @@ def login(
 
     initialized = health_data.get("initialized", True)
 
-    # Check CLI/server version compatibility
-    client.check_version_compatibility(server_url)
-
     # 2. Fresh server → prompt for admin credentials and initialize
     if not initialized:
-        rprint("[green]Connected.[/green] No users yet — let's set up your admin account.\n")
+        rprint("[green]Connected.[/green] No users yet - let's set up your admin account.\n")
 
-        admin_email = email or typer.prompt("Admin email")
-        admin_name = name or typer.prompt("Admin name", default="admin")
+        admin_email = email or text_input("Admin email")
+        admin_name = name or text_input("Admin name", default="admin")
         if password:
             admin_password = password
         else:
             admin_password = _prompt_password("Admin password")
-            confirm = typer.prompt("Confirm password", hide_input=True)
+            confirm = password_input("Confirm password")
             if admin_password != confirm:
                 rprint("[red]Passwords do not match.[/red]")
                 raise typer.Exit(1)
@@ -142,21 +155,13 @@ def login(
                 "user_name": user.get("name", ""),
             }
             if endpoints:
-                cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
                 cfg_data["web_url"] = endpoints.get("web", "")
             config.save(cfg_data)
 
             rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [admin]")
             rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]\n")
             _fetch_server_public_key(server_url)
-            _configure_claude_code(server_url, data["access_token"])
-            _configure_kiro(server_url)
-            _configure_gemini_cli(server_url)
-            _configure_codex(server_url)
-            _configure_copilot(server_url)
-            _configure_copilot_cli(server_url)
-            _configure_opencode(server_url)
-            _post_auth_onboarding()
+            _post_login_setup()
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 400 and "already initialized" in e.response.text.lower():
@@ -190,7 +195,7 @@ def login(
         if sso_available:
             rprint("  [2] SSO (opens browser)")
         rprint("  [3] Sign in via browser")
-        choice = typer.prompt("Login method", default="1")
+        choice = text_input("Login method", default="1")
         if (choice == "2" and sso_available) or choice == "3":
             sso_mode = True
 
@@ -204,26 +209,46 @@ def login(
         return
 
     # 5. Interactive: prompt for email/username + password
-    login_email = email or typer.prompt("Email or username")
-    login_password = password or typer.prompt("Password", hide_input=True)
+    # In _do_password_login / login interactive section
+    login_email = email or text_input("Email or username")
+    login_password = password or password_input("Password")
     _do_password_login(server_url, login_email, login_password)
 
 
 @auth_app.command()
 def init():
-    """[Removed] Use 'observal auth login' + 'observal agent pull' instead."""
+    """[Removed] Use 'observal auth login' + 'observal agent pull' instead.
+
+    This command has been removed. The login command now handles server
+    initialization automatically, and agent pull fetches configs.
+
+    Examples:
+        observal auth login
+        observal agent pull my-agent
+    """
+    optic.debug("init called")
     rprint("[yellow]'observal auth init' has been removed.[/yellow]")
     rprint()
     rprint("Use these commands instead:")
-    rprint("  [bold]observal auth login[/bold]   — connect to your server")
-    rprint("  [bold]observal agent pull[/bold]   — pull agent config to your IDE")
+    rprint("  [bold]observal auth login[/bold]   - connect to your server")
+    rprint("  [bold]observal agent pull[/bold]   - pull agent config to your IDE")
     raise typer.Exit(1)
 
 
 @auth_app.command()
 def logout():
-    """Clear saved credentials."""
+    """Clear saved credentials.
+
+    Revokes tokens on the server (best-effort), then removes access and
+    refresh tokens from the local config file. The server URL and other
+    settings are preserved. IDE hooks will stop sending telemetry after
+    logout.
+
+    Examples:
+        observal auth logout
+    """
     # Best-effort: revoke tokens on the server before clearing locally
+    optic.debug("cli: auth logout")
     if config.CONFIG_FILE.exists():
         import json
 
@@ -243,7 +268,7 @@ def logout():
                 )
                 resp.raise_for_status()
             except Exception:
-                pass  # Best-effort — proceed with local cleanup regardless
+                pass  # Best-effort - proceed with local cleanup regardless
 
         for key in ("access_token", "refresh_token", "api_key"):
             raw_cfg.pop(key, None)
@@ -262,7 +287,16 @@ def logout():
 def whoami(
     output: str = typer.Option("table", "--output", "-o", help="Output format: table, json"),
 ):
-    """Show current authenticated user."""
+    """Show current authenticated user.
+
+    Queries the server for the user associated with the stored access
+    token. Displays username, email, role, and user ID.
+
+    Examples:
+        observal auth whoami
+        observal auth whoami --output json
+    """
+    optic.debug("cli: auth whoami")
     with spinner("Checking..."):
         user = client.get("/api/v1/auth/whoami")
     if output == "json":
@@ -285,7 +319,16 @@ def whoami(
 
 @auth_app.command()
 def status():
-    """Check server connectivity and health."""
+    """Check server connectivity and health.
+
+    Shows the configured server URL, whether auth is configured, server
+    reachability with latency, and local telemetry buffer stats. Useful
+    for diagnosing connectivity issues.
+
+    Examples:
+        observal auth status
+    """
+    optic.debug("status called")
     cfg = config.load()
     url = cfg.get("server_url", "not set")
     has_token = bool(cfg.get("access_token"))
@@ -296,7 +339,6 @@ def status():
     if ok:
         color = "green" if latency < 200 else "yellow" if latency < 1000 else "red"
         rprint(f"  Health:  [{color}]ok[/{color}] ({latency:.0f}ms)")
-        client.check_version_compatibility(url)
     else:
         rprint("  Health:  [red]unreachable[/red]")
 
@@ -320,7 +362,16 @@ def status():
 
 @auth_app.command(name="change-password")
 def change_password():
-    """Change your password."""
+    """Change your password.
+
+    Prompts for your current password, then asks for a new password that
+    meets the security requirements (12+ chars, uppercase, number, and
+    special character). Requires an active login session.
+
+    Examples:
+        observal auth change-password
+    """
+    optic.debug("change_password called")
     cfg = config.load()
     server_url = cfg.get("server_url")
     token = cfg.get("access_token")
@@ -328,9 +379,9 @@ def change_password():
         rprint("[red]Not logged in.[/red] Run [bold]observal auth login[/bold] first.")
         raise typer.Exit(1)
 
-    current = typer.prompt("Current password", hide_input=True)
+    current = password_input("Current password")
     new_pw = _prompt_password("New password")
-    confirm = typer.prompt("Confirm new password", hide_input=True)
+    confirm = password_input("Confirm password")
     if new_pw != confirm:
         rprint("[red]Passwords do not match.[/red]")
         raise typer.Exit(1)
@@ -359,7 +410,17 @@ def change_password():
 def set_username(
     username: str = typer.Argument(..., help="Username (3-32 chars, lowercase alphanumeric and hyphens)"),
 ):
-    """Set or update your username."""
+    """Set or update your username.
+
+    Usernames must be 3 to 32 characters, lowercase alphanumeric with
+    hyphens allowed. Once set, your username can be used for login and
+    is displayed as @username in the UI.
+
+    Examples:
+        observal auth set-username alice
+        observal auth set-username my-dev-handle
+    """
+    optic.debug("set_username: username={}", username)
     from observal_cli import client as _client
 
     try:
@@ -388,9 +449,10 @@ def version_callback():
 def _fetch_endpoints(server_url: str) -> dict:
     """Fetch service endpoint URLs from the discovery endpoint.
 
-    Returns a dict with api, otlp_http, web URLs.
+    Returns a dict with api, web URLs.
     Falls back to sensible defaults if the endpoint is unavailable.
     """
+    optic.debug("_fetch_endpoints: server_url={}", server_url)
     try:
         r = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/endpoints", timeout=5)
         if r.status_code == 200:
@@ -406,6 +468,7 @@ def _fetch_server_public_key(server_url: str):
     Best-effort: silently ignored if the server doesn't expose the endpoint
     yet (older server versions) or if connectivity fails.
     """
+    optic.debug("_fetch_server_public_key: server_url={}", server_url)
     try:
         r = httpx.get(f"{server_url.rstrip('/')}/api/v1/sessions/crypto/public-key", timeout=5)
         if r.status_code == 200:
@@ -421,6 +484,7 @@ def _fetch_server_public_key(server_url: str):
 
 def _do_password_login(server_url: str, email: str, password: str):
     """Authenticate with email/username + password."""
+    optic.debug("_do_password_login: server_url={}, email={}", server_url, email)
     try:
         with spinner("Authenticating..."):
             r = httpx.post(
@@ -436,8 +500,8 @@ def _do_password_login(server_url: str, email: str, password: str):
         if data.get("must_change_password"):
             rprint("[yellow]Your admin has required a password change.[/yellow]\n")
             access_token = data["access_token"]
-            new_pw = typer.prompt("New password", hide_input=True)
-            confirm = typer.prompt("Confirm new password", hide_input=True)
+            new_pw = password_input("New password")
+            confirm = password_input("Confirm new password")
             if new_pw != confirm:
                 rprint("[red]Passwords do not match.[/red]")
                 raise typer.Exit(1)
@@ -463,21 +527,13 @@ def _do_password_login(server_url: str, email: str, password: str):
             "user_name": user.get("name", ""),
         }
         if endpoints:
-            cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
             cfg_data["web_url"] = endpoints.get("web", "")
         config.save(cfg_data)
         rprint(f"[green]Logged in as {user['name']}[/green] ({user['email']}) [{user.get('role', '')}]")
         rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
 
         _fetch_server_public_key(server_url)
-        _configure_claude_code(server_url, data["access_token"])
-        _configure_kiro(server_url)
-        _configure_gemini_cli(server_url)
-        _configure_codex(server_url)
-        _configure_copilot(server_url)
-        _configure_copilot_cli(server_url)
-        _configure_opencode(server_url)
-        _post_auth_onboarding()
+        _post_login_setup()
 
     except httpx.HTTPStatusError as e:
         detail = ""
@@ -491,6 +547,7 @@ def _do_password_login(server_url: str, email: str, password: str):
 
 def _do_device_flow_login(server_url: str):
     """Authenticate via browser-based SSO using the device authorization flow."""
+    optic.debug("_do_device_flow_login: server_url={}", server_url)
     import time
     import webbrowser
 
@@ -564,7 +621,6 @@ def _do_device_flow_login(server_url: str):
                     "user_name": user.get("name", ""),
                 }
                 if endpoints:
-                    cfg_data["otlp_url"] = endpoints.get("otlp_http", "")
                     cfg_data["web_url"] = endpoints.get("web", "")
                 config.save(cfg_data)
 
@@ -575,14 +631,7 @@ def _do_device_flow_login(server_url: str):
                 rprint(f"[dim]Config saved to {config.CONFIG_FILE}[/dim]")
 
                 _fetch_server_public_key(server_url)
-                _configure_claude_code(server_url, token_data["access_token"])
-                _configure_kiro(server_url)
-                _configure_gemini_cli(server_url)
-                _configure_codex(server_url)
-                _configure_copilot(server_url)
-                _configure_copilot_cli(server_url)
-                _configure_opencode(server_url)
-                _post_auth_onboarding()
+                _post_login_setup()
                 return
 
             if r.status_code == 428:
@@ -620,7 +669,15 @@ def register_config(app: typer.Typer):
 
     @config_app.command(name="show")
     def config_show():
-        """Show current CLI configuration."""
+        """Show current CLI configuration.
+
+        Prints all config values as JSON. Access and refresh tokens are
+        masked for safety. The config file lives at ~/.observal/config.json.
+
+        Examples:
+            observal config show
+        """
+        optic.debug("config_show called")
         cfg = config.load()
         safe = dict(cfg)
         if safe.get("access_token"):
@@ -638,7 +695,18 @@ def register_config(app: typer.Typer):
         key: str = typer.Argument(..., help="Config key (output, color, server_url)"),
         value: str = typer.Argument(..., help="Config value"),
     ):
-        """Set a CLI config value."""
+        """Set a CLI config value.
+
+        Persists the given key/value pair to ~/.observal/config.json.
+        Common keys: output (table/json/plain), color (true/false),
+        server_url.
+
+        Examples:
+            observal config set output json
+            observal config set color false
+            observal config set server_url http://observal.internal:80
+        """
+        optic.debug("config_set: key={}, value={}", key, value)
         if key == "color":
             config.save({key: value.lower() in ("true", "1", "yes")})
         else:
@@ -647,7 +715,16 @@ def register_config(app: typer.Typer):
 
     @config_app.command(name="path")
     def config_path():
-        """Show config file path."""
+        """Show config file path.
+
+        Prints the absolute path to the CLI config file. Useful for
+        scripting or manual edits.
+
+        Examples:
+            observal config path
+            cat $(observal config path)
+        """
+        optic.debug("config_path called")
         rprint(str(config.CONFIG_FILE))
 
     @config_app.command(name="alias")
@@ -655,7 +732,17 @@ def register_config(app: typer.Typer):
         name: str = typer.Argument(..., help="Alias name (used as @name)"),
         target: str = typer.Argument(None, help="Target ID (omit to remove)"),
     ):
-        """Set or remove an alias for an MCP/agent ID."""
+        """Set or remove an alias for an MCP/agent ID.
+
+        Aliases let you reference agents or components by short names
+        instead of UUIDs. Use @name in any command that accepts an ID.
+        Omit the target argument to remove an existing alias.
+
+        Examples:
+            observal config alias myagent 550e8400-e29b-41d4-a716-446655440000
+            observal config alias myagent
+        """
+        optic.debug("config_alias: name={}, target={}", name, target)
         aliases = config.load_aliases()
         if target:
             aliases[name] = target
@@ -671,7 +758,15 @@ def register_config(app: typer.Typer):
 
     @config_app.command(name="aliases")
     def config_aliases():
-        """List all aliases."""
+        """List all aliases.
+
+        Shows all configured @name to ID mappings. Aliases are stored
+        in ~/.observal/aliases.json.
+
+        Examples:
+            observal config aliases
+        """
+        optic.debug("config_aliases called")
         aliases = config.load_aliases()
         if not aliases:
             rprint("[dim]No aliases set. Use: observal config alias <name> <id>[/dim]")
@@ -682,8 +777,30 @@ def register_config(app: typer.Typer):
     app.add_typer(config_app, name="config")
 
 
+def _post_login_setup():
+    """Post-login setup: run observal doctor which checks and offers to fix."""
+    optic.debug("_post_login_setup called")
+    rprint()
+    try:
+        from unittest.mock import MagicMock
+
+        from observal_cli.cmd_doctor import doctor
+
+        # Call doctor inline so stdin prompts work naturally.
+        # Pass a fake ctx with invoked_subcommand=None so it runs the check logic.
+        ctx = MagicMock()
+        ctx.invoked_subcommand = None
+        doctor(ctx=ctx, yes=False)
+    except (SystemExit, typer.Exit, typer.Abort):
+        pass  # Normal exit from doctor
+    except Exception as e:
+        rprint(f"[yellow]Could not run doctor: {e}[/yellow]")
+        rprint("  Run [bold]observal doctor[/bold] manually to configure your IDEs.")
+
+
 def _post_auth_onboarding():
     """Detect local IDE configs and show what was found."""
+    optic.debug("_post_auth_onboarding called")
     try:
         _ide_dirs = {
             "Claude Code": (Path.home() / ".claude", "claude-code"),
@@ -693,6 +810,7 @@ def _post_auth_onboarding():
             "Codex": (Path.home() / ".codex", "codex"),
             "Copilot": (Path.home() / ".vscode", "copilot"),
             "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
+            "Pi": (Path.home() / ".pi" / "agent", "pi"),
         }
 
         found: list[tuple[str, str, int, int]] = []  # (label, ide_key, agents, mcps)
@@ -700,59 +818,16 @@ def _post_auth_onboarding():
             if not dir_path.is_dir():
                 continue
             agents = mcps = 0
-            if ide_key == "claude-code":
-                from observal_cli.cmd_scan import _scan_claude_home
+            try:
+                from observal_cli.ide import NotSupportedError, ensure_loaded, get_adapter
 
-                m, _s, _h, a = _scan_claude_home(dir_path)
-                agents, mcps = len(a), len(m)
-            elif ide_key == "kiro":
-                from observal_cli.cmd_scan import _scan_kiro_home
-
-                m, _s, _h, a = _scan_kiro_home(dir_path)
-                agents, mcps = len(a), len(m)
-            elif ide_key == "gemini-cli":
-                from observal_cli.cmd_scan import _scan_gemini_home
-
-                m, _s, _h, _a = _scan_gemini_home(dir_path)
-                mcps = len(m)
-            elif ide_key == "codex":
-                # Codex: parse ~/.codex/config.toml for [mcp.servers]
-                toml_file = dir_path / "config.toml"
-                if toml_file.exists():
-                    try:
-                        try:
-                            import tomllib as _toml
-                        except ImportError:
-                            try:
-                                import tomli as _toml  # type: ignore[no-redef]
-                            except ImportError:
-                                import toml as _toml  # type: ignore[no-redef]
-                        content = toml_file.read_text()
-                        data = _toml.loads(content) if hasattr(_toml, "loads") else _toml.load(toml_file.open("rb"))  # type: ignore[call-arg]
-                        mcps = len(data.get("mcp", {}).get("servers", {}))
-                    except Exception:
-                        pass
-            elif ide_key == "opencode":
-                # OpenCode: parse ~/.config/opencode/opencode.json for `mcp` key
-                oc_file = dir_path / "opencode.json"
-                if oc_file.exists():
-                    try:
-                        import json as _j
-
-                        oc_data = _j.loads(oc_file.read_text())
-                        mcps = len(oc_data.get("mcp", {}))
-                    except Exception:
-                        pass
-            else:
-                mcp_file = dir_path / "mcp.json"
-                if mcp_file.exists():
-                    try:
-                        import json as _j
-
-                        data = _j.loads(mcp_file.read_text())
-                        mcps = len(data.get("mcpServers", data.get("servers", {})))
-                    except Exception:
-                        pass
+                ensure_loaded()
+                adapter = get_adapter(ide_key)
+                result = adapter.scan_home(dir_path.parent)
+                agents = len(result.agents)
+                mcps = len(result.mcps)
+            except (KeyError, NotSupportedError):
+                pass
             if agents > 0 or mcps > 0:
                 found.append((label, ide_key, agents, mcps))
 
@@ -768,7 +843,7 @@ def _post_auth_onboarding():
                 parts.append(f"{agents} agent{'s' if agents != 1 else ''}")
             if mcps:
                 parts.append(f"{mcps} MCP{'s' if mcps != 1 else ''}")
-            rprint(f"  [bold]{label}[/bold] — {', '.join(parts)} found")
+            rprint(f"  [bold]{label}[/bold] - {', '.join(parts)} found")
         rprint()
         rprint("[dim]Run `observal doctor patch --all --all-ides` to instrument telemetry.[/dim]")
 
@@ -776,8 +851,100 @@ def _post_auth_onboarding():
         pass
 
 
+def _install_observal_skill():
+    """Install the bundled Observal skills to all detected IDE skill directories.
+
+    This makes the 'observal' family of skills available to LLMs in every IDE
+    that supports skills, enabling commands like `/observal create an agent` or
+    `kiro-cli chat --agent observal`.
+    """
+    optic.debug("_install_observal_skill called")
+    import json as _json
+
+    from observal_cli.ide_registry import IDE_REGISTRY
+
+    skills_base = Path(__file__).parent / "skills"
+    skill_dirs = [
+        "observal",
+        "observal-agents",
+        "observal-registry",
+        "observal-ops",
+        "observal-admin",
+        "observal-advanced",
+    ]
+
+    # Verify at least the core skill exists.
+    core_skill = skills_base / "observal" / "SKILL.md"
+    if not core_skill.exists():
+        return
+
+    installed: list[str] = []
+
+    # Additional user-scope skill paths not formally in the registry but known to work.
+    # Kiro supports ~/.kiro/skills/<name>/SKILL.md at user scope even though the
+    # registry only documents the project-scope path.
+    _extra_user_paths: dict[str, str] = {
+        "kiro": "~/.kiro/skills/{name}/SKILL.md",
+    }
+
+    for ide, spec in IDE_REGISTRY.items():
+        skill_file_spec = spec.get("skill_file") or {}
+
+        # Install to user scope (global)
+        user_path = skill_file_spec.get("user") or _extra_user_paths.get(ide)
+        if not user_path:
+            continue
+
+        # Only install if the IDE directory exists (IDE is installed)
+        ide_config_dir = Path.home() / spec.get("config_dir", "")
+        if not ide_config_dir.exists():
+            continue
+
+        ide_installed = False
+        for skill_dir in skill_dirs:
+            source = skills_base / skill_dir / "SKILL.md"
+            if not source.exists():
+                continue
+            resolved = user_path.replace("{name}", skill_dir)
+            dest = Path(resolved.replace("~", str(Path.home())))
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+                ide_installed = True
+            except OSError:
+                pass
+
+        if ide_installed:
+            installed.append(spec["display_name"])
+
+    # Kiro-specific: ensure the active agent has skill resources wired up.
+    # Without this, skills in ~/.kiro/skills/ are invisible to the agent.
+    _kiro_skill_resource = "skill://~/.kiro/skills/*/SKILL.md"
+    kiro_settings = Path.home() / ".kiro" / "settings" / "cli.json"
+    if kiro_settings.exists():
+        try:
+            settings_data = _json.loads(kiro_settings.read_text())
+            active_agent = settings_data.get("chat.defaultAgent", "")
+            if active_agent:
+                agent_file = Path.home() / ".kiro" / "agents" / f"{active_agent}.json"
+                if agent_file.exists():
+                    agent_data = _json.loads(agent_file.read_text())
+                    resources = agent_data.get("resources", [])
+                    if _kiro_skill_resource not in resources:
+                        resources.append(_kiro_skill_resource)
+                        agent_data["resources"] = resources
+                        agent_file.write_text(_json.dumps(agent_data, indent=2) + "\n")
+        except (OSError, _json.JSONDecodeError):
+            pass
+
+    if installed:
+        rprint(f"\n[green]✓ Observal skill installed for:[/green] {', '.join(installed)}")
+        rprint('[dim]  LLMs can now use Observal commands directly (e.g. "create a PR agent for kiro")[/dim]')
+
+
 def _run_doctor_patch(ide_name: str):
     """Run 'observal doctor patch --all --ide <name>' as a subprocess."""
+    optic.debug("_run_doctor_patch: ide_name={}", ide_name)
     import subprocess
     import sys
 
@@ -801,8 +968,32 @@ def _run_doctor_patch(ide_name: str):
         rprint(f"Run [bold]observal doctor patch --all --ide {ide_name}[/bold] manually.")
 
 
+def _configure_cursor(server_url: str):
+    """Check for Cursor (IDE or CLI) and offer to configure its telemetry hooks."""
+    optic.debug("_configure_cursor: server_url={}", server_url)
+    cursor_dir = Path.home() / ".cursor"
+
+    try:
+        cursor_exists = cursor_dir.is_dir() or shutil.which("cursor")
+        if not cursor_exists:
+            return
+
+        if not typer.confirm(
+            "\nDetected Cursor. Configure telemetry -> Observal?",
+            default=True,
+        ):
+            return
+
+        _run_doctor_patch("cursor")
+
+    except Exception as e:
+        rprint(f"\n[yellow]Could not configure Cursor automatically: {e}[/yellow]")
+        rprint("Run [bold]observal doctor patch --all --ide cursor[/bold] to set up manually.")
+
+
 def _configure_kiro(server_url: str):
     """Check for Kiro CLI and offer to configure its telemetry hooks."""
+    optic.debug("_configure_kiro: server_url={}", server_url)
     kiro_dir = Path.home() / ".kiro"
 
     try:
@@ -825,6 +1016,7 @@ def _configure_kiro(server_url: str):
 
 def _configure_gemini_cli(server_url: str):
     """Check for Gemini CLI and configure telemetry via doctor patch."""
+    optic.debug("_configure_gemini_cli: server_url={}", server_url)
     try:
         # The gemini binary is the definitive signal.
         # ~/.gemini/settings.json can be created by a previous observal doctor patch,
@@ -847,6 +1039,7 @@ def _configure_gemini_cli(server_url: str):
 
 def _configure_codex(server_url: str):
     """Check for Codex CLI and configure telemetry via doctor patch."""
+    optic.debug("_configure_codex: server_url={}", server_url)
     codex_dir = Path.home() / ".codex"
 
     try:
@@ -855,7 +1048,7 @@ def _configure_codex(server_url: str):
             return
 
         if not typer.confirm(
-            "\nDetected Codex CLI. Configure OTLP telemetry -> Observal?",
+            "\nDetected Codex CLI. Configure telemetry -> Observal?",
             default=True,
         ):
             return
@@ -869,6 +1062,7 @@ def _configure_codex(server_url: str):
 
 def _configure_copilot(server_url: str):
     """Check for GitHub Copilot (VS Code) and configure telemetry via doctor patch."""
+    optic.debug("_configure_copilot: server_url={}", server_url)
     try:
         vscode_dir = Path.home() / ".vscode"
         if not vscode_dir.is_dir():
@@ -896,6 +1090,7 @@ def _configure_copilot(server_url: str):
 
 def _configure_copilot_cli(server_url: str):
     """Check for Copilot CLI and configure telemetry via doctor patch."""
+    optic.debug("_configure_copilot_cli: server_url={}", server_url)
     try:
         # The copilot binary is the definitive signal.
         # ~/.copilot/config.json can be created by a previous observal doctor patch,
@@ -917,6 +1112,7 @@ def _configure_copilot_cli(server_url: str):
 
 def _configure_opencode(server_url: str):
     """Check for OpenCode and configure telemetry via doctor patch."""
+    optic.debug("_configure_opencode: server_url={}", server_url)
     try:
         # The opencode binary is the strongest signal.
         # ~/.config/opencode/opencode.json can be created by a previous observal
@@ -942,6 +1138,7 @@ def _configure_claude_code(server_url: str, access_token: str):
     Fetches a long-lived hooks token first (needed by the patch command),
     then delegates to 'observal doctor patch --all --ide claude-code'.
     """
+    optic.debug("_configure_claude_code: server_url={}", server_url)
     claude_dir = Path.home() / ".claude"
 
     try:
@@ -970,10 +1167,11 @@ def _configure_claude_code(server_url: str, access_token: str):
 
 
 def _fetch_hooks_token(server_url: str, access_token: str) -> str:
-    """Call /auth/hooks-token to get a long-lived token for OTEL hooks.
+    """Call /auth/hooks-token to get a long-lived token for telemetry hooks.
 
     Falls back to the session access_token if the endpoint fails.
     """
+    optic.debug("_fetch_hooks_token: server_url={}", server_url)
     try:
         r = httpx.post(
             f"{server_url.rstrip('/')}/api/v1/auth/hooks-token",

@@ -11,18 +11,20 @@ from __future__ import annotations
 import json as _json
 
 import typer
+from loguru import logger
 from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.constants import VALID_PROMPT_CATEGORIES
-from observal_cli.prompts import select_one
+from observal_cli.prompts import select_one, text_input
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
 prompt_app = typer.Typer(help="Prompt registry commands")
 
 
 def register_prompt(app: typer.Typer):
+    logger.debug("register_prompt called")
     app.add_typer(prompt_app, name="prompt")
 
 
@@ -34,9 +36,19 @@ def prompt_submit(
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (prompt ID)"),
 ):
-    """Submit a new prompt for review.
+    """Submit a new prompt template for review.
+
+    Prompts are reusable templates with variable placeholders that agents can
+    render at runtime. You can submit interactively, from a JSON file, or save
+    as a draft first and submit later with --submit.
 
     Only submit prompts you created or are the point-of-contact for.
+
+    Examples:
+        observal registry prompt submit
+        observal registry prompt submit --from-file prompt.json
+        observal registry prompt submit --draft
+        observal registry prompt submit --submit abc123
     """
     rprint("[dim]Note: Only submit components you created (private) or are the point-of-contact for (external).[/dim]")
     if draft and submit_draft:
@@ -58,21 +70,21 @@ def prompt_submit(
             payload = _json.loads(content)
         except _json.JSONDecodeError:
             payload = {
-                "name": typer.prompt("Prompt name"),
-                "version": typer.prompt("Version", default="1.0.0"),
-                "description": typer.prompt("Description"),
-                "owner": typer.prompt("Owner", default=config.load().get("user_name", "")),
+                "name": text_input("Prompt name"),
+                "version": text_input("Version", default="1.0.0"),
+                "description": text_input("Description"),
+                "owner": text_input("Owner", default=config.load().get("user_name", "")),
                 "category": select_one("Category", VALID_PROMPT_CATEGORIES),
                 "template": content,
             }
     else:
         payload = {
-            "name": typer.prompt("Prompt name"),
-            "version": typer.prompt("Version", default="1.0.0"),
-            "description": typer.prompt("Description"),
-            "owner": typer.prompt("Owner", default=config.load().get("user_name", "")),
+            "name": text_input("Prompt name"),
+            "version": text_input("Version", default="1.0.0"),
+            "description": text_input("Description"),
+            "owner": text_input("Owner", default=config.load().get("user_name", "")),
             "category": select_one("Category", VALID_PROMPT_CATEGORIES),
-            "template": typer.prompt("Template"),
+            "template": text_input("Template"),
         }
 
     if draft:
@@ -91,7 +103,17 @@ def prompt_list(
     search: str | None = typer.Option(None, "--search", "-s"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List approved prompts."""
+    """List approved prompts in the registry.
+
+    Shows only prompts with approved status. Use --category or --search to
+    filter results. Row numbers from the output can be used as references
+    in subsequent commands.
+
+    Examples:
+        observal registry prompt list
+        observal registry prompt list --category coding
+        observal registry prompt list --search "refactor" --output json
+    """
     params = {}
     if category:
         params["category"] = category
@@ -133,7 +155,15 @@ def prompt_list(
 def prompt_my(
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List your own prompts (all statuses)."""
+    """List your own prompts across all statuses.
+
+    Shows drafts, pending, approved, and rejected prompts you submitted.
+    Useful for tracking the review status of your submissions.
+
+    Examples:
+        observal registry prompt my
+        observal registry prompt my --output json
+    """
     with spinner("Fetching your prompts..."):
         data = client.get("/api/v1/prompts/my")
     if not data:
@@ -171,7 +201,17 @@ def prompt_show(
     prompt_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Show prompt details."""
+    """Show detailed information about a prompt.
+
+    Displays metadata, status, category, template content, and timestamps.
+    Accepts a UUID, name, row number from a previous list, or @alias.
+
+    Examples:
+        observal registry prompt show my-prompt
+        observal registry prompt show 1
+        observal registry prompt show @refactor-prompt
+        observal registry prompt show abc123 --output json
+    """
     resolved = config.resolve_alias(prompt_id)
     with spinner():
         item = client.get(f"/api/v1/prompts/{resolved}")
@@ -201,7 +241,16 @@ def prompt_render(
     prompt_id: str = typer.Argument(..., help="Prompt ID, name, row number, or @alias"),
     var: list[str] = typer.Option([], "--var", "-v", help="Variable as key=value"),
 ):
-    """Render a prompt template with variables."""
+    """Render a prompt template with variable substitution.
+
+    Sends variable key=value pairs to the server, which substitutes them
+    into the prompt template and returns the rendered output. Also emits
+    a prompt_render telemetry span.
+
+    Examples:
+        observal registry prompt render my-prompt --var lang=python
+        observal registry prompt render @tpl --var file=main.py --var task=refactor
+    """
     resolved = config.resolve_alias(prompt_id)
     variables = {}
     for v in var:
@@ -218,7 +267,15 @@ def prompt_install(
     ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
 ):
-    """Get install config for a prompt."""
+    """Generate IDE install configuration for a prompt.
+
+    Produces the config snippet needed to make this prompt available in
+    the specified IDE. Use --raw to pipe the JSON directly to a file.
+
+    Examples:
+        observal registry prompt install my-prompt --ide claude-code
+        observal registry prompt install @tpl --ide cursor --raw > prompt.json
+    """
     resolved = config.resolve_alias(prompt_id)
     with spinner(f"Generating {ide} config..."):
         result = client.post(f"/api/v1/prompts/{resolved}/install", {"ide": ide})
@@ -240,7 +297,18 @@ def prompt_edit(
     category: str | None = typer.Option(None, "--category", "-c", help="New category"),
     template: str | None = typer.Option(None, "--template", "-t", help="New template text"),
 ):
-    """Edit a draft, rejected, or pending prompt submission."""
+    """Edit a draft, rejected, or pending prompt submission.
+
+    Updates fields on a prompt that has not yet been approved. You can
+    provide individual field options or load all updates from a JSON file.
+    Acquires an edit lock to prevent concurrent modifications.
+
+    Examples:
+        observal registry prompt edit my-prompt --description "Updated desc"
+        observal registry prompt edit abc123 --from-file updates.json
+        observal registry prompt edit @tpl --template "New template: {{var}}"
+        observal registry prompt edit 2 --version 2.0.0 --category debugging
+    """
     resolved = config.resolve_alias(prompt_id)
     if from_file:
         try:
@@ -293,7 +361,16 @@ def prompt_delete(
     prompt_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete a prompt."""
+    """Delete a prompt from the registry.
+
+    Permanently removes the prompt. Prompts you own can be deleted regardless
+    of status. Requires confirmation unless --yes is passed.
+
+    Examples:
+        observal registry prompt delete my-prompt
+        observal registry prompt delete abc123 --yes
+        observal registry prompt delete @old-template -y
+    """
     resolved = config.resolve_alias(prompt_id)
     if not yes:
         with spinner():

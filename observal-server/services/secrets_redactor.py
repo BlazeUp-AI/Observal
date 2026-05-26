@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Secrets redactor for trace ingestion.
@@ -15,6 +16,9 @@ BEFORE storage in ClickHouse.  Designed to avoid over-stripping:
 """
 
 import re
+from typing import Any
+
+from loguru import logger
 
 # ---------------------------------------------------------------------------
 # Known API key prefixes — near-zero false-positive rate.
@@ -153,6 +157,7 @@ _redaction_count: int = 0
 
 
 def get_and_reset_redaction_count() -> int:
+    logger.debug("get_and_reset_redaction_count called")
     global _redaction_count
     count = _redaction_count
     _redaction_count = 0
@@ -165,6 +170,7 @@ def redact_secrets(text: str) -> str:
     Safe to call on any string — returns the original if nothing matches.
     Idempotent: calling twice produces the same result.
     """
+    logger.debug("redact_secrets: text={}", text)
     if not text or len(text) < 8:
         return text
 
@@ -187,6 +193,7 @@ def redact_secrets(text: str) -> str:
     # 4. Key=value assignments with secret-sounding key names
     #    Replace only the VALUE, keep the key name
     def _replace_kv(m: re.Match) -> str:
+        logger.debug("_replace_kv: m={}", m)
         # Groups: 1=double-quoted, 2=single-quoted, 3=unquoted
         val = m.group(1) or m.group(2) or m.group(3)
         return m.group(0).replace(val, REDACTED) if val else m.group(0)
@@ -202,21 +209,47 @@ def redact_secrets(text: str) -> str:
     return text
 
 
-def redact_dict(data: dict, fields: set[str] | None = None) -> dict:
-    """Redact secrets from specific string fields in a dict.
+def _redact_value(value: Any) -> Any:
+    """Recursively redact all string values in a structured value."""
+    logger.debug("_redact_value: value={}", value)
+    if isinstance(value, str):
+        return redact_secrets(value)
+    if isinstance(value, dict):
+        return {k: _redact_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_value(item) for item in value)
+    return value
 
-    If ``fields`` is None, redacts ALL string values.
-    If ``fields`` is provided, only redacts those keys.
+
+def _redact_matching_fields(value: Any, fields: set[str]) -> Any:
+    """Recurse through containers looking for dict keys selected by fields."""
+    logger.debug("_redact_matching_fields: value={}, fields={}", value, fields)
+    if isinstance(value, dict):
+        return redact_dict(value, fields)
+    if isinstance(value, list):
+        return [_redact_matching_fields(item, fields) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_matching_fields(item, fields) for item in value)
+    return value
+
+
+def redact_dict(data: dict, fields: set[str] | None = None) -> dict:
+    """Redact secrets from specific fields in a dict.
+
+    If ``fields`` is None, redacts ALL string values recursively.
+    If ``fields`` is provided, redacts complete values under those keys,
+    including nested dicts/lists.
     Does NOT mutate the original — returns a new dict.
     """
+    logger.debug("redact_dict: data={}, fields={}", data, fields)
     out = {}
     for key, value in data.items():
-        if isinstance(value, str) and (fields is None or key in fields):
-            out[key] = redact_secrets(value)
-        elif isinstance(value, dict):
-            out[key] = redact_dict(value, fields)
+        if fields is None or key in fields:
+            out[key] = _redact_value(value)
         else:
-            out[key] = value
+            out[key] = _redact_matching_fields(value, fields)
     return out
 
 

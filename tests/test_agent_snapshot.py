@@ -99,7 +99,7 @@ async def test_snapshot_drops_blank_overrides():
     """Empty/None override values should be filtered out."""
     from services.agent_snapshot import build_yaml_snapshot
 
-    ver = _mock_version(models_by_ide={"kiro": "", "codex": "gpt-5", "vscode": None})
+    ver = _mock_version(models_by_ide={"kiro": "", "codex": "gpt-5"})
     db = _mock_session_for_snapshot(components=[], goal=None)
 
     text = await build_yaml_snapshot(ver, db)

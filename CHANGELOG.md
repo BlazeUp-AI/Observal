@@ -10,6 +10,426 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-05-25
+
+### Fixed
+
+- move SPDX comments inside YAML frontmatter for all skills ([812e5db](https://github.com/BlazeUp-AI/Observal/commit/812e5db1d8d050ef8725cd1153ac1be31260b728))
+## [1.1.0] - 2026-05-25
+
+### Added
+
+- add observal-pi package for session telemetry (**extension**) ([5debdf8](https://github.com/BlazeUp-AI/Observal/commit/5debdf81c2e1d3edbc088169515535a5dff3154b))
+- add Pi CLI adapter, doctor, and scan support (**cli**) ([f80042a](https://github.com/BlazeUp-AI/Observal/commit/f80042ac911acb69ae06d5d4a5e2436600006046))
+- add Pi to IDE_REGISTRY with server adapter (**registry**) ([ba0f39d](https://github.com/BlazeUp-AI/Observal/commit/ba0f39ddbcb71ba9437565b22eae69431676a253))
+- add Pi session JSONL classifier and read-path parser (**parser**) ([c071f97](https://github.com/BlazeUp-AI/Observal/commit/c071f976c64f84031e10e24a4242e67d2317f82b))
+- expand bundled Observal skill to cover full CLI surface (**skill**) ([b62c562](https://github.com/BlazeUp-AI/Observal/commit/b62c562fcd8c9aa4657c1fbb9c8656a0438fc310))
+- redesign audit log page with parameterized search (**web**) ([8376595](https://github.com/BlazeUp-AI/Observal/commit/8376595931f4cf95005541db7cac0ca213d422c7))
+- update ee/ audit route with HIPAA fields and export formats (**audit**) ([2edc1b3](https://github.com/BlazeUp-AI/Observal/commit/2edc1b33ead83deac56eb3f7c5ca52a9b232f937))
+- add CLI audit emission and server endpoint (**audit**) ([97cbdc0](https://github.com/BlazeUp-AI/Observal/commit/97cbdc006c9a2ac70b3f9b458064b24b3e40ea5f))
+- implement HIPAA loguru audit middleware (**audit**) ([cf32511](https://github.com/BlazeUp-AI/Observal/commit/cf32511548ef3aaf12e7e9c27b5a3ba9cbef7ad5))
+- version enforcement - hard block on CLI/server mismatch & auto-update ([be2d475](https://github.com/BlazeUp-AI/Observal/commit/be2d475511e201733bc426db6fcdceba8df28462))
+
+### CI
+
+- add npm publish step for observal-pi to release workflow ([52d2dbc](https://github.com/BlazeUp-AI/Observal/commit/52d2dbc80d9dc077909419b9c4311dfce245b377))
+
+### Changed
+
+- remove legacy event-bus audit system (**audit**) ([264a303](https://github.com/BlazeUp-AI/Observal/commit/264a30337cad9c1e6e52c53fb0d0bab80b527e03))
+- gate pages by specific licensed feature, not blanket boolean (**web**) ([9baa2b6](https://github.com/BlazeUp-AI/Observal/commit/9baa2b64568d1fa638d551e84f35706d1ac50ac6))
+- replace deployment_mode API field with licensed boolean ([8cc8eee](https://github.com/BlazeUp-AI/Observal/commit/8cc8eee9986a7f82284d4cf2ed6a42b606a8e354))
+- remove DEPLOYMENT_MODE, derive enterprise from license key ([5def2f6](https://github.com/BlazeUp-AI/Observal/commit/5def2f67beb4703c105537d8bee4e02727ee9926))
+
+### Documentation
+
+- update all AGENTS.md files to reflect current codebase state ([6d47495](https://github.com/BlazeUp-AI/Observal/commit/6d474954da81e28b0ccb072f4b55c35308452e2e))
+
+### Fixed
+
+- remove invalid OpenCode plugin import (**services**) ([034ffca](https://github.com/BlazeUp-AI/Observal/commit/034ffca6fbc6e4526d980d2b517d0e5ba99e974c))
+- improve resilience of pi telemetry extension (**extension**) ([7797dfc](https://github.com/BlazeUp-AI/Observal/commit/7797dfc0dec705822a11c5509fa3b1b8cb2cc315))
+- gate settings sections behind license features (**web**) ([e5bfb2b](https://github.com/BlazeUp-AI/Observal/commit/e5bfb2bad11ff6db4b34698cb35ed882528eb630))
+- use local fonts, serve IDE list from server, fix builder UI (**web**) ([0308654](https://github.com/BlazeUp-AI/Observal/commit/03086540f709b8c091887bc8734ebb9317c6d5dd))
+- use prompt_toolkit for arrow-key-aware input in login prompts (**auth**) ([ff201ec](https://github.com/BlazeUp-AI/Observal/commit/ff201ec5ca2656638bc914fdf5ec8d57bea1ba0c))
+- resolve names in ops rate, add auth to GraphQL queries (**cli**) ([7d6c120](https://github.com/BlazeUp-AI/Observal/commit/7d6c120e2ea281e2f0ec20637727861d47747449))
+- move SPDX header below frontmatter for Claude Code parsing (**skill**) ([32fb1d6](https://github.com/BlazeUp-AI/Observal/commit/32fb1d6667a0a872cf92063b2dcc5c629f1df72a))
+- address CI failures from DEPLOYMENT_MODE removal ([07f4bb1](https://github.com/BlazeUp-AI/Observal/commit/07f4bb1fa3b3782c72fbe10423e83c684921ba34))
+- remove DEPLOYMENT_MODE references from CLI messages (**cli**) ([c6df484](https://github.com/BlazeUp-AI/Observal/commit/c6df484b35a43e02c6f203a68d6bf73dcbd6edba))
+- add --yes flag and fix hint messages (**doctor**) ([a62f36f](https://github.com/BlazeUp-AI/Observal/commit/a62f36f19267cd363096fb3028e581b6649c7514))
+
+### Other
+
+- update github artifact actions (major) (#1185) (**deps**) ([eb46027](https://github.com/BlazeUp-AI/Observal/commit/eb46027ff1d8fe96a4bac8c92dae37d96992b7cd))
+- update dependency ruff to v0.15.14 (#1182) (**deps**) ([87cbce4](https://github.com/BlazeUp-AI/Observal/commit/87cbce473db48a0583dc90b6d78dcee67e1385ca))
+- update docker images (minor/patch) (#1183) (**deps**) ([5b4c472](https://github.com/BlazeUp-AI/Observal/commit/5b4c472b968c884c0a7f295e64cf91bde639d57b))
+- add .clabot to allowlist renovate and dependabot ([2cc8b24](https://github.com/BlazeUp-AI/Observal/commit/2cc8b240b58c698f3ae1be9fe61b07938aa34b42))
+
+### Testing
+
+- add prompt command tests (#986) (**cmd**) ([ac8f458](https://github.com/BlazeUp-AI/Observal/commit/ac8f458ed16d17141c83ff279d22629be29a5f7a))
+- add Pi to frontend features and unit tests ([274b3c2](https://github.com/BlazeUp-AI/Observal/commit/274b3c2eac9aa8cda27a93c48553d7c368490f5d))
+- add 32 tests for HIPAA audit system (**audit**) ([4100979](https://github.com/BlazeUp-AI/Observal/commit/410097934358cd0dcd17a9b1a45c0a0bb5354b15))
+- add Playwright tests for component detail and CRUD (#934) (**e2e**) ([41d4451](https://github.com/BlazeUp-AI/Observal/commit/41d44518987ef7f72cefddb10ca81e01a1bdd357))
+- add Playwright tests for auth login error and logout flow (#927) (**e2e**) ([2dd8a17](https://github.com/BlazeUp-AI/Observal/commit/2dd8a1766708f5710b784346465026369a52aee1))
+
+### Build
+
+- sync pi-extension version in release script ([5272303](https://github.com/BlazeUp-AI/Observal/commit/52723039dca6f86eb21ea856580864cca69ebdef))
+## [1.0.0] - 2026-05-23
+
+### Added
+
+- instrument uv.lock (**optic**) ([28dffa7](https://github.com/BlazeUp-AI/Observal/commit/28dffa70cc8b60d3f850a35da5638276f662e135))
+- instrument tests.test_optic (**optic**) ([c30fd8e](https://github.com/BlazeUp-AI/Observal/commit/c30fd8e4fc4dbf3ade01840b3acfdd16c9fb7a4f))
+- instrument ..pyproject.toml (**optic**) ([b230772](https://github.com/BlazeUp-AI/Observal/commit/b2307721751fcd3cf7223c6b024eefd62b1fd180))
+- instrument observal-server.worker (**optic**) ([ccdf746](https://github.com/BlazeUp-AI/Observal/commit/ccdf74612c8e39188b9dac5e60b0b242fe045465))
+- instrument observal-server.uv.lock (**optic**) ([3eb96f6](https://github.com/BlazeUp-AI/Observal/commit/3eb96f6b0a9043adb51a8c66a0b27d6f25e0e7bf))
+- instrument services.webhook_signer (**optic**) ([75af8f7](https://github.com/BlazeUp-AI/Observal/commit/75af8f7ff6b76af6c7fac598ece2a9b24508fd64))
+- instrument services.webhook_delivery (**optic**) ([83467f8](https://github.com/BlazeUp-AI/Observal/commit/83467f8c810bad41f464fb996c4cc2155be11fab))
+- instrument services.versioning (**optic**) ([6fe21cb](https://github.com/BlazeUp-AI/Observal/commit/6fe21cbf215f6a7d6a06e7a0c73bdb43767fde4a))
+- instrument services.username_generator (**optic**) ([4106f9e](https://github.com/BlazeUp-AI/Observal/commit/4106f9eb02695d2169ba88fc91ea5104adc10dd2))
+- instrument services.strategic_insights (**optic**) ([c20ccef](https://github.com/BlazeUp-AI/Observal/commit/c20cceff6f24d48d7d1c3384a0db3ef912912f00))
+- instrument services.ssrf_guard (**optic**) ([4efdec3](https://github.com/BlazeUp-AI/Observal/commit/4efdec3f2c00d3a74acc37ed51c20bf311bfe566))
+- instrument services.skill_validator (**optic**) ([5e44909](https://github.com/BlazeUp-AI/Observal/commit/5e4490980e3fdb1b952015adc597cac90dde1049))
+- instrument services.skill_config_generator (**optic**) ([a528c8a](https://github.com/BlazeUp-AI/Observal/commit/a528c8acbd3f307a40367e01334ab2eb8f7b5e4e))
+- instrument services.session_ingest (**optic**) ([6579efc](https://github.com/BlazeUp-AI/Observal/commit/6579efc79eafe7d54f4282ece3f3049906c8a77c))
+- instrument services.security_events (**optic**) ([61f8745](https://github.com/BlazeUp-AI/Observal/commit/61f8745ab7d6afd6c8b2096d662244a88815968f))
+- instrument services.secrets_redactor (**optic**) ([4885150](https://github.com/BlazeUp-AI/Observal/commit/4885150cc8073bdce9a3a6f63403b341e3c2d2b4))
+- instrument services.sandbox_validator (**optic**) ([db99915](https://github.com/BlazeUp-AI/Observal/commit/db999152e20ffb1348578f35507ff28ab4707d74))
+- instrument services.sandbox_config_generator (**optic**) ([056d3e2](https://github.com/BlazeUp-AI/Observal/commit/056d3e21bd7e9f1704b4d40f4798cf7f445f2b83))
+- instrument services.retention (**optic**) ([a7661a5](https://github.com/BlazeUp-AI/Observal/commit/a7661a54bf520d693ea07291157bfb9d1209a6ae))
+- instrument services.registry_telemetry (**optic**) ([8a27417](https://github.com/BlazeUp-AI/Observal/commit/8a27417834ca3898677ba5e563f3d9688ab75b2d))
+- instrument services.optic (**optic**) ([e86de6b](https://github.com/BlazeUp-AI/Observal/commit/e86de6b17507c0be9623b259b86389a5ce66b8c4))
+- instrument services.model_resolver (**optic**) ([e0ea069](https://github.com/BlazeUp-AI/Observal/commit/e0ea069ffa6f2a454b06da421652c70552cfb983))
+- instrument services.model_display (**optic**) ([ce1a920](https://github.com/BlazeUp-AI/Observal/commit/ce1a920987a15b4ed7511bf5dec31799ad09f5bd))
+- instrument services.model_catalog (**optic**) ([bcadf33](https://github.com/BlazeUp-AI/Observal/commit/bcadf33ae1ac8399710b383b4391bc172730e0ea))
+- instrument services.mcp_validator (**optic**) ([257eeb0](https://github.com/BlazeUp-AI/Observal/commit/257eeb0e37c7dec6dddcd01fa21a3004d4218b01))
+- instrument services.log_buffer (**optic**) ([5947f71](https://github.com/BlazeUp-AI/Observal/commit/5947f7157d8a2b423ca812f72c6f6ba16fb610e2))
+- instrument services.jwt_service (**optic**) ([7069b63](https://github.com/BlazeUp-AI/Observal/commit/7069b6375dc420866119e9f24e66c1324bc9410e))
+- instrument services.ide.opencode (**optic**) ([d34898e](https://github.com/BlazeUp-AI/Observal/commit/d34898ee59dbf40c05c972b357932314f12a9d97))
+- instrument services.ide.kiro (**optic**) ([612792d](https://github.com/BlazeUp-AI/Observal/commit/612792d72af90932e2934526670c06405acccb62))
+- instrument services.ide.helpers (**optic**) ([e6ac8b3](https://github.com/BlazeUp-AI/Observal/commit/e6ac8b3796ac2fe6ad3d7d49854a7233ed7339dc))
+- instrument services.ide.gemini_cli (**optic**) ([b2b9d17](https://github.com/BlazeUp-AI/Observal/commit/b2b9d177732a11bcc51d23747d4554428cc7465c))
+- instrument services.ide.cursor (**optic**) ([512d267](https://github.com/BlazeUp-AI/Observal/commit/512d267e3e2cc5033b33478e27b781590ea4b1e0))
+- instrument services.ide.copilot (**optic**) ([ff776df](https://github.com/BlazeUp-AI/Observal/commit/ff776df7e967bf94e84527a53c44de9710cab17e))
+- instrument services.ide.copilot_cli (**optic**) ([a445302](https://github.com/BlazeUp-AI/Observal/commit/a44530277147f38f3a9ac1ddcd3a4515700c320c))
+- instrument services.ide.codex (**optic**) ([b1331c2](https://github.com/BlazeUp-AI/Observal/commit/b1331c2c9f170a873c3106161d45a0d9a2e6fe12))
+- instrument services.ide.claude_code (**optic**) ([d6562ba](https://github.com/BlazeUp-AI/Observal/commit/d6562baeec96f8e62a933ed19b00f3c8f49673de))
+- instrument services.ide_feature_inference (**optic**) ([97f5b93](https://github.com/BlazeUp-AI/Observal/commit/97f5b93b2944f7e53f42e778adbe37784d0a1ac1))
+- instrument services.hook_install_generator (**optic**) ([9719200](https://github.com/BlazeUp-AI/Observal/commit/9719200a2b32f1753a21bbd7dda7a6024e434243))
+- instrument services.hook_config_generator (**optic**) ([498d4cc](https://github.com/BlazeUp-AI/Observal/commit/498d4ccedbffc070112ce9cafb91f96ebdb02257))
+- instrument services.git_mirror_service (**optic**) ([ab0cab2](https://github.com/BlazeUp-AI/Observal/commit/ab0cab2a0f1982bf229989496f5bf7410730dbf3))
+- instrument services.events (**optic**) ([e15fc12](https://github.com/BlazeUp-AI/Observal/commit/e15fc12693cde0eb26d0a6a64e6c95a33bc5600c))
+- instrument services.editing_lock (**optic**) ([6c44f88](https://github.com/BlazeUp-AI/Observal/commit/6c44f889b5c6143aa29d57ee0aff1bda7c0f32ed))
+- instrument services.dynamic_settings (**optic**) ([be3ddf8](https://github.com/BlazeUp-AI/Observal/commit/be3ddf85a32dea5f261f2ab565ccd4b642a262ae))
+- instrument services.download_tracker (**optic**) ([9812af8](https://github.com/BlazeUp-AI/Observal/commit/9812af846626d7aac4277c9bf196b1e5480a3c35))
+- instrument services.demo_accounts (**optic**) ([e3139de](https://github.com/BlazeUp-AI/Observal/commit/e3139de3f248085c014a88afc7727f0f0bb3cabd))
+- instrument services.crypto (**optic**) ([5352c64](https://github.com/BlazeUp-AI/Observal/commit/5352c6411a5d2974be3379e26b6b320459dc28f6))
+- instrument services.config_generator (**optic**) ([3cfd429](https://github.com/BlazeUp-AI/Observal/commit/3cfd4298de0e7dfb8bd2de56d88289308d0cf45c))
+- instrument services.component_version_extras (**optic**) ([0ea4a0c](https://github.com/BlazeUp-AI/Observal/commit/0ea4a0cf578a86e09235123e6d03240ae2c09f9c))
+- instrument services.clickhouse.schema (**optic**) ([1eab815](https://github.com/BlazeUp-AI/Observal/commit/1eab815df434656ddf5f0824c0e5c2591eed2d3e))
+- instrument services.clickhouse.query (**optic**) ([212192f](https://github.com/BlazeUp-AI/Observal/commit/212192f87f4f6d5b680e81ecb7d442c4580a831f))
+- instrument services.clickhouse.insert (**optic**) ([74f8ea1](https://github.com/BlazeUp-AI/Observal/commit/74f8ea1e32bf42c87c4a4da26a57bdce4a01cdff))
+- instrument services.clickhouse.client (**optic**) ([d674a96](https://github.com/BlazeUp-AI/Observal/commit/d674a96d67aba1f0231f8f2eee4e54c38d50f9b0))
+- instrument services.cache (**optic**) ([6d8c38f](https://github.com/BlazeUp-AI/Observal/commit/6d8c38f7c79e2af3ad0fc48d2032b3ae58ecf8aa))
+- instrument services.anti_gaming (**optic**) ([d17709d](https://github.com/BlazeUp-AI/Observal/commit/d17709d9e5610ff271486dc5975702d1bb64f263))
+- instrument services.alert_evaluator (**optic**) ([a6781c9](https://github.com/BlazeUp-AI/Observal/commit/a6781c9584d57f6b483366f2fdd3059ec976f674))
+- instrument services.agent_snapshot (**optic**) ([23f0a04](https://github.com/BlazeUp-AI/Observal/commit/23f0a045eda14f7acf754fe6db061dc07352a64c))
+- instrument services.agent_resolver (**optic**) ([c1ddbd0](https://github.com/BlazeUp-AI/Observal/commit/c1ddbd0093bc9db4bd608725e67dc86c998fe607))
+- instrument services.agent_registry_cache (**optic**) ([c079360](https://github.com/BlazeUp-AI/Observal/commit/c079360dbe6d87cbff0f6495eb02618c8369239a))
+- instrument services.agent_lock_file (**optic**) ([57ade8f](https://github.com/BlazeUp-AI/Observal/commit/57ade8f8b4243538818327f2698591c93060b19d))
+- instrument services.agent_builder (**optic**) ([cc5cf8c](https://github.com/BlazeUp-AI/Observal/commit/cc5cf8c7ac4e6555e432595da415f4d3d00b0167))
+- instrument observal-server.pyproject.toml (**optic**) ([d7d098f](https://github.com/BlazeUp-AI/Observal/commit/d7d098f9d5f87d90fc0eac3d5b8b3689375a2658))
+- instrument jobs.maintenance (**optic**) ([bfed99e](https://github.com/BlazeUp-AI/Observal/commit/bfed99e5262a0203c3cf5d74ca70ff5fd3bacdff))
+- instrument jobs.catalog (**optic**) ([dc97b30](https://github.com/BlazeUp-AI/Observal/commit/dc97b3048106d09b1f4b579c36fe8fca16300d97))
+- instrument api.routes.telemetry (**optic**) ([77ba7bb](https://github.com/BlazeUp-AI/Observal/commit/77ba7bbc1d6138ffe903bbebc44dc1056e638924))
+- instrument api.routes.support (**optic**) ([31d4d5d](https://github.com/BlazeUp-AI/Observal/commit/31d4d5dbaca94d25ec252cb3af1b7a80000127de))
+- instrument api.routes.skill (**optic**) ([3036f8a](https://github.com/BlazeUp-AI/Observal/commit/3036f8ad49b51ef84f43d7bd4f1edae7d2b61959))
+- instrument api.routes.sessions (**optic**) ([0e0c120](https://github.com/BlazeUp-AI/Observal/commit/0e0c120037eb28b9847965aba743450934badecf))
+- instrument api.routes.sandbox (**optic**) ([9efaf4d](https://github.com/BlazeUp-AI/Observal/commit/9efaf4dd60dd9b07c6509f01302c1974e8c87121))
+- instrument api.routes.review (**optic**) ([eaa25f8](https://github.com/BlazeUp-AI/Observal/commit/eaa25f885ac0d806bfa3100b72394fe5d8fa5253))
+- instrument api.routes.registry_models (**optic**) ([b28ffda](https://github.com/BlazeUp-AI/Observal/commit/b28ffda59d9ce4b7a41509392eddae3db5f720eb))
+- instrument api.routes.reconcile (**optic**) ([fb97f8b](https://github.com/BlazeUp-AI/Observal/commit/fb97f8b9dc6fa3bf8301751f5e959b3709263eda))
+- instrument api.routes.prompt (**optic**) ([6ace51f](https://github.com/BlazeUp-AI/Observal/commit/6ace51f231c3cfe400d675fbb54f6e2c89f78aaf))
+- instrument api.routes.preview (**optic**) ([acf3506](https://github.com/BlazeUp-AI/Observal/commit/acf3506de2439ea0c27d64facb9de97d1ed26780))
+- instrument api.routes.mcp (**optic**) ([28a0211](https://github.com/BlazeUp-AI/Observal/commit/28a0211c950dd1c19cf52730a7e17ef1d9a9630c))
+- instrument api.routes.jwks (**optic**) ([5a2d119](https://github.com/BlazeUp-AI/Observal/commit/5a2d1198ed676db2a0826cdb6ad61e99a3e80f23))
+- instrument api.routes.insights (**optic**) ([086602b](https://github.com/BlazeUp-AI/Observal/commit/086602b7984271ad86008a1ea2ef85fae0eef875))
+- instrument api.routes.ingest (**optic**) ([c3bd8d6](https://github.com/BlazeUp-AI/Observal/commit/c3bd8d6c7f0ef941466083fdc8952ab8b391a56c))
+- instrument api.routes.hook (**optic**) ([e44aa31](https://github.com/BlazeUp-AI/Observal/commit/e44aa31c929cd40cbead694cdff9ee2654ad9e72))
+- instrument api.routes.feedback (**optic**) ([9d48a2e](https://github.com/BlazeUp-AI/Observal/commit/9d48a2e95ac6f4ce9f4aac298abc1ac9b1f48d01))
+- instrument api.routes.device_auth (**optic**) ([bf3b0d6](https://github.com/BlazeUp-AI/Observal/commit/bf3b0d6f67d5eea18ea208314c43ceee4732ddfb))
+- instrument api.routes.dashboard (**optic**) ([57e7a4b](https://github.com/BlazeUp-AI/Observal/commit/57e7a4bb4fb3f395c5f5923e13c7a99fa653306f))
+- instrument api.routes.config (**optic**) ([3ebf19d](https://github.com/BlazeUp-AI/Observal/commit/3ebf19d07fcbc7e4d700233d9f03da052a413723))
+- instrument api.routes.component_versions (**optic**) ([5215cd6](https://github.com/BlazeUp-AI/Observal/commit/5215cd6e749ef8afac48b2d530380b38562717a2))
+- instrument api.routes.component_source (**optic**) ([d5f6351](https://github.com/BlazeUp-AI/Observal/commit/d5f635149c8bd62e3350dbce1040286c0eb4a865))
+- instrument api.routes.bulk (**optic**) ([59a637b](https://github.com/BlazeUp-AI/Observal/commit/59a637b46f2650c7f5f91dc0ab1369f3b71a1ac8))
+- instrument api.routes.auth (**optic**) ([20e8fe0](https://github.com/BlazeUp-AI/Observal/commit/20e8fe03bb5768f930cf0b0ca60756aefcc20a13))
+- instrument api.routes.alert (**optic**) ([4c9af4e](https://github.com/BlazeUp-AI/Observal/commit/4c9af4ea51f91f90f69893fbe7ffefd9f94b14b0))
+- instrument api.routes.agent.install (**optic**) ([9ba4440](https://github.com/BlazeUp-AI/Observal/commit/9ba4440a2e54fa5450a0d805cab65f86dfa0a05f))
+- instrument api.routes.agent.draft (**optic**) ([d691b1a](https://github.com/BlazeUp-AI/Observal/commit/d691b1ac4aa291374bb684c53669e4a63a39a973))
+- instrument api.routes.agent.crud (**optic**) ([6fa0f2f](https://github.com/BlazeUp-AI/Observal/commit/6fa0f2f499cc8e6d11fffe2e04337b2a805e1f7e))
+- instrument api.routes.agent_versions (**optic**) ([ac5185f](https://github.com/BlazeUp-AI/Observal/commit/ac5185f73e0340d97e5524195e69df7da76523d6))
+- instrument api.routes.admin.users (**optic**) ([650f309](https://github.com/BlazeUp-AI/Observal/commit/650f309b57628d7528bf1a54022b44720657216d))
+- instrument api.routes.admin.retention (**optic**) ([7e05da4](https://github.com/BlazeUp-AI/Observal/commit/7e05da4c8c9bcfd547d4a5bff209a9a5b1c59685))
+- instrument api.routes.admin.org (**optic**) ([f38e5f7](https://github.com/BlazeUp-AI/Observal/commit/f38e5f7afd4c10bd133203cf9c20a6aacba04bac))
+- instrument api.routes.admin.enterprise_settings (**optic**) ([10a85a5](https://github.com/BlazeUp-AI/Observal/commit/10a85a578676daf1ffdd70238b6bbdd6969d720d))
+- instrument observal_cli.telemetry_buffer (**optic**) ([b989cf2](https://github.com/BlazeUp-AI/Observal/commit/b989cf2795f6c33c98a524b0156f7baf2bccdacb))
+- instrument observal_cli.shim (**optic**) ([69e06c1](https://github.com/BlazeUp-AI/Observal/commit/69e06c1e48c0fa7381445702b78e075e7107cbfd))
+- instrument observal_cli.settings_reconciler (**optic**) ([d4fb86e](https://github.com/BlazeUp-AI/Observal/commit/d4fb86eba0aedd21fa6c5155cffe5fddcf798ae0))
+- instrument server.orchestrator (**optic**) ([6f1fcbf](https://github.com/BlazeUp-AI/Observal/commit/6f1fcbf7eaa4d0c6e6126be50b5dc428bc156043))
+- instrument server.deps (**optic**) ([bdbf0ab](https://github.com/BlazeUp-AI/Observal/commit/bdbf0ab62d6510d7c8655babc8fbe3447dc6a55f))
+- instrument server.constants (**optic**) ([7accfa5](https://github.com/BlazeUp-AI/Observal/commit/7accfa57daf9314f371ceb58b280feac82b5851f))
+- instrument server.config_gen (**optic**) ([d34693e](https://github.com/BlazeUp-AI/Observal/commit/d34693e8fbacf302adf1efcde0471f181a88650a))
+- instrument server.__init__ (**optic**) ([15ac6ee](https://github.com/BlazeUp-AI/Observal/commit/15ac6eedb2e62b4b42b6d28e8c96380301ba33c7))
+- instrument observal_cli.requirements.txt (**optic**) ([c19aab9](https://github.com/BlazeUp-AI/Observal/commit/c19aab912228a27cd9e89a09127bcfe6a155fe04))
+- instrument observal_cli.proxy (**optic**) ([de35a58](https://github.com/BlazeUp-AI/Observal/commit/de35a581e89991029f98509390c26ca19a9ed53d))
+- instrument observal_cli.optic (**optic**) ([dfe443b](https://github.com/BlazeUp-AI/Observal/commit/dfe443b7c53511fe4cc549fe9dae8eb2ebc714de))
+- instrument observal_cli.main (**optic**) ([d8821c7](https://github.com/BlazeUp-AI/Observal/commit/d8821c725097182f47e055eb7fb04bfb0efbc4bc))
+- instrument observal_cli.cmd_uninstall (**optic**) ([90c02f6](https://github.com/BlazeUp-AI/Observal/commit/90c02f69dff0397454d63c4be2664caaf9f6f3eb))
+- instrument observal_cli.cmd_tail_flush (**optic**) ([cc6858c](https://github.com/BlazeUp-AI/Observal/commit/cc6858c5d002503f6d2dca093457eb9fd8be6f23))
+- instrument observal_cli.cmd_support (**optic**) ([75e9381](https://github.com/BlazeUp-AI/Observal/commit/75e938112ade5db1b34fd95fdc1ceb1461fc239f))
+- instrument observal_cli.cmd_skill (**optic**) ([e15fc62](https://github.com/BlazeUp-AI/Observal/commit/e15fc62654f357a1426e3bc4a4476575a7406b35))
+- instrument observal_cli.cmd_server (**optic**) ([19249a7](https://github.com/BlazeUp-AI/Observal/commit/19249a796e82e58de9d9505748599f167efd3477))
+- instrument observal_cli.cmd_scan (**optic**) ([99830eb](https://github.com/BlazeUp-AI/Observal/commit/99830ebdd4abc2bdaa03529f06fae0796b25d5bf))
+- instrument observal_cli.cmd_sandbox (**optic**) ([73e59f5](https://github.com/BlazeUp-AI/Observal/commit/73e59f5310d490fb1434a5c9a384e88bd2de93e9))
+- instrument observal_cli.cmd_reconcile (**optic**) ([3fbf817](https://github.com/BlazeUp-AI/Observal/commit/3fbf8171a3a5f40ac817a89289eef0e88929235f))
+- instrument observal_cli.cmd_pull (**optic**) ([ae4117e](https://github.com/BlazeUp-AI/Observal/commit/ae4117e67780aa5ad559673402eb9d99b60aa83b))
+- instrument observal_cli.cmd_prompt (**optic**) ([bb82c98](https://github.com/BlazeUp-AI/Observal/commit/bb82c9835135b2af8de45e80fd18aa445c066059))
+- instrument observal_cli.cmd_profile (**optic**) ([dae194c](https://github.com/BlazeUp-AI/Observal/commit/dae194ca8b5f0479d1cfef3fe823e4d3c35f651c))
+- instrument observal_cli.cmd_ops (**optic**) ([5314d48](https://github.com/BlazeUp-AI/Observal/commit/5314d48f8c2d48d484dc4709c9008a0239600df1))
+- instrument observal_cli.cmd_models (**optic**) ([5c4b36a](https://github.com/BlazeUp-AI/Observal/commit/5c4b36a42434c12d2104eb9471a38df8b14e3841))
+- instrument observal_cli.cmd_mcp (**optic**) ([1d24033](https://github.com/BlazeUp-AI/Observal/commit/1d24033080b87707343a42b2d205010992b86ba3))
+- instrument observal_cli.cmd_logs (**optic**) ([ae71dd4](https://github.com/BlazeUp-AI/Observal/commit/ae71dd4679487ba243072ac9868317d8eee65713))
+- instrument observal_cli.cmd_hook (**optic**) ([dbaaa7e](https://github.com/BlazeUp-AI/Observal/commit/dbaaa7eaebc7427a5c5628fcbcfdc98655497f22))
+- instrument observal_cli.cmd_doctor (**optic**) ([d48f198](https://github.com/BlazeUp-AI/Observal/commit/d48f198c0bcc1122a32d6ede52031af0e7d7631a))
+- instrument observal_cli.cmd_component (**optic**) ([c93e7a3](https://github.com/BlazeUp-AI/Observal/commit/c93e7a39928d267c93268301c144eb2debf2eeb1))
+- instrument observal_cli.cmd_auth (**optic**) ([1d69bb1](https://github.com/BlazeUp-AI/Observal/commit/1d69bb134887945a301011a7c60d53c5c8e31dc6))
+- instrument observal_cli.cmd_agent (**optic**) ([7f6582d](https://github.com/BlazeUp-AI/Observal/commit/7f6582d5a81c646ebdcf4bbc0d91c577649ab406))
+- instrument observal_cli.client (**optic**) ([6011d2d](https://github.com/BlazeUp-AI/Observal/commit/6011d2dbd8592f0116bc815d9626e903b649f12f))
+- instrument observal_cli.analyzer (**optic**) ([ad42c87](https://github.com/BlazeUp-AI/Observal/commit/ad42c87c3fb82382869a789bb6c7a8a4d2c5ba4c))
+- instrument docker.docker-compose.yml (**optic**) ([ac70eaf](https://github.com/BlazeUp-AI/Observal/commit/ac70eaf8bcc693970bed8bff00639aa1e8260ef4))
+- instrument ..AGENTS.md (**optic**) ([76223d1](https://github.com/BlazeUp-AI/Observal/commit/76223d1dc3d3772c03c2d5c7229335808cc6774e))
+- add cli, server, and web area labels to PR auto-labeler (**ci**) ([34341e0](https://github.com/BlazeUp-AI/Observal/commit/34341e03f7db7f2071d212ed7142b6215dc9a8aa))
+- gate server upgrade/rollback/versions to super_admin, bump web/package.json in releases ([51d6214](https://github.com/BlazeUp-AI/Observal/commit/51d6214dad811b8236dd34753096f969580256a7))
+- version mismatch banner, feature registry sync, lint fix (**frontend**) ([b4edc4e](https://github.com/BlazeUp-AI/Observal/commit/b4edc4e8873b9396e519fcf0f86c8a8d08d588a5))
+- add server upgrade/rollback/versions commands (**server-update**) ([d629967](https://github.com/BlazeUp-AI/Observal/commit/d629967f38e7ac5a49bc2424ec4ea7e3ee61cb26))
+- version negotiation middleware + feature registry (**negotiation**) ([a6618d9](https://github.com/BlazeUp-AI/Observal/commit/a6618d9ddc597889ecc3417fe694b744969869df))
+- implement upgrade, downgrade, rollback, status commands (**self-update**) ([db308a0](https://github.com/BlazeUp-AI/Observal/commit/db308a0073d006fa589783f53493c40a7729af68))
+- add background GitHub release checker with 24h cache (**version-check**) ([76e3a62](https://github.com/BlazeUp-AI/Observal/commit/76e3a62b94097c9f7ff38fa5cebde880a5704fa7))
+- sandbox MCP server — sandboxes as callable tools ([7f5e85f](https://github.com/BlazeUp-AI/Observal/commit/7f5e85fc31fad97ce711a943937cf6be3643d453))
+- inject sandbox usage instructions into agent rules on pull ([c605d8b](https://github.com/BlazeUp-AI/Observal/commit/c605d8bfe96f9d8d30c24c4f8c6db01601729bff))
+- add script editor to hook submit/edit forms in frontend ([4879e70](https://github.com/BlazeUp-AI/Observal/commit/4879e701e1f0049b3f295bfbc9c351ea0c2245cd))
+- materialize hook components on agent pull/install ([b1831a0](https://github.com/BlazeUp-AI/Observal/commit/b1831a022f7fcbcfb0e603d0b55798e4803890c5))
+- hooks & sandboxes cleanup — CLI, multi-IDE install, dead field removal ([b9ae423](https://github.com/BlazeUp-AI/Observal/commit/b9ae423f1a065a6490507528863d8601984d7d01))
+- add non-interactive flags to agent create (**cli**) ([b7fffc1](https://github.com/BlazeUp-AI/Observal/commit/b7fffc1c634dfdd82ab2cddd43f022ecc36f30a1))
+- auto-install observal skill on login (**cli**) ([5ebbfd2](https://github.com/BlazeUp-AI/Observal/commit/5ebbfd28ffee3b6070c1b8480b93dca8fa8dd6fb))
+- add observal skill for LLM-driven agent management (**skill**) ([c144c62](https://github.com/BlazeUp-AI/Observal/commit/c144c6263d4d9ffbf7d52d60922eb6bc0e003798))
+- license-based feature gating and settings page redesign (**web**) ([1ac2d0a](https://github.com/BlazeUp-AI/Observal/commit/1ac2d0a8fc09a15a41c1aec55b3a1bfe4868943f))
+- add DB-backed dynamic_settings service with Fernet encryption ([2b8196f](https://github.com/BlazeUp-AI/Observal/commit/2b8196f52c879ca28c2ee19b619c591399c7475e))
+- move exec dashboard to ee/ with license gating (**ee**) ([3b05e4e](https://github.com/BlazeUp-AI/Observal/commit/3b05e4e634a77f4a30c178a77df0cd8553fb6193))
+- add tooltips to adoption, cost, investments, and velocity charts (**dashboard**) ([1ef1af3](https://github.com/BlazeUp-AI/Observal/commit/1ef1af3994c34bd83752e243dc30a5177e3b1497))
+- LLM-powered AI Insights tab (**dashboard**) ([650f81c](https://github.com/BlazeUp-AI/Observal/commit/650f81ca6e01c5834faa0ed12d21a2ede0810d7d))
+- comparative period overlays and CSV/PDF export (**dashboard**) ([71abfb9](https://github.com/BlazeUp-AI/Observal/commit/71abfb99fa1c33721f87c97d90d9ca9a24b0e67f))
+- inactivity alerts and time-to-value metrics (**dashboard**) ([a475df5](https://github.com/BlazeUp-AI/Observal/commit/a475df5d8f7142b8d49f50e6f338c5149ebd09f5))
+- cost-per-dept KPIs, bulk dept import, category on approval (**dashboard**) ([5f9f245](https://github.com/BlazeUp-AI/Observal/commit/5f9f2454b48d2823e9fa854fb4bbc83d2b1fb18d))
+- UX improvements — URL tabs, range picker, onboarding, refresh (**dashboard**) ([70e2d8e](https://github.com/BlazeUp-AI/Observal/commit/70e2d8ee124b5fd161cc3919ddd9f2d9a28ca5bd))
+- developer breakdown and model provider comparison (**dashboard**) ([ada4c16](https://github.com/BlazeUp-AI/Observal/commit/ada4c16dfd27c104baa4bb75ff68811cb11c94d0))
+- strategic insights, ROI projections, enterprise-only gate (**dashboard**) ([04aec31](https://github.com/BlazeUp-AI/Observal/commit/04aec31c49f56e331a85bed4385a318fbf9e105c))
+- category selector, department assignment, baselines config (**dashboard**) ([9340bb3](https://github.com/BlazeUp-AI/Observal/commit/9340bb3b0bccc5c8dffe1d27651f18ee61fde818))
+- insights tab and final polish (**dashboard**) ([ee97cbe](https://github.com/BlazeUp-AI/Observal/commit/ee97cbeb485f254aab402f4101324313f4526096))
+- departments and cost intelligence tabs (**dashboard**) ([16e1592](https://github.com/BlazeUp-AI/Observal/commit/16e1592357b63c968d4d35c991bada98ec777cb2))
+- adoption, investments, and velocity tabs with respective endpoints (**dashboard**) ([3cef4ab](https://github.com/BlazeUp-AI/Observal/commit/3cef4abc06334d500192b06c70412a394713c073))
+- management dashboard models, migration, tabbed layout (**dashboard**) ([345ce04](https://github.com/BlazeUp-AI/Observal/commit/345ce04351e8095b4fa59178f6686844325b7aab))
+
+### Changed
+
+- migrate scanning logic into IDE adapters (**scan**) ([f03d928](https://github.com/BlazeUp-AI/Observal/commit/f03d9284a9e959acfaf9b2c333fcef8aa5ec9b48))
+- remove vscode IDE, add protocol.py and feature-flag gating (**ide**) ([3ee21cc](https://github.com/BlazeUp-AI/Observal/commit/3ee21ccdb58c9a345a6b4d6dcb265b64308fad8f))
+- deduplicate _KIRO_EVENT_MAP into single definition (**ide**) ([88ffd50](https://github.com/BlazeUp-AI/Observal/commit/88ffd50546ea95fc74af45ec5658fe322a40e1ab))
+- add IDE adapter protocol and registry with 9 adapters (**cli**) ([8402ade](https://github.com/BlazeUp-AI/Observal/commit/8402ade9241420b8a0a8cf74b0ea9a82723b2ccf))
+- extract upgrade_executor, server version helper, harden caches (**cli**) ([57dc647](https://github.com/BlazeUp-AI/Observal/commit/57dc6475bffaaa791007fe260f54e2dd2c3d2e8d))
+- delete agent_config_generator.py, update all callers (**ide**) ([c6c97c7](https://github.com/BlazeUp-AI/Observal/commit/c6c97c776f7ac41921346862250f754c2884b3b5))
+- direct adapter replacement, eliminate shim layer (**ide**) ([d27423f](https://github.com/BlazeUp-AI/Observal/commit/d27423f0cfc124c5b38ab0b1c493a100b6ec6016))
+- remove dead if/elif chains from generate_agent_config (**ide**) ([54fbb7c](https://github.com/BlazeUp-AI/Observal/commit/54fbb7cac1aa3ab096504a71b1bb499d1fdc733f))
+- add adapter protocol and 9 IDE adapters with delegation (**ide**) ([406777f](https://github.com/BlazeUp-AI/Observal/commit/406777f7fc3f5fb9bb358aebbd5cc15653be4c65))
+- replace per-IDE configure calls with doctor on login (**auth**) ([fa61dc9](https://github.com/BlazeUp-AI/Observal/commit/fa61dc9b25e8f2a50089edff9a12eb9cc1fafab3))
+- split admin route monolith into sub-package (**api**) ([5c8e59e](https://github.com/BlazeUp-AI/Observal/commit/5c8e59eb78ad5d95f317fcc9f4168cd31b99dd2a))
+- split agent route monolith into sub-package (**api**) ([9bb6f4a](https://github.com/BlazeUp-AI/Observal/commit/9bb6f4a3adb1353899fe0783f314230b262a8481))
+- update enterprise code to use dynamic_settings (**ee**) ([d77f0d6](https://github.com/BlazeUp-AI/Observal/commit/d77f0d66eb6d02256d4b9c4dd72b7559792caf58))
+- migrate API routes and services to dynamic_settings ([f16117e](https://github.com/BlazeUp-AI/Observal/commit/f16117e2ad0ee04c7fb9443addc771c6a1fc2305))
+- squash Alembic migrations into v1_baseline stamp ([ba03f41](https://github.com/BlazeUp-AI/Observal/commit/ba03f4159d4b2ee8939c21187869baa924a05c51))
+- split job definitions into jobs/ subpackage (**worker**) ([4d286b8](https://github.com/BlazeUp-AI/Observal/commit/4d286b8931901079e51c01f5d4196caf61ae6cc9))
+
+### Documentation
+
+- add gitbook docs for server and self commands, update SUMMARY (**cli/server**) ([780c1bc](https://github.com/BlazeUp-AI/Observal/commit/780c1bcb7682c9b5bec0be5a5d3bd244eff6f294))
+- add --help docstrings and gitbook docs for doctor, scan, migrate, support, profile, models, and uninstall commands (**cli/infra**) ([dd41e29](https://github.com/BlazeUp-AI/Observal/commit/dd41e295a00ee75ae89dfb8c8d2c38e9d64f482a))
+- add --help docstrings and gitbook docs for ops, admin, review, eval, and self commands (**cli/ops**) ([acf73b5](https://github.com/BlazeUp-AI/Observal/commit/acf73b5ca0a8e788799ae93de7fb77c44a838812))
+- add --help docstrings and gitbook docs for all registry commands (**cli/registry**) ([af03e32](https://github.com/BlazeUp-AI/Observal/commit/af03e32c5fcd5045765eb817dadf3e75d9197cb6))
+- add --help docstrings and gitbook docs for agent commands (**cli/agent**) ([bd06fbd](https://github.com/BlazeUp-AI/Observal/commit/bd06fbd55e4b40d258079cfdbde49ca2d9035eb6))
+- add --help docstrings and gitbook docs for auth and config commands (**cli/auth**) ([9371f73](https://github.com/BlazeUp-AI/Observal/commit/9371f737ef7325d4d1a0c27ff522f74da60fa68f))
+- add usage examples to agent publish, release, and pull --help (**cli**) ([db6c4ba](https://github.com/BlazeUp-AI/Observal/commit/db6c4baf613a2da6589e5c3e639c7d3e28fa24f9))
+- uncomment SAML and license vars in .env.example (**env**) ([44f7e53](https://github.com/BlazeUp-AI/Observal/commit/44f7e534fa8dda6d97217680dab4afa5e9e4a521))
+- add OBSERVAL_LICENSE_KEY to .env.example (**env**) ([e41e0fe](https://github.com/BlazeUp-AI/Observal/commit/e41e0fe009d4b15cfbac0bf7cd009b9147c8698d))
+
+### Fixed
+
+- remove Minimum CLI Version setting (**settings**) ([8d8101a](https://github.com/BlazeUp-AI/Observal/commit/8d8101a242e7cd505ce967adb84b5b8a97f955b9))
+- remove dead _checkVersionMismatch code, add clarifying comments ([6f524c5](https://github.com/BlazeUp-AI/Observal/commit/6f524c5afec9ca00fa094b9c679335a62a589771))
+- remove stale Min-CLI header, fix health check port resolution (**server**) ([1d9f0bb](https://github.com/BlazeUp-AI/Observal/commit/1d9f0bbb30838b2a7460251790efe73aa91f8d74))
+- remove dead observal_url param from _gemini_settings, fix em-dash ([9801014](https://github.com/BlazeUp-AI/Observal/commit/9801014ed875aaa5927d85f635ee7eaa3a0a4125))
+- stop generating OTLP env vars in config snippets (**config**) ([9991547](https://github.com/BlazeUp-AI/Observal/commit/99915472ea876446ddf6c3f42dd1a8852988e33e))
+- use block scalar style for long YAML values in review diff (**review**) ([ab98781](https://github.com/BlazeUp-AI/Observal/commit/ab98781ce55c27e42bf5ffe9391ef4fe6fc3a861))
+- show agent prompt in review queue and diff sheet (**review**) ([5a5ea64](https://github.com/BlazeUp-AI/Observal/commit/5a5ea64a2af083df2f2981fc0694137e732d4ca3))
+- Kiro agent pull writes hook scripts and rewrites command paths ([a3505bc](https://github.com/BlazeUp-AI/Observal/commit/a3505bcf6d7c924ba717df1377a58368f25fd5bd))
+- rewrite bare script filenames to .claude/hooks/ path in frontmatter ([02a75c0](https://github.com/BlazeUp-AI/Observal/commit/02a75c01b8a1dc744e21534e5e63c8f2d2880752))
+- include description in Claude Code agent frontmatter ([d708348](https://github.com/BlazeUp-AI/Observal/commit/d7083489295383303ac8518f24ef4aaf80cd9998))
+- deliver hook script files on agent pull for all IDEs ([58db0a5](https://github.com/BlazeUp-AI/Observal/commit/58db0a5c6104cf6c3e822251e10425dab6ec9e7c))
+- expand ~ paths in hook install instead of creating literal ~/dir ([c2247d6](https://github.com/BlazeUp-AI/Observal/commit/c2247d63c4cf17a5eaa7018e1a1491e679b9aede))
+- hook install command writes config to IDE settings file ([6dd4d5a](https://github.com/BlazeUp-AI/Observal/commit/6dd4d5af93e84ee6fab0d02592d984f0a3a593d0))
+- remove dead field references from frontend components ([2be988e](https://github.com/BlazeUp-AI/Observal/commit/2be988e84a43504a50f9278f423dbd11a773e51f))
+- improve chart readability and UI clarity across tabs (**dashboard**) ([2eb1fe8](https://github.com/BlazeUp-AI/Observal/commit/2eb1fe82e900ebc4143f151b48a063b1b3cac783))
+- clamp future sentinel timestamps at ingest in _normalize_ts (**traces**) ([8eaad86](https://github.com/BlazeUp-AI/Observal/commit/8eaad86dbda07f1fe6cf93fd63b27bd30970878b))
+- chart visual polish — dark tooltips, cleaner axes, token formatting (**dashboard**) ([ebecdd9](https://github.com/BlazeUp-AI/Observal/commit/ebecdd9f9e8eacf1bf17360219c6a65d05952ea0))
+- show dash for Kiro sessions with no credits instead of N prompts (**traces**) ([a156f65](https://github.com/BlazeUp-AI/Observal/commit/a156f6587319c00aafa45d760f640e291a4f402b))
+- add edit baselines button and fix useState in cost tab (**dashboard**) ([a786deb](https://github.com/BlazeUp-AI/Observal/commit/a786debdbf76bb0366cbc9b432f97e9d88318c02))
+- fix bare f-strings and formatting in exec dashboard seed script (**dashboard**) ([5ca7f18](https://github.com/BlazeUp-AI/Observal/commit/5ca7f18d528a53957c0f96254b6c1f9dd6bde36c))
+- renumber exec dashboard migration to 0011 to avoid collision with retention 0010 (**migration**) ([318731d](https://github.com/BlazeUp-AI/Observal/commit/318731d310b09d5286de26e7d2aca5c0b9949684))
+- request groups scope from OIDC provider for department auto-mapping (**auth**) ([a213447](https://github.com/BlazeUp-AI/Observal/commit/a213447f768bd806de4f6f959f133481235e9d8e))
+- remove invalid PreviewPanel props, run ruff format (**ci**) ([644f191](https://github.com/BlazeUp-AI/Observal/commit/644f1912bcfd907ab0aa21ba01628f2ee41f4e3f))
+- resolve ruff, eslint, and REUSE compliance issues (**lint**) ([863d7f7](https://github.com/BlazeUp-AI/Observal/commit/863d7f7c9faf62cae337ea94d9f532313378d135))
+- honest metrics — cost/session, data-driven confidence, no fake composite (**dashboard**) ([0aafe2f](https://github.com/BlazeUp-AI/Observal/commit/0aafe2f2c3e5896198f3fd21511b4477e70d5edb))
+- correct down_revision chain and PreviewPanel props (**migration**) ([fd7f6e5](https://github.com/BlazeUp-AI/Observal/commit/fd7f6e5679ce827b5f1421714b7494c147741854))
+
+### Other
+
+- remove eval docs and grafana dashboard ([3a33d88](https://github.com/BlazeUp-AI/Observal/commit/3a33d88388e54dbbc8551f16ceb834b0fa6ab7e4))
+- remove eval tests ([84f5ea5](https://github.com/BlazeUp-AI/Observal/commit/84f5ea5faa71364c80651611078e2696f59b35ba))
+- remove eval frontend ([ebe5efc](https://github.com/BlazeUp-AI/Observal/commit/ebe5efc0d592a1e5255771f729b5f120ccbcba69))
+- remove eval CLI commands ([89b3c33](https://github.com/BlazeUp-AI/Observal/commit/89b3c33e0c1752c6a5f2d81a684bfcff7531de3e))
+- remove eval engine backend ([f30d626](https://github.com/BlazeUp-AI/Observal/commit/f30d62641244d69b59c2c43055b490960ba197cb))
+- extract call_model into insights service ([c81425c](https://github.com/BlazeUp-AI/Observal/commit/c81425c4772ca94e6388b58b8a54add9b2c9200c))
+- address PR review, fix lint, add docs ([513c916](https://github.com/BlazeUp-AI/Observal/commit/513c9166e66b34be62fb43e7c80337e7bef22ef7))
+- clean up .env.example and docker-compose for v1.0 ([d8601f0](https://github.com/BlazeUp-AI/Observal/commit/d8601f0e08746a7417ecb1aeeb21a4c08a98a1f6))
+
+### Testing
+
+- update mocks for dynamic_settings migration ([3277ddd](https://github.com/BlazeUp-AI/Observal/commit/3277ddd2c656ec5e8f36b071669f27efccfbce4d))
+- add exec dashboard API tests, formula tests, and seed scripts (**dashboard**) ([3d0cc20](https://github.com/BlazeUp-AI/Observal/commit/3d0cc20a5ee35d75c6619207655d0cfa66a431b4))
+
+### Security
+
+- add path traversal guard to hook file writes ([fc5232b](https://github.com/BlazeUp-AI/Observal/commit/fc5232b6ae30384bdd475d99f1bf7c860d7af33a))
+## [0.8.0] - 2026-05-21
+
+### Added
+
+- add settings UI, dashboard widget, and warning banner (**retention**) ([893432b](https://github.com/BlazeUp-AI/Observal/commit/893432bcd0b9264af9e2bfe6e9999e1d53fc1b7f))
+- add admin API endpoints and 6-hour purge cron (**retention**) ([862992f](https://github.com/BlazeUp-AI/Observal/commit/862992f6ea4cdbc682d9504f2ff5a3208b7f3e94))
+- add per-org data retention model, schema, and purge service (**retention**) ([bb746af](https://github.com/BlazeUp-AI/Observal/commit/bb746af2696bd35e50a91d20985edbbdebed5e32))
+- license-gated install across all deployment methods ([f327c95](https://github.com/BlazeUp-AI/Observal/commit/f327c95e74064b8b2d8e1be8c21e6e59e9ae5956))
+- extend custom branding to login, home, device pages and SVG logo (**web**) ([c2e9fe2](https://github.com/BlazeUp-AI/Observal/commit/c2e9fe28652e179dd26547a59c1d263c6b60b4be))
+- default LB to port 80 for single-port access (**docker**) ([fd29b8b](https://github.com/BlazeUp-AI/Observal/commit/fd29b8bc7fc31c83f32a03c28f98da1d0598c231))
+- add Cursor to platform filter and show agent name in trace list (**web**) ([deb5989](https://github.com/BlazeUp-AI/Observal/commit/deb598967cf1c8a138c2a402bd7d3d39b908bab5))
+- enable hook_bridge and set cursor session parser in IDE registry (**cursor**) ([7011847](https://github.com/BlazeUp-AI/Observal/commit/7011847b298228be1953463f8052cf52d749a1d9))
+- add doctor patch for Cursor hook installation (**cursor**) ([9f39c21](https://github.com/BlazeUp-AI/Observal/commit/9f39c219808c531fb03bbb6374d3cee7d27bfb2d))
+- detect and configure Cursor on auth login (**cursor**) ([c0c068d](https://github.com/BlazeUp-AI/Observal/commit/c0c068d4986c05712717516f8b393b6d3d4782a9))
+- emit Cursor hook config from agent config generator (**cursor**) ([8d3e8f4](https://github.com/BlazeUp-AI/Observal/commit/8d3e8f46df3a96ce55f663e650e4411b9ec1fbd1))
+- add cursor_session_push hook and background post worker (**cursor**) ([42a9057](https://github.com/BlazeUp-AI/Observal/commit/42a905747efc80d2d74096a38ed8ba3a8e2e0feb))
+- add server-side JSONL session parser and ingest classifier (**cursor**) ([81c6c36](https://github.com/BlazeUp-AI/Observal/commit/81c6c36d4afa75161b3b0b07c59aacba25635681))
+- create components in-memory, cascade submit with agent (**builder**) ([53d7b75](https://github.com/BlazeUp-AI/Observal/commit/53d7b75bf780ef08b565d1d72b53107e9dc2a7af))
+
+### Changed
+
+- split monolithic module into subpackage (**clickhouse**) ([dbf4964](https://github.com/BlazeUp-AI/Observal/commit/dbf4964793611cdc5a3f5448e43b5a6e3f3462bc))
+- rewrite hook scripts as thin wrappers over sessions/ domain (**cli**) ([a2b2ca1](https://github.com/BlazeUp-AI/Observal/commit/a2b2ca1fe38b9514bdeebf1d557d4ceb9ec3d33c))
+- introduce sessions/ domain with base, claude_code, kiro, and cursor modules (**cli**) ([d53e10e](https://github.com/BlazeUp-AI/Observal/commit/d53e10e07d0ad3a35d430c8a380ee54423f413f2))
+- extract sanitize_name, load_jsonc, hook markers, and shim detection to shared utils (**cli**) ([912f586](https://github.com/BlazeUp-AI/Observal/commit/912f58668f7fbc711d6bdb95a7f1582534884529))
+- extract sanitize_name and strip_cursor_xml_tags to shared utils (**server**) ([65c7506](https://github.com/BlazeUp-AI/Observal/commit/65c75067cb20b39c25b82a7884d901075e96543e))
+- remove goal template, replace with required prompt field (**agent**) ([3b04a3e](https://github.com/BlazeUp-AI/Observal/commit/3b04a3eee42cc59856b7b7b11a722468ca37ad31))
+
+### Documentation
+
+- remove GitHub stars shield (**readme**) ([b3bc715](https://github.com/BlazeUp-AI/Observal/commit/b3bc715345716c40d5400cbd02869c4025f3835e))
+- document license-gated install and OBSERVAL_LICENSE_KEY ([940a606](https://github.com/BlazeUp-AI/Observal/commit/940a606a9929cdac1944660ec1ddac879e707140))
+- expand badge bar with live GHCR pulls, PyPI, and community badges (**readme**) ([7945bbb](https://github.com/BlazeUp-AI/Observal/commit/7945bbbddfbd366edcd2aa8b6b2a05501b5e6a15))
+- add AI policy, development guide, and overhaul contributing guide ([afd90f4](https://github.com/BlazeUp-AI/Observal/commit/afd90f4ae5a28fd0f93e344c884066d8c71a43f7))
+
+### Fixed
+
+- update default server URL to match new LB port 80 (**cli**) ([92454d4](https://github.com/BlazeUp-AI/Observal/commit/92454d42ca2fc9fb8e5914628e39648510c43d6e))
+- add license field to package.json (**web**) ([c193090](https://github.com/BlazeUp-AI/Observal/commit/c19309095c59cb2d75cd02155a3e001db4a4f443))
+- query packages via repository scope instead of org (**badges**) ([818c6d6](https://github.com/BlazeUp-AI/Observal/commit/818c6d65a6e44d0204ee4f2fd8602c505db06fb2))
+- use GraphQL to fetch GHCR pull counts, require read:org scope (**badges**) ([834e83d](https://github.com/BlazeUp-AI/Observal/commit/834e83de576bacb9c38667086376fd8d0755e135))
+- update localhost URLs from port 8000 to port 80 after LB change (**e2e**) ([6c61312](https://github.com/BlazeUp-AI/Observal/commit/6c6131272bdee3d6cad220208b7aa07688313e6e))
+- route frontend traffic through LB on port 80 (**nginx**) ([61e7060](https://github.com/BlazeUp-AI/Observal/commit/61e70604429b5e610481bafe00bd1ac6bed4419c))
+- correct agent pull command in registry home (**web**) ([3392a1b](https://github.com/BlazeUp-AI/Observal/commit/3392a1b00a60feb659514b310fe575c154af4c9a))
+- resolve agent files to project scope and use sys.executable in pull (**cursor**) ([809ca65](https://github.com/BlazeUp-AI/Observal/commit/809ca651f0595b5ce16be55ce252d6a5c4888629))
+- render YAML instead of JSON, expand all components by default (**review**) ([70e106a](https://github.com/BlazeUp-AI/Observal/commit/70e106a01e337cad77319917a12cae99bfbdfa10))
+- default installation scope to user for agent pull (**cli**) ([a57f410](https://github.com/BlazeUp-AI/Observal/commit/a57f410d305574313f3bcd0e6b71b6c26b7f4dea))
+- description is registry metadata, never inject into agent files (**agent**) ([87688be](https://github.com/BlazeUp-AI/Observal/commit/87688be09755b0ca39851c67b44e416da6b7055a))
+
+### Other
+
+- remove demo directory ([0824422](https://github.com/BlazeUp-AI/Observal/commit/082442209003bd60b286f2758ff055b3a0c54197))
+- add refactor-guide, security-auditor, and test-writer skill definitions ([becae20](https://github.com/BlazeUp-AI/Observal/commit/becae20de5281aff5123938a166ad45b4ca07dbe))
+- fix broken AI_POLICY.md links in development guide (**docs**) ([caae9a1](https://github.com/BlazeUp-AI/Observal/commit/caae9a117aebabd444e81237a137a8d8984fc312))
+
+### Testing
+
+- add unit, integration, and simulation tests (**retention**) ([36a13fa](https://github.com/BlazeUp-AI/Observal/commit/36a13faeb5b6ec403b0118761dc910f79e6535ad))
+## [0.7.0] - 2026-05-19
+
+### Added
+
+- enterprise license gate for insights (**ee**) ([1a2f3c0](https://github.com/BlazeUp-AI/Observal/commit/1a2f3c0a1c74f49724ddb5034e34656da6b02efb))
+- add Gitleaks workflow to scan PRs for secret leaks (**ci**) ([8ba0c76](https://github.com/BlazeUp-AI/Observal/commit/8ba0c76afba5d67710d2228ed2d74700926cc731))
+- auto-label PRs with merge conflicts (**ci**) ([abc12a5](https://github.com/BlazeUp-AI/Observal/commit/abc12a527c539ff3a1efec0eda43503e1490bdf1))
+- auto-label PRs touching tests or enterprise code (**ci**) ([cd7f50d](https://github.com/BlazeUp-AI/Observal/commit/cd7f50d69c00890c13dfcf69ec372f73008eaef4))
+- add workflow to label PRs from first-time contributors (**ci**) ([0e27e9f](https://github.com/BlazeUp-AI/Observal/commit/0e27e9fbe2e9823d62ab94ebc2a87e3cb1afffd4))
+
+### Changed
+
+- migrate e2e tests to tests/e2e with pnpm workspace ([8d3394e](https://github.com/BlazeUp-AI/Observal/commit/8d3394e7a2108756fd1765375c9a9a4fd4fba3e3))
+
+### Documentation
+
+- clarify agent install and pull ([596f210](https://github.com/BlazeUp-AI/Observal/commit/596f210f1a873237efd0909b4d2c6c18a6728978))
+- update agent pull command ([17372aa](https://github.com/BlazeUp-AI/Observal/commit/17372aade157dfbaaf40ba997c0ba7d2cafa9c45))
+- rewrite landing page for clarity and completeness ([6c02a60](https://github.com/BlazeUp-AI/Observal/commit/6c02a60730b65f7d2bc2e74af0a6cd221c703ee9))
+- update migrate workflow with org-id and structured steps ([6fa6c78](https://github.com/BlazeUp-AI/Observal/commit/6fa6c783c21f1c2f991bba142b23d47cb4233c68))
+
+### Fixed
+
+- redact nested structured secrets (**security**) ([3ab8e70](https://github.com/BlazeUp-AI/Observal/commit/3ab8e708fa37091bb3e5ae915f85d1f69bc27509))
+- bump gitpython to 3.1.50 and urllib3 to 2.7.0 (**deps**) ([b62f861](https://github.com/BlazeUp-AI/Observal/commit/b62f861a1445488d2394e8db1fa17bb475fbd07c))
+- use search API, bump to @v9, fix error handling in new-contributor workflow (**ci**) ([2eb853b](https://github.com/BlazeUp-AI/Observal/commit/2eb853be5c04207a7c88f525b30360be66ba3a1d))
+- fix SPDX header corruption and improve e2e-frontend health check (**ci**) ([1f3d05d](https://github.com/BlazeUp-AI/Observal/commit/1f3d05d89e61e41c01a2007e7559e99930194fc1))
+- add repository guard to deploy, release, and SBOM workflows (**ci**) ([f6724e5](https://github.com/BlazeUp-AI/Observal/commit/f6724e535f9b96070e49528c599b9cb337ca4cd9))
+- fix SAML SSO (**ee**) ([2af7611](https://github.com/BlazeUp-AI/Observal/commit/2af76119b20e6b278bd451f052ba92e012407989))
+- update web frontend (minor/patch) (**deps**) ([da825f8](https://github.com/BlazeUp-AI/Observal/commit/da825f8432d3e7392f7311549c5a65ac3fa835ea))
+- restrict migrate commands to super admin (#1048) ([eda06e0](https://github.com/BlazeUp-AI/Observal/commit/eda06e0948af343e440adbc550ec499e1133d36d))
+- add missing pyarrow dep to make test targets (#1044) ([1bfb94c](https://github.com/BlazeUp-AI/Observal/commit/1bfb94cf4685b26faca085d90347d613b771b76f))
+
+### Other
+
+- move SPDX identifiers for LICENSE and ee/LICENSE to REUSE.toml ([bfd6145](https://github.com/BlazeUp-AI/Observal/commit/bfd6145810f910b9c578fdd84e593f302b2a071b))
+- clean up CI pipeline (**ci**) ([4575a26](https://github.com/BlazeUp-AI/Observal/commit/4575a26242d143dccb8314b62e648ac6214d1d5d))
+- fold PR label workflows into one file (**ci**) ([77e8538](https://github.com/BlazeUp-AI/Observal/commit/77e853860f5e21ffb4886d03215884853f443b10))
+- update codecov/codecov-action action to v6 (**deps**) ([3bb1b1c](https://github.com/BlazeUp-AI/Observal/commit/3bb1b1c8f0e5769abd34e2b517fd0791bd2c4439))
+- update dependency ruff to v0.15.13 (**deps**) ([a1192e4](https://github.com/BlazeUp-AI/Observal/commit/a1192e49a568fa538be828a270a9e0549511eade))
+- update fsfe/reuse-action action to v6 (**deps**) ([11cdcff](https://github.com/BlazeUp-AI/Observal/commit/11cdcff4d5b07749b5a94ff4eece7392ea7e381b))
+- update dependency node to v24 (**deps**) ([31f8cb6](https://github.com/BlazeUp-AI/Observal/commit/31f8cb6aeb8e9c3012f1376ec394298d6ba3a836))
+- update actions/upload-artifact action to v7 (**deps**) ([f684f52](https://github.com/BlazeUp-AI/Observal/commit/f684f52d2c73ad003b20d9739b98ae9f34a172b9))
+- update ghcr.io/astral-sh/uv docker tag to v0.11.15 (**deps**) ([2c789e4](https://github.com/BlazeUp-AI/Observal/commit/2c789e48e9ce85a895e8f8668e57e0600b790cd0))
+- update pnpm/action-setup action to v6 (**deps**) ([e70c6a9](https://github.com/BlazeUp-AI/Observal/commit/e70c6a97252c8b234b117bf69091e503a297ef3d))
+- prep CLI for Homebrew (**packaging**) ([d2bf23b](https://github.com/BlazeUp-AI/Observal/commit/d2bf23b0658486f06ec67e2fbcc1c0fa6b6d2cf4))
+
+### Testing
+
+- cover redactor fallbacks (**security**) ([a6c4d40](https://github.com/BlazeUp-AI/Observal/commit/a6c4d40a4d538ba83b13ba8cd1843b6c6adf0763))
 ## [0.6.0] - 2026-05-16
 
 ### Added

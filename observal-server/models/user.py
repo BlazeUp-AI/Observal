@@ -39,6 +39,7 @@ class User(Base):
     auth_provider: Mapped[str] = mapped_column(String(50), default="local", server_default="local")
     sso_subject_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     def __init__(self, **kwargs: object) -> None:

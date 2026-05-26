@@ -74,12 +74,6 @@ class TestBuildSkillFilesVerbatimPath:
         assert len(files) == 1
         assert files[0].content == VERBATIM_MD
 
-    def test_vscode_uses_verbatim(self):
-        manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        files = _build_skill_files(manifest, "vscode")
-        assert len(files) == 1
-        assert files[0].content == VERBATIM_MD
-
 
 class TestBuildSkillFilesFallbackPath:
     def test_claude_code_fallback_has_frontmatter(self):
@@ -111,7 +105,6 @@ class TestSkillFilePaths:
             ("claude-code", ".claude/skills/"),
             ("kiro", ".kiro/skills/"),
             ("cursor", ".cursor/rules/"),
-            ("vscode", ".github/instructions/"),
         ],
     )
     def test_skill_file_path(self, ide: str, expected_prefix: str):
@@ -126,7 +119,7 @@ class TestSkillFilePaths:
 class TestGenerateIdeAgentFilesWithSkills:
     @pytest.mark.parametrize(
         "ide",
-        ["claude-code", "cursor", "kiro", "vscode", "gemini-cli", "opencode"],
+        ["claude-code", "cursor", "kiro", "gemini-cli", "opencode"],
     )
     def test_skill_file_in_ide_output(self, ide: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)

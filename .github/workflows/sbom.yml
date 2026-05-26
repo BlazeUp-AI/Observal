@@ -45,19 +45,17 @@ jobs:
 
       # ── Node.js SBOM (web) ───────────────────────────────────
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Generate Node.js SBOM
         run: |
-          cd web
           pnpm install --frozen-lockfile
+          cd web
           pnpm dlx @cyclonedx/cdxgen -o ../sbom-node.cdx.json
 
       # ── Vulnerability check (non-blocking) ───────────────────
@@ -66,6 +64,7 @@ jobs:
         run: uv run --no-project scripts/check_vulnerabilities.py sbom-python.cdx.json sbom-node.cdx.json
 
       - name: Ensure labels exist
+        if: github.repository == 'BlazeUp-AI/Observal'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -73,7 +72,7 @@ jobs:
           gh label create "automated" --color "0E8A16" --description "Created by CI automation" 2>/dev/null || true
 
       - name: Post vulnerability summary
-        if: hashFiles('vulnerability-report.md') != ''
+        if: github.repository == 'BlazeUp-AI/Observal' && hashFiles('vulnerability-report.md') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -95,7 +94,7 @@ jobs:
 
       # ── Attach to release ────────────────────────────────────
       - name: Attach SBOMs to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && github.repository == 'BlazeUp-AI/Observal'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

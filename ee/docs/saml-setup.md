@@ -49,7 +49,7 @@ table below lists every supported variable.
 
 | Variable | Description | Default |
 |---|---|---|
-| `SAML_SP_ENTITY_ID` | The entity ID that Observal uses to identify itself to the IdP. | Auto-derived from `FRONTEND_URL` |
+| `SAML_SP_ENTITY_ID` | The entity ID that Observal uses to identify itself to the IdP. | Auto-derived from `FRONTEND_URL` (appends `api/v1/sso/saml/metadata`)|
 | `SAML_SP_ACS_URL` | The Assertion Consumer Service URL where the IdP posts SAML responses. | Auto-derived from `FRONTEND_URL` (appends `/api/v1/sso/saml/acs`) |
 | `SAML_SP_KEY_ENCRYPTION_PASSWORD` | Password protecting the SP's private key, used for encrypted assertions. Only required if your IdP sends encrypted SAML assertions. | (none) |
 

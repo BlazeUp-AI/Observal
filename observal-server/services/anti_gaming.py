@@ -12,6 +12,8 @@ Never auto-rejects — always human-in-the-loop.
 import re
 from dataclasses import asdict, dataclass
 
+from loguru import logger
+
 
 @dataclass
 class GamingFlag:
@@ -50,6 +52,7 @@ def scan_for_gaming(system_prompt: str) -> list[GamingFlag]:
     Returns list of flags with context. Empty list = clean.
     Never auto-rejects — reviewer must acknowledge each flag.
     """
+    logger.debug("scan_for_gaming: system_prompt={}", system_prompt)
     if not system_prompt:
         return []
 
@@ -81,6 +84,7 @@ def summarize_flags(flags: list[GamingFlag]) -> dict:
         categories: dict[str, int]
         flags: list[dict] (serialized GamingFlags)
     """
+    logger.debug("summarize_flags: flags={}", flags)
     categories: dict[str, int] = {}
     for flag in flags:
         categories[flag.category] = categories.get(flag.category, 0) + 1

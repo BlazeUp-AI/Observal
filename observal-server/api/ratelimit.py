@@ -6,6 +6,7 @@
 from slowapi import Limiter
 from starlette.requests import Request
 
+import services.dynamic_settings as ds
 from config import settings
 
 
@@ -15,7 +16,8 @@ def _get_real_ip(request: Request) -> str:
     Without configured trusted proxies, uses the socket IP directly.
     """
     client_ip = request.client.host if request.client else "127.0.0.1"
-    trusted = settings.TRUSTED_PROXY_IPS or []
+    trusted_str = ds.get_sync("security.trusted_proxy_ips")
+    trusted = [ip.strip() for ip in trusted_str.split(",") if ip.strip()] if trusted_str else []
     if not trusted or client_ip not in trusted:
         return client_ip
     forwarded = request.headers.get("x-forwarded-for", "")

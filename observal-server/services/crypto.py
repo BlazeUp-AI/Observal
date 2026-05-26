@@ -22,6 +22,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, utils
+from loguru import logger as optic
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +33,20 @@ logger = logging.getLogger(__name__)
 
 def _b64url(data: bytes) -> str:
     """Base64url-encode *without* padding (per RFC 7515)."""
+    optic.debug("_b64url called")
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
 def _b64url_decode(s: str) -> bytes:
     """Base64url-decode, re-adding padding as needed."""
+    optic.debug("_b64url_decode called")
     s += "=" * (4 - len(s) % 4)
     return base64.urlsafe_b64decode(s)
 
 
 def _kid_from_public_key(pub: ec.EllipticCurvePublicKey) -> str:
     """Derive a deterministic key-id (kid) from the public key bytes."""
+    optic.debug("_kid_from_public_key: pub={}", pub)
     raw = pub.public_bytes(
         serialization.Encoding.DER,
         serialization.PublicFormat.SubjectPublicKeyInfo,
@@ -52,6 +56,7 @@ def _kid_from_public_key(pub: ec.EllipticCurvePublicKey) -> str:
 
 def _public_key_to_jwk(pub: ec.EllipticCurvePublicKey, kid: str) -> dict:
     """Convert an EC public key to a JWK dict (RFC 7517 / 7518)."""
+    optic.debug("_public_key_to_jwk: pub={}, kid={}", pub, kid)
     numbers = pub.public_numbers()
     # P-256 coordinates are 32 bytes each
     x_bytes = numbers.x.to_bytes(32, byteorder="big")
@@ -101,6 +106,7 @@ class KeyManager:
 
     def initialize(self) -> None:
         """Load or generate the signing key pair.  Call once at startup."""
+        optic.debug("initialize called")
         self._key_dir.mkdir(parents=True, exist_ok=True)
         # Restrict directory to owner-only
         os.chmod(self._key_dir, 0o700)
@@ -119,24 +125,28 @@ class KeyManager:
 
     def get_private_key(self) -> ec.EllipticCurvePrivateKey:
         """Return the current signing private key."""
+        optic.debug("get_private_key accessed")
         if self._private_key is None:
             raise RuntimeError("KeyManager has not been initialized")
         return self._private_key
 
     def get_public_key(self) -> ec.EllipticCurvePublicKey:
         """Return the current signing public key."""
+        optic.debug("get_public_key called")
         if self._public_key is None:
             raise RuntimeError("KeyManager has not been initialized")
         return self._public_key
 
     def get_kid(self) -> str:
         """Return the key-id of the current signing key."""
+        optic.debug("get_kid called")
         if self._kid is None:
             raise RuntimeError("KeyManager has not been initialized")
         return self._kid
 
     def get_public_key_pem(self) -> str:
         """Return the PEM-encoded public key for distribution."""
+        optic.debug("get_public_key_pem called")
         return (
             self.get_public_key()
             .public_bytes(
@@ -148,6 +158,7 @@ class KeyManager:
 
     def get_jwks(self) -> dict:
         """Return all public keys (current + retired) in JWKS format."""
+        optic.debug("get_jwks called")
         keys: list[dict] = []
         # Current key
         keys.append(_public_key_to_jwk(self.get_public_key(), self.get_kid()))
@@ -161,6 +172,7 @@ class KeyManager:
 
         Returns the *kid* of the newly generated key.
         """
+        optic.debug("rotate_key called")
         if self._public_key is not None and self._kid is not None:
             # Persist current public key as retired
             retired_path = self._key_dir / f"retired_{self._kid}.pem"
@@ -180,6 +192,7 @@ class KeyManager:
 
     def find_public_key(self, kid: str) -> ec.EllipticCurvePublicKey | None:
         """Look up a public key by its *kid* (current or retired)."""
+        optic.debug("find_public_key: kid={}", kid)
         if kid == self._kid:
             return self._public_key
         return self._retired_keys.get(kid)
@@ -191,6 +204,7 @@ class KeyManager:
 
         Format: ephemeral_pubkey (65 bytes) || nonce (12 bytes) || ciphertext+tag
         """
+        optic.debug("decrypt_payload called")
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
@@ -227,6 +241,7 @@ class KeyManager:
         If ``PyJWT`` is installed this delegates to it; otherwise a
         minimal implementation using the ``cryptography`` library is used.
         """
+        optic.debug("sign_token called")
         try:
             import jwt as pyjwt
 
@@ -246,6 +261,7 @@ class KeyManager:
 
         Supports tokens signed with both the current and retired keys.
         """
+        optic.debug("verify_token: token={}", token)
         try:
             import jwt as pyjwt
 
@@ -264,11 +280,13 @@ class KeyManager:
     # -- internal ------------------------------------------------------------
 
     def _encryption_args(self) -> serialization.KeySerializationEncryption:
+        optic.debug("_encryption_args called")
         if self._key_password:
             return serialization.BestAvailableEncryption(self._key_password)
         return serialization.NoEncryption()
 
     def _generate_key_pair(self, path: Path) -> None:
+        optic.debug("_generate_key_pair: path={}", path)
         key = ec.generate_private_key(ec.SECP256R1())
         pem = key.private_bytes(
             serialization.Encoding.PEM,
@@ -282,6 +300,7 @@ class KeyManager:
         self._kid = _kid_from_public_key(self._public_key)
 
     def _load_private_key(self, path: Path) -> None:
+        optic.debug("_load_private_key: path={}", path)
         pem_data = path.read_bytes()
         key = serialization.load_pem_private_key(pem_data, password=self._key_password)
         if not isinstance(key, ec.EllipticCurvePrivateKey):
@@ -291,6 +310,7 @@ class KeyManager:
         self._kid = _kid_from_public_key(self._public_key)
 
     def _load_retired_keys(self) -> None:
+        optic.debug("_load_retired_keys called")
         for p in self._key_dir.glob("retired_*.pem"):
             try:
                 pub = serialization.load_pem_public_key(p.read_bytes())
@@ -305,6 +325,7 @@ class KeyManager:
 
     def _sign_token_raw(self, payload: dict) -> str:
         """Minimal JWS compact serialization using ``cryptography``."""
+        optic.debug("_sign_token_raw called")
         header = {"alg": "ES256", "typ": "JWT", "kid": self.get_kid()}
         segments = [
             _b64url(json.dumps(header, separators=(",", ":")).encode()),
@@ -324,6 +345,7 @@ class KeyManager:
 
     def _verify_token_raw(self, token: str) -> dict:
         """Minimal JWS verification using ``cryptography``."""
+        optic.debug("_verify_token_raw: token={}", token)
         parts = token.split(".")
         if len(parts) != 3:
             raise ValueError("Invalid JWT format")
@@ -359,6 +381,7 @@ _key_manager: KeyManager | None = None
 
 def get_key_manager() -> KeyManager:
     """Return the global KeyManager instance (must be initialized first)."""
+    optic.debug("get_key_manager called")
     if _key_manager is None:
         raise RuntimeError("KeyManager not initialized. Call init_key_manager() during app startup.")
     return _key_manager
@@ -369,6 +392,7 @@ def init_key_manager(
     key_password: str | None = None,
 ) -> KeyManager:
     """Create, initialize, and register the global KeyManager singleton."""
+    optic.debug("crypto: key manager init")
     global _key_manager
     km = KeyManager(key_dir=key_dir, key_password=key_password)
     km.initialize()
@@ -381,9 +405,11 @@ def init_key_manager(
 
 def sign_token(payload: dict) -> str:
     """Sign a JWT payload with the server's private key."""
+    optic.debug("sign_token called")
     return get_key_manager().sign_token(payload)
 
 
 def verify_token(token: str) -> dict:
     """Verify and decode a JWT using the server's public key."""
+    optic.debug("verify_token: token={}", token)
     return get_key_manager().verify_token(token)

@@ -10,7 +10,8 @@
 import { useState, useCallback } from "react";
 import { Users, Plus, Copy, Check, Loader2, Key, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { useAdminUsers, useCreateUser, useUpdateUserRole, useDeleteUser, useResetPassword } from "@/hooks/use-api";
+import { useAdminUsers, useCreateUser, useUpdateUserRole, useUpdateUserDepartment, useDeleteUser, useResetPassword } from "@/hooks/use-api";
+import { admin } from "@/lib/api";
 import type { AdminUser } from "@/lib/types";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,45 @@ function RoleSelect({ userId, currentRole }: { userId: string; currentRole: stri
   );
 }
 
+function DepartmentInput({ userId, currentDept }: { userId: string; currentDept: string | null | undefined }) {
+  const mutation = useUpdateUserDepartment();
+  const [value, setValue] = useState(currentDept ?? "");
+  const [editing, setEditing] = useState(false);
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        title="Click to set department"
+      >
+        {currentDept || "—"}
+      </button>
+    );
+  }
+
+  return (
+    <Input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        const trimmed = value.trim() || null;
+        if (trimmed !== (currentDept ?? null)) {
+          mutation.mutate({ id: userId, department: trimmed });
+        }
+        setEditing(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") { setValue(currentDept ?? ""); setEditing(false); }
+      }}
+      className="h-6 w-[120px] text-xs px-1.5"
+      placeholder="Department"
+      autoFocus
+    />
+  );
+}
+
 export default function UsersPage() {
   const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
   const createUser = useCreateUser();
@@ -73,6 +113,9 @@ export default function UsersPage() {
   const assignableRoles = useAssignableRoles();
   const { ssoOnly } = useDeploymentConfig();
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulkDept, setShowBulkDept] = useState(false);
+  const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [resetResult, setResetResult] = useState<string | null>(null);
@@ -145,11 +188,16 @@ export default function UsersPage() {
           { label: "Users" },
         ]}
         actionButtonsRight={
-          !ssoOnly ? (
-            <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
-              <Plus className="mr-1 h-3.5 w-3.5" /> Add User
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowBulkDept(true)} className="h-8">
+              <Users className="mr-1 h-3.5 w-3.5" /> Bulk Departments
             </Button>
-          ) : undefined
+            {!ssoOnly && (
+              <Button size="sm" variant="outline" onClick={() => setShowCreate(true)} className="h-8">
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add User
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="p-6 w-full mx-auto space-y-4">
@@ -174,6 +222,7 @@ export default function UsersPage() {
                     <TableHead className="h-8 text-xs">Username</TableHead>
                     <TableHead className="h-8 text-xs">Email</TableHead>
                     <TableHead className="h-8 text-xs">Role</TableHead>
+                    <TableHead className="h-8 text-xs">Department</TableHead>
                     <TableHead className="h-8 text-xs text-right">Joined</TableHead>
                     <TableHead className="h-8 text-xs w-[60px]" />
                   </TableRow>
@@ -192,6 +241,9 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="py-1.5">
                         <RoleSelect userId={u.id} currentRole={u.role} />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <DepartmentInput userId={u.id} currentDept={u.department} />
                       </TableCell>
                       <TableCell className="py-1.5 text-xs text-muted-foreground text-right tabular-nums">
                         {u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}
@@ -403,6 +455,58 @@ export default function UsersPage() {
                 <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Deleting...</>
               ) : (
                 "Delete User"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Department Import Dialog */}
+      <Dialog open={showBulkDept} onOpenChange={(open) => { if (!open) { setShowBulkDept(false); setBulkCsv(""); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bulk Import Departments</DialogTitle>
+            <DialogDescription>
+              Paste CSV data with one user per line: <code className="text-xs bg-muted px-1 rounded">email,department</code>
+            </DialogDescription>
+          </DialogHeader>
+          <textarea
+            value={bulkCsv}
+            onChange={(e) => setBulkCsv(e.target.value)}
+            placeholder={"alice@company.com,Engineering\nbob@company.com,Product\ncharlie@company.com,DevOps"}
+            className="w-full h-40 rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono resize-y focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => { setShowBulkDept(false); setBulkCsv(""); }}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={bulkLoading || !bulkCsv.trim()}
+              onClick={async () => {
+                setBulkLoading(true);
+                try {
+                  const entries = bulkCsv.trim().split("\n").map((line) => {
+                    const [email, ...rest] = line.split(",");
+                    return { email: email.trim(), department: rest.join(",").trim() };
+                  }).filter((e) => e.email && e.department);
+                  const result = await admin.bulkDepartment(entries);
+                  toast.success(`Updated ${result.updated} users${result.not_found.length > 0 ? `, ${result.not_found.length} not found` : ""}`);
+                  if (result.not_found.length > 0) {
+                    toast.error(`Not found: ${result.not_found.slice(0, 5).join(", ")}${result.not_found.length > 5 ? "..." : ""}`);
+                  }
+                  setShowBulkDept(false);
+                  setBulkCsv("");
+                  refetch();
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Bulk import failed");
+                } finally {
+                  setBulkLoading(false);
+                }
+              }}
+            >
+              {bulkLoading ? (
+                <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Importing...</>
+              ) : (
+                "Import"
               )}
             </Button>
           </DialogFooter>

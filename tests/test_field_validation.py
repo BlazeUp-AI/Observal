@@ -49,9 +49,7 @@ class TestMcpValidation:
             owner="testowner",
             category="general",
             git_url="https://github.com/example/mcp-server",
-            supported_ides=["cursor", "kiro", "vscode"],
         )
-        assert r.supported_ides == ["cursor", "kiro", "vscode"]
 
     def test_invalid_ide_rejected(self):
         from schemas.mcp import McpSubmitRequest

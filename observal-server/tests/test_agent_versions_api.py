@@ -74,7 +74,6 @@ def _make_version(agent_id: uuid.UUID, ver: str = SEMVER_VALID, status: AgentSta
     v.reviewed_at = None
     v.created_at = datetime.now(UTC)
     v.components = []
-    v.goal_template = None
     return v
 
 
@@ -302,7 +301,6 @@ async def test_create_version_happy_path():
         external_mcps=[],
         supported_ides=["claude-code"],
         components=[],
-        goal_template=None,
     )
 
     # DB: dup check returns None, pending count returns 0

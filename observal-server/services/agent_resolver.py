@@ -2,12 +2,13 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Agent composition resolver — looks up and validates all components for an agent."""
+"""Agent composition resolver - looks up and validates all components for an agent."""
 
 import logging
 import uuid
 from typing import Literal
 
+from loguru import logger as optic
 from pydantic import BaseModel, Field, computed_field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,14 +78,17 @@ class ResolvedAgent(BaseModel):
     @computed_field
     @property
     def ok(self) -> bool:
+        optic.debug("ok called")
         return len(self.errors) == 0
 
     def components_by_type(self, component_type: str) -> list[ResolvedComponent]:
+        optic.debug("components_by_type: component_type={}", component_type)
         return [c for c in self.components if c.component_type == component_type]
 
 
 def _extract_extra(listing, component_type: str) -> dict:
     """Pull type-specific fields from a listing into a flat dict for downstream use."""
+    optic.debug("_extract_extra: listing={}, component_type={}", listing, component_type)
     if component_type == "mcp":
         return {
             "transport": getattr(listing, "transport", None),
@@ -100,7 +104,7 @@ def _extract_extra(listing, component_type: str) -> dict:
             "skill_md_content": getattr(listing, "skill_md_content", None),
         }
     if component_type == "hook":
-        return {
+        extra = {
             "event": getattr(listing, "event", ""),
             "execution_mode": getattr(listing, "execution_mode", "async"),
             "priority": getattr(listing, "priority", 100),
@@ -108,6 +112,15 @@ def _extract_extra(listing, component_type: str) -> dict:
             "handler_config": getattr(listing, "handler_config", {}),
             "scope": getattr(listing, "scope", "agent"),
         }
+        if getattr(listing, "source_url", None):
+            extra["source_url"] = listing.source_url
+            extra["source_ref"] = getattr(listing, "source_ref", None)
+            extra["resolved_sha"] = getattr(listing, "resolved_sha", None)
+        if getattr(listing, "script_filename", None):
+            extra["script_filename"] = listing.script_filename
+        if getattr(listing, "requirements", None):
+            extra["requirements"] = listing.requirements
+        return extra
     if component_type == "prompt":
         return {
             "template": getattr(listing, "template", ""),
@@ -115,13 +128,16 @@ def _extract_extra(listing, component_type: str) -> dict:
             "category": getattr(listing, "category", ""),
         }
     if component_type == "sandbox":
-        return {
+        extra = {
             "runtime_type": getattr(listing, "runtime_type", ""),
             "image": getattr(listing, "image", ""),
             "resource_limits": getattr(listing, "resource_limits", {}),
             "network_policy": getattr(listing, "network_policy", "none"),
             "entrypoint": getattr(listing, "entrypoint", None),
         }
+        if getattr(listing, "sandbox_path", None):
+            extra["sandbox_path"] = listing.sandbox_path
+        return extra
     return {}
 
 
@@ -136,6 +152,7 @@ async def resolve_agent(
     Looks up each AgentComponent's listing in the correct table,
     validates status, and returns a ResolvedAgent with full details.
     """
+    optic.debug("agent_resolver: resolving")
     components: list[ResolvedComponent] = []
     errors: list[ResolutionError] = []
 
@@ -216,6 +233,7 @@ async def validate_component_ids(
     Each dict should have 'component_type' and 'component_id' keys.
     Returns a list of errors (empty if all valid).
     """
+    optic.debug("validate_component_ids: components={}", components)
     errors = []
     for ref in components:
         ctype = ref.get("component_type", "")

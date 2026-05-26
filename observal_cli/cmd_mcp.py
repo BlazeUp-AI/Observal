@@ -15,13 +15,14 @@ import sys
 from pathlib import Path
 
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.analyzer import analyze_local
 from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES
-from observal_cli.prompts import fuzzy_select, select_one
+from observal_cli.prompts import fuzzy_select, select_one, text_input
 from observal_cli.render import (
     console,
     ide_tags,
@@ -40,6 +41,7 @@ mcp_app = typer.Typer(help="MCP server registry commands")
 
 def _parse_env_file(file_path: str) -> list[dict]:
     """Parse a .env-style file and return env var dicts."""
+    optic.debug("_parse_env_file: file_path={}", file_path)
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
         rprint(f"[red]File not found:[/red] {path}")
@@ -64,6 +66,7 @@ def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
       2. Load from an env file path
       3. Enter manually
     """
+    optic.debug("_configure_env_vars_interactive: detected={}", detected)
     is_tty = sys.stdin.isatty()
 
     if detected:
@@ -85,12 +88,12 @@ def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
             rprint("  2. Load from .env file")
             rprint("  3. Enter manually")
             rprint("  4. Skip (no env vars)")
-            raw = typer.prompt("Choose", default="1")
+            raw = text_input("Choose", default="1")
         else:
             rprint("  1. Load from .env file")
             rprint("  2. Enter manually")
             rprint("  3. Skip (no env vars)")
-            raw = typer.prompt("Choose", default="3")
+            raw = text_input("Choose", default="3")
         choice_map = {
             "1": "Review auto-detected vars" if detected else "Load from .env file",
             "2": "Load from .env file" if detected else "Enter manually",
@@ -103,7 +106,7 @@ def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
         return []
 
     if choice == "Load from .env file":
-        file_path = typer.prompt("Path to .env file (e.g. .env.example)")
+        file_path = text_input("Path to .env file (e.g. .env.example)")
         env_vars = _parse_env_file(file_path)
         if not env_vars:
             rprint("[yellow]No variables found in file.[/yellow]")
@@ -120,15 +123,15 @@ def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
 
 def _review_env_vars(env_vars: list[dict]) -> list[dict]:
     """Let the developer review, remove, and annotate each env var."""
+    optic.debug("_review_env_vars: env_vars={}", env_vars)
     reviewed: list[dict] = []
 
     rprint("\n[bold]Review each variable[/bold]\n")
 
     for ev in env_vars:
-        action = typer.prompt(
-            f"  {ev['name']} — keep? [Enter=keep / r=remove / o=optional]",
+        action = text_input(
+            f"  {ev['name']} - keep? [Enter=keep / r=remove / o=optional]",
             default="",
-            show_default=False,
         )
         action = action.strip().lower()
 
@@ -139,7 +142,7 @@ def _review_env_vars(env_vars: list[dict]) -> list[dict]:
         required = action != "o"
         desc = ev.get("description", "")
         if not desc:
-            desc = typer.prompt(f"    Description for {ev['name']} (optional)", default="")
+            desc = text_input(f"    Description for {ev['name']} (optional)", default="")
 
         reviewed.append({"name": ev["name"], "description": desc, "required": required})
         status = "[green]required[/green]" if required else "[yellow]optional[/yellow]"
@@ -147,10 +150,10 @@ def _review_env_vars(env_vars: list[dict]) -> list[dict]:
 
     # Offer to add more
     while True:
-        add_more = typer.prompt("\n  Add another env var? (name or Enter to finish)", default="")
+        add_more = text_input("\n  Add another env var? (name or Enter to finish)", default="")
         if not add_more:
             break
-        desc = typer.prompt(f"    Description for {add_more} (optional)", default="")
+        desc = text_input(f"    Description for {add_more} (optional)", default="")
         req = typer.confirm("    Required?", default=True)
         reviewed.append({"name": add_more.strip().upper(), "description": desc, "required": req})
 
@@ -159,15 +162,16 @@ def _review_env_vars(env_vars: list[dict]) -> list[dict]:
 
 def _enter_env_vars_manually() -> list[dict]:
     """Prompt the developer to enter env vars one by one."""
+    optic.debug("_enter_env_vars_manually called")
     env_vars: list[dict] = []
     rprint("\n[bold]Enter env vars one at a time[/bold] [dim](empty name to finish)[/dim]\n")
 
     while True:
-        name = typer.prompt("  Variable name (or Enter to finish)", default="")
+        name = text_input("  Variable name (or Enter to finish)", default="")
         if not name:
             break
         name = name.strip().upper()
-        desc = typer.prompt(f"    Description for {name} (optional)", default="")
+        desc = text_input(f"    Description for {name} (optional)", default="")
         req = typer.confirm("    Required?", default=True)
         env_vars.append({"name": name, "description": desc, "required": req})
 
@@ -187,6 +191,7 @@ def _dollar_to_placeholder(value: str) -> str:
         "Bearer $TOKEN1 $TOKEN2"  → "Bearer <TOKEN1> <TOKEN2>"
         "$API_KEY"                → "<API_KEY>"
     """
+    optic.debug("_dollar_to_placeholder: value={}", value)
     return _DOLLAR_VAR_RE.sub(lambda m: f"<{m.group(1)}>", value)
 
 
@@ -197,6 +202,7 @@ def _extract_dollar_vars(args: list[str], env: dict[str, str]) -> list[str]:
     and the *values* (not keys) of the env dict, filtered to exclude
     system/infrastructure vars (PATH, HOME, CI_*, etc.).
     """
+    optic.debug("_extract_dollar_vars: args={}, env={}", args, env)
     from observal_cli.analyzer import _is_filtered_env_var
 
     found: set[str] = set()
@@ -222,6 +228,7 @@ def _unwrap_mcp_config(cfg: dict) -> tuple[dict, str | None]:
     Returns (inner_config, server_name | None).
     """
     # Shape 1: wrapped under mcpServers
+    optic.debug("_unwrap_mcp_config: cfg={}", cfg)
     if "mcpServers" in cfg and isinstance(cfg["mcpServers"], dict):
         servers = cfg["mcpServers"]
         if len(servers) == 1:
@@ -230,7 +237,7 @@ def _unwrap_mcp_config(cfg: dict) -> tuple[dict, str | None]:
                 return inner, server_name
         return cfg, None
 
-    # Shape 3: bare config — has a direct config key
+    # Shape 3: bare config - has a direct config key
     if cfg.get("command") or cfg.get("url") or cfg.get("type"):
         return cfg, None
 
@@ -252,6 +259,7 @@ def _parse_server_json_manifest(cfg: dict) -> dict | None:
     Returns parsed dict if this looks like a server.json manifest, None otherwise.
     """
     # Handle registry format: unwrap "server" envelope
+    optic.debug("_parse_server_json_manifest: cfg={}", cfg)
     manifest = cfg
     server_meta = cfg.get("server")
     if isinstance(server_meta, dict) and ("remotes" in server_meta or "packages" in server_meta):
@@ -272,18 +280,18 @@ def _parse_server_json_manifest(cfg: dict) -> dict | None:
         if reg_desc:
             parsed["_description"] = reg_desc
 
-    # packages[].runtimeArguments — Docker -e flags
+    # packages[].runtimeArguments - Docker -e flags
     for pkg in manifest.get("packages", []):
         for arg in pkg.get("runtimeArguments", []):
             value = arg.get("value", "")
-            # Pattern: "ENV_VAR={placeholder}" — extract the var name before '='
+            # Pattern: "ENV_VAR={placeholder}" - extract the var name before '='
             if "=" in value:
                 var_name = value.split("=", 1)[0]
                 if var_name and var_name == var_name.upper():
                     desc = arg.get("description", "")
                     env_vars.append({"name": var_name, "description": desc, "required": True})
 
-    # remotes[].variables — URL-interpolated secrets
+    # remotes[].variables - URL-interpolated secrets
     for remote in manifest.get("remotes", []):
         url = remote.get("url", "")
         if url and not parsed.get("url"):
@@ -303,7 +311,7 @@ def _parse_server_json_manifest(cfg: dict) -> dict | None:
             # Packages-only manifest implies stdio (Docker typically)
             parsed["transport"] = "stdio"
             parsed["framework"] = "docker"
-        # else: remotes without a URL — don't assume transport
+        # else: remotes without a URL - don't assume transport
 
     return parsed
 
@@ -320,6 +328,7 @@ def _parse_direct_config(cfg: dict) -> dict:
     - SSE/HTTP: {url, type, headers, autoApprove}
     """
     # Try server.json manifest format first
+    optic.debug("_parse_direct_config: cfg={}", cfg)
     manifest_result = _parse_server_json_manifest(cfg)
     if manifest_result is not None:
         return manifest_result
@@ -412,6 +421,7 @@ def _parse_direct_config(cfg: dict) -> dict:
 
 def _build_config_preview(server_name: str, parsed: dict) -> dict:
     """Build a mcp.json-style preview dict for display during submit."""
+    optic.debug("_build_config_preview: server_name={}, parsed={}", server_name, parsed)
     preview: dict = {}
 
     if parsed.get("url"):
@@ -462,6 +472,7 @@ def _build_config_preview(server_name: str, parsed: dict) -> dict:
 
 def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False):
     # ── Path B/C: Direct JSON config (no git URL needed) ─────
+    optic.debug("_submit_impl: git_url={}, name={}", git_url, name)
     if direct_config:
         rprint("[bold]Paste your MCP server JSON config below.[/bold]")
         rprint("[dim]Press Enter on an empty line when done.[/dim]\n")
@@ -485,7 +496,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         try:
             cfg = json.loads(raw_text)
         except json.JSONDecodeError:
-            # Long single-line pastes can get split by the terminal — retry without newlines
+            # Long single-line pastes can get split by the terminal - retry without newlines
             try:
                 cfg = json.loads("".join(part.strip() for part in lines))
             except json.JSONDecodeError as e:
@@ -506,7 +517,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             placeholders = " ".join(f"<{v}>" for v in dollar_vars)
             rprint(f"\n[bold]The user variables are:[/bold] [cyan]{placeholders}[/cyan]")
             rprint(
-                "[dim]These will become install-time prompts — users must supply"
+                "[dim]These will become install-time prompts - users must supply"
                 " values before the server can run.[/dim]"
             )
 
@@ -519,14 +530,14 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
                 rprint("\n[bold]Confirm input dependencies:[/bold]")
                 parsed["environment_variables"] = _review_env_vars(parsed.get("environment_variables", []))
 
-            _name = name or typer.prompt("Server name", default=_name)
+            _name = name or text_input("Server name", default=_name)
             _desc_default = _parsed_desc or ""
-            _desc = typer.prompt("Description (what does this server do?)", default=_desc_default or None)
+            _desc = text_input("Description (what does this server do?)", default=_desc_default or "")
             while not _desc.strip():
                 rprint("[yellow]Description is required.[/yellow]")
-                _desc = typer.prompt("Description (what does this server do?)")
+                _desc = text_input("Description (what does this server do?)")
             _desc = _desc.strip()
-            _owner = typer.prompt(
+            _owner = text_input(
                 "Owner / Team (e.g. your GitHub username)", default=config.load().get("user_name", "default")
             )
             _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
@@ -576,7 +587,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
     # ── Path A: Git URL analysis ─────────────────────────────
     rprint(
         "\n[yellow]Note:[/yellow] Git analysis is best-effort and not a long-term supported feature."
-        "\n      Environment variable detection may not cover all cases — please review"
+        "\n      Environment variable detection may not cover all cases - please review"
         "\n      and add any missing variables manually.\n"
     )
     analyzed_locally = False
@@ -656,7 +667,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
     rprint("[bold]------------------------[/bold]\n")
 
     # ── Auto-accept detected fields, only prompt for missing/required ──
-    # MCP servers are IDE-agnostic — config generation handles all IDEs.
+    # MCP servers are IDE-agnostic - config generation handles all IDEs.
     supported_ides = list(VALID_IDES)
 
     # Build parsed dict from analysis for config preview
@@ -735,13 +746,12 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             if detected_docker_suggested:
                 rprint(
                     f"  [dim](Docker image [cyan]{detected_docker_image}[/cyan]"
-                    " was inferred from the GitHub URL — verify it exists)[/dim]"
+                    " was inferred from the GitHub URL - verify it exists)[/dim]"
                 )
             choice = (
-                typer.prompt(
+                text_input(
                     "Startup config looks correct? [Y/n/edit]",
                     default="Y",
-                    show_default=False,
                 )
                 .strip()
                 .lower()
@@ -749,8 +759,8 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             if choice == "n":
                 raise typer.Abort()
             elif choice == "edit":
-                _command = typer.prompt("Command", default=detected_command or "")
-                raw_args = typer.prompt(
+                _command = text_input("Command", default=detected_command or "")
+                raw_args = text_input(
                     "Args (space-separated)",
                     default=" ".join(detected_args) if detected_args else "",
                 )
@@ -768,10 +778,10 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
                     _framework = "typescript"
         elif not detected_command:
             rprint("[dim]No startup command was detected.[/dim]")
-            custom_cmd = typer.prompt("Command (e.g. docker, python, npx — Enter to skip)", default="")
+            custom_cmd = text_input("Command (e.g. docker, python, npx - Enter to skip)", default="")
             if custom_cmd:
                 _command = custom_cmd
-                raw_args = typer.prompt("Args (space-separated)", default="")
+                raw_args = text_input("Args (space-separated)", default="")
                 _args = raw_args.split() if raw_args.strip() else []
                 if _command == "docker":
                     _framework = "docker"
@@ -791,7 +801,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             _name = detected_name
             rprint(f"  Server name: [cyan]{_name}[/cyan] [dim](from analysis)[/dim]")
         else:
-            _name = typer.prompt("Server name")
+            _name = text_input("Server name")
 
         # Version: auto-accept detected
         _version = detected_ver
@@ -804,15 +814,15 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
                 f"  Description: [cyan]{_desc[:60]}{'...' if len(_desc) > 60 else ''}[/cyan] [dim](from analysis)[/dim]"
             )
         else:
-            _desc = typer.prompt("Description (what does this server do?)")
+            _desc = text_input("Description (what does this server do?)")
 
-        _owner = typer.prompt("\nOwner / Team (e.g. your GitHub username)", default=config.load().get("user_name", ""))
+        _owner = text_input("\nOwner / Team (e.g. your GitHub username)", default=config.load().get("user_name", ""))
         rprint()
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
 
-        _setup = typer.prompt("Setup instructions (optional, press Enter to skip)", default="")
-        _changelog = typer.prompt("Changelog", default="Initial release")
+        _setup = text_input("Setup instructions (optional, press Enter to skip)", default="")
+        _changelog = text_input("Changelog", default="Initial release")
 
         # Detect $VAR patterns in final args and merge into detected env vars
         dollar_vars = _extract_dollar_vars(_args or [], {})
@@ -825,13 +835,13 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             rprint("\n[bold yellow]Input variables detected in args:[/bold yellow]")
             rprint(
                 "[dim]Dollar-sign variables will become install-time"
-                " dependencies — users will be prompted for these values.[/dim]\n"
+                " dependencies - users will be prompted for these values.[/dim]\n"
             )
             for var in dollar_vars:
                 rprint(f"  [cyan]$[/cyan]{var}")
             rprint()
 
-        # Interactive env var configuration — developer reviews, edits,
+        # Interactive env var configuration - developer reviews, edits,
         # or provides env vars instead of blindly including auto-detected ones.
         env_vars = _configure_env_vars_interactive(detected_env_vars)
 
@@ -879,6 +889,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
 
 
 def _list_impl(category, search, limit, sort, output, interactive=False):
+    optic.debug("_list_impl: category={}, search={}", category, search)
     params = {}
     if category:
         params["category"] = category
@@ -895,6 +906,7 @@ def _list_impl(category, search, limit, sort, output, interactive=False):
     if interactive:
 
         def _display(item: dict) -> str:
+            optic.debug("_display: item={}", item)
             return f"{item['name']}  v{item.get('version', '?')}  [{item.get('category', '')}]  {item.get('owner', '')}"
 
         selected = fuzzy_select(data, _display, label="Select MCP server")
@@ -941,6 +953,7 @@ def _list_impl(category, search, limit, sort, output, interactive=False):
 
 
 def _show_impl(mcp_id, output):
+    optic.debug("_show_impl: mcp_id={}, output={}", mcp_id, output)
     resolved = config.resolve_alias(mcp_id)
     with spinner():
         item = client.get(f"/api/v1/mcps/{resolved}")
@@ -976,6 +989,7 @@ def _show_impl(mcp_id, output):
 
 
 def _install_impl(mcp_id, ide, raw):
+    optic.debug("_install_impl: mcp_id={}, ide={}", mcp_id, ide)
     import json as _json
 
     resolved = config.resolve_alias(mcp_id)
@@ -994,14 +1008,14 @@ def _install_impl(mcp_id, ide, raw):
             rprint(f"\n[bold]This server requires {len(required)} environment variable(s):[/bold]")
             for ev in required:
                 desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
-                val = typer.prompt(f"  {ev['name']}{desc}")
+                val = text_input(f"  {ev['name']}{desc}")
                 env_values[ev["name"]] = val
 
         if optional:
             rprint(f"\n[dim]{len(optional)} optional env var(s) available:[/dim]")
             for ev in optional:
                 desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
-                val = typer.prompt(f"  {ev['name']}{desc} (press Enter to skip)", default="")
+                val = text_input(f"  {ev['name']}{desc} (press Enter to skip)", default="")
                 if val:
                     env_values[ev["name"]] = val
     elif env_var_list and raw:
@@ -1019,13 +1033,13 @@ def _install_impl(mcp_id, ide, raw):
             rprint(f"\n[bold]This server requires {len(required_headers)} header(s):[/bold]")
             for h in required_headers:
                 desc = f" [dim]({h['description']})[/dim]" if h.get("description") else ""
-                val = typer.prompt(f"  {h['name']}{desc}")
+                val = text_input(f"  {h['name']}{desc}")
                 header_values[h["name"]] = val
         if optional_headers:
             rprint(f"\n[dim]{len(optional_headers)} optional header(s) available:[/dim]")
             for h in optional_headers:
                 desc = f" [dim]({h['description']})[/dim]" if h.get("description") else ""
-                val = typer.prompt(f"  {h['name']}{desc} (press Enter to skip)", default="")
+                val = text_input(f"  {h['name']}{desc} (press Enter to skip)", default="")
                 if val:
                     header_values[h["name"]] = val
     elif header_list and raw:
@@ -1046,7 +1060,6 @@ def _install_impl(mcp_id, ide, raw):
     ide_config_paths = {
         "kiro": ".kiro/settings/mcp.json",
         "cursor": ".cursor/mcp.json",
-        "vscode": ".vscode/mcp.json",
         "claude-code": "(run the command below)",
         "claude_code": "(run the command below)",
         "gemini-cli": ".gemini/settings.json",
@@ -1072,6 +1085,7 @@ def _install_impl(mcp_id, ide, raw):
 
 
 def _delete_impl(mcp_id, yes):
+    optic.debug("_delete_impl: mcp_id={}, yes={}", mcp_id, yes)
     resolved = config.resolve_alias(mcp_id)
     if not yes:
         with spinner():
@@ -1098,11 +1112,35 @@ def submit(
 ):
     """Submit an MCP server to the registry.
 
-    By default, paste your server's JSON config (the same format you use in
-    your IDE). Use --git to analyze a git repository instead.
+    By default, opens an interactive JSON paste prompt where you provide
+    the same config format used in your IDE (e.g. mcpServers block). Use
+    --git to analyze a git repository instead, which auto-detects tools,
+    env vars, and startup commands.
 
     Only submit servers you created or are the point-of-contact for.
+    Submissions go into a pending review queue unless saved as a draft.
+    You can install your own submissions immediately without approval.
+
+    Environment variables containing $VAR or ${VAR} patterns in args or
+    header values are auto-detected and become install-time prompts.
+
+    Examples:
+        # Interactive JSON paste (default)
+        observal registry mcp submit
+
+        # Analyze a git repo with all defaults accepted
+        observal registry mcp submit --git https://github.com/org/mcp-server --yes
+
+        # Submit with name and category pre-filled
+        observal registry mcp submit --git https://github.com/org/server -n my-server -c ai
+
+        # Save as draft for later editing
+        observal registry mcp submit --draft
+
+        # Submit an existing draft for review
+        observal registry mcp submit --submit my-server
     """
+    optic.debug("cli: mcp submit")
     if draft and submit_draft:
         rprint(
             "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
@@ -1133,7 +1171,33 @@ def list_mcps(
     sort: str = typer.Option("name", "--sort", help="Sort by: name, category, version"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List approved MCP servers."""
+    """List approved MCP servers in the registry.
+
+    Shows publicly approved servers by default. Use --search for keyword
+    filtering, --category to narrow by type, and --sort to change ordering.
+    Results are cached locally so you can reference them by row number in
+    subsequent show/install/delete commands.
+
+    Interactive mode (--interactive) opens a fuzzy-search picker and
+    displays full details of the selected server.
+
+    Examples:
+        # List all approved servers
+        observal registry mcp list
+
+        # Search for database-related servers
+        observal registry mcp list --search postgres
+
+        # Filter by category, output as JSON
+        observal registry mcp list --category ai --output json
+
+        # Interactive fuzzy picker
+        observal registry mcp list --interactive
+
+        # Sort by category, limit to 10 results
+        observal registry mcp list --sort category --limit 10
+    """
+    optic.debug("cli: mcp list")
     _list_impl(category, search, limit, sort, output, interactive=interactive)
 
 
@@ -1141,7 +1205,23 @@ def list_mcps(
 def mcp_my(
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List your own MCP servers (all statuses)."""
+    """List your own MCP servers across all statuses.
+
+    Shows servers you submitted regardless of approval state (pending,
+    approved, rejected, draft). Useful for checking submission status
+    or finding draft IDs to resume editing.
+
+    Examples:
+        # List your servers in a table
+        observal registry mcp my
+
+        # JSON output for scripting
+        observal registry mcp my --output json
+
+        # Plain output (one per line)
+        observal registry mcp my --output plain
+    """
+    optic.debug("mcp_my: output={}", output)
     with spinner("Fetching your MCPs..."):
         data = client.get("/api/v1/mcps/my")
     if not data:
@@ -1179,7 +1259,26 @@ def show(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json"),
 ):
-    """Show full details of an MCP server."""
+    """Show full details of an MCP server.
+
+    Displays metadata, validation results, supported IDEs, env vars,
+    and timestamps for a given server. Accepts a UUID, server name,
+    row number from the last list command, or an @alias.
+
+    Examples:
+        # Show by name
+        observal registry mcp show my-server
+
+        # Show by row number from last list
+        observal registry mcp show 3
+
+        # Show by alias
+        observal registry mcp show @fav
+
+        # JSON output
+        observal registry mcp show my-server --output json
+    """
+    optic.debug("show: mcp_id={}, output={}", mcp_id, output)
     _show_impl(mcp_id, output)
 
 
@@ -1189,7 +1288,29 @@ def install(
     ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
 ):
-    """Get install config snippet for an MCP server."""
+    """Generate an install config snippet for an MCP server.
+
+    Produces IDE-specific configuration that you paste into your editor's
+    MCP settings file. Prompts for required environment variables and
+    headers interactively (unless --raw is used).
+
+    The --raw flag outputs bare JSON suitable for piping directly into
+    config files, with placeholder values for env vars.
+
+    Examples:
+        # Generate config for Claude Code
+        observal registry mcp install my-server --ide claude-code
+
+        # Generate for Cursor and pipe to config file
+        observal registry mcp install my-server --ide cursor --raw > .cursor/mcp.json
+
+        # Install by row number for VS Code
+        observal registry mcp install 2 --ide vscode
+
+        # Install using an alias
+        observal registry mcp install @db --ide kiro
+    """
+    optic.debug("install: mcp_id={}, ide={}", mcp_id, ide)
     _install_impl(mcp_id, ide, raw)
 
 
@@ -1205,7 +1326,33 @@ def edit_mcp(
     command: str | None = typer.Option(None, "--command", help="New command"),
     url: str | None = typer.Option(None, "--url", help="New URL"),
 ):
-    """Edit a draft, rejected, or pending MCP server submission."""
+    """Edit an MCP server submission.
+
+    For draft, pending, or rejected listings: edits the submission in place.
+    For approved listings: publishes a new version with a semver bump
+    (you will be prompted to choose patch, minor, or major).
+
+    Without flags, opens an interactive JSON paste prompt (same format as
+    submit). You can also pass individual fields via options, or load a
+    complete update from a JSON file with --from-file.
+
+    Examples:
+        # Interactive JSON paste edit
+        observal registry mcp edit my-server
+
+        # Update description and category
+        observal registry mcp edit my-server -d "New description" -c databases
+
+        # Load updates from a file
+        observal registry mcp edit my-server --from-file updates.json
+
+        # Bump version on an approved listing
+        observal registry mcp edit my-server --version 1.2.0
+
+        # Change the git URL
+        observal registry mcp edit my-server --git-url https://github.com/org/new-repo
+    """
+    optic.debug("edit_mcp: mcp_id={}, from_file={}", mcp_id, from_file)
     resolved = config.resolve_alias(mcp_id)
     if from_file:
         try:
@@ -1298,7 +1445,7 @@ def edit_mcp(
         rprint("[yellow]No changes could be parsed from input.[/yellow]")
         raise typer.Exit(code=1)
 
-    # Check listing status — approved listings need a new version, drafts can be edited directly
+    # Check listing status - approved listings need a new version, drafts can be edited directly
     is_approved = False
     listing = None
     try:
@@ -1307,7 +1454,7 @@ def edit_mcp(
         if listing.get("status") == "approved":
             is_approved = True
     except SystemExit:
-        # client raises typer.Exit on API failure — fall through to draft edit flow
+        # client raises typer.Exit on API failure - fall through to draft edit flow
         pass
 
     if is_approved:
@@ -1329,7 +1476,7 @@ def edit_mcp(
             _new_version = "0.2.0"
 
         rprint(f"[bold]New version:[/bold] {_new_version}")
-        _changelog = typer.prompt("Changelog (what changed?)", default="")
+        _changelog = text_input("Changelog (what changed?)", default="")
 
         # Separate top-level fields from extra (version-specific) fields
         version_description = updates.pop("description", None) or (listing.get("description", "") if listing else "")
@@ -1344,7 +1491,7 @@ def edit_mcp(
         if _changelog.strip():
             version_body["changelog"] = _changelog.strip()
 
-        # client.post prints its own error message and raises typer.Exit on failure — let it propagate
+        # client.post prints its own error message and raises typer.Exit on failure - let it propagate
         with spinner("Publishing new version..."):
             result = client.post(f"/api/v1/mcps/{resolved}/versions", version_body)
         rprint(f"[green]✓ Published v{_new_version.strip()}[/green] for [bold]{result.get('name', mcp_id)}[/bold]")
@@ -1353,14 +1500,14 @@ def edit_mcp(
         try:
             client.post(f"/api/v1/mcps/{resolved}/start-edit")
         except SystemExit:
-            # start-edit may 409 if already locked — client prints the error, proceed anyway
+            # start-edit may 409 if already locked - client prints the error, proceed anyway
             pass
         try:
             with spinner("Saving changes..."):
                 result = client.put(f"/api/v1/mcps/{resolved}/draft", updates)
             rprint(f"[green]✓ Updated {result['name']}[/green] (status: {result.get('status', 'unknown')})")
         except SystemExit:
-            # Save failed — attempt to release the edit lock before exiting
+            # Save failed - attempt to release the edit lock before exiting
             try:
                 client.post(f"/api/v1/mcps/{resolved}/cancel-edit")
             except SystemExit:
@@ -1373,5 +1520,24 @@ def delete_mcp(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete an MCP server."""
+    """Delete an MCP server from the registry.
+
+    Permanently removes the server listing and all associated data.
+    Prompts for confirmation unless --yes is passed. You can only
+    delete servers you own (or any server if you are an admin).
+
+    Examples:
+        # Delete with confirmation prompt
+        observal registry mcp delete my-server
+
+        # Delete by ID without confirmation
+        observal registry mcp delete abc123 --yes
+
+        # Delete by row number from last list
+        observal registry mcp delete 3 --yes
+
+        # Delete by alias
+        observal registry mcp delete @old-server
+    """
+    optic.debug("delete_mcp: mcp_id={}, yes={}", mcp_id, yes)
     _delete_impl(mcp_id, yes)

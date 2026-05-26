@@ -6,7 +6,7 @@
 
 [project]
 name = "observal-server"
-version = "0.6.0"
+version = "1.1.1"
 description = "Observal API server"
 requires-python = ">=3.11"
 license = "AGPL-3.0-only"
@@ -21,11 +21,11 @@ dependencies = [
     "email-validator",
     "alembic",
     "httpx",
-    "gitpython",
+    "gitpython>=3.1.50",
     "boto3",
     "redis[hiredis]",
     "arq",
-    "strawberry-graphql[fastapi]>=0.314.0",
+    "strawberry-graphql[fastapi]>=0.315.4",
     "authlib>=1.6.11",
     "itsdangerous",
     "cryptography>=44.0.0",
@@ -40,7 +40,10 @@ dependencies = [
     "jinja2>=3.1.0",
     "mako>=1.3.11",
     "structlog>=24.1.0",
+    "loguru>=0.7.0",
     "prometheus-fastapi-instrumentator>=7.0.0",
+    "urllib3>=2.7.0",
+    "idna>=3.15",
 ]
 
 [dependency-groups]

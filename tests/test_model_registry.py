@@ -158,7 +158,6 @@ class TestResolveSavedValue:
         from services.model_resolver import resolve_saved_value
 
         assert resolve_saved_value("cursor", "claude-sonnet-4-5", None) is None
-        assert resolve_saved_value("vscode", "claude-sonnet-4-5", None) is None
         assert resolve_saved_value("copilot", "claude-sonnet-4-5", None) is None
 
     def test_per_ide_override_wins(self):

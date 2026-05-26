@@ -194,7 +194,7 @@ class TestPGEncoder:
 
 class TestConstants:
     def test_insert_order_has_43_entries(self):
-        assert len(INSERT_ORDER) == 43
+        assert len(INSERT_ORDER) == 35
 
     def test_insert_order_no_duplicates(self):
         assert len(INSERT_ORDER) == len(set(INSERT_ORDER))
@@ -206,8 +206,6 @@ class TestConstants:
             "agents",
             "mcp_listings",
             "feedback",
-            "eval_runs",
-            "scorecards",
             "alert_rules",
             "alert_history",
             "component_bundles",
@@ -607,13 +605,8 @@ class TestInsertOrderDependencies:
         ("agents", "organizations"),
         ("mcp_listings", "organizations"),
         ("agent_components", "agents"),
-        ("agent_goal_templates", "agents"),
-        ("eval_runs", "agents"),
-        ("scorecards", "eval_runs"),
-        ("scorecard_dimensions", "scorecards"),
         ("feedback", "users"),
         ("alert_history", "alert_rules"),
-        ("agent_goal_sections", "agent_goal_templates"),
         ("mcp_downloads", "mcp_listings"),
         ("skill_downloads", "skill_listings"),
         ("hook_downloads", "hook_listings"),
@@ -950,22 +943,12 @@ class TestInsertOrderFKProperty:
         ("sandbox_downloads", "users"),
         ("submissions", "users"),
         ("alert_rules", "users"),
-        ("agent_goal_templates", "agents"),
         ("agent_download_records", "agents"),
         ("agent_download_records", "users"),
         ("component_download_records", "agents"),
-        ("dimension_weights", "agents"),
-        ("agent_goal_sections", "agent_goal_templates"),
         ("agent_components", "agents"),
         ("feedback", "users"),
         ("alert_history", "alert_rules"),
-        ("eval_runs", "agents"),
-        ("eval_runs", "users"),
-        ("scorecards", "agents"),
-        ("scorecards", "eval_runs"),
-        ("scorecard_dimensions", "scorecards"),
-        ("trace_penalties", "scorecards"),
-        ("trace_penalties", "penalty_definitions"),
         # Tier 12 — insight tables
         ("insight_reports", "agents"),
         ("insight_reports", "users"),

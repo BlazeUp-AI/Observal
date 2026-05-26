@@ -36,7 +36,6 @@ import {
   useAgentDownloads,
   useFeedback,
   useFeedbackSummary,
-  useEvalAggregate,
   useWhoami,
   useUpdateAgent,
   useAgentVersions,
@@ -81,10 +80,6 @@ interface AgentDetail {
   created_by?: string;
   component_links?: ComponentLink[];
   mcp_links?: ComponentLink[];
-  goal_template?: {
-    description?: string;
-    sections?: { name: string; description?: string }[];
-  };
   supported_ides?: string[];
   required_ide_features?: string[];
   inferred_supported_ides?: string[];
@@ -179,110 +174,13 @@ function DeleteButton({ agentId, agentName }: { agentId: string; agentName: stri
 }
 
 function AnalyticsTab({ agentId }: { agentId: string }) {
-  const { data: aggregate, isLoading } = useEvalAggregate(agentId);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!aggregate) {
-    return (
+  return (
+    <div className="space-y-6">
       <EmptyState
         icon={BarChart3}
         title="No analytics yet"
-        description="Run evaluations on this agent to generate analytics data. Traces and spans will be collected as the agent is used."
+        description="No analytics data yet. Traces and spans will be collected as the agent is used."
       />
-    );
-  }
-
-  const dims = aggregate.dimension_averages ?? {};
-  const trend = aggregate.trend ?? [];
-
-  return (
-    <div className="space-y-6">
-      {/* Score overview */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="rounded-md border border-border p-3 space-y-1">
-          <span className="text-xs text-muted-foreground">Composite Score</span>
-          <p className="text-xl font-mono font-bold">{aggregate.mean.toFixed(1)}</p>
-        </div>
-        <div className="rounded-md border border-border p-3 space-y-1">
-          <span className="text-xs text-muted-foreground">Std Dev</span>
-          <p className="text-xl font-mono font-bold">{aggregate.std.toFixed(2)}</p>
-        </div>
-        <div className="rounded-md border border-border p-3 space-y-1">
-          <span className="text-xs text-muted-foreground">95% CI</span>
-          <p className="text-sm font-mono font-medium">{aggregate.ci_low.toFixed(1)} - {aggregate.ci_high.toFixed(1)}</p>
-        </div>
-        <div className="rounded-md border border-border p-3 space-y-1">
-          <span className="text-xs text-muted-foreground">Drift Alert</span>
-          <p className="text-sm font-medium">
-            {aggregate.drift_alert ? (
-              <Badge variant="destructive" className="text-[10px]">Drift detected</Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px]">Stable</Badge>
-            )}
-          </p>
-        </div>
-      </div>
-
-      {/* Dimension scores */}
-      {Object.keys(dims).length > 0 && (
-        <div className="space-y-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dimension Averages</h4>
-          <div className="space-y-2.5">
-            {Object.entries(dims).map(([dim, score]) => {
-              const meta = DIMENSION_META[dim];
-              const clampedScore = Math.max(0, Math.min(100, Number(score)));
-              return (
-                <div key={dim} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{meta?.label ?? dim}</span>
-                    <span className="text-xs font-mono tabular-nums">{Math.round(clampedScore)}<span className="text-muted-foreground">/100</span></span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${meta?.color ?? "bg-primary"}`}
-                      style={{ width: `${clampedScore}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {aggregate.weakest_dimension && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Weakest: <span className="text-foreground font-medium">{aggregate.weakest_dimension}</span>
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Score trend */}
-      {trend.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Score Trend</h4>
-          <div className="rounded-md border border-border p-4 overflow-x-auto">
-            <div className="flex items-end gap-1 h-24 min-w-[200px]">
-              {trend.map((t, i) => {
-                const height = Math.max(t.composite * 10, 2);
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${new Date(t.timestamp).toLocaleDateString()}: ${t.composite.toFixed(1)}`}>
-                    <div
-                      className="w-full bg-primary/70 rounded-t transition-all hover:bg-primary"
-                      style={{ height: `${height}%` }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Link to traces */}
       <div className="rounded-md border border-border p-4 space-y-2">
@@ -298,15 +196,14 @@ function AnalyticsTab({ agentId }: { agentId: string }) {
     </div>
   );
 }
-
 function AccessSettingsWidget({ agentId, visibility, teamAccesses, canEdit }: { agentId: string; visibility?: string; teamAccesses?: { group_name: string; permission: "view" | "edit" }[]; canEdit: boolean }) {
-  const { deploymentMode } = useDeploymentConfig();
+  const { licensedFeatures } = useDeploymentConfig();
   const [isEditing, setIsEditing] = useState(false);
   const [editVisibility, setEditVisibility] = useState<"public" | "private">(visibility === "public" ? "public" : "private");
   const [editTeamAccesses, setEditTeamAccesses] = useState<{ group_name: string; permission: "view" | "edit" }[]>(teamAccesses ?? []);
   const updateAgent = useUpdateAgent();
 
-  if (deploymentMode !== "enterprise") return null;
+  if (!licensedFeatures.includes("rebac") && !licensedFeatures.includes("all")) return null;
 
   async function handleSave() {
     try {
@@ -518,7 +415,6 @@ export default function AgentDetailPage({
   const agentStatus = a?.status as string | undefined;
   const canEdit = (isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit") && ["approved", "pending", "draft", "rejected"].includes(agentStatus ?? "");
   const components: ComponentLink[] = a?.component_links ?? a?.mcp_links ?? [];
-  const goalTemplate = a?.goal_template;
   const agentName = a?.name ?? id.slice(0, 8);
   const totalDownloads = downloadData?.total ?? a?.download_count;
   const uniqueUsers = downloadData?.unique_users;
@@ -659,34 +555,8 @@ export default function AgentDetailPage({
                     </div>
                   )}
 
-                  {goalTemplate && (
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold font-display">
-                        Goal Template
-                      </h3>
-                      {goalTemplate.description && (
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {goalTemplate.description}
-                        </p>
-                      )}
-                      {goalTemplate.sections?.map(
-                        (sec: { name: string; description?: string }, i: number) => (
-                          <div key={i} className="space-y-1">
-                            <h4 className="text-sm font-medium text-foreground">
-                              {sec.name}
-                            </h4>
-                            {sec.description && (
-                              <p className="text-xs text-muted-foreground leading-relaxed pl-3 border-l-2 border-border">
-                                {sec.description}
-                              </p>
-                            )}
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  )}
 
-                  {!versionDescription && !goalTemplate && (
+                  {!versionDescription && (
                     <p className="text-sm text-muted-foreground">
                       No additional details provided for this agent.
                     </p>

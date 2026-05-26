@@ -23,16 +23,18 @@ import {
   registry,
   review,
   dashboard,
+  exec,
   feedback,
-  eval_,
   admin,
   telemetry,
   bulk,
   graphql,
   insights,
   models,
+  getUserRole,
   type RegistryType,
 } from "@/lib/api";
+import { hasMinRole } from "@/hooks/use-role-guard";
 import type { LeaderboardWindow } from "@/lib/types";
 
 // ── Dashboard ───────────────────────────────────────────────────────
@@ -181,10 +183,10 @@ export function useReviewList(typeFilter?: string) {
 export function useReviewAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { id: string; type?: string; action: "approve" | "reject"; reason?: string }) => {
+    mutationFn: (vars: { id: string; type?: string; action: "approve" | "reject"; reason?: string; category?: string }) => {
       if (vars.type === "agent") {
         return vars.action === "approve"
-          ? review.approveAgent(vars.id)
+          ? review.approveAgent(vars.id, vars.category ? { category: vars.category } : undefined)
           : review.rejectAgent(vars.id, { reason: vars.reason ?? "" });
       }
       return vars.action === "approve"
@@ -200,54 +202,6 @@ export function useReviewAction() {
     },
   });
 }
-
-// ── Eval ────────────────────────────────────────────────────────────
-
-export function useEvalRun() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { agentId: string; body?: unknown }) =>
-      eval_.run(vars.agentId, vars.body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["eval"] });
-      toast.success("Eval run started");
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Eval run failed");
-    },
-  });
-}
-
-export function useEvalScorecards(
-  agentId: string | undefined,
-  params?: Record<string, string>,
-) {
-  return useQuery({
-    queryKey: ["eval", "scorecards", agentId, params],
-    enabled: !!agentId,
-    queryFn: () => eval_.scorecards(agentId!, params),
-  });
-}
-
-export function useAgentEvaluatedSessions(agentId: string | undefined) {
-  return useQuery({
-    queryKey: ["eval", "agent-sessions", agentId],
-    enabled: !!agentId,
-    queryFn: () => eval_.agentSessions(agentId!),
-  });
-}
-
-export function useEvalCompare(
-  agentId: string | undefined,
-  params: Record<string, string>,
-) {
-  return useQuery({
-    queryKey: ["eval", "compare", agentId, params],
-    enabled: !!agentId && !!params.a && !!params.b,
-    queryFn: () => eval_.compare(agentId!, params),
-  });
-}
-
 // ── Feedback ────────────────────────────────────────────────────────
 
 export function useFeedback(type: string | undefined, id: string | undefined) {
@@ -317,6 +271,21 @@ export function useUpdateUserRole() {
   });
 }
 
+export function useUpdateUserDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { id: string; department: string | null }) =>
+      admin.updateDepartment(vars.id, { department: vars.department }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success("Department updated");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to update department");
+    },
+  });
+}
+
 export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
@@ -380,6 +349,26 @@ export function useSystemWarnings() {
   });
 }
 
+// ── Retention ────────────────────────────────────────────────────────
+
+export function useRetentionStats() {
+  const role = getUserRole();
+  return useQuery({
+    queryKey: ["admin", "retention", "stats"],
+    queryFn: admin.getRetentionStats,
+    enabled: hasMinRole(role, "admin"),
+  });
+}
+
+export function useRetentionWarnings() {
+  const role = getUserRole();
+  return useQuery({
+    queryKey: ["admin", "retention", "warnings"],
+    queryFn: admin.getRetentionWarnings,
+    enabled: hasMinRole(role, "admin"),
+  });
+}
+
 // ── Telemetry ───────────────────────────────────────────────────────
 
 export function useTelemetryStatus() {
@@ -425,7 +414,15 @@ export function useSessionsSummary() {
   });
 }
 export function useSessionDetail(id: string | undefined) {
-  return useQuery({ queryKey: ['sessions', 'detail', id], queryFn: () => dashboard.session(id!), enabled: !!id });
+  return useQuery({
+    queryKey: ['sessions', 'detail', id],
+    queryFn: () => dashboard.session(id!),
+    enabled: !!id,
+    refetchInterval: 1_000,
+    refetchIntervalInBackground: true,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
 }
 export function useSessionTraces() {
   return useQuery({ queryKey: ['sessions', 'traces'], queryFn: dashboard.traces });
@@ -438,28 +435,6 @@ export function useSessionsStats() {
 }
 export function useSessionErrors() {
   return useQuery({ queryKey: ['sessions', 'errors'], queryFn: dashboard.sessionsErrors });
-}
-export interface SessionEfficiencyData {
-  efficiency_rating: number;
-  efficiency_metrics: Record<string, number | null>;
-  interpretation: Record<string, string>;
-  warnings: string[];
-  scorer_version: string;
-  dag?: {
-    nodes: { id: number; action_type: string; action_detail: string; status: "effective" | "reverted" | "waste"; parent_ids: number[]; trace_id: string | null; files_touched: string[]; latency_ms: number; reverted_by: number | null }[];
-    edges: { source: number; target: number; type: "causal" | "cross_trace" }[];
-    stats: { total_nodes: number; effective_nodes: number; reverted_nodes: number; waste_nodes: number };
-  };
-  waste_classifications?: { category: string; steps: number[] }[];
-  error?: string;
-}
-
-export function useSessionEfficiency(sessionId: string | undefined) {
-  return useQuery<SessionEfficiencyData>({
-    queryKey: ["session-efficiency", sessionId],
-    queryFn: () => dashboard.sessionEfficiency(sessionId!) as unknown as Promise<SessionEfficiencyData>,
-    enabled: !!sessionId,
-  });
 }
 
 export function useSessionSubscription() {
@@ -521,14 +496,6 @@ export function useAgentDownloads(id: string) {
   });
 }
 
-export function useEvalAggregate(agentId: string) {
-  return useQuery({
-    queryKey: ["eval-aggregate", agentId],
-    queryFn: () => eval_.aggregate(agentId),
-    enabled: !!agentId,
-  });
-}
-
 export function useLeaderboard(window?: LeaderboardWindow, limit?: number, user?: string) {
   return useQuery({
     queryKey: ["leaderboard", window, limit, user],
@@ -556,23 +523,6 @@ export function useFeedbackSummary(listingId: string | undefined) {
     queryFn: () => feedback.summary(listingId!),
   });
 }
-
-export function useEvalPenalties(scorecardId: string | undefined) {
-  return useQuery({
-    queryKey: ["eval", "penalties", scorecardId],
-    enabled: !!scorecardId,
-    queryFn: () => eval_.penalties(scorecardId!),
-  });
-}
-
-export function useEvalScorecard(scorecardId: string | undefined) {
-  return useQuery({
-    queryKey: ["eval", "scorecard", scorecardId],
-    enabled: !!scorecardId,
-    queryFn: () => eval_.show(scorecardId!),
-  });
-}
-
 // ── Archive ────────────────────────────────────────────────────────
 
 export function useArchiveAgent() {
@@ -1021,4 +971,74 @@ export function useRefreshModels() {
       toast.error(err.message || "Failed to refresh model catalog");
     },
   });
+}
+
+// ── Exec Dashboard ─────────────────────────────────────────────────
+
+export function useExecAdoption() {
+  return useQuery({ queryKey: ["exec", "adoption"], queryFn: exec.adoption });
+}
+
+export function useExecAgentCounts() {
+  return useQuery({ queryKey: ["exec", "agent-counts"], queryFn: exec.agentCounts });
+}
+
+export function useExecUsageByCategory(range?: string) {
+  return useQuery({ queryKey: ["exec", "usage-by-category", range], queryFn: () => exec.usageByCategory(range) });
+}
+
+export function useExecPlatformCoverage() {
+  return useQuery({ queryKey: ["exec", "platform-coverage"], queryFn: exec.platformCoverage });
+}
+
+export function useExecPlatforms() {
+  return useQuery({ queryKey: ["exec", "platforms"], queryFn: exec.platforms });
+}
+
+export function useExecVelocity() {
+  return useQuery({ queryKey: ["exec", "velocity"], queryFn: exec.velocity });
+}
+
+export function useExecTopAgents(limit?: number) {
+  return useQuery({ queryKey: ["exec", "top-agents", limit], queryFn: () => exec.topAgents(limit) });
+}
+
+export function useExecDepartments(range?: string) {
+  return useQuery({ queryKey: ["exec", "departments", range], queryFn: () => exec.departments(range) });
+}
+
+export function useExecDeptTokens(range?: string) {
+  return useQuery({ queryKey: ["exec", "dept-tokens", range], queryFn: () => exec.deptTokens(range) });
+}
+
+export function useExecCostSummary(range?: string) {
+  return useQuery({ queryKey: ["exec", "cost-summary", range], queryFn: () => exec.costSummary(range) });
+}
+
+export function useExecConfig() {
+  return useQuery({ queryKey: ["exec", "config"], queryFn: exec.config });
+}
+
+export function useExecROIProjections() {
+  return useQuery({ queryKey: ["exec", "roi-projections"], queryFn: exec.roiProjections });
+}
+
+export function useExecStrategicInsights() {
+  return useQuery({ queryKey: ["exec", "strategic-insights"], queryFn: exec.strategicInsights });
+}
+
+export function useExecDeveloperBreakdown(limit?: number) {
+  return useQuery({ queryKey: ["exec", "developer-breakdown", limit], queryFn: () => exec.developerBreakdown(limit) });
+}
+
+export function useExecInactivityAlerts() {
+  return useQuery({ queryKey: ["exec", "inactivity-alerts"], queryFn: exec.inactivityAlerts });
+}
+
+export function useExecTimeToValue() {
+  return useQuery({ queryKey: ["exec", "time-to-value"], queryFn: exec.timeToValue });
+}
+
+export function useExecAIInsights() {
+  return useQuery({ queryKey: ["exec", "ai-insights"], queryFn: exec.aiInsights, staleTime: 10 * 60 * 1000 });
 }

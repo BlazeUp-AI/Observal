@@ -62,6 +62,10 @@ function isKiroSession(row: Session): boolean {
 	return row.service_name === "kiro" || row.session_id.startsWith("kiro-");
 }
 
+function isCursorSession(row: Session): boolean {
+	return row.service_name === "cursor" || row.platform === "Cursor";
+}
+
 function isCopilotCliSession(row: Session): boolean {
 	return (
 		row.service_name === "copilot-cli" ||
@@ -87,9 +91,14 @@ function fmtCredits(c: number | string | undefined | null): string | null {
 	return num < 0.01 ? num.toFixed(4) : num.toFixed(2);
 }
 
+const TS_UPPER_BOUND_MS = new Date("2099-01-01").getTime();
+
 function fmtDuration(first?: string, last?: string): string {
 	if (!first || !last) return "\u2013";
-	const ms = toDate(last).getTime() - toDate(first).getTime();
+	const t1 = toDate(first).getTime();
+	const t2 = toDate(last).getTime();
+	if (t1 >= TS_UPPER_BOUND_MS || t2 >= TS_UPPER_BOUND_MS) return "\u2013";
+	const ms = t2 - t1;
 	if (ms < 0) return "\u2013";
 	const mins = Math.floor(ms / 60_000);
 	const hours = Math.floor(mins / 60);
@@ -133,6 +142,7 @@ function shortModel(raw?: string): string {
 
 function derivePlatform(row: Session): string {
 	if (row.platform) return row.platform;
+	if (isCursorSession(row)) return "Cursor";
 	if (isKiroSession(row)) return "Kiro";
 	if (isCopilotCliSession(row)) return "Copilot CLI";
 	return "Claude Code";
@@ -142,8 +152,9 @@ function sessionLabel(row: Session): string {
 	const model = shortModel(row.model);
 	const count = row.prompt_count ?? 0;
 	const suffix = count === 1 ? "prompt" : "prompts";
-	if (model) return `${model} \u00b7 ${count} ${suffix}`;
-	return `${count} ${suffix}`;
+	const agent = row.agent_name ? `${row.agent_name} \u00b7 ` : "";
+	if (model) return `${agent}${model} \u00b7 ${count} ${suffix}`;
+	return `${agent}${count} ${suffix}`;
 }
 
 // ── Column Definitions ───────────────────────────────────────────────
@@ -201,15 +212,12 @@ const columns: ColumnDef<Session>[] = [
 						</span>
 					);
 				}
-				const count = r.prompt_count ?? 0;
-				return (
-					<span className="text-[13px] text-muted-foreground">
-						{count} prompt{count !== 1 ? "s" : ""}
-					</span>
-				);
+				return <span className="text-[13px] text-muted-foreground">{"\u2013"}</span>;
 			}
 			if (!r.total_input_tokens && !r.total_output_tokens) {
-				return <span className="text-[13px] text-muted-foreground">{"\u2014"}</span>;
+				return (
+					<span className="text-[13px] text-muted-foreground">{"\u2014"}</span>
+				);
 			}
 			const inp = fmtTokens(r.total_input_tokens);
 			const out = fmtTokens(r.total_output_tokens);
@@ -319,7 +327,7 @@ export default function TracesPage() {
 		error,
 		refetch,
 	} = useSessions2({
-		refetchInterval: 30_000,
+		refetchInterval: 1_000,
 		platform: platformParam,
 		days: daysParam,
 	});
@@ -435,6 +443,7 @@ export default function TracesPage() {
 								<SelectContent>
 									<SelectItem value="all">All platforms</SelectItem>
 									<SelectItem value="claude-code">Claude Code</SelectItem>
+									<SelectItem value="cursor">Cursor</SelectItem>
 									<SelectItem value="copilot-cli">Copilot CLI</SelectItem>
 									<SelectItem value="kiro">Kiro</SelectItem>
 								</SelectContent>

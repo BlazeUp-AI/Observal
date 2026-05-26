@@ -7,10 +7,12 @@ import hashlib
 from datetime import UTC, datetime
 
 import yaml
+from loguru import logger
 
 
 def compute_integrity_hash(content: str) -> str:
     """Compute sha256 integrity hash for lock file entries."""
+    logger.debug("compute_integrity_hash: len={}", len(content))
     digest = hashlib.sha256(content.encode()).hexdigest()
     return f"sha256-{digest}"
 
@@ -32,6 +34,7 @@ def generate_lock_file(
     Returns:
         YAML string for observal-agent.lock
     """
+    logger.debug("generate_lock_file: resolved_components={}", resolved_components)
     entries = []
     for comp in resolved_components:
         entry = {

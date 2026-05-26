@@ -8,6 +8,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,7 @@ from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.hook import (
     HookDraftRequest,
+    HookFileEntry,
     HookInstallRequest,
     HookInstallResponse,
     HookListingResponse,
@@ -34,7 +36,6 @@ from schemas.hook import (
     HookSubmitRequest,
     HookUpdateRequest,
 )
-from services.audit_helpers import audit
 from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
 
 router = APIRouter(prefix="/api/v1/hooks", tags=["hooks"])
@@ -46,6 +47,7 @@ async def submit_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("hook submit: name={}", req.name)
     existing = await db.execute(
         select(HookListing).where(HookListing.name == req.name, HookListing.submitted_by == current_user.id)
     )
@@ -70,12 +72,15 @@ async def submit_hook(
         priority=req.priority,
         handler_type=req.handler_type,
         handler_config=req.handler_config,
-        input_schema=req.input_schema,
-        output_schema=req.output_schema,
         scope=req.scope,
         tool_filter=req.tool_filter,
-        file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
+        script_content=req.script_content,
+        script_filename=req.script_filename,
+        source_url=req.source_url,
+        source_ref=req.source_ref,
+        source_path=req.source_path,
+        requirements=req.requirements,
         status=ListingStatus.pending,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -86,9 +91,6 @@ async def submit_hook(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.submit", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
     return HookListingResponse.model_validate(listing)
 
 
@@ -100,6 +102,7 @@ async def list_hooks(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("hook list: search={}", search)
     stmt = (
         select(HookListing)
         .join(HookVersion, HookListing.latest_version_id == HookVersion.id)
@@ -115,7 +118,6 @@ async def list_hooks(
     stmt = apply_visibility_filter(stmt, HookListing, current_user)
     result = await db.execute(stmt.order_by(HookListing.created_at.desc()))
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(None, "hook.list", resource_type="hook")
     return listings
 
 
@@ -124,12 +126,12 @@ async def my_hooks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("my_hooks called")
     stmt = (
         select(HookListing).where(HookListing.submitted_by == current_user.id).order_by(HookListing.created_at.desc())
     )
     result = await db.execute(stmt)
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(current_user, "hook.my_list", resource_type="hook")
     return listings
 
 
@@ -139,11 +141,9 @@ async def get_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("hook get: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(
-            current_user, "hook.view", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-        )
         return HookListingResponse.model_validate(listing)
 
     listing = await resolve_listing(HookListing, listing_id, db)
@@ -151,9 +151,6 @@ async def get_hook(
         raise HTTPException(status_code=404, detail="Listing not found")
 
     if check_listing_visibility(listing, current_user):
-        await audit(
-            current_user, "hook.view", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-        )
         return HookListingResponse.model_validate(listing)
 
     raise HTTPException(status_code=404, detail="Listing not found")
@@ -167,6 +164,7 @@ async def install_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("hook install: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
         listing = await resolve_listing(HookListing, listing_id, db)
@@ -176,15 +174,19 @@ async def install_hook(
     db.add(HookDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
-    from api.routes.config import derive_endpoints
-    from services.hook_config_generator import generate_hook_telemetry_config
+    from services.hook_install_generator import generate_hook_install_config
 
-    endpoints = derive_endpoints(request)
-    config = generate_hook_telemetry_config(listing, req.ide, server_url=endpoints["api"], platform=req.platform)
-    await audit(
-        current_user, "hook.install", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
+    result = generate_hook_install_config(listing, req.ide)
+    return HookInstallResponse(
+        listing_id=listing.id,
+        ide=req.ide,
+        config_snippet=result.get("config_snippet", {}),
+        config_path=result.get("config_path", ""),
+        files=[HookFileEntry(**f) for f in result.get("files", [])],
+        requirements=result.get("requirements", []),
+        source_fetch=result.get("source_fetch"),
+        notes=result.get("notes", []),
     )
-    return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
 @router.post("/draft", response_model=HookListingResponse)
@@ -193,6 +195,7 @@ async def save_hook_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("save_hook_draft: req={}", req)
     listing = HookListing(
         name=req.name,
         owner=req.owner or current_user.username or current_user.email,
@@ -211,12 +214,15 @@ async def save_hook_draft(
         priority=req.priority,
         handler_type=req.handler_type,
         handler_config=req.handler_config,
-        input_schema=req.input_schema,
-        output_schema=req.output_schema,
         scope=req.scope,
         tool_filter=req.tool_filter,
-        file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
+        script_content=req.script_content,
+        script_filename=req.script_filename,
+        source_url=req.source_url,
+        source_ref=req.source_ref,
+        source_path=req.source_path,
+        requirements=req.requirements,
         status=ListingStatus.draft,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -227,9 +233,6 @@ async def save_hook_draft(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.draft.create", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
     return HookListingResponse.model_validate(listing)
 
 
@@ -240,6 +243,7 @@ async def update_hook_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("update_hook_draft: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -260,12 +264,15 @@ async def update_hook_draft(
         "priority",
         "handler_type",
         "handler_config",
-        "input_schema",
-        "output_schema",
         "scope",
         "tool_filter",
-        "file_pattern",
         "supported_ides",
+        "script_content",
+        "script_filename",
+        "source_url",
+        "source_ref",
+        "source_path",
+        "requirements",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -287,13 +294,10 @@ async def update_hook_draft(
 
     await db.commit()
     await db.refresh(listing)
-    if listing.status == ListingStatus.pending:
-        action = "hook.pending.update"
-    elif listing.status == ListingStatus.rejected:
-        action = "hook.rejected.update"
+    if listing.status == ListingStatus.pending or listing.status == ListingStatus.rejected:
+        pass
     else:
-        action = "hook.draft.update"
-    await audit(current_user, action, resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
+        pass
     return HookListingResponse.model_validate(listing)
 
 
@@ -303,6 +307,7 @@ async def start_edit_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("start_edit_hook: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -326,6 +331,7 @@ async def cancel_edit_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("cancel_edit_hook: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -345,6 +351,7 @@ async def submit_hook_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("submit_hook_draft: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -359,9 +366,6 @@ async def submit_hook_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.draft.submit", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
     return HookListingResponse.model_validate(listing)
 
 
@@ -371,6 +375,7 @@ async def delete_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("hook delete: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -384,7 +389,6 @@ async def delete_hook(
         await db.delete(r)
 
     # Break the circular FK (listing → latest_version → listing) before delete
-    listing_name = listing.name
     listing.latest_version_id = None
     listing.latest_version = None
     await db.flush()
@@ -394,9 +398,6 @@ async def delete_hook(
     await db.flush()
     await db.delete(listing)
     await db.commit()
-    await audit(
-        current_user, "hook.delete", resource_type="hook", resource_id=str(listing_id), resource_name=listing_name
-    )
     return {"deleted": str(listing_id)}
 
 

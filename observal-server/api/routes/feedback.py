@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC
 
 from fastapi import APIRouter, Depends, HTTPException
+from loguru import logger as optic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +21,6 @@ from models.sandbox import SandboxListing
 from models.skill import SkillListing
 from models.user import User, UserRole
 from schemas.feedback import FeedbackCreateRequest, FeedbackResponse, FeedbackSummary
-from services.audit_helpers import audit
 from services.clickhouse import insert_scores
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
@@ -33,6 +33,7 @@ async def create_feedback(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     # Validate listing exists
+    optic.debug("feedback create")
     listing_models = {
         "mcp": McpListing,
         "agent": Agent,
@@ -84,14 +85,6 @@ async def create_feedback(
         )
     except Exception:
         pass  # Don't fail the request if ClickHouse write fails
-
-    await audit(
-        current_user,
-        "feedback.create",
-        resource_type="feedback",
-        resource_id=str(fb.id),
-        detail=f"Rating={req.rating} for {req.listing_type}/{req.listing_id}",
-    )
     return FeedbackResponse.model_validate(fb)
 
 
@@ -101,6 +94,7 @@ async def my_feedback_received(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Feedback received on listings submitted/created by the current user."""
+    optic.debug("my_feedback_received called")
     mcp_ids = list(
         (await db.execute(select(McpListing.id).where(McpListing.submitted_by == current_user.id))).scalars().all()
     )
@@ -130,12 +124,12 @@ async def my_feedback_received(
         select(Feedback).where(Feedback.listing_id.in_(all_ids)).order_by(Feedback.created_at.desc())
     )
     feedbacks = result.scalars().all()
-    await audit(current_user, "feedback.my_received", resource_type="feedback")
     return [FeedbackResponse.model_validate(f) for f in feedbacks]
 
 
 @router.get("/summary/{listing_id}", response_model=FeedbackSummary)
 async def feedback_summary(listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    optic.debug("feedback_summary: listing_id={}", listing_id)
     result = await db.execute(
         select(
             func.avg(Feedback.rating).label("avg_rating"),
@@ -152,6 +146,7 @@ async def feedback_summary(listing_id: uuid.UUID, db: AsyncSession = Depends(get
 
 @router.get("/{listing_type}/{listing_id}", response_model=list[FeedbackResponse])
 async def get_feedback(listing_type: str, listing_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    optic.debug("get_feedback: listing_type={}, listing_id={}", listing_type, listing_id)
     valid_types = {"mcp", "agent", "skill", "hook", "prompt", "sandbox"}
     if listing_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"Unknown listing type: {listing_type}")
