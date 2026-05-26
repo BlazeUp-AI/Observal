@@ -263,7 +263,10 @@ async function request<T = unknown>(
 						: JSON.stringify(parsed.error);
 			}
 		} catch {
-			// not JSON, use raw text
+			// not JSON, use raw text unless it's HTML or a 5xx error
+			if (response.status >= 500 || text.trim().startsWith("<")) {
+				detail = "Unable to reach the server. Please try again later.";
+			}
 		}
 		const err = new Error(detail);
 		(err as Error & { status: number }).status = response.status;

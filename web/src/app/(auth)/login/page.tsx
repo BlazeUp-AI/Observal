@@ -56,7 +56,10 @@ function LoginContent() {
         .then(async (res) => {
           if (!res.ok) {
             const text = await res.text().catch(() => res.statusText);
-            throw new Error(text);
+            const msg = (res.status >= 500 || text.trim().startsWith("<"))
+              ? "Unable to reach the server. Please try again later."
+              : text;
+            throw new Error(msg);
           }
           return res.json();
         })
