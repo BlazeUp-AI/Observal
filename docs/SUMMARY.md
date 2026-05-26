@@ -36,6 +36,7 @@
 * [observal doctor](cli/doctor.md)
 * [observal profile](cli/profile.md)
 * [observal self](cli/self.md)
+* [observal skill](cli/skill.md)
 * [observal server](cli/server.md)
 * [observal uninstall](cli/uninstall.md)
 
