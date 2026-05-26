@@ -48,22 +48,8 @@ function LoginContent() {
       setLoading(true);
       window.history.replaceState({}, "", "/login");
 
-      fetch("/api/v1/auth/exchange", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: ssoCode }),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text().catch(() => res.statusText);
-            const msg = (res.status >= 500 || text.trim().startsWith("<"))
-              ? "Unable to reach the server. Please try again later."
-              : text;
-            throw new Error(msg);
-          }
-          return res.json();
-        })
-        .then((data: { access_token: string; refresh_token: string; user: { role: string; name: string; email: string; username?: string; avatar_url?: string | null } }) => {
+      auth.exchangeCode({ code: ssoCode })
+        .then((data) => {
           setTokens(data.access_token, data.refresh_token);
           setUserRole(data.user.role);
           setUserName(data.user.name);
