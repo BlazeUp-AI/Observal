@@ -195,7 +195,7 @@ def login(
         if sso_available:
             rprint("  [2] SSO (opens browser)")
         rprint("  [3] Sign in via browser")
-        choice = text_input("Login method", default="1")
+        choice = text_input("Login method")
         if (choice == "2" and sso_available) or choice == "3":
             sso_mode = True
 

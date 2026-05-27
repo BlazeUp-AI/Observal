@@ -553,44 +553,64 @@ def register_pull(app: typer.Typer):
                     os.chmod(p, 0o755)
                 written.append((str(p), "updated" if existed else "created"))
 
-        # ── skill_files (Claude Code, Kiro, Cursor) ──────────
-        # Use shared install_skill_from_git for each skill component.
-        from observal_cli.cmd_skill import _sanitize_name, install_skill_from_git
+        # ── Skills ────────────────────────────────────
+        # Two install modes:
+        #   1. git_url present → clone full skill directory from git
+        #   2. skill_md_content present (registry_direct) → write SKILL.md + optional script
+        from observal_cli.cmd_skill import _sanitize_name, install_skill_from_git, install_skill_registry_direct
 
         skill_components = snippet.get("skill_components") or []
-        cloned_skills: set[str] = set()
+        failed_skills: list[str] = []
         scope_str = "user" if is_user_scope else "project"
         for sc in skill_components:
-            if dry_run:
-                sc_name = _sanitize_name(sc.get("name", "skill"))
-                written.append((f"<skill:{sc_name}>", "would clone"))
-                cloned_skills.add(sc_name)
-                continue
-            result_path = install_skill_from_git(
-                name=sc.get("name", "skill"),
-                git_url=sc.get("git_url"),
-                skill_path=sc.get("skill_path", "/"),
-                git_ref=sc.get("git_ref", "main"),
-                ide=ide,
-                scope=scope_str,
-                skill_md_content=sc.get("skill_md_content"),
-                cwd=target_dir,
-            )
-            if result_path:
-                written.append((str(result_path), "cloned"))
-                cloned_skills.add(_sanitize_name(sc.get("name", "skill")))
+            sc_name = _sanitize_name(sc.get("name", "skill"))
+            git_url = sc.get("git_url")
 
-        # Only write skill_files for skills that weren't successfully installed
-        for sf in snippet.get("skill_files") or []:
-            sf_name = Path(sf["path"]).parent.name
-            if sf_name in cloned_skills:
-                continue
-            p = _resolve_path(sf["path"], target_dir, allow_home=is_user_scope)
             if dry_run:
-                written.append((str(p), "would write"))
+                mode = "would clone" if git_url else "would write"
+                written.append((f"<skill:{sc_name}>", mode))
+                continue
+
+            if git_url:
+                result_path = install_skill_from_git(
+                    name=sc.get("name", "skill"),
+                    git_url=git_url,
+                    skill_path=sc.get("skill_path", "/"),
+                    git_ref=sc.get("git_ref", "main"),
+                    ide=ide,
+                    scope=scope_str,
+                    skill_md_content=sc.get("skill_md_content"),
+                    cwd=target_dir,
+                )
+                if result_path:
+                    written.append((str(result_path), "cloned"))
+                else:
+                    failed_skills.append(sc_name)
+                    rprint(f"[red]\u2717 Failed to install skill '{sc_name}'.[/red] Clone from {git_url} failed.")
             else:
-                status = _write_file(p, sf["content"])
-                written.append((str(p), status))
+                # Registry direct: SKILL.md content + optional script
+                result_path = install_skill_registry_direct(
+                    name=sc.get("name", "skill"),
+                    skill_md_content=sc.get("skill_md_content"),
+                    script_content=sc.get("script_content"),
+                    script_filename=sc.get("script_filename"),
+                    ide=ide,
+                    scope=scope_str,
+                    cwd=target_dir,
+                )
+                if result_path:
+                    written.append((str(result_path), "installed"))
+                else:
+                    failed_skills.append(sc_name)
+                    rprint(f"[red]\u2717 Failed to install skill '{sc_name}'.[/red] No content available.")
+
+        if failed_skills:
+            rprint()
+            rprint("[red]Skill installation failed.[/red] The following skills could not be installed:")
+            for fs in failed_skills:
+                rprint(f"  [red]\u2022[/red] {fs}")
+            rprint()
+            raise typer.Exit(1)
 
         # ── Agent marker (all IDEs) ─────────────────────────
         # Write <target_dir>/.observal/agent so session_push hooks can attribute

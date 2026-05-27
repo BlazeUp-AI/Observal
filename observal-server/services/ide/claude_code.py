@@ -12,7 +12,6 @@ from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _claude_code_hooks_frontmatter_lines,
     _collect_hook_script_files,
-    _generate_skill_file,
     _model_name_to_frontmatter,
 )
 
@@ -77,18 +76,14 @@ class ClaudeCodeAdapter:
 
         agent_path = IDE_REGISTRY["claude-code"]["rules_file"][scope].format(name=safe_name)
 
-        skill_files = [_generate_skill_file(s, "claude-code", scope) for s in skill_configs]
-        skill_files = [f for f in skill_files if f]
-
         result: dict = {
             "rules_file": {"path": agent_path, "content": agent_content},
             "mcp_config": claude_mcps,
             "mcp_setup_commands": setup_commands,
             "scope": scope,
         }
-        if skill_files:
-            result["skill_files"] = skill_files
-            result["skill_components"] = [s for s in skill_configs if s.get("git_url")]
+        if skill_configs:
+            result["skill_components"] = skill_configs
 
         cc_hook_files = _collect_hook_script_files(hook_configs, ctx.hook_listings, "claude-code")
         if cc_hook_files:

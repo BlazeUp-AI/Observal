@@ -15,7 +15,6 @@ from loguru import logger
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
-from services.ide.helpers import _generate_skill_file
 
 
 class PiAdapter:
@@ -60,16 +59,8 @@ class PiAdapter:
                 }
 
         # ── Skills ──
-        skill_files = []
-        for skill in ctx.skill_configs:
-            entry = _generate_skill_file(skill, "pi")
-            if entry:
-                skill_files.append(entry)
-        if skill_files:
-            result["skill_files"] = skill_files
-
-        # Pi doesn't use command-based hooks - telemetry is via observal-pi
-        # No hook files to generate.
+        if ctx.skill_configs:
+            result["skill_components"] = ctx.skill_configs
 
         return result
 

@@ -166,7 +166,7 @@ export default function ComponentDetailPage({ params }: { params: Promise<{ id: 
             {/* Grid: Main + Sidebar */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
             {/* Tabs */}
-            <Tabs defaultValue="overview">
+            <Tabs defaultValue="overview" className="min-w-0">
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="reviews">
@@ -518,7 +518,7 @@ function ComponentMetadata({ item }: { item: RegistryItem }) {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {skillMd ? "Skill File" : "Prompt Template"}
           </h3>
-          <div className="rounded-md border border-border bg-muted/20 p-4 overflow-y-auto max-h-[600px]">
+          <div className="rounded-md border border-border bg-muted/20 p-4 overflow-y-auto max-h-[360px]">
             <div className="prose prose-sm dark:prose-invert max-w-none text-foreground/90 leading-relaxed">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownContent}</ReactMarkdown>
             </div>

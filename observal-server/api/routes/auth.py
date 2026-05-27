@@ -13,6 +13,7 @@ import logging
 import re
 import secrets
 from datetime import UTC, datetime
+from urllib.parse import quote
 
 import jwt as pyjwt
 from authlib.integrations.starlette_client import OAuth
@@ -269,11 +270,16 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
 
 
 @router.get("/oauth/login")
-async def oauth_login(request: Request):
+async def oauth_login(request: Request, next: str | None = None):
     """Initiates the OAuth SSO flow"""
     optic.debug("oauth_login called")
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
+
+    # Preserve the post-login redirect target (e.g. /device?code=XXXX) across the
+    # OAuth round-trip so the user lands on the correct page after SSO completes.
+    if next and next.startswith("/") and not next.startswith("//") and "\\" not in next:
+        request.session["oauth_next"] = next
 
     # Use FRONTEND_URL as the base so the redirect works through the Next.js proxy.
     # This avoids Docker-internal hostnames (e.g. observal-api:8000) leaking into
@@ -396,7 +402,12 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user_agent=user_agent,
         )
     )
-    frontend_redirect = f"{ds.get_sync('deployment.frontend_url', 'http://localhost:3000')}/login?code={code}"
+    # Restore the post-login redirect target that was saved before the OAuth round-trip.
+    oauth_next = request.session.pop("oauth_next", None)
+    frontend_base = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
+    frontend_redirect = f"{frontend_base}/login?code={code}"
+    if oauth_next and oauth_next.startswith("/") and not oauth_next.startswith("//") and "\\" not in oauth_next:
+        frontend_redirect += f"&next={quote(oauth_next, safe='')}"
     return RedirectResponse(url=frontend_redirect)
 
 

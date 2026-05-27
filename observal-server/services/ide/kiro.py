@@ -12,7 +12,6 @@ from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _KIRO_EVENT_MAP,
     _collect_hook_script_files,
-    _generate_skill_file,
     _wrap_kiro_prompt,
 )
 
@@ -102,11 +101,8 @@ class KiroAdapter:
             "scope": kiro_scope,
         }
 
-        skill_files = [_generate_skill_file(s, "kiro") for s in skill_configs]
-        skill_files = [f for f in skill_files if f]
-        if skill_files:
-            result["skill_files"] = skill_files
-            result["skill_components"] = [s for s in skill_configs if s.get("git_url")]
+        if skill_configs:
+            result["skill_components"] = skill_configs
 
         kiro_hook_files = _collect_hook_script_files(hook_configs, ctx.hook_listings, "kiro")
         if kiro_hook_files:

@@ -432,6 +432,8 @@ def _build_skill_configs(
                 "git_ref": getattr(listing, "git_ref", None) or "main",
                 "skill_path": getattr(listing, "skill_path", None) or "/",
                 "skill_md_content": getattr(listing, "skill_md_content", None),
+                "script_content": getattr(listing, "script_content", None),
+                "script_filename": getattr(listing, "script_filename", None),
             }
         )
 

@@ -567,13 +567,12 @@ def check_version_compatibility(server_url: str) -> None:
     if cli_ver_str == "0.0.0":
         return  # dev install, skip check
 
-    # Try reading server version from cache first (populated by auto-update)
+    # Use cache if fresh (< 60s), otherwise fetch live.
     server_ver = None
     cache = _read_cache()
-    if cache and cache.get("server_version") and cache.get("source") == "server":
+    if cache and cache.get("server_version") and cache.get("source") == "server" and not _should_check(cache, 60):
         server_ver = cache["server_version"]
 
-    # Fall back to a fresh fetch if cache doesn't have it
     if not server_ver:
         try:
             resp = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/version", timeout=5)

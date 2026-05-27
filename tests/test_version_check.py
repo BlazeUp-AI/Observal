@@ -359,9 +359,17 @@ class TestCheckVersionCompatibility:
         with pytest.raises(Exit):
             version_check.check_version_compatibility("http://localhost:8000")
 
-    def test_uses_cache_to_avoid_network_call(self, monkeypatch):
+    def test_uses_short_ttl_cache(self, monkeypatch):
+        """Cache younger than 60s is trusted, skipping network."""
+        import time
+
         monkeypatch.setattr(version_check, "get_current_version", lambda: "1.0.0")
-        monkeypatch.setattr(version_check, "_read_cache", lambda: {"server_version": "1.0.5", "source": "server"})
+        fresh_cache = {
+            "server_version": "1.0.5",
+            "source": "server",
+            "last_checked": time.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+        }
+        monkeypatch.setattr(version_check, "_read_cache", lambda: fresh_cache)
         network_called = {"hit": False}
 
         def mock_get(*args, **kwargs):
@@ -371,6 +379,25 @@ class TestCheckVersionCompatibility:
         monkeypatch.setattr(httpx, "get", mock_get)
         version_check.check_version_compatibility("http://localhost:8000")
         assert network_called["hit"] is False
+
+    def test_fetches_when_cache_stale(self, monkeypatch):
+        """Cache older than 60s triggers a fresh fetch."""
+        monkeypatch.setattr(version_check, "get_current_version", lambda: "1.0.0")
+        stale_cache = {
+            "server_version": "1.0.5",
+            "source": "server",
+            "last_checked": "2020-01-01T00:00:00+00:00",
+        }
+        monkeypatch.setattr(version_check, "_read_cache", lambda: stale_cache)
+        network_called = {"hit": False}
+
+        def mock_get(*args, **kwargs):
+            network_called["hit"] = True
+            return httpx.Response(200, json={"server_version": "1.0.5"})
+
+        monkeypatch.setattr(httpx, "get", mock_get)
+        version_check.check_version_compatibility("http://localhost:8000")
+        assert network_called["hit"] is True
 
 
 # ── Auto-update tests ───────────────────────────────────────────
