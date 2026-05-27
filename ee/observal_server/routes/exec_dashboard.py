@@ -243,11 +243,17 @@ async def get_adoption(
     total_users = await db.scalar(user_stmt) or 0
 
     # Monthly active users from ClickHouse (last 12 months)
+    # Combines traces table and session_stats_agg for complete coverage
     rows = await _ch_json_scoped(
-        "SELECT toStartOfMonth(start_time) AS month, count(DISTINCT user_id) AS active "
-        "FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
-        "AND start_time >= now() - INTERVAL 12 MONTH "
-        "GROUP BY month ORDER BY month",
+        "SELECT month, count(DISTINCT user_id) AS active FROM ("
+        "  SELECT toStartOfMonth(start_time) AS month, user_id "
+        "  FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "  AND start_time >= now() - INTERVAL 12 MONTH"
+        "  UNION ALL"
+        "  SELECT toStartOfMonth(first_event_time) AS month, user_id "
+        "  FROM session_stats_agg WHERE project_id = 'default' "
+        "  AND first_event_time >= now() - INTERVAL 12 MONTH"
+        ") GROUP BY month ORDER BY month",
         current_user,
     )
 
@@ -259,9 +265,15 @@ async def get_adoption(
 
     # Current month active users
     current_rows = await _ch_json_scoped(
-        "SELECT count(DISTINCT user_id) AS active "
-        "FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
-        "AND start_time >= toStartOfMonth(now())",
+        "SELECT count(DISTINCT user_id) AS active FROM ("
+        "  SELECT user_id FROM traces FINAL "
+        "  WHERE project_id = 'default' AND is_deleted = 0 "
+        "  AND start_time >= toStartOfMonth(now())"
+        "  UNION ALL"
+        "  SELECT user_id FROM session_stats_agg "
+        "  WHERE project_id = 'default' "
+        "  AND first_event_time >= toStartOfMonth(now())"
+        ")",
         current_user,
     )
     active_users = int(current_rows[0]["active"]) if current_rows else 0
@@ -1895,9 +1907,15 @@ async def get_ai_insights(
     total_users = await db.scalar(user_stmt) or 0
 
     active_rows = await _ch_json_scoped(
-        "SELECT count(DISTINCT user_id) AS active "
-        "FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
-        "AND start_time >= now() - INTERVAL 30 DAY",
+        "SELECT count(DISTINCT user_id) AS active FROM ("
+        "  SELECT user_id FROM traces FINAL "
+        "  WHERE project_id = 'default' AND is_deleted = 0 "
+        "  AND start_time >= now() - INTERVAL 30 DAY"
+        "  UNION ALL"
+        "  SELECT user_id FROM session_stats_agg "
+        "  WHERE project_id = 'default' "
+        "  AND first_event_time >= now() - INTERVAL 30 DAY"
+        ")",
         current_user,
     )
     active_users = int(active_rows[0]["active"]) if active_rows else 0
@@ -2049,14 +2067,20 @@ async def get_ai_insights(
             adoption_gaps=[],
             platform_insight={
                 "title": "Insufficient data",
-                "detail": "Configure EVAL_MODEL_NAME to enable AI insights.",
+                "detail": "Configure insights models in Settings to enable AI insights.",
             },
-            model_insight={"title": "Insufficient data", "detail": "Configure EVAL_MODEL_NAME to enable AI insights."},
+            model_insight={
+                "title": "Insufficient data",
+                "detail": "Configure insights models in Settings to enable AI insights.",
+            },
             automation_opportunity={
                 "title": "Insufficient data",
-                "detail": "Configure EVAL_MODEL_NAME to enable AI insights.",
+                "detail": "Configure insights models in Settings to enable AI insights.",
             },
-            usage_pattern={"title": "Insufficient data", "detail": "Configure EVAL_MODEL_NAME to enable AI insights."},
+            usage_pattern={
+                "title": "Insufficient data",
+                "detail": "Configure insights models in Settings to enable AI insights.",
+            },
             generated=False,
         )
 
