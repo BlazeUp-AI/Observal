@@ -141,3 +141,12 @@ VALID_SANDBOX_NETWORK_POLICIES: list[str] = [
     "bridge",
     "restricted",
 ]
+
+# GitHub download redirect allowlist (used by version_check and upgrade_executor)
+REDIRECT_ALLOWLIST = frozenset(
+    [
+        "github.com",
+        "objects.githubusercontent.com",
+        "github-releases.githubusercontent.com",
+    ]
+)
