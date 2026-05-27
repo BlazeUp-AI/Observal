@@ -49,36 +49,7 @@ def get_parent_session_id(jsonl_path: Path) -> str | None:
     return None
 
 
-def read_agent_marker(cwd: str, session_jsonl: Path | None = None) -> tuple[str | None, str | None]:
-    """Return (agent_id, agent_version) from <cwd>/.observal/agent, or (None, None).
-
-    Written by ``observal pull`` so hooks can attribute sessions to the
-    pulled agent.  Only applies the pulled_at guard for brand-new sessions
-    (cursor offset == 0).
-    """
-    try:
-        from observal_cli.sessions.base import read_cursor
-
-        marker = Path(cwd) / ".observal" / "agent"
-        data = json.loads(marker.read_text())
-
-        pulled_at = data.get("pulled_at")
-        if pulled_at and session_jsonl and session_jsonl.exists():
-            from datetime import datetime
-
-            session_id = session_jsonl.stem
-            offset, _ = read_cursor(session_id)
-            if offset == 0:
-                pull_time = datetime.fromisoformat(pulled_at)
-                stat = session_jsonl.stat()
-                ctime = getattr(stat, "st_birthtime", None) or stat.st_ctime
-                session_ctime = datetime.fromtimestamp(ctime, tz=UTC)
-                if session_ctime < pull_time:
-                    return None, None
-
-        return data.get("agent_id"), data.get("agent_version")
-    except Exception:
-        return None, None
+from observal_cli.sessions.agent_marker import read_agent_marker  # noqa: F401
 
 
 def find_sessions_dir(home: Path | None = None) -> Path:

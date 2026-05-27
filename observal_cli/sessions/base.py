@@ -206,7 +206,7 @@ def build_payload(
     Defaults ide to ``claude-code``; callers override with ``payload["ide"] = ...``
     for other IDEs.
     """
-    from observal_cli.sessions.claude_code import read_agent_marker
+    from observal_cli.sessions.agent_marker import read_agent_marker
 
     agent_id, agent_version = read_agent_marker(cwd, session_jsonl) if cwd else (None, None)
     payload: dict = {
