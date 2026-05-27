@@ -43,13 +43,7 @@ CHECK_INTERVAL_DEFAULT = 86400  # 24 hours
 CHECK_TIMEOUT = 3  # seconds, must never block CLI
 MAX_RESPONSE_SIZE = 1_048_576  # 1MB
 ASSET_NAME_RE = re.compile(r"^observal-[a-z]+-[a-z0-9]+(\.exe)?$")
-REDIRECT_ALLOWLIST = frozenset(
-    [
-        "github.com",
-        "objects.githubusercontent.com",
-        "github-releases.githubusercontent.com",
-    ]
-)
+from observal_cli.constants import REDIRECT_ALLOWLIST  # noqa: F401 -- re-exported
 
 # Hard floor: versioning didn't exist before 1.0.0, never allow going below this.
 VERSION_FLOOR = "1.0.0"
