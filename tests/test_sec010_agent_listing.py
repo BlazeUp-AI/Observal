@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Tests for agent listing endpoint access.
 
-Verifies that both anonymous and authenticated callers can list agents
-(no visibility gating).
+Verifies that anonymous callers are rejected and authenticated callers
+can list agents.
 """
 
 import uuid
@@ -52,23 +52,16 @@ def _mock_db():
 
 
 @pytest.mark.asyncio
-async def test_anonymous_can_list_agents():
-    """Anonymous callers can list agents (all agents are public)."""
-    from api.deps import get_db, optional_current_user
+async def test_anonymous_rejected_from_list_agents():
+    """Anonymous callers get 401 from the agent list endpoint."""
     from main import app
 
-    mock = _mock_db()
-
-    async def _fake_db():
-        yield mock
-
-    app.dependency_overrides[get_db] = _fake_db
-    app.dependency_overrides[optional_current_user] = lambda: None
+    app.dependency_overrides.clear()
 
     try:
         async with _make_client() as client:
             r = await client.get("/api/v1/agents")
-        assert r.status_code == 200
+        assert r.status_code == 401
     finally:
         app.dependency_overrides.clear()
 
@@ -76,7 +69,7 @@ async def test_anonymous_can_list_agents():
 @pytest.mark.asyncio
 async def test_authenticated_user_can_list_agents():
     """Authenticated users get a 200 from the agent list endpoint."""
-    from api.deps import get_db, optional_current_user
+    from api.deps import get_current_user, get_db
     from main import app
 
     user = _user()
@@ -86,7 +79,7 @@ async def test_authenticated_user_can_list_agents():
         yield mock
 
     app.dependency_overrides[get_db] = _fake_db
-    app.dependency_overrides[optional_current_user] = lambda: user
+    app.dependency_overrides[get_current_user] = lambda: user
 
     try:
         async with _make_client() as client:
