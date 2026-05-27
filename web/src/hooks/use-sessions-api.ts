@@ -1,0 +1,90 @@
+// SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
+"use client";
+
+import { useEffect, useRef } from "react";
+import {
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  dashboard,
+} from "@/lib/api";
+
+// ── Sessions ───────────────────────────────────────────────────────
+
+export function useSessions2(options?: {
+  refetchInterval?: number | false;
+  platform?: string;
+  days?: number;
+}) {
+  return useQuery({
+    queryKey: ['sessions', 'list', options?.platform, options?.days],
+    queryFn: () =>
+      dashboard.sessions({
+        platform: options?.platform,
+        days: options?.days,
+      }),
+    refetchInterval: options?.refetchInterval,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+}
+export function useSessionsSummary() {
+  return useQuery({
+    queryKey: ['sessions', 'summary'],
+    queryFn: dashboard.sessionsSummary,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+}
+export function useSessionDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ['sessions', 'detail', id],
+    queryFn: () => dashboard.session(id!),
+    enabled: !!id,
+    refetchInterval: 1_000,
+    refetchIntervalInBackground: true,
+    refetchOnMount: "always",
+    staleTime: 0,
+  });
+}
+export function useSessionTraces() {
+  return useQuery({ queryKey: ['sessions', 'traces'], queryFn: dashboard.traces });
+}
+export function useSessionTrace(id: string | undefined) {
+  return useQuery({ queryKey: ['sessions', 'trace', id], queryFn: () => dashboard.trace(id!), enabled: !!id });
+}
+export function useSessionsStats() {
+  return useQuery({ queryKey: ['sessions', 'stats'], queryFn: dashboard.sessionsStats });
+}
+export function useSessionErrors() {
+  return useQuery({ queryKey: ['sessions', 'errors'], queryFn: dashboard.sessionsErrors });
+}
+
+export function useSessionSubscription() {
+  const qc = useQueryClient();
+  const listDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    import("@/lib/graphql-ws").then(({ subscribeToSessionUpdates }) => {
+      unsubscribe = subscribeToSessionUpdates((sessionId) => {
+        // Debounce the list refetch (many events → one list refresh)
+        clearTimeout(listDebounceRef.current);
+        listDebounceRef.current = setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["sessions", "list"] });
+        }, 300);
+        // Session detail: invalidate immediately so new turns appear
+        qc.invalidateQueries({ queryKey: ["sessions", "detail", sessionId] });
+      });
+    });
+
+    return () => {
+      clearTimeout(listDebounceRef.current);
+      unsubscribe?.();
+    };
+  }, [qc]);
+}
