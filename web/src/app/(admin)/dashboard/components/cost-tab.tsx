@@ -10,7 +10,7 @@ import { useExecCostSummary, useExecROIProjections } from "@/hooks/use-api";
 import { exec } from "@/lib/api";
 import { StatCard } from "./stat-card";
 import { Loader2, TrendingUp } from "lucide-react";
-import { DashboardRangeContext } from "../page";
+import { DashboardRangeContext } from "../context";
 
 const DEFAULT_CATEGORIES = [
   "Code Review",

@@ -17,7 +17,8 @@ import { DepartmentsTab } from "./components/departments-tab";
 import { VelocityTab } from "./components/velocity-tab";
 import { useExecAdoption, useExecAgentCounts, useExecConfig } from "@/hooks/use-api";
 import { RefreshCw, Calendar, Rocket, Download } from "lucide-react";
-import { useState, useCallback, createContext } from "react";
+import { useState, useCallback } from "react";
+import { DashboardRangeContext } from "./context";
 
 const TABS = ["adoption", "cost", "investments", "insights", "departments", "velocity"] as const;
 type TabId = typeof TABS[number];
@@ -27,8 +28,6 @@ const RANGES = [
   { value: "30d", label: "30 days" },
   { value: "90d", label: "90 days" },
 ] as const;
-
-export const DashboardRangeContext = createContext<string>("30d");
 
 function OnboardingWizard({ onDismiss }: { onDismiss: () => void }) {
   return (

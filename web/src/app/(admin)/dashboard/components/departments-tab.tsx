@@ -7,7 +7,7 @@
 import { useContext } from "react";
 import { useExecDepartments, useExecDeptTokens } from "@/hooks/use-api";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { DashboardRangeContext } from "../page";
+import { DashboardRangeContext } from "../context";
 
 export function DepartmentsTab() {
   const range = useContext(DashboardRangeContext);

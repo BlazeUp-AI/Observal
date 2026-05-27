@@ -8,7 +8,7 @@ import { useContext, useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Line } from "recharts";
 import { useExecAdoption, useExecAgentCounts, useExecUsageByCategory, useExecPlatformCoverage } from "@/hooks/use-api";
 import { StatCard } from "./stat-card";
-import { DashboardRangeContext } from "../page";
+import { DashboardRangeContext } from "../context";
 
 export function AdoptionTab() {
   const range = useContext(DashboardRangeContext);
