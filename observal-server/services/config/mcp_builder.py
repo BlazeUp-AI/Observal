@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from models.agent import Agent
-    from services.agent_builder import AgentManifest
+    from services.agent_builder_types import AgentManifest
 
 
 def build_mcp_entries(manifest: AgentManifest) -> dict:
