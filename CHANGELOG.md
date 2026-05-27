@@ -10,6 +10,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2026-05-27
+
+### Changed
+
+- minimize login error handling fix (**web**) ([6819685](https://github.com/BlazeUp-AI/Observal/commit/68196858e305187825076c400d97179370aa6902))
+
+### Fixed
+
+- prevent auth guard flicker on direct URL access (**web**) ([b7eb425](https://github.com/BlazeUp-AI/Observal/commit/b7eb4252f8dd167ff12067be30f3c1b7431833c1))
+- SSO device flow, skill install, version check, UI (**auth,ide,cli,web**) ([5ef6a67](https://github.com/BlazeUp-AI/Observal/commit/5ef6a67269e31a14ab416b9a65ec6286e39ef9a4))
+- 404 denied agent bind (**sessions**) ([a71ba58](https://github.com/BlazeUp-AI/Observal/commit/a71ba58e9a77df0aeb7b96dc5147c27e0abdc745))
+- handle non-JSON login error responses (**web**) ([e0f79ff](https://github.com/BlazeUp-AI/Observal/commit/e0f79ff6f4fc7159744b8a182189ce637edd3675))
 ## [1.2.0] - 2026-05-26
 
 ### Added
