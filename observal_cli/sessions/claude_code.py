@@ -10,9 +10,9 @@ and subagent session pushing for Claude Code sessions.
 
 from __future__ import annotations
 
-import json
-from datetime import UTC
 from pathlib import Path
+
+from observal_cli.sessions.agent_marker import read_agent_marker  # noqa: F401
 
 
 def project_key_from_cwd(cwd: str) -> str:
@@ -47,9 +47,6 @@ def get_parent_session_id(jsonl_path: Path) -> str | None:
     if len(parts) >= 3 and parts[-2] == "subagents":
         return parts[-3]
     return None
-
-
-from observal_cli.sessions.agent_marker import read_agent_marker  # noqa: F401
 
 
 def find_sessions_dir(home: Path | None = None) -> Path:

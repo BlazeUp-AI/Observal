@@ -7,6 +7,7 @@ Re-exports every public symbol that was previously available from
 work without import changes.
 """
 
+from services.clickhouse._settings import _resource_overrides
 from services.clickhouse.client import (
     CLICKHOUSE_DB,
     CLICKHOUSE_HTTP,
@@ -47,7 +48,6 @@ from services.clickhouse.schema import (
     apply_resource_settings,
     init_clickhouse,
 )
-from services.clickhouse._settings import _resource_overrides
 
 __all__ = [
     "CLICKHOUSE_DB",

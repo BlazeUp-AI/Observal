@@ -32,6 +32,7 @@ from rich.tree import Tree
 
 from observal_cli import config, render
 from observal_cli.render import console, spinner
+from observal_cli.support import CollectorResult
 from observal_cli.support.manifest import BundleManifest, compute_file_entry
 from observal_cli.support.redaction import RedactionStats, redact_value
 
@@ -71,9 +72,6 @@ SIZE_BUDGET_BYTES = 100 * 1024 * 1024  # 100 MB uncompressed warning threshold
 
 
 # ── CollectorResult ──────────────────────────────────────────────────
-
-
-from observal_cli.support import CollectorResult  # noqa: F401 -- re-exported
 
 
 # ── Local collectors ─────────────────────────────────────────────────

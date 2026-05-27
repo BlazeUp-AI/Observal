@@ -10,6 +10,7 @@ the SQL constant cannot be compressed further.
 import structlog
 from loguru import logger as optic
 
+import services.clickhouse._settings as _ch_settings
 import services.clickhouse.client as _client
 
 logger = structlog.get_logger(__name__)
@@ -422,10 +423,10 @@ RESOURCE_SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "resource.join_memory_mb": ("max_bytes_in_join", int),
 }
 
-import services.clickhouse._settings as _ch_settings
 
-# Re-export for backwards compat
+# Re-export for backwards compat (tests and __init__ reference these)
 DEFAULT_QUERY_SETTINGS = _ch_settings.DEFAULT_QUERY_SETTINGS
+_resource_overrides = _ch_settings._resource_overrides
 
 
 async def apply_resource_settings(overrides: dict[str, str] | None = None):
@@ -467,7 +468,8 @@ async def apply_resource_settings(overrides: dict[str, str] | None = None):
         except (ValueError, TypeError):
             logger.warning("Invalid resource setting %s=%s, skipping", config_key, raw)
 
-    _ch_settings._resource_overrides = new_overrides
+    _ch_settings._resource_overrides.clear()
+    _ch_settings._resource_overrides.update(new_overrides)
     logger.info("ClickHouse resource overrides loaded: %s", new_overrides)
 
 

@@ -20,13 +20,11 @@ Generates IDE-specific agent files from a ResolvedAgent:
 """
 
 import logging
-from typing import Literal
 
 from loguru import logger as optic
-from pydantic import BaseModel, Field
 
 from schemas.ide_registry import get_valid_ides
-from services.agent_builder_types import (  # noqa: F401 — re-exported
+from services.agent_builder_types import (
     AgentFile,
     AgentManifest,
     CompositionSummary,

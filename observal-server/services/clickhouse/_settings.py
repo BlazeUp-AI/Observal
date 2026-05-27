@@ -9,4 +9,5 @@ DEFAULT_QUERY_SETTINGS: dict[str, str] = {
 
 # Per-query overrides injected into every HTTP request.
 # Populated from enterprise_config on startup and when admin clicks "Apply".
+# NOTE: Mutated in-place by apply_resource_settings() in schema.py via .clear()/.update().
 _resource_overrides: dict[str, str] = {}
