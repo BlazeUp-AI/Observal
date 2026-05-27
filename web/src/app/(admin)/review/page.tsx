@@ -10,7 +10,7 @@
 import { useState, useCallback, useMemo } from "react";
 import { CheckCircle2, X, Trash2, LayoutGrid, TableProperties, Eye } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useReviewAgents, useReviewComponents, useReviewAction, useReviewDelete } from "@/hooks/use-api";
+import { useReviewAgents, useReviewComponents, useReviewAction, useReviewDelete, useReviewSubscription } from "@/hooks/use-api";
 import { useAuthGuard } from "@/hooks/use-auth";
 import type { ReviewItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -340,6 +340,7 @@ function ReviewItemList({
 
 export default function ReviewPage() {
   const { role } = useAuthGuard();
+  useReviewSubscription();
   const isAdmin = role === "admin" || role === "super_admin";
   const { data: agents, isLoading: agentsLoading, isError: agentsError, error: agentsErr, refetch: refetchAgents } = useReviewAgents();
   const { data: components, isLoading: componentsLoading, isError: componentsError, error: componentsErr, refetch: refetchComponents } = useReviewComponents();

@@ -28,6 +28,7 @@ from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
 from services.editing_lock import is_actively_editing
+from services.redis import publish as redis_publish
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
@@ -574,6 +575,7 @@ async def approve(
 
     await db.commit()
     await db.refresh(listing)
+    redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "approved"})
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -613,6 +615,7 @@ async def reject(
 
     await db.commit()
     await db.refresh(listing)
+    redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "rejected"})
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -698,6 +701,7 @@ async def approve_agent(
         agent.category = req.category
 
     await db.commit()
+    redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "approved"})
     return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": newest_pending.version}
 
 
@@ -741,6 +745,7 @@ async def reject_agent(
 
     await db.commit()
     rejected_version = pending_versions[0].version if pending_versions else ""
+    redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "rejected"})
     return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": rejected_version}
 
 

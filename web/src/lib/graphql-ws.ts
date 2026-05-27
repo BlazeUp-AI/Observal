@@ -60,3 +60,29 @@ export function subscribeToSessionUpdates(
     },
   );
 }
+
+export function subscribeToReviewUpdates(
+  onEvent: (listingId: string, action: string) => void,
+): () => void {
+  return getClient().subscribe(
+    {
+      query: `subscription ReviewUpdated($listingId: String) {
+        reviewUpdated(listingId: $listingId) {
+          listingId
+          action
+        }
+      }`,
+    },
+    {
+      next: (value) => {
+        const data = (value.data as { reviewUpdated?: { listingId: string; action: string } })
+          ?.reviewUpdated;
+        if (data) {
+          onEvent(data.listingId, data.action);
+        }
+      },
+      error: () => {},
+      complete: () => {},
+    },
+  );
+}

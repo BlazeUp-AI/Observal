@@ -11,6 +11,7 @@
 
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
   useQuery,
   useMutation,
@@ -152,4 +153,28 @@ export function useReviewDelete() {
       toast.error(err.message || "Failed to delete submission");
     },
   });
+}
+
+export function useReviewSubscription() {
+  const qc = useQueryClient();
+  const listDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    import("@/lib/graphql-ws").then(({ subscribeToReviewUpdates }) => {
+      unsubscribe = subscribeToReviewUpdates(() => {
+        // Debounce the list refetch (rapid approve/reject actions)
+        clearTimeout(listDebounceRef.current);
+        listDebounceRef.current = setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ["review"] });
+        }, 300);
+      });
+    });
+
+    return () => {
+      clearTimeout(listDebounceRef.current);
+      unsubscribe?.();
+    };
+  }, [qc]);
 }

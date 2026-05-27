@@ -509,6 +509,12 @@ class SessionEvent:
 
 
 @strawberry.type
+class ReviewEvent:
+    listing_id: str
+    action: str
+
+
+@strawberry.type
 class Subscription:
     @strawberry.subscription
     async def trace_created(
@@ -538,6 +544,18 @@ class Subscription:
             yield SessionEvent(
                 session_id=sid,
                 event_name=data.get("event_name", ""),
+            )
+
+    @strawberry.subscription
+    async def review_updated(self, listing_id: str | None = None) -> AsyncGenerator[ReviewEvent, None]:
+        channel = "reviews:updated"
+        async for data in subscribe(channel):
+            lid = data.get("listing_id", "")
+            if listing_id and lid != listing_id:
+                continue
+            yield ReviewEvent(
+                listing_id=lid,
+                action=data.get("action", ""),
             )
 
 
