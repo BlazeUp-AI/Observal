@@ -84,12 +84,6 @@ function AgentInsightCard({ agent }: { agent: RegistryItem }) {
 				)}
 			</div>
 
-			{latest?.status === "completed" && latest.sessions_analyzed === 0 && (
-				<p className="text-[10px] text-amber-500">
-					No sessions found in the analysis period. Try generating with a longer time range.
-				</p>
-			)}
-
 			<div className="flex items-center gap-2 mt-auto pt-1 flex-nowrap min-w-0">
 				{latest?.status === "completed" && (
 					<Link href={`/insights/${latest.id}`} className="flex-1">
