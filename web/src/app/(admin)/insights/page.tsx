@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -51,7 +52,7 @@ function StatusBadge({ status }: { status: InsightReportListItem["status"] }) {
 
 function AgentInsightCard({ agent, disabled }: { agent: RegistryItem; disabled?: boolean }) {
 	const { data: reports } = useInsightReports(agent.id);
-	const { data: sessionCountData } = useInsightSessionCount(agent.id);
+	const { data: sessionCountData, isLoading: isLoadingCount } = useInsightSessionCount(agent.id);
 	const generateInsight = useGenerateInsight();
 
 	const latest = (reports ?? [])[0] as InsightReportListItem | undefined;
@@ -76,7 +77,7 @@ function AgentInsightCard({ agent, disabled }: { agent: RegistryItem; disabled?:
 
 			<div className="flex items-center gap-3 text-xs text-muted-foreground">
 				<span className="font-[family-name:var(--font-mono)] tabular-nums">
-					{availableSessions} sessions available
+					{isLoadingCount ? "…" : availableSessions} sessions available
 				</span>
 				{latest && (
 					<>
@@ -110,7 +111,7 @@ function AgentInsightCard({ agent, disabled }: { agent: RegistryItem; disabled?:
 					className="h-7 text-xs gap-1 shrink-0"
 					disabled={
 						disabled ||
-						availableSessions === 0 ||
+						(!isLoadingCount && availableSessions === 0) ||
 						generateInsight.isPending ||
 						latest?.status === "pending" ||
 						latest?.status === "running"

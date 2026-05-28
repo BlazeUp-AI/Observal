@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: LicenseRef-Observal-Enterprise
 
@@ -417,6 +418,8 @@ async def _call_section(section_name: str, prompt: str, model: str | None = None
             return section_name, result
         logger.warning("section_empty_response", section=section_name)
         return section_name, {}
+    except RuntimeError:
+        raise
     except Exception as e:
         logger.error("section_call_failed", section=section_name, error=str(e))
         return section_name, {}

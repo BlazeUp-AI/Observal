@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Admin settings, diagnostics, and resource tuning routes."""
@@ -165,6 +166,8 @@ async def upsert_setting(
         db.add(cfg)
     await db.commit()
     await db.refresh(cfg)
+    await ds.invalidate(key)
+    await ds.refresh_sync_cache()
     await emit_security_event(
         SecurityEvent(
             event_type=EventType.SETTING_CHANGED,
@@ -193,6 +196,8 @@ async def delete_setting(
         raise HTTPException(status_code=404, detail="Setting not found")
     await db.delete(cfg)
     await db.commit()
+    await ds.invalidate(key)
+    await ds.refresh_sync_cache()
     return {"deleted": key}
 
 

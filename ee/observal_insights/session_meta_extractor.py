@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-License-Identifier: LicenseRef-Observal-Enterprise
 
 """Deterministic per-session metadata extraction from raw JSONL transcripts.
@@ -158,6 +159,35 @@ def extract_session_meta(session_id: str, raw_lines: list[str]) -> dict:
                             if isinstance(tool_data, dict):
                                 tool_name = tool_data.get("name", "unknown")
                                 tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+                                # Extract file/lines info from tool input
+                                args = tool_data.get("input", {})
+                                if isinstance(args, dict):
+                                    file_path = args.get("path", "") or args.get("file_path", "")
+                                    if file_path:
+                                        ext = _ext(file_path)
+                                        lang = EXTENSION_TO_LANGUAGE.get(ext)
+                                        if lang:
+                                            languages[lang] = languages.get(lang, 0) + 1
+                                    if tool_name == "write" and file_path:
+                                        files_modified.add(file_path)
+                                        content_str = args.get("content", "")
+                                        if isinstance(content_str, str) and content_str:
+                                            lines_added += _count_newlines(content_str) + 1
+                                    elif tool_name == "edit" and file_path:
+                                        files_modified.add(file_path)
+                                        old = args.get("oldStr", "") or args.get("old_string", "")
+                                        new = args.get("newStr", "") or args.get("new_string", "")
+                                        if isinstance(old, str) and old:
+                                            lines_removed += _count_newlines(old) + 1
+                                        if isinstance(new, str) and new:
+                                            lines_added += _count_newlines(new) + 1
+                                    elif tool_name == "bash":
+                                        cmd = args.get("command", "")
+                                        if isinstance(cmd, str):
+                                            if "git commit" in cmd:
+                                                git_commits += 1
+                                            if "git push" in cmd:
+                                                git_pushes += 1
                 elif entry_kind == "ToolResults":
                     total_messages += 1
             continue
@@ -389,12 +419,12 @@ async def fetch_all_session_transcripts(
     # First, get the list of session_ids from the lightweight session_stats_agg
     id_sql = """
         SELECT session_id
-        FROM session_stats_agg
+        FROM session_stats_agg FINAL
         WHERE (agent_id = {agent_id:String} OR agent_id = {agent_name:String})
-          AND first_event_time >= {t_start:String}
-          AND first_event_time <= {t_end:String}
+          AND last_event_time >= {t_start:String}
+          AND last_event_time <= {t_end:String}
         GROUP BY session_id
-        ORDER BY min(first_event_time)
+        ORDER BY min(last_event_time)
         FORMAT JSON
     """
     params = {

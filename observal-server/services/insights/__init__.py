@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
@@ -127,8 +128,17 @@ async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 4096) -> d
     try:
         return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
     except Exception as e:
-        logger.error("bedrock_call_failed", error=str(e), model=model_id)
-        return {}
+        error_str = str(e)
+        if "UnrecognizedClientException" in error_str or "security token" in error_str:
+            raise RuntimeError(f"AWS credentials invalid: {error_str}") from e
+        if "AccessDeniedException" in error_str:
+            raise RuntimeError(f"AWS access denied for model '{model_id}': {error_str}") from e
+        if "ModelNotReadyException" in error_str or "not found" in error_str.lower():
+            raise RuntimeError(f"Model '{model_id}' not available in region '{aws_region}': {error_str}") from e
+        if "ExpiredTokenException" in error_str:
+            raise RuntimeError(f"AWS credentials expired: {error_str}") from e
+        logger.error("bedrock_call_failed", error=error_str, model=model_id)
+        raise RuntimeError(f"Bedrock call failed: {error_str}") from e
 
 
 async def _call_openai_compatible(prompt: str, model: str, provider: str = "") -> dict:

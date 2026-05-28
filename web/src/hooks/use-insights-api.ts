@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+// SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 // SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
@@ -53,7 +54,7 @@ export function useInsightsStatus() {
   return useQuery({
     queryKey: ["insights", "status"],
     queryFn: () => insights.status(),
-    staleTime: 60_000,
+    staleTime: 0,
   });
 }
 
