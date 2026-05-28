@@ -14,6 +14,7 @@ import {
 	CheckCircle2,
 	XCircle,
 	Clock,
+	Coins,
 	Zap,
 	Users,
 	Timer,
@@ -1413,6 +1414,9 @@ function ReportContent({ report }: { report: InsightReport }) {
 	const interruptions = Number(rich?.interruptions) || 0;
 	const subagentSessions = Number(rich?.subagent_sessions) || 0;
 	const mcpSessions = Number(rich?.mcp_sessions) || 0;
+	const totalCredits = Number(rich?.total_credits) || 0;
+	const sessionsWithTokens = Number(rich?.sessions_with_tokens) || 0;
+	const sessionsWithCredits = Number(rich?.sessions_with_credits) || 0;
 	const toolCalls = Number(metrics?.errors?.total_tool_calls) || 0;
 	const topTools = (rich?.top_tools || []) as [string, number][];
 	const topLanguages = (rich?.top_languages || []) as [string, number][];
@@ -1436,18 +1440,19 @@ function ReportContent({ report }: { report: InsightReport }) {
 				<MetricCard label="Sessions" value={totalSessions} icon={Zap} subtext={daysActive > 0 ? `${daysActive} active days` : uniqueUsers > 1 ? `${uniqueUsers} users` : undefined} />
 				<MetricCard label="Messages" value={fmt(totalMessages)} icon={Database} subtext={totalSessions > 0 ? `${(totalMessages / totalSessions).toFixed(1)} per session` : undefined} />
 				<MetricCard label="Active Time" value={fmtHours(activeHours)} icon={Timer} subtext={daysActive > 0 ? `${(activeHours / daysActive).toFixed(1)}h/day` : undefined} />
-				{inputTokens > 0 && <MetricCard label="Tokens In" value={fmt(inputTokens)} icon={Database} />}
-				{outputTokens > 0 && <MetricCard label="Tokens Out" value={fmt(outputTokens)} icon={Database} />}
+				{sessionsWithTokens > 0 && <MetricCard label="Tokens In" value={fmt(inputTokens)} icon={Database} />}
+				{sessionsWithTokens > 0 && <MetricCard label="Tokens Out" value={fmt(outputTokens)} icon={Database} />}
 				{cacheReadTokens > 0 && <MetricCard label="Cache Read" value={fmt(cacheReadTokens)} icon={Database} />}
 				{cacheWriteTokens > 0 && <MetricCard label="Cache Write" value={fmt(cacheWriteTokens)} icon={Database} />}
 				{cacheReadTokens > 0 && <MetricCard label="Cache Efficiency" value={`${((cacheReadTokens / (cacheReadTokens + inputTokens)) * 100).toFixed(1)}%`} icon={Zap} />}
 				{totalCost > 0 && <MetricCard label="Total Cost" value={`$${totalCost.toFixed(2)}`} icon={DollarSign} subtext={totalSessions > 0 ? `$${(totalCost / totalSessions).toFixed(2)}/session` : undefined} />}
-				{linesAdded > 0 && <MetricCard label="Lines Added" value={fmt(linesAdded)} icon={Zap} />}
-				{linesRemoved > 0 && <MetricCard label="Lines Removed" value={fmt(linesRemoved)} icon={AlertTriangle} />}
-				{gitCommits > 0 && <MetricCard label="Git Commits" value={gitCommits} icon={Wrench} subtext={gitPushes > 0 ? `${gitPushes} pushes` : undefined} />}
-				{filesModified > 0 && <MetricCard label="Files Modified" value={fmt(filesModified)} icon={Database} />}
-				{toolErrors > 0 && <MetricCard label="Tool Errors" value={toolErrors} icon={AlertTriangle} />}
-				{interruptions > 0 && <MetricCard label="Interruptions" value={interruptions} icon={AlertTriangle} />}
+				{sessionsWithCredits > 0 && <MetricCard label="Credits Used" value={totalCredits.toFixed(2)} icon={Coins} subtext={totalSessions > 0 ? `${(totalCredits / totalSessions).toFixed(2)}/session` : undefined} />}
+				<MetricCard label="Lines Added" value={fmt(linesAdded)} icon={Zap} />
+				<MetricCard label="Lines Removed" value={fmt(linesRemoved)} icon={AlertTriangle} />
+				<MetricCard label="Git Commits" value={gitCommits} icon={Wrench} subtext={gitPushes > 0 ? `${gitPushes} pushes` : undefined} />
+				<MetricCard label="Files Modified" value={fmt(filesModified)} icon={Database} />
+				<MetricCard label="Tool Errors" value={toolErrors} icon={AlertTriangle} />
+				<MetricCard label="Interruptions" value={interruptions} icon={AlertTriangle} />
 				{subagentSessions > 0 && <MetricCard label="Subagent Sessions" value={subagentSessions} icon={Users} />}
 				{mcpSessions > 0 && <MetricCard label="MCP Sessions" value={mcpSessions} icon={Wrench} />}
 			</div>
@@ -1535,8 +1540,8 @@ function ReportContent({ report }: { report: InsightReport }) {
 			{/* On the Horizon */}
 			<OnTheHorizon data={narrative?.on_the_horizon} />
 
-			{/* Cost & Token Efficiency — only show when token data exists */}
-			{(Number(metrics?.tokens?.total_input_tokens || 0) > 0 || Number(metrics?.cost?.total_cost_usd || 0) > 0) && <TokenSection data={narrative?.usage_cost_analysis || narrative?.token_optimization} metrics={metrics} />}
+			{/* Cost & Token Efficiency: show when any billing data exists (tokens or credits) */}
+			{(sessionsWithTokens > 0 || sessionsWithCredits > 0 || totalCost > 0) && <TokenSection data={narrative?.usage_cost_analysis || narrative?.token_optimization} metrics={metrics} />}
 
 			{/* Regression Detection */}
 			<RegressionSection

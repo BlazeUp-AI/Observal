@@ -400,6 +400,50 @@ def extract_session_meta(session_id: str, raw_lines: list[str]) -> dict:
     }
 
 
+async def fetch_session_stats(
+    agent_id: str,
+    period_start: str,
+    period_end: str,
+    agent_name: str = "",
+) -> dict[str, dict]:
+    """Fetch per-session stats (credits, ide) from session_stats_agg.
+
+    Returns {session_id: {"credits": float, "ide": str}} for enriching metas.
+    """
+    query = get_query()
+
+    sql = """
+        SELECT session_id, total_credits, ide
+        FROM session_stats_agg FINAL
+        WHERE (agent_id = {agent_id:String} OR agent_id = {agent_name:String})
+          AND last_event_time >= {t_start:String}
+          AND last_event_time <= {t_end:String}
+        GROUP BY session_id, total_credits, ide
+        FORMAT JSON
+    """
+    params = {
+        "param_agent_id": agent_id,
+        "param_agent_name": agent_name,
+        "param_t_start": period_start,
+        "param_t_end": period_end,
+    }
+
+    try:
+        r = await query(sql, params)
+        r.raise_for_status()
+        rows = r.json().get("data", [])
+        return {
+            row["session_id"]: {
+                "credits": float(row.get("total_credits") or 0),
+                "ide": row.get("ide", ""),
+            }
+            for row in rows
+        }
+    except Exception as e:
+        logger.warning("fetch_session_stats_failed", error=str(e))
+        return {}
+
+
 async def fetch_all_session_transcripts(
     agent_id: str,
     period_start: str,
@@ -493,12 +537,20 @@ async def extract_all_session_metas(
 
     This is the main entry point: fetches raw lines from ClickHouse,
     then runs extract_session_meta on each session.
+    Also enriches each meta with credits and IDE info from session_stats_agg.
     """
     transcripts = await fetch_all_session_transcripts(agent_id, period_start, period_end, agent_name=agent_name)
+
+    # Fetch per-session stats (credits, ide) for enrichment
+    session_stats = await fetch_session_stats(agent_id, period_start, period_end, agent_name=agent_name)
 
     metas = []
     for session_id, lines in transcripts.items():
         meta = extract_session_meta(session_id, lines)
+        # Enrich with credits and IDE from session_stats_agg
+        stats = session_stats.get(session_id, {})
+        meta["credits"] = stats.get("credits", 0.0)
+        meta["ide"] = stats.get("ide", "")
         metas.append(meta)
 
     logger.info(
@@ -523,6 +575,7 @@ def aggregate_metas(metas: list[dict]) -> dict:
         "total_cache_read_tokens": 0,
         "total_cache_write_tokens": 0,
         "total_cost": 0.0,
+        "total_credits": 0.0,
         "total_lines_added": 0,
         "total_lines_removed": 0,
         "total_files_modified": 0,
@@ -539,6 +592,9 @@ def aggregate_metas(metas: list[dict]) -> dict:
         "user_response_times": [],
         "message_hours": [],
         "days_active": set(),
+        "ides": set(),
+        "sessions_with_tokens": 0,
+        "sessions_with_credits": 0,
     }
 
     for meta in metas:
@@ -549,6 +605,13 @@ def aggregate_metas(metas: list[dict]) -> dict:
         agg["total_cache_read_tokens"] += meta["cache_read_tokens"]
         agg["total_cache_write_tokens"] += meta["cache_write_tokens"]
         agg["total_cost"] += meta["total_cost"]
+        agg["total_credits"] += meta.get("credits", 0.0)
+        if meta.get("input_tokens", 0) > 0 or meta.get("output_tokens", 0) > 0:
+            agg["sessions_with_tokens"] += 1
+        if meta.get("credits", 0) > 0:
+            agg["sessions_with_credits"] += 1
+        if meta.get("ide"):
+            agg["ides"].add(meta["ide"])
         agg["total_lines_added"] += meta["lines_added"]
         agg["total_lines_removed"] += meta["lines_removed"]
         agg["total_files_modified"] += meta["files_modified"]
@@ -591,6 +654,7 @@ def aggregate_metas(metas: list[dict]) -> dict:
 
     # Finalize
     agg["days_active"] = len(agg["days_active"])
+    agg["ides"] = sorted(agg["ides"])
 
     # Sort tool counts by frequency
     agg["top_tools"] = sorted(agg["tool_counts"].items(), key=lambda x: -x[1])[:15]

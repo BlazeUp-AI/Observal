@@ -190,6 +190,7 @@ async def _run_pipeline(
             "subagent_sessions": agg.get("sessions_using_subagent", 0),
             "mcp_sessions": agg.get("sessions_using_mcp", 0),
             "total_cost_usd": round(agg.get("total_cost", 0), 2),
+            "total_credits": round(agg.get("total_credits", 0), 4),
             "total_input_tokens": agg.get("total_input_tokens", 0),
             "total_output_tokens": agg.get("total_output_tokens", 0),
             "total_cache_read_tokens": agg.get("total_cache_read_tokens", 0),
@@ -198,6 +199,9 @@ async def _run_pipeline(
             "top_languages": agg.get("top_languages", [])[:10],
             "tool_error_categories": agg.get("tool_error_categories", {}),
             "projects": agg.get("projects", {}),
+            "ides": agg.get("ides", []),
+            "sessions_with_tokens": agg.get("sessions_with_tokens", 0),
+            "sessions_with_credits": agg.get("sessions_with_credits", 0),
         },
         "overview": {
             "total_sessions": agg.get("total_sessions", 0),
