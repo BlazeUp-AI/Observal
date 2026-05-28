@@ -20,7 +20,12 @@ from models.insight_meta_cache import InsightMetaCache
 from models.insight_report import InsightReport, InsightReportStatus
 from models.insight_session_facets import InsightSessionFacets
 from models.user import User, UserRole
-from schemas.insights import GenerateInsightRequest, InsightReportListItem, InsightReportResponse
+from schemas.insights import (
+    ApplySuggestionsRequest,
+    GenerateInsightRequest,
+    InsightReportListItem,
+    InsightReportResponse,
+)
 from services.insights import INSIGHTS_AVAILABLE, render_report_html
 from services.redis import _get_arq_pool
 
@@ -381,3 +386,71 @@ async def delete_report(
     await db.commit()
 
     return {"deleted": True, "report_id": report_id}
+
+
+@router.post("/reports/{report_id}/apply")
+async def apply_report_suggestions(
+    report_id: str,
+    body: ApplySuggestionsRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Apply selected insight suggestions as pending registry items.
+
+    Pass index arrays to select specific suggestions. Omit or pass null
+    to skip a category entirely. Pass an empty body to apply all.
+    """
+    optic.debug("insights.apply_suggestions: report_id={}", report_id)
+    _require_insights()
+
+    # Check feature toggle
+    import services.dynamic_settings as ds
+
+    enabled = await ds.get_bool("insights.self_learn_enabled", default=True)
+    if not enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Self-learning is disabled. Enable via settings: insights.self_learn_enabled",
+        )
+
+    # Org-scope check
+    stmt = select(InsightReport).where(InsightReport.id == report_id)
+    result = await db.execute(stmt)
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    agent_stmt = select(Agent).where(Agent.id == report.agent_id)
+    agent_result = await db.execute(agent_stmt)
+    agent = agent_result.scalar_one_or_none()
+    if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
+    # Run the self-learn pipeline
+    from services.insights.self_learn import apply_insight_suggestions
+
+    selection = None
+    if body and (
+        body.config_indices is not None or body.feature_indices is not None or body.pattern_indices is not None
+    ):
+        selection = {
+            "config_indices": body.config_indices,
+            "feature_indices": body.feature_indices,
+            "pattern_indices": body.pattern_indices,
+        }
+
+    try:
+        applied = await apply_insight_suggestions(
+            report_id=report_id,
+            db=db,
+            triggered_by=current_user.id,
+            selection=selection,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "applied": True,
+        "report_id": report_id,
+        "items": applied,
+    }

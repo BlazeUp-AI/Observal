@@ -22,7 +22,7 @@
  ╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝
 </pre>
 
-**A self-hosted registry for distributing AI coding agents across your team, with shared observability built in. Every session, prompt, and tool call is captured. Enterprise edition adds AI-powered insights, HIPAA audit logging, and SSO.**
+**A unified platform for agent distribution, observability and insights. Every session, prompt, and tool call is captured. Enterprise edition adds AI-powered insights, HIPAA audit logging, and SSO.**
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="License"></a>

@@ -47,6 +47,7 @@ import type {
 	SystemWarning,
 	InsightReportListItem,
 	InsightReport,
+	InsightAppliedItems,
 	ExecAdoptionResponse,
 	ExecAgentCounts,
 	ExecUsageByCategory,
@@ -771,6 +772,11 @@ export const insights = {
 		get<InsightReportListItem[]>(`/insights/agents/${agentId}/reports`),
 	getReport: (reportId: string) =>
 		get<InsightReport>(`/insights/reports/${reportId}`),
+	applySuggestions: (reportId: string, selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] }) =>
+		post<{ applied: boolean; report_id: string; items: InsightAppliedItems }>(
+			`/insights/reports/${reportId}/apply`,
+			selection ?? {},
+		),
 	exportHtml: async (reportId: string): Promise<void> => {
 		const token = getAccessToken();
 		const res = await fetch(`${API}/insights/reports/${reportId}/export/html`, {

@@ -201,15 +201,16 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
     ],
     "features_to_try": [
       {{
-        "feature": "feature name (e.g. 'MCP server', 'Custom skill', 'Lifecycle hook')",
+        "feature": "Skill | Hook",
+        "name": "short-kebab-name (max 30 chars, e.g. 'scope-guard', 'pr-review', 'test-runner')",
         "one_liner": "what it does in one sentence",
         "why_for_you": "why this would help YOU based on your sessions",
-        "example": "actual config snippet, CLI command, or code to copy"
+        "example": "see format rules below"
       }}
     ],
     "usage_patterns": [
       {{
-        "title": "short title",
+        "title": "short title (2-4 words)",
         "suggestion": "1-2 sentence summary",
         "detail": "3-4 sentences explaining how this applies to YOUR work, referencing specific sessions",
         "copyable_prompt": "a specific prompt to copy and try"
@@ -220,32 +221,63 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 
 Rules:
 - config_additions: PRIORITIZE instructions from USER INSTRUCTIONS and REPEATED INSTRUCTIONS sections. These are things the user has ALREADY told the agent but it keeps forgetting. Maximum 7.
-- features_to_try: 2-3 concrete suggestions. Pick from:
-  * Skills: custom prompt templates invoked by the user for repeatable workflows
-  * Lifecycle hooks: code that runs before/after tool calls to add guardrails
-  * MCP servers: external tool integrations the agent can call
-  * Subagents: spawning focused agents for parallel or exploratory work
-  Each must have a real, copyable example (YAML config, CLI command, or code snippet).
+- features_to_try: 2-3 concrete suggestions. ONLY suggest Skills or Hooks. NEVER suggest MCP servers.
 - usage_patterns: 2-4 suggestions for how to prompt differently. Each must include a copyable prompt the user can try immediately.
 - NEVER suggest vague improvements. Be specific: include the exact text, command, or config.
 
+FEATURE FORMAT REQUIREMENTS:
+
+For Skills, the "example" field MUST be a complete SKILL.md with frontmatter:
+```
+---
+name: <name>
+description: "<one_liner>"
+version: 1.0.0
+task_type: general
+---
+
+# <name>
+
+<Step-by-step procedure the agent follows when this skill is invoked.
+Be specific. Reference real tools (Read, Edit, Bash, etc.) and commands.>
+```
+
+For Hooks, the "example" field MUST be a valid shell script with this header comment:
+```
+# Hook: <event description>
+#!/usr/bin/env bash
+set -euo pipefail
+<actual shell commands that accomplish the hook's purpose>
+```
+
+Valid hook events (use ONE in the "# Hook:" comment):
+- "before tool use" -> PreToolUse (sync, runs before each tool call)
+- "after tool use" -> PostToolUse (async, runs after each tool call)
+- "session end" -> Stop (blocking, runs when session ends)
+- "before prompt" -> UserPromptSubmit (sync, runs before user prompt is sent)
+- "session start" -> SessionStart (async, runs when session begins)
+
+The "name" field must be a short kebab-case identifier (max 30 chars).
+Good: "scope-guard", "pre-commit-lint", "test-gate", "branch-cleanup"
+Bad: "hook-that-checks-whether-files-are-in-scope", "custom-skill-for-testing"
+
 COMPONENT-AWARE ANALYSIS:
 If "Agent Configuration" is present:
-- If an MCP is configured but never called, suggest removing it
-- If users repeatedly attempt tasks the agent can't do, suggest an MCP/skill
+- If users repeatedly attempt tasks the agent can't do, suggest a skill
 - If the system prompt is missing guidance for common user requests, suggest specific prompt additions
-- For registry components, include: `observal agent add mcp <id>` or `observal agent add skill <id>`
+- If tool_errors are high, suggest a validation hook
+- For registry components, include: `observal agent add skill <id>`
 
 SKILLS TO ADD (always include at least 1 skill suggestion):
 - Identify the user's most repetitive workflows from goal_categories and session summaries
-- Suggest a specific skill with name, description, and the full prompt template content
-- Format as a YAML skill definition the user can copy directly
+- Suggest a specific skill with name, description, and the full SKILL.md content
+- The skill content must be actionable steps using real tools, not pseudocode
 
 HOOKS TO ADD (include if friction warrants it):
 - If tool_errors are high, suggest a pre-execution validation hook
 - If wrong_approach friction is common, suggest a confirmation gate hook
 - If excessive_changes friction exists, suggest a scope-guard hook
-- Show the hook as a code snippet or config the user can copy""",
+- The hook script must be a real executable shell script, not pseudocode""",
     "usage_cost_analysis": """Analyze this agent's cost efficiency.
 
 {data_block}

@@ -109,6 +109,21 @@ export function useGenerateInsight() {
   });
 }
 
+export function useApplyInsightSuggestions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { reportId: string; selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] } }) =>
+      insights.applySuggestions(vars.reportId, vars.selection),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["insights", "report", vars.reportId] });
+      toast.success("Suggestions applied: items added to review queue");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to apply suggestions");
+    },
+  });
+}
+
 // ── Models catalog ─────────────────────────────────────────────────
 
 const MODELS_QUERY_KEY = ["models", "catalog"] as const;

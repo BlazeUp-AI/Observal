@@ -25,6 +25,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   Tabs,
@@ -884,24 +893,32 @@ function AgentBuilderInner() {
                   <Label htmlFor="agent-category" className="text-sm font-medium">
                     Category
                   </Label>
-                  <select
-                    id="agent-category"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  <Select
+                    value={category || "__none__"}
+                    onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
                   >
-                    <option value="">Select category...</option>
-                    <option value="Code Review">Code Review</option>
-                    <option value="Testing">Testing</option>
-                    <option value="Documentation">Documentation</option>
-                    <option value="DevOps">DevOps</option>
-                    <option value="Security">Security</option>
-                    <option value="Data">Data</option>
-                    <option value="Incident Response">Incident Response</option>
-                    <option value="Deployment">Deployment</option>
-                    <option value="Cost Optimization">Cost Optimization</option>
-                    <option value="Other">Other</option>
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="__none__">Select category...</SelectItem>
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Categories</SelectLabel>
+                        <SelectItem value="Code Review">Code Review</SelectItem>
+                        <SelectItem value="Testing">Testing</SelectItem>
+                        <SelectItem value="Documentation">Documentation</SelectItem>
+                        <SelectItem value="DevOps">DevOps</SelectItem>
+                        <SelectItem value="Security">Security</SelectItem>
+                        <SelectItem value="Data">Data</SelectItem>
+                        <SelectItem value="Incident Response">Incident Response</SelectItem>
+                        <SelectItem value="Deployment">Deployment</SelectItem>
+                        <SelectItem value="Cost Optimization">Cost Optimization</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex-1">
                   <ModelPicker
