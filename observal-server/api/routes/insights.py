@@ -56,13 +56,20 @@ async def insights_status(current_user: User = Depends(require_role(UserRole.adm
         aws_key = await ds.get("insights.aws_access_key_id")
         aws_secret = await ds.get("insights.aws_secret_access_key")
         if not aws_key:
-            return {"available": False, "reason": "AWS access key not configured. Set insights.aws_access_key_id in admin settings."}
+            return {
+                "available": False,
+                "reason": "AWS access key not configured. Set insights.aws_access_key_id in admin settings.",
+            }
         if not aws_secret:
-            return {"available": False, "reason": "AWS secret key not configured. Set insights.aws_secret_access_key in admin settings."}
+            return {
+                "available": False,
+                "reason": "AWS secret key not configured. Set insights.aws_secret_access_key in admin settings.",
+            }
 
         # Validate credentials with a lightweight STS call
         try:
             import boto3
+
             region = await ds.get("insights.aws_region") or "us-east-1"
             sts = boto3.client(
                 "sts",
@@ -74,12 +81,24 @@ async def insights_status(current_user: User = Depends(require_role(UserRole.adm
         except Exception as e:
             error_str = str(e)
             if "InvalidClientTokenId" in error_str or "security token" in error_str:
-                return {"available": False, "reason": "AWS access key is invalid. Update insights.aws_access_key_id in admin settings."}
+                return {
+                    "available": False,
+                    "reason": "AWS access key is invalid. Update insights.aws_access_key_id in admin settings.",
+                }
             if "SignatureDoesNotMatch" in error_str:
-                return {"available": False, "reason": "AWS secret key is invalid. Update insights.aws_secret_access_key in admin settings."}
+                return {
+                    "available": False,
+                    "reason": "AWS secret key is invalid. Update insights.aws_secret_access_key in admin settings.",
+                }
             if "ExpiredToken" in error_str:
-                return {"available": False, "reason": "AWS credentials have expired. Update credentials in admin settings."}
-            return {"available": False, "reason": f"AWS credential check failed: {error_str[:200]}"}
+                return {
+                    "available": False,
+                    "reason": "AWS credentials have expired. Update credentials in admin settings.",
+                }
+            return {
+                "available": False,
+                "reason": "AWS credential check failed. Verify your access key and secret in admin settings.",
+            }
 
     return {"available": True, "reason": None}
 

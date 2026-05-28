@@ -1536,7 +1536,7 @@ function ReportContent({ report }: { report: InsightReport }) {
 			<OnTheHorizon data={narrative?.on_the_horizon} />
 
 			{/* Cost & Token Efficiency — only show when token data exists */}
-			{(Number((metrics as any)?.rich?.total_input_tokens || 0) > 0 || Number((metrics as any)?.rich?.total_cost_usd || metrics?.cost?.total_cost_usd || 0) > 0) && <TokenSection data={narrative?.usage_cost_analysis || narrative?.token_optimization} metrics={metrics} />}
+			{(Number(metrics?.tokens?.total_input_tokens || 0) > 0 || Number(metrics?.cost?.total_cost_usd || 0) > 0) && <TokenSection data={narrative?.usage_cost_analysis || narrative?.token_optimization} metrics={metrics} />}
 
 			{/* Regression Detection */}
 			<RegressionSection
