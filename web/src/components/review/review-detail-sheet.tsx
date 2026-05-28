@@ -8,7 +8,6 @@ import Link from "next/link";
 import {
 	CheckCircle2,
 	X,
-	Trash2,
 	ExternalLink,
 	GitBranch,
 	AlertCircle,
@@ -345,7 +344,6 @@ interface ReviewDetailSheetProps {
 	onOpenChange: (open: boolean) => void;
 	onApprove: (id: string, type?: string, category?: string) => void;
 	onReject: (id: string, reason: string, type?: string) => void;
-	onDelete: (id: string, type?: string) => void;
 }
 
 export function ReviewDetailSheet({
@@ -354,7 +352,6 @@ export function ReviewDetailSheet({
 	onOpenChange,
 	onApprove,
 	onReject,
-	onDelete,
 }: ReviewDetailSheetProps) {
 	return (
 		<Sheet open={open} onOpenChange={onOpenChange}>
@@ -367,7 +364,6 @@ export function ReviewDetailSheet({
 						onOpenChange={onOpenChange}
 						onApprove={onApprove}
 						onReject={onReject}
-						onDelete={onDelete}
 					/>
 				) : (
 					<div className="space-y-4 pt-6">
@@ -387,14 +383,12 @@ function SheetBody({
 	onOpenChange,
 	onApprove,
 	onReject,
-	onDelete,
 }: {
 	item: ReviewItem;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onApprove: (id: string, type?: string, category?: string) => void;
 	onReject: (id: string, reason: string, type?: string) => void;
-	onDelete: (id: string, type?: string) => void;
 }) {
 	const { data: detail, isLoading } = useReviewDetail(
 		open ? item.id : undefined,
@@ -402,7 +396,6 @@ function SheetBody({
 	const approveWithSkills = useApproveWithSkills();
 	const [showRejectInput, setShowRejectInput] = useState(false);
 	const [rejectReason, setRejectReason] = useState("");
-	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const merged = useMemo<ReviewItem>(() => {
 		if (detail) return { ...item, ...detail };
@@ -429,14 +422,6 @@ function SheetBody({
 			onOpenChange(false);
 		}
 	}, [merged, onApprove, onOpenChange]);
-
-	const handleDelete = useCallback(() => {
-		if (merged) {
-			onDelete(merged.id, merged.type);
-			setConfirmDelete(false);
-			onOpenChange(false);
-		}
-	}, [merged, onDelete, onOpenChange]);
 
 	const handleApproveWithSkills = useCallback(
 		(mcpId: string, skillIds: string[]) => {
@@ -653,29 +638,6 @@ function SheetBody({
 					</div>
 				)}
 
-				{confirmDelete && (
-					<div className="flex items-center gap-2 p-2 rounded bg-destructive/5 border border-destructive/15">
-						<p className="text-xs text-destructive flex-1">
-							Permanently delete this submission?
-						</p>
-						<Button
-							size="sm"
-							className="h-7 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-none"
-							onClick={handleDelete}
-						>
-							Delete
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-7 w-7 p-0"
-							onClick={() => setConfirmDelete(false)}
-						>
-							<X className="h-3 w-3" />
-						</Button>
-					</div>
-				)}
-
 				<div className="flex items-center gap-2">
 					{disableApprove ? (
 						<TooltipProvider>
@@ -712,24 +674,6 @@ function SheetBody({
 					>
 						{showRejectInput ? "Confirm" : "Reject"}
 					</Button>
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-									onClick={() => setConfirmDelete(true)}
-									aria-label="Delete submission"
-								>
-									<Trash2 className="h-3.5 w-3.5" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Withdraw / delete submission</p>
-							</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
 				</div>
 			</div>
 		</div>

@@ -614,6 +614,16 @@ async def reject(
         listing.rejection_reason = req.reason
 
     await db.commit()
+
+    # Handle self-learn rejection cascade
+    try:
+        from services.insights.self_learn import handle_component_rejection
+
+        await handle_component_rejection(listing_type, listing.id, db)
+        await db.commit()
+    except Exception:
+        pass  # Non-critical: don't block rejection if cascade fails
+
     await db.refresh(listing)
     redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "rejected"})
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}

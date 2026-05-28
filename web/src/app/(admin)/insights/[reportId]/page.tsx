@@ -34,8 +34,10 @@ import {
 	MessageSquare,
 	Copy,
 	Check,
+	Brain,
 } from "lucide-react";
 import { useInsightReport } from "@/hooks/use-api";
+import { useApplyInsightSuggestions } from "@/hooks/use-insights-api";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layouts/page-header";
 import { ErrorState } from "@/components/shared/error-state";
@@ -577,7 +579,14 @@ function ProjectAreas({ data }: { data: unknown }) {
 
 // ── Suggestions Section (V4: config_additions + features + patterns) ──
 
-function SuggestionsSection({ data }: { data: unknown }) {
+function SuggestionsSection({ data, report }: { data: unknown; report?: InsightReport }) {
+	const applySuggestions = useApplyInsightSuggestions();
+	const [showConfirm, setShowConfirm] = React.useState(false);
+	const [selectedConfigs, setSelectedConfigs] = React.useState<Set<number>>(new Set());
+	const [selectedFeatures, setSelectedFeatures] = React.useState<Set<number>>(new Set());
+	const [selectedPatterns, setSelectedPatterns] = React.useState<Set<number>>(new Set());
+	const [initialized, setInitialized] = React.useState(false);
+
 	if (!data) return null;
 
 	if (Array.isArray(data) || typeof data === "string") {
@@ -603,33 +612,124 @@ function SuggestionsSection({ data }: { data: unknown }) {
 
 	const hasV4 = (configAdditions && configAdditions.length > 0) || (featuresToTry && featuresToTry.length > 0) || (usagePatterns && usagePatterns.length > 0);
 
+	// Initialize all selected by default
+	if (!initialized && hasV4) {
+		const cSet = new Set(configAdditions?.map((_, i) => i) ?? []);
+		const fSet = new Set(featuresToTry?.map((_, i) => i) ?? []);
+		const pSet = new Set(usagePatterns?.map((_, i) => i) ?? []);
+		if (cSet.size || fSet.size || pSet.size) {
+			setSelectedConfigs(cSet);
+			setSelectedFeatures(fSet);
+			setSelectedPatterns(pSet);
+			setInitialized(true);
+		}
+	}
+
+	const toggleConfig = (i: number) => {
+		setSelectedConfigs((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
+	};
+	const toggleFeature = (i: number) => {
+		setSelectedFeatures((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
+	};
+	const togglePattern = (i: number) => {
+		setSelectedPatterns((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
+	};
+
+	const totalSelected = selectedConfigs.size + selectedFeatures.size + selectedPatterns.size;
+
+	const handleApply = () => {
+		if (!report) return;
+		const selection: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] } = {};
+		if (selectedConfigs.size < (configAdditions?.length ?? 0)) {
+			selection.config_indices = [...selectedConfigs];
+		}
+		if (selectedFeatures.size < (featuresToTry?.length ?? 0)) {
+			selection.feature_indices = [...selectedFeatures];
+		}
+		if (selectedPatterns.size < (usagePatterns?.length ?? 0)) {
+			selection.pattern_indices = [...selectedPatterns];
+		}
+		const hasSelection = Object.keys(selection).length > 0;
+		applySuggestions.mutate({ reportId: report.id, selection: hasSelection ? selection : undefined });
+		setShowConfirm(false);
+	};
+
 	if (!hasV4 && (!items || items.length === 0)) return null;
 
 	return (
 		<div className="rounded-lg border border-border bg-card">
-			<div className="flex items-center gap-2 px-5 py-3 border-b border-border">
-				<Lightbulb className="h-4 w-4 text-primary-accent" />
-				<h3 className="font-[family-name:var(--font-display)] text-sm font-semibold">
-					Suggestions
-				</h3>
+			<div className="flex items-center justify-between px-5 py-3 border-b border-border">
+				<div className="flex items-center gap-2">
+					<Lightbulb className="h-4 w-4 text-primary-accent" />
+					<h3 className="font-[family-name:var(--font-display)] text-sm font-semibold">
+						Suggestions
+					</h3>
+				</div>
+			{report && !report.applied_at && (
+					<div className="relative">
+						{!showConfirm ? (
+							<Button
+								variant="outline"
+								size="sm"
+								className="gap-1.5 text-xs"
+								disabled={applySuggestions.isPending || totalSelected === 0}
+								onClick={() => setShowConfirm(true)}
+							>
+								<Brain className="h-3.5 w-3.5" /> Apply Selected ({totalSelected})
+							</Button>
+						) : (
+							<div className="flex items-center gap-2">
+								<span className="text-xs text-muted-foreground">Submit {totalSelected} items to review?</span>
+								<Button
+									size="sm"
+									className="h-7 text-xs gap-1"
+									disabled={applySuggestions.isPending}
+									onClick={handleApply}
+								>
+									{applySuggestions.isPending ? (
+										<Loader2 className="h-3 w-3 animate-spin" />
+									) : (
+										<CheckCircle2 className="h-3 w-3" />
+									)}
+									Confirm
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="h-7 text-xs"
+									onClick={() => setShowConfirm(false)}
+								>
+									Cancel
+								</Button>
+							</div>
+						)}
+					</div>
+				)}
+				{report?.applied_at && (
+					<span className="inline-flex items-center gap-1.5 text-xs font-medium text-success bg-success/10 px-2.5 py-1 rounded-full">
+						<CheckCircle2 className="h-3 w-3" /> Applied
+					</span>
+				)}
 			</div>
 			<div className="px-5 py-4 space-y-6">
-				{/* V4: Config Additions */}
 				{configAdditions && configAdditions.length > 0 && (
 					<div>
 						<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Config Additions</h4>
 						<p className="text-xs text-muted-foreground mb-3">Add these to your agent&apos;s system prompt or AGENTS.md.</p>
 						<div className="space-y-2">
 							{configAdditions.map((c, i) => (
-								<div key={i} className="rounded-md border border-border bg-muted/10 p-3">
-									<div className="flex items-start justify-between gap-3">
+								<div key={i} className={`rounded-md border p-3 transition-colors ${selectedConfigs.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}>
+									<div className="flex items-start gap-3">
+										{!report?.applied_at && (
+											<input type="checkbox" checked={selectedConfigs.has(i)} onChange={() => toggleConfig(i)} className="mt-1 h-4 w-4 rounded border-border" />
+										)}
 										<div className="flex-1">
 											<span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground mr-2">{c.where}</span>
 											<span className="text-sm font-medium">{c.addition}</span>
 										</div>
 										<CopyButton text={c.addition} />
 									</div>
-									{c.why && <p className="text-xs text-muted-foreground mt-2 italic">Why: {c.why}</p>}
+									{c.why && <p className="text-xs text-muted-foreground mt-2 italic ml-7">Why: {c.why}</p>}
 								</div>
 							))}
 						</div>
@@ -642,18 +742,25 @@ function SuggestionsSection({ data }: { data: unknown }) {
 						<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Features to Try</h4>
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 							{featuresToTry.map((f, i) => (
-								<div key={i} className="rounded-md border border-border bg-muted/10 p-3">
-									<span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{f.feature}</span>
-									<div className="font-medium text-sm mt-2">{f.one_liner}</div>
-									<p className="text-xs text-foreground/60 mt-1">{f.why_for_you}</p>
-									{f.example && (
-										<>
-											<pre className="mt-2 p-2 rounded bg-muted/30 text-xs font-[family-name:var(--font-mono)] text-foreground/70 whitespace-pre-wrap break-all">
-												{f.example}
-											</pre>
-											<CopyButton text={f.example} className="mt-1" />
-										</>
-									)}
+								<div key={i} className={`rounded-md border p-3 transition-colors ${selectedFeatures.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}>
+									<div className="flex items-start gap-2">
+										{!report?.applied_at && (
+											<input type="checkbox" checked={selectedFeatures.has(i)} onChange={() => toggleFeature(i)} className="mt-1 h-4 w-4 rounded border-border" />
+										)}
+										<div className="flex-1">
+											<span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{f.feature}</span>
+											<div className="font-medium text-sm mt-2">{f.one_liner}</div>
+											<p className="text-xs text-foreground/60 mt-1">{f.why_for_you}</p>
+											{f.example && (
+												<>
+													<pre className="mt-2 p-2 rounded bg-muted/30 text-xs font-[family-name:var(--font-mono)] text-foreground/70 whitespace-pre-wrap break-all">
+														{f.example}
+													</pre>
+													<CopyButton text={f.example} className="mt-1" />
+												</>
+											)}
+										</div>
+									</div>
 								</div>
 							))}
 						</div>
@@ -666,18 +773,25 @@ function SuggestionsSection({ data }: { data: unknown }) {
 						<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Usage Patterns</h4>
 						<div className="space-y-3">
 							{usagePatterns.map((p, i) => (
-								<div key={i} className="rounded-md border border-border bg-muted/10 p-3">
-									<div className="font-medium text-sm">{p.title}</div>
-									<p className="text-sm text-foreground/70 mt-1">{p.suggestion}</p>
-									<p className="text-xs text-muted-foreground mt-2">{p.detail}</p>
-									{p.copyable_prompt && (
-										<>
-											<pre className="mt-2 p-2 rounded bg-muted/30 text-xs font-[family-name:var(--font-mono)] text-foreground/70 whitespace-pre-wrap break-all">
-												{p.copyable_prompt}
-											</pre>
-											<CopyButton text={p.copyable_prompt} className="mt-1" />
-										</>
-									)}
+								<div key={i} className={`rounded-md border p-3 transition-colors ${selectedPatterns.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}>
+									<div className="flex items-start gap-2">
+										{!report?.applied_at && (
+											<input type="checkbox" checked={selectedPatterns.has(i)} onChange={() => togglePattern(i)} className="mt-1 h-4 w-4 rounded border-border" />
+										)}
+										<div className="flex-1">
+											<div className="font-medium text-sm">{p.title}</div>
+											<p className="text-sm text-foreground/70 mt-1">{p.suggestion}</p>
+											<p className="text-xs text-muted-foreground mt-2">{p.detail}</p>
+											{p.copyable_prompt && (
+												<>
+													<pre className="mt-2 p-2 rounded bg-muted/30 text-xs font-[family-name:var(--font-mono)] text-foreground/70 whitespace-pre-wrap break-all">
+														{p.copyable_prompt}
+													</pre>
+													<CopyButton text={p.copyable_prompt} className="mt-1" />
+												</>
+											)}
+										</div>
+									</div>
 								</div>
 							))}
 						</div>
@@ -1535,7 +1649,7 @@ function ReportContent({ report }: { report: InsightReport }) {
 			<FrictionSection data={narrative?.friction_analysis} />
 
 			{/* Suggestions */}
-			<SuggestionsSection data={narrative?.suggestions} />
+			<SuggestionsSection data={narrative?.suggestions} report={report} />
 
 			{/* On the Horizon */}
 			<OnTheHorizon data={narrative?.on_the_horizon} />
