@@ -91,7 +91,7 @@ def _openai_url_and_headers(provider: str = "", url_override: str = "", key_over
     return url, headers
 
 
-async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 4096) -> dict:
+async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 16384) -> dict:
     """Call AWS Bedrock Converse API."""
     import asyncio
 
@@ -137,6 +137,10 @@ async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 4096) -> d
             raise RuntimeError(f"Model '{model_id}' not available in region '{aws_region}': {error_str}") from e
         if "ExpiredTokenException" in error_str:
             raise RuntimeError(f"AWS credentials expired: {error_str}") from e
+        # JSON parse errors (truncated output) are non-fatal, return empty
+        if "JSONDecodeError" in type(e).__name__ or "Unterminated string" in error_str:
+            logger.warning("bedrock_truncated_response", error=error_str, model=model_id)
+            return {}
         logger.error("bedrock_call_failed", error=error_str, model=model_id)
         raise RuntimeError(f"Bedrock call failed: {error_str}") from e
 
@@ -161,7 +165,7 @@ async def _call_openai_compatible(prompt: str, model: str, provider: str = "") -
             return {}
 
 
-async def call_model(prompt: str, model_override: str | None = None, max_tokens: int = 4096) -> dict:
+async def call_model(prompt: str, model_override: str | None = None, max_tokens: int = 16384) -> dict:
     """Call the configured LLM for insights generation.
 
     Provider is auto-detected from the model ID:
@@ -172,7 +176,7 @@ async def call_model(prompt: str, model_override: str | None = None, max_tokens:
     Args:
         prompt: The prompt to send to the model.
         model_override: Optional model ID to use instead of the default.
-        max_tokens: Maximum output tokens (default 4096).
+        max_tokens: Maximum output tokens (default 16384).
     """
     import services.dynamic_settings as ds
 

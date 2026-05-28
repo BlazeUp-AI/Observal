@@ -395,23 +395,14 @@ _DEEP_SECTIONS = {"suggestions", "interaction_style", "friction_analysis", "on_t
 
 # Output size varies by section.
 _SECTION_MAX_TOKENS: dict[str, int] = {
-    "suggestions": 6000,
-    "on_the_horizon": 5000,
-    "interaction_style": 4096,
-    "usage_patterns": 3000,
-    "friction_analysis": 3000,
-    "what_works": 2500,
-    "what_they_work_on": 2500,
-    "usage_cost_analysis": 2000,
-    "regression_detection": 2000,
-    "fun_ending": 512,
+    "fun_ending": 1024,
 }
 
 
 async def _call_section(section_name: str, prompt: str, model: str | None = None) -> tuple[str, dict]:
     """Call the LLM for a single section, return (name, result)."""
     call_model = get_call_model()
-    max_tokens = _SECTION_MAX_TOKENS.get(section_name, 4096)
+    max_tokens = _SECTION_MAX_TOKENS.get(section_name, 16384)
     try:
         result = await call_model(prompt, model_override=model, max_tokens=max_tokens)
         if result and isinstance(result, dict):
