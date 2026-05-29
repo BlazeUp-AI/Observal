@@ -58,10 +58,7 @@ import {
 // The server enforces this too (returns **REDACTED** for these keys),
 // but we keep the set here for UI affordances (revoke button, write-only input).
 const SENSITIVE_KEYS = new Set([
-	"insights.aws_access_key_id",
-	"insights.aws_secret_access_key",
-	"insights.aws_session_token",
-	"insights.model_api_key",
+	"insights.api_key",
 	"saml.idp_x509_cert",
 	"saml.sp_key_encryption_password",
 ]);
@@ -72,9 +69,11 @@ const REDACTED_VALUE = "**REDACTED**";
 function getPlaceholder(key: string): string {
 	const placeholders: Record<string, string> = {
 		// Insights
-		"insights.model_sections": "us.anthropic.claude-opus-4-6-v1",
-		"insights.model_synthesis": "us.anthropic.claude-sonnet-4-6-v1",
-		"insights.model_facets": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		"insights.api_key": "sk-ant-... or sk-... or your-provider-key",
+		"insights.api_base": "https://api.anthropic.com or http://localhost:11434",
+		"insights.model_sections": "bedrock/us.anthropic.claude-opus-4-6-v1",
+		"insights.model_synthesis": "anthropic/claude-sonnet-4-20250514",
+		"insights.model_facets": "bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
 		"insights.batch_enabled": "true",
 		"insights.batch_period_days": "14",
 		"insights.min_sessions": "5",
@@ -172,50 +171,71 @@ const SETTING_SECTIONS: SettingSection[] = [
 		title: "Agent Insights",
 		icon: <Activity className="h-3.5 w-3.5" />,
 		description:
-			"Configure AWS Bedrock credentials and models for the insights engine. Requires 'insights' license feature.",
+			"Configure LLM credentials and models for the insights engine. Supports any LiteLLM-compatible provider (Anthropic, OpenAI, Bedrock, Ollama, etc). Requires 'insights' license feature.",
 		requiresFeature: "insights",
 		settings: [
+			{
+				key: "insights.api_key",
+				label: "API Key",
+				subtitle: "LLM provider API key",
+				tooltip:
+					"API key for your LLM provider (Anthropic, OpenAI, etc). Not needed for Bedrock (use AWS credentials below) or local models (Ollama). Stored encrypted.",
+			},
+			{
+				key: "insights.api_base",
+				label: "API Base URL",
+				subtitle: "Custom endpoint for self-hosted or proxy setups",
+				tooltip:
+					"Override the default API endpoint. Use for self-hosted models (Ollama: http://localhost:11434), proxy servers, or custom deployments. Leave blank for cloud providers.",
+			},
 			{
 				key: "insights.aws_region",
 				label: "AWS Region",
 				subtitle: "Region for Bedrock API calls",
 				tooltip:
-					"AWS region where Bedrock models are available. Common: us-east-1, us-west-2, eu-west-1.",
+					"AWS region where Bedrock models are available. Only required when using 'bedrock/' model prefix. Common: us-east-1, us-west-2, eu-west-1.",
 			},
 			{
 				key: "insights.aws_access_key_id",
 				label: "AWS Access Key ID",
 				subtitle: "IAM access key for Bedrock",
 				tooltip:
-					"AWS IAM access key with bedrock:InvokeModel permission. Leave blank to use instance role / ECS task role.",
+					"AWS IAM access key with bedrock:InvokeModel permission. Only required when using 'bedrock/' model prefix. Leave blank to use instance role / ECS task role.",
 			},
 			{
 				key: "insights.aws_secret_access_key",
 				label: "AWS Secret Access Key",
 				subtitle: "IAM secret key for Bedrock",
 				tooltip:
-					"The secret key paired with the access key ID. Stored encrypted. Leave blank for instance role authentication.",
+					"The secret key paired with the access key ID. Only required when using 'bedrock/' model prefix. Stored encrypted. Leave blank for instance role authentication.",
+			},
+			{
+				key: "insights.aws_session_token",
+				label: "AWS Session Token",
+				subtitle: "Temporary session token (optional)",
+				tooltip:
+					"Only needed for temporary AWS credentials (STS AssumeRole). Leave blank for long-lived IAM keys or instance roles.",
 			},
 			{
 				key: "insights.model_sections",
 				label: "Sections Model",
-				subtitle: "Model for detailed narrative report sections (e.g. Opus)",
+				subtitle: "Model for detailed narrative report sections",
 				tooltip:
-					"Bedrock model ID for writing detailed insight sections. Example: us.anthropic.claude-opus-4-6-v1. This is the primary model used for analysis.",
+					"LiteLLM model ID for writing detailed insight sections. Format: provider/model-name. Examples: bedrock/us.anthropic.claude-opus-4-6-v1, anthropic/claude-sonnet-4-20250514, openai/gpt-4o. This is the primary model used for analysis.",
 			},
 			{
 				key: "insights.model_synthesis",
 				label: "Synthesis Model",
-				subtitle: "Model for aggregation and At a Glance (e.g. Sonnet)",
+				subtitle: "Model for aggregation and At a Glance",
 				tooltip:
-					"Bedrock model ID for cross-user synthesis and strategic recommendations. Example: us.anthropic.claude-sonnet-4-6. Falls back to sections model.",
+					"LiteLLM model ID for cross-user synthesis and strategic recommendations. Format: provider/model-name. Falls back to sections model if not set.",
 			},
 			{
 				key: "insights.model_facets",
 				label: "Facets Model",
-				subtitle: "Model for per-session facet extraction (e.g. Haiku)",
+				subtitle: "Model for per-session facet extraction",
 				tooltip:
-					"Bedrock model ID for extracting structured facets from sessions. Use a cheap model here since it runs many times. Example: us.anthropic.claude-haiku-4-5-20251001-v1:0",
+					"LiteLLM model ID for extracting structured facets from sessions. Use a cheap/fast model here since it runs many times. Example: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
 			},
 			{
 				key: "insights.batch_enabled",
