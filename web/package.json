@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "e2e:kiro": "playwright test --grep kiro",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.7",
@@ -62,8 +64,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
-    "vaul": "^1.1.2",
-    "zod": "^4.3.6"
+    "vaul": "^1.1.2"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.5",
@@ -76,6 +77,14 @@
     "eslint": "^10.0.0",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.0",
+    "zod": "^4.3.6",
+    "vitest": "^4.1.7",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@vitejs/plugin-react": "^6.0.2",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/user-event": "^14.6.1",
+    "jsdom": "^29.1.1"
   }
 }

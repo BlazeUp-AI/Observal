@@ -4,6 +4,7 @@
 <!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 SrihariLegend <sriharilegend23@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 DoomsCoder <vedantkakade05@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Riya Rani <rr1182764@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # Changelog
@@ -1656,4 +1657,3 @@ All notable changes to this project will be documented in this file.
 ### Ui
 
 - brighter borders, responsive text scaling, observal favicon ([909a9b6](https://github.com/BlazeUp-AI/Observal/commit/909a9b6dd7cedc9ddaff31b208f09ace9d35be7e))
-
