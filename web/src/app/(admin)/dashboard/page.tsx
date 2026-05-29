@@ -5,7 +5,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useSearchParams, usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layouts/page-header";
@@ -154,15 +154,18 @@ function ExportDropdown({ activeTab }: { activeTab: string }) {
 
 function DashboardContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
 
   const tabParam = searchParams.get("tab") as TabId | null;
-  const activeTab = tabParam && TABS.includes(tabParam) ? tabParam : "adoption";
+  const [activeTab, setActiveTab] = useState<TabId>(() =>
+    tabParam && TABS.includes(tabParam) ? tabParam : "adoption"
+  );
 
   const rangeParam = searchParams.get("range");
-  const activeRange = (rangeParam && ["7d", "30d", "90d"].includes(rangeParam)) ? rangeParam : "30d";
+  const [activeRange, setActiveRange] = useState(() =>
+    rangeParam && ["7d", "30d", "90d"].includes(rangeParam) ? rangeParam : "30d"
+  );
 
   const [refreshing, setRefreshing] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(() => {
@@ -182,23 +185,26 @@ function DashboardContent() {
     (agents?.total ?? 0) === 0
   );
 
-  const updateParams = useCallback((key: string, value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set(key, value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }, [searchParams, router, pathname]);
-
   const handleTabChange = useCallback((value: string) => {
-    updateParams("tab", value);
-  }, [updateParams]);
+    setActiveTab(value as TabId);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", value);
+    window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+  }, [pathname]);
 
   const handleRangeChange = useCallback((value: string) => {
-    updateParams("range", value);
-  }, [updateParams]);
+    setActiveRange(value);
+    const params = new URLSearchParams(window.location.search);
+    params.set("range", value);
+    window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+  }, [pathname]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ["exec"] });
+    await queryClient.invalidateQueries({
+      queryKey: ["exec"],
+      predicate: (query) => query.queryKey[1] !== "ai-insights",
+    });
     setTimeout(() => setRefreshing(false), 600);
   }, [queryClient]);
 
