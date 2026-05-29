@@ -178,17 +178,20 @@ def redact_secrets(text: str) -> str:
     if text == REDACTED:
         return text
 
+    global _redaction_count
+
     # 1. PEM private keys (replace entire block)
-    text = _RE_PRIVATE_KEY.sub(REDACTED, text)
+    text, n = _RE_PRIVATE_KEY.subn(REDACTED, text)
+    _redaction_count += n
 
     # 2. Known API key prefixes (highest confidence — always redact)
-    global _redaction_count
     for pat in _KNOWN_KEY_PATTERNS:
         text, n = pat.subn(REDACTED, text)
         _redaction_count += n
 
     # 3. JWT tokens
-    text = _RE_JWT.sub(REDACTED, text)
+    text, n = _RE_JWT.subn(REDACTED, text)
+    _redaction_count += n
 
     # 4. Key=value assignments with secret-sounding key names
     #    Replace only the VALUE, keep the key name
@@ -196,15 +199,21 @@ def redact_secrets(text: str) -> str:
         logger.debug("_replace_kv: m={}", m)
         # Groups: 1=double-quoted, 2=single-quoted, 3=unquoted
         val = m.group(1) or m.group(2) or m.group(3)
-        return m.group(0).replace(val, REDACTED) if val else m.group(0)
+        if not val or val == REDACTED:
+            return m.group(0)
+        global _redaction_count
+        _redaction_count += 1
+        return m.group(0).replace(val, REDACTED)
 
     text = _RE_KEY_VALUE.sub(_replace_kv, text)
 
     # 5. Connection strings — redact password only
-    text = _RE_CONN_STRING.sub(r"\1" + REDACTED + r"\3", text)
+    text, n = _RE_CONN_STRING.subn(r"\1" + REDACTED + r"\3", text)
+    _redaction_count += n
 
     # 6. Auth headers — redact token only
-    text = _RE_AUTH_HEADER.sub(r"\1" + REDACTED, text)
+    text, n = _RE_AUTH_HEADER.subn(r"\1" + REDACTED, text)
+    _redaction_count += n
 
     return text
 
