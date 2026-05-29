@@ -10,7 +10,7 @@ import re
 
 from loguru import logger
 
-SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
+SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
 def compute_integrity_hash(content: str) -> str:
