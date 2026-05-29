@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 class LogRingBuffer:
     """Thread-safe bounded ring buffer for structured log entries."""
 
-    def __init__(self, maxlen: int = 2000) -> None:
+    def __init__(self, maxlen: int = 10000) -> None:
         self._buffer: collections.deque[dict] = collections.deque(maxlen=maxlen)
         self._lock = threading.Lock()
 

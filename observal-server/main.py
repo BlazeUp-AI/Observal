@@ -15,10 +15,10 @@
 import os
 from contextlib import asynccontextmanager
 
-import structlog
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from loguru import logger as optic
 from prometheus_fastapi_instrumentator import Instrumentator
 from redis.exceptions import RedisError
 from slowapi import _rate_limit_exceeded_handler
@@ -55,6 +55,7 @@ from api.routes.hook import router as hook_router
 from api.routes.ingest import router as ingest_router
 from api.routes.insights import router as insights_router
 from api.routes.jwks import router as jwks_router
+from api.routes.logs_stream import router as logs_stream_router
 from api.routes.mcp import router as mcp_router
 from api.routes.preview import router as preview_router
 from api.routes.prompt import router as prompt_router
@@ -236,11 +237,8 @@ async def _version_middleware(request: Request, call_next):
     return response
 
 
-logger = structlog.get_logger("observal")
-
-
 async def _redis_error_handler(request: Request, exc: RedisError):
-    logger.error("redis_error", method=request.method, path=request.url.path, error=str(exc))
+    optic.error("redis_error", method=request.method, path=request.url.path, error=str(exc))
     return JSONResponse(status_code=503, content={"detail": "Service temporarily unavailable"})
 
 
@@ -359,8 +357,8 @@ if HAS_LICENSE:
         register_enterprise_middleware(app, settings)
         mount_ee_routes(app)
     except (ImportError, RuntimeError) as _ee_err:
-        _logger = structlog.get_logger("observal")
-        _logger.warning("enterprise_features_unavailable", detail=str(_ee_err))
+        pass
+        optic.warning("enterprise features unavailable: {}", str(_ee_err))
         app.state.enterprise_issues = [str(_ee_err)]
 
 # GraphQL (replaces REST dashboard endpoints)
@@ -394,6 +392,7 @@ app.include_router(co_authors_router)
 app.include_router(config_router)
 app.include_router(registry_models_router)
 app.include_router(support_router)
+app.include_router(logs_stream_router)
 # Audit CLI event endpoint (license-gated internally, mounted always so
 # CLI gets a clean 200 "skipped" response rather than 404 when unlicensed)
 app.include_router(audit_router)
