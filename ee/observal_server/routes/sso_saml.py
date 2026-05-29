@@ -378,6 +378,8 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         )
     )
 
+    relay_state = _safe_redirect_path(request_data["post_data"].get("RelayState"))
+
     import uuid as _uuid
 
     token_id = str(_uuid.uuid4())
@@ -400,10 +402,10 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     )
 
     frontend_url = _get_frontend_url()
-    return RedirectResponse(
-        url=f"{frontend_url}/login?saml_token={token_id}",
-        status_code=302,
-    )
+    redirect_url = f"{frontend_url}/login?saml_token={token_id}"
+    if relay_state != "/":
+        redirect_url += f"&next={relay_state}"
+    return RedirectResponse(url=redirect_url, status_code=302)
 
 
 @router.get("/exchange")
