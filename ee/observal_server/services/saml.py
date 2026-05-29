@@ -111,7 +111,7 @@ def build_saml_settings(
 
     settings_dict: dict[str, Any] = {
         "strict": strict,
-        "debug": True,
+        "debug": False,
         "sp": {
             "entityId": sp_entity_id,
             "assertionConsumerService": {
@@ -131,7 +131,7 @@ def build_saml_settings(
             "x509cert": idp_cert_clean,
         },
         "security": {
-            "authnRequestsSigned": False,
+            "authnRequestsSigned": True,
             "wantAssertionsSigned": True,
             "wantMessagesSigned": False,
             "wantResponsesSigned": True,

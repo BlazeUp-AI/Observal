@@ -308,7 +308,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "connect-src 'self' https:; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
-            "form-action 'self' https:"
+            "form-action 'self'"
         )
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         if not _is_localhost:

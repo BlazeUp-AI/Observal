@@ -63,7 +63,7 @@ class TestSamlKeyGeneration:
         assert "x509cert" in result["sp"]
         assert "privateKey" in result["sp"]
         assert result["strict"] is True
-        assert result["security"]["authnRequestsSigned"] is False
+        assert result["security"]["authnRequestsSigned"] is True
         assert result["security"]["wantAssertionsSigned"] is True
         assert result["security"]["wantResponsesSigned"] is True
         assert result["security"]["relaxDestinationValidation"] is False

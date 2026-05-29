@@ -52,7 +52,9 @@ function LoginContent() {
 
       (async () => {
         try {
-          const res = await fetch(`/api/v1/sso/saml/exchange?token_id=${samlTokenId}`);
+          const res = await fetch(`/api/v1/sso/saml/exchange?token_id=${samlTokenId}`, {
+            method: "POST",
+          });
           if (!res.ok) throw new Error("Exchange failed");
           const data = await res.json();
           clearSession();

@@ -84,7 +84,7 @@ const STORAGE_KEY_USER_AVATAR = "observal_user_avatar";
 // full XSS protection.
 function getAccessToken(): string | null {
 	if (typeof window === "undefined") return null;
-	return sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN) || localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+	return sessionStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
 }
 
 function getRefreshToken(): string | null {
@@ -94,13 +94,11 @@ function getRefreshToken(): string | null {
 
 export function setTokens(accessToken: string, refreshToken: string) {
 	sessionStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, accessToken);
-	localStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, accessToken);
 	localStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, refreshToken);
 }
 
 export function clearSession() {
 	sessionStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
-	localStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
 	localStorage.removeItem(STORAGE_KEY_REFRESH_TOKEN);
 	localStorage.removeItem("observal_api_key"); // clean up legacy
 	localStorage.removeItem(STORAGE_KEY_USER_ROLE);
@@ -241,15 +239,15 @@ async function request<T = unknown>(
 					if (retryRes.status === 204) return undefined as T;
 					return retryRes.json() as Promise<T>;
 				}
-				// Retry failed but refresh succeeded — don't kill the session,
-				// just throw so the individual call fails gracefully
+				// Retry failed but refresh succeeded, so the individual call
+				// fails gracefully without killing the session
 				const retryText = await retryRes.text().catch(() => "Request failed");
 				const retryErr = new Error(retryText);
 				(retryErr as Error & { status: number }).status = retryRes.status;
 				throw retryErr;
 			}
 
-			// Refresh itself failed — session is truly expired
+			// Refresh itself failed: session is truly expired
 			clearSession();
 			if (typeof window !== "undefined") {
 				window.location.href = "/login?reason=session_expired";

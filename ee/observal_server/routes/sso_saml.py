@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import secrets
+import uuid
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -380,9 +381,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
 
     relay_state = _safe_redirect_path(request_data["post_data"].get("RelayState"))
 
-    import uuid as _uuid
-
-    token_id = str(_uuid.uuid4())
+    token_id = str(uuid.uuid4())
     redis = get_redis()
     await redis.setex(
         f"saml_login:{token_id}",
@@ -408,13 +407,31 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     return RedirectResponse(url=redirect_url, status_code=302)
 
 
-@router.get("/exchange")
-async def saml_exchange(token_id: str):
-    """Exchange a SAML login token_id for credentials."""
+@router.post("/exchange")
+async def saml_exchange(request: Request, token_id: str):
+    """Exchange a one-time SAML login token for credentials.
+
+    Uses POST to keep the token out of server logs and referrer headers.
+    The token is single-use (redis GETDEL) with a 120s TTL.
+    """
     redis = get_redis()
+
+    # Basic rate-limit: 5 failed attempts per IP per minute
+    source_ip = request.client.host if request.client else "unknown"
+    rate_key = f"saml_exchange_rate:{source_ip}"
+    attempts = await redis.incr(rate_key)
+    if attempts == 1:
+        await redis.expire(rate_key, 60)
+    if attempts > 5:
+        raise HTTPException(status_code=429, detail="Too many attempts")
+
     data = await redis.getdel(f"saml_login:{token_id}")
     if not data:
         raise HTTPException(status_code=400, detail="Invalid or expired SAML token")
+
+    # Reset rate-limit on success
+    await redis.delete(rate_key)
+
     payload = json.loads(data)
     return {
         "access_token": payload["access_token"],
