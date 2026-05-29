@@ -62,7 +62,9 @@ function LoginContent() {
           setUserEmail(data.user.email);
           if (data.user.username) setUserUsername(data.user.username);
           window.dispatchEvent(new Event("storage"));
-          window.location.replace("/");
+          const nextPath = searchParams.get("next");
+          const redirectTo = nextPath && nextPath.startsWith("/") ? nextPath : "/";
+          window.location.replace(redirectTo);
         } catch {
           setError("SAML sign-in failed. Please try again.");
           toast.error("SAML sign-in failed.");
