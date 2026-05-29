@@ -4,7 +4,7 @@
 """Local diagnostic collectors for the support bundle.
 
 Each collector returns a CollectorResult with structured data.
-Collectors do NOT perform their own redaction — all output passes
+Collectors do NOT perform their own redaction - all output passes
 through the central Redaction Layer in cmd_support.py.
 """
 

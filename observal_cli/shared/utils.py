@@ -3,7 +3,7 @@
 
 """Shared utility functions used across multiple CLI modules.
 
-Single source of truth — helpers that were duplicated across cmd_scan.py,
+Single source of truth - helpers that were duplicated across cmd_scan.py,
 cmd_doctor.py, cmd_skill.py, and claude_code_hooks_spec.py live here instead.
 """
 
@@ -69,10 +69,10 @@ def extract_mcp_servers(config: dict, ide: str = "") -> dict:
     """Extract the MCP server map from an IDE config dict.
 
     Resolves IDE-specific key paths:
-    - ``servers``    — VS Code, Copilot
-    - ``mcp``        — OpenCode (flat server map under ``mcp`` key)
-    - ``mcp.servers``— Codex (nested under ``mcp`` → ``servers``)
-    - ``mcpServers`` — all other IDEs (default)
+    - ``servers``    - VS Code, Copilot
+    - ``mcp``        - OpenCode (flat server map under ``mcp`` key)
+    - ``mcp.servers``- Codex (nested under ``mcp`` → ``servers``)
+    - ``mcpServers`` - all other IDEs (default)
 
     Falls back to scanning for server-shaped top-level values when the
     expected key is absent.

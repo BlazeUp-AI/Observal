@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 def _log(msg: str) -> None:
-    """Write to debug log immediately — used for crash diagnostics."""
+    """Write to debug log immediately - used for crash diagnostics."""
     try:
         import datetime
 

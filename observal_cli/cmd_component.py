@@ -13,7 +13,7 @@ from __future__ import annotations
 import json as _json
 
 import typer
-from loguru import logger
+from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
@@ -89,7 +89,7 @@ def version_publish(
       observal component version publish skill my-skill -v 1.0.0 -d "Initial" --ide claude-code --ide cursor
       observal component version publish mcp analyzer --extra '{"transport": "http"}' -d "HTTP support"
     """
-    logger.debug("version_publish: component_type={}", component_type)
+    optic.trace("component_type={}", component_type)
     _require_valid_type(component_type)
 
     # Validate --extra JSON early

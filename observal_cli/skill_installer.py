@@ -6,11 +6,10 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Skill installer — installs bundled Observal skills to detected IDEs."""
+"""Skill installer - installs bundled Observal skills to detected IDEs."""
 
 from pathlib import Path
 
-from loguru import logger as optic
 from rich import print as rprint
 
 
@@ -21,7 +20,6 @@ def install_observal_skill():
     that supports skills, enabling commands like `/observal create an agent` or
     `kiro-cli chat --agent observal`.
     """
-    optic.debug("_install_observal_skill called")
     import json as _json
 
     from observal_cli.ide_registry import IDE_REGISTRY

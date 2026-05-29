@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
+
+from loguru import logger as optic
 
 from observal_cli.sessions.base import (
     build_payload,
@@ -34,28 +37,28 @@ def main(home: Path | None = None) -> None:
     """Main entry point.  Never raises -- hooks must not break the IDE."""
     try:
         _run(home=home)
-    except Exception:
-        pass
+    except Exception as e:
+        optic.error("kiro_session_push crashed (swallowed to protect IDE): {}", e)
 
 
 def _read_credits_with_retry(session_id: str, home: Path | None = None, retries: int = 5) -> float | None:
     """Read credits with retries for race conditions on stop events.
 
     Kiro may not have written the credits JSON by the time the stop hook fires.
-    Uses exponential backoff: 0.5s, 1s, 1.5s, 2s (~5s total wait).
     """
-    import time
-
     for attempt in range(retries):
         credits = read_kiro_credits(session_id, home=home)
         if credits is not None:
+            optic.trace("read Kiro credits on attempt {}: {}", attempt + 1, credits)
             return credits
         if attempt < retries - 1:
             time.sleep(0.5 * (attempt + 1))
+    optic.trace("could not read Kiro credits after {} retries", retries)
     return None
 
 
 def _run(home: Path | None = None) -> None:
+    _t0 = time.perf_counter()
     raw = sys.stdin.read()
     try:
         event = json.loads(raw)
@@ -75,7 +78,10 @@ def _run(home: Path | None = None) -> None:
 
     session_id = resolve_session_id(event, home=home)
     if not session_id:
+        optic.trace("could not resolve Kiro session ID, skipping")
         return
+
+    optic.debug("kiro session push: session={}, event={}", session_id[:12], hook_event)
 
     # Persist session_id for later Stop event resolution
     _h = home if home is not None else Path.home()
@@ -85,10 +91,12 @@ def _run(home: Path | None = None) -> None:
 
     config = load_config(home=home)
     if config is None:
+        optic.warning("no Observal config - Kiro session data will not be uploaded")
         return
 
     jsonl_path = find_kiro_jsonl(session_id, home=home)
     if jsonl_path is None:
+        optic.debug("Kiro JSONL file not found for session {}", session_id[:12])
         return
 
     offset, line_count = read_cursor(session_id, home=home)
@@ -97,9 +105,11 @@ def _run(home: Path | None = None) -> None:
     if not lines:
         is_stop = hook_event.lower() == "stop"
         if is_stop:
+            optic.debug("Kiro session {} stopped with no new lines, finalizing cursor", session_id[:12])
             write_cursor(session_id, offset, line_count, finalized=True, home=home)
             credits = _read_credits_with_retry(session_id, home=home)
             if credits is not None:
+                optic.debug("sending Kiro credits ({}) for session {}", credits, session_id[:12])
                 payload_credits = build_payload(
                     session_id=session_id,
                     lines=[],
@@ -116,7 +126,11 @@ def _run(home: Path | None = None) -> None:
                     access_token=config["access_token"],
                     payload=payload_credits,
                 )
+        else:
+            optic.trace("no new lines for Kiro session {} (offset={})", session_id[:12], offset)
         return
+
+    optic.debug("read {} new lines ({} bytes) from Kiro session {}", len(lines), bytes_read, session_id[:12])
 
     new_offset = offset + bytes_read
     payload = build_payload(
@@ -133,6 +147,7 @@ def _run(home: Path | None = None) -> None:
     credits = _read_credits_with_retry(session_id, home=home) if is_stop else read_kiro_credits(session_id, home=home)
     if credits is not None:
         payload["total_credits"] = credits
+        optic.trace("attaching credits={} to Kiro payload", credits)
 
     success = post_to_server(
         server_url=config["server_url"],
@@ -141,6 +156,14 @@ def _run(home: Path | None = None) -> None:
     )
 
     if not success:
+        optic.error(
+            "failed to push {} Kiro lines for session {} (offset {}-{}) - "
+            "data may be lost unless reconcile picks it up",
+            len(lines),
+            session_id[:12],
+            offset,
+            new_offset,
+        )
         log_error(
             f"kiro_session_push: POST failed for session {session_id} (offset {offset}-{new_offset})",
             home=home,
@@ -148,6 +171,8 @@ def _run(home: Path | None = None) -> None:
         return
 
     write_cursor(session_id, new_offset, line_count + len(lines), finalized=is_stop, home=home)
+    _elapsed = (time.perf_counter() - _t0) * 1000
+    optic.debug("pushed {} Kiro lines for session {} ({:.0f}ms)", len(lines), session_id[:12], _elapsed)
 
     if not is_stop:
         _spawn_crash_recovery()
@@ -164,8 +189,8 @@ def _spawn_crash_recovery() -> None:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        optic.trace("could not spawn crash recovery: {}", e)
 
 
 if __name__ == "__main__":

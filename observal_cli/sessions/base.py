@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from loguru import logger as optic
+
 # ---------------------------------------------------------------------------
 # Offset / cursor state
 # ---------------------------------------------------------------------------
@@ -76,7 +78,7 @@ def read_new_lines(jsonl_path: Path, offset: int) -> tuple[list[str], int]:
     """Read bytes from *offset* to EOF in *jsonl_path*.
 
     Returns (lines, bytes_read).  Empty lines are filtered.  Lines are raw
-    strings — not parsed.
+    strings - not parsed.
     """
     with open(jsonl_path, "rb") as f:
         f.seek(offset)
@@ -159,19 +161,28 @@ def post_to_server(server_url: str, access_token: str, payload: dict, config: di
     On 401, attempts one token refresh then retries.
     Returns True on HTTP 2xx, False on any error.
     """
+    import time
+
     import httpx
 
-    url = f"{server_url.rstrip('/')}/api/v1/ingest/session"
+    _t0 = time.perf_counter()
+    url = "{}/api/v1/ingest/session".format(server_url.rstrip("/"))
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
+    session_id = payload.get("session_id", "?")[:12]
+    line_count = len(payload.get("lines", []))
+
     try:
         with httpx.Client(timeout=10.0) as client:
             response = client.post(url, json=payload, headers=headers)
             if response.status_code < 300:
+                _elapsed = (time.perf_counter() - _t0) * 1000
+                optic.debug("uploaded {} lines for session {} ({:.0f}ms)", line_count, session_id, _elapsed)
                 return True
             if response.status_code == 401 and config:
+                optic.debug("got 401, attempting token refresh")
                 refresh_token = config.get("refresh_token", "")
                 config_path = config.get("_config_path", "")
                 if refresh_token and config_path:
@@ -179,9 +190,24 @@ def post_to_server(server_url: str, access_token: str, payload: dict, config: di
                     if new_token:
                         headers["Authorization"] = f"Bearer {new_token}"
                         retry = client.post(url, json=payload, headers=headers)
-                        return retry.status_code < 300
+                        if retry.status_code < 300:
+                            _elapsed = (time.perf_counter() - _t0) * 1000
+                            optic.debug("uploaded {} lines after token refresh ({:.0f}ms)", line_count, _elapsed)
+                            return True
+            optic.warning(
+                "ingest POST returned {} for session {} - server rejected the payload",
+                response.status_code,
+                session_id,
+            )
             return False
-    except Exception:
+    except Exception as e:
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.error(
+            "ingest POST failed for session {} after {:.0f}ms: {} - lines are buffered locally but not on server",
+            session_id,
+            _elapsed,
+            e,
+        )
         return False
 
 

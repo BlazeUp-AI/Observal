@@ -44,7 +44,7 @@ def _resolve_hook_paths(content: str) -> str:
     ``"observal-hook.sh --agent-name foo"`` are resolved correctly,
     but comments or prose mentioning the script name are not affected.
     """
-    optic.debug("_resolve_hook_paths: content={}", content)
+    optic.trace("content={}", content)
     import shutil
 
     hooks_dir = Path(__file__).parent / "hooks"
@@ -69,7 +69,7 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
 
     Returns {mcp_listing_id: {VAR_NAME: value}} for all MCPs that have env vars.
     """
-    optic.debug("_collect_mcp_env_vars: agent_detail={}", agent_detail)
+    optic.trace("agent_detail={}", agent_detail)
     env_values: dict[str, dict[str, str]] = {}
 
     # Collect MCP component IDs from both mcp_links and component_links
@@ -126,7 +126,7 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
 
 def _dict_to_toml(d: dict) -> str:
     """Very basic TOML serializer for MCP configs."""
-    optic.debug("_dict_to_toml: d={}", d)
+    optic.trace("d={}", d)
     lines = []
     for section, servers in d.items():
         for name, srv in servers.items():
@@ -156,7 +156,7 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
 
     Returns a human-readable status string ("created", "updated", "merged").
     """
-    optic.debug("_write_file: path={}, len={}", path, len(str(content)))
+    optic.trace("path={}, len={}", path, len(str(content)))
     path.parent.mkdir(parents=True, exist_ok=True)
     existed = path.exists()
 
@@ -193,7 +193,7 @@ def _rewrite_kiro_hooks(content: dict) -> dict:
     The server generates commands with bare 'python3' which won't find
     observal_cli when installed in a project-local virtual environment.
     """
-    optic.debug("_rewrite_kiro_hooks: content={}", content)
+    optic.trace("content={}", content)
     hooks = content.get("hooks")
     agent_name = content.get("name")
     if not hooks or not agent_name:
@@ -226,7 +226,7 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
     Raises typer.Exit if the resolved path escapes *target_dir* (and home
     expansion is not permitted).
     """
-    optic.debug("_resolve_path: raw_path={}, target_dir={}", raw_path, target_dir)
+    optic.trace("raw_path={}, target_dir={}", raw_path, target_dir)
     if raw_path.startswith("~/") or raw_path.startswith("~\\"):
         if allow_home:
             return Path(raw_path).expanduser().resolve()
@@ -256,7 +256,7 @@ def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str
 
     Returns ``(default_value, per_ide_overrides)``.
     """
-    optic.debug("_parse_model_overrides: values={}", values)
+    optic.trace("values={}", values)
     default: str | None = None
     overrides: dict[str, str] = {}
     for raw in values or []:
@@ -279,7 +279,7 @@ def _agent_saved_model(agent_detail: dict | None, ide: str) -> str | None:
     ``services.model_resolver._candidate_for_ide`` rules so the CLI never
     re-prompts when the author has already chosen a model.
     """
-    optic.debug("_agent_saved_model: agent_detail={}, ide={}", agent_detail, ide)
+    optic.trace("agent_detail={}, ide={}", agent_detail, ide)
     if not agent_detail:
         return None
     raw = agent_detail.get("models_by_ide") if isinstance(agent_detail, dict) else None
@@ -317,7 +317,7 @@ def _collect_install_options(
     silently - the picker is skipped so authoring decisions aren't undone
     by a stray Enter at the prompt.
     """
-    optic.debug("_collect_install_options: ide={}", ide)
+    optic.trace("ide={}", ide)
     import sys
 
     from observal_cli.ide_registry import accepts_model_choice
@@ -418,7 +418,6 @@ def register_pull(app: typer.Typer):
           observal agent pull my-agent --ide kiro --no-prompt --scope user
           observal agent pull my-agent --ide cursor --no-prompt --dry-run
         """
-        optic.debug("cli: pull started")
         resolved = config.resolve_alias(agent_id)
         target_dir = Path(directory).resolve()
 

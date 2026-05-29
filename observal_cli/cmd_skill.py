@@ -15,7 +15,6 @@ import tempfile
 from pathlib import Path
 
 import typer
-from loguru import logger
 from rich import print as rprint
 from rich.table import Table
 
@@ -29,7 +28,6 @@ skill_app = typer.Typer(help="Skill registry commands")
 
 
 def register_skill(app: typer.Typer):
-    logger.debug("register_skill called")
     app.add_typer(skill_app, name="skill")
 
 
@@ -561,7 +559,7 @@ def install_skill_from_git(
     skill_md_content: str | None = None,
     cwd: Path | None = None,
 ) -> Path | None:
-    """Core skill install logic — clone full directory from git.
+    """Core skill install logic - clone full directory from git.
 
     Used by both `observal skill install` and `observal pull` (for agent skills).
 
@@ -616,7 +614,7 @@ def _symlink_for_ides(cwd: Path, canonical: Path, skill_name: str) -> None:
             link.symlink_to(canonical.resolve())
             rprint(f"[dim]  → symlinked {link} → {canonical}[/dim]")
         except OSError:
-            pass  # Non-fatal — Windows without dev mode, etc.
+            pass  # Non-fatal - Windows without dev mode, etc.
 
 
 # ── Edit ─────────────────────────────────────────────────────────────────────

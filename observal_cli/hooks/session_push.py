@@ -13,7 +13,10 @@ session JSONL file since last push and POSTs them to the ingest endpoint.
 
 import json
 import sys
+import time
 from pathlib import Path
+
+from loguru import logger as optic
 
 from observal_cli.sessions.base import (
     build_payload,
@@ -36,15 +39,17 @@ def main(home: Path | None = None) -> None:
     """Main entry point.  Never raises -- hooks must not break the IDE."""
     try:
         _run(home=home)
-    except Exception:
-        pass
+    except Exception as e:
+        optic.error("session_push crashed (swallowed to protect IDE): {}", e)
 
 
 def _run(home: Path | None = None) -> None:
+    _t0 = time.perf_counter()
     raw = sys.stdin.read()
     try:
         event = json.loads(raw)
     except Exception:
+        optic.trace("stdin was not valid JSON, ignoring")
         return
 
     hook_event = event.get("hook_event_name", "")
@@ -52,24 +57,33 @@ def _run(home: Path | None = None) -> None:
     cwd = event.get("cwd", "")
 
     if not session_id:
+        optic.trace("no session_id in hook event, skipping")
         return
+
+    optic.debug("session push triggered: session={}, event={}", session_id[:12], hook_event)
 
     config = load_config(home=home)
     if config is None:
+        optic.warning("no Observal config found - session data will not be uploaded")
         return
 
     project_key = project_key_from_cwd(cwd)
     jsonl_path = find_jsonl_file(session_id, project_key, home=home)
     if jsonl_path is None:
+        optic.debug("JSONL file not found for session {} (may not exist yet)", session_id[:12])
         return
 
     parent_session_id = get_parent_session_id(jsonl_path)
+    optic.trace("parent_session_id={}", parent_session_id)
 
     offset, line_count = read_cursor(session_id, home=home)
     lines, bytes_read = read_new_lines(jsonl_path, offset=offset)
 
     if not lines:
+        optic.trace("no new lines since last push (offset={})", offset)
         return
+
+    optic.debug("read {} new lines ({} bytes) from session {}", len(lines), bytes_read, session_id[:12])
 
     new_offset = offset + bytes_read
     payload = build_payload(
@@ -92,6 +106,14 @@ def _run(home: Path | None = None) -> None:
     )
 
     if not success:
+        optic.error(
+            "failed to push {} lines for session {} (offset {}-{}) - "
+            "data may be lost unless reconcile picks it up later",
+            len(lines),
+            session_id[:12],
+            offset,
+            new_offset,
+        )
         log_error(
             f"session_push: POST failed for session {session_id} (offset {offset}-{new_offset})",
             home=home,
@@ -99,11 +121,19 @@ def _run(home: Path | None = None) -> None:
         return
 
     write_cursor(session_id, new_offset, line_count + len(lines), finalized=False, home=home)
+    _elapsed = (time.perf_counter() - _t0) * 1000
+    optic.debug(
+        "pushed {} lines for session {} ({:.0f}ms)",
+        len(lines),
+        session_id[:12],
+        _elapsed,
+    )
 
     if parent_session_id is None:
         push_subagent_sessions(session_id, jsonl_path, config, cwd=cwd, home=home)
 
     if hook_event == "Stop":
+        optic.debug("session stopped, spawning tail flush for {}", session_id[:12])
         _spawn_tail_flush(session_id)
     else:
         _spawn_crash_recovery()
@@ -120,8 +150,8 @@ def _spawn_crash_recovery() -> None:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        optic.trace("could not spawn crash recovery: {}", e)
 
 
 def _spawn_tail_flush(session_id: str) -> None:
@@ -135,8 +165,8 @@ def _spawn_tail_flush(session_id: str) -> None:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        optic.trace("could not spawn tail flush for {}: {}", session_id[:12], e)
 
 
 if __name__ == "__main__":

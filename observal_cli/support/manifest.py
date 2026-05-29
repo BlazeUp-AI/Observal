@@ -26,7 +26,7 @@ class BundleManifest:
     created_at: str = ""
     cli_version: str = ""
     host_os: str = ""
-    node_id: str = ""  # socket.gethostname() — identifies which machine produced this bundle
+    node_id: str = ""  # socket.gethostname() - identifies which machine produced this bundle
     flags_used: dict = field(default_factory=dict)
     collector_results: dict = field(default_factory=dict)
     redaction_counts: dict = field(default_factory=dict)

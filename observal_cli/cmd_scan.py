@@ -168,7 +168,7 @@ def register_scan(app: typer.Typer):
             observal scan --ide kiro
         """
         ensure_loaded()
-        optic.debug("scan: ide={}", ide)
+        optic.trace("ide={}", ide)
 
         # Validate IDE filter
         if ide:

@@ -75,7 +75,7 @@ def fetch_catalog(*, refresh: bool = False, ttl: int = _DEFAULT_TTL_SECONDS) -> 
     Order of preference:
     1. Fresh file cache (when ``refresh`` is False and the cached_at age < ``ttl``).
     2. ``GET /api/v1/models`` from the configured server.
-    3. Stale file cache (any age) — better than nothing.
+    3. Stale file cache (any age) - better than nothing.
     4. Vendored offline mirror snapshot (``observal-server/data/model_registry_seed.json``).
     5. Empty catalog with ``degraded=True``.
     """
@@ -150,7 +150,7 @@ def model_choices_for_picker(catalog: dict, ide: str) -> list[tuple[str, str]]:
     return choices
 
 
-# Mirrors ``services.model_catalog.PROVIDER_IDE_MAP`` — kept locally so the CLI
+# Mirrors ``services.model_catalog.PROVIDER_IDE_MAP`` - kept locally so the CLI
 # can fall back to the offline snapshot without importing from the server pkg.
 _PROVIDER_IDE_MAP: dict[str, list[str]] = {
     "anthropic": ["claude-code", "kiro", "opencode"],
@@ -164,7 +164,7 @@ def _normalize_offline_snapshot(snapshot: Any) -> dict:
     """Best-effort map of the raw models.dev snapshot to the {models, ...} shape.
 
     Used only when we can't reach the server. The picker doesn't need every
-    field — just ``model_id``, ``display_name``, ``provider``, ``supported_ides``
+    field - just ``model_id``, ``display_name``, ``provider``, ``supported_ides``
     and a release date.
     """
     rows: list[dict] = []

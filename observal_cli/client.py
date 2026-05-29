@@ -31,7 +31,6 @@ _EXEMPT_SUBCOMMANDS = frozenset({"self", "server"})
 
 def _get_cli_version() -> str:
     """Get current CLI version string for request headers."""
-    optic.debug("_get_cli_version called")
     try:
         from importlib.metadata import version
 
@@ -41,7 +40,6 @@ def _get_cli_version() -> str:
 
 
 def _client() -> tuple[str, dict]:
-    optic.debug("_client called")
     cfg = config.get_or_exit()
     base_url = cfg["server_url"].rstrip("/")
     headers = {
@@ -78,7 +76,7 @@ def _enforce_version_once(server_url: str) -> None:
 
 def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
     """Handle HTTP errors with actionable messages."""
-    optic.debug("_handle_error: e={}, path={}", e, path)
+    optic.trace("e={}, path={}", e, path)
     ct = e.response.headers.get("content-type", "")
     if "application/json" in ct:
         try:
@@ -129,7 +127,6 @@ def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
 
 def _handle_connect():
     """Handle connection errors."""
-    optic.debug("_handle_connect called")
     cfg = config.load()
     server_url = cfg.get("server_url", "not set")
     rprint("[red]Connection failed.[/red] Cannot reach the Observal server.")
@@ -140,7 +137,7 @@ def _handle_connect():
 
 def _handle_timeout(path: str = ""):
     """Handle request timeout."""
-    optic.debug("_handle_timeout: path={}", path)
+    optic.trace("path={}", path)
     timeout = config.get_timeout()
     path_info = f" ({path})" if path else ""
     rprint(f"[red]Request timed out{path_info}.[/red]")
@@ -154,7 +151,6 @@ def _try_refresh_token() -> bool:
 
     Returns True if the refresh succeeded and config was updated.
     """
-    optic.debug("_try_refresh_token called")
     cfg = config.load()
     refresh_token = cfg.get("refresh_token")
     server_url = cfg.get("server_url", "").rstrip("/")
@@ -197,7 +193,7 @@ def _request_with_retry(
 
     On 401, attempts a token refresh and retries once.
     """
-    optic.debug("_request_with_retry: method={}, url={}", method, url)
+    optic.trace("method={}, url={}", method, url)
     timeout = config.get_timeout()
     func = getattr(httpx, method)
 
@@ -238,7 +234,7 @@ def _request_with_retry(
 
 
 def get(path: str, params: dict | None = None) -> dict:
-    optic.debug("get: path={}, params={}", path, params)
+    optic.trace("path={}, params={}", path, params)
     base, headers = _client()
     try:
         r = _request_with_retry("get", f"{base}{path}", headers, params=params)
@@ -257,7 +253,7 @@ def get_with_headers(path: str, params: dict | None = None) -> tuple[dict, dict[
     Useful for paginated endpoints that return the page count via headers like
     ``X-Total-Count``.
     """
-    optic.debug("get_with_headers: path={}, params={}", path, params)
+    optic.trace("path={}, params={}", path, params)
     base, headers = _client()
     try:
         r = _request_with_retry("get", f"{base}{path}", headers, params=params)
@@ -273,7 +269,7 @@ def get_with_headers(path: str, params: dict | None = None) -> tuple[dict, dict[
 
 
 def post(path: str, json_data: dict | None = None) -> dict:
-    optic.debug("post: path={}, json_data={}", path, json_data)
+    optic.trace("path={}, json_data={}", path, json_data)
     base, headers = _client()
     try:
         r = _request_with_retry("post", f"{base}{path}", headers, json=json_data)
@@ -287,7 +283,7 @@ def post(path: str, json_data: dict | None = None) -> dict:
 
 
 def put(path: str, json_data: dict | None = None) -> dict:
-    optic.debug("put: path={}, json_data={}", path, json_data)
+    optic.trace("path={}, json_data={}", path, json_data)
     base, headers = _client()
     try:
         r = _request_with_retry("put", f"{base}{path}", headers, json=json_data)
@@ -301,7 +297,7 @@ def put(path: str, json_data: dict | None = None) -> dict:
 
 
 def patch(path: str, json_data: dict | None = None) -> dict:
-    optic.debug("patch: path={}, json_data={}", path, json_data)
+    optic.trace("path={}, json_data={}", path, json_data)
     base, headers = _client()
     try:
         r = _request_with_retry("patch", f"{base}{path}", headers, json=json_data)
@@ -315,7 +311,7 @@ def patch(path: str, json_data: dict | None = None) -> dict:
 
 
 def delete(path: str) -> dict:
-    optic.debug("delete: path={}", path)
+    optic.trace("path={}", path)
     base, headers = _client()
     try:
         r = _request_with_retry("delete", f"{base}{path}", headers)
@@ -335,7 +331,6 @@ def get_registered_agents_only() -> bool:
 
     Returns False on any error (fail-open, silent, no printed messages).
     """
-    optic.debug("get_registered_agents_only called")
     try:
         cfg = config.load()
         server_url = cfg.get("server_url", "").rstrip("/")
@@ -359,7 +354,6 @@ def get_registered_agent_names() -> set[str]:
 
     Returns empty set on any error (fail-open).
     """
-    optic.debug("get_registered_agent_names called")
     try:
         cfg = config.load()
         server_url = cfg.get("server_url", "").rstrip("/")
@@ -383,7 +377,6 @@ def get_registered_mcp_names() -> set[str]:
 
     Returns empty set on any error (fail-open).
     """
-    optic.debug("get_registered_mcp_names called")
     try:
         cfg = config.load()
         server_url = cfg.get("server_url", "").rstrip("/")
@@ -404,7 +397,6 @@ def get_registered_mcp_names() -> set[str]:
 
 def health() -> tuple[bool, float]:
     """Check server health. Returns (ok, latency_ms)."""
-    optic.debug("health called")
     cfg = config.load()
     url = cfg.get("server_url", "").rstrip("/")
     if not url:
@@ -424,7 +416,7 @@ def server_supports(feature: str) -> bool:
     Uses version negotiation: effective = min(cli_version, server_version).
     Feature availability is determined by the features registry.
     """
-    optic.debug("server_supports: feature={}", feature)
+    optic.trace("feature={}", feature)
     global _server_version_cache
     if _server_version_cache is None:
         try:
