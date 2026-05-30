@@ -129,7 +129,11 @@ async def overview_stats(
     )
 
     total_mcps, total_agents, total_users, tool_rows, agent_rows = await asyncio.gather(
-        total_mcps_coro, total_agents_coro, total_users_coro, tool_rows_coro, agent_rows_coro,
+        total_mcps_coro,
+        total_agents_coro,
+        total_users_coro,
+        tool_rows_coro,
+        agent_rows_coro,
     )
 
     return OverviewStats(
@@ -573,7 +577,11 @@ async def token_stats(
     )
 
     totals, avg_rows, by_agent_rows, by_mcp_rows, over_time_rows = await asyncio.gather(
-        totals_coro, avg_coro, by_agent_coro, by_mcp_coro, over_time_coro,
+        totals_coro,
+        avg_coro,
+        by_agent_coro,
+        by_mcp_coro,
+        over_time_coro,
     )
 
     t = totals[0] if totals else {}

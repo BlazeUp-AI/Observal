@@ -6,6 +6,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
 import enum
 import uuid
 from datetime import UTC, datetime
@@ -577,7 +578,7 @@ async def approve(
     await db.commit()
     await db.refresh(listing)
     await invalidate_namespace("dashboard")
-    await redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "approved"})
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "approved"}))  # noqa: RUF006
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -628,7 +629,7 @@ async def reject(
 
     await db.refresh(listing)
     await invalidate_namespace("dashboard")
-    await redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "rejected"})
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "rejected"}))  # noqa: RUF006
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -715,7 +716,7 @@ async def approve_agent(
 
     await db.commit()
     await invalidate_namespace("dashboard")
-    await redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "approved"})
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "approved"}))  # noqa: RUF006
     return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": newest_pending.version}
 
 
@@ -760,7 +761,7 @@ async def reject_agent(
     await db.commit()
     rejected_version = pending_versions[0].version if pending_versions else ""
     await invalidate_namespace("dashboard")
-    await redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "rejected"})
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "rejected"}))  # noqa: RUF006
     return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": rejected_version}
 
 

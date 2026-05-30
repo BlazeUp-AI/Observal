@@ -301,7 +301,9 @@ async def sessions_stats(current_user: User = Depends(require_role(UserRole.admi
 @router.get("/{session_id}")
 async def get_session(
     session_id: str,
-    after_offset: int | None = Query(None, ge=0, description="Return only events after this line_offset (incremental fetch)"),
+    after_offset: int | None = Query(
+        None, ge=0, description="Return only events after this line_offset (incremental fetch)"
+    ),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     optic.trace("session_id={}, after_offset={}", session_id, after_offset)
@@ -333,9 +335,7 @@ async def get_session(
         "uuid, parent_uuid, content_length, ide, raw_line, raw_line_truncated, "
         "credits, ingested_at "
         "FROM session_events FINAL "
-        "WHERE session_id = {sid:String} "
-        + _offset_filter +
-        "ORDER BY line_offset ASC "
+        "WHERE session_id = {sid:String} " + _offset_filter + "ORDER BY line_offset ASC "
         "SETTINGS max_final_threads = 4, do_not_merge_across_partitions_select_final = 1"
     )
     _sub_params = {"param_sid": session_id}
@@ -348,9 +348,7 @@ async def get_session(
         "tool_name, tool_id, uuid, parent_uuid, content_length, ide, "
         "raw_line, raw_line_truncated, credits, ingested_at, line_offset "
         "FROM session_events FINAL "
-        "WHERE parent_session_id = {sid:String} "
-        + _sub_offset_filter +
-        "ORDER BY session_id, line_offset ASC "
+        "WHERE parent_session_id = {sid:String} " + _sub_offset_filter + "ORDER BY session_id, line_offset ASC "
         "SETTINGS max_final_threads = 4, do_not_merge_across_partitions_select_final = 1"
     )
     rows, sub_rows_all = await asyncio.gather(

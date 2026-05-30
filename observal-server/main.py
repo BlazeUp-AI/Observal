@@ -300,17 +300,20 @@ _SECURITY_HEADERS: list[tuple[bytes, bytes]] = [
     (b"x-xss-protection", b"1; mode=block"),
     (b"referrer-policy", b"strict-origin-when-cross-origin"),
     (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
-    (b"content-security-policy", (
-        b"default-src 'self'; "
-        b"script-src 'self'; "
-        b"style-src 'self' 'unsafe-inline'; "
-        b"img-src 'self' data: https:; "
-        b"font-src 'self'; "
-        b"connect-src 'self' https:; "
-        b"frame-ancestors 'none'; "
-        b"base-uri 'self'; "
-        b"form-action 'self'"
-    )),
+    (
+        b"content-security-policy",
+        (
+            b"default-src 'self'; "
+            b"script-src 'self'; "
+            b"style-src 'self' 'unsafe-inline'; "
+            b"img-src 'self' data: https:; "
+            b"font-src 'self'; "
+            b"connect-src 'self' https:; "
+            b"frame-ancestors 'none'; "
+            b"base-uri 'self'; "
+            b"form-action 'self'"
+        ),
+    ),
     (b"x-permitted-cross-domain-policies", b"none"),
 ]
 if not _is_localhost:
@@ -385,7 +388,9 @@ class CacheControlMiddleware:
                 headers = dict(message.get("headers", []))
                 cache_header = headers.get(b"x-fastapi-cache", b"").decode()
                 if cache_header == "HIT" or (scope["method"] == "GET" and cache_header == "MISS"):
-                    extra = [(b"cache-control", f"public, max-age={ds.get_sync_int('data.cache_ttl_default', 30)}".encode())]
+                    extra = [
+                        (b"cache-control", f"public, max-age={ds.get_sync_int('data.cache_ttl_default', 30)}".encode())
+                    ]
                     msg_headers = list(message.get("headers", []))
                     msg_headers.extend(extra)
                     message = {**message, "headers": msg_headers}
