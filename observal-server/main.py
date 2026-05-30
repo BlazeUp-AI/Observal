@@ -26,7 +26,6 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
@@ -326,8 +325,10 @@ app.add_middleware(RequestIDMiddleware)
 if AUDIT_LICENSED:
     app.add_middleware(AuditMiddleware)
 
-# --- GZip compression for responses >= 500 bytes ---
-app.add_middleware(GZipMiddleware, minimum_size=500)
+# --- GZip compression handled by nginx (docker/nginx.conf gzip on) ---
+# Removed Python-level GZipMiddleware to avoid redundant CPU cost.
+# nginx compresses application/json responses in compiled C, much faster
+# than Python's zlib. Response still arrives compressed to clients.
 
 # --- Trusted proxy: resolve real client IP + scheme (SEC-003) ---
 # Replaces Uvicorn --proxy-headers so proxy trust is controlled by a single
