@@ -14,7 +14,7 @@ removed - session telemetry now flows through /api/v1/ingest/session
 import asyncio
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from loguru import logger as optic
 
 from api.deps import get_project_id, require_role
@@ -31,6 +31,8 @@ from services.clickhouse import (
     insert_spans,
     insert_traces,
     query_recent_events,
+    query_span_by_id,
+    query_trace_by_id,
 )
 from services.redis import publish
 from services.secrets_redactor import redact_secrets
@@ -56,6 +58,76 @@ _SHIM_EVENT_NAMES: dict[str, str] = {
     "other": "shim_other",
 }
 
+CLIENT_SCORE_SOURCE_PREFIX = "client:"
+UNTRUSTED_CLIENT_SCORE_METADATA = {
+    "score_trust": "untrusted_client",
+    "score_writer": "telemetry_api",
+}
+RESERVED_SCORE_SOURCES = frozenset(
+    {
+        "adversarial_scorer",
+        "eval_engine",
+        "internal",
+        "judge",
+        "kernel",
+        "ragas_eval",
+        "server",
+        "slm_scorer",
+        "system",
+        "trusted",
+    }
+)
+
+
+def _client_score_source(source: str | None) -> tuple[str, str]:
+    """Return a client-scoped source, rejecting names reserved for server writers."""
+    original = (source or "api").strip() or "api"
+    source_key = original.lower()
+    if source_key in RESERVED_SCORE_SOURCES:
+        raise HTTPException(status_code=422, detail=f"Score source '{original}' is reserved")
+    if source_key.startswith(CLIENT_SCORE_SOURCE_PREFIX):
+        return source_key, original
+    return f"{CLIENT_SCORE_SOURCE_PREFIX}{source_key}", original
+
+
+def _client_score_metadata(metadata: dict[str, str] | None, original_source: str) -> dict[str, str]:
+    clean_metadata = dict(metadata or {})
+    clean_metadata["score_original_source"] = original_source
+    clean_metadata.update(UNTRUSTED_CLIENT_SCORE_METADATA)
+    return clean_metadata
+
+
+async def _validate_score_references(
+    *,
+    score_id: str,
+    trace_id: str | None,
+    span_id: str | None,
+    project_id: str,
+    batch_trace_ids: set[str],
+    batch_span_trace_ids: dict[str, str],
+) -> None:
+    if trace_id and trace_id not in batch_trace_ids:
+        trace = await query_trace_by_id(project_id, trace_id)
+        if trace is None:
+            raise HTTPException(status_code=404, detail=f"Referenced trace not found for score {score_id}")
+
+    if not span_id:
+        return
+
+    if span_id in batch_span_trace_ids:
+        if trace_id and batch_span_trace_ids[span_id] != trace_id:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Referenced span does not belong to trace for score {score_id}",
+            )
+        return
+
+    span = await query_span_by_id(project_id, span_id)
+    if span is None:
+        raise HTTPException(status_code=404, detail=f"Referenced span not found for score {score_id}")
+    if trace_id and span.get("trace_id") != trace_id:
+        raise HTTPException(status_code=422, detail=f"Referenced span does not belong to trace for score {score_id}")
+
 
 @router.post("/ingest", response_model=IngestResponse)
 @limiter.limit("60/minute")
@@ -78,6 +150,8 @@ async def ingest(
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     ingested = 0
     errors = 0
+    batch_trace_ids = {t.trace_id for t in batch.traces or []}
+    batch_span_trace_ids = {s.span_id: s.trace_id for s in batch.spans or []}
 
     # --- Traces ---
     if batch.traces:
@@ -271,6 +345,15 @@ async def ingest(
         try:
             rows = []
             for sc in batch.scores:
+                await _validate_score_references(
+                    score_id=sc.score_id,
+                    trace_id=sc.trace_id,
+                    span_id=sc.span_id,
+                    project_id=project_id,
+                    batch_trace_ids=batch_trace_ids,
+                    batch_span_trace_ids=batch_span_trace_ids,
+                )
+                source, original_source = _client_score_source(sc.source)
                 rows.append(
                     {
                         "score_id": sc.score_id,
@@ -281,17 +364,19 @@ async def ingest(
                         "agent_id": sc.agent_id,
                         "user_id": user_id,
                         "name": sc.name,
-                        "source": sc.source,
+                        "source": source,
                         "data_type": sc.data_type,
                         "value": sc.value,
                         "string_value": sc.string_value,
                         "comment": sc.comment,
-                        "metadata": sc.metadata,
+                        "metadata": _client_score_metadata(sc.metadata, original_source),
                         "timestamp": now,
                     }
                 )
             await insert_scores(rows)
             ingested += len(rows)
+        except HTTPException:
+            raise
         except Exception:
             optic.error("Failed to insert scores")
             errors += len(batch.scores)
