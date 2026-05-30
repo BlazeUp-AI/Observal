@@ -6,6 +6,7 @@
 # SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
 import uuid
 from datetime import UTC, timedelta
 from datetime import datetime as dt
@@ -101,7 +102,6 @@ async def overview_stats(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
 ):
-    import asyncio
 
     optic.trace("range={}", range_)
 
@@ -511,7 +511,6 @@ async def token_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    import asyncio
 
     days = _range_days(range_)
     days_param = {"param_days": str(days)}
