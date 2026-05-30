@@ -199,9 +199,12 @@ def register_audit_handlers():
 
     @bus.on(UserDeleted)
     async def _audit_user_deleted(event: UserDeleted):
+        # org_id is carried on the event: the user is already deleted, so the
+        # _buffer_row fallback that resolves org from actor_id would find nothing.
         row = _make_row(
             actor_id=event.user_id,
             actor_email=event.email,
+            org_id=event.org_id,
             action="user.deleted",
             resource_type="user",
             resource_id=event.user_id,

@@ -135,3 +135,42 @@ async def test_resolve_actor_org_id_reads_database_once_and_caches_result():
     assert first == str(org_id)
     assert second == str(org_id)
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_user_deleted_audit_row_uses_event_org_id_without_db_lookup():
+    """A UserDeleted audit row must stay tenant-scoped.
+
+    SCIM emits UserDeleted *after* deleting the user, so resolving org_id from
+    the actor row would find nothing and the row would land orgless (hidden from
+    tenant admins). The event carries org_id captured before deletion; the
+    handler must use it and skip the actor lookup.
+    """
+    import ee.observal_server.services.audit as audit
+    from services.events import UserDeleted, bus
+
+    audit._actor_org_cache.clear()
+    audit._audit_buffer.clear()
+    bus.clear()
+    audit.register_audit_handlers()
+    # would return "" for an already-deleted user
+    resolver = AsyncMock(return_value="")
+
+    try:
+        with (
+            patch.object(audit, "_resolve_actor_org_id", resolver),
+            patch.object(audit, "_enrich_with_http_context", lambda row: row),
+        ):
+            await bus.emit(UserDeleted(user_id=str(uuid.uuid4()), email="gone@tenant.example", org_id="org-7"))
+
+        assert audit._audit_buffer, "expected the deletion to buffer an audit row"
+        row = audit._audit_buffer[-1]
+        assert row["action"] == "user.deleted"
+        assert row["org_id"] == "org-7"
+        resolver.assert_not_awaited()
+    finally:
+        if audit._flush_task is not None:
+            audit._flush_task.cancel()
+            audit._flush_task = None
+        audit._audit_buffer.clear()
+        bus.clear()

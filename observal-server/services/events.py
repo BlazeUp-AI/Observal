@@ -43,6 +43,9 @@ class UserCreated(Event):
 class UserDeleted(Event):
     user_id: str
     email: str
+    # Captured before deletion: the actor row is gone by the time the audit
+    # handler runs, so org_id cannot be resolved from the database afterwards.
+    org_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
