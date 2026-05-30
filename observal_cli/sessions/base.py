@@ -78,7 +78,9 @@ def read_new_lines(jsonl_path: Path, offset: int) -> tuple[list[str], int]:
     """Read bytes from *offset* to EOF in *jsonl_path*.
 
     Returns (lines, bytes_read).  Empty lines are filtered.  Lines are raw
-    strings - not parsed.
+    strings - not parsed.  If the file ends without a newline (incomplete
+    write in progress), the partial last line is excluded and bytes_read
+    is adjusted so the next call re-reads it once complete.
     """
     with open(jsonl_path, "rb") as f:
         f.seek(offset)
@@ -86,8 +88,20 @@ def read_new_lines(jsonl_path: Path, offset: int) -> tuple[list[str], int]:
     if not raw:
         return [], 0
     text = raw.decode("utf-8", errors="replace")
+    # If the file doesn't end with newline, the last "line" is likely a
+    # partial write still being flushed by the agent.  Exclude it and
+    # adjust bytes_read so we re-read from that point next time.
+    if not text.endswith("\n"):
+        last_nl = text.rfind("\n")
+        if last_nl == -1:
+            # No complete line at all - wait for more data
+            return [], 0
+        text = text[: last_nl + 1]
+        bytes_read = len(text.encode("utf-8"))
+    else:
+        bytes_read = len(raw)
     lines = [ln for ln in text.split("\n") if ln.strip()]
-    return lines, len(raw)
+    return lines, bytes_read
 
 
 # ---------------------------------------------------------------------------

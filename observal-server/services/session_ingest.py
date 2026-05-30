@@ -288,10 +288,11 @@ async def ingest_session_lines(
             parsed = json.loads(raw_line)
         except (json.JSONDecodeError, ValueError) as exc:
             optic.warning(
-                "session_ingest_parse_error",
-                session_id=session_id,
-                line_offset=line_offset,
-                error=str(exc),
+                "session_ingest_parse_error: session={}, offset={}, error={}, line_preview={}",
+                session_id,
+                line_offset,
+                str(exc),
+                repr(raw_line[:200]),
             )
             errors += 1
             continue
