@@ -32,8 +32,8 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 # ── Common config injected into every Observal task ───────────────────────
 
 locals {
-  api_image = "${local.image_repo_api_effective}:${var.image_tag}"
-  web_image = "${local.image_repo_web_effective}:${var.image_tag}"
+  api_image = "${var.image_repo_api}:${var.image_tag}"
+  web_image = "${var.image_repo_web}:${var.image_tag}"
 
   # Non-secret env vars passed to api/worker/init.
   app_environment = [
@@ -89,6 +89,7 @@ resource "aws_ecs_task_definition" "init" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 128, mountOptions = ["rw"] }]
     }
   }])
 
@@ -139,6 +140,7 @@ resource "aws_ecs_task_definition" "api" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 256, mountOptions = ["rw"] }]
     }
   }])
 
@@ -178,6 +180,7 @@ resource "aws_ecs_task_definition" "worker" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 256, mountOptions = ["rw"] }]
     }
   }])
 
@@ -223,6 +226,7 @@ resource "aws_ecs_task_definition" "web" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 64, mountOptions = ["rw"] }]
     }
   }])
 

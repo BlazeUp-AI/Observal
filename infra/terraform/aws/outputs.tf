@@ -84,7 +84,7 @@ output "log_group_names" {
 }
 
 output "edition" {
-  description = "Deployed edition: community or enterprise."
+  description = "Deployed edition: community or enterprise (based on license key presence)."
   sensitive   = true
-  value       = local.effective_edition
+  value       = local.is_enterprise ? "enterprise" : "community"
 }

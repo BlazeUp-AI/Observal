@@ -23,12 +23,7 @@ locals {
 
   ssm_prefix = "/${local.name}"
 
-  # License: if edition is "auto", infer from license key presence
-  effective_edition = var.edition == "auto" ? (var.observal_license_key != "" ? "enterprise" : "community") : var.edition
-  is_enterprise     = local.effective_edition == "enterprise"
-
-  # Enterprise uses a separate API image (includes compiled insights);
-  # the web image is identical for both editions (gating is server-side).
-  image_repo_api_effective = local.is_enterprise ? "ghcr.io/blazeup-ai/observal-api-enterprise" : var.image_repo_api
-  image_repo_web_effective = var.image_repo_web
+  # Enterprise features activate at runtime via the license key, not via
+  # a separate image. The community image already contains ee/ and all code.
+  is_enterprise = var.observal_license_key != ""
 }
