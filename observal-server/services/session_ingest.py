@@ -125,10 +125,9 @@ def _is_uuid(value: str) -> bool:
 async def _resolve_agent_id(agent_id: str | None) -> str | None:
     """Resolve an agent name to its UUID if it isn't one already.
 
-    The session_events and session_stats_agg tables store agent_id as a
-    plain string.  The insights pipeline looks up sessions by agent UUID.
-    If a caller passes a human-readable name (e.g. from a bulk import or
-    misconfigured marker), resolve it here so downstream queries work.
+    Uses a Redis cache (5min TTL) to avoid hitting Postgres on every
+    ingest push. At 500 active sessions with named agents, this saves
+    ~500 Postgres queries/sec.
 
     Returns the original value unchanged if it is already a UUID, None,
     or if the name cannot be resolved.
@@ -138,12 +137,25 @@ async def _resolve_agent_id(agent_id: str | None) -> str | None:
     if _is_uuid(agent_id):
         return agent_id
 
+    # Check Redis cache first
+    from services.redis import get_redis
+
+    cache_key = f"agent_name_resolve:{agent_id}"
+    try:
+        redis = get_redis()
+        cached = await redis.get(cache_key)
+        if cached is not None:
+            return cached if cached != "__none__" else agent_id
+    except Exception:
+        pass
+
     # Import lazily to avoid circular deps at module level
     from sqlalchemy import select
 
     from database import async_session
     from models.agent import Agent
 
+    resolved = None
     try:
         async with async_session() as db:
             stmt = select(Agent.id).where(Agent.name == agent_id).limit(1)
@@ -152,12 +164,16 @@ async def _resolve_agent_id(agent_id: str | None) -> str | None:
             if row:
                 resolved = str(row)
                 optic.debug("resolved agent name '{}' to UUID {}", agent_id, resolved)
-                return resolved
     except Exception as e:
         optic.warning("agent_id resolution failed: {}", e)
 
-    # Return as-is if resolution fails (backwards compat)
-    return agent_id
+    # Cache result in Redis (5 min TTL)
+    try:
+        await redis.setex(cache_key, 300, resolved or "__none__")
+    except Exception:
+        pass
+
+    return resolved if resolved else agent_id
 
 
 @dataclass
