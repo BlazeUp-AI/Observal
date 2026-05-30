@@ -35,6 +35,13 @@ async def save_draft(
 ):
     """Create an agent as a draft (relaxed validation, not submitted for review)."""
     optic.trace("req={}", req)
+    existing = await db.execute(select(Agent.id).where(Agent.name == req.name, Agent.created_by == current_user.id))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have an agent named '{req.name}'. Pick a different name or delete the existing one.",
+        )
+
     agent = Agent(
         name=req.name,
         owner=req.owner or current_user.username or current_user.email,
