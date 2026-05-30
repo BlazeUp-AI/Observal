@@ -145,6 +145,8 @@ async def get_current_user(
         except RedisError:
             raise HTTPException(status_code=503, detail="Auth service temporarily unavailable")
 
+    request.state.current_user = user
+    request.state.org_id = user.org_id
     return user
 
 
