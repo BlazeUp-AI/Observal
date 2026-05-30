@@ -62,7 +62,7 @@ async def ingest_session(
     """Ingest raw JSONL transcript lines from an IDE session.
 
     Called by the session_push hook on each UserPromptSubmit and Stop event.
-    Lines are stored as-is and classified server-side.
+    Lines are classified server-side and redacted before storage.
     """
     optic.trace("user_id={}", current_user.id)
     from services.session_ingest import check_session_integrity, ingest_session_lines

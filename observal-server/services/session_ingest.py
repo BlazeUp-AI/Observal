@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from loguru import logger as optic
 
 from services.clickhouse import insert_session_events, query_existing_for_dedup, query_session_event_count
-from services.secrets_redactor import redact_secrets
+from services.secrets_redactor import redact_value
 from services.session_parsers.ingest_classify import extract_timestamp, get_classifier, get_extra_rows
 
 # ---------------------------------------------------------------------------
@@ -305,9 +305,10 @@ async def ingest_session_lines(
             skipped += 1
             continue
 
-        redacted_line = redact_secrets(raw_line)
-        preview = redact_secrets(preview_fn(parsed, event_type))
-        tool_name, tool_id = tool_info_fn(parsed)
+        redacted_parsed = redact_value(parsed)
+        redacted_line = json.dumps(redacted_parsed, default=str)
+        preview = preview_fn(redacted_parsed, event_type)
+        tool_name, tool_id = tool_info_fn(redacted_parsed)
         uuid, parent_uuid = _extract_uuid(parsed, ide)
 
         ts = extract_timestamp(ide, parsed)
