@@ -208,6 +208,10 @@ DEFAULTS: dict[str, str] = {
     "resource.clickhouse_timeout": "10.0",
     # Data
     "data.retention_days": "90",
+    # Raw payload (free-text input/output/error, session lines) retention, kept
+    # separate from and typically shorter than the aggregate-metric row retention
+    # above. 0 disables the separate raw-payload column TTL.
+    "data.raw_retention_days": "30",
     "data.cache_ttl_default": "30",
     "data.cache_ttl_dashboard": "60",
     # Observability
