@@ -172,7 +172,7 @@ class TestIngestEndpoint:
                                 "score_id": "sc1",
                                 "name": "accuracy",
                                 "value": 0.95,
-                                "source": "eval",
+                                "source": "manual",
                             }
                         ]
                     },
@@ -180,7 +180,7 @@ class TestIngestEndpoint:
             assert r.status_code == 200
             assert r.json()["ingested"] == 1
             rows = mock_ins.call_args[0][0]
-            assert rows[0]["source"] == "eval"
+            assert rows[0]["source"] == "client:manual"
             assert rows[0]["value"] == 0.95
             # timestamp injected server-side
             assert rows[0]["timestamp"] != ""
