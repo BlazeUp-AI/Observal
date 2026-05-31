@@ -65,6 +65,12 @@ variable "route53_zone_id" {
   default     = ""
 }
 
+variable "enable_tls" {
+  description = "Enable TLS via ACM. Requires a publicly-resolvable Route53 zone for DNS validation. Set false for private zones."
+  type        = bool
+  default     = true
+}
+
 # ── ECS Fargate (api / web / worker / init) ────────────────────────────────
 
 variable "image_repo_api" {

@@ -21,8 +21,8 @@ locals {
   private_subnet_ids = local.create_vpc ? aws_subnet.private[*].id : var.private_subnet_ids
   public_subnet_ids  = local.create_vpc ? aws_subnet.public[*].id : var.public_subnet_ids
 
-  enable_tls = var.domain_name != "" && var.route53_zone_id != ""
-  app_url    = local.enable_tls ? "https://${var.domain_name}" : "http://${aws_lb.app.dns_name}"
+  enable_tls = var.enable_tls && var.domain_name != "" && var.route53_zone_id != ""
+  app_url    = var.domain_name != "" ? "${local.enable_tls ? "https" : "http"}://${var.domain_name}" : "http://${aws_lb.app.dns_name}"
 
   clickhouse_self_hosted = var.clickhouse_mode == "self_hosted"
 

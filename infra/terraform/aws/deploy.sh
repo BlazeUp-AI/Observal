@@ -232,13 +232,13 @@ if [ -n "${VPC_ID:-}" ] && [ "$VPC_ID" != "" ]; then
     if [ -n "$FIRST_PRIV" ]; then
       RT=$(aws ec2 describe-route-tables $REGION_FLAG \
         --filters "Name=association.subnet-id,Values=$FIRST_PRIV" \
-        --query 'RouteTables[0].Routes[?DestinationCidrBlock==`0.0.0.0/0`].NatGatewayId' \
+        --query 'RouteTables[0].Routes[?DestinationCidrBlock==`0.0.0.0/0`].[NatGatewayId,TransitGatewayId]' \
         --output text 2>/dev/null)
-      if [ -n "$RT" ] && [ "$RT" != "None" ]; then
-        pass "Private subnet $FIRST_PRIV has NAT gateway route"
+      if [ -n "$RT" ] && echo "$RT" | grep -qv "^None[[:space:]]*None$"; then
+        pass "Private subnet $FIRST_PRIV has outbound route (NAT/TGW)"
       else
-        fail "Private subnet $FIRST_PRIV has no NAT route (ECS tasks need outbound internet)"
-        info "Add a NAT gateway route to 0.0.0.0/0 in the subnet's route table"
+        fail "Private subnet $FIRST_PRIV has no outbound route (ECS tasks need internet for image pulls)"
+        info "Add a NAT gateway, Transit Gateway, or VPC peering route to 0.0.0.0/0"
       fi
     fi
   fi

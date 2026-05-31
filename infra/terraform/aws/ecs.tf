@@ -231,7 +231,11 @@ resource "aws_ecs_task_definition" "web" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
-      tmpfs              = [{ containerPath = "/tmp", size = 64, mountOptions = ["rw"] }]
+      tmpfs = [
+        { containerPath = "/tmp", size = 64, mountOptions = ["rw"] },
+        { containerPath = "/var/cache/nginx", size = 64, mountOptions = ["rw"] },
+        { containerPath = "/var/run", size = 8, mountOptions = ["rw"] },
+      ]
     }
   }])
 

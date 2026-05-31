@@ -181,7 +181,6 @@ cat > "$INSTALL_DIR/docker/clickhouse/users.d/memory.xml" <<'CHPROF'
             <wait_for_async_insert>0</wait_for_async_insert>
             <async_insert_max_data_size>1048576</async_insert_max_data_size>
             <async_insert_busy_timeout_ms>200</async_insert_busy_timeout_ms>
-            <deduplicate_merge_projection_mode>drop</deduplicate_merge_projection_mode>
         </default>
     </profiles>
 </clickhouse>
@@ -191,7 +190,7 @@ CHPROF
 cat > "$INSTALL_DIR/docker-compose.data.yml" <<'COMPOSE'
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:26.5
+    image: clickhouse/clickhouse-server:24.12
     container_name: observal-clickhouse
     restart: unless-stopped
     ports:
@@ -261,6 +260,20 @@ chmod 600 "$INSTALL_DIR/.env"
 
 # ── Start ────────────────────────────────────────────────────────
 cd "$INSTALL_DIR"
+
+# Clear stale preprocessed configs from previous ClickHouse versions
+rm -rf /data/clickhouse/preprocessed_configs
+
+# Create prometheus.yml (compose bind-mounts it; without it Docker creates a directory)
+cat > "$INSTALL_DIR/prometheus.yml" <<'PROM'
+global:
+  scrape_interval: 30s
+scrape_configs:
+  - job_name: observal-clickhouse
+    static_configs:
+      - targets: ['localhost:9363']
+PROM
+
 docker compose --env-file "$INSTALL_DIR/.env" -f docker-compose.data.yml pull
 docker compose --env-file "$INSTALL_DIR/.env" -f docker-compose.data.yml up -d
 

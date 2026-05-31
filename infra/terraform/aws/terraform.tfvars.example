@@ -61,3 +61,17 @@ log_retention_days  = 30
 # demo_reviewer_password    = "change-me-immediately"
 # demo_user_email           = "demo-user@yourcompany.com"
 # demo_user_password        = "change-me-immediately"
+
+# ── Bring-your-own VPC (BYO-VPC) ─────────────────────────────────────────────
+# Deploy into an existing VPC instead of creating one. Useful for corporate
+# environments with Transit Gateway, shared VPCs, or no IGW.
+#
+# vpc_id             = "vpc-08ffcfb6fed514106"
+# public_subnet_ids  = ["subnet-05b9a5aa32f4e6460", "subnet-09c4c954239fc48c0"]
+# private_subnet_ids = ["subnet-05b9a5aa32f4e6460", "subnet-09c4c954239fc48c0"]
+
+# ── TLS ──────────────────────────────────────────────────────────────────────
+# Set enable_tls = false for private Route53 zones where ACM DNS validation
+# cannot complete. The domain still gets a Route53 A record pointing to the ALB.
+#
+# enable_tls = false
