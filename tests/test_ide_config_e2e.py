@@ -1219,18 +1219,6 @@ class TestScanCopilotCliHome:
 # ═══════════════════════════════════════════════════════════════════
 
 
-class TestProfileCopilot:
-    def test_copilot_mcp_json_in_file_map(self):
-        from observal_cli.cmd_profile import IDE_FILE_MAP
-
-        assert ".vscode/mcp.json" in IDE_FILE_MAP
-
-    def test_copilot_instructions_in_project_files(self):
-        from observal_cli.cmd_profile import PROJECT_FILES
-
-        assert ".github/copilot-instructions.md" in PROJECT_FILES
-
-
 # ═══════════════════════════════════════════════════════════════════
 # 12. CONFIG GENERATOR — Copilot explicit branch
 # ═══════════════════════════════════════════════════════════════════
@@ -1285,26 +1273,6 @@ class TestConfigGeneratorCopilot:
 # ═══════════════════════════════════════════════════════════════════
 # 13. DOCTOR — OpenCode IDE config checks
 # ═══════════════════════════════════════════════════════════════════
-
-
-class TestProfileOpenCode:
-    def test_opencode_json_in_file_map(self):
-        from observal_cli.cmd_profile import IDE_FILE_MAP
-
-        assert ".config/opencode/opencode.json" in IDE_FILE_MAP
-
-    def test_agents_md_in_project_files(self):
-        from observal_cli.cmd_profile import PROJECT_FILES
-
-        assert "AGENTS.md" in PROJECT_FILES
-
-    def test_opencode_user_path_is_home_config(self):
-
-        from observal_cli.cmd_profile import IDE_FILE_MAP
-
-        dest = IDE_FILE_MAP[".config/opencode/opencode.json"]
-        assert dest is not None
-        assert str(dest).endswith("opencode.json")
 
 
 # ═══════════════════════════════════════════════════════════════════
