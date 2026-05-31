@@ -24,14 +24,8 @@ from config import HAS_LICENSE
 from database import async_session
 from models.organization import Organization
 from models.user import User, UserRole
-from services.jwt_service import decode_access_token
-from services.redis import get_redis
-from services.security_events import (
-    EventType,
-    SecurityEvent,
-    Severity,
-    emit_security_event,
-)
+from services.infra.redis import get_redis
+from services.security.jwt_service import decode_access_token
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -187,6 +181,13 @@ def require_role(min_role: UserRole):
         user_level = ROLE_HIERARCHY.get(current_user.role, 999)
         required_level = ROLE_HIERARCHY[min_role]
         if user_level > required_level:
+            from services.security.security_events import (
+                EventType,
+                SecurityEvent,
+                Severity,
+                emit_security_event,
+            )
+
             await emit_security_event(
                 SecurityEvent(
                     event_type=EventType.PERMISSION_DENIED,
@@ -301,7 +302,7 @@ async def require_local_mode() -> None:
 
 async def require_password_auth() -> None:
     """FastAPI dependency that blocks the endpoint when SSO_ONLY is enabled."""
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     sso_only = await ds.get_bool("deployment.sso_only")
     if sso_only:

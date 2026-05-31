@@ -698,7 +698,7 @@ async def init_clickhouse():
     await _materialize_if_needed()
     await apply_resource_settings()
 
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     retention_days = await ds.get_int("data.retention_days")
     if retention_days > 0:

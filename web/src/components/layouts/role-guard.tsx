@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
-import { useRoleGuard, type Role } from "@/hooks/use-role-guard";
+import { useRoleGuard, type Role } from "@/shared/hooks/use-role-guard";
 
 export function RoleGuard({ minRole, children }: { minRole: Role; children: React.ReactNode }) {
   const { ready } = useRoleGuard(minRole);

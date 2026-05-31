@@ -23,9 +23,9 @@ from services.clickhouse import (
     query_trace_by_id,
     query_traces,
 )
-from services.jwt_service import decode_access_token
-from services.redis import subscribe
-from services.secrets_redactor import redact_secrets
+from services.infra.redis import subscribe
+from services.ingest.secrets_redactor import redact_secrets
+from services.security.jwt_service import decode_access_token
 
 logger = structlog.get_logger(__name__)
 

@@ -61,7 +61,7 @@ def _mock_version(*, models_by_ide: dict | None = None, supported_ides: list | N
 @pytest.mark.asyncio
 async def test_snapshot_includes_models_by_ide():
     """Per-IDE overrides should always appear in the rendered snapshot."""
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     ver = _mock_version(models_by_ide={"kiro": "claude-haiku-4-5", "codex": "gpt-5"})
     db = _mock_session_for_snapshot(components=[], goal=None)
@@ -82,7 +82,7 @@ async def test_snapshot_includes_models_by_ide():
 async def test_snapshot_emits_empty_dict_when_no_overrides():
     """An empty ``models_by_ide`` should be present (not omitted) so reviewers
     can tell "no overrides" apart from "data missing"."""
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     ver = _mock_version(models_by_ide={})
     db = _mock_session_for_snapshot(components=[], goal=None)
@@ -97,7 +97,7 @@ async def test_snapshot_emits_empty_dict_when_no_overrides():
 @pytest.mark.asyncio
 async def test_snapshot_drops_blank_overrides():
     """Empty/None override values should be filtered out."""
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     ver = _mock_version(models_by_ide={"kiro": "", "codex": "gpt-5"})
     db = _mock_session_for_snapshot(components=[], goal=None)
@@ -110,7 +110,7 @@ async def test_snapshot_drops_blank_overrides():
 @pytest.mark.asyncio
 async def test_snapshot_handles_non_dict_models_by_ide():
     """A non-dict ``models_by_ide`` (legacy data) should not crash."""
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     ver = _mock_version()
     ver.models_by_ide = "garbage-value"  # simulates broken legacy data

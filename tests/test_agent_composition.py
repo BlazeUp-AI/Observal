@@ -155,7 +155,7 @@ class TestAgentResponseWithComponentLinks:
 
 class TestResolvedAgentDataclass:
     def test_ok_when_no_errors(self):
-        from services.agent_resolver import ResolvedAgent
+        from services.registry.agent_resolver import ResolvedAgent
 
         ra = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -165,7 +165,7 @@ class TestResolvedAgentDataclass:
         assert ra.ok is True
 
     def test_not_ok_when_errors(self):
-        from services.agent_resolver import ResolutionError, ResolvedAgent
+        from services.registry.agent_resolver import ResolutionError, ResolvedAgent
 
         ra = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -182,7 +182,7 @@ class TestResolvedAgentDataclass:
         assert ra.ok is False
 
     def test_components_by_type(self):
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         cid1 = uuid.uuid4()
         cid2 = uuid.uuid4()
@@ -239,44 +239,44 @@ class TestResolvedAgentDataclass:
 
 class TestListingModelMap:
     def test_all_types_mapped(self):
-        from services.agent_resolver import _LISTING_MODELS
+        from services.registry.agent_resolver import _LISTING_MODELS
 
         assert set(_LISTING_MODELS.keys()) == {"mcp", "skill", "hook", "prompt", "sandbox"}
 
     def test_mcp_maps_to_mcp_listing(self):
         from models.mcp import McpListing
-        from services.agent_resolver import _LISTING_MODELS
+        from services.registry.agent_resolver import _LISTING_MODELS
 
         assert _LISTING_MODELS["mcp"] is McpListing
 
     def test_skill_maps_to_skill_listing(self):
         from models.skill import SkillListing
-        from services.agent_resolver import _LISTING_MODELS
+        from services.registry.agent_resolver import _LISTING_MODELS
 
         assert _LISTING_MODELS["skill"] is SkillListing
 
     def test_hook_maps_to_hook_listing(self):
         from models.hook import HookListing
-        from services.agent_resolver import _LISTING_MODELS
+        from services.registry.agent_resolver import _LISTING_MODELS
 
         assert _LISTING_MODELS["hook"] is HookListing
 
     def test_prompt_maps_to_prompt_listing(self):
         from models.prompt import PromptListing
-        from services.agent_resolver import _LISTING_MODELS
+        from services.registry.agent_resolver import _LISTING_MODELS
 
         assert _LISTING_MODELS["prompt"] is PromptListing
 
     def test_sandbox_maps_to_sandbox_listing(self):
         from models.sandbox import SandboxListing
-        from services.agent_resolver import _LISTING_MODELS
+        from services.registry.agent_resolver import _LISTING_MODELS
 
         assert _LISTING_MODELS["sandbox"] is SandboxListing
 
 
 class TestExtractExtra:
     def test_mcp_extra(self):
-        from services.agent_resolver import _extract_extra
+        from services.registry.agent_resolver import _extract_extra
 
         listing = MagicMock()
         listing.transport = "stdio"
@@ -289,7 +289,7 @@ class TestExtractExtra:
         assert extra["tools_schema"] == {"tools": []}
 
     def test_skill_extra(self):
-        from services.agent_resolver import _extract_extra
+        from services.registry.agent_resolver import _extract_extra
 
         listing = MagicMock()
         listing.skill_path = "/skills/tdd"
@@ -307,7 +307,7 @@ class TestExtractExtra:
         assert "mcp_server_config" not in extra
 
     def test_hook_extra(self):
-        from services.agent_resolver import _extract_extra
+        from services.registry.agent_resolver import _extract_extra
 
         listing = MagicMock()
         listing.event = "PreCommit"
@@ -321,7 +321,7 @@ class TestExtractExtra:
         assert extra["priority"] == 50
 
     def test_prompt_extra(self):
-        from services.agent_resolver import _extract_extra
+        from services.registry.agent_resolver import _extract_extra
 
         listing = MagicMock()
         listing.template = "Review this code: {{code}}"
@@ -332,7 +332,7 @@ class TestExtractExtra:
         assert extra["variables"] == ["code"]
 
     def test_sandbox_extra(self):
-        from services.agent_resolver import _extract_extra
+        from services.registry.agent_resolver import _extract_extra
 
         listing = MagicMock()
         listing.runtime_type = "docker"
@@ -345,7 +345,7 @@ class TestExtractExtra:
         assert extra["runtime_type"] == "docker"
 
     def test_unknown_type_returns_empty(self):
-        from services.agent_resolver import _extract_extra
+        from services.registry.agent_resolver import _extract_extra
 
         extra = _extract_extra(MagicMock(), "nonexistent")
         assert extra == {}
@@ -354,7 +354,7 @@ class TestExtractExtra:
 class TestResolveAgent:
     @pytest.mark.asyncio
     async def test_resolve_empty_agent(self):
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -373,7 +373,7 @@ class TestResolveAgent:
 
     @pytest.mark.asyncio
     async def test_resolve_unknown_component_type(self):
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -396,7 +396,7 @@ class TestResolveAgent:
 
     @pytest.mark.asyncio
     async def test_resolve_missing_listing(self):
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -423,7 +423,7 @@ class TestResolveAgent:
     @pytest.mark.asyncio
     async def test_resolve_unapproved_listing(self):
         from models.mcp import ListingStatus
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -454,7 +454,7 @@ class TestResolveAgent:
     @pytest.mark.asyncio
     async def test_resolve_approved_listing(self):
         from models.mcp import ListingStatus
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -499,7 +499,7 @@ class TestResolveAgent:
     async def test_resolve_skip_approval_check(self):
         """When require_approved=False, unapproved listings should resolve."""
         from models.mcp import ListingStatus
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -542,7 +542,7 @@ class TestResolveAgent:
     async def test_resolve_mixed_success_and_failure(self):
         """An agent with both valid and invalid components."""
         from models.mcp import ListingStatus
-        from services.agent_resolver import resolve_agent
+        from services.registry.agent_resolver import resolve_agent
 
         agent = MagicMock()
         agent.id = uuid.uuid4()
@@ -595,7 +595,7 @@ class TestResolveAgent:
 class TestValidateComponentIds:
     @pytest.mark.asyncio
     async def test_validate_empty_list(self):
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         db = AsyncMock()
         errors = await validate_component_ids([], db)
@@ -603,7 +603,7 @@ class TestValidateComponentIds:
 
     @pytest.mark.asyncio
     async def test_validate_unknown_type(self):
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         db = AsyncMock()
         errors = await validate_component_ids(
@@ -615,7 +615,7 @@ class TestValidateComponentIds:
 
     @pytest.mark.asyncio
     async def test_validate_missing_component(self):
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -632,7 +632,7 @@ class TestValidateComponentIds:
     @pytest.mark.asyncio
     async def test_validate_unapproved_component(self):
         from models.mcp import ListingStatus
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         listing = MagicMock()
         listing.status = ListingStatus.pending
@@ -653,7 +653,7 @@ class TestValidateComponentIds:
     @pytest.mark.asyncio
     async def test_validate_approved_component(self):
         from models.mcp import ListingStatus
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         listing = MagicMock()
         listing.status = ListingStatus.approved
@@ -675,8 +675,8 @@ class TestValidateComponentIds:
 
 class TestBuildAgentManifest:
     def test_empty_agent_manifest(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -690,8 +690,8 @@ class TestBuildAgentManifest:
         assert "errors" not in manifest
 
     def test_manifest_with_mcps(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -726,8 +726,8 @@ class TestBuildAgentManifest:
         assert mcp["transport"] == "stdio"
 
     def test_manifest_with_all_types(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         def _comp(ctype, name, order, **extra_kw):
             return ResolvedComponent(
@@ -763,8 +763,8 @@ class TestBuildAgentManifest:
         assert len(manifest["components"]["sandboxes"]) == 1
 
     def test_manifest_includes_errors(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolutionError, ResolvedAgent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolutionError, ResolvedAgent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -784,8 +784,8 @@ class TestBuildAgentManifest:
         assert manifest["errors"][0]["reason"] == "not found"
 
     def test_manifest_hook_fields(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -812,8 +812,8 @@ class TestBuildAgentManifest:
         assert hook["priority"] == 10
 
     def test_manifest_sandbox_fields(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -844,8 +844,8 @@ class TestBuildAgentManifest:
         assert sandbox["resource_limits"]["memory"] == "512m"
 
     def test_manifest_with_config_override(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -873,8 +873,8 @@ class TestBuildAgentManifest:
 
 class TestBuildCompositionSummary:
     def test_summary_resolved_flag(self):
-        from services.agent_builder import build_composition_summary
-        from services.agent_resolver import ResolvedAgent
+        from services.registry.agent_builder import build_composition_summary
+        from services.registry.agent_resolver import ResolvedAgent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -885,8 +885,8 @@ class TestBuildCompositionSummary:
         assert summary["resolved"] is True
 
     def test_summary_not_resolved_with_errors(self):
-        from services.agent_builder import build_composition_summary
-        from services.agent_resolver import ResolutionError, ResolvedAgent
+        from services.registry.agent_builder import build_composition_summary
+        from services.registry.agent_resolver import ResolutionError, ResolvedAgent
 
         resolved = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -899,8 +899,8 @@ class TestBuildCompositionSummary:
         assert "errors" in summary
 
     def test_summary_component_counts(self):
-        from services.agent_builder import build_composition_summary
-        from services.agent_resolver import ResolvedAgent, ResolvedComponent
+        from services.registry.agent_builder import build_composition_summary
+        from services.registry.agent_resolver import ResolvedAgent, ResolvedComponent
 
         def _comp(ctype, name, order):
             return ResolvedComponent(
@@ -973,7 +973,7 @@ class TestPydanticValidation:
     """Verify Pydantic validation on resolver/builder models."""
 
     def test_resolved_component_is_frozen(self):
-        from services.agent_resolver import ResolvedComponent
+        from services.registry.agent_resolver import ResolvedComponent
 
         comp = ResolvedComponent(
             component_type="mcp",
@@ -986,7 +986,7 @@ class TestPydanticValidation:
             comp.name = "changed"
 
     def test_resolution_error_is_frozen(self):
-        from services.agent_resolver import ResolutionError
+        from services.registry.agent_resolver import ResolutionError
 
         err = ResolutionError(
             component_type="mcp",
@@ -997,7 +997,7 @@ class TestPydanticValidation:
             err.reason = "changed"
 
     def test_resolved_agent_serializes_to_dict(self):
-        from services.agent_resolver import ResolvedAgent
+        from services.registry.agent_resolver import ResolvedAgent
 
         ra = ResolvedAgent(
             agent_id=uuid.uuid4(),
@@ -1011,7 +1011,7 @@ class TestPydanticValidation:
     def test_resolved_component_rejects_invalid_type(self):
         from pydantic import ValidationError
 
-        from services.agent_resolver import ResolvedComponent
+        from services.registry.agent_resolver import ResolvedComponent
 
         with pytest.raises(ValidationError):
             ResolvedComponent(
@@ -1023,7 +1023,7 @@ class TestPydanticValidation:
             )
 
     def test_manifest_component_dump_compact(self):
-        from services.agent_builder import ManifestComponent
+        from services.registry.agent_builder import ManifestComponent
 
         comp = ManifestComponent(
             name="test-mcp",
@@ -1038,7 +1038,7 @@ class TestPydanticValidation:
         assert "slash_command" not in dumped
 
     def test_agent_manifest_model_validates(self):
-        from services.agent_builder import AgentManifest, ManifestComponent, ManifestComponents
+        from services.registry.agent_builder import AgentManifest, ManifestComponent, ManifestComponents
 
         manifest = AgentManifest(
             name="my-agent",
@@ -1054,7 +1054,7 @@ class TestPydanticValidation:
         assert "skills" not in compact["components"]
 
     def test_ide_agent_config_model(self):
-        from services.agent_builder import AgentFile, IdeAgentConfig
+        from services.registry.agent_builder import AgentFile, IdeAgentConfig
 
         config = IdeAgentConfig(
             ide="claude-code",
@@ -1069,7 +1069,7 @@ class TestPydanticValidation:
         assert config.files[1].format == "json"
 
     def test_composition_summary_model(self):
-        from services.agent_builder import CompositionSummary
+        from services.registry.agent_builder import CompositionSummary
 
         summary = CompositionSummary(
             agent_id=str(uuid.uuid4()),
@@ -1085,7 +1085,7 @@ class TestPydanticValidation:
 
 class TestResolverAndBuilderModulesImportable:
     def test_resolver_module_importable(self):
-        from services.agent_resolver import (
+        from services.registry.agent_resolver import (
             _LISTING_MODELS,
             resolve_agent,
             validate_component_ids,
@@ -1096,7 +1096,7 @@ class TestResolverAndBuilderModulesImportable:
         assert len(_LISTING_MODELS) == 5
 
     def test_builder_module_importable(self):
-        from services.agent_builder import (
+        from services.registry.agent_builder import (
             SUPPORTED_IDES,
             build_agent_manifest,
             build_composition_summary,
@@ -1114,7 +1114,7 @@ class TestGenerateIdeAgentFiles:
     """Tests for universal IDE agent file generation from AgentManifest."""
 
     def _make_manifest(self, **overrides):
-        from services.agent_builder import (
+        from services.registry.agent_builder import (
             AgentManifest,
             ManifestComponent,
             ManifestComponents,
@@ -1157,7 +1157,7 @@ class TestGenerateIdeAgentFiles:
     # ── Claude Code ────────────────────────────────────────────
 
     def test_claude_code_generates_rules_file(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "claude-code")
@@ -1167,7 +1167,7 @@ class TestGenerateIdeAgentFiles:
         assert "You are a helpful coding assistant." in agent_file.content
 
     def test_claude_code_mcp_setup_commands(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "claude-code")
@@ -1176,7 +1176,7 @@ class TestGenerateIdeAgentFiles:
         assert "github-mcp" in config.setup_commands[0]
 
     def test_claude_code_underscore_alias(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "claude_code")
@@ -1185,7 +1185,7 @@ class TestGenerateIdeAgentFiles:
     # ── Cursor ─────────────────────────────────────────────────
 
     def test_cursor_generates_rules_and_mcp_json(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "cursor")
@@ -1202,7 +1202,7 @@ class TestGenerateIdeAgentFiles:
     # ── Gemini CLI ─────────────────────────────────────────────
 
     def test_gemini_cli_generates_gemini_md(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "gemini-cli")
@@ -1212,7 +1212,7 @@ class TestGenerateIdeAgentFiles:
         assert "You are a helpful coding assistant." in gemini_md[0].content
 
     def test_gemini_cli_underscore_alias(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "gemini_cli")
@@ -1221,7 +1221,7 @@ class TestGenerateIdeAgentFiles:
     # ── Kiro ───────────────────────────────────────────────────
 
     def test_kiro_generates_agent_json(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "kiro")
@@ -1240,7 +1240,7 @@ class TestGenerateIdeAgentFiles:
     # ── Codex ──────────────────────────────────────────────────
 
     def test_codex_generates_agents_md(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "codex")
@@ -1252,7 +1252,7 @@ class TestGenerateIdeAgentFiles:
     # ── GitHub Copilot ─────────────────────────────────────────
 
     def test_copilot_generates_instructions_md(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "copilot")
@@ -1264,7 +1264,7 @@ class TestGenerateIdeAgentFiles:
         assert "You are a helpful coding assistant." in md.content
 
     def test_copilot_generates_mcp_json(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "copilot")
@@ -1277,7 +1277,7 @@ class TestGenerateIdeAgentFiles:
     # ── Rules markdown content ─────────────────────────────────
 
     def test_rules_markdown_includes_component_sections(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "cursor")
@@ -1291,7 +1291,7 @@ class TestGenerateIdeAgentFiles:
         assert "`/review`" in content
 
     def test_rules_markdown_empty_prompt(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest(prompt="")
         config = generate_ide_agent_files(manifest, "copilot")
@@ -1300,7 +1300,7 @@ class TestGenerateIdeAgentFiles:
         assert "## MCP Servers" in content
 
     def test_rules_markdown_no_components(self):
-        from services.agent_builder import AgentManifest, ManifestComponents, generate_ide_agent_files
+        from services.registry.agent_builder import AgentManifest, ManifestComponents, generate_ide_agent_files
 
         manifest = AgentManifest(
             name="bare-agent",
@@ -1316,7 +1316,7 @@ class TestGenerateIdeAgentFiles:
     # ── MCP entries ────────────────────────────────────────────
 
     def test_mcp_entries_use_observal_shim(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "cursor")
@@ -1325,7 +1325,7 @@ class TestGenerateIdeAgentFiles:
             assert "--mcp-id" in entry["args"]
 
     def test_no_mcps_produces_empty_servers(self):
-        from services.agent_builder import (
+        from services.registry.agent_builder import (
             AgentManifest,
             ManifestComponent,
             ManifestComponents,
@@ -1347,7 +1347,7 @@ class TestGenerateIdeAgentFiles:
     # ── Name sanitization ──────────────────────────────────────
 
     def test_name_with_spaces_gets_sanitized(self):
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest(name="My Cool Agent!")
         config = generate_ide_agent_files(manifest, "claude-code")
@@ -1360,7 +1360,7 @@ class TestGenerateIdeAgentFiles:
     def test_unsupported_ide_raises_value_error(self):
         import pytest
 
-        from services.agent_builder import generate_ide_agent_files
+        from services.registry.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         with pytest.raises(ValueError, match="Unsupported IDE"):
@@ -1369,7 +1369,7 @@ class TestGenerateIdeAgentFiles:
     # ── Hooks in markdown ──────────────────────────────────────
 
     def test_hooks_appear_in_rules_markdown(self):
-        from services.agent_builder import (
+        from services.registry.agent_builder import (
             AgentManifest,
             ManifestComponent,
             ManifestComponents,
@@ -1401,7 +1401,7 @@ class TestGenerateIdeAgentFiles:
     # ── All supported IDEs produce valid output ────────────────
 
     def test_all_supported_ides_produce_output(self):
-        from services.agent_builder import SUPPORTED_IDES, generate_ide_agent_files
+        from services.registry.agent_builder import SUPPORTED_IDES, generate_ide_agent_files
 
         manifest = self._make_manifest()
         for ide in SUPPORTED_IDES:

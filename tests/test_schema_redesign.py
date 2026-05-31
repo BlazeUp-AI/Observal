@@ -405,7 +405,7 @@ class TestDownloadTracking:
     def test_anonymous_fingerprint_deterministic(self):
         from unittest.mock import MagicMock
 
-        from services.download_tracker import _anonymous_fingerprint
+        from services.registry.download_tracker import _anonymous_fingerprint
 
         request = MagicMock()
         request.client.host = "192.168.1.1"
@@ -419,7 +419,7 @@ class TestDownloadTracking:
     def test_anonymous_fingerprint_varies_by_ip(self):
         from unittest.mock import MagicMock
 
-        from services.download_tracker import _anonymous_fingerprint
+        from services.registry.download_tracker import _anonymous_fingerprint
 
         req1 = MagicMock()
         req1.client.host = "192.168.1.1"
@@ -434,7 +434,7 @@ class TestDownloadTracking:
     def test_anonymous_fingerprint_varies_by_ua(self):
         from unittest.mock import MagicMock
 
-        from services.download_tracker import _anonymous_fingerprint
+        from services.registry.download_tracker import _anonymous_fingerprint
 
         req1 = MagicMock()
         req1.client.host = "192.168.1.1"
@@ -470,7 +470,7 @@ class TestDownloadTracking:
         assert col_dl.default.arg == 0
 
     def test_download_tracker_module_exists(self):
-        from services.download_tracker import (
+        from services.registry.download_tracker import (
             _anonymous_fingerprint,
             get_download_stats,
             record_agent_download,

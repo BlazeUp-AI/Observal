@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from services.shared.ip_utils import is_trusted, parse_trusted
 
 if TYPE_CHECKING:

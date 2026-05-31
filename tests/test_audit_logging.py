@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.events import (
+from services.infra.events import (
     AgentLifecycleEvent,
     AlertRuleChanged,
     AuditableAction,

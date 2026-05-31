@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const ComponentDetail = lazy(() => import("@/pages/registry/components/detail"));
+const ComponentDetail = lazy(() => import("@/features/registry/pages/components/detail"));
 
 export type ComponentSearch = {
   type?: string;

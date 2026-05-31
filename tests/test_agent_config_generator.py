@@ -19,18 +19,18 @@ from unittest.mock import MagicMock
 
 import yaml
 
-from services.agent_builder import (
-    AgentManifest,
-    ManifestComponent,
-    ManifestComponents,
-    generate_ide_agent_files,
-)
 from services.ide import generate_agent_config
 from services.ide.helpers import (
     _build_rules_content,
     _inject_agent_id,
     _model_name_to_frontmatter,
     _sanitize_name,
+)
+from services.registry.agent_builder import (
+    AgentManifest,
+    ManifestComponent,
+    ManifestComponents,
+    generate_ide_agent_files,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -928,7 +928,7 @@ class TestHookConfigGeneratorWin32:
     """Fix checking: hook_config_generator Windows output has no Unix syntax."""
 
     def test_win32_kiro_hook_no_unix_syntax(self):
-        from services.hook_config_generator import generate_hook_telemetry_config
+        from services.registry.hook_config_generator import generate_hook_telemetry_config
 
         listing = MagicMock()
         listing.event = "UserPromptSubmit"
@@ -939,7 +939,7 @@ class TestHookConfigGeneratorWin32:
         assert "python " in cmd or "python -m" in cmd
 
     def test_win32_kiro_stop_hook_no_unix_syntax(self):
-        from services.hook_config_generator import generate_hook_telemetry_config
+        from services.registry.hook_config_generator import generate_hook_telemetry_config
 
         listing = MagicMock()
         listing.event = "Stop"
@@ -950,7 +950,7 @@ class TestHookConfigGeneratorWin32:
         assert "python " in cmd or "python -m" in cmd
 
     def test_unix_kiro_hook_preserved(self):
-        from services.hook_config_generator import generate_hook_telemetry_config
+        from services.registry.hook_config_generator import generate_hook_telemetry_config
 
         listing = MagicMock()
         listing.event = "UserPromptSubmit"
@@ -959,7 +959,7 @@ class TestHookConfigGeneratorWin32:
         assert cfg_default == cfg_linux
 
     def test_unix_kiro_stop_hook_preserved(self):
-        from services.hook_config_generator import generate_hook_telemetry_config
+        from services.registry.hook_config_generator import generate_hook_telemetry_config
 
         listing = MagicMock()
         listing.event = "Stop"
@@ -968,7 +968,7 @@ class TestHookConfigGeneratorWin32:
         assert cfg_default == cfg_linux
 
     def test_non_kiro_ides_unaffected(self):
-        from services.hook_config_generator import generate_hook_telemetry_config
+        from services.registry.hook_config_generator import generate_hook_telemetry_config
 
         listing = MagicMock()
         listing.event = "PreToolUse"

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock
 
-from services.skill_config_generator import (
+from services.registry.skill_config_generator import (
     _generate_skill_file,
     _sanitize_name,
     generate_skill_config,

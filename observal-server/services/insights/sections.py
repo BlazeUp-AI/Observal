@@ -31,14 +31,14 @@ logger = structlog.get_logger(__name__)
 
 async def _get_section_model() -> str | None:
     """Get the model for detailed section prompts (Opus by default)."""
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     return await ds.get("insights.model_sections") or None
 
 
 async def _get_synthesis_model() -> str | None:
     """Get the model for synthesis/aggregation (Sonnet by default)."""
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     return await ds.get("insights.model_synthesis") or None
 

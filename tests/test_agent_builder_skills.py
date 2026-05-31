@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.agent_builder import (
+from services.registry.agent_builder import (
     AgentManifest,
     ManifestComponent,
     ManifestComponents,

@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "observal-server"))
 
-from services.session_ingest import _usage_pi, _uuid_pi
+from services.ingest.session_ingest import _usage_pi, _uuid_pi
 from services.session_parsers.ingest_classify import (
     _classify_pi,
     _preview_pi,

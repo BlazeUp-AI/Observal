@@ -1125,7 +1125,7 @@ class TestConfigGeneratorCopilotCli:
         return listing
 
     def test_copilot_cli_stdio_has_type_stdio(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "copilot-cli")
         server = cfg["mcpServers"]["my-mcp"]
@@ -1135,7 +1135,7 @@ class TestConfigGeneratorCopilotCli:
         assert server["tools"] == ["*"]
 
     def test_copilot_cli_sse_has_type_sse(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(url="http://localhost:3000/sse", transport="sse"), "copilot-cli")
         server = cfg["mcpServers"]["my-mcp"]
@@ -1144,7 +1144,7 @@ class TestConfigGeneratorCopilotCli:
         assert server["tools"] == ["*"]
 
     def test_copilot_cli_proxy_has_tools(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "copilot-cli", proxy_port=9999)
         server = cfg["mcpServers"]["my-mcp"]
@@ -1152,7 +1152,7 @@ class TestConfigGeneratorCopilotCli:
         assert server["tools"] == ["*"]
 
     def test_copilot_cli_env_vars_preserved(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(
             self._make_listing(environment_variables=[{"name": "API_KEY", "required": True}]),
@@ -1254,7 +1254,7 @@ class TestConfigGeneratorCopilot:
         return listing
 
     def test_copilot_stdio_has_type_stdio(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "copilot")
         server = cfg["mcpServers"]["my-mcp"]
@@ -1263,7 +1263,7 @@ class TestConfigGeneratorCopilot:
         assert "--mcp-id" in server["args"]
 
     def test_copilot_sse_has_type_sse(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(url="http://localhost:3000/sse", transport="sse"), "copilot")
         server = cfg["mcpServers"]["my-mcp"]
@@ -1271,7 +1271,7 @@ class TestConfigGeneratorCopilot:
         assert server["url"] == "http://localhost:3000/sse"
 
     def test_copilot_env_vars_preserved(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(
             self._make_listing(environment_variables=[{"name": "API_KEY", "required": True}]),
@@ -1330,21 +1330,21 @@ class TestConfigGeneratorOpenCode:
         return listing
 
     def test_opencode_stdio_uses_mcp_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "opencode")
         assert "mcp" in cfg
         assert "mcpServers" not in cfg
 
     def test_opencode_stdio_type_is_local(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "opencode")
         entry = cfg["mcp"]["my-mcp"]
         assert entry["type"] == "local"
 
     def test_opencode_stdio_command_is_flat_array(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "opencode")
         entry = cfg["mcp"]["my-mcp"]
@@ -1353,21 +1353,21 @@ class TestConfigGeneratorOpenCode:
         assert "--mcp-id" in entry["command"]
 
     def test_opencode_stdio_has_no_args_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "opencode")
         entry = cfg["mcp"]["my-mcp"]
         assert "args" not in entry
 
     def test_opencode_sse_uses_mcp_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(url="http://localhost:3000/sse", transport="sse"), "opencode")
         assert "mcp" in cfg
         assert "mcpServers" not in cfg
 
     def test_opencode_sse_type_is_remote(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(url="http://localhost:3000/sse", transport="sse"), "opencode")
         entry = cfg["mcp"]["my-mcp"]
@@ -1375,7 +1375,7 @@ class TestConfigGeneratorOpenCode:
         assert entry["url"] == "http://localhost:3000/sse"
 
     def test_opencode_sse_has_headers(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(
             self._make_listing(url="http://localhost:3000/sse", transport="sse"),
@@ -1386,14 +1386,14 @@ class TestConfigGeneratorOpenCode:
         assert "headers" in entry
 
     def test_opencode_proxy_uses_mcp_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "opencode", proxy_port=9999)
         assert "mcp" in cfg
         assert "mcpServers" not in cfg
 
     def test_opencode_proxy_type_is_remote(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(self._make_listing(), "opencode", proxy_port=9999)
         entry = cfg["mcp"]["my-mcp"]
@@ -1401,7 +1401,7 @@ class TestConfigGeneratorOpenCode:
         assert "localhost:9999" in entry["url"]
 
     def test_opencode_env_vars_preserved(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         cfg = generate_config(
             self._make_listing(environment_variables=[{"name": "API_KEY", "required": True}]),
@@ -1439,14 +1439,14 @@ class TestPullOpenCodeScope:
 
 class TestGeminiConfigGenerator:
     def test_gemini_settings_disables_native_otlp(self):
-        from services.config_generator import _gemini_settings
+        from services.registry.config_generator import _gemini_settings
 
         settings = _gemini_settings()
         assert settings["telemetry"]["enabled"] is False
         assert settings["telemetry"]["logPrompts"] is True
 
     def test_gemini_settings_no_target(self):
-        from services.config_generator import _gemini_settings
+        from services.registry.config_generator import _gemini_settings
 
         settings = _gemini_settings()
         assert "target" not in settings["telemetry"]
@@ -1531,7 +1531,7 @@ class TestConfigGeneratorCodexFormat:
         return listing
 
     def test_stdio_codex_uses_mcp_servers_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
         cfg = generate_config(listing, "codex")
@@ -1540,7 +1540,7 @@ class TestConfigGeneratorCodexFormat:
         assert "mcpServers" not in cfg
 
     def test_stdio_codex_has_observal_shim(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
         cfg = generate_config(listing, "codex")
@@ -1550,7 +1550,7 @@ class TestConfigGeneratorCodexFormat:
         assert entry["command"] == "observal-shim"
 
     def test_proxy_codex_uses_mcp_servers_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
         cfg = generate_config(listing, "codex", proxy_port=9000)
@@ -1558,7 +1558,7 @@ class TestConfigGeneratorCodexFormat:
         assert "mcpServers" not in cfg
 
     def test_sse_codex_uses_mcp_servers_key(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing(url="https://example.com/mcp")
         listing.transport = "sse"
@@ -1567,7 +1567,7 @@ class TestConfigGeneratorCodexFormat:
         assert "mcpServers" not in cfg
 
     def test_sse_codex_entry_has_url(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing(url="https://example.com/mcp")
         listing.transport = "sse"

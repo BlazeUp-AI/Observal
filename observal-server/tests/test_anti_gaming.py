@@ -8,7 +8,7 @@
 Validates regex pattern matching, context extraction, and summary serialization.
 """
 
-from services.anti_gaming import GamingFlag, scan_for_gaming, summarize_flags
+from services.security.anti_gaming import GamingFlag, scan_for_gaming, summarize_flags
 
 
 class TestScanForGaming:

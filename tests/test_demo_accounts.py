@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from models.user import User, UserRole
-from services.events import UserCreated, bus
+from services.infra.events import UserCreated, bus
 
 
 def _make_user(role=UserRole.user, is_demo=False, email="test@test.com"):
@@ -43,14 +43,14 @@ async def _stub_username(email, db):
     return email.split("@")[0].replace(".", "-")
 
 
-_patch_username_gen = patch("services.demo_accounts.generate_unique_username", side_effect=_stub_username)
+_patch_username_gen = patch("services.enterprise.demo_accounts.generate_unique_username", side_effect=_stub_username)
 
 
 class TestSeedDemoAccounts:
     @pytest.mark.asyncio
     @_patch_username_gen
     async def test_seeds_when_no_real_users(self, _mock_gen):
-        from services.demo_accounts import seed_demo_accounts
+        from services.enterprise.demo_accounts import seed_demo_accounts
 
         db = AsyncMock()
         # First call: real_count=0, then per-tier exists checks return 0
@@ -58,7 +58,7 @@ class TestSeedDemoAccounts:
         db.commit = AsyncMock()
         _patch_db_execute(db, _mock_org())
 
-        with patch("services.demo_accounts.settings") as mock_settings:
+        with patch("services.enterprise.demo_accounts.settings") as mock_settings:
             mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.example"
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = "super-pass"
             mock_settings.DEMO_ADMIN_EMAIL = "admin@demo.example"
@@ -76,12 +76,12 @@ class TestSeedDemoAccounts:
 
     @pytest.mark.asyncio
     async def test_skips_when_real_users_exist(self):
-        from services.demo_accounts import seed_demo_accounts
+        from services.enterprise.demo_accounts import seed_demo_accounts
 
         db = AsyncMock()
         db.scalar = AsyncMock(return_value=1)  # real_count=1
 
-        with patch("services.demo_accounts.settings") as mock_settings:
+        with patch("services.enterprise.demo_accounts.settings") as mock_settings:
             mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.example"
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = "pass"
 
@@ -92,13 +92,13 @@ class TestSeedDemoAccounts:
 
     @pytest.mark.asyncio
     async def test_skips_when_no_demo_env_vars(self):
-        from services.demo_accounts import seed_demo_accounts
+        from services.enterprise.demo_accounts import seed_demo_accounts
 
         db = AsyncMock()
         db.scalar = AsyncMock(return_value=0)  # no real users
         _patch_db_execute(db, _mock_org())
 
-        with patch("services.demo_accounts.settings") as mock_settings:
+        with patch("services.enterprise.demo_accounts.settings") as mock_settings:
             mock_settings.DEMO_SUPER_ADMIN_EMAIL = None
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = None
             mock_settings.DEMO_ADMIN_EMAIL = None
@@ -115,7 +115,7 @@ class TestSeedDemoAccounts:
     @pytest.mark.asyncio
     @_patch_username_gen
     async def test_idempotent_skips_existing(self, _mock_gen):
-        from services.demo_accounts import seed_demo_accounts
+        from services.enterprise.demo_accounts import seed_demo_accounts
 
         db = AsyncMock()
         # real_count=0, super_admin exists=1 (skip), admin exists=0 (create)
@@ -123,7 +123,7 @@ class TestSeedDemoAccounts:
         db.commit = AsyncMock()
         _patch_db_execute(db, _mock_org())
 
-        with patch("services.demo_accounts.settings") as mock_settings:
+        with patch("services.enterprise.demo_accounts.settings") as mock_settings:
             mock_settings.DEMO_SUPER_ADMIN_EMAIL = "super@demo.example"
             mock_settings.DEMO_SUPER_ADMIN_PASSWORD = "pass"
             mock_settings.DEMO_ADMIN_EMAIL = "admin@demo.example"
@@ -141,7 +141,7 @@ class TestSeedDemoAccounts:
 class TestCleanupDemoAccounts:
     @pytest.mark.asyncio
     async def test_super_admin_deletes_all_demos(self):
-        from services.demo_accounts import cleanup_demo_accounts
+        from services.enterprise.demo_accounts import cleanup_demo_accounts
 
         mock_result = MagicMock()
         mock_result.rowcount = 4
@@ -156,7 +156,7 @@ class TestCleanupDemoAccounts:
 
     @pytest.mark.asyncio
     async def test_admin_deletes_only_demo_admin(self):
-        from services.demo_accounts import cleanup_demo_accounts
+        from services.enterprise.demo_accounts import cleanup_demo_accounts
 
         mock_result = MagicMock()
         mock_result.rowcount = 1
@@ -169,7 +169,7 @@ class TestCleanupDemoAccounts:
 
     @pytest.mark.asyncio
     async def test_no_demos_returns_zero(self):
-        from services.demo_accounts import cleanup_demo_accounts
+        from services.enterprise.demo_accounts import cleanup_demo_accounts
 
         mock_result = MagicMock()
         mock_result.rowcount = 0
@@ -186,11 +186,11 @@ class TestEventDrivenCleanup:
 
     def setup_method(self):
         # Import to ensure the @bus.on(UserCreated) handler is registered
-        import services.demo_accounts  # noqa: F401
+        import services.enterprise.demo_accounts  # noqa: F401
 
     @pytest.mark.asyncio
     async def test_real_user_triggers_cleanup(self):
-        with patch("services.demo_accounts.cleanup_demo_accounts", new_callable=AsyncMock) as mock_cleanup:
+        with patch("services.enterprise.demo_accounts.cleanup_demo_accounts", new_callable=AsyncMock) as mock_cleanup:
             mock_db = AsyncMock()
             with patch("database.async_session") as mock_session_factory:
                 mock_session_factory.return_value.__aenter__ = AsyncMock(return_value=mock_db)
@@ -209,7 +209,7 @@ class TestEventDrivenCleanup:
 
     @pytest.mark.asyncio
     async def test_demo_user_does_not_trigger_cleanup(self):
-        with patch("services.demo_accounts.cleanup_demo_accounts", new_callable=AsyncMock) as mock_cleanup:
+        with patch("services.enterprise.demo_accounts.cleanup_demo_accounts", new_callable=AsyncMock) as mock_cleanup:
             await bus.emit(
                 UserCreated(
                     user_id="abc",

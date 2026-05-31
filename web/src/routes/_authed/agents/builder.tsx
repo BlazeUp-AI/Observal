@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const AgentBuilder = lazy(() => import("@/pages/registry/agents/builder"));
+const AgentBuilder = lazy(() => import("@/features/registry/pages/agents/builder"));
 
 export type AgentBuilderSearch = {
   edit?: string;

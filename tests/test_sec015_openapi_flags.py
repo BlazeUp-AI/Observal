@@ -5,7 +5,7 @@
 
 from unittest.mock import patch
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 
 
 class TestOpenAPIFlags:

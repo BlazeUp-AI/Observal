@@ -19,8 +19,8 @@ from database import async_session
 from models.agent import Agent, AgentStatus, AgentVersion
 from models.insight_report import InsightReport, InsightReportStatus
 from services.clickhouse import _query
-from services.redis import _get_arq_pool
-from services.secrets_redactor import redact_secrets
+from services.infra.redis import _get_arq_pool
+from services.ingest.secrets_redactor import redact_secrets
 
 logger = structlog.get_logger(__name__)
 
@@ -283,7 +283,7 @@ async def discover_and_queue_reports() -> int:
     if reaped:
         logger.info("insight_batch_reaped_stale", count=reaped)
 
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     if not ds.get_sync_bool("insights.batch_enabled", True):
         return 0

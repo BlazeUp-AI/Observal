@@ -46,7 +46,7 @@ class TestReadiness:
             with (
                 patch("main.HAS_LICENSE", False),
                 patch("services.clickhouse.clickhouse_health", new_callable=AsyncMock, return_value=True),
-                patch("services.redis.ping", new_callable=AsyncMock, return_value=True),
+                patch("services.infra.redis.ping", new_callable=AsyncMock, return_value=True),
             ):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     r = await ac.get("/health")
@@ -76,7 +76,7 @@ class TestReadiness:
             with (
                 patch("main.HAS_LICENSE", True),
                 patch("services.clickhouse.clickhouse_health", new_callable=AsyncMock, return_value=True),
-                patch("services.redis.ping", new_callable=AsyncMock, return_value=True),
+                patch("services.infra.redis.ping", new_callable=AsyncMock, return_value=True),
             ):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     r = await ac.get("/health")

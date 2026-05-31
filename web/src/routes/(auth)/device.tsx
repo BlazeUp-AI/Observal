@@ -5,7 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";
 
-const DevicePage = lazy(() => import("@/pages/device"));
+const DevicePage = lazy(() => import("@/features/auth/pages/device"));
 
 export type DeviceSearch = {
   code?: string;

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.deps import get_db, require_role
 from models.organization import Organization
 from models.user import User, UserRole
-from services.security_events import EventType, SecurityEvent, Severity, emit_security_event
+from services.security.security_events import EventType, SecurityEvent, Severity, emit_security_event
 
 from ._router import router
 
@@ -177,7 +177,7 @@ async def set_registered_agents_only(
         )
     )
     # Invalidate registry cache so all server instances pick up the change immediately
-    from services.agent_registry_cache import invalidate as invalidate_registry_cache
+    from services.registry.agent_registry_cache import invalidate as invalidate_registry_cache
 
     await invalidate_registry_cache()
     return {"registered_agents_only": org.registered_agents_only}
@@ -187,7 +187,7 @@ async def set_registered_agents_only(
 async def clear_cache(current_user: User = Depends(require_role(UserRole.admin))):
     """Clear all cached dashboard and OTEL responses."""
     optic.trace("user_id={}", current_user.id)
-    from services.cache import invalidate_all
+    from services.infra.cache import invalidate_all
 
     deleted = await invalidate_all()
     return {"cleared": deleted}

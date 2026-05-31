@@ -15,10 +15,10 @@ from loguru import logger as optic
 from jobs.catalog import batch_generate_insights, generate_insight_report, refresh_model_catalog
 from jobs.maintenance import maintain_clickhouse, sync_component_sources
 from logging_config import setup_logging
-from services.alert_evaluator import evaluate_alerts
-from services.optic import setup_optic
-from services.redis import parse_redis_settings
-from services.retention import run_retention_purge
+from services.enterprise.alert_evaluator import evaluate_alerts
+from services.infra.optic import setup_optic
+from services.infra.redis import parse_redis_settings
+from services.infra.retention import run_retention_purge
 
 setup_logging()
 setup_optic(mode="local")  # Worker always uses local mode for dev visibility

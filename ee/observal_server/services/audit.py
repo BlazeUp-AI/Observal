@@ -17,7 +17,7 @@ import uuid
 from datetime import UTC, datetime
 
 from services.clickhouse import insert_audit_log
-from services.events import (
+from services.infra.events import (
     AgentLifecycleEvent,
     AlertRuleChanged,
     AuditableAction,
@@ -29,7 +29,7 @@ from services.events import (
     UserDeleted,
     bus,
 )
-from services.request_context import get_request_context
+from services.infra.request_context import get_request_context
 
 logger = logging.getLogger("observal.ee.audit")
 

@@ -33,14 +33,14 @@ from ee.observal_server.services.scim_service import (
 )
 from models.scim_token import ScimToken
 from models.user import User, UserRole
-from services.events import UserCreated, UserDeleted, bus
-from services.security_events import (
+from services.enterprise.username_generator import generate_unique_username
+from services.infra.events import UserCreated, UserDeleted, bus
+from services.security.security_events import (
     EventType,
     SecurityEvent,
     Severity,
     emit_security_event,
 )
-from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.ee.scim")
 

@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-from services.agent_lock_file import compute_integrity_hash, generate_lock_file
 from services.ide import generate_all_ide_configs
+from services.registry.agent_lock_file import compute_integrity_hash, generate_lock_file
 
 # ── Lock file tests ──────────────────────────────────────────────
 

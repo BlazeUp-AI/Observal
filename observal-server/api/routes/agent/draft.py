@@ -14,10 +14,10 @@ from models.agent_component import AgentComponent
 from models.skill import SkillListing
 from models.user import User, UserRole
 from schemas.agent import AgentCreateRequest, AgentResponse, AgentUpdateRequest
-from services.config_generator import validate_mcp_command
-from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
-from services.ide_feature_inference import compute_supported_ides, infer_required_features
-from services.registry_telemetry import emit_registry_event
+from services.enterprise.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
+from services.enterprise.ide_feature_inference import compute_supported_ides, infer_required_features
+from services.registry.config_generator import validate_mcp_command
+from services.registry.registry_telemetry import emit_registry_event
 
 from ._router import router
 from .helpers import _agent_to_response, _load_agent, _resolve_component_names
@@ -110,7 +110,7 @@ async def save_draft(
     version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
 
     await db.flush()
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     version.yaml_snapshot = await build_yaml_snapshot(version, db)
 
@@ -228,7 +228,7 @@ async def update_draft(
 
     # Always rebuild the snapshot so reviewers see the latest state including
     # per-IDE model overrides, prompt edits, and component swaps.
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     version.yaml_snapshot = await build_yaml_snapshot(version, db)
 
@@ -312,7 +312,7 @@ async def submit_draft(
 
     # Validate components exist
     if agent.components:
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         errors = await validate_component_ids(
             [{"component_type": c.component_type, "component_id": c.component_id} for c in agent.components],
@@ -329,14 +329,14 @@ async def submit_draft(
             )
 
     # Scan for anti-gaming patterns before transitioning to pending
-    from services.anti_gaming import scan_for_gaming, summarize_flags
+    from services.security.anti_gaming import scan_for_gaming, summarize_flags
 
     if agent.latest_version:
         flags = scan_for_gaming(agent.latest_version.prompt)
         agent.latest_version.gaming_flags = summarize_flags(flags)
         # Defensive refresh - covers older drafts created before snapshot
         # backfill landed and guarantees the reviewer sees current state.
-        from services.agent_snapshot import build_yaml_snapshot
+        from services.registry.agent_snapshot import build_yaml_snapshot
 
         agent.latest_version.yaml_snapshot = await build_yaml_snapshot(agent.latest_version, db)
 
@@ -359,6 +359,6 @@ async def submit_draft(
     )
 
 
-from api.routes.agent_versions import agent_version_router  # noqa: E402
+from api.routes.registry.agent_versions import agent_version_router  # noqa: E402
 
 router.include_router(agent_version_router)

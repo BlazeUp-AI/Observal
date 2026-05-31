@@ -115,7 +115,7 @@ def _db_returning_one(obj):
 @pytest.mark.asyncio
 async def test_list_versions_empty():
     """list_agent_versions returns empty items when no versions exist."""
-    from api.routes.agent_versions import _list_agent_versions
+    from api.routes.registry.agent_versions import _list_agent_versions
 
     agent_id = str(uuid.uuid4())
     agent = _make_agent()
@@ -139,7 +139,7 @@ async def test_list_versions_empty():
 @pytest.mark.asyncio
 async def test_list_versions_with_data():
     """list_agent_versions returns version summaries with pagination metadata."""
-    from api.routes.agent_versions import _list_agent_versions
+    from api.routes.registry.agent_versions import _list_agent_versions
 
     agent = _make_agent()
     ver = _make_version(agent.id)
@@ -173,7 +173,7 @@ async def test_list_versions_with_data():
 @pytest.mark.asyncio
 async def test_list_versions_pagination():
     """list_agent_versions respects page/page_size parameters."""
-    from api.routes.agent_versions import _list_agent_versions
+    from api.routes.registry.agent_versions import _list_agent_versions
 
     agent = _make_agent()
 
@@ -206,7 +206,7 @@ async def test_list_versions_agent_not_found():
     """list_agent_versions raises 404 when agent doesn't exist."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _list_agent_versions
+    from api.routes.registry.agent_versions import _list_agent_versions
 
     with (
         patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=None)),
@@ -231,7 +231,7 @@ async def test_list_versions_agent_not_found():
 @pytest.mark.asyncio
 async def test_get_version_found():
     """get_agent_version returns full version detail when found."""
-    from api.routes.agent_versions import _get_agent_version
+    from api.routes.registry.agent_versions import _get_agent_version
 
     agent = _make_agent()
     ver = _make_version(agent.id)
@@ -257,7 +257,7 @@ async def test_get_version_not_found():
     """get_agent_version raises 404 when version doesn't exist."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _get_agent_version
+    from api.routes.registry.agent_versions import _get_agent_version
 
     agent = _make_agent()
     db = _db_returning_one(None)
@@ -284,7 +284,7 @@ async def test_get_version_not_found():
 @pytest.mark.asyncio
 async def test_create_version_happy_path():
     """create_agent_version creates a new AgentVersion and returns its data."""
-    from api.routes.agent_versions import _create_agent_version
+    from api.routes.registry.agent_versions import _create_agent_version
     from schemas.agent import AgentVersionCreateRequest
 
     owner_id = uuid.uuid4()
@@ -321,7 +321,7 @@ async def test_create_version_happy_path():
         patch("api.routes.agent_versions.compute_supported_ides", return_value=["claude-code"]),
         patch("api.routes.agent_versions.generate_agent_config", return_value={"mcpServers": {}}),
         patch("api.routes.agent_versions.audit", new=AsyncMock()),
-        patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
+        patch("services.registry.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
     ):
         result = await _create_agent_version(
             agent_id=str(agent.id),
@@ -341,7 +341,7 @@ async def test_create_version_bad_semver():
     """create_agent_version raises 422 for an invalid semver string."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _create_agent_version
+    from api.routes.registry.agent_versions import _create_agent_version
 
     # AgentVersionCreateRequest validates semver inline via field_validator,
     # so we need to mock that validation passes and let the route reject it.
@@ -374,7 +374,7 @@ async def test_create_version_duplicate_409():
     """create_agent_version raises 409 if the version already exists."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _create_agent_version
+    from api.routes.registry.agent_versions import _create_agent_version
     from schemas.agent import AgentVersionCreateRequest
 
     owner_id = uuid.uuid4()
@@ -410,7 +410,7 @@ async def test_create_version_not_owner_403():
     """create_agent_version raises 403 if the caller is not the agent owner."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _create_agent_version
+    from api.routes.registry.agent_versions import _create_agent_version
     from schemas.agent import AgentVersionCreateRequest
 
     owner_id = uuid.uuid4()
@@ -440,7 +440,7 @@ async def test_create_version_not_owner_403():
 @pytest.mark.asyncio
 async def test_create_version_co_author_allowed():
     """create_agent_version succeeds for a co-maintainer (not just owner)."""
-    from api.routes.agent_versions import _create_agent_version
+    from api.routes.registry.agent_versions import _create_agent_version
     from schemas.agent import AgentVersionCreateRequest
 
     owner_id = uuid.uuid4()
@@ -476,7 +476,7 @@ async def test_create_version_co_author_allowed():
         patch("api.routes.agent_versions.compute_supported_ides", return_value=[]),
         patch("api.routes.agent_versions.generate_agent_config", return_value={}),
         patch("api.routes.agent_versions.audit", new=AsyncMock()),
-        patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
+        patch("services.registry.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
     ):
         result = await _create_agent_version(
             agent_id=str(agent.id),
@@ -492,7 +492,7 @@ async def test_create_version_co_author_allowed():
 @pytest.mark.asyncio
 async def test_create_version_warns_multiple_pending():
     """create_agent_version includes warning when other pending versions exist."""
-    from api.routes.agent_versions import _create_agent_version
+    from api.routes.registry.agent_versions import _create_agent_version
     from schemas.agent import AgentVersionCreateRequest
 
     owner_id = uuid.uuid4()
@@ -525,7 +525,7 @@ async def test_create_version_warns_multiple_pending():
         patch("api.routes.agent_versions.compute_supported_ides", return_value=[]),
         patch("api.routes.agent_versions.generate_agent_config", return_value={}),
         patch("api.routes.agent_versions.audit", new=AsyncMock()),
-        patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
+        patch("services.registry.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
     ):
         result = await _create_agent_version(
             agent_id=str(agent.id),
@@ -546,7 +546,7 @@ async def test_create_version_warns_multiple_pending():
 @pytest.mark.asyncio
 async def test_review_version_approve_updates_latest():
     """Approving a pending version sets agent.latest_version_id."""
-    from api.routes.agent_versions import _review_agent_version
+    from api.routes.registry.agent_versions import _review_agent_version
     from schemas.agent import AgentVersionReviewRequest
 
     owner_id = uuid.uuid4()
@@ -583,7 +583,7 @@ async def test_review_version_approve_updates_latest():
 @pytest.mark.asyncio
 async def test_review_version_reject_stores_reason():
     """Rejecting a pending version stores the rejection reason."""
-    from api.routes.agent_versions import _review_agent_version
+    from api.routes.registry.agent_versions import _review_agent_version
     from schemas.agent import AgentVersionReviewRequest
 
     owner_id = uuid.uuid4()
@@ -621,7 +621,7 @@ async def test_review_version_non_pending_422():
     """Reviewing a non-pending version raises 422."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _review_agent_version
+    from api.routes.registry.agent_versions import _review_agent_version
     from schemas.agent import AgentVersionReviewRequest
 
     owner_id = uuid.uuid4()
@@ -656,7 +656,7 @@ async def test_review_version_not_found_404():
     """Reviewing a non-existent version raises 404."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _review_agent_version
+    from api.routes.registry.agent_versions import _review_agent_version
     from schemas.agent import AgentVersionReviewRequest
 
     agent = _make_agent()
@@ -688,7 +688,7 @@ async def test_review_version_not_found_404():
 @pytest.mark.asyncio
 async def test_get_ide_config_from_cache():
     """get_agent_ide_config returns ide_configs[ide] when pre-generated."""
-    from api.routes.agent_versions import _get_agent_ide_config
+    from api.routes.registry.agent_versions import _get_agent_ide_config
 
     agent = _make_agent()
     ver = _make_version(agent.id)
@@ -712,7 +712,7 @@ async def test_get_ide_config_404_when_not_cached():
     """get_agent_ide_config raises 404 when IDE config is not pre-generated."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _get_agent_ide_config
+    from api.routes.registry.agent_versions import _get_agent_ide_config
 
     agent = _make_agent()
     ver = _make_version(agent.id)
@@ -743,7 +743,7 @@ async def test_get_ide_config_404_when_not_cached():
 @pytest.mark.asyncio
 async def test_diff_versions_returns_yaml_diff():
     """get_version_diff returns unified diff and component_changes."""
-    from api.routes.agent_versions import _get_version_diff
+    from api.routes.registry.agent_versions import _get_version_diff
 
     agent = _make_agent()
     ver1 = _make_version(agent.id, ver="1.0.0")
@@ -784,7 +784,7 @@ async def test_diff_versions_returns_yaml_diff():
 @pytest.mark.asyncio
 async def test_diff_versions_structural_when_no_snapshot():
     """get_version_diff falls back to structural diff when yaml_snapshot is None."""
-    from api.routes.agent_versions import _get_version_diff
+    from api.routes.registry.agent_versions import _get_version_diff
 
     agent = _make_agent()
     ver1 = _make_version(agent.id, ver="1.0.0")

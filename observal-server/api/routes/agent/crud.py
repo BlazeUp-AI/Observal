@@ -33,9 +33,9 @@ from schemas.agent import (
     AgentSummary,
     AgentUpdateRequest,
 )
-from services.config_generator import validate_mcp_command
-from services.ide_feature_inference import compute_supported_ides, infer_required_features
-from services.registry_telemetry import emit_registry_event
+from services.enterprise.ide_feature_inference import compute_supported_ides, infer_required_features
+from services.registry.config_generator import validate_mcp_command
+from services.registry.registry_telemetry import emit_registry_event
 
 from ._router import router
 from .helpers import (
@@ -65,7 +65,7 @@ async def create_agent(
 
     # Validate new components field (component_type already validated by Pydantic Literal)
     if req.components:
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         errors = await validate_component_ids(
             [{"component_type": c.component_type, "component_id": c.component_id} for c in req.components],
@@ -181,7 +181,7 @@ async def create_agent(
     # Flush pending AgentComponent + goal rows so the snapshot builder picks
     # them up via its own SELECTs (the relationship cache is empty).
     await db.flush()
-    from services.agent_snapshot import build_yaml_snapshot
+    from services.registry.agent_snapshot import build_yaml_snapshot
 
     version.yaml_snapshot = await build_yaml_snapshot(version, db)
 
@@ -459,7 +459,7 @@ async def version_suggestions(
         raise HTTPException(status_code=404, detail="Agent not found")
     if get_effective_agent_permission(agent, current_user) == "none":
         raise HTTPException(status_code=403, detail="Insufficient permissions to view this agent")
-    from services.versioning import suggest_versions
+    from services.registry.versioning import suggest_versions
 
     return {"current": agent.version, "suggestions": suggest_versions(agent.version)}
 
@@ -484,7 +484,7 @@ async def update_agent(
         raise HTTPException(status_code=403, detail="Not the agent owner or editor")
 
     if req.version_bump_type and req.version is None:
-        from services.versioning import bump_version
+        from services.registry.versioning import bump_version
 
         req.version = bump_version(agent.version, req.version_bump_type)
 
@@ -516,7 +516,7 @@ async def update_agent(
 
     if req.components is not None:
         # New components field replaces ALL components (type validated by Pydantic Literal)
-        from services.agent_resolver import validate_component_ids
+        from services.registry.agent_resolver import validate_component_ids
 
         if not agent.latest_version:
             raise HTTPException(status_code=400, detail="Agent has no version to update components on")

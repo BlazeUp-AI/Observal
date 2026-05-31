@@ -5,7 +5,7 @@
 import type { ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 
 interface DashboardCardProps {
   title: ReactNode;

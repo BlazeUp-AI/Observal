@@ -19,7 +19,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 @pytest.fixture(autouse=True, scope="module")
 def init_key_manager_for_module(tmp_path_factory):
     """Ensure the asymmetric key manager is initialised for all tests in this module."""
-    from services.crypto import init_key_manager
+    from services.security.crypto import init_key_manager
 
     key_dir = tmp_path_factory.mktemp("keys")
     init_key_manager(key_dir=str(key_dir), key_password=None)
@@ -93,7 +93,7 @@ class TestRefreshRedisDown:
 
     @pytest.mark.asyncio
     async def test_refresh_returns_503_when_redis_down(self):
-        from services.jwt_service import create_refresh_token
+        from services.security.jwt_service import create_refresh_token
 
         mock_user = _make_mock_user()
         refresh_tok, _ = create_refresh_token(mock_user.id, mock_user.role)
@@ -121,7 +121,7 @@ class TestRevokeRedisDown:
 
     @pytest.mark.asyncio
     async def test_revoke_returns_503_when_redis_down(self):
-        from services.jwt_service import create_refresh_token
+        from services.security.jwt_service import create_refresh_token
 
         mock_user = _make_mock_user()
         refresh_tok, _ = create_refresh_token(mock_user.id, mock_user.role)

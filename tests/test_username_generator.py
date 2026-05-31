@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from models.base import Base
 from models.user import User
-from services.username_generator import generate_unique_username
+from services.enterprise.username_generator import generate_unique_username
 
 USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9\-]{1,30}[a-z0-9]$")
 

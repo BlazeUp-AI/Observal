@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const TraceDetail = lazy(() => import("@/pages/user/traces/detail"));
+const TraceDetail = lazy(() => import("@/features/traces/pages/detail"));
 
 export const Route = createFileRoute("/_authed/_user/traces/$traceId")({
   component: TraceDetail,

@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from services.crypto import (
+from services.security.crypto import (
     KeyManager,
     _b64url,
     _b64url_decode,
@@ -339,7 +339,7 @@ class TestSingleton:
         assert get_key_manager() is km
 
     def test_get_before_init_raises(self, monkeypatch):
-        import services.crypto as mod
+        import services.security.crypto as mod
 
         monkeypatch.setattr(mod, "_key_manager", None)
         with pytest.raises(RuntimeError, match="not initialized"):
@@ -374,7 +374,7 @@ class TestJWKSEndpoint:
     @pytest.fixture()
     def jwks_app(self, tmp_key_dir):
         """Build a minimal FastAPI app with just the JWKS route."""
-        import services.crypto as crypto_mod
+        import services.security.crypto as crypto_mod
 
         init_key_manager(key_dir=tmp_key_dir)
 

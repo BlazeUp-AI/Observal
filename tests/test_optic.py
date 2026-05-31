@@ -24,9 +24,9 @@ class TestServerOptic:
 
     def test_setup_local_mode_adds_stderr_and_file_sinks(self, tmp_path: Path):
         """In dev mode, setup_optic adds console (INFO+) and file (DEBUG+) sinks."""
-        from services.optic import setup_optic
+        from services.infra.optic import setup_optic
 
-        with patch("services.optic.Path.home", return_value=tmp_path):
+        with patch("services.infra.optic.Path.home", return_value=tmp_path):
             setup_optic(mode="dev")
 
         # Verify file sink directory was created
@@ -42,7 +42,7 @@ class TestServerOptic:
 
     def test_setup_enterprise_mode_no_debug_output(self, capsys):
         """In prod mode, DEBUG messages are suppressed."""
-        from services.optic import setup_optic
+        from services.infra.optic import setup_optic
 
         setup_optic(mode="prod")
 
@@ -55,7 +55,7 @@ class TestServerOptic:
 
     def test_setup_removes_default_sink(self):
         """setup_optic removes loguru's default stderr sink first."""
-        from services.optic import setup_optic
+        from services.infra.optic import setup_optic
 
         # Add a default-like sink
         logger.add(sys.stderr)

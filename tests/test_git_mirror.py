@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from services.git_mirror_service import (
+from services.enterprise.git_mirror_service import (
     _mirror_path,
     _parse_manifest,
     _safe_path,

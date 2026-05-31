@@ -8,11 +8,11 @@ from loguru import logger as optic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from api.deps import get_db, require_role
 from models.user import User, UserRole
 from schemas.retention import RetentionConfigResponse, RetentionConfigUpdate
-from services.security_events import EventType, SecurityEvent, Severity, emit_security_event
+from services.security.security_events import EventType, SecurityEvent, Severity, emit_security_event
 
 from ._router import router
 from .helpers import _get_user_org

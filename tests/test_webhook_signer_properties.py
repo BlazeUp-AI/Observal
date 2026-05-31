@@ -12,7 +12,7 @@ from unittest.mock import patch
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from services.webhook_signer import sign_payload, verify_signature
+from services.enterprise.webhook_signer import sign_payload, verify_signature
 
 # Strategy for valid secrets (non-empty strings)
 secrets_st = st.text(min_size=1, max_size=128, alphabet=st.characters(categories=("L", "N", "P")))
@@ -31,7 +31,7 @@ class TestProperty1SigningRoundTrip:
         """Signing round-trip: sign then verify returns True within tolerance."""
         sig = sign_payload(secret, timestamp, body)
         # Patch time to be exactly at the timestamp so it's within tolerance
-        with patch("services.webhook_signer.time") as mock_time:
+        with patch("services.enterprise.webhook_signer.time") as mock_time:
             mock_time.time.return_value = timestamp
             assert verify_signature(secret, sig, timestamp, body) is True
 

@@ -61,7 +61,7 @@ async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 16384) -> 
     """Call AWS Bedrock Converse API."""
     import asyncio
 
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     aws_region = await ds.get("insights.aws_region")
     aws_access_key = await ds.get("insights.aws_access_key_id")
@@ -118,7 +118,7 @@ async def _call_bedrock(prompt: str, model_id: str, max_tokens: int = 16384) -> 
 
 async def _call_openai_compatible(prompt: str, model: str, provider: str = "") -> dict:
     """Call an OpenAI-compatible API."""
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     model_url = await ds.get("insights.model_url")
     model_key = await ds.get("insights.model_api_key")
@@ -149,7 +149,7 @@ async def call_model(prompt: str, model_override: str | None = None, max_tokens:
         model_override: Optional model ID to use instead of the default.
         max_tokens: Maximum output tokens (default 16384).
     """
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     # Use override, or fall back to sections model as the default
     model = model_override or await ds.get("insights.model_sections")
@@ -173,9 +173,10 @@ async def call_model(prompt: str, model_override: str | None = None, max_tokens:
 def licensed_features() -> list[str]:
     """Return licensed enterprise feature list (for /config endpoint)."""
     try:
-        from ee.license import licensed_features as _lf
+        import importlib
 
-        return _lf()
+        _ee_license = importlib.import_module("ee.license")
+        return _ee_license.licensed_features()
     except (ImportError, RuntimeError):
         return []
 

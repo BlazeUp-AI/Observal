@@ -12,14 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.redis import close, get_redis, publish
+from services.infra.redis import close, get_redis, publish
 
 # --- Redis client ---
 
 
 class TestGetRedis:
     def test_returns_redis_instance(self):
-        with patch("services.redis.aioredis.ConnectionPool.from_url") as mock_pool:
+        with patch("services.infra.redis.aioredis.ConnectionPool.from_url") as mock_pool:
             mock_pool.return_value = MagicMock()
             r = get_redis()
             assert r is not None
@@ -32,7 +32,7 @@ class TestPublish:
     @pytest.mark.asyncio
     async def test_publishes_json(self):
         mock_redis = AsyncMock()
-        with patch("services.redis.get_redis", return_value=mock_redis):
+        with patch("services.infra.redis.get_redis", return_value=mock_redis):
             await publish("test:channel", {"key": "value"})
             mock_redis.publish.assert_called_once_with("test:channel", json.dumps({"key": "value"}))
 
@@ -40,7 +40,7 @@ class TestPublish:
     async def test_silent_on_error(self):
         mock_redis = AsyncMock()
         mock_redis.publish.side_effect = ConnectionError("connection refused")
-        with patch("services.redis.get_redis", return_value=mock_redis):
+        with patch("services.infra.redis.get_redis", return_value=mock_redis):
             await publish("ch", {})  # should not raise
 
 
@@ -51,7 +51,7 @@ class TestClose:
     @pytest.mark.asyncio
     async def test_disconnects_pool(self):
         mock_pool = AsyncMock()
-        with patch("services.redis._pool", mock_pool):
+        with patch("services.infra.redis._pool", mock_pool):
             await close()
 
 

@@ -36,7 +36,7 @@ from models.mcp import ListingStatus
 from models.prompt import PromptListing, PromptVersion
 from models.skill import SkillListing, SkillVersion
 from models.user import User
-from services.versioning import bump_version
+from services.registry.versioning import bump_version
 
 # Separator appended before auto-generated additions to the system prompt
 _SELF_LEARN_SEPARATOR = "\n\n# ── Auto-learned from Insights ──\n"

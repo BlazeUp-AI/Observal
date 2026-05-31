@@ -245,7 +245,7 @@ async def test_install_agent_no_latest_version_returns_400():
         patch("api.routes.agent.install._load_agent", new=AsyncMock(return_value=agent)),
         patch("api.routes.agent.install.get_effective_agent_permission", return_value="owner"),
         patch("api.routes.agent.install.audit", new=AsyncMock()),
-        patch("services.download_tracker.record_agent_download", new=AsyncMock()),
+        patch("services.registry.download_tracker.record_agent_download", new=AsyncMock()),
         pytest.raises(HTTPException) as exc,
     ):
         await install_agent(
@@ -291,7 +291,7 @@ async def test_install_agent_with_approved_version_succeeds():
         patch("api.routes.agent.install.emit_registry_event"),
         patch("api.routes.agent.install.audit", new=AsyncMock()),
         patch("api.routes.config.derive_endpoints", return_value={"api": "http://localhost:8000", "otlp_http": ""}),
-        patch("services.download_tracker.record_agent_download", new=AsyncMock()),
+        patch("services.registry.download_tracker.record_agent_download", new=AsyncMock()),
     ):
         result = await install_agent(
             agent_id=str(agent.id),

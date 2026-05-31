@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { useAuthGuard, useOptionalAuth } from "@/hooks/use-auth";
+import { useAuthGuard, useOptionalAuth } from "@/features/auth/hooks";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { ready } = useAuthGuard();
@@ -13,7 +13,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Allows unauthenticated browsing — renders children regardless of auth state.
+ * Allows unauthenticated browsing: renders children regardless of auth state.
  * Resolves role for authenticated users so sidebar can show/hide admin items.
  */
 export function OptionalAuthGuard({ children }: { children: React.ReactNode }) {

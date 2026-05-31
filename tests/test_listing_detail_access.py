@@ -139,15 +139,15 @@ ENDPOINTS = [
 
 def _get_router(route_type):
     if route_type == "mcp":
-        from api.routes.mcp import router
+        from api.routes.registry.mcp import router
     elif route_type == "prompt":
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
     elif route_type == "skill":
-        from api.routes.skill import router
+        from api.routes.registry.skill import router
     elif route_type == "hook":
-        from api.routes.hook import router
+        from api.routes.registry.hook import router
     elif route_type == "sandbox":
-        from api.routes.sandbox import router
+        from api.routes.registry.sandbox import router
     else:
         raise ValueError(f"Unknown route type: {route_type}")
     return router

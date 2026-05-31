@@ -16,7 +16,7 @@ from pydantic import BaseModel, field_validator
 
 from models.agent import AgentStatus
 from schemas.constants import AGENT_NAME_REGEX, make_name_validator
-from services.versioning import validate_semver
+from services.registry.versioning import validate_semver
 
 VALID_COMPONENT_TYPES = {"mcp", "skill", "hook", "prompt", "sandbox"}
 

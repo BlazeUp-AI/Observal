@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from services.request_context import set_request_context
+from services.infra.request_context import set_request_context
 
 if TYPE_CHECKING:
     from starlette.requests import Request

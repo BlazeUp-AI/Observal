@@ -17,7 +17,7 @@ import pytest
 
 @pytest.fixture(autouse=True, scope="module")
 def init_key_manager(tmp_path_factory):
-    from services.crypto import init_key_manager
+    from services.security.crypto import init_key_manager
 
     key_dir = tmp_path_factory.mktemp("keys")
     init_key_manager(key_dir=str(key_dir), key_password=None)
@@ -31,7 +31,7 @@ def test_access_token_is_es256():
     import jwt as pyjwt
 
     from models.user import UserRole
-    from services.jwt_service import create_access_token
+    from services.security.jwt_service import create_access_token
 
     token, _ = create_access_token(uuid.uuid4(), UserRole.user)
     header = pyjwt.get_unverified_header(token)
@@ -44,7 +44,7 @@ def test_refresh_token_is_es256():
     import jwt as pyjwt
 
     from models.user import UserRole
-    from services.jwt_service import create_refresh_token
+    from services.security.jwt_service import create_refresh_token
 
     token, _ = create_refresh_token(uuid.uuid4(), UserRole.user)
     header = pyjwt.get_unverified_header(token)
@@ -56,8 +56,8 @@ def test_token_verifiable_with_public_key():
     import jwt as pyjwt
 
     from models.user import UserRole
-    from services.crypto import get_key_manager
-    from services.jwt_service import create_access_token, decode_access_token
+    from services.security.crypto import get_key_manager
+    from services.security.jwt_service import create_access_token, decode_access_token
 
     token, _ = create_access_token(uuid.uuid4(), UserRole.user)
 
@@ -76,7 +76,7 @@ def test_hs256_token_rejected():
     import jwt as pyjwt
 
     from config import settings
-    from services.jwt_service import decode_access_token
+    from services.security.jwt_service import decode_access_token
 
     old_token = pyjwt.encode(
         {"sub": str(uuid.uuid4()), "type": "access", "role": "user", "jti": "x", "groups": []},
@@ -89,7 +89,7 @@ def test_hs256_token_rejected():
 
 def test_jwks_alg_matches_issued_tokens():
     """JWKS advertises ES256, matching what tokens are actually signed with."""
-    from services.crypto import get_key_manager
+    from services.security.crypto import get_key_manager
 
     jwks = get_key_manager().get_jwks()
     assert len(jwks["keys"]) > 0
@@ -106,7 +106,7 @@ async def test_revoked_user_key_blocks_authentication():
     """revoked_user:{user_id} in Redis causes authentication to return None."""
     from api.deps import _authenticate_via_jwt
     from models.user import UserRole
-    from services.jwt_service import create_access_token
+    from services.security.jwt_service import create_access_token
 
     user_id = uuid.uuid4()
     token, _ = create_access_token(user_id, UserRole.user)
@@ -128,7 +128,7 @@ async def test_jti_revocation_still_blocks():
     """revoked_jti:{jti} still blocks authentication (existing behavior preserved)."""
     from api.deps import _authenticate_via_jwt
     from models.user import UserRole
-    from services.jwt_service import create_access_token
+    from services.security.jwt_service import create_access_token
 
     user_id = uuid.uuid4()
     token, _ = create_access_token(user_id, UserRole.user)
@@ -154,7 +154,7 @@ async def test_redis_down_blocks_authentication():
 
     from api.deps import _authenticate_via_jwt
     from models.user import UserRole
-    from services.jwt_service import create_access_token
+    from services.security.jwt_service import create_access_token
 
     user_id = uuid.uuid4()
     token, _ = create_access_token(user_id, UserRole.user)

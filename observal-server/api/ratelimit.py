@@ -6,7 +6,7 @@
 from slowapi import Limiter
 from starlette.requests import Request
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from config import settings
 
 

@@ -23,8 +23,8 @@ from schemas.admin import (
     UserDepartmentUpdate,
     UserRoleUpdate,
 )
-from services.security_events import EventType, SecurityEvent, Severity, emit_security_event
-from services.username_generator import generate_unique_username
+from services.enterprise.username_generator import generate_unique_username
+from services.security.security_events import EventType, SecurityEvent, Severity, emit_security_event
 
 from ._router import router
 from .helpers import _generate_unique_password
@@ -249,7 +249,7 @@ async def reset_user_password(
     await db.commit()
 
     try:
-        from services.redis import get_redis
+        from services.infra.redis import get_redis
 
         redis = get_redis()
         await redis.setex(f"must_change_password:{user.id}", 86400, "1")

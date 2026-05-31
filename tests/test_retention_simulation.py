@@ -46,8 +46,8 @@ sys.modules.setdefault("models.agent", MagicMock())
 sys.modules.setdefault("models.insight_report", MagicMock())
 
 # Now import the module under test
-import services.retention  # noqa: E402
-from services.retention import (  # noqa: E402
+import services.infra.retention  # noqa: E402
+from services.infra.retention import (  # noqa: E402
     SCORE_TABLE,
     TIME_PURGE_TABLES,
     _purge_count_based,

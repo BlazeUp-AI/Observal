@@ -37,7 +37,7 @@ async def test_delete_batch_uses_parameterized_query():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response()
 
-        from services.retention import _delete_batch
+        from services.infra.retention import _delete_batch
 
         await _delete_batch("traces", "start_time", "test-project-id", "2026-04-01 00:00:00.000")
 
@@ -59,7 +59,7 @@ async def test_purge_time_based_correct_columns():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response()
 
-        from services.retention import TIME_PURGE_TABLES, _purge_time_based
+        from services.infra.retention import TIME_PURGE_TABLES, _purge_time_based
 
         await _purge_time_based("pid", "2026-04-27 00:00:00.000", TIME_PURGE_TABLES)
 
@@ -80,7 +80,7 @@ async def test_session_stats_orphan_cleanup():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response()
 
-        from services.retention import _purge_session_stats_orphans
+        from services.infra.retention import _purge_session_stats_orphans
 
         await _purge_session_stats_orphans("test-pid")
 
@@ -103,7 +103,7 @@ async def test_count_based_purge_uses_daily_aggregation():
             ]
         )
 
-        from services.retention import _purge_count_based
+        from services.infra.retention import _purge_count_based
 
         await _purge_count_based("test-pid", 1500)
 
@@ -121,7 +121,7 @@ async def test_has_data_check():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(data=[{"1": 1}])
 
-        from services.retention import _has_data
+        from services.infra.retention import _has_data
 
         result = await _has_data("test-pid")
 
@@ -139,7 +139,7 @@ async def test_has_data_returns_false_when_empty():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(data=[])
 
-        from services.retention import _has_data
+        from services.infra.retention import _has_data
 
         result = await _has_data("empty-pid")
         assert result is False

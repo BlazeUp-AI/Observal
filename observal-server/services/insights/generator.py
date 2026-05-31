@@ -131,7 +131,7 @@ async def _run_pipeline(
     logger.info("insight_transcripts_built", count=len(transcripts))
 
     # ── Step 3: Extract facets (concurrency-limited Haiku calls) ──────────
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     max_concurrent = int(await ds.get("insights.facet_concurrency") or 5)
 

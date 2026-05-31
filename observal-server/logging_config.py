@@ -25,7 +25,7 @@ def _ring_buffer_processor(
     touching the filesystem.
     """
     try:
-        from services.log_buffer import get_log_buffer
+        from services.ingest.log_buffer import get_log_buffer
 
         buf = get_log_buffer()
         entry = dict(event_dict)

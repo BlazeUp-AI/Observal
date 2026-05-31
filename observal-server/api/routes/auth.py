@@ -24,7 +24,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode, require_password_auth
 from api.ratelimit import limiter
 from config import settings
@@ -43,16 +43,21 @@ from schemas.auth import (
     UsernameUpdateRequest,
     UserResponse,
 )
-from services.jwt_service import create_access_token, create_refresh_token, decode_access_token, decode_refresh_token
-from services.redis import get_redis
-from services.security_events import (
+from services.enterprise.username_generator import generate_unique_username
+from services.infra.redis import get_redis
+from services.security.jwt_service import (
+    create_access_token,
+    create_refresh_token,
+    decode_access_token,
+    decode_refresh_token,
+)
+from services.security.security_events import (
     EventType,
     SecurityEvent,
     Severity,
     _extract_request_info,
     emit_security_event,
 )
-from services.username_generator import generate_unique_username
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

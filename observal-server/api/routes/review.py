@@ -28,9 +28,9 @@ from models.sandbox import SandboxListing, SandboxVersion
 from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
-from services.cache import invalidate_namespace
-from services.editing_lock import is_actively_editing
-from services.redis import publish as redis_publish
+from services.enterprise.editing_lock import is_actively_editing
+from services.infra.cache import invalidate_namespace
+from services.infra.redis import publish as redis_publish
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
@@ -654,7 +654,7 @@ async def approve_agent(
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
     optic.trace("agent_id={}, req={}", agent_id, req)
-    from services.versioning import parse_semver
+    from services.registry.versioning import parse_semver
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:

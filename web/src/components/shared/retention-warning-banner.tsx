@@ -5,9 +5,9 @@
 import { useState, useSyncExternalStore } from "react";
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, X } from "lucide-react";
-import { useRetentionWarnings } from "@/hooks/use-api";
-import { hasMinRole } from "@/hooks/use-role-guard";
-import { getUserRole } from "@/lib/api";
+import { useRetentionWarnings } from "@/features/admin/hooks";
+import { hasMinRole } from "@/shared/hooks/use-role-guard";
+import { getUserRole } from "@/shared/api-client";
 
 const subscribe = () => () => {};
 function getSnapshot() {

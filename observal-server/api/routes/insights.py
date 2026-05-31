@@ -25,8 +25,8 @@ from schemas.insights import (
     InsightReportListItem,
     InsightReportResponse,
 )
+from services.infra.redis import _get_arq_pool
 from services.insights import INSIGHTS_AVAILABLE, render_report_html
-from services.redis import _get_arq_pool
 
 router = APIRouter(prefix="/api/v1/insights", tags=["insights"])
 
@@ -43,7 +43,7 @@ def _require_insights():
 @router.get("/status")
 async def insights_status(current_user: User = Depends(require_role(UserRole.admin))):
     """Return whether insights is available and properly configured."""
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     if not INSIGHTS_AVAILABLE:
         return {"available": False, "reason": "Insights requires an enterprise license."}
@@ -400,7 +400,7 @@ async def apply_report_suggestions(
     _require_insights()
 
     # Check feature toggle
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     enabled = await ds.get_bool("insights.self_learn_enabled", default=True)
     if not enabled:

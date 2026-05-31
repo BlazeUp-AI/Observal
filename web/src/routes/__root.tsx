@@ -4,8 +4,8 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "@/lib/theme";
-import { makeQueryClient } from "@/lib/query-client";
+import { ThemeProvider } from "@/shared/lib/theme";
+import { makeQueryClient } from "@/shared/lib/query-client";
 import { DynamicTitle } from "@/components/dynamic-title";
 import { VersionMismatchBanner } from "@/components/shared/version-mismatch-banner";
 import "@/app.css";

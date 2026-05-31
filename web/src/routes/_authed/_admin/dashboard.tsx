@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const DashboardPage = lazy(() => import("@/pages/admin/dashboard/index"));
+const DashboardPage = lazy(() => import("@/features/dashboard/pages/index"));
 
 export type DashboardSearch = {
   tab?: string;

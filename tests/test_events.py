@@ -5,7 +5,7 @@
 
 import pytest
 
-from services.events import (
+from services.infra.events import (
     Event,
     EventBus,
     LoginFailure,

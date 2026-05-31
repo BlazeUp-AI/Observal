@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from config import Settings
 
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 
 
 def validate_enterprise_config(settings: Settings) -> list[str]:

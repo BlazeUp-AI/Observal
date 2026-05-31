@@ -701,7 +701,7 @@ class TestCollectLogs:
         mock_buffer = MagicMock()
         mock_buffer.get_since.return_value = entries
 
-        with patch("services.log_buffer.get_log_buffer", return_value=mock_buffer):
+        with patch("services.ingest.log_buffer.get_log_buffer", return_value=mock_buffer):
             result = await _collect_logs("1h")
 
         assert "lines" in result
@@ -713,7 +713,7 @@ class TestCollectLogs:
         mock_buffer = MagicMock()
         mock_buffer.get_since.return_value = []
 
-        with patch("services.log_buffer.get_log_buffer", return_value=mock_buffer):
+        with patch("services.ingest.log_buffer.get_log_buffer", return_value=mock_buffer):
             result = await _collect_logs("1h")
 
         assert result["lines"] == []
@@ -724,7 +724,7 @@ class TestCollectLogs:
         # Simulate ImportError by temporarily removing the module from sys.modules
         # and making the import fail
 
-        with patch.dict("sys.modules", {"services.log_buffer": None}):
+        with patch.dict("sys.modules", {"services.ingest.log_buffer": None}):
             result = await _collect_logs("1h")
 
         assert result["lines"] == []
@@ -744,7 +744,7 @@ class TestCollectLogs:
         mock_buffer = MagicMock()
         mock_buffer.get_since.return_value = entries
 
-        with patch("services.log_buffer.get_log_buffer", return_value=mock_buffer):
+        with patch("services.ingest.log_buffer.get_log_buffer", return_value=mock_buffer):
             result = await _collect_logs("1h")
 
         line = result["lines"][0]
@@ -765,7 +765,7 @@ class TestCollectLogs:
         mock_buffer = MagicMock()
         mock_buffer.get_since.return_value = entries
 
-        with patch("services.log_buffer.get_log_buffer", return_value=mock_buffer):
+        with patch("services.ingest.log_buffer.get_log_buffer", return_value=mock_buffer):
             result = await _collect_logs("1h")
 
         # Should be converted to string, not raise
@@ -1092,7 +1092,7 @@ class TestCollectLogsRedaction:
         mock_buffer = MagicMock()
         mock_buffer.get_since.return_value = entries
 
-        with patch("services.log_buffer.get_log_buffer", return_value=mock_buffer):
+        with patch("services.ingest.log_buffer.get_log_buffer", return_value=mock_buffer):
             result = await _collect_logs("1h")
 
         import json
@@ -1113,7 +1113,7 @@ class TestCollectLogsRedaction:
         mock_buffer = MagicMock()
         mock_buffer.get_since.return_value = entries
 
-        with patch("services.log_buffer.get_log_buffer", return_value=mock_buffer):
+        with patch("services.ingest.log_buffer.get_log_buffer", return_value=mock_buffer):
             result = await _collect_logs("1h")
 
         import json

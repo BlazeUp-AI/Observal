@@ -74,7 +74,7 @@ def _make_user(role_value="user"):
 
 
 def _get_factory():
-    from api.routes.component_versions import create_version_router
+    from api.routes.registry.component_versions import create_version_router
 
     return create_version_router
 
@@ -85,7 +85,7 @@ def _get_factory():
 
 
 def test_semver_pattern_matches_valid():
-    from api.routes.component_versions import SEMVER_RE
+    from api.routes.registry.component_versions import SEMVER_RE
 
     assert SEMVER_RE.match(SEMVER_VALID)
     assert SEMVER_RE.match(SEMVER_VALID_PRE)
@@ -94,7 +94,7 @@ def test_semver_pattern_matches_valid():
 
 
 def test_semver_pattern_rejects_invalid():
-    from api.routes.component_versions import SEMVER_RE
+    from api.routes.registry.component_versions import SEMVER_RE
 
     assert not SEMVER_RE.match(SEMVER_INVALID)
     assert not SEMVER_RE.match("1.2")
@@ -155,7 +155,7 @@ def _db_returning_one(obj):
 @pytest.mark.asyncio
 async def test_list_versions_empty():
     """list_versions returns empty list when no versions exist."""
-    from api.routes.component_versions import _list_versions
+    from api.routes.registry.component_versions import _list_versions
     from models.mcp import McpListing, McpVersion
 
     listing_id = str(uuid.uuid4())
@@ -182,7 +182,7 @@ async def test_list_versions_empty():
 @pytest.mark.asyncio
 async def test_list_versions_with_data():
     """list_versions returns version data with pagination metadata."""
-    from api.routes.component_versions import _list_versions
+    from api.routes.registry.component_versions import _list_versions
     from models.mcp import McpListing, McpVersion
 
     owner_id = uuid.uuid4()
@@ -217,7 +217,7 @@ async def test_list_versions_with_data():
 @pytest.mark.asyncio
 async def test_get_version_found():
     """get_version returns version detail when found."""
-    from api.routes.component_versions import _get_version
+    from api.routes.registry.component_versions import _get_version
     from models.mcp import McpListing, McpVersion
 
     owner_id = uuid.uuid4()
@@ -246,7 +246,7 @@ async def test_get_version_not_found():
     """get_version raises 404 when version does not exist."""
     from fastapi import HTTPException
 
-    from api.routes.component_versions import _get_version
+    from api.routes.registry.component_versions import _get_version
     from models.mcp import McpListing, McpVersion
 
     owner_id = uuid.uuid4()
@@ -281,7 +281,7 @@ async def test_publish_version_bad_semver():
     """publish_version rejects invalid semver strings with 422."""
     from fastapi import HTTPException
 
-    from api.routes.component_versions import _publish_version
+    from api.routes.registry.component_versions import _publish_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionPublishRequest
 
@@ -314,7 +314,7 @@ async def test_publish_version_not_owner():
     """publish_version returns 403 if user is not the listing owner."""
     from fastapi import HTTPException
 
-    from api.routes.component_versions import _publish_version
+    from api.routes.registry.component_versions import _publish_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionPublishRequest
 
@@ -347,7 +347,7 @@ async def test_publish_version_duplicate_409():
     """publish_version returns 409 if (listing_id, version) already exists."""
     from fastapi import HTTPException
 
-    from api.routes.component_versions import _publish_version
+    from api.routes.registry.component_versions import _publish_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionPublishRequest
 
@@ -383,7 +383,7 @@ async def test_publish_version_duplicate_409():
 @pytest.mark.asyncio
 async def test_publish_version_happy_path():
     """publish_version creates a new version and returns 201-like response."""
-    from api.routes.component_versions import _publish_version
+    from api.routes.registry.component_versions import _publish_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionPublishRequest
 
@@ -431,7 +431,7 @@ async def test_publish_version_happy_path():
 @pytest.mark.asyncio
 async def test_review_version_approve_updates_latest():
     """Approving a pending version sets listing.latest_version_id."""
-    from api.routes.component_versions import _review_version
+    from api.routes.registry.component_versions import _review_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionReviewRequest
 
@@ -472,7 +472,7 @@ async def test_review_version_approve_updates_latest():
 @pytest.mark.asyncio
 async def test_review_version_reject_stores_reason():
     """Rejecting a pending version stores the rejection reason."""
-    from api.routes.component_versions import _review_version
+    from api.routes.registry.component_versions import _review_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionReviewRequest
 
@@ -514,7 +514,7 @@ async def test_review_version_non_pending_422():
     """Reviewing a non-pending version raises 422."""
     from fastapi import HTTPException
 
-    from api.routes.component_versions import _review_version
+    from api.routes.registry.component_versions import _review_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionReviewRequest
 
@@ -553,7 +553,7 @@ async def test_review_version_not_found_404():
     """Reviewing a non-existent version raises 404."""
     from fastapi import HTTPException
 
-    from api.routes.component_versions import _review_version
+    from api.routes.registry.component_versions import _review_version
     from models.mcp import McpListing, McpVersion
     from schemas.component_version import VersionReviewRequest
 
@@ -607,7 +607,7 @@ def test_factory_creates_router(component_type, listing_cls, version_cls):
 
     from fastapi import APIRouter
 
-    from api.routes.component_versions import create_version_router
+    from api.routes.registry.component_versions import create_version_router
 
     mod_path, cls_name = listing_cls.rsplit(".", 1)
     listing_model = getattr(importlib.import_module(mod_path), cls_name)
@@ -625,7 +625,7 @@ def test_factory_creates_router(component_type, listing_cls, version_cls):
 
 def test_factory_route_paths():
     """Factory routes match expected URL patterns."""
-    from api.routes.component_versions import create_version_router
+    from api.routes.registry.component_versions import create_version_router
     from models.mcp import McpListing, McpVersion
 
     router = create_version_router("mcp", McpListing, McpVersion)

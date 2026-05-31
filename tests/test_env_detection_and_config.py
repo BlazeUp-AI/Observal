@@ -94,7 +94,7 @@ class TestEnvVarFiltering:
     def test_server_validator_matches_cli(self):
         """Server-side filtering must match CLI-side."""
         from observal_cli.analyzer import _is_filtered_env_var as cli_filter
-        from services.mcp_validator import _is_filtered_env_var as server_filter
+        from services.registry.mcp_validator import _is_filtered_env_var as server_filter
 
         test_vars = [
             "PATH",
@@ -375,7 +375,7 @@ class TestServerEnvDetection:
     """Verify server-side mcp_validator._detect_env_vars produces same results."""
 
     def test_server_json_manifest(self):
-        from services.mcp_validator import _detect_env_vars
+        from services.registry.mcp_validator import _detect_env_vars
 
         manifest = {
             "packages": [
@@ -392,7 +392,7 @@ class TestServerEnvDetection:
         assert "MY_TOKEN" in names
 
     def test_readme_tier(self):
-        from services.mcp_validator import _detect_env_vars
+        from services.registry.mcp_validator import _detect_env_vars
 
         tmp = _make_tmpdir_with_files({"README.md": "export CUSTOM_KEY=value"})
         result = _detect_env_vars(tmp)
@@ -400,7 +400,7 @@ class TestServerEnvDetection:
         assert "CUSTOM_KEY" in names
 
     def test_source_scanning(self):
-        from services.mcp_validator import _detect_env_vars
+        from services.registry.mcp_validator import _detect_env_vars
 
         tmp = _make_tmpdir_with_files({"main.go": 'package main\nimport "os"\nfunc f() { os.Getenv("GO_TOKEN") }\n'})
         result = _detect_env_vars(tmp)
@@ -415,7 +415,7 @@ class TestServerEnvDetection:
 
 class TestBuildRunCommand:
     def test_docker_image_generates_docker_run(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "go", docker_image="ghcr.io/org/server:latest")
         assert cmd[0] == "docker"
@@ -423,7 +423,7 @@ class TestBuildRunCommand:
         assert "ghcr.io/org/server:latest" in cmd
 
     def test_docker_image_with_env_vars(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command(
             "my-mcp",
@@ -439,32 +439,32 @@ class TestBuildRunCommand:
         assert e_idx < image_idx
 
     def test_no_docker_image_typescript(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "typescript-mcp-sdk")
         assert cmd == ["npx", "-y", "my-mcp"]
 
     def test_no_docker_image_go(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "go-mcp-sdk")
         assert cmd == ["my-mcp"]
 
     def test_no_docker_image_python(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "python-mcp")
         assert cmd == ["python", "-m", "my-mcp"]
 
     def test_no_docker_image_none_framework(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", None)
         assert cmd == ["python", "-m", "my-mcp"]
 
     def test_docker_image_overrides_framework(self):
         """Any framework with a docker_image should use docker run."""
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         for fw in ("python-mcp", "typescript-mcp-sdk", "go-mcp-sdk", None):
             cmd = _build_run_command("my-mcp", fw, docker_image="img:latest")
@@ -495,7 +495,7 @@ class TestGenerateConfigDocker:
         return listing
 
     def test_cursor_docker_config(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing()
         cfg = generate_config(listing, "cursor", env_values={"GITHUB_PERSONAL_ACCESS_TOKEN": "tok"})
@@ -509,7 +509,7 @@ class TestGenerateConfigDocker:
         assert "ghcr.io/github/github-mcp-server" in run_cmd
 
     def test_claude_code_docker_config(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing()
         cfg = generate_config(listing, "claude-code", env_values={"GITHUB_PERSONAL_ACCESS_TOKEN": "tok"})
@@ -600,7 +600,7 @@ class TestAgentConfigDockerMcp:
 class TestMcpSubmitAutoReplace:
     @pytest.mark.asyncio
     async def test_replace_pending_on_resubmit(self):
-        from api.routes.mcp import router
+        from api.routes.registry.mcp import router
 
         user = _user()
         db = _mock_db()
@@ -670,7 +670,7 @@ class TestMcpSubmitAutoReplace:
 
     @pytest.mark.asyncio
     async def test_reject_resubmit_of_approved(self):
-        from api.routes.mcp import router
+        from api.routes.registry.mcp import router
 
         user = _user()
         db = _mock_db()
@@ -706,7 +706,7 @@ class TestMcpSubmitAutoReplace:
 
     @pytest.mark.asyncio
     async def test_no_existing_submits_normally(self):
-        from api.routes.mcp import router
+        from api.routes.registry.mcp import router
 
         user = _user()
         db = _mock_db()
@@ -773,32 +773,32 @@ class TestMcpSubmitAutoReplace:
 
 class TestBuildRunCommandWithStoredArgs:
     def test_stored_command_args_used_directly(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "python", stored_command="docker", stored_args=["run", "img"])
         assert cmd == ["docker", "run", "img"]
 
     def test_stored_command_without_args(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "python", stored_command="my-binary")
         assert cmd == ["my-binary"]
 
     def test_stored_command_overrides_framework(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "python", stored_command="npx", stored_args=["-y", "pkg"])
         assert cmd[0] == "npx"
         assert cmd == ["npx", "-y", "pkg"]
 
     def test_no_stored_falls_back_to_framework(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", "python-mcp")
         assert cmd == ["python", "-m", "my-mcp"]
 
     def test_no_stored_falls_back_to_docker(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command("my-mcp", None, docker_image="ghcr.io/org/img:latest")
         assert cmd[0] == "docker"
@@ -830,7 +830,7 @@ class TestGenerateConfigSSE:
         return listing
 
     def test_cursor_sse_config(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing()
         cfg = generate_config(
@@ -846,7 +846,7 @@ class TestGenerateConfigSSE:
         assert server["disabled"] is False
 
     def test_claude_code_sse_config(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing()
         cfg = generate_config(listing, "claude-code")
@@ -858,7 +858,7 @@ class TestGenerateConfigSSE:
         assert server["type"] == "sse"
 
     def test_sse_without_headers(self):
-        from services.config_generator import generate_config
+        from services.registry.config_generator import generate_config
 
         listing = self._make_listing(headers=[])
         cfg = generate_config(listing, "cursor")
@@ -926,7 +926,7 @@ class TestDollarVarDetection:
 
 class TestDollarVarSubstitution:
     def test_substitute_in_stored_args(self):
-        from services.config_generator import _build_run_command
+        from services.registry.config_generator import _build_run_command
 
         cmd = _build_run_command(
             "my-mcp",
@@ -938,25 +938,25 @@ class TestDollarVarSubstitution:
         assert cmd == ["docker", "run", "-v", "/tmp/vol:/data", "image"]
 
     def test_preserves_unmatched(self):
-        from services.config_generator import _substitute_dollar_vars
+        from services.registry.config_generator import _substitute_dollar_vars
 
         result = _substitute_dollar_vars(["$UNKNOWN_VAR"], {"OTHER": "val"})
         assert result == ["$UNKNOWN_VAR"]
 
     def test_substitute_braces_form(self):
-        from services.config_generator import _substitute_dollar_vars
+        from services.registry.config_generator import _substitute_dollar_vars
 
         result = _substitute_dollar_vars(["${MY_VAR}"], {"MY_VAR": "replaced"})
         assert result == ["replaced"]
 
     def test_no_substitution_without_env(self):
-        from services.config_generator import _substitute_dollar_vars
+        from services.registry.config_generator import _substitute_dollar_vars
 
         result = _substitute_dollar_vars(["$VAR"], None)
         assert result == ["$VAR"]
 
     def test_multiple_vars_in_one_arg(self):
-        from services.config_generator import _substitute_dollar_vars
+        from services.registry.config_generator import _substitute_dollar_vars
 
         result = _substitute_dollar_vars(["$USER_PATH:/data/$SUBDIR"], {"USER_PATH": "/home/u", "SUBDIR": "out"})
         assert result == ["/home/u:/data/out"]

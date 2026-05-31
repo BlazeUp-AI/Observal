@@ -28,7 +28,7 @@ def _load_cases() -> list[dict]:
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda c: c["name"])
 def test_server_display_matches_fixture(case):
-    from services.model_display import format_display
+    from services.registry.model_display import format_display
 
     rd_value = case.get("release_date")
     rd = date.fromisoformat(rd_value) if rd_value else None
@@ -50,7 +50,7 @@ def test_cli_reads_server_display_field(case):
     from observal_cli.render import format_model
 
     # Simulate what the server sends: pre-computed display from format_display
-    from services.model_display import format_display
+    from services.registry.model_display import format_display
 
     rd_value = case.get("release_date")
     rd = date.fromisoformat(rd_value) if rd_value else None

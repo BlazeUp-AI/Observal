@@ -13,62 +13,62 @@ import pytest
 
 class TestIsPrivateUrl:
     def test_localhost_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://localhost:8080/hook") is True
 
     def test_127_0_0_1_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://127.0.0.1:9000/callback") is True
 
     def test_10_x_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://10.0.0.5/hook") is True
 
     def test_172_16_x_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://172.16.0.1/webhook") is True
 
     def test_192_168_x_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://192.168.1.100:5000/alert") is True
 
     def test_ipv6_loopback_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://[::1]:8080/hook") is True
 
     def test_link_local_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://169.254.169.254/latest/meta-data/") is True
 
     def test_public_ip_is_not_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("http://8.8.8.8/webhook") is False
 
     def test_public_domain_is_not_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
-        with patch("services.ssrf_guard.socket.getaddrinfo") as mock_gai:
+        with patch("services.security.ssrf_guard.socket.getaddrinfo") as mock_gai:
             mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
             assert is_private_url("https://example.com/webhook") is False
 
     def test_no_hostname_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         assert is_private_url("not-a-url") is True
 
     def test_dns_failure_is_private(self):
-        from services.alert_evaluator import is_private_url
+        from services.enterprise.alert_evaluator import is_private_url
 
         with patch(
-            "services.ssrf_guard.socket.getaddrinfo",
+            "services.security.ssrf_guard.socket.getaddrinfo",
             side_effect=OSError("DNS failed"),
         ):
             assert is_private_url("http://nonexistent.invalid/hook") is True
@@ -76,27 +76,27 @@ class TestIsPrivateUrl:
 
 class TestConditionMet:
     def test_above_met(self):
-        from services.alert_evaluator import _condition_met
+        from services.enterprise.alert_evaluator import _condition_met
 
         assert _condition_met("above", 0.15, 0.10) is True
 
     def test_above_not_met(self):
-        from services.alert_evaluator import _condition_met
+        from services.enterprise.alert_evaluator import _condition_met
 
         assert _condition_met("above", 0.05, 0.10) is False
 
     def test_below_met(self):
-        from services.alert_evaluator import _condition_met
+        from services.enterprise.alert_evaluator import _condition_met
 
         assert _condition_met("below", 0.05, 0.10) is True
 
     def test_below_not_met(self):
-        from services.alert_evaluator import _condition_met
+        from services.enterprise.alert_evaluator import _condition_met
 
         assert _condition_met("below", 0.15, 0.10) is False
 
     def test_unknown_condition(self):
-        from services.alert_evaluator import _condition_met
+        from services.enterprise.alert_evaluator import _condition_met
 
         assert _condition_met("equal", 0.10, 0.10) is False
 
@@ -104,13 +104,13 @@ class TestConditionMet:
 class TestQueryMetric:
     @pytest.mark.asyncio
     async def test_dispatches_error_rate(self):
-        from services.alert_evaluator import _query_metric
+        from services.enterprise.alert_evaluator import _query_metric
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.text = "0.05\n"
         with patch(
-            "services.alert_evaluator._query",
+            "services.enterprise.alert_evaluator._query",
             new_callable=AsyncMock,
             return_value=mock_resp,
         ):
@@ -119,13 +119,13 @@ class TestQueryMetric:
 
     @pytest.mark.asyncio
     async def test_dispatches_latency_p99(self):
-        from services.alert_evaluator import _query_metric
+        from services.enterprise.alert_evaluator import _query_metric
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.text = "250.5\n"
         with patch(
-            "services.alert_evaluator._query",
+            "services.enterprise.alert_evaluator._query",
             new_callable=AsyncMock,
             return_value=mock_resp,
         ):
@@ -134,13 +134,13 @@ class TestQueryMetric:
 
     @pytest.mark.asyncio
     async def test_dispatches_token_usage(self):
-        from services.alert_evaluator import _query_metric
+        from services.enterprise.alert_evaluator import _query_metric
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.text = "50000\n"
         with patch(
-            "services.alert_evaluator._query",
+            "services.enterprise.alert_evaluator._query",
             new_callable=AsyncMock,
             return_value=mock_resp,
         ):
@@ -149,20 +149,20 @@ class TestQueryMetric:
 
     @pytest.mark.asyncio
     async def test_unknown_metric_returns_none(self):
-        from services.alert_evaluator import _query_metric
+        from services.enterprise.alert_evaluator import _query_metric
 
         result = await _query_metric("unknown_metric", "all", "", 5)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_empty_response_returns_none(self):
-        from services.alert_evaluator import _query_metric
+        from services.enterprise.alert_evaluator import _query_metric
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.text = ""
         with patch(
-            "services.alert_evaluator._query",
+            "services.enterprise.alert_evaluator._query",
             new_callable=AsyncMock,
             return_value=mock_resp,
         ):
@@ -173,13 +173,13 @@ class TestQueryMetric:
 class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_successful_delivery(self):
-        from services.alert_evaluator import _deliver_webhook_signed
+        from services.enterprise.alert_evaluator import _deliver_webhook_signed
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         with (
-            patch("services.webhook_delivery.is_private_url", return_value=False),
-            patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls,
+            patch("services.enterprise.webhook_delivery.is_private_url", return_value=False),
+            patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls,
         ):
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
@@ -194,9 +194,9 @@ class TestDeliverWebhook:
 
     @pytest.mark.asyncio
     async def test_ssrf_rejected(self):
-        from services.alert_evaluator import _deliver_webhook_signed
+        from services.enterprise.alert_evaluator import _deliver_webhook_signed
 
-        with patch("services.webhook_delivery.is_private_url", return_value=True):
+        with patch("services.enterprise.webhook_delivery.is_private_url", return_value=True):
             code, err = await _deliver_webhook_signed(
                 "http://127.0.0.1/hook", "secret123", {"test": True}, uuid.uuid4()
             )
@@ -206,13 +206,13 @@ class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_empty_secret_still_delivers(self):
         """Legacy rules with empty secret deliver without signing."""
-        from services.alert_evaluator import _deliver_webhook_signed
+        from services.enterprise.alert_evaluator import _deliver_webhook_signed
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         with (
-            patch("services.webhook_delivery.is_private_url", return_value=False),
-            patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls,
+            patch("services.enterprise.webhook_delivery.is_private_url", return_value=False),
+            patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls,
         ):
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_resp)
@@ -227,7 +227,7 @@ class TestDeliverWebhook:
 class TestEvaluateAlerts:
     @pytest.mark.asyncio
     async def test_full_flow_fires_alert_and_records_history(self):
-        from services.alert_evaluator import evaluate_alerts
+        from services.enterprise.alert_evaluator import evaluate_alerts
 
         rule = MagicMock()
         rule.id = uuid.uuid4()
@@ -256,16 +256,16 @@ class TestEvaluateAlerts:
 
         with (
             patch(
-                "services.alert_evaluator.async_session",
+                "services.enterprise.alert_evaluator.async_session",
                 return_value=mock_session_ctx,
             ),
             patch(
-                "services.alert_evaluator._query_metric",
+                "services.enterprise.alert_evaluator._query_metric",
                 new_callable=AsyncMock,
                 return_value=0.25,
             ),
             patch(
-                "services.alert_evaluator._deliver_webhook_signed",
+                "services.enterprise.alert_evaluator._deliver_webhook_signed",
                 new_callable=AsyncMock,
                 return_value=(200, None),
             ),
@@ -276,7 +276,7 @@ class TestEvaluateAlerts:
 
     @pytest.mark.asyncio
     async def test_condition_not_met_skips_webhook(self):
-        from services.alert_evaluator import evaluate_alerts
+        from services.enterprise.alert_evaluator import evaluate_alerts
 
         rule = MagicMock()
         rule.id = uuid.uuid4()
@@ -304,16 +304,16 @@ class TestEvaluateAlerts:
 
         with (
             patch(
-                "services.alert_evaluator.async_session",
+                "services.enterprise.alert_evaluator.async_session",
                 return_value=mock_session_ctx,
             ),
             patch(
-                "services.alert_evaluator._query_metric",
+                "services.enterprise.alert_evaluator._query_metric",
                 new_callable=AsyncMock,
                 return_value=0.05,
             ),
             patch(
-                "services.alert_evaluator._deliver_webhook_signed",
+                "services.enterprise.alert_evaluator._deliver_webhook_signed",
                 new_callable=AsyncMock,
             ) as mock_deliver,
         ):
@@ -323,7 +323,7 @@ class TestEvaluateAlerts:
 
     @pytest.mark.asyncio
     async def test_metric_none_skips_rule(self):
-        from services.alert_evaluator import evaluate_alerts
+        from services.enterprise.alert_evaluator import evaluate_alerts
 
         rule = MagicMock()
         rule.id = uuid.uuid4()
@@ -349,11 +349,11 @@ class TestEvaluateAlerts:
 
         with (
             patch(
-                "services.alert_evaluator.async_session",
+                "services.enterprise.alert_evaluator.async_session",
                 return_value=mock_session_ctx,
             ),
             patch(
-                "services.alert_evaluator._query_metric",
+                "services.enterprise.alert_evaluator._query_metric",
                 new_callable=AsyncMock,
                 return_value=None,
             ),

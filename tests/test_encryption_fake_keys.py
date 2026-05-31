@@ -202,7 +202,7 @@ class TestEncryptDecryptAllFormats:
 
     @pytest.mark.parametrize("provider,key", FAKE_KEYS, ids=[f"{p}_{i}" for i, (p, _) in enumerate(FAKE_KEYS)])
     def test_roundtrip(self, provider: str, key: str, _mock_secret_key):
-        from services.dynamic_settings import decrypt_value, encrypt_value
+        from services.infra.dynamic_settings import decrypt_value, encrypt_value
 
         encrypted = encrypt_value(key)
         assert encrypted.startswith("enc:"), f"Encrypted value should start with enc: prefix for {provider}"
@@ -213,7 +213,7 @@ class TestEncryptDecryptAllFormats:
     @pytest.mark.parametrize("provider,key", FAKE_KEYS[:20], ids=[f"empty_{i}" for i in range(20)])
     def test_empty_passthrough(self, provider: str, key: str, _mock_secret_key):
         """Empty strings should not be encrypted."""
-        from services.dynamic_settings import decrypt_value, encrypt_value
+        from services.infra.dynamic_settings import decrypt_value, encrypt_value
 
         assert encrypt_value("") == ""
         assert decrypt_value("") == ""
@@ -221,7 +221,7 @@ class TestEncryptDecryptAllFormats:
     @pytest.mark.parametrize("provider,key", FAKE_KEYS, ids=[f"unique_{i}" for i, (_, __) in enumerate(FAKE_KEYS)])
     def test_ciphertext_unique(self, provider: str, key: str, _mock_secret_key):
         """Each encryption produces unique ciphertext (Fernet uses random IV)."""
-        from services.dynamic_settings import encrypt_value
+        from services.infra.dynamic_settings import encrypt_value
 
         a = encrypt_value(key)
         b = encrypt_value(key)
@@ -231,7 +231,7 @@ class TestEncryptDecryptAllFormats:
     @pytest.mark.parametrize("provider,key", FAKE_KEYS, ids=[f"no_prefix_{i}" for i, (_, __) in enumerate(FAKE_KEYS)])
     def test_unencrypted_passthrough(self, provider: str, key: str, _mock_secret_key):
         """Values without enc: prefix are returned as-is (backward compat)."""
-        from services.dynamic_settings import decrypt_value
+        from services.infra.dynamic_settings import decrypt_value
 
         assert decrypt_value(key) == key
 
@@ -253,7 +253,7 @@ class TestKeyRotation:
         old_f = Fernet(old_fernet_key)
         old_encrypted = "enc:" + old_f.encrypt(key.encode()).decode()
 
-        from services.dynamic_settings import decrypt_value
+        from services.infra.dynamic_settings import decrypt_value
 
         result = decrypt_value(old_encrypted)
         assert result == key, f"Key rotation decrypt failed for {provider}"
@@ -266,7 +266,7 @@ class TestKeyRotation:
 
         from cryptography.fernet import Fernet
 
-        from services.dynamic_settings import decrypt_value, encrypt_value
+        from services.infra.dynamic_settings import decrypt_value, encrypt_value
 
         # Encrypt with OLD key
         old_secret = "test-secret-key-for-encryption-suite"
@@ -297,7 +297,7 @@ class TestKeyRotation:
 
         from cryptography.fernet import Fernet
 
-        from services.dynamic_settings import decrypt_value
+        from services.infra.dynamic_settings import decrypt_value
 
         # Encrypt with a completely unknown key
         unknown_secret = "unknown-key-never-configured"
@@ -320,7 +320,7 @@ class TestBulkRotation:
 
         from cryptography.fernet import Fernet
 
-        from services.dynamic_settings import decrypt_value, encrypt_value
+        from services.infra.dynamic_settings import decrypt_value, encrypt_value
 
         old_secret = "test-secret-key-for-encryption-suite"
         old_fernet_key = base64.urlsafe_b64encode(hashlib.sha256(old_secret.encode()).digest())
@@ -354,7 +354,7 @@ class TestBulkRotation:
     @pytest.mark.asyncio
     async def test_idempotent_reencrypt(self, _rotated_keys):
         """Re-encrypting an already-rotated value should still work."""
-        from services.dynamic_settings import decrypt_value, encrypt_value
+        from services.infra.dynamic_settings import decrypt_value, encrypt_value
 
         for _, key in FAKE_KEYS[:50]:
             # Encrypt with new key
@@ -401,7 +401,7 @@ class TestEdgeCases:
         ids=lambda v: v[:30].replace("\n", "\\n") if v else "empty",
     )
     def test_special_values_roundtrip(self, value: str, _mock_secret_key):
-        from services.dynamic_settings import decrypt_value, encrypt_value
+        from services.infra.dynamic_settings import decrypt_value, encrypt_value
 
         if not value:
             assert encrypt_value(value) == value

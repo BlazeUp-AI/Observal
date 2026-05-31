@@ -24,7 +24,7 @@ from schemas.alert import (
     WebhookSecretRotateResponse,
     WebhookTestResponse,
 )
-from services.ssrf_guard import is_private_url
+from services.security.ssrf_guard import is_private_url
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
 
@@ -235,7 +235,7 @@ async def test_webhook(
     if not rule.webhook_url:
         raise HTTPException(400, "No webhook URL configured for this alert rule")
 
-    from services.webhook_delivery import deliver_webhook
+    from services.enterprise.webhook_delivery import deliver_webhook
 
     payload = {
         "test": True,

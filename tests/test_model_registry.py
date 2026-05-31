@@ -83,25 +83,25 @@ def _build_catalog(*, degraded: bool = False, source: str = "live"):
 
 class TestFormatForIde:
     def test_claude_code_short_alias(self):
-        from services.model_catalog import format_for_ide
+        from services.registry.model_catalog import format_for_ide
 
         assert format_for_ide("claude-sonnet-4-5", "anthropic", "claude-code") == "sonnet"
         assert format_for_ide("claude-opus-3", "anthropic", "claude-code") == "opus"
         assert format_for_ide("claude-haiku-3", "anthropic", "claude-code") == "haiku"
 
     def test_claude_code_passthrough_when_unknown(self):
-        from services.model_catalog import format_for_ide
+        from services.registry.model_catalog import format_for_ide
 
         assert format_for_ide("custom-model", "anthropic", "claude-code") == "custom-model"
 
     def test_opencode_uses_provider_prefix(self):
-        from services.model_catalog import format_for_ide
+        from services.registry.model_catalog import format_for_ide
 
         assert format_for_ide("claude-sonnet-4-5", "anthropic", "opencode") == "anthropic/claude-sonnet-4-5"
         assert format_for_ide("gpt-5", "openai", "opencode") == "openai/gpt-5"
 
     def test_other_ides_pass_id_verbatim(self):
-        from services.model_catalog import format_for_ide
+        from services.registry.model_catalog import format_for_ide
 
         assert format_for_ide("claude-sonnet-4-5", "anthropic", "kiro") == "claude-sonnet-4-5"
         assert format_for_ide("gpt-5", "openai", "codex") == "gpt-5"
@@ -113,7 +113,7 @@ class TestFormatForIde:
 
 class TestNormalizeModelsDev:
     def test_emits_only_mapped_providers(self):
-        from services.model_catalog import _normalize_models_dev
+        from services.registry.model_catalog import _normalize_models_dev
 
         payload = {
             "anthropic": {
@@ -143,7 +143,7 @@ class TestNormalizeModelsDev:
         assert "claude-code" in row.supported_ides
 
     def test_skips_non_dict_models(self):
-        from services.model_catalog import _normalize_models_dev
+        from services.registry.model_catalog import _normalize_models_dev
 
         payload = {"anthropic": {"models": {"weird": "string", "ok": {"id": "ok", "name": "OK"}}}}
         rows = _normalize_models_dev(payload)
@@ -155,13 +155,13 @@ class TestNormalizeModelsDev:
 
 class TestResolveSavedValue:
     def test_returns_none_for_ides_that_dont_accept_choice(self):
-        from services.model_resolver import resolve_saved_value
+        from services.registry.model_resolver import resolve_saved_value
 
         assert resolve_saved_value("cursor", "claude-sonnet-4-5", None) is None
         assert resolve_saved_value("copilot", "claude-sonnet-4-5", None) is None
 
     def test_per_ide_override_wins(self):
-        from services.model_resolver import resolve_saved_value
+        from services.registry.model_resolver import resolve_saved_value
 
         result = resolve_saved_value(
             "kiro",
@@ -171,13 +171,13 @@ class TestResolveSavedValue:
         assert result == "claude-opus-4-5"
 
     def test_claude_code_uses_legacy_model_name(self):
-        from services.model_resolver import resolve_saved_value
+        from services.registry.model_resolver import resolve_saved_value
 
         # Unknown id stays verbatim through format_for_ide(...)
         assert resolve_saved_value("claude-code", "custom-model", None) == "custom-model"
 
     def test_other_ides_emit_none_without_override(self):
-        from services.model_resolver import resolve_saved_value
+        from services.registry.model_resolver import resolve_saved_value
 
         # Kiro / Codex / Gemini default to the auto sentinel when no override exists
         assert resolve_saved_value("kiro", "claude-sonnet-4-5", None) is None
@@ -192,7 +192,7 @@ class TestResolveSavedValue:
 class TestResolveModelForIde:
     @pytest.mark.asyncio
     async def test_ide_without_model_choice_warns_on_override(self):
-        from services.model_resolver import resolve_model_for_ide
+        from services.registry.model_resolver import resolve_model_for_ide
 
         emitted, warnings = await resolve_model_for_ide(
             "cursor",
@@ -204,7 +204,7 @@ class TestResolveModelForIde:
 
     @pytest.mark.asyncio
     async def test_claude_code_short_alias_passthrough(self):
-        from services.model_resolver import resolve_model_for_ide
+        from services.registry.model_resolver import resolve_model_for_ide
 
         emitted, warnings = await resolve_model_for_ide(
             "claude-code",
@@ -215,7 +215,7 @@ class TestResolveModelForIde:
 
     @pytest.mark.asyncio
     async def test_claude_code_inherit_resolves_to_none(self):
-        from services.model_resolver import resolve_model_for_ide
+        from services.registry.model_resolver import resolve_model_for_ide
 
         emitted, warnings = await resolve_model_for_ide("claude-code", model_name="inherit")
         assert emitted is None
@@ -456,7 +456,7 @@ class TestModelsEndpoint:
 
 def _empty_manifest(model_name: str = "", models_by_ide: dict | None = None):
     """Construct a minimal AgentManifest for codegen tests."""
-    from services.agent_builder import AgentManifest, ManifestComponents
+    from services.registry.agent_builder import AgentManifest, ManifestComponents
 
     return AgentManifest(
         name="test-agent",
@@ -471,8 +471,8 @@ def _empty_manifest(model_name: str = "", models_by_ide: dict | None = None):
 
 class TestBuilderModelEmission:
     def test_manifest_carries_models_by_ide_from_resolved(self):
-        from services.agent_builder import build_agent_manifest
-        from services.agent_resolver import ResolvedAgent
+        from services.registry.agent_builder import build_agent_manifest
+        from services.registry.agent_resolver import ResolvedAgent
 
         resolved = ResolvedAgent(
             agent_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
@@ -493,7 +493,7 @@ class TestBuilderModelEmission:
         }
 
     def test_claude_code_emits_alias_in_frontmatter(self):
-        from services.agent_builder import _generate_claude_code
+        from services.registry.agent_builder import _generate_claude_code
 
         manifest = _empty_manifest(model_name="claude-sonnet-4-5")
         cfg = _generate_claude_code(manifest)
@@ -502,7 +502,7 @@ class TestBuilderModelEmission:
         assert "model: sonnet" in agent_md  # short alias from format_for_ide
 
     def test_claude_code_omits_model_when_no_choice(self):
-        from services.agent_builder import _generate_claude_code
+        from services.registry.agent_builder import _generate_claude_code
 
         manifest = _empty_manifest()  # no model name
         cfg = _generate_claude_code(manifest)
@@ -510,7 +510,7 @@ class TestBuilderModelEmission:
         assert "model:" not in agent_md
 
     def test_kiro_uses_per_ide_override(self):
-        from services.agent_builder import _generate_kiro
+        from services.registry.agent_builder import _generate_kiro
 
         manifest = _empty_manifest(
             model_name="claude-sonnet-4-5",
@@ -522,7 +522,7 @@ class TestBuilderModelEmission:
         assert kiro_json["model"] == "claude-opus-4-5"
 
     def test_kiro_emits_null_without_override(self):
-        from services.agent_builder import _generate_kiro
+        from services.registry.agent_builder import _generate_kiro
 
         # model_name is set but no per-IDE override → Kiro auto sentinel (null)
         manifest = _empty_manifest(model_name="claude-sonnet-4-5")
@@ -531,7 +531,7 @@ class TestBuilderModelEmission:
         assert kiro_json["model"] is None
 
     def test_gemini_cli_settings_carries_model(self):
-        from services.agent_builder import _generate_gemini_cli
+        from services.registry.agent_builder import _generate_gemini_cli
 
         manifest = _empty_manifest(models_by_ide={"gemini-cli": "gemini-2.5-pro"})
         cfg = _generate_gemini_cli(manifest)
@@ -540,7 +540,7 @@ class TestBuilderModelEmission:
         assert settings_file.content["model"] == "gemini-2.5-pro"
 
     def test_gemini_cli_omits_model_setting_without_override(self):
-        from services.agent_builder import _generate_gemini_cli
+        from services.registry.agent_builder import _generate_gemini_cli
 
         manifest = _empty_manifest()
         cfg = _generate_gemini_cli(manifest)
@@ -548,7 +548,7 @@ class TestBuilderModelEmission:
         assert "model" not in settings_file.content
 
     def test_codex_toml_carries_model(self):
-        from services.agent_builder import _generate_codex
+        from services.registry.agent_builder import _generate_codex
 
         manifest = _empty_manifest(models_by_ide={"codex": "gpt-5"})
         cfg = _generate_codex(manifest)
@@ -557,7 +557,7 @@ class TestBuilderModelEmission:
         assert 'model = "gpt-5"' in toml
 
     def test_opencode_uses_provider_prefix(self):
-        from services.agent_builder import _generate_opencode
+        from services.registry.agent_builder import _generate_opencode
 
         manifest = _empty_manifest(
             models_by_ide={"opencode": "claude-sonnet-4-5"},

@@ -13,7 +13,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import { allNavItems } from "./registry-sidebar";
+import { allNavItems } from "./nav-items";
 
 export function CommandMenu() {
   const [open, setOpen] = useState(false);

@@ -99,7 +99,7 @@ class TestDetectDockerImageServer:
     """Tests for services.mcp_validator._detect_docker_image."""
 
     def test_readme_pattern(self):
-        from services.mcp_validator import _detect_docker_image
+        from services.registry.mcp_validator import _detect_docker_image
 
         tmp = _make_tmpdir_with_files({"README.md": "Use ghcr.io/org/my-server to run"})
         image, suggested = _detect_docker_image(Path(tmp), "https://gitlab.com/org/repo")
@@ -107,7 +107,7 @@ class TestDetectDockerImageServer:
         assert suggested is False
 
     def test_ghcr_inference(self):
-        from services.mcp_validator import _detect_docker_image
+        from services.registry.mcp_validator import _detect_docker_image
 
         tmp = _make_tmpdir_with_files({"main.py": ""})
         image, suggested = _detect_docker_image(Path(tmp), "https://github.com/org/server")
@@ -117,7 +117,7 @@ class TestDetectDockerImageServer:
     def test_server_matches_cli(self):
         """Both implementations should return the same results."""
         from observal_cli.analyzer import _detect_docker_image as cli_detect
-        from services.mcp_validator import _detect_docker_image as server_detect
+        from services.registry.mcp_validator import _detect_docker_image as server_detect
 
         test_cases = [
             ({"README.md": "Run ghcr.io/org/my-img"}, "https://github.com/org/repo"),
@@ -193,7 +193,7 @@ class TestInferCommandArgs:
     def test_server_matches_cli(self):
         """Both implementations should return the same results."""
         from observal_cli.analyzer import _infer_command_args as cli_infer
-        from services.mcp_validator import _infer_command_args as server_infer
+        from services.registry.mcp_validator import _infer_command_args as server_infer
 
         test_cases = [
             ("python-mcp", None, "my-mcp", None),

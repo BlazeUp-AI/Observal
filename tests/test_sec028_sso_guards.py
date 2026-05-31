@@ -35,7 +35,7 @@ class TestSec028SsoGuards:
     async def test_init_blocked_when_sso_only(self):
         """POST /api/v1/auth/init returns 403 when SSO_ONLY=True."""
 
-        with patch("services.dynamic_settings.get_bool", new_callable=AsyncMock, return_value=True):
+        with patch("services.infra.dynamic_settings.get_bool", new_callable=AsyncMock, return_value=True):
             async with _make_async_client() as client:
                 response = await client.post(
                     "/api/v1/auth/init",
@@ -53,7 +53,7 @@ class TestSec028SsoGuards:
     async def test_change_password_blocked_when_sso_only(self):
         """PUT /api/v1/auth/profile/password returns 403 when SSO_ONLY=True."""
 
-        with patch("services.dynamic_settings.get_bool", new_callable=AsyncMock, return_value=True):
+        with patch("services.infra.dynamic_settings.get_bool", new_callable=AsyncMock, return_value=True):
             async with _make_async_client() as client:
                 response = await client.put(
                     "/api/v1/auth/profile/password",
@@ -83,7 +83,7 @@ class TestSec028SsoGuards:
 
         app.dependency_overrides[get_db] = _mock_get_db
 
-        with patch("services.dynamic_settings.get_bool", new_callable=AsyncMock, return_value=False):
+        with patch("services.infra.dynamic_settings.get_bool", new_callable=AsyncMock, return_value=False):
             async with _make_async_client() as client:
                 response = await client.post(
                     "/api/v1/auth/init",

@@ -9,14 +9,14 @@ from loguru import logger as optic
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from api.deps import get_db, require_role
 from config import HAS_LICENSE, settings
 from models.enterprise_config import EnterpriseConfig
 from models.user import User, UserRole
 from schemas.admin import EnterpriseConfigResponse, EnterpriseConfigUpdate, SettingRevokedResponse
-from services.secrets_redactor import REDACTED
-from services.security_events import EventType, SecurityEvent, Severity, emit_security_event
+from services.ingest.secrets_redactor import REDACTED
+from services.security.security_events import EventType, SecurityEvent, Severity, emit_security_event
 
 from ._router import router
 from .helpers import _validate_branding_app_name, _validate_branding_logo
@@ -31,7 +31,7 @@ async def diagnostics(
 ):
     """Authenticated system health - full status for ops dashboards."""
     optic.debug("diagnostics called")
-    from services.crypto import get_key_manager
+    from services.security.crypto import get_key_manager
 
     diag: dict[str, object] = {
         "status": "ok",

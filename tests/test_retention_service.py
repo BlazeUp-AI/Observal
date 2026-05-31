@@ -29,7 +29,7 @@ async def test_delete_batch_returns_0_on_failure():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(status_code=500)
 
-        from services.retention import _delete_batch
+        from services.infra.retention import _delete_batch
 
         result = await _delete_batch("traces", "start_time", "pid", "2026-01-01 00:00:00.000")
 
@@ -42,7 +42,7 @@ async def test_delete_batch_returns_1_on_success():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(status_code=200)
 
-        from services.retention import _delete_batch
+        from services.infra.retention import _delete_batch
 
         result = await _delete_batch("spans", "start_time", "pid", "2026-01-01 00:00:00.000")
 
@@ -58,7 +58,7 @@ async def test_has_data_returns_false_on_non_200():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(status_code=500)
 
-        from services.retention import _has_data
+        from services.infra.retention import _has_data
 
         result = await _has_data("pid")
 
@@ -76,11 +76,11 @@ async def test_has_inflight_insights_no_agents():
     mock_result.scalars.return_value.all.return_value = []
     mock_db.execute = AsyncMock(return_value=mock_result)
 
-    with patch("services.retention.async_session") as mock_session:
+    with patch("services.infra.retention.async_session") as mock_session:
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import _has_inflight_insights
+        from services.infra.retention import _has_inflight_insights
 
         result = await _has_inflight_insights(uuid.uuid4())
 
@@ -99,11 +99,11 @@ async def test_has_inflight_insights_with_pending_report():
 
     mock_db.execute = AsyncMock(side_effect=[agent_result, report_result])
 
-    with patch("services.retention.async_session") as mock_session:
+    with patch("services.infra.retention.async_session") as mock_session:
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import _has_inflight_insights
+        from services.infra.retention import _has_inflight_insights
 
         result = await _has_inflight_insights(uuid.uuid4())
 
@@ -122,11 +122,11 @@ async def test_has_inflight_insights_no_pending():
 
     mock_db.execute = AsyncMock(side_effect=[agent_result, report_result])
 
-    with patch("services.retention.async_session") as mock_session:
+    with patch("services.infra.retention.async_session") as mock_session:
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import _has_inflight_insights
+        from services.infra.retention import _has_inflight_insights
 
         result = await _has_inflight_insights(uuid.uuid4())
 
@@ -149,7 +149,7 @@ async def test_purge_time_based_handles_exception():
         return _mock_response()
 
     with patch("services.clickhouse._query", side_effect=_failing_query):
-        from services.retention import TIME_PURGE_TABLES, _purge_time_based
+        from services.infra.retention import TIME_PURGE_TABLES, _purge_time_based
 
         stats = await _purge_time_based("pid", "2026-01-01 00:00:00.000", TIME_PURGE_TABLES)
 
@@ -166,7 +166,7 @@ async def test_purge_session_stats_orphans_failure():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(status_code=500)
 
-        from services.retention import _purge_session_stats_orphans
+        from services.infra.retention import _purge_session_stats_orphans
 
         result = await _purge_session_stats_orphans("pid")
 
@@ -184,13 +184,13 @@ async def test_purge_insight_reports_no_agents():
     mock_result.scalars.return_value.all.return_value = []
     mock_db.execute = AsyncMock(return_value=mock_result)
 
-    with patch("services.retention.async_session") as mock_session:
+    with patch("services.infra.retention.async_session") as mock_session:
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from datetime import UTC, datetime
 
-        from services.retention import _purge_insight_reports
+        from services.infra.retention import _purge_insight_reports
 
         result = await _purge_insight_reports(uuid.uuid4(), datetime.now(UTC))
 
@@ -213,13 +213,13 @@ async def test_purge_insight_reports_deletes_old_reports():
     mock_db.execute = AsyncMock(side_effect=[agent_result, completed_result, stuck_result])
     mock_db.commit = AsyncMock()
 
-    with patch("services.retention.async_session") as mock_session:
+    with patch("services.infra.retention.async_session") as mock_session:
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
         from datetime import UTC, datetime
 
-        from services.retention import _purge_insight_reports
+        from services.infra.retention import _purge_insight_reports
 
         result = await _purge_insight_reports(uuid.uuid4(), datetime.now(UTC))
 
@@ -236,7 +236,7 @@ async def test_purge_count_based_no_data():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(data=[])
 
-        from services.retention import _purge_count_based
+        from services.infra.retention import _purge_count_based
 
         result = await _purge_count_based("pid", 1000)
 
@@ -254,7 +254,7 @@ async def test_purge_count_based_under_limit():
             ]
         )
 
-        from services.retention import _purge_count_based
+        from services.infra.retention import _purge_count_based
 
         result = await _purge_count_based("pid", 5000)
 
@@ -267,7 +267,7 @@ async def test_purge_count_based_query_failure():
     with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_query:
         mock_query.return_value = _mock_response(status_code=500)
 
-        from services.retention import _purge_count_based
+        from services.infra.retention import _purge_count_based
 
         result = await _purge_count_based("pid", 1000)
 
@@ -290,7 +290,7 @@ async def test_purge_count_based_executes_deletes():
         delete_resp = _mock_response()
         mock_query.side_effect = [daily_resp, delete_resp, delete_resp, delete_resp, delete_resp, delete_resp]
 
-        from services.retention import _purge_count_based
+        from services.infra.retention import _purge_count_based
 
         result = await _purge_count_based("pid", 1000)
 
@@ -310,11 +310,11 @@ async def test_run_retention_purge_skips_when_no_orgs():
     mock_result.scalars.return_value.all.return_value = []
     mock_db.execute = AsyncMock(return_value=mock_result)
 
-    with patch("services.retention.async_session") as mock_session:
+    with patch("services.infra.retention.async_session") as mock_session:
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import run_retention_purge
+        from services.infra.retention import run_retention_purge
 
         await run_retention_purge(None)
 
@@ -336,14 +336,14 @@ async def test_run_retention_purge_skips_empty_org():
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     with (
-        patch("services.retention.async_session") as mock_session,
-        patch("services.retention._has_data", new_callable=AsyncMock, return_value=False) as mock_has_data,
-        patch("services.retention.INTER_ORG_DELAY", 0),
+        patch("services.infra.retention.async_session") as mock_session,
+        patch("services.infra.retention._has_data", new_callable=AsyncMock, return_value=False) as mock_has_data,
+        patch("services.infra.retention.INTER_ORG_DELAY", 0),
     ):
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import run_retention_purge
+        from services.infra.retention import run_retention_purge
 
         await run_retention_purge(None)
 
@@ -367,15 +367,17 @@ async def test_run_retention_purge_skips_inflight_insights():
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     with (
-        patch("services.retention.async_session") as mock_session,
-        patch("services.retention._has_data", new_callable=AsyncMock, return_value=True),
-        patch("services.retention._has_inflight_insights", new_callable=AsyncMock, return_value=True) as mock_inflight,
-        patch("services.retention.INTER_ORG_DELAY", 0),
+        patch("services.infra.retention.async_session") as mock_session,
+        patch("services.infra.retention._has_data", new_callable=AsyncMock, return_value=True),
+        patch(
+            "services.infra.retention._has_inflight_insights", new_callable=AsyncMock, return_value=True
+        ) as mock_inflight,
+        patch("services.infra.retention.INTER_ORG_DELAY", 0),
     ):
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import run_retention_purge
+        from services.infra.retention import run_retention_purge
 
         await run_retention_purge(None)
 
@@ -399,20 +401,24 @@ async def test_run_retention_purge_full_run():
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     with (
-        patch("services.retention.async_session") as mock_session,
-        patch("services.retention._has_data", new_callable=AsyncMock, return_value=True),
-        patch("services.retention._has_inflight_insights", new_callable=AsyncMock, return_value=False),
-        patch("services.retention._purge_time_based", new_callable=AsyncMock, return_value={"spans": 1}) as mock_time,
-        patch("services.retention._purge_session_stats_orphans", new_callable=AsyncMock, return_value=1),
-        patch("services.retention._purge_count_based", new_callable=AsyncMock, return_value=1) as mock_count,
-        patch("services.retention._purge_insight_reports", new_callable=AsyncMock, return_value=2) as mock_insights,
-        patch("services.retention._delete_batch", new_callable=AsyncMock, return_value=1) as mock_delete,
-        patch("services.retention.INTER_ORG_DELAY", 0),
+        patch("services.infra.retention.async_session") as mock_session,
+        patch("services.infra.retention._has_data", new_callable=AsyncMock, return_value=True),
+        patch("services.infra.retention._has_inflight_insights", new_callable=AsyncMock, return_value=False),
+        patch(
+            "services.infra.retention._purge_time_based", new_callable=AsyncMock, return_value={"spans": 1}
+        ) as mock_time,
+        patch("services.infra.retention._purge_session_stats_orphans", new_callable=AsyncMock, return_value=1),
+        patch("services.infra.retention._purge_count_based", new_callable=AsyncMock, return_value=1) as mock_count,
+        patch(
+            "services.infra.retention._purge_insight_reports", new_callable=AsyncMock, return_value=2
+        ) as mock_insights,
+        patch("services.infra.retention._delete_batch", new_callable=AsyncMock, return_value=1) as mock_delete,
+        patch("services.infra.retention.INTER_ORG_DELAY", 0),
     ):
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import run_retention_purge
+        from services.infra.retention import run_retention_purge
 
         await run_retention_purge(None)
 
@@ -439,19 +445,21 @@ async def test_run_retention_purge_score_defaults_to_2x_trace():
     mock_db.execute = AsyncMock(return_value=mock_result)
 
     with (
-        patch("services.retention.async_session") as mock_session,
-        patch("services.retention._has_data", new_callable=AsyncMock, return_value=True),
-        patch("services.retention._has_inflight_insights", new_callable=AsyncMock, return_value=False),
-        patch("services.retention._purge_time_based", new_callable=AsyncMock, return_value={}) as mock_time,
-        patch("services.retention._purge_session_stats_orphans", new_callable=AsyncMock, return_value=1),
-        patch("services.retention._purge_insight_reports", new_callable=AsyncMock, return_value=0) as mock_insights,
-        patch("services.retention._delete_batch", new_callable=AsyncMock, return_value=1),
-        patch("services.retention.INTER_ORG_DELAY", 0),
+        patch("services.infra.retention.async_session") as mock_session,
+        patch("services.infra.retention._has_data", new_callable=AsyncMock, return_value=True),
+        patch("services.infra.retention._has_inflight_insights", new_callable=AsyncMock, return_value=False),
+        patch("services.infra.retention._purge_time_based", new_callable=AsyncMock, return_value={}) as mock_time,
+        patch("services.infra.retention._purge_session_stats_orphans", new_callable=AsyncMock, return_value=1),
+        patch(
+            "services.infra.retention._purge_insight_reports", new_callable=AsyncMock, return_value=0
+        ) as mock_insights,
+        patch("services.infra.retention._delete_batch", new_callable=AsyncMock, return_value=1),
+        patch("services.infra.retention.INTER_ORG_DELAY", 0),
     ):
         mock_session.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        from services.retention import run_retention_purge
+        from services.infra.retention import run_retention_purge
 
         await run_retention_purge(None)
 

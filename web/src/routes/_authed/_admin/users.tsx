@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const UsersPage = lazy(() => import("@/pages/admin/users"));
+const UsersPage = lazy(() => import("@/features/admin/pages/users"));
 
 export const Route = createFileRoute("/_authed/_admin/users")({
   component: UsersPage,

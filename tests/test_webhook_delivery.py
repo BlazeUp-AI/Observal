@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from services.webhook_delivery import (
+from services.enterprise.webhook_delivery import (
     _buffer_delivery_record,
     _delivery_buffer,
     deliver_webhook,
@@ -37,7 +37,7 @@ class TestDeliverWebhook:
         """Successful 200 response returns success=True."""
         mock_response = httpx.Response(200, request=httpx.Request("POST", TEST_URL))
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -57,7 +57,7 @@ class TestDeliverWebhook:
         """4xx responses are NOT retried (client error)."""
         mock_response = httpx.Response(400, request=httpx.Request("POST", TEST_URL))
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -75,14 +75,14 @@ class TestDeliverWebhook:
         fail_response = httpx.Response(500, request=httpx.Request("POST", TEST_URL))
         success_response = httpx.Response(200, request=httpx.Request("POST", TEST_URL))
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = [fail_response, success_response]
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            with patch("services.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
+            with patch("services.enterprise.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
                 result = await deliver_webhook(TEST_URL, TEST_SECRET, TEST_PAYLOAD, ALERT_RULE_ID)
 
         assert result.success is True
@@ -94,14 +94,14 @@ class TestDeliverWebhook:
         """All retries fail returns success=False."""
         fail_response = httpx.Response(500, request=httpx.Request("POST", TEST_URL))
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = fail_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            with patch("services.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
+            with patch("services.enterprise.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
                 result = await deliver_webhook(TEST_URL, TEST_SECRET, TEST_PAYLOAD, ALERT_RULE_ID, max_retries=3)
 
         assert result.success is False
@@ -119,14 +119,14 @@ class TestDeliverWebhook:
     @pytest.mark.asyncio
     async def test_network_error_triggers_retry(self):
         """Network errors trigger retry."""
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.ConnectError("Connection refused")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            with patch("services.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
+            with patch("services.enterprise.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
                 result = await deliver_webhook(TEST_URL, TEST_SECRET, TEST_PAYLOAD, ALERT_RULE_ID, max_retries=2)
 
         assert result.success is False
@@ -138,14 +138,14 @@ class TestDeliverWebhook:
         fail_response = httpx.Response(500, request=httpx.Request("POST", TEST_URL))
         success_response = httpx.Response(200, request=httpx.Request("POST", TEST_URL))
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = [fail_response, success_response]
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            with patch("services.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
+            with patch("services.enterprise.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
                 result = await deliver_webhook(TEST_URL, TEST_SECRET, TEST_PAYLOAD, ALERT_RULE_ID)
 
         # All buffered records should have the same event_id
@@ -161,7 +161,7 @@ class TestDeliverWebhook:
 
         sent_bodies = []
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
 
             async def capture_post(url, content=None, headers=None):
@@ -175,7 +175,7 @@ class TestDeliverWebhook:
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
 
-            with patch("services.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
+            with patch("services.enterprise.webhook_delivery.asyncio.sleep", new_callable=AsyncMock):
                 await deliver_webhook(TEST_URL, TEST_SECRET, TEST_PAYLOAD, ALERT_RULE_ID)
 
         # All sent bodies must be identical bytes
@@ -188,7 +188,7 @@ class TestDeliverWebhook:
         sent_headers = {}
         mock_response = httpx.Response(200, request=httpx.Request("POST", TEST_URL))
 
-        with patch("services.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
+        with patch("services.enterprise.webhook_delivery.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
 
             async def capture_post(url, content=None, headers=None):

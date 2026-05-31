@@ -31,8 +31,8 @@ from services.clickhouse import (
     insert_traces,
     query_recent_events,
 )
-from services.redis import publish
-from services.secrets_redactor import redact_secrets
+from services.infra.redis import publish
+from services.ingest.secrets_redactor import redact_secrets
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
 

@@ -249,7 +249,7 @@ class TestSchemas:
 class TestSkillRoutes:
     @pytest.mark.asyncio
     async def test_submit_calls_db_add_and_commit(self):
-        from api.routes.skill import router
+        from api.routes.registry.skill import router
 
         app, db, user = _app_with(router)
 
@@ -280,7 +280,7 @@ class TestSkillRoutes:
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
-        from api.routes.skill import router
+        from api.routes.registry.skill import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -290,7 +290,7 @@ class TestSkillRoutes:
 
     @pytest.mark.asyncio
     async def test_delete_missing_returns_404(self):
-        from api.routes.skill import router
+        from api.routes.registry.skill import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -300,7 +300,7 @@ class TestSkillRoutes:
 
     @pytest.mark.asyncio
     async def test_install_approved_returns_config(self):
-        from api.routes.skill import router
+        from api.routes.registry.skill import router
 
         app, db, user = _app_with(router)
         listing = _listing_mock(None, status=ListingStatus.approved)
@@ -314,7 +314,7 @@ class TestSkillRoutes:
 class TestHookRoutes:
     @pytest.mark.asyncio
     async def test_submit_calls_db_add_and_commit(self):
-        from api.routes.hook import router
+        from api.routes.registry.hook import router
 
         app, db, user = _app_with(router)
 
@@ -343,7 +343,7 @@ class TestHookRoutes:
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
-        from api.routes.hook import router
+        from api.routes.registry.hook import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -353,7 +353,7 @@ class TestHookRoutes:
 
     @pytest.mark.asyncio
     async def test_delete_missing_returns_404(self):
-        from api.routes.hook import router
+        from api.routes.registry.hook import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -363,7 +363,7 @@ class TestHookRoutes:
 
     @pytest.mark.asyncio
     async def test_install_approved_returns_config(self):
-        from api.routes.hook import router
+        from api.routes.registry.hook import router
 
         app, db, user = _app_with(router)
         listing = _listing_mock(None, status=ListingStatus.approved)
@@ -377,7 +377,7 @@ class TestHookRoutes:
 class TestPromptRoutes:
     @pytest.mark.asyncio
     async def test_submit_calls_db_add_and_commit(self):
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
 
         app, db, user = _app_with(router)
 
@@ -406,7 +406,7 @@ class TestPromptRoutes:
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -416,7 +416,7 @@ class TestPromptRoutes:
 
     @pytest.mark.asyncio
     async def test_delete_missing_returns_404(self):
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -426,7 +426,7 @@ class TestPromptRoutes:
 
     @pytest.mark.asyncio
     async def test_install_approved_returns_config(self):
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
 
         app, db, user = _app_with(router)
         listing = _listing_mock(None, status=ListingStatus.approved)
@@ -438,7 +438,7 @@ class TestPromptRoutes:
 
     @pytest.mark.asyncio
     async def test_render_substitutes_variables(self):
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
 
         app, db, user = _app_with(router)
         listing = _listing_mock(
@@ -455,7 +455,7 @@ class TestPromptRoutes:
 
     @pytest.mark.asyncio
     async def test_render_missing_returns_404(self):
-        from api.routes.prompt import router
+        from api.routes.registry.prompt import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -467,7 +467,7 @@ class TestPromptRoutes:
 class TestSandboxRoutes:
     @pytest.mark.asyncio
     async def test_submit_calls_db_add_and_commit(self):
-        from api.routes.sandbox import router
+        from api.routes.registry.sandbox import router
 
         app, db, user = _app_with(router)
 
@@ -496,7 +496,7 @@ class TestSandboxRoutes:
 
     @pytest.mark.asyncio
     async def test_get_missing_returns_404(self):
-        from api.routes.sandbox import router
+        from api.routes.registry.sandbox import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -506,7 +506,7 @@ class TestSandboxRoutes:
 
     @pytest.mark.asyncio
     async def test_delete_missing_returns_404(self):
-        from api.routes.sandbox import router
+        from api.routes.registry.sandbox import router
 
         app, db, _ = _app_with(router)
         db.execute = AsyncMock(return_value=_scalar_result(None))
@@ -516,7 +516,7 @@ class TestSandboxRoutes:
 
     @pytest.mark.asyncio
     async def test_install_approved_returns_config(self):
-        from api.routes.sandbox import router
+        from api.routes.registry.sandbox import router
 
         app, db, user = _app_with(router)
         listing = _listing_mock(None, status=ListingStatus.approved)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "observal-server"))
 
-from services.secrets_redactor import REDACTED, redact_dict, redact_secrets
+from services.ingest.secrets_redactor import REDACTED, redact_dict, redact_secrets
 
 # ============================================================================
 # Known API key prefixes — MUST be redacted

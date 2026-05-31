@@ -23,7 +23,7 @@ from services.shared.utils import sanitize_name as _sanitize_name
 
 if TYPE_CHECKING:
     from models.agent import Agent
-from services.config_generator import (
+from services.registry.config_generator import (
     _build_run_command,
     _gemini_settings,  # noqa: F401 (re-exported for adapters)
     generate_config,

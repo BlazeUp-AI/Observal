@@ -25,7 +25,7 @@ async def get_version():
     The server_version is the canonical target: CLI and frontend must match it.
     """
     optic.debug("config.get_version called")
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     max_cli = await ds.get("misc.max_cli_version")
     api_version = await ds.get("misc.api_version")
@@ -45,7 +45,7 @@ async def get_version():
 async def derive_endpoints(request: Request | None = None) -> dict[str, str]:
     """Derive all endpoint URLs from settings, falling back to request context."""
     optic.debug("derive_endpoints called")
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     public_url_setting = await ds.get("deployment.public_url")
     public_url = public_url_setting.rstrip("/") if public_url_setting else ""
@@ -78,7 +78,7 @@ async def get_endpoints(request: Request):
 async def get_public_config(db=Depends(get_db)):
     """Public configuration for frontend. No auth required."""
     optic.debug("config.get_public_config called")
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     # Deployment mode derived from license presence
     licensed = HAS_LICENSE

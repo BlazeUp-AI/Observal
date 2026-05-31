@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const SecurityEventsPage = lazy(() => import("@/pages/admin/security-events"));
+const SecurityEventsPage = lazy(() => import("@/features/admin/pages/security-events"));
 
 export const Route = createFileRoute("/_authed/_admin/security-events")({
   component: SecurityEventsPage,

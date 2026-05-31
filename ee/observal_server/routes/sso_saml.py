@@ -24,7 +24,7 @@ from api.deps import get_db, get_or_create_default_org
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from ee.observal_server.services.saml import (
     build_saml_settings,
     decrypt_private_key,
@@ -35,15 +35,15 @@ from ee.observal_server.services.saml import (
 )
 from models.saml_config import SamlConfig
 from models.user import User, UserRole
-from services.jwt_service import create_access_token, create_refresh_token
-from services.redis import get_redis
-from services.security_events import (
+from services.enterprise.username_generator import generate_unique_username
+from services.infra.redis import get_redis
+from services.security.jwt_service import create_access_token, create_refresh_token
+from services.security.security_events import (
     EventType,
     SecurityEvent,
     Severity,
     emit_security_event,
 )
-from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.ee.saml")
 

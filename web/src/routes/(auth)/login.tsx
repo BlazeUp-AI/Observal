@@ -5,7 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/sonner";
 
-const LoginPage = lazy(() => import("@/pages/login"));
+const LoginPage = lazy(() => import("@/features/auth/pages/login"));
 
 export type LoginSearch = {
   next?: string;

@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const ComponentsPage = lazy(() => import("@/pages/registry/components/index"));
+const ComponentsPage = lazy(() => import("@/features/registry/pages/components/index"));
 
 export const Route = createFileRoute("/_authed/components/")({
   component: ComponentsPage,

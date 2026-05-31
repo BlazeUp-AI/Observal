@@ -16,13 +16,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from services.agent_builder import (
+from services.ide import generate_agent_config
+from services.registry.agent_builder import (
     AgentManifest,
     ManifestComponent,
     ManifestComponents,
     generate_ide_agent_files,
 )
-from services.ide import generate_agent_config
 
 ALL_IDES = [
     "claude-code",

@@ -1897,7 +1897,7 @@ async def get_ai_insights(
     Collects metrics from multiple sources, sends to the eval model,
     and returns business-language recommendations.
     """
-    from services.strategic_insights import generate_strategic_insights
+    from services.enterprise.strategic_insights import generate_strategic_insights
 
     org_id = current_user.org_id
 

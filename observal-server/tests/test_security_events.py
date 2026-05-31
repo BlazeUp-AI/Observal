@@ -11,7 +11,7 @@ import logging
 
 import pytest
 
-from services.security_events import (
+from services.security.security_events import (
     EventType,
     SecurityEvent,
     Severity,

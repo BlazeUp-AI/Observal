@@ -22,9 +22,10 @@ from .setup import setup_audit, shutdown_audit
 # License gate: audit is an enterprise feature.
 AUDIT_LICENSED: bool = False
 try:
-    from ee.license import is_feature_licensed
+    import importlib
 
-    AUDIT_LICENSED = is_feature_licensed("audit")
+    _ee_license = importlib.import_module("ee.license")
+    AUDIT_LICENSED = _ee_license.is_feature_licensed("audit")
 except ImportError:
     pass
 

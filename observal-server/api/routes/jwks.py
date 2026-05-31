@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from loguru import logger as optic
 
-from services.crypto import get_key_manager
+from services.security.crypto import get_key_manager
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

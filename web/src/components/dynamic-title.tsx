@@ -3,7 +3,7 @@
 
 
 import { useEffect } from "react";
-import { useDeploymentConfig } from "@/hooks/use-deployment-config";
+import { useDeploymentConfig } from "@/shared/hooks/use-deployment-config";
 
 export function DynamicTitle() {
   const { brandingAppName } = useDeploymentConfig();

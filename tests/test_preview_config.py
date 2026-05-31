@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from api.deps import get_current_user, get_db
-from api.routes.preview import router
+from api.routes.registry.preview import router
 from models.user import User, UserRole
 
 

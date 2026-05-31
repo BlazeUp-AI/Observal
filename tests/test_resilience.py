@@ -130,13 +130,13 @@ class TestRedisPublishRetry:
 
     @pytest.mark.asyncio
     async def test_publish_retries_on_connection_error(self):
-        from services.redis import publish
+        from services.infra.redis import publish
 
         mock_redis = MagicMock()
         mock_redis.publish = AsyncMock(side_effect=[ConnectionError("reset"), None])
 
         with (
-            patch("services.redis.get_redis", return_value=mock_redis),
+            patch("services.infra.redis.get_redis", return_value=mock_redis),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await publish("test-channel", {"msg": "hello"})
@@ -144,13 +144,13 @@ class TestRedisPublishRetry:
 
     @pytest.mark.asyncio
     async def test_publish_gives_up_after_max_attempts(self):
-        from services.redis import publish
+        from services.infra.redis import publish
 
         mock_redis = MagicMock()
         mock_redis.publish = AsyncMock(side_effect=ConnectionError("persistent failure"))
 
         with (
-            patch("services.redis.get_redis", return_value=mock_redis),
+            patch("services.infra.redis.get_redis", return_value=mock_redis),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await publish("test-channel", {"msg": "hello"})
@@ -158,13 +158,13 @@ class TestRedisPublishRetry:
 
     @pytest.mark.asyncio
     async def test_publish_retries_on_os_error(self):
-        from services.redis import publish
+        from services.infra.redis import publish
 
         mock_redis = MagicMock()
         mock_redis.publish = AsyncMock(side_effect=[OSError("network down"), None])
 
         with (
-            patch("services.redis.get_redis", return_value=mock_redis),
+            patch("services.infra.redis.get_redis", return_value=mock_redis),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await publish("test-channel", {"msg": "hello"})

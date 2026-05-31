@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const LeaderboardPage = lazy(() => import("@/pages/registry/leaderboard"));
+const LeaderboardPage = lazy(() => import("@/features/registry/pages/leaderboard"));
 
 export const Route = createFileRoute("/_authed/leaderboard")({
   component: LeaderboardPage,

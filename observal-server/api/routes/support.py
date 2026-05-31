@@ -30,8 +30,8 @@ from api.ratelimit import limiter
 from config import HAS_LICENSE, Settings, settings
 from models.user import UserRole
 from services.clickhouse import CLICKHOUSE_DB, _query
-from services.redis import get_redis
-from services.secrets_redactor import redact_dict
+from services.infra.redis import get_redis
+from services.ingest.secrets_redactor import redact_dict
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -219,7 +219,7 @@ async def _collect_config() -> dict:
     over the wire.
     """
     optic.debug("_collect_config called")
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     result = {
         field_name: getattr(settings, field_name)
@@ -419,7 +419,7 @@ async def _collect_logs(logs_since: str = "1h") -> dict:
     """
     optic.trace("logs_since={}", logs_since)
     try:
-        from services.log_buffer import get_log_buffer
+        from services.ingest.log_buffer import get_log_buffer
 
         buf = get_log_buffer()
         duration = _parse_duration(logs_since)

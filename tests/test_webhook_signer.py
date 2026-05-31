@@ -6,7 +6,7 @@
 import time
 from unittest.mock import patch
 
-from services.webhook_signer import (
+from services.enterprise.webhook_signer import (
     HEADER_EVENT_ID,
     HEADER_SIGNATURE,
     HEADER_TIMESTAMP,
@@ -133,7 +133,7 @@ class TestVerifySignature:
         body = b"payload"
         now = int(time.time())
         sig = sign_payload(secret, now, body)
-        with patch("services.webhook_signer.time") as mock_time:
+        with patch("services.enterprise.webhook_signer.time") as mock_time:
             mock_time.time.return_value = now + 300  # Exactly at boundary
             assert verify_signature(secret, sig, now, body, tolerance_seconds=300) is True
 

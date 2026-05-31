@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-import services.dynamic_settings as _ds
+import services.infra.dynamic_settings as _ds
 from api.deps import (
     get_db,
     get_effective_agent_permission,
@@ -31,7 +31,7 @@ from schemas.agent import (
     ValidationResult,
 )
 from services.ide import generate_agent_config
-from services.registry_telemetry import emit_registry_event
+from services.registry.registry_telemetry import emit_registry_event
 
 from ._router import router
 from .helpers import _load_agent, _resolve_component_names
@@ -134,7 +134,7 @@ async def install_agent(
     name_map = await _resolve_component_names(agent.components, db)
 
     from api.routes.config import derive_endpoints
-    from services.model_resolver import resolve_model_for_ide
+    from services.registry.model_resolver import resolve_model_for_ide
 
     endpoints = await derive_endpoints(request)
 
@@ -170,7 +170,7 @@ async def install_agent(
     # instance (e.g. savepoint rollback on duplicate download).
     resolved_agent_id = agent.id
 
-    from services.download_tracker import record_agent_download
+    from services.registry.download_tracker import record_agent_download
 
     await record_agent_download(
         agent_id=resolved_agent_id,
@@ -215,7 +215,7 @@ async def agent_download_stats(
         raise HTTPException(status_code=404, detail="Agent not found")
     if get_effective_agent_permission(agent, current_user) == "none":
         raise HTTPException(status_code=403, detail="Insufficient permissions to view stats for this agent")
-    from services.download_tracker import get_download_stats
+    from services.registry.download_tracker import get_download_stats
 
     stats = await get_download_stats(agent.id, db)
     return stats
@@ -273,10 +273,10 @@ async def resolve_agent_components(
         raise HTTPException(status_code=404, detail="Agent not found")
     if get_effective_agent_permission(agent, current_user) == "none":
         raise HTTPException(status_code=403, detail="Insufficient permissions to resolve this agent")
-    from services.agent_resolver import resolve_agent
+    from services.registry.agent_resolver import resolve_agent
 
     resolved = await resolve_agent(agent, db)
-    from services.agent_builder import build_composition_summary
+    from services.registry.agent_builder import build_composition_summary
 
     return build_composition_summary(resolved)
 
@@ -296,7 +296,7 @@ async def get_agent_manifest(
         raise HTTPException(status_code=404, detail="Agent not found")
     if get_effective_agent_permission(agent, current_user) == "none":
         raise HTTPException(status_code=403, detail="Insufficient permissions to view this agent's manifest")
-    from services.agent_resolver import resolve_agent
+    from services.registry.agent_resolver import resolve_agent
 
     resolved = await resolve_agent(agent, db)
     if not resolved.ok:
@@ -310,7 +310,7 @@ async def get_agent_manifest(
                 ],
             },
         )
-    from services.agent_builder import build_agent_manifest
+    from services.registry.agent_builder import build_agent_manifest
 
     return build_agent_manifest(resolved)
 
@@ -326,7 +326,7 @@ async def validate_agent_composition(
     if not req.components:
         return ValidationResult(valid=True, issues=[])
 
-    from services.agent_resolver import validate_component_ids
+    from services.registry.agent_resolver import validate_component_ids
 
     errors = await validate_component_ids(
         [{"component_type": c.component_type, "component_id": c.component_id} for c in req.components],

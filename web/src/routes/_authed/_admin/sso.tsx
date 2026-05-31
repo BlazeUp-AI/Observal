@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const SsoPage = lazy(() => import("@/pages/admin/sso"));
+const SsoPage = lazy(() => import("@/features/admin/pages/sso"));
 
 export const Route = createFileRoute("/_authed/_admin/sso")({
   component: SsoPage,

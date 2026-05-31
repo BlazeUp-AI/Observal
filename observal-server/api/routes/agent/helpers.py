@@ -136,7 +136,7 @@ async def _resolve_component_names(components: list, db: AsyncSession) -> dict[s
     """Batch-resolve component_id -> name for all component types."""
     if not components:
         return {}
-    from services.agent_resolver import _LISTING_MODELS
+    from services.registry.agent_resolver import _LISTING_MODELS
 
     # Group component_ids by type
     by_type: dict[str, list[uuid.UUID]] = {}

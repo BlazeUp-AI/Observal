@@ -17,14 +17,14 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from api.deps import get_db, get_or_create_default_org, require_role
 from ee.observal_server.services.saml import encrypt_private_key, generate_sp_key_pair
 from ee.observal_server.services.scim_service import hash_scim_token
 from models.saml_config import SamlConfig
 from models.scim_token import ScimToken
 from models.user import User, UserRole
-from services.security_events import (
+from services.security.security_events import (
     EventType,
     SecurityEvent,
     Severity,

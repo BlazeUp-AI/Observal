@@ -139,7 +139,7 @@ class TestOptionalCurrentUser:
 
     @pytest.mark.asyncio
     async def test_raises_401_for_deactivated_user(self):
-        from services.jwt_service import create_access_token
+        from services.security.jwt_service import create_access_token
 
         org = _make_org()
         user = _make_user(org=org)
@@ -158,7 +158,7 @@ class TestOptionalCurrentUser:
 
     @pytest.mark.asyncio
     async def test_returns_user_with_valid_token(self):
-        from services.jwt_service import create_access_token
+        from services.security.jwt_service import create_access_token
 
         org = _make_org()
         user = _make_user(org=org)

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.skill_validator import (
+from services.registry.skill_validator import (
     SkillValidationError,
     _build_raw_url,
     _parse_frontmatter,
@@ -109,7 +109,7 @@ name: my-skill
 class TestValidateSkillMd:
     @pytest.mark.asyncio
     async def test_valid_skill_md(self):
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -125,7 +125,7 @@ class TestValidateSkillMd:
 
     @pytest.mark.asyncio
     async def test_404_raises(self):
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -137,7 +137,7 @@ class TestValidateSkillMd:
 
     @pytest.mark.asyncio
     async def test_non_200_raises(self):
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -149,7 +149,7 @@ class TestValidateSkillMd:
 
     @pytest.mark.asyncio
     async def test_missing_name_raises(self):
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -161,7 +161,7 @@ class TestValidateSkillMd:
 
     @pytest.mark.asyncio
     async def test_missing_description_raises(self):
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -174,7 +174,7 @@ class TestValidateSkillMd:
     @pytest.mark.asyncio
     async def test_command_extraction(self):
         md = "---\nname: review\ndescription: Reviews code\ncommand: /code-review\n---\n"
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -188,7 +188,7 @@ class TestValidateSkillMd:
     @pytest.mark.asyncio
     async def test_no_command_field(self):
         md = "---\nname: review\ndescription: Reviews code\n---\n"
-        with patch("services.skill_validator.httpx.AsyncClient") as mock_cls:
+        with patch("services.registry.skill_validator.httpx.AsyncClient") as mock_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)

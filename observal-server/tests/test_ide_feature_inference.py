@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 
 from schemas.ide_registry import IDE_REGISTRY
-from services.ide_feature_inference import compute_supported_ides, infer_required_features
+from services.enterprise.ide_feature_inference import compute_supported_ides, infer_required_features
 
 
 def _agent(*components, external_mcps=None):

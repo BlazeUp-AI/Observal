@@ -86,7 +86,7 @@ async def extract_facets(
         return {}
 
     call_model = get_call_model()
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     model_override = await ds.get("insights.model_facets") or None
 

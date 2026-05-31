@@ -14,7 +14,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import { GitHubStarBanner } from "@/components/nav/github-star-banner";
 
 export interface BreadcrumbEntry {

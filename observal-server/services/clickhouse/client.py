@@ -153,7 +153,7 @@ def _normalize_ts(value: str | None) -> str | None:
 async def _invalidate_cache():
     """Best-effort cache invalidation after ClickHouse writes."""
     try:
-        from services.cache import invalidate_all
+        from services.infra.cache import invalidate_all
 
         await invalidate_all()
     except Exception as e:

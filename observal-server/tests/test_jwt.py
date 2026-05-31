@@ -14,7 +14,7 @@ import pytest
 # Ensure settings are importable with defaults before anything else
 from config import settings
 from models.user import User, UserRole
-from services.jwt_service import (
+from services.security.jwt_service import (
     ALGORITHM,
     create_access_token,
     create_refresh_token,

@@ -33,7 +33,7 @@ async def batch_generate_insights(ctx: dict):
 async def refresh_model_catalog(ctx: dict):
     """Cron job: pre-warm the model catalog so user requests never hit a cold cache."""
     optic.debug("refresh_model_catalog")
-    from services.model_catalog import get_catalog
+    from services.registry.model_catalog import get_catalog
 
     try:
         cat = await get_catalog(force_refresh=True)

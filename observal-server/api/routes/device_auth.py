@@ -32,7 +32,7 @@ from schemas.auth import (
     DeviceConfirmRequest,
     DeviceTokenRequest,
 )
-from services.redis import get_redis
+from services.infra.redis import get_redis
 
 router = APIRouter(prefix="/api/v1/auth/device", tags=["device-auth"])
 
@@ -56,7 +56,7 @@ def _normalize_user_code(code: str) -> str:
 
 def _resolve_frontend_url(request: Request) -> str:
     """Derive the frontend base URL from the request when frontend_url is not configured."""
-    import services.dynamic_settings as ds
+    import services.infra.dynamic_settings as ds
 
     configured = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
     if configured and configured != "http://localhost:3000":

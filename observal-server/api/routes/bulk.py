@@ -12,7 +12,7 @@ from models.agent import Agent, AgentStatus, AgentVersion
 from models.agent_component import AgentComponent
 from models.user import User, UserRole
 from schemas.bulk import BulkAgentItem, BulkAgentRequest, BulkResult, BulkResultItem
-from services.registry_telemetry import emit_registry_event
+from services.registry.registry_telemetry import emit_registry_event
 
 router = APIRouter(prefix="/api/v1/bulk", tags=["bulk"])
 

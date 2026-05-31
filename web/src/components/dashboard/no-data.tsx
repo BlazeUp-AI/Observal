@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface NoDataProps {

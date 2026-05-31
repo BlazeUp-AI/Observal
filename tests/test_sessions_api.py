@@ -21,7 +21,7 @@ def _user(role="user"):
 @pytest.mark.asyncio
 async def test_bind_session_agent_denied_raises_404():
     """Mutation access failures should use HTTP errors, matching other ownership checks."""
-    from api.routes.sessions import bind_session_agent
+    from api.routes.ingest_routes.sessions import bind_session_agent
 
     with (
         patch("api.routes.sessions._ch_json", new=AsyncMock(return_value=[])),

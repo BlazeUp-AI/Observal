@@ -29,7 +29,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from strawberry.fastapi import GraphQLRouter
 
-import services.dynamic_settings as ds
+import services.infra.dynamic_settings as ds
 from api.deps import get_db, get_or_create_default_org
 from api.graphql import get_context_dep, schema
 from api.middleware.audit import AuditMiddleware
@@ -43,26 +43,26 @@ from api.routes.alert import router as alert_router
 from api.routes.audit import router as audit_router
 from api.routes.auth import router as auth_router
 from api.routes.bulk import router as bulk_router
-from api.routes.co_authors import router as co_authors_router
-from api.routes.component_source import router as component_source_router
 from api.routes.config import router as config_router
 from api.routes.dashboard import router as dashboard_router
 from api.routes.device_auth import router as device_auth_router
 from api.routes.feedback import router as feedback_router
-from api.routes.hook import router as hook_router
-from api.routes.ingest import router as ingest_router
+from api.routes.ingest_routes.ingest import router as ingest_router
+from api.routes.ingest_routes.logs_stream import router as logs_stream_router
+from api.routes.ingest_routes.sessions import router as sessions_router
 from api.routes.insights import router as insights_router
 from api.routes.jwks import router as jwks_router
-from api.routes.logs_stream import router as logs_stream_router
-from api.routes.mcp import router as mcp_router
-from api.routes.preview import router as preview_router
-from api.routes.prompt import router as prompt_router
-from api.routes.reconcile import router as reconcile_router
-from api.routes.registry_models import router as registry_models_router
+from api.routes.registry.co_authors import router as co_authors_router
+from api.routes.registry.component_source import router as component_source_router
+from api.routes.registry.hook import router as hook_router
+from api.routes.registry.mcp import router as mcp_router
+from api.routes.registry.preview import router as preview_router
+from api.routes.registry.prompt import router as prompt_router
+from api.routes.registry.reconcile import router as reconcile_router
+from api.routes.registry.registry_models import router as registry_models_router
+from api.routes.registry.sandbox import router as sandbox_router
+from api.routes.registry.skill import router as skill_router
 from api.routes.review import router as review_router
-from api.routes.sandbox import router as sandbox_router
-from api.routes.sessions import router as sessions_router
-from api.routes.skill import router as skill_router
 from api.routes.support import router as support_router
 from api.routes.telemetry import router as telemetry_router
 from config import HAS_LICENSE, check_legacy_env_vars, settings
@@ -71,11 +71,7 @@ from logging_config import setup_logging
 from models import Base
 from models.user import User
 from services.audit import AUDIT_LICENSED, setup_audit, shutdown_audit
-from services.cache import close_cache, init_cache
-from services.clickhouse import init_clickhouse
-from services.crypto import init_key_manager
-from services.optic import setup_optic
-from services.redis import close as close_redis
+from services.infra.optic import setup_optic
 
 setup_logging()
 setup_optic(mode="prod" if HAS_LICENSE else "dev")
@@ -128,9 +124,17 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await _ensure_columns(conn)
+
+        from services.clickhouse import init_clickhouse
+
         await init_clickhouse()
+
+    from services.infra.cache import close_cache, init_cache
+
     await init_cache()
     # Initialize asymmetric key manager for JWT signing
+    from services.security.crypto import init_key_manager
+
     init_key_manager(
         key_dir=settings.JWT_KEY_DIR,
         key_password=settings.JWT_KEY_PASSWORD,
@@ -145,7 +149,7 @@ async def lifespan(app: FastAPI):
         await db.commit()
 
     # Seed demo accounts when no real users exist and DEMO_* env vars are set
-    from services.demo_accounts import seed_demo_accounts
+    from services.enterprise.demo_accounts import seed_demo_accounts
 
     async with _session_factory() as db:
         await seed_demo_accounts(db)
@@ -160,7 +164,7 @@ async def lifespan(app: FastAPI):
     configure_insights()
 
     # Start agent registry cache for registered-agents-only filtering
-    from services.agent_registry_cache import start as start_registry_cache
+    from services.registry.agent_registry_cache import start as start_registry_cache
 
     await start_registry_cache()
 
@@ -169,10 +173,14 @@ async def lifespan(app: FastAPI):
     if AUDIT_LICENSED:
         await shutdown_audit()
 
-    from services.agent_registry_cache import stop as stop_registry_cache
+    from services.registry.agent_registry_cache import stop as stop_registry_cache
 
     await stop_registry_cache()
+
     await close_cache()
+
+    from services.infra.redis import close as close_redis
+
     await close_redis()
 
 
@@ -404,11 +412,13 @@ app.add_middleware(CacheControlMiddleware)
 # Enterprise routes + middleware (must be registered before startup)
 if HAS_LICENSE:
     try:
-        from ee import register_enterprise_middleware
-        from ee.observal_server.routes import mount_ee_routes
+        import importlib
 
-        register_enterprise_middleware(app, settings)
-        mount_ee_routes(app)
+        _ee = importlib.import_module("ee")
+        _ee_routes = importlib.import_module("ee.observal_server.routes")
+
+        _ee.register_enterprise_middleware(app, settings)
+        _ee_routes.mount_ee_routes(app)
     except (ImportError, RuntimeError) as _ee_err:
         pass
         optic.warning("enterprise features unavailable: {}", str(_ee_err))
@@ -491,7 +501,7 @@ async def readiness(db: AsyncSession = Depends(get_db)):
         checks["clickhouse"] = "ok"
 
     # Redis
-    from services.redis import ping as redis_ping
+    from services.infra.redis import ping as redis_ping
 
     if not await redis_ping():
         checks["redis"] = "unreachable"

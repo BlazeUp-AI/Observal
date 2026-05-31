@@ -113,7 +113,9 @@ def generate_agent_config(
     This is the single entry point for all IDE config generation.
     It builds a shared ConfigContext, resolves the adapter, and delegates.
     """
-    import services.ide.load_all  # noqa: F401
+    import importlib
+
+    importlib.import_module("services.ide.load_all")
     from services.ide.helpers import (
         _build_hook_configs,
         _build_mcp_configs,

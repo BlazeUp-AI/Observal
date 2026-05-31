@@ -15,7 +15,7 @@ async def sync_component_sources(ctx: dict):
 
     from database import async_session
     from models.component_source import ComponentSource
-    from services.git_mirror_service import sync_source
+    from services.enterprise.git_mirror_service import sync_source
 
     async with async_session() as db:
         # Find sources due for sync

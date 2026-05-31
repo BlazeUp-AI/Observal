@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const RegistryHome = lazy(() => import("@/pages/registry/home"));
+const RegistryHome = lazy(() => import("@/features/registry/pages/home"));
 
 export const Route = createFileRoute("/_authed/")({
   component: RegistryHome,

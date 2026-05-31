@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
-import { clearSession, getUserAvatar } from "@/lib/api";
+import { clearSession, getUserAvatar } from "@/shared/api-client";
 import { useSyncExternalStore } from "react";
 
 function initials(name: string) {

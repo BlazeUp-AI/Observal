@@ -3,7 +3,7 @@
 
 
 import { Group, Panel, Separator } from "react-resizable-panels";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/lib/utils";
 
 function ResizablePanelGroup({
   className,

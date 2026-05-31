@@ -6,7 +6,7 @@
 import pytest
 from fastapi import HTTPException
 
-from services.component_version_extras import validate_and_extract
+from services.registry.component_version_extras import validate_and_extract
 
 
 class TestValidateAndExtract:

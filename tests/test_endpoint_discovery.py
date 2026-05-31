@@ -27,7 +27,7 @@ def _make_ds_get(public_url="", frontend_url=""):
 class TestDeriveEndpoints:
     @pytest.mark.asyncio
     async def test_all_settings_explicit(self):
-        with patch("services.dynamic_settings") as mock_ds:
+        with patch("services.infra.dynamic_settings") as mock_ds:
             mock_ds.get = AsyncMock(
                 side_effect=_make_ds_get(
                     public_url="https://observal.company.com",
@@ -42,7 +42,7 @@ class TestDeriveEndpoints:
 
     @pytest.mark.asyncio
     async def test_derives_web_from_public_url(self):
-        with patch("services.dynamic_settings") as mock_ds:
+        with patch("services.infra.dynamic_settings") as mock_ds:
             mock_ds.get = AsyncMock(
                 side_effect=_make_ds_get(
                     public_url="https://observal.company.com",
@@ -58,7 +58,7 @@ class TestDeriveEndpoints:
     async def test_derives_from_request_base_url(self):
         request = MagicMock()
         request.base_url = "https://api.myhost.io/"
-        with patch("services.dynamic_settings") as mock_ds:
+        with patch("services.infra.dynamic_settings") as mock_ds:
             mock_ds.get = AsyncMock(side_effect=_make_ds_get())
             from api.routes.config import derive_endpoints
 
@@ -67,7 +67,7 @@ class TestDeriveEndpoints:
 
     @pytest.mark.asyncio
     async def test_localhost_uses_http(self):
-        with patch("services.dynamic_settings") as mock_ds:
+        with patch("services.infra.dynamic_settings") as mock_ds:
             mock_ds.get = AsyncMock(side_effect=_make_ds_get())
             from api.routes.config import derive_endpoints
 
@@ -76,7 +76,7 @@ class TestDeriveEndpoints:
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_request_no_settings(self):
-        with patch("services.dynamic_settings") as mock_ds:
+        with patch("services.infra.dynamic_settings") as mock_ds:
             mock_ds.get = AsyncMock(side_effect=_make_ds_get())
             from api.routes.config import derive_endpoints
 
@@ -85,7 +85,7 @@ class TestDeriveEndpoints:
 
     @pytest.mark.asyncio
     async def test_trailing_slash_stripped(self):
-        with patch("services.dynamic_settings") as mock_ds:
+        with patch("services.infra.dynamic_settings") as mock_ds:
             mock_ds.get = AsyncMock(
                 side_effect=_make_ds_get(
                     public_url="https://api.example.com/",

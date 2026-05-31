@@ -159,7 +159,7 @@ class _MockListing:
 
 class TestSandboxConfigGenerator:
     def test_basic(self):
-        from services.sandbox_config_generator import generate_sandbox_config
+        from services.registry.sandbox_config_generator import generate_sandbox_config
 
         listing = _MockListing(id="s-123", image="python:3.12", entrypoint=None, resource_limits={})
         config = generate_sandbox_config(listing, "cursor")
@@ -170,7 +170,7 @@ class TestSandboxConfigGenerator:
         assert "python:3.12" in config["sandbox"]["args"]
 
     def test_with_entrypoint(self):
-        from services.sandbox_config_generator import generate_sandbox_config
+        from services.registry.sandbox_config_generator import generate_sandbox_config
 
         listing = _MockListing(id="s-456", image="node:18", entrypoint="npm test", resource_limits={"timeout": 60})
         config = generate_sandbox_config(listing, "kiro")
@@ -182,7 +182,7 @@ class TestSandboxConfigGenerator:
 
 class TestSkillConfigGenerator:
     def test_basic(self):
-        from services.skill_config_generator import generate_skill_config
+        from services.registry.skill_config_generator import generate_skill_config
 
         listing = _MockListing(id="sk-123", name="python-expert", git_url=None, skill_path=None)
         config = generate_skill_config(listing, "kiro")
@@ -191,7 +191,7 @@ class TestSkillConfigGenerator:
         assert config["skill"]["name"] == "python-expert"
 
     def test_with_git_url(self):
-        from services.skill_config_generator import generate_skill_config
+        from services.registry.skill_config_generator import generate_skill_config
 
         listing = _MockListing(
             id="sk-456", name="test-skill", git_url="https://github.com/example/skill.git", skill_path="skills/test"
@@ -214,7 +214,7 @@ class TestInstallRouteWiring:
     async def test_sandbox_install_uses_config_generator(self):
         from unittest.mock import AsyncMock, patch
 
-        from api.routes.sandbox import install_sandbox
+        from api.routes.registry.sandbox import install_sandbox
         from schemas.sandbox import SandboxInstallRequest
 
         listing = _MockListing(
@@ -253,7 +253,7 @@ class TestInstallRouteWiring:
     async def test_skill_install_uses_config_generator(self):
         from unittest.mock import AsyncMock, patch
 
-        from api.routes.skill import install_skill
+        from api.routes.registry.skill import install_skill
         from schemas.skill import SkillInstallRequest
 
         listing = _MockListing(

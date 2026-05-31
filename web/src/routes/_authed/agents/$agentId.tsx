@@ -3,7 +3,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
-const AgentDetail = lazy(() => import("@/pages/registry/agents/detail"));
+const AgentDetail = lazy(() => import("@/features/registry/pages/agents/detail"));
 
 export const Route = createFileRoute("/_authed/agents/$agentId")({
   component: AgentDetail,

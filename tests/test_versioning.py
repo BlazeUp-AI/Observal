@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from services.versioning import bump_version, parse_semver, suggest_versions, validate_semver
+from services.registry.versioning import bump_version, parse_semver, suggest_versions, validate_semver
 
 
 class TestParseSemver:
