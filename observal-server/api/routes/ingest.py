@@ -65,10 +65,12 @@ async def ingest_session(
     Lines are classified server-side and redacted before storage.
     """
     optic.trace("user_id={}", current_user.id)
+    from services.privacy import normalize_privacy_mode
     from services.session_ingest import check_session_integrity, ingest_session_lines
 
     user_id = str(current_user.id)
     project_id = get_project_id(current_user)
+    privacy_mode = normalize_privacy_mode(getattr(current_user, "_privacy_mode", None))
 
     optic.debug(
         "ingest request: session={}, ide={}, lines={}, offset={}, final={}",
@@ -91,6 +93,7 @@ async def ingest_session(
         start_offset=req.start_offset,
         total_credits=req.total_credits,
         parent_session_id=req.parent_session_id,
+        privacy_mode=privacy_mode,
     )
 
     integrity_ok = None

@@ -32,8 +32,8 @@ from services.clickhouse import (
     insert_traces,
     query_recent_events,
 )
+from services.privacy import normalize_privacy_mode, redact_payload_text, redact_structured
 from services.redis import publish
-from services.secrets_redactor import redact_secrets, redact_value
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
 
@@ -74,6 +74,7 @@ async def ingest(
     )
     user_id = str(current_user.id)
     project_id = get_project_id(current_user)
+    privacy_mode = normalize_privacy_mode(getattr(current_user, "_privacy_mode", None))
     environment = x_observal_environment or "default"
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     ingested = 0
@@ -99,10 +100,10 @@ async def ingest(
                         "end_time": t.end_time,
                         "trace_type": t.trace_type,
                         "name": t.name,
-                        "metadata": redact_value(t.metadata),
-                        "tags": redact_value(t.tags),
-                        "input": redact_secrets(t.input) if t.input else t.input,
-                        "output": redact_secrets(t.output) if t.output else t.output,
+                        "metadata": redact_structured(t.metadata, privacy_mode),
+                        "tags": redact_structured(t.tags, privacy_mode),
+                        "input": redact_payload_text(t.input, privacy_mode),
+                        "output": redact_payload_text(t.output, privacy_mode),
                         "tool_id": t.tool_id,
                         "sandbox_id": t.sandbox_id,
                         "graphrag_id": t.graphrag_id,
@@ -134,16 +135,16 @@ async def ingest(
                         "type": s.type,
                         "name": s.name,
                         "method": s.method,
-                        "input": redact_secrets(s.input) if s.input else s.input,
-                        "output": redact_secrets(s.output) if s.output else s.output,
-                        "error": redact_secrets(s.error) if s.error else s.error,
+                        "input": redact_payload_text(s.input, privacy_mode),
+                        "output": redact_payload_text(s.output, privacy_mode),
+                        "error": redact_payload_text(s.error, privacy_mode),
                         "start_time": s.start_time,
                         "end_time": s.end_time,
                         "latency_ms": s.latency_ms,
                         "status": s.status,
                         "ide": s.ide,
                         "environment": environment,
-                        "metadata": redact_value(s.metadata),
+                        "metadata": redact_structured(s.metadata, privacy_mode),
                         "token_count_input": s.token_count_input,
                         "token_count_output": s.token_count_output,
                         "token_count_total": s.token_count_total,
@@ -224,12 +225,15 @@ async def ingest(
                     attrs["tool_schema_valid"] = str(int(s.tool_schema_valid))
                 if s.tools_available is not None:
                     attrs["tools_available"] = str(s.tools_available)
-                if s.input:
-                    attrs["mcp_input"] = redact_secrets(s.input)
-                if s.output:
-                    attrs["mcp_output"] = redact_secrets(s.output)
-                if s.error:
-                    attrs["mcp_error"] = redact_secrets(s.error)
+                mcp_input = redact_payload_text(s.input, privacy_mode) if s.input else None
+                if mcp_input:
+                    attrs["mcp_input"] = mcp_input
+                mcp_output = redact_payload_text(s.output, privacy_mode) if s.output else None
+                if mcp_output:
+                    attrs["mcp_output"] = mcp_output
+                mcp_error = redact_payload_text(s.error, privacy_mode) if s.error else None
+                if mcp_error:
+                    attrs["mcp_error"] = mcp_error
                 if s.status:
                     attrs["mcp_status"] = s.status
                 if meta.get("agent_id"):
@@ -284,9 +288,9 @@ async def ingest(
                         "source": sc.source,
                         "data_type": sc.data_type,
                         "value": sc.value,
-                        "string_value": redact_secrets(sc.string_value) if sc.string_value else sc.string_value,
-                        "comment": redact_secrets(sc.comment) if sc.comment else sc.comment,
-                        "metadata": redact_value(sc.metadata),
+                        "string_value": redact_payload_text(sc.string_value, privacy_mode),
+                        "comment": redact_payload_text(sc.comment, privacy_mode),
+                        "metadata": redact_structured(sc.metadata, privacy_mode),
                         "timestamp": now,
                     }
                 )
