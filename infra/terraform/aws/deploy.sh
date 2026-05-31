@@ -118,7 +118,7 @@ if [ -f "terraform.tfvars" ]; then
   pass "terraform.tfvars exists"
 
   # Validate key fields
-  get_tfvar() { grep "^$1" terraform.tfvars 2>/dev/null | sed 's/.*=\s*"\(.*\)"/\1/' | sed "s/.*=\s*'/\1/" | head -1; }
+  get_tfvar() { grep "^$1" terraform.tfvars 2>/dev/null | sed 's/.*=[ ]*"\(.*\)"/\1/' | sed "s/.*=[ ]*'\(.*\)'/\1/" | head -1; }
 
   REGION=$(get_tfvar "region")
   IMAGE_TAG=$(get_tfvar "image_tag")
@@ -257,7 +257,7 @@ else
   info "Required: AdministratorAccess or equivalent for initial deployment"
 fi
 
-if aws ec2 describe-vpcs --region "${REGION:-us-east-1}" --max-results 1 >/dev/null 2>&1; then
+if aws ec2 describe-vpcs --region "${REGION:-us-east-1}" --query 'Vpcs[0].VpcId' --output text >/dev/null 2>&1; then
   pass "EC2/VPC access confirmed"
 else
   fail "Cannot access EC2/VPC (check IAM permissions)"
