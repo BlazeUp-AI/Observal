@@ -306,7 +306,7 @@ async def ingest_session_lines(
             continue
 
         redacted_line = redact_secrets(raw_line)
-        preview = preview_fn(parsed, event_type)
+        preview = redact_secrets(preview_fn(parsed, event_type))
         tool_name, tool_id = tool_info_fn(parsed)
         uuid, parent_uuid = _extract_uuid(parsed, ide)
 

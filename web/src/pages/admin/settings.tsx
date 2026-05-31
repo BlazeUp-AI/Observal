@@ -61,6 +61,7 @@ const SENSITIVE_KEYS = new Set([
 	"insights.aws_access_key_id",
 	"insights.aws_secret_access_key",
 	"insights.aws_session_token",
+	"insights.model_api_key",
 	"saml.idp_x509_cert",
 	"saml.sp_key_encryption_password",
 ]);

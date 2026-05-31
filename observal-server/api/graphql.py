@@ -25,6 +25,7 @@ from services.clickhouse import (
 )
 from services.jwt_service import decode_access_token
 from services.redis import subscribe
+from services.secrets_redactor import redact_secrets
 
 logger = structlog.get_logger(__name__)
 
@@ -276,8 +277,8 @@ def _row_to_trace(r: dict) -> Trace:
         name=r.get("name"),
         start_time=r.get("start_time", ""),
         end_time=r.get("end_time"),
-        input=_parse_json(r.get("input")),
-        output=_parse_json(r.get("output")),
+        input=_parse_json(redact_secrets(r.get("input") or "")),
+        output=_parse_json(redact_secrets(r.get("output") or "")),
         tags=r.get("tags", []),
         metadata=r.get("metadata"),
     )
@@ -292,9 +293,9 @@ def _row_to_span(r: dict) -> Span:
         type=r.get("type", ""),
         name=r.get("name", ""),
         method=r.get("method"),
-        input=_parse_json(r.get("input")),
-        output=_parse_json(r.get("output")),
-        error=_parse_json(r.get("error")),
+        input=_parse_json(redact_secrets(r.get("input") or "")),
+        output=_parse_json(redact_secrets(r.get("output") or "")),
+        error=_parse_json(redact_secrets(r.get("error") or "")),
         start_time=r.get("start_time", ""),
         end_time=r.get("end_time"),
         latency_ms=int(r["latency_ms"]) if r.get("latency_ms") else None,
