@@ -614,6 +614,9 @@ def doctor_patch(
             elif target == "pi":
                 changed = _patch_pi(dry_run)
                 any_changes = any_changes or changed
+            elif target == "antigravity":
+                changed = _patch_antigravity(dry_run)
+                any_changes = any_changes or changed
 
         # ── Shims (all IDEs with home MCP config) ──
         if do_shims:
@@ -784,6 +787,44 @@ def _patch_cursor(dry_run: bool) -> bool:
 
     if not dry_run:
         hooks_path.write_text(json.dumps(result, indent=2) + "\n")
+
+    verb = "Would install" if dry_run else "Installed"
+    rprint(f"  {verb} hooks in {hooks_path}")
+    return True
+
+
+def _patch_antigravity(dry_run: bool) -> bool:
+    """Install session push hooks into ~/.gemini/config/hooks.json."""
+    from observal_cli.ide_specs.antigravity_hooks_spec import (
+        _OBSERVAL_HOOK_NAME,
+        build_antigravity_hooks,
+    )
+    from observal_cli.shared.utils import resolve_antigravity_config_dir
+
+    rprint("[cyan]Antigravity - session push hooks[/cyan]")
+
+    config_dir = resolve_antigravity_config_dir()
+    if config_dir is None:
+        rprint("  [dim]No ~/.gemini/config/ directory - skipping[/dim]")
+        return False
+
+    hooks_path = config_dir / "hooks.json"
+    desired = build_antigravity_hooks()
+
+    existing: dict = {}
+    if hooks_path.exists():
+        try:
+            existing = json.loads(hooks_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    if _OBSERVAL_HOOK_NAME in existing:
+        rprint("  [dim]Already up to date[/dim]")
+        return False
+
+    existing.update(desired)
+    if not dry_run:
+        hooks_path.write_text(json.dumps(existing, indent=2) + "\n")
 
     verb = "Would install" if dry_run else "Installed"
     rprint(f"  {verb} hooks in {hooks_path}")

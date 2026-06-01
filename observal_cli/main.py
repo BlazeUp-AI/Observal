@@ -197,6 +197,11 @@ app.add_typer(co_authors_app, name="co-authors")
 app.add_typer(migrate_app, name="migrate")
 app.add_typer(logs_app, name="logs")
 
+# Reconcile (push local sessions to server)
+from observal_cli.cmd_reconcile_cli import reconcile_app
+
+app.add_typer(reconcile_app, name="reconcile")
+
 # Server management (embedded + Docker)
 try:
     from observal_cli.cmd_server import server_app
