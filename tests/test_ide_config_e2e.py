@@ -1394,7 +1394,7 @@ class TestConfigGeneratorOpenCode:
             env_values={"API_KEY": "secret"},
         )
         entry = cfg["mcp"]["my-mcp"]
-        assert entry["env"]["API_KEY"] == "secret"
+        assert entry["environment"]["API_KEY"] == "secret"
 
 
 # ═══════════════════════════════════════════════════════════════════
