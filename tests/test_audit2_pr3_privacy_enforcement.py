@@ -24,6 +24,18 @@ from services.secrets_redactor import REDACTED
 SECRET = "password=abcdef1234567890abcdef1234567890"
 
 
+@pytest.fixture(autouse=True)
+def _disable_rate_limiter():
+    from api.ratelimit import limiter
+
+    old_enabled = limiter.enabled
+    limiter.enabled = False
+    try:
+        yield
+    finally:
+        limiter.enabled = old_enabled
+
+
 # ---------------------------------------------------------------------------
 # Helper-level
 # ---------------------------------------------------------------------------
@@ -80,11 +92,7 @@ def _user(mode):
 
 def _app(user):
     from api.deps import get_current_user
-    from api.ratelimit import limiter
 
-    # /ingest is rate-limited (Redis-backed) upstream; disable it for these
-    # unit tests, which run without Redis.
-    limiter.enabled = False
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: user
