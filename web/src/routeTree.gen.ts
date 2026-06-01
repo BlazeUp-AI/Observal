@@ -18,6 +18,7 @@ import { Route as authLoginRouteImport } from './routes/(auth)/login'
 import { Route as authDeviceRouteImport } from './routes/(auth)/device'
 import { Route as AuthedComponentsIndexRouteImport } from './routes/_authed/components/index'
 import { Route as AuthedAgentsIndexRouteImport } from './routes/_authed/agents/index'
+import { Route as AuthedInsightsReportIdRouteImport } from './routes/_authed/insights/$reportId'
 import { Route as AuthedComponentsComponentIdRouteImport } from './routes/_authed/components/$componentId'
 import { Route as AuthedAgentsBuilderRouteImport } from './routes/_authed/agents/builder'
 import { Route as AuthedAgentsAgentIdRouteImport } from './routes/_authed/agents/$agentId'
@@ -34,7 +35,6 @@ import { Route as AuthedAdminAuditLogRouteImport } from './routes/_authed/_admin
 import { Route as AuthedUserTracesIndexRouteImport } from './routes/_authed/_user/traces/index'
 import { Route as AuthedAdminInsightsIndexRouteImport } from './routes/_authed/_admin/insights/index'
 import { Route as AuthedUserTracesTraceIdRouteImport } from './routes/_authed/_user/traces/$traceId'
-import { Route as AuthedAdminInsightsReportIdRouteImport } from './routes/_authed/_admin/insights/$reportId'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -76,6 +76,11 @@ const AuthedComponentsIndexRoute = AuthedComponentsIndexRouteImport.update({
 const AuthedAgentsIndexRoute = AuthedAgentsIndexRouteImport.update({
   id: '/agents/',
   path: '/agents/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedInsightsReportIdRoute = AuthedInsightsReportIdRouteImport.update({
+  id: '/insights/$reportId',
+  path: '/insights/$reportId',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedComponentsComponentIdRoute =
@@ -161,12 +166,6 @@ const AuthedUserTracesTraceIdRoute = AuthedUserTracesTraceIdRouteImport.update({
   path: '/traces/$traceId',
   getParentRoute: () => AuthedUserRoute,
 } as any)
-const AuthedAdminInsightsReportIdRoute =
-  AuthedAdminInsightsReportIdRouteImport.update({
-    id: '/insights/$reportId',
-    path: '/insights/$reportId',
-    getParentRoute: () => AuthedAdminRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -186,9 +185,9 @@ export interface FileRoutesByFullPath {
   '/agents/$agentId': typeof AuthedAgentsAgentIdRoute
   '/agents/builder': typeof AuthedAgentsBuilderRoute
   '/components/$componentId': typeof AuthedComponentsComponentIdRoute
+  '/insights/$reportId': typeof AuthedInsightsReportIdRoute
   '/agents/': typeof AuthedAgentsIndexRoute
   '/components/': typeof AuthedComponentsIndexRoute
-  '/insights/$reportId': typeof AuthedAdminInsightsReportIdRoute
   '/traces/$traceId': typeof AuthedUserTracesTraceIdRoute
   '/insights/': typeof AuthedAdminInsightsIndexRoute
   '/traces/': typeof AuthedUserTracesIndexRoute
@@ -211,9 +210,9 @@ export interface FileRoutesByTo {
   '/agents/$agentId': typeof AuthedAgentsAgentIdRoute
   '/agents/builder': typeof AuthedAgentsBuilderRoute
   '/components/$componentId': typeof AuthedComponentsComponentIdRoute
+  '/insights/$reportId': typeof AuthedInsightsReportIdRoute
   '/agents': typeof AuthedAgentsIndexRoute
   '/components': typeof AuthedComponentsIndexRoute
-  '/insights/$reportId': typeof AuthedAdminInsightsReportIdRoute
   '/traces/$traceId': typeof AuthedUserTracesTraceIdRoute
   '/insights': typeof AuthedAdminInsightsIndexRoute
   '/traces': typeof AuthedUserTracesIndexRoute
@@ -240,9 +239,9 @@ export interface FileRoutesById {
   '/_authed/agents/$agentId': typeof AuthedAgentsAgentIdRoute
   '/_authed/agents/builder': typeof AuthedAgentsBuilderRoute
   '/_authed/components/$componentId': typeof AuthedComponentsComponentIdRoute
+  '/_authed/insights/$reportId': typeof AuthedInsightsReportIdRoute
   '/_authed/agents/': typeof AuthedAgentsIndexRoute
   '/_authed/components/': typeof AuthedComponentsIndexRoute
-  '/_authed/_admin/insights/$reportId': typeof AuthedAdminInsightsReportIdRoute
   '/_authed/_user/traces/$traceId': typeof AuthedUserTracesTraceIdRoute
   '/_authed/_admin/insights/': typeof AuthedAdminInsightsIndexRoute
   '/_authed/_user/traces/': typeof AuthedUserTracesIndexRoute
@@ -267,9 +266,9 @@ export interface FileRouteTypes {
     | '/agents/$agentId'
     | '/agents/builder'
     | '/components/$componentId'
+    | '/insights/$reportId'
     | '/agents/'
     | '/components/'
-    | '/insights/$reportId'
     | '/traces/$traceId'
     | '/insights/'
     | '/traces/'
@@ -292,9 +291,9 @@ export interface FileRouteTypes {
     | '/agents/$agentId'
     | '/agents/builder'
     | '/components/$componentId'
+    | '/insights/$reportId'
     | '/agents'
     | '/components'
-    | '/insights/$reportId'
     | '/traces/$traceId'
     | '/insights'
     | '/traces'
@@ -320,9 +319,9 @@ export interface FileRouteTypes {
     | '/_authed/agents/$agentId'
     | '/_authed/agents/builder'
     | '/_authed/components/$componentId'
+    | '/_authed/insights/$reportId'
     | '/_authed/agents/'
     | '/_authed/components/'
-    | '/_authed/_admin/insights/$reportId'
     | '/_authed/_user/traces/$traceId'
     | '/_authed/_admin/insights/'
     | '/_authed/_user/traces/'
@@ -397,6 +396,13 @@ declare module '@tanstack/react-router' {
       path: '/agents'
       fullPath: '/agents/'
       preLoaderRoute: typeof AuthedAgentsIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/insights/$reportId': {
+      id: '/_authed/insights/$reportId'
+      path: '/insights/$reportId'
+      fullPath: '/insights/$reportId'
+      preLoaderRoute: typeof AuthedInsightsReportIdRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/components/$componentId': {
@@ -511,13 +517,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedUserTracesTraceIdRouteImport
       parentRoute: typeof AuthedUserRoute
     }
-    '/_authed/_admin/insights/$reportId': {
-      id: '/_authed/_admin/insights/$reportId'
-      path: '/insights/$reportId'
-      fullPath: '/insights/$reportId'
-      preLoaderRoute: typeof AuthedAdminInsightsReportIdRouteImport
-      parentRoute: typeof AuthedAdminRoute
-    }
   }
 }
 
@@ -531,7 +530,6 @@ interface AuthedAdminRouteChildren {
   AuthedAdminSettingsRoute: typeof AuthedAdminSettingsRoute
   AuthedAdminSsoRoute: typeof AuthedAdminSsoRoute
   AuthedAdminUsersRoute: typeof AuthedAdminUsersRoute
-  AuthedAdminInsightsReportIdRoute: typeof AuthedAdminInsightsReportIdRoute
   AuthedAdminInsightsIndexRoute: typeof AuthedAdminInsightsIndexRoute
 }
 
@@ -545,7 +543,6 @@ const AuthedAdminRouteChildren: AuthedAdminRouteChildren = {
   AuthedAdminSettingsRoute: AuthedAdminSettingsRoute,
   AuthedAdminSsoRoute: AuthedAdminSsoRoute,
   AuthedAdminUsersRoute: AuthedAdminUsersRoute,
-  AuthedAdminInsightsReportIdRoute: AuthedAdminInsightsReportIdRoute,
   AuthedAdminInsightsIndexRoute: AuthedAdminInsightsIndexRoute,
 }
 
@@ -577,6 +574,7 @@ interface AuthedRouteChildren {
   AuthedAgentsAgentIdRoute: typeof AuthedAgentsAgentIdRoute
   AuthedAgentsBuilderRoute: typeof AuthedAgentsBuilderRoute
   AuthedComponentsComponentIdRoute: typeof AuthedComponentsComponentIdRoute
+  AuthedInsightsReportIdRoute: typeof AuthedInsightsReportIdRoute
   AuthedAgentsIndexRoute: typeof AuthedAgentsIndexRoute
   AuthedComponentsIndexRoute: typeof AuthedComponentsIndexRoute
 }
@@ -589,6 +587,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAgentsAgentIdRoute: AuthedAgentsAgentIdRoute,
   AuthedAgentsBuilderRoute: AuthedAgentsBuilderRoute,
   AuthedComponentsComponentIdRoute: AuthedComponentsComponentIdRoute,
+  AuthedInsightsReportIdRoute: AuthedInsightsReportIdRoute,
   AuthedAgentsIndexRoute: AuthedAgentsIndexRoute,
   AuthedComponentsIndexRoute: AuthedComponentsIndexRoute,
 }

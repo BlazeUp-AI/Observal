@@ -1681,7 +1681,7 @@ function ReportContent({ report }: { report: InsightReport }) {
 // ── Page Component ──────────────────────────────────────────────────────
 
 export default function InsightReportPage() {
-	const { reportId } = useParams({ from: "/_authed/_admin/insights/$reportId" });
+	const { reportId } = useParams({ from: "/_authed/insights/$reportId" });
 	const { data: report, isLoading, isError } = useInsightReport(reportId);
 
 	return (
