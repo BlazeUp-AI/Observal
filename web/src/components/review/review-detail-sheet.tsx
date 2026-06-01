@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 import { useState, useCallback, useMemo } from "react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import {
 	CheckCircle2,
 	X,
@@ -23,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DetailSkeleton, TableSkeleton } from "@/components/shared/skeleton-layouts";
 import {
 	Tooltip,
 	TooltipContent,
@@ -279,12 +278,7 @@ function RelatedSkillsSection({
 	);
 
 	if (isLoading) {
-		return (
-			<div className="space-y-2">
-				<Skeleton className="h-4 w-40" />
-				<Skeleton className="h-8 w-full" />
-			</div>
-		);
+		return <TableSkeleton rows={1} cols={2} />;
 	}
 
 	if (!skills?.length) return null;
@@ -366,10 +360,8 @@ export function ReviewDetailSheet({
 						onReject={onReject}
 					/>
 				) : (
-					<div className="space-y-4 pt-6">
-						<Skeleton className="h-6 w-48" />
-						<Skeleton className="h-4 w-full" />
-						<Skeleton className="h-4 w-3/4" />
+					<div className="pt-6">
+						<DetailSkeleton />
 					</div>
 				)}
 			</SheetContent>
@@ -519,10 +511,7 @@ function SheetBody({
 
 			{/* Type-specific config */}
 			{isLoading ? (
-				<div className="space-y-2">
-					<Skeleton className="h-4 w-32" />
-					<Skeleton className="h-20 w-full" />
-				</div>
+				<DetailSkeleton />
 			) : (
 				<div className="space-y-3">
 					<h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -600,7 +589,7 @@ function SheetBody({
 			<div className="space-y-3 border-t border-border pt-4">
 				<div className="flex items-center justify-between">
 					<Link
-						href={reviewItemHref(merged)}
+						to={reviewItemHref(merged)}
 						className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
 					>
 						<ExternalLink className="h-3 w-3" /> View public page

@@ -9,7 +9,6 @@
 // SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 import { useEffect, useRef } from "react";
 import {
@@ -19,6 +18,7 @@ import {
 import {
   dashboard,
 } from "@/lib/api";
+import type { SessionData } from "@/lib/types";
 
 // ── Sessions ───────────────────────────────────────────────────────
 
@@ -56,10 +56,10 @@ export function useSessionDetail(id: string | undefined) {
     queryKey: ['sessions', 'detail', id],
     queryFn: () => dashboard.session(id!),
     enabled: !!id,
-    refetchInterval: 1_000,
-    refetchIntervalInBackground: true,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
     refetchOnMount: "always",
-    staleTime: 0,
+    staleTime: 1_000,
   });
 }
 export function useSessionTraces() {
