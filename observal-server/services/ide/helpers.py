@@ -298,52 +298,43 @@ function messagesToLines(messages) {
 }
 
 export const ObservalPlugin = async ({ project, client, directory }) => {
+  // Built-in agents that should NOT be tracked
+  const BUILTIN_AGENTS = new Set(["build", "plan", "general", "explore", "scout", "compaction", "title", "summary"]);
+  const agentSessions = new Map();
+
   return {
-    "session.created": async ({ event }) => {
-      const sessionId = event?.properties?.id || event?.id || "";
-      if (sessionId) getState(sessionId);
-    },
-    "session.idle": async ({ event }) => {
-      const sessionId = event?.properties?.id || event?.id || "";
-      if (!sessionId) return;
-      try {
-        const messagesResult = await client.session.messages({ path: { id: sessionId } });
-        const messages = messagesResult?.data || messagesResult || [];
-        if (!Array.isArray(messages) || messages.length === 0) return;
-        const state = getState(sessionId);
-        const newMessages = messages.filter((m) => !state.pushedMessageIds.has(m.info?.id || m.id));
-        if (newMessages.length === 0) return;
-        const lines = messagesToLines(newMessages);
-        if (lines.length === 0) return;
-        pushToServer({
-          session_id: sessionId, ide: "opencode", lines,
-          start_offset: state.lineOffset, hook_event: "session.idle",
-          final: true, total_line_count: state.lineOffset + lines.length,
-          total_offset: state.lineOffset + lines.length,
-        });
-        for (const m of newMessages) state.pushedMessageIds.add(m.info?.id || m.id);
-        state.lineOffset += lines.length;
-      } catch { /* Non-blocking */ }
-    },
-    "message.updated": async ({ event }) => {
-      const sessionId = event?.properties?.sessionID || event?.sessionId || "";
-      const messageId = event?.properties?.id || event?.id || "";
-      if (!sessionId || !messageId) return;
-      const state = getState(sessionId);
-      if (state.pushedMessageIds.has(messageId)) return;
-      try {
-        const msgResult = await client.session.message({ path: { id: sessionId, messageId } });
-        const msg = msgResult?.data || msgResult;
-        if (!msg) return;
-        const lines = messagesToLines([msg]);
-        if (lines.length === 0) return;
-        pushToServer({
-          session_id: sessionId, ide: "opencode", lines,
-          start_offset: state.lineOffset, hook_event: "message.updated", final: false,
-        });
-        state.pushedMessageIds.add(messageId);
-        state.lineOffset += lines.length;
-      } catch { /* Non-blocking */ }
+    event: async ({ event }) => {
+      if (event?.type === "session.created") {
+        const sessionId = event?.properties?.sessionID || event?.properties?.info?.id || "";
+        const agent = event?.properties?.info?.agent || "";
+        if (sessionId && agent && !BUILTIN_AGENTS.has(agent)) {
+          agentSessions.set(sessionId, agent);
+        }
+      }
+      if (event?.type === "session.idle") {
+        const sessionId = event?.properties?.sessionID || "";
+        if (!sessionId) return;
+        const agent = agentSessions.get(sessionId);
+        if (!agent) return;
+        try {
+          const messagesResult = await client.session.messages({ path: { id: sessionId } });
+          const messages = messagesResult?.data || messagesResult || [];
+          if (!Array.isArray(messages) || messages.length === 0) return;
+          const state = getState(sessionId);
+          const newMessages = messages.filter((m) => !state.pushedMessageIds.has(m.info?.id || m.id));
+          if (newMessages.length === 0) return;
+          const lines = messagesToLines(newMessages);
+          if (lines.length === 0) return;
+          pushToServer({
+            session_id: sessionId, ide: "opencode", lines, agent_id: agent,
+            start_offset: state.lineOffset, hook_event: "session.idle",
+            final: true, total_line_count: state.lineOffset + lines.length,
+            total_offset: state.lineOffset + lines.length,
+          });
+          for (const m of newMessages) state.pushedMessageIds.add(m.info?.id || m.id);
+          state.lineOffset += lines.length;
+        } catch { /* Non-blocking */ }
+      }
     },
   };
 };

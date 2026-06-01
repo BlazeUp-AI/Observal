@@ -182,90 +182,64 @@ function messagesToLines(messages) {
 }
 
 export const ObservalPlugin = async ({ project, client, directory }) => {
+  // Built-in agents that should NOT be tracked (only user-pulled Observal agents)
+  const BUILTIN_AGENTS = new Set(["build", "plan", "general", "explore", "scout", "compaction", "title", "summary"]);
+  const agentSessions = new Map();
+
   return {
-    "session.created": async ({ event }) => {
-      // Initialize state for this session
-      const sessionId = event?.properties?.id || event?.id || "";
-      if (sessionId) {
-        getState(sessionId);
-      }
-    },
-
-    "session.idle": async ({ event }) => {
-      // Session finished responding - push all messages
-      const sessionId = event?.properties?.id || event?.id || "";
-      if (!sessionId) return;
-
-      try {
-        const messagesResult = await client.session.messages({
-          path: { id: sessionId },
-        });
-        const messages = messagesResult?.data || messagesResult || [];
-        if (!Array.isArray(messages) || messages.length === 0) return;
-
-        const state = getState(sessionId);
-        // Only push messages we haven't pushed yet
-        const newMessages = messages.filter(
-          (m) => !state.pushedMessageIds.has(m.info?.id || m.id)
-        );
-        if (newMessages.length === 0) return;
-
-        const lines = messagesToLines(newMessages);
-        if (lines.length === 0) return;
-
-        pushToServer({
-          session_id: sessionId,
-          ide: "opencode",
-          lines: lines,
-          start_offset: state.lineOffset,
-          hook_event: "session.idle",
-          final: true,
-          total_line_count: state.lineOffset + lines.length,
-          total_offset: state.lineOffset + lines.length,
-        });
-
-        // Update state
-        for (const m of newMessages) {
-          state.pushedMessageIds.add(m.info?.id || m.id);
+    event: async ({ event }) => {
+      // On session.created, record the agent name for this session
+      if (event?.type === "session.created") {
+        const sessionId = event?.properties?.sessionID || event?.properties?.info?.id || "";
+        const agent = event?.properties?.info?.agent || "";
+        if (sessionId && agent && !BUILTIN_AGENTS.has(agent)) {
+          agentSessions.set(sessionId, agent);
         }
-        state.lineOffset += lines.length;
-      } catch {
-        // Non-blocking
       }
-    },
 
-    "message.updated": async ({ event }) => {
-      // Incremental push on each message update
-      const sessionId = event?.properties?.sessionID || event?.sessionId || "";
-      const messageId = event?.properties?.id || event?.id || "";
-      if (!sessionId || !messageId) return;
+      // On session.idle, push messages if this is an Observal agent session
+      if (event?.type === "session.idle") {
+        const sessionId = event?.properties?.sessionID || "";
+        if (!sessionId) return;
 
-      const state = getState(sessionId);
-      if (state.pushedMessageIds.has(messageId)) return;
+        const agent = agentSessions.get(sessionId);
+        if (!agent) return; // Skip non-agent sessions
 
-      try {
-        const msgResult = await client.session.message({
-          path: { id: sessionId, messageId: messageId },
-        });
-        const msg = msgResult?.data || msgResult;
-        if (!msg) return;
+        try {
+          const messagesResult = await client.session.messages({
+            path: { id: sessionId },
+          });
+          const messages = messagesResult?.data || messagesResult || [];
+          if (!Array.isArray(messages) || messages.length === 0) return;
 
-        const lines = messagesToLines([msg]);
-        if (lines.length === 0) return;
+          const state = getState(sessionId);
+          const newMessages = messages.filter(
+            (m) => !state.pushedMessageIds.has(m.info?.id || m.id)
+          );
+          if (newMessages.length === 0) return;
 
-        pushToServer({
-          session_id: sessionId,
-          ide: "opencode",
-          lines: lines,
-          start_offset: state.lineOffset,
-          hook_event: "message.updated",
-          final: false,
-        });
+          const lines = messagesToLines(newMessages);
+          if (lines.length === 0) return;
 
-        state.pushedMessageIds.add(messageId);
-        state.lineOffset += lines.length;
-      } catch {
-        // Non-blocking
+          pushToServer({
+            session_id: sessionId,
+            ide: "opencode",
+            agent_id: agent,
+            lines: lines,
+            start_offset: state.lineOffset,
+            hook_event: "session.idle",
+            final: true,
+            total_line_count: state.lineOffset + lines.length,
+            total_offset: state.lineOffset + lines.length,
+          });
+
+          for (const m of newMessages) {
+            state.pushedMessageIds.add(m.info?.id || m.id);
+          }
+          state.lineOffset += lines.length;
+        } catch {
+          // Non-blocking
+        }
       }
     },
   };
