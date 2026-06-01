@@ -482,6 +482,7 @@ _CLASSIFIERS: dict[str, _Classifier] = {
     "claude-code": (_classify_claude_code, _preview_claude_code, _tool_info_claude_code),
     "kiro": (_classify_kiro, _preview_kiro, _tool_info_kiro),
     "cursor": (_classify_cursor, _preview_cursor, _tool_info_cursor),
+    "opencode": (_classify_claude_code, _preview_claude_code, _tool_info_claude_code),
     "pi": (_classify_pi, _preview_pi, _tool_info_pi),
 }
 
@@ -586,6 +587,7 @@ _TS_EXTRACTORS: dict[str, object] = {
     "claude-code": _ts_claude_code,
     "kiro": _ts_kiro,
     "cursor": _ts_cursor,
+    "opencode": _ts_claude_code,
     "pi": _ts_pi,
 }
 
@@ -624,6 +626,7 @@ _EXTRA_ROWS_HANDLERS: dict[str, _ExtraRowsFn] = {
     "kiro": _kiro_extra_rows,
     "claude-code": _no_extra_rows,
     "cursor": _no_extra_rows,
+    "opencode": _no_extra_rows,
     "pi": _no_extra_rows,
 }
 

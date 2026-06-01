@@ -61,6 +61,7 @@ _USAGE_EXTRACTORS: dict[str, _UsageFn] = {
     "claude-code": _usage_claude_code,
     "kiro": _usage_claude_code,
     "cursor": _usage_claude_code,
+    "opencode": _usage_claude_code,
     "pi": _usage_pi,
 }
 
@@ -86,6 +87,7 @@ _UUID_EXTRACTORS: dict[str, _UuidFn] = {
     "claude-code": _uuid_default,
     "kiro": _uuid_default,
     "cursor": _uuid_default,
+    "opencode": _uuid_default,
     "pi": _uuid_pi,
 }
 
