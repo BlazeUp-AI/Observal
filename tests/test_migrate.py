@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Unit tests for pg-shallow-copy: observal migrate CLI command group."""
 
 import hashlib
@@ -29,6 +33,7 @@ from observal_cli.cmd_migrate import (
     _build_select,
     _coerce_value,
     _require_admin,
+    _require_pyarrow,
     _sha256_file,
 )
 from observal_cli.main import app as cli_app
@@ -47,12 +52,12 @@ def _plain(text: str) -> str:
 
 class TestCLIRegistration:
     def test_migrate_command_group_exists(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         assert "migrate" in _plain(result.output).lower()
 
     def test_migrate_help_lists_subcommands(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "export" in out
@@ -60,21 +65,49 @@ class TestCLIRegistration:
         assert "validate" in out
 
     def test_export_subcommand_help(self):
-        result = runner.invoke(cli_app, ["migrate", "export", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "export", "--help"])
         assert result.exit_code == 0
         assert "--db-url" in _plain(result.output)
 
     def test_import_subcommand_help(self):
-        result = runner.invoke(cli_app, ["migrate", "import", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "import", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "--db-url" in out
         assert "--archive" in out
 
     def test_validate_subcommand_help(self):
-        result = runner.invoke(cli_app, ["migrate", "validate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "validate", "--help"])
         assert result.exit_code == 0
         assert "--archive" in _plain(result.output)
+
+
+class TestPyarrowRequirement:
+    def test_passes_when_pyarrow_importable(self):
+        # pyarrow is installed in the dev environment, so the guard is a no-op.
+        _require_pyarrow()
+
+    def test_raises_install_hint_when_missing(self):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "pyarrow":
+                raise ImportError("simulated missing pyarrow")
+            return real_import(name, *args, **kwargs)
+
+        import typer
+
+        with (
+            patch.object(builtins, "__import__", side_effect=fake_import),
+            pytest.raises(typer.BadParameter) as excinfo,
+        ):
+            _require_pyarrow()
+
+        msg = str(excinfo.value)
+        assert "pyarrow" in msg
+        assert "observal-cli[migrate]" in msg
 
 
 # ── 2. PGEncoder Tests ───────────────────────────────────
@@ -160,8 +193,8 @@ class TestPGEncoder:
 
 
 class TestConstants:
-    def test_insert_order_has_33_entries(self):
-        assert len(INSERT_ORDER) == 33
+    def test_insert_order_has_43_entries(self):
+        assert len(INSERT_ORDER) == 35
 
     def test_insert_order_no_duplicates(self):
         assert len(INSERT_ORDER) == len(set(INSERT_ORDER))
@@ -173,8 +206,6 @@ class TestConstants:
             "agents",
             "mcp_listings",
             "feedback",
-            "eval_runs",
-            "scorecards",
             "alert_rules",
             "alert_history",
             "component_bundles",
@@ -197,24 +228,23 @@ class TestBuildSelect:
     def test_table_with_jsonb_columns(self):
         columns = ["id", "name", "model_config_json", "external_mcps", "supported_ides", "created_at"]
         sql = _build_select("agents", columns)
-        assert "model_config_json::text AS model_config_json" in sql
-        assert "external_mcps::text AS external_mcps" in sql
-        assert "supported_ides::text AS supported_ides" in sql
+        assert '"model_config_json"::text AS "model_config_json"' in sql
+        assert '"external_mcps"::text AS "external_mcps"' in sql
+        assert '"supported_ides"::text AS "supported_ides"' in sql
         # Non-JSONB columns should not have ::text
         assert "id::text" not in sql
         assert "name::text" not in sql
 
     def test_table_without_jsonb_columns(self):
         sql = _build_select("organizations", ["id", "name", "slug"])
-        assert sql == "SELECT * FROM organizations"
+        assert sql == 'SELECT * FROM "organizations"'
 
     def test_agents_produces_correct_sql(self):
         columns = ["id", "name", "model_config_json"]
         sql = _build_select("agents", columns)
         assert sql.startswith("SELECT ")
-        assert "FROM agents" in sql
-        assert "model_config_json::text AS model_config_json" in sql
-        assert ", id," not in sql or "id" in sql  # id should be plain
+        assert 'FROM "agents"' in sql
+        assert '"model_config_json"::text AS "model_config_json"' in sql
 
     def test_all_jsonb_tables_produce_casts(self):
         for table, jsonb_cols in JSONB_COLUMNS.items():
@@ -222,7 +252,11 @@ class TestBuildSelect:
             columns = ["id", *jsonb_cols]
             sql = _build_select(table, columns)
             for col in jsonb_cols:
-                assert f"{col}::text AS {col}" in sql, f"Missing cast for {col} in {table}"
+                assert f'"{col}"::text AS "{col}"' in sql, f"Missing cast for {col} in {table}"
+
+    def test_unknown_table_raises_valueerror(self):
+        with pytest.raises(ValueError, match="Unknown table"):
+            _build_select("nonexistent_table", ["id"])
 
 
 # ── 5. _require_admin Tests ─────────────────────────────
@@ -230,9 +264,10 @@ class TestBuildSelect:
 
 class TestRequireAdmin:
     @patch("observal_cli.cmd_migrate.client")
-    def test_admin_role_allowed(self, mock_client):
+    def test_admin_role_rejected(self, mock_client):
         mock_client.get.return_value = {"role": "admin"}
-        _require_admin()  # Should not raise
+        with pytest.raises((SystemExit, click.exceptions.Exit)):
+            _require_admin()
 
     @patch("observal_cli.cmd_migrate.client")
     def test_super_admin_role_allowed(self, mock_client):
@@ -382,7 +417,7 @@ class TestBuildInsert:
         columns = ["id", "name", "email"]
         col_types = {"id": "uuid", "name": "text", "email": "text"}
         sql = _build_insert("users", columns, col_types)
-        assert 'INSERT INTO users ("id", "name", "email")' in sql
+        assert 'INSERT INTO "users" ("id", "name", "email")' in sql
 
     def test_multiple_jsonb_columns(self):
         columns = ["id", "tools_schema", "environment_variables", "supported_ides"]
@@ -455,7 +490,7 @@ class TestErrorPaths:
     def test_import_nonexistent_archive(self, mock_admin):
         result = runner.invoke(
             cli_app,
-            ["migrate", "import", "--db-url", "postgres://x", "--archive", "/nonexistent/archive.tar.gz"],
+            ["server", "migrate", "import", "--db-url", "postgres://x", "--archive", "/nonexistent/archive.tar.gz"],
         )
         assert result.exit_code != 0
 
@@ -463,13 +498,13 @@ class TestErrorPaths:
     def test_validate_nonexistent_archive(self, mock_admin):
         result = runner.invoke(
             cli_app,
-            ["migrate", "validate", "--archive", "/nonexistent/archive.tar.gz"],
+            ["server", "migrate", "validate", "--archive", "/nonexistent/archive.tar.gz"],
         )
         assert result.exit_code != 0
 
     def test_export_missing_db_url(self):
         """Export without --db-url should fail (required option)."""
-        result = runner.invoke(cli_app, ["migrate", "export"])
+        result = runner.invoke(cli_app, ["server", "migrate", "export"])
         assert result.exit_code != 0
 
 
@@ -485,7 +520,7 @@ class TestSecurity:
         mock_asyncio.run.side_effect = SystemExit(1)
         result = runner.invoke(
             cli_app,
-            ["migrate", "export", "--db-url", secret_url],
+            ["server", "migrate", "export", "--db-url", secret_url],
         )
         assert secret_url not in result.output
 
@@ -495,7 +530,7 @@ class TestSecurity:
         secret_url = "postgres://secret_user:secret_pass@secret-host:5432/secret_db"
         result = runner.invoke(
             cli_app,
-            ["migrate", "import", "--db-url", secret_url, "--archive", "/nonexistent.tar.gz"],
+            ["server", "migrate", "import", "--db-url", secret_url, "--archive", "/nonexistent.tar.gz"],
         )
         assert secret_url not in result.output
 
@@ -505,7 +540,7 @@ class TestSecurity:
         secret_url = "postgres://secret_user:secret_pass@secret-host:5432/secret_db"
         result = runner.invoke(
             cli_app,
-            ["migrate", "validate", "--archive", "/nonexistent.tar.gz", "--db-url", secret_url],
+            ["server", "migrate", "validate", "--archive", "/nonexistent.tar.gz", "--db-url", secret_url],
         )
         assert secret_url not in result.output
 
@@ -529,13 +564,13 @@ class TestDataclasses:
     def test_import_result_fields(self):
         result = ImportResult(
             migration_id="abc-123",
-            tables_imported=33,
+            tables_imported=43,
             rows_inserted={"users": 10},
             rows_skipped={"users": 2},
             duration_seconds=2.0,
             warnings=[],
         )
-        assert result.tables_imported == 33
+        assert result.tables_imported == 43
         assert result.rows_inserted["users"] == 10
 
     def test_checksum_result_fields(self):
@@ -570,18 +605,19 @@ class TestInsertOrderDependencies:
         ("agents", "organizations"),
         ("mcp_listings", "organizations"),
         ("agent_components", "agents"),
-        ("agent_goal_templates", "agents"),
-        ("eval_runs", "agents"),
-        ("scorecards", "eval_runs"),
-        ("scorecard_dimensions", "scorecards"),
         ("feedback", "users"),
         ("alert_history", "alert_rules"),
-        ("agent_goal_sections", "agent_goal_templates"),
         ("mcp_downloads", "mcp_listings"),
         ("skill_downloads", "skill_listings"),
         ("hook_downloads", "hook_listings"),
         ("prompt_downloads", "prompt_listings"),
         ("sandbox_downloads", "sandbox_listings"),
+        # Tier 12 — insight tables
+        ("insight_reports", "agents"),
+        ("insight_reports", "users"),
+        ("insight_session_facets", "agents"),
+        ("insight_session_meta", "agents"),
+        ("insight_meta_cache", "agents"),
     ]
 
     @pytest.mark.parametrize("child,parent", KNOWN_FK_PAIRS)
@@ -718,10 +754,10 @@ class TestJSONBCastProperty:
         sql = _build_select(table, columns)
 
         if not jsonb_cols:
-            assert sql == f"SELECT * FROM {table}"
+            assert sql == f'SELECT * FROM "{table}"'
         else:
             for col in jsonb_cols:
-                assert f"{col}::text AS {col}" in sql
+                assert f'"{col}"::text AS "{col}"' in sql
             # Non-JSONB columns should NOT have ::text
             assert "id::text" not in sql
 
@@ -907,22 +943,18 @@ class TestInsertOrderFKProperty:
         ("sandbox_downloads", "users"),
         ("submissions", "users"),
         ("alert_rules", "users"),
-        ("agent_goal_templates", "agents"),
         ("agent_download_records", "agents"),
         ("agent_download_records", "users"),
         ("component_download_records", "agents"),
-        ("dimension_weights", "agents"),
-        ("agent_goal_sections", "agent_goal_templates"),
         ("agent_components", "agents"),
         ("feedback", "users"),
         ("alert_history", "alert_rules"),
-        ("eval_runs", "agents"),
-        ("eval_runs", "users"),
-        ("scorecards", "agents"),
-        ("scorecards", "eval_runs"),
-        ("scorecard_dimensions", "scorecards"),
-        ("trace_penalties", "scorecards"),
-        ("trace_penalties", "penalty_definitions"),
+        # Tier 12 — insight tables
+        ("insight_reports", "agents"),
+        ("insight_reports", "users"),
+        ("insight_session_facets", "agents"),
+        ("insight_session_meta", "agents"),
+        ("insight_meta_cache", "agents"),
     ]
 
     @given(pair=st.sampled_from(ALL_FK_PAIRS))
@@ -969,9 +1001,9 @@ class TestMigrationIdConsistencyProperty:
 
 
 class TestAdminRoleGateProperty:
-    """Property 10: Only admin and super_admin roles pass the gate."""
+    """Property 10: Only super_admin role passes the gate."""
 
-    ALLOWED_ROLES = {"admin", "super_admin"}
+    ALLOWED_ROLES = {"super_admin"}
 
     @given(role=st.sampled_from(["admin", "super_admin", "user", "reviewer", "", "moderator", "guest", "operator"]))
     @hsettings(max_examples=100)

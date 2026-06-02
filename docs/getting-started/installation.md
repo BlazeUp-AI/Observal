@@ -1,3 +1,8 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # Installation
 
 Install the Observal CLI on your machine. The CLI is what you use to log in, instrument IDE configs, pull agents, and query traces.
@@ -5,15 +10,25 @@ Install the Observal CLI on your machine. The CLI is what you use to log in, ins
 If you also want to **self-host** the Observal server (API + web UI + databases), see [Self-Hosting](../self-hosting/docker-compose.md).
 
 > [!NOTE]
-> Self-hosting requires Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated — install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
+> Self-hosting requires Docker Engine ≥ 24.0 with Compose v2 (`docker compose`, not `docker-compose`). Homebrew's Docker formula is outdated. Install [Docker Desktop](https://docs.docker.com/get-docker/) or use your distro's upstream packages. Verify with `docker version` and `docker compose version`.
 
 ## Install (standalone binary)
 
 The standalone binary is the simplest way to install. No Python required.
 
+**Community edition (default):**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
 ```
+
+**Enterprise edition** (requires a valid license key):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash -s -- --license-key YOUR_KEY
+```
+
+A valid Ed25519-signed license key downloads the enterprise binary and saves the key to `~/.observal/config.json`. Without a key (or with an invalid one), the installer falls back to community edition.
 
 This downloads the latest release binary for your platform and places it on your `PATH`.
 
@@ -49,11 +64,11 @@ pip install --user observal-cli
 
 Observal ships with two opt-in extras for the Python install:
 
-| Extra | What it adds | When to install |
-| --- | --- | --- |
-| `sandbox` | Docker SDK (for sandbox execution) | If you run agents inside Observal sandboxes |
+| Extra     | What it adds                                   | When to install                                              |
+| --------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| `sandbox` | Docker SDK (for sandbox execution)             | If you run agents inside Observal sandboxes                  |
 | `migrate` | `asyncpg` (for the `observal migrate` command) | If you operate the server and run DB migrations from the CLI |
-| `all` | Both of the above | If you do both |
+| `all`     | Both of the above                              | If you do both                                               |
 
 Install an extra:
 
@@ -73,12 +88,12 @@ uv tool install --editable .
 
 Four entry points land on your `PATH`:
 
-| Command | Purpose |
-| --- | --- |
-| `observal` | The main CLI |
-| `observal-shim` | stdio shim between your IDE and stdio MCP servers |
-| `observal-proxy` | HTTP proxy between your IDE and HTTP/SSE MCP servers |
-| `observal-sandbox-run` | Sandbox runner invoked by Observal sandboxes |
+| Command                | Purpose                                              |
+| ---------------------- | ---------------------------------------------------- |
+| `observal`             | The main CLI                                         |
+| `observal-shim`        | stdio shim between your IDE and stdio MCP servers    |
+| `observal-proxy`       | HTTP proxy between your IDE and HTTP/SSE MCP servers |
+| `observal-sandbox-run` | Sandbox runner invoked by Observal sandboxes         |
 
 You will almost never call the shim, proxy, or sandbox runner directly. The CLI wires them into your IDE config for you.
 

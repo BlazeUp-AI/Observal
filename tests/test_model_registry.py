@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the live model catalog + resolver.
 
 Covers:
@@ -155,7 +158,6 @@ class TestResolveSavedValue:
         from services.model_resolver import resolve_saved_value
 
         assert resolve_saved_value("cursor", "claude-sonnet-4-5", None) is None
-        assert resolve_saved_value("vscode", "claude-sonnet-4-5", None) is None
         assert resolve_saved_value("copilot", "claude-sonnet-4-5", None) is None
 
     def test_per_ide_override_wins(self):
@@ -567,3 +569,11 @@ class TestBuilderModelEmission:
         assert isinstance(oc_file.content, dict)
         assert oc_file.content["model"].endswith("/claude-sonnet-4-5")
         assert oc_file.content["model"].split("/")[0] in {"anthropic", "openai", "google"}
+
+    def test_opencode_rules_file_path(self):
+        from services.agent_builder import _generate_opencode
+
+        manifest = _empty_manifest()
+        cfg = _generate_opencode(manifest)
+        rules_file = next(f for f in cfg.files if f.path.endswith(".md"))
+        assert rules_file.path == ".opencode/agents/test-agent.md"

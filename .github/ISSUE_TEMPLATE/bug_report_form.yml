@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 name: 🐞 Bug
 description: File a bug
 type: "Bug"
@@ -31,8 +35,17 @@ body:
       required: true
 
   - type: textarea
+    id: support_bundle
+    attributes:
+      label: Support bundle
+      description: |
+        Please attach a support bundle to help us diagnose the issue.
+        Generate one with `observal support bundle` and attach the resulting `.tar.gz` file.
+        You can review its contents before sharing with `observal support inspect <bundle.tar.gz>`.
+      placeholder: Drag and drop the .tar.gz file here, or paste the output of `observal support inspect`
+
+  - type: textarea
     id: extra_info
     attributes:
       label: (Optional) Anything else you want to share?
       placeholder: List any extra information
-

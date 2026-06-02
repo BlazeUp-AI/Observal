@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Lightweight SQLite buffer for offline telemetry events.
 
 Stores telemetry events locally when the Observal server is unreachable,
@@ -11,6 +14,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+from loguru import logger as optic
 
 DB_PATH = Path.home() / ".observal" / "telemetry_buffer.db"
 MAX_EVENTS = 10_000
@@ -49,6 +54,7 @@ def buffer_event(payload: str, event_type: str = "hook") -> None:
     Enforces the FIFO cap: if the buffer exceeds MAX_EVENTS, the oldest
     pending rows are deleted to make room.
     """
+    optic.trace("type={}", event_type)
     conn = _connect()
     try:
         conn.execute(
@@ -63,6 +69,7 @@ def buffer_event(payload: str, event_type: str = "hook") -> None:
 
 def get_pending(limit: int = BATCH_SIZE) -> list[dict]:
     """Return up to *limit* pending events ordered oldest-first."""
+    optic.trace("limit={}", limit)
     conn = _connect()
     try:
         rows = conn.execute(

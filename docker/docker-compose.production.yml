@@ -1,8 +1,7 @@
-services:
-  observal-web:
-    environment:
-      - NEXT_PUBLIC_API_URL=https://${DOMAIN:-internal.observal.io}
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
 
+services:
   observal-lb:
     ports:
       - "80:80"

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Unit tests for Phase 9 (Score Unification) and Phase 10 (CLI Updates)."""
 
 import uuid
@@ -108,15 +111,15 @@ class TestFeedbackDualWrite:
 
 
 class TestCLICommands:
-    def test_downgrade_is_wip(self):
+    def test_downgrade_requires_version_flag(self):
         from typer.testing import CliRunner
 
         from observal_cli.main import app as cli_app
 
         runner = CliRunner()
         result = runner.invoke(cli_app, ["self", "downgrade"])
-        assert result.exit_code == 0
-        assert "WIP" in result.output
+        assert result.exit_code == 1
+        assert "--version" in result.output or "version" in result.output.lower()
 
     def test_upgrade_command_exists(self):
         from typer.testing import CliRunner

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 set -euo pipefail
 
 # Usage: tools/release.sh <major|feature|patch>
@@ -112,10 +115,35 @@ git checkout -b "$RELEASE_BRANCH"
 set_version_in_file "$PYPROJECT" "$NEW_VERSION"
 set_version_in_file "observal-server/pyproject.toml" "$NEW_VERSION"
 
+# Bump web/package.json
+info "Bumping web/package.json..."
+python3 -c "
+import json, pathlib
+pkg = pathlib.Path('web/package.json')
+data = json.loads(pkg.read_text())
+data['version'] = '$NEW_VERSION'
+pkg.write_text(json.dumps(data, indent=2) + '\n')
+"
+
+# Bump packages/pi-extension/package.json
+if [ -f packages/pi-extension/package.json ]; then
+  info "Bumping packages/pi-extension/package.json..."
+  python3 -c "
+import json, pathlib
+pkg = pathlib.Path('packages/pi-extension/package.json')
+data = json.loads(pkg.read_text())
+data['version'] = '$NEW_VERSION'
+pkg.write_text(json.dumps(data, indent=2) + '\n')
+"
+fi
+
 # ── Update uv.lock ──────────────────────────────────────────
 
-info "Updating uv.lock..."
+info "Updating root uv.lock..."
 uv lock
+
+info "Updating observal-server/uv.lock..."
+(cd observal-server && uv lock)
 
 # ── Generate changelog ───────────────────────────────────────
 
@@ -124,7 +152,7 @@ run_git_cliff --config "$CLIFF_CONFIG" --tag "v$NEW_VERSION" --output CHANGELOG.
 
 # ── Commit and push branch ──────────────────────────────────
 
-git add "$PYPROJECT" observal-server/pyproject.toml uv.lock CHANGELOG.md
+git add "$PYPROJECT" observal-server/pyproject.toml web/package.json packages/pi-extension/package.json uv.lock observal-server/uv.lock CHANGELOG.md
 git commit -s -m "bump(release): v$NEW_VERSION"
 
 info "Pushing release branch to $FORK_REMOTE..."

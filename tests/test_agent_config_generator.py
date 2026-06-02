@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for agent_config_generator and agent_builder IDE generation.
 
 Covers the server-side code that converts an Agent model into
@@ -18,12 +25,12 @@ from services.agent_builder import (
     ManifestComponents,
     generate_ide_agent_files,
 )
-from services.agent_config_generator import (
+from services.ide import generate_agent_config
+from services.ide.helpers import (
     _build_rules_content,
     _inject_agent_id,
     _model_name_to_frontmatter,
     _sanitize_name,
-    generate_agent_config,
 )
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -139,10 +146,11 @@ class TestBuildRulesContent:
         assert "Custom prompt" in result
         assert "Desc" not in result
 
-    def test_falls_back_to_description_when_no_prompt(self):
-        agent = _make_agent(prompt="", description="Agent description")
+    def test_no_prompt_produces_bare_heading(self):
+        agent = _make_agent(prompt="", description="Registry copy. Must not appear.")
         result = _build_rules_content(agent)
-        assert "Agent description" in result
+        assert "Registry copy" not in result
+        assert result == f"# {agent.name}"
 
     def test_fallback_when_both_empty(self):
         agent = _make_agent(prompt="", description="")
@@ -210,7 +218,7 @@ class TestGenerateClaudeCode:
         assert len(parts) >= 3
         fm = yaml.safe_load(parts[1])
         assert fm["name"] == "test-agent"
-        assert "A test agent" in fm["description"]
+        assert fm["description"] == "A test agent"
 
     def test_frontmatter_includes_mcp_servers(self):
         ext_mcps = [{"name": "my-ext", "command": "npx", "args": ["-y", "ext"]}]
@@ -245,24 +253,16 @@ class TestGenerateClaudeCode:
         cmd = cfg["mcp_setup_commands"][0]
         assert cmd[0:4] == ["claude", "mcp", "add", "srv"]
 
-    def test_otlp_env_present(self):
+    def test_no_otlp_env_in_config(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude-code")
-        assert "otlp_env" in cfg
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in cfg["otlp_env"]
+        assert "otlp_env" not in cfg
+        assert "claude_settings_snippet" not in cfg
 
     def test_claude_code_underscore_alias(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude_code")
         assert ".claude/agents/" in cfg["rules_file"]["path"]
-
-    def test_multiline_description_collapsed(self):
-        agent = _make_agent(description="Line one\nLine two\nLine three")
-        cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
-        parts = content.split("---", 2)
-        fm = yaml.safe_load(parts[1])
-        assert "\n" not in fm["description"]
 
     def test_model_fallback_from_agent_when_no_option(self):
         agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
@@ -331,12 +331,6 @@ class TestGenerateCursorVscode:
         assert cfg["rules_file"]["path"] == ".cursor/rules/test-agent.mdc"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
 
-    def test_vscode_paths(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "vscode")
-        assert cfg["rules_file"]["path"] == ".github/instructions/test-agent.instructions.md"
-        assert cfg["mcp_config"]["path"] == ".vscode/mcp.json"
-
     def test_rules_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
@@ -346,6 +340,34 @@ class TestGenerateCursorVscode:
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
         assert "mcpServers" in cfg["mcp_config"]["content"]
+
+    def test_cursor_hooks_config_present(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor")
+        assert "hooks_config" in cfg
+        hooks = cfg["hooks_config"]["content"]["hooks"]
+        assert "beforeSubmitPrompt" in hooks
+        assert "stop" in hooks
+
+    def test_cursor_hooks_use_cursor_session_push(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor")
+        cmd = cfg["hooks_config"]["content"]["hooks"]["beforeSubmitPrompt"][0]["command"]
+        assert "cursor_session_push" in cmd
+
+    def test_cursor_hooks_win32_uses_python(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor", platform="win32")
+        cmd = cfg["hooks_config"]["content"]["hooks"]["beforeSubmitPrompt"][0]["command"]
+        assert cmd.startswith("python -m")
+        assert "cursor_session_push" in cmd
+
+    def test_cursor_hooks_unix_uses_python3(self):
+        agent = _make_agent()
+        cfg = generate_agent_config(agent, "cursor", platform="linux")
+        cmd = cfg["hooks_config"]["content"]["hooks"]["beforeSubmitPrompt"][0]["command"]
+        assert cmd.startswith("python3 -m")
+        assert "cursor_session_push" in cmd
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -374,8 +396,12 @@ class TestGenerateKiro:
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
         hooks = cfg["agent_file"]["content"]["hooks"]
-        for event in ("agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"):
+        # Only 2 events needed — JSONL session push reads incrementally
+        for event in ("userPromptSubmit", "stop"):
             assert event in hooks
+        # Legacy bloat events should NOT be present
+        for event in ("agentSpawn", "preToolUse", "postToolUse"):
+            assert event not in hooks
 
     def test_no_steering_file_generated(self):
         """Prompt lives in agent JSON only — no redundant steering file."""
@@ -383,10 +409,10 @@ class TestGenerateKiro:
         cfg = generate_agent_config(agent, "kiro")
         assert "steering_file" not in cfg
 
-    def test_description_truncated_to_200(self):
+    def test_kiro_agent_file_has_no_description(self):
         agent = _make_agent(description="x" * 300)
         cfg = generate_agent_config(agent, "kiro")
-        assert len(cfg["agent_file"]["content"]["description"]) == 200
+        assert "description" not in cfg["agent_file"]["content"]
 
     def test_tools_include_wildcard(self):
         agent = _make_agent()
@@ -426,10 +452,10 @@ class TestGenerateGemini:
         cfg = generate_agent_config(agent, "gemini_cli")
         assert cfg["rules_file"]["path"] == "GEMINI.md"
 
-    def test_otlp_env_present(self):
+    def test_no_otlp_env_in_config(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" in cfg
+        assert "otlp_env" not in cfg
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -593,7 +619,7 @@ class TestMcpListingClaudeCodeFallback:
         from unittest.mock import patch
 
         with patch(
-            "services.agent_config_generator.generate_config",
+            "services.ide.helpers.generate_config",
             return_value={"command": "observal-shim", "args": ["--mcp-id", str(comp_id)]},
         ):
             cfg = generate_agent_config(
@@ -671,11 +697,6 @@ class TestBuilderClaudeCode:
         assert len(result.setup_commands) == 1
         assert result.setup_commands[0][:4] == ["claude", "mcp", "add", "my-srv"]
 
-    def test_env_contains_telemetry_vars(self):
-        manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "claude-code")
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in result.env
-
 
 class TestBuilderCursor:
     def test_files_include_rules_and_mcp_json(self):
@@ -683,15 +704,6 @@ class TestBuilderCursor:
         result = generate_ide_agent_files(manifest, "cursor")
         paths = [f.path for f in result.files]
         assert any(".cursor/rules/" in p for p in paths)
-        assert any("mcp.json" in p for p in paths)
-
-
-class TestBuilderVscode:
-    def test_files_include_rules_and_mcp_json(self):
-        manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "vscode")
-        paths = [f.path for f in result.files]
-        assert any(".vscode/rules/" in p for p in paths)
         assert any("mcp.json" in p for p in paths)
 
 
@@ -843,12 +855,12 @@ class TestGenerateKiroWin32:
             assert "python3" not in cmd
             assert "python " in cmd or "python -m" in cmd
 
-    def test_win32_hooks_include_agent_name(self):
+    def test_win32_hooks_use_session_push(self):
         agent = _make_agent(name="my-cool-agent")
         cfg = generate_agent_config(agent, "kiro", platform="win32")
         cmds = self._all_hook_commands(cfg)
         for cmd in cmds:
-            assert "--agent-name my-cool-agent" in cmd
+            assert "kiro_session_push" in cmd
 
     def test_hooks_omit_model_flag(self):
         """Model is detected from Kiro SQLite at runtime, not baked into hook commands."""
@@ -858,12 +870,14 @@ class TestGenerateKiroWin32:
         for cmd in cmds:
             assert "--model" not in cmd
 
-    def test_win32_still_has_all_hook_events(self):
+    def test_win32_has_session_push_events_only(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="win32")
         hooks = cfg["agent_file"]["content"]["hooks"]
-        for event in ("agentSpawn", "userPromptSubmit", "preToolUse", "postToolUse", "stop"):
+        for event in ("userPromptSubmit", "stop"):
             assert event in hooks
+        for event in ("agentSpawn", "preToolUse", "postToolUse"):
+            assert event not in hooks
 
     def test_win32_agent_file_path_unchanged(self):
         agent = _make_agent()
@@ -892,19 +906,19 @@ class TestGenerateKiroPreservation:
         cfg_empty = generate_agent_config(agent, "kiro", platform="")
         assert cfg_default == cfg_empty
 
-    def test_unix_hooks_use_python_hook_scripts(self):
+    def test_unix_hooks_use_kiro_session_push(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="linux")
         hooks = cfg["agent_file"]["content"]["hooks"]
-        spawn_cmd = hooks["agentSpawn"][0]["command"]
-        assert "python3 -m observal_cli.hooks.kiro_hook" in spawn_cmd
-        assert "cat |" not in spawn_cmd
-        assert "sed " not in spawn_cmd
-        assert "curl" not in spawn_cmd
+        cmd = hooks["userPromptSubmit"][0]["command"]
+        assert "python3 -m observal_cli.hooks.kiro_session_push" in cmd
+        assert "cat |" not in cmd
+        assert "sed " not in cmd
+        assert "curl" not in cmd
 
-    def test_non_kiro_ides_unaffected_by_platform(self):
+    def test_non_kiro_cursor_ides_unaffected_by_platform(self):
         agent = _make_agent()
-        for ide in ("cursor", "vscode", "codex", "copilot"):
+        for ide in ["claude-code", "gemini-cli", "codex", "copilot", "opencode"]:
             cfg_default = generate_agent_config(agent, ide)
             cfg_win32 = generate_agent_config(agent, ide, platform="win32")
             assert cfg_default == cfg_win32, f"{ide} config changed with platform=win32"

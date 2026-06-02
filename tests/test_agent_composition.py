@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for agent composition and resolver (issue #80).
 
 Tests the resolver service, builder service, schema updates,
@@ -65,7 +71,7 @@ class TestComponentLinkResponseSchema:
 
 class TestAgentCreateRequestWithComponents:
     def test_create_request_accepts_components(self):
-        from schemas.agent import AgentCreateRequest, ComponentRef, GoalSectionRequest, GoalTemplateRequest
+        from schemas.agent import AgentCreateRequest, ComponentRef
 
         cid = uuid.uuid4()
         req = AgentCreateRequest(
@@ -73,53 +79,44 @@ class TestAgentCreateRequestWithComponents:
             version="1.0.0",
             owner="test",
             model_name="claude-sonnet-4-6",
+            prompt="You are a test agent.",
             components=[
                 ComponentRef(component_type="mcp", component_id=cid),
                 ComponentRef(component_type="skill", component_id=uuid.uuid4()),
             ],
-            goal_template=GoalTemplateRequest(
-                description="test",
-                sections=[GoalSectionRequest(name="s1")],
-            ),
         )
         assert len(req.components) == 2
         assert req.components[0].component_type == "mcp"
 
     def test_create_request_backwards_compat(self):
         """mcp_server_ids should still work."""
-        from schemas.agent import AgentCreateRequest, GoalSectionRequest, GoalTemplateRequest
+        from schemas.agent import AgentCreateRequest
 
         req = AgentCreateRequest(
             name="legacy-agent",
             version="1.0.0",
             owner="test",
             model_name="claude-sonnet-4-6",
+            prompt="You are a test agent.",
             mcp_server_ids=[uuid.uuid4()],
-            goal_template=GoalTemplateRequest(
-                description="test",
-                sections=[GoalSectionRequest(name="s1")],
-            ),
         )
         assert len(req.mcp_server_ids) == 1
         assert len(req.components) == 0
 
     def test_create_request_both_fields(self):
         """Both mcp_server_ids and components can coexist."""
-        from schemas.agent import AgentCreateRequest, ComponentRef, GoalSectionRequest, GoalTemplateRequest
+        from schemas.agent import AgentCreateRequest, ComponentRef
 
         req = AgentCreateRequest(
             name="dual-agent",
             version="1.0.0",
             owner="test",
             model_name="claude-sonnet-4-6",
+            prompt="You are a test agent.",
             mcp_server_ids=[uuid.uuid4()],
             components=[
                 ComponentRef(component_type="skill", component_id=uuid.uuid4()),
             ],
-            goal_template=GoalTemplateRequest(
-                description="test",
-                sections=[GoalSectionRequest(name="s1")],
-            ),
         )
         assert len(req.mcp_server_ids) == 1
         assert len(req.components) == 1
@@ -298,14 +295,16 @@ class TestExtractExtra:
         listing.skill_path = "/skills/tdd"
         listing.task_type = "development"
         listing.slash_command = "/tdd"
-        listing.triggers = {"on": "test"}
-        listing.has_scripts = True
-        listing.is_power = False
-        listing.mcp_server_config = None
+        listing.skill_md_content = "---\nname: tdd\ndescription: TDD skill\n---\n"
         extra = _extract_extra(listing, "skill")
         assert extra["skill_path"] == "/skills/tdd"
         assert extra["slash_command"] == "/tdd"
-        assert extra["has_scripts"] is True
+        assert extra["skill_md_content"] == listing.skill_md_content
+        # Dropped fields are gone
+        assert "has_scripts" not in extra
+        assert "is_power" not in extra
+        assert "triggers" not in extra
+        assert "mcp_server_config" not in extra
 
     def test_hook_extra(self):
         from services.agent_resolver import _extract_extra
@@ -527,10 +526,7 @@ class TestResolveAgent:
         listing.skill_path = "/"
         listing.task_type = "dev"
         listing.slash_command = None
-        listing.triggers = None
-        listing.has_scripts = False
-        listing.is_power = False
-        listing.mcp_server_config = None
+        listing.skill_md_content = None
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = listing
@@ -1179,14 +1175,6 @@ class TestGenerateIdeAgentFiles:
         assert config.setup_commands[0][:3] == ["claude", "mcp", "add"]
         assert "github-mcp" in config.setup_commands[0]
 
-    def test_claude_code_env_includes_telemetry(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "claude-code")
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in config.env
-        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
-
     def test_claude_code_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files
 
@@ -1211,17 +1199,6 @@ class TestGenerateIdeAgentFiles:
 
     # ── VS Code ────────────────────────────────────────────────
 
-    def test_vscode_generates_rules_and_mcp_json(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "vscode")
-        assert config.ide == "vscode"
-        rules = next(f for f in config.files if f.format == "markdown")
-        mcp_json = next(f for f in config.files if f.format == "json")
-        assert rules.path == ".vscode/rules/test-agent.md"
-        assert mcp_json.path == ".vscode/mcp.json"
-
     # ── Gemini CLI ─────────────────────────────────────────────
 
     def test_gemini_cli_generates_gemini_md(self):
@@ -1230,17 +1207,9 @@ class TestGenerateIdeAgentFiles:
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "gemini-cli")
         assert config.ide == "gemini-cli"
-        md_files = [f for f in config.files if f.format == "markdown"]
-        assert len(md_files) == 1
-        assert md_files[0].path == "GEMINI.md"
-        assert "You are a helpful coding assistant." in md_files[0].content
-
-    def test_gemini_cli_env_includes_otel(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini-cli")
-        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
+        gemini_md = [f for f in config.files if f.path == "GEMINI.md"]
+        assert len(gemini_md) == 1
+        assert "You are a helpful coding assistant." in gemini_md[0].content
 
     def test_gemini_cli_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files

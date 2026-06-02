@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for component version publish and list commands."""
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ def test_version_publish_posts_to_api() -> None:
         result = runner.invoke(
             app,
             [
-                "component",
+                "registry",
                 "version",
                 "publish",
                 "hook",
@@ -61,7 +64,7 @@ def test_version_publish_with_all_flags() -> None:
         result = runner.invoke(
             app,
             [
-                "component",
+                "registry",
                 "version",
                 "publish",
                 "skill",
@@ -101,7 +104,7 @@ def test_version_publish_pluralizes_type_correctly() -> None:
             result = runner.invoke(
                 app,
                 [
-                    "component",
+                    "registry",
                     "version",
                     "publish",
                     ctype,
@@ -122,7 +125,7 @@ def test_version_publish_invalid_type_exits() -> None:
     result = runner.invoke(
         app,
         [
-            "component",
+            "registry",
             "version",
             "publish",
             "unknown-type",
@@ -144,7 +147,7 @@ def test_version_publish_invalid_extra_json_exits() -> None:
         result = runner.invoke(
             app,
             [
-                "component",
+                "registry",
                 "version",
                 "publish",
                 "hook",
@@ -178,7 +181,7 @@ def test_version_publish_prompts_for_version_when_omitted() -> None:
         result = runner.invoke(
             app,
             [
-                "component",
+                "registry",
                 "version",
                 "publish",
                 "hook",
@@ -223,7 +226,7 @@ def test_version_list_renders_table() -> None:
         patch("observal_cli.config.resolve_alias", return_value=listing_id),
         patch("observal_cli.client.get", return_value=versions_response) as mock_get,
     ):
-        result = runner.invoke(app, ["component", "version", "list", "mcp", listing_id])
+        result = runner.invoke(app, ["registry", "version", "list", "mcp", listing_id])
 
     assert result.exit_code == 0, result.output
     assert "1.2.0" in result.output
@@ -244,7 +247,7 @@ def test_version_list_empty_shows_message() -> None:
         patch("observal_cli.config.resolve_alias", return_value=listing_id),
         patch("observal_cli.client.get", return_value={"items": [], "total": 0}),
     ):
-        result = runner.invoke(app, ["component", "version", "list", "prompt", listing_id])
+        result = runner.invoke(app, ["registry", "version", "list", "prompt", listing_id])
 
     assert result.exit_code == 0, result.output
     assert "no versions" in result.output.lower()
@@ -264,7 +267,7 @@ def test_version_list_json_output() -> None:
         patch("observal_cli.config.resolve_alias", return_value=listing_id),
         patch("observal_cli.client.get", return_value=versions_response),
     ):
-        result = runner.invoke(app, ["component", "version", "list", "sandbox", listing_id, "--output", "json"])
+        result = runner.invoke(app, ["registry", "version", "list", "sandbox", listing_id, "--output", "json"])
 
     assert result.exit_code == 0, result.output
     parsed = json.loads(result.output)

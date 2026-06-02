@@ -1,4 +1,11 @@
-.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-enterprise rebuild-local release-major release-feature release-patch
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-enterprise rebuild-local release-major release-feature release-patch sync-skill
 
 # ── Linting ──────────────────────────────────────────────
 
@@ -10,15 +17,15 @@ format:  ## Auto-format all code
 	uv run --with ruff==0.15.10 ruff check --fix .
 
 check:  ## Full pre-commit check on all files
-	pre-commit run --all-files
+	SKIP=no-commit-to-branch uvx --from pre-commit pre-commit run --all-files
 
 # ── Testing ──────────────────────────────────────────────
 
 test:  ## Run Python tests
-	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis pytest ../tests/ -q
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis --with pyarrow pytest ../tests/ -q
 
 test-v:  ## Run Python tests (verbose)
-	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis pytest ../tests/ -v
+	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich --with hypothesis --with pyarrow pytest ../tests/ -v
 
 test-adversarial:  ## Run BenchJack self-test suite
 	cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml --with typer --with rich pytest ../tests/test_adversarial_self.py -v --tb=short
@@ -28,18 +35,21 @@ test-eval-completeness:  ## Run eval completeness tests
 
 test-all: test test-eval-completeness test-adversarial  ## Run all tests including adversarial and completeness
 
+sync-skill:  ## Regenerate the auto-generated command reference in the bundled Observal skill
+	cd observal-server && uv run --with typer --with rich --with loguru --with pyyaml python ../scripts/sync_observal_skill.py
+
 # ── Setup ────────────────────────────────────────────────
 
 hooks:  ## Install pre-commit hooks
-	pip install pre-commit
-	pre-commit install
-	pre-commit install --hook-type commit-msg
-	pre-commit install --hook-type pre-push
+	uvx --from pre-commit pre-commit install
+	uvx --from pre-commit pre-commit install --hook-type commit-msg
+	uvx --from pre-commit pre-commit install --hook-type pre-push
 	@echo "✓ Hooks installed"
 
 # ── Docker ───────────────────────────────────────────────
 
-# Auto-detect enterprise mode: if ee/observal_insights/ exists, use enterprise override
+# Auto-detect enterprise edition: if ee/observal_insights/ exists, include enterprise compose file.
+# Enterprise features activate when OBSERVAL_LICENSE_KEY is set in .env.
 COMPOSE_FILES := -f docker-compose.yml
 ifneq (,$(wildcard ee/observal_insights/__init__.py))
   COMPOSE_FILES += -f docker-compose.enterprise.yml
@@ -74,7 +84,7 @@ rebuild-enterprise:  ## Rebuild in enterprise mode (insights enabled)
 	@echo "Waiting for API to be healthy..."
 	@cd docker && until docker compose -f docker-compose.yml -f docker-compose.enterprise.yml exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
 	cd docker && docker compose -f docker-compose.yml -f docker-compose.enterprise.yml restart observal-lb
-	@echo "✓ Running in enterprise mode (DEPLOYMENT_MODE=enterprise)"
+	@echo "✓ Running in enterprise mode (license key active)"
 
 rebuild-local:  ## Rebuild in local mode (no enterprise features)
 	cd docker && docker compose -f docker-compose.yml up --build -d

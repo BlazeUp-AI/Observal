@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Version-specific endpoints for agents.
 
 Mounted on the /api/v1/agents router via::
@@ -10,18 +15,16 @@ All paths are relative to /api/v1/agents (no extra prefix).
 from __future__ import annotations
 
 import difflib
-import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger as optic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
 from api.deps import get_db, get_effective_agent_permission, require_role
 from models.agent import (
     Agent,
-    AgentGoalSection,
-    AgentGoalTemplate,
     AgentStatus,
     AgentVersion,
 )
@@ -32,13 +35,10 @@ from schemas.agent import (  # noqa: TC001
     AgentVersionCreateRequest,
     AgentVersionReviewRequest,
 )
-from services.agent_config_generator import generate_agent_config
 from services.agent_resolver import validate_component_ids
-from services.audit_helpers import audit
+from services.ide import generate_agent_config
 from services.ide_feature_inference import compute_supported_ides, infer_required_features
 from services.versioning import parse_semver, validate_semver
-
-logger = logging.getLogger(__name__)
 
 agent_version_router = APIRouter()
 
@@ -49,6 +49,7 @@ agent_version_router = APIRouter()
 
 def _version_to_summary(ver: AgentVersion) -> dict:
     """Serialize an AgentVersion to a list-view dict."""
+    optic.trace("ver={}", ver)
     return {
         "id": str(ver.id),
         "agent_id": str(ver.agent_id),
@@ -68,6 +69,7 @@ def _version_to_summary(ver: AgentVersion) -> dict:
 
 def _version_to_detail(ver: AgentVersion) -> dict:
     """Serialize an AgentVersion to a full-detail dict."""
+    optic.trace("ver={}", ver)
     d = _version_to_summary(ver)
     d.update(
         {
@@ -95,12 +97,13 @@ def _version_to_detail(ver: AgentVersion) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Standalone async functions — exposed for direct testing
+# Standalone async functions - exposed for direct testing
 # ---------------------------------------------------------------------------
 
 
 async def _load_agent(db: AsyncSession, agent_id: str) -> Agent | None:
     """Thin wrapper that delegates to the route-level _load_agent."""
+    optic.trace("agent_id={}", agent_id)
     from api.routes.agent import _load_agent as _base_load
 
     return await _base_load(db, agent_id)
@@ -113,6 +116,7 @@ async def _list_agent_versions(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("agent_id={}, page={}", agent_id, page)
     agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -149,6 +153,7 @@ async def _get_agent_version(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("agent_id={}, version={}", agent_id, version)
     agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -165,7 +170,14 @@ async def _get_agent_version(
     if not ver:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    return _version_to_detail(ver)
+    from api.routes.agent import _resolve_component_names
+
+    name_map = await _resolve_component_names(ver.components or [], db)
+    detail = _version_to_detail(ver)
+    for comp in detail.get("components", []):
+        if not comp.get("name"):
+            comp["name"] = name_map.get(comp["component_id"], "")
+    return detail
 
 
 async def _create_agent_version(
@@ -175,6 +187,7 @@ async def _create_agent_version(
     current_user: User,
 ) -> dict:
     # Validate semver (guard against mock objects in tests that bypass the schema validator)
+    optic.trace("agent_id={}", agent_id)
     if not validate_semver(req.version):
         raise HTTPException(status_code=422, detail=f"Invalid semver string: {req.version!r}")
 
@@ -182,9 +195,8 @@ async def _create_agent_version(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    is_owner = agent.created_by == current_user.id
-    is_co_maintainer = str(current_user.id) in [str(uid) for uid in (agent.co_maintainers or [])]
-    if not is_owner and not is_co_maintainer:
+    perm = get_effective_agent_permission(agent, current_user)
+    if perm != "owner":
         raise HTTPException(status_code=403, detail="Not authorized to release versions")
 
     # Duplicate check
@@ -254,22 +266,6 @@ async def _create_agent_version(
             )
         )
 
-    # Create goal template if provided
-    if req.goal_template is not None:
-        goal = AgentGoalTemplate(agent_version_id=ver.id, description=req.goal_template.description)
-        db.add(goal)
-        await db.flush()
-        for i, sec in enumerate(req.goal_template.sections):
-            db.add(
-                AgentGoalSection(
-                    goal_template_id=goal.id,
-                    name=sec.name,
-                    description=sec.description,
-                    grounding_required=sec.grounding_required,
-                    order=i,
-                )
-            )
-
     # Infer IDE features from components
     skill_comp_ids = [c.component_id for c in req.components if c.component_type == "skill"]
     skill_listings_map: dict = {}
@@ -288,7 +284,7 @@ async def _create_agent_version(
     # path). Without this the reviewer's diff view is blank for everything
     # that wasn't published from the CLI.
     if not ver.yaml_snapshot:
-        # Flush pending AgentComponent/AgentGoalSection rows so the snapshot
+        # Flush pending AgentComponent rows so the snapshot
         # builder can re-query them from the session.
         await db.flush()
         from services.agent_snapshot import build_yaml_snapshot
@@ -324,23 +320,12 @@ async def _create_agent_version(
                 options={"_resolved_model": resolved_model, "_model_warnings": model_warnings},
             )
         except Exception:
-            logger.exception(
-                "IDE config generation failed for agent=%s version=%s ide=%s", agent.name, req.version, ide
-            )
+            optic.error("IDE config generation failed for agent={} version={} ide={}", agent.name, req.version, ide)
             failed_ides.append(ide)
     ver.ide_configs = ide_configs or {}
 
-    # Do NOT update latest_version_id — that happens on approval
+    # Do NOT update latest_version_id - that happens on approval
     await db.commit()
-
-    await audit(
-        current_user,
-        "agent.version.publish",
-        resource_type="agent",
-        resource_id=str(agent.id),
-        resource_name=agent.name,
-        detail=req.version,
-    )
 
     warnings: list[str] = []
     if pending_count > 0:
@@ -374,6 +359,7 @@ async def _review_agent_version(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("agent_id={}, version={}", agent_id, version)
     agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -415,15 +401,6 @@ async def _review_agent_version(
 
     await db.commit()
 
-    await audit(
-        current_user,
-        f"agent.version.{req.action}",
-        resource_type="agent",
-        resource_id=str(agent.id),
-        resource_name=agent.name,
-        detail=version,
-    )
-
     return {
         "version": version,
         "new_status": ver.status.value,
@@ -438,6 +415,7 @@ async def _get_agent_ide_config(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("agent_id={}, version={}", agent_id, version)
     agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -454,7 +432,7 @@ async def _get_agent_ide_config(
     if not ver:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    # Serve pre-generated config only — no generation at request time (spec requirement #8)
+    # Serve pre-generated config only - no generation at request time (spec requirement #8)
     if not ver.ide_configs or ide not in ver.ide_configs:
         raise HTTPException(
             status_code=404,
@@ -471,6 +449,7 @@ async def _get_version_diff(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("agent_id={}, v1={}", agent_id, v1)
     agent = await _load_agent(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -495,6 +474,7 @@ async def _get_version_diff(
     from services.agent_snapshot import build_yaml_snapshot
 
     async def _snapshot_text(ver: AgentVersion) -> str:
+        optic.trace("ver={}", ver)
         if ver.yaml_snapshot:
             return ver.yaml_snapshot
         return await build_yaml_snapshot(ver, db)
@@ -569,6 +549,7 @@ async def list_agent_versions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("agent versions list")
     return await _list_agent_versions(
         agent_id=agent_id,
         page=page,
@@ -585,6 +566,7 @@ async def get_agent_version(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("agent_id={}, version={}", agent_id, version)
     return await _get_agent_version(
         agent_id=agent_id,
         version=version,
@@ -600,6 +582,7 @@ async def create_agent_version(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("agent_id={}", agent_id)
     return await _create_agent_version(
         agent_id=agent_id,
         req=req,
@@ -616,6 +599,7 @@ async def review_agent_version(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("agent_id={}, version={}", agent_id, version)
     return await _review_agent_version(
         agent_id=agent_id,
         version=version,
@@ -633,6 +617,7 @@ async def get_agent_ide_config(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("agent_id={}, version={}", agent_id, version)
     return await _get_agent_ide_config(
         agent_id=agent_id,
         version=version,
@@ -650,6 +635,7 @@ async def get_version_diff(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("agent_id={}, v1={}", agent_id, v1)
     return await _get_version_diff(
         agent_id=agent_id,
         v1=v1,

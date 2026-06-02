@@ -1,7 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 repos:
   # ── Python ─────────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.10
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -21,8 +27,10 @@ repos:
         args: [--maxkb=500]
       - id: check-merge-conflict
       - id: detect-private-key
+        exclude: ^tests/test_secrets_redactor\.py$|^tests/test_saml\.py$
       - id: no-commit-to-branch
         args: [--branch, main]
+        stages: [pre-commit]
 
   # ── Secrets / .env guard ───────────────────────────────
   - repo: local
@@ -43,16 +51,17 @@ repos:
         files: ^observal-server/alembic/versions/.*\.py$
         pass_filenames: false
 
-  # ── DCO sign-off (pre-push) ────────────────────────────
+
+  # ── SPDX copyright update ──────────────────────────────────────
   - repo: local
     hooks:
-      - id: check-dco
-        name: check DCO sign-off on all commits
-        entry: scripts/check_dco.sh
-        language: script
+      - id: spdx-update
+        name: add committer copyright to SPDX headers
+        entry: python3 scripts/update_spdx_copyright.py
+        language: system
         always_run: true
         pass_filenames: false
-        stages: [pre-push]
+        stages: [pre-commit]
 
   # ── Docker ─────────────────────────────────────────────
   - repo: https://github.com/hadolint/hadolint

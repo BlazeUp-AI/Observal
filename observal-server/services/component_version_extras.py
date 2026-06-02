@@ -1,8 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Per-type field validation for component version publishing."""
 
 from __future__ import annotations
 
 from fastapi import HTTPException
+from loguru import logger as optic
 
 # Fields allowed in extra dict per component type
 HOOK_FIELDS = {
@@ -11,25 +16,25 @@ HOOK_FIELDS = {
     "priority",
     "handler_type",
     "handler_config",
-    "input_schema",
-    "output_schema",
     "scope",
     "tool_filter",
-    "file_pattern",
+    "source_url",
+    "source_ref",
+    "source_path",
+    "resolved_sha",
+    "script_content",
+    "script_filename",
+    "requirements",
 }
 
 SKILL_FIELDS = {
     "skill_path",
+    "git_url",
+    "git_ref",
+    "skill_md_content",
     "target_agents",
     "task_type",
-    "triggers",
     "slash_command",
-    "has_scripts",
-    "has_templates",
-    "is_power",
-    "power_md",
-    "mcp_server_config",
-    "activation_keywords",
 }
 
 PROMPT_FIELDS = {
@@ -44,12 +49,23 @@ MCP_FIELDS = {
     "source_url",
     "source_ref",
     "resolved_sha",
+    "transport",
+    "framework",
+    "docker_image",
+    "command",
+    "args",
+    "url",
+    "headers",
+    "auto_approve",
+    "environment_variables",
+    "setup_instructions",
 }
 
 SANDBOX_FIELDS = {
     "source_url",
     "source_ref",
     "resolved_sha",
+    "sandbox_path",
 }
 
 REQUIRED_FIELDS: dict[str, set[str]] = {
@@ -76,17 +92,25 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "handler_type": str,
     "scope": str,
     "skill_path": str,
+    "git_url": str,
+    "git_ref": str,
+    "skill_md_content": str,
     "task_type": str,
     "slash_command": str,
-    "power_md": str,
     "category": str,
     "template": str,
     "source_url": str,
     "source_ref": str,
     "resolved_sha": str,
+    "transport": str,
+    "framework": str,
+    "docker_image": str,
+    "command": str,
+    "url": str,
+    "setup_instructions": str,
     # int fields
     "priority": int,
-    # bool fields — must come before int since bool is a subclass of int
+    # bool fields - must come before int since bool is a subclass of int
     "has_scripts": bool,
     "has_templates": bool,
     "is_power": bool,
@@ -104,6 +128,10 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "activation_keywords": list,
     "tags": list,
     "variables": list,
+    "args": list,
+    "headers": list,
+    "auto_approve": list,
+    "environment_variables": list,
 }
 
 
@@ -113,6 +141,7 @@ def validate_and_extract(component_type: str, extra: dict | None) -> dict:
     Returns a dict of field_name -> value to set on the version model.
     Raises HTTPException(422) on validation errors.
     """
+    optic.trace("extracting version extras for {} component", component_type)
     allowed = ALLOWED_FIELDS.get(component_type)
     if allowed is None:
         raise HTTPException(status_code=422, detail=f"Unknown component type: {component_type!r}")

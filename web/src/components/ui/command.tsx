@@ -1,4 +1,6 @@
-"use client"
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 
 import * as React from "react"
 import { type DialogProps } from "@radix-ui/react-dialog"

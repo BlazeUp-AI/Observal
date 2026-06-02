@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the agent-centric schema redesign."""
 
 import uuid
@@ -157,12 +161,11 @@ class TestComponentTableUpdates:
         "model_path,version_name",
         [
             ("models.skill", "SkillVersion"),
-            ("models.hook", "HookVersion"),
             ("models.prompt", "PromptVersion"),
         ],
     )
     def test_inline_versions_no_source_fields(self, model_path, version_name):
-        """Skills, hooks, and prompts are inline — no git source fields."""
+        """Skills and prompts are inline — no git source fields."""
         import importlib
 
         mod = importlib.import_module(model_path)
@@ -196,7 +199,6 @@ class TestAgentModelUpdate:
         from models.agent import Agent
 
         cols = {c.name for c in Agent.__table__.columns}
-        assert "visibility" in cols
         assert "owner_org_id" in cols
 
     def test_agent_has_version_fields(self):
@@ -204,7 +206,7 @@ class TestAgentModelUpdate:
 
         cols = {c.name for c in Agent.__table__.columns}
         assert "latest_version_id" in cols
-        assert "co_maintainers" in cols
+        assert "co_authors" in cols
 
     def test_agent_version_has_download_metrics(self):
         from models.agent import AgentVersion

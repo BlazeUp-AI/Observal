@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """Enterprise edition module for Observal.
 
 This module is loaded by main.py when DEPLOYMENT_MODE=enterprise.

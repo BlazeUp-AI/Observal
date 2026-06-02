@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for listing detail endpoint access control.
 
 Verifies that GET /{listing_id} endpoints for all 5 registry types
@@ -94,15 +97,14 @@ def _listing_mock(status=ListingStatus.approved, submitted_by=None):
     m.tags = []
     m.task_type = "code-review"
     m.target_agents = []
-    m.skill_path = None
-    m.triggers = []
+    m.skill_path = "/"
+    m.git_ref = None
+    m.skill_md_content = None
+    m.delivery_mode = "git_fetch"
+    m.script_content = None
+    m.script_filename = None
+    m.validated = False
     m.slash_command = None
-    m.has_scripts = False
-    m.has_templates = False
-    m.is_power = False
-    m.power_md = None
-    m.mcp_server_config = None
-    m.activation_keywords = []
     m.event = "PreToolUse"
     m.execution_mode = "blocking"
     m.priority = 0

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Unit tests for POST /api/v1/telemetry/ingest: Phase 2."""
 
 import uuid
@@ -12,6 +15,18 @@ from httpx import ASGITransport, AsyncClient
 
 from api.routes.telemetry import router
 from models.user import User
+
+
+@pytest.fixture(autouse=True)
+def _disable_rate_limiter():
+    from api.ratelimit import limiter
+
+    old_enabled = limiter.enabled
+    limiter.enabled = False
+    try:
+        yield
+    finally:
+        limiter.enabled = old_enabled
 
 
 def _make_user(**kwargs):

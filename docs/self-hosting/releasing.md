@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # Releasing
 
 How to cut a release of Observal. This is for maintainers with push access.
@@ -55,7 +58,7 @@ The final `release` job:
 | Type | When | Examples |
 |------|------|---------|
 | `patch` | Bug fixes, dependency updates, docs, CI tweaks | Fix login redirect, update ruff version, typo in docs |
-| `feature` | New functionality, new endpoints, new CLI commands | Add SCIM support, add audit log viewer, new eval dimension |
+| `feature` | New functionality, new endpoints, new CLI commands | Add SCIM support, add audit log viewer, new alert rule type |
 | `major` | Breaking changes, major rewrites, incompatible API changes | Auth system rewrite, database schema migration required, CLI flag rename |
 
 ## Conventional commits

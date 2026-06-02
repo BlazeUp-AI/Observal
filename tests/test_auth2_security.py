@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for Auth 2.0 security features.
 
 Covers:
@@ -14,6 +17,15 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _init_key_manager(tmp_path_factory):
+    from services.crypto import init_key_manager
+
+    key_dir = tmp_path_factory.mktemp("keys")
+    init_key_manager(key_dir=str(key_dir), key_password=None)
+
 
 # ---------------------------------------------------------------------------
 # Helpers shared across all test classes
@@ -32,6 +44,7 @@ def _make_mock_user(**overrides):
     user.auth_provider = overrides.get("auth_provider", "local")
     user.created_at = overrides.get("created_at", datetime.now(UTC))
     user.org_id = overrides.get("org_id", uuid.uuid4())
+    user.avatar_url = overrides.get("avatar_url")
     user._trace_privacy = False
     return user
 

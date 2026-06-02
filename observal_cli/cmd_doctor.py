@@ -1,3 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """observal doctor: diagnose and patch IDE settings for Observal session telemetry.
 
 Supports Claude Code and Kiro.  Injects 2 hooks (UserPromptSubmit + Stop) that
@@ -5,64 +15,45 @@ push session JSONL incrementally to the server.
 """
 
 import json
+import os
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 
 from observal_cli import config
-from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key
+from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key, get_valid_ides
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
-    OBSERVAL_METADATA_KEY,
     get_desired_hooks,
+)
+from observal_cli.shared.utils import (
+    is_already_shimmed as _is_already_shimmed,
+)
+from observal_cli.shared.utils import (
+    is_observal_hook_entry as _is_observal_hook_entry,
+)
+from observal_cli.shared.utils import (
+    is_observal_matcher_group as _is_observal_matcher_group,
+)
+from observal_cli.shared.utils import (
+    load_jsonc as _load_jsonc,
 )
 
 doctor_app = typer.Typer(help="Diagnose and patch IDE settings for Observal telemetry")
-
-
-# ── Markers that identify old Observal-injected content ──────
-
-_LEGACY_HOOK_MARKERS = (
-    "observal-hook",
-    "observal-stop-hook",
-    "observal_cli.hooks.kiro_hook",
-    "observal_cli.hooks.kiro_stop_hook",
-    "observal_cli.hooks.gemini_hook",
-    "observal_cli.hooks.gemini_stop_hook",
-    "observal_cli.hooks.copilot_cli_hook",
-    "observal_cli.hooks.copilot_cli_stop_hook",
-    "observal_cli.hooks.buffer_event",
-    "observal_cli.hooks.flush_buffer",
-    "observal_cli.hooks.session_push",
-    "observal_cli.hooks.kiro_session_push",
-    "/api/v1/telemetry/hooks",
-    "/api/v1/otel/hooks",
-)
-
-
-def _is_observal_hook_entry(entry: dict) -> bool:
-    cmd = entry.get("command", "")
-    url = entry.get("url", "")
-    return any(m in cmd or m in url for m in _LEGACY_HOOK_MARKERS)
-
-
-def _is_observal_matcher_group(group: dict) -> bool:
-    if OBSERVAL_METADATA_KEY in group:
-        return True
-    return any(_is_observal_hook_entry(h) for h in group.get("hooks", []))
 
 
 # ── Helpers ──────────────────────────────────────────────────
 
 
 def _load_json(path: Path) -> dict | None:
+    optic.trace("path={}", path)
     try:
-        text = path.read_text()
-        stripped = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("//"))
-        return json.loads(stripped)
+        return _load_jsonc(path)
     except Exception:
         return None
 
@@ -71,8 +62,10 @@ def _load_json(path: Path) -> dict | None:
 
 
 @doctor_app.callback(invoke_without_command=True)
-def doctor(ctx: typer.Context):
-    """Diagnose IDE and Observal settings for compatibility issues."""
+def doctor(
+    ctx: typer.Context, yes: bool = typer.Option(False, "--yes", "-y", help="Auto-fix all issues without prompting")
+):
+    """Diagnose IDE settings and offer to configure telemetry + AI skill."""
     if ctx.invoked_subcommand is not None:
         return
 
@@ -93,6 +86,18 @@ def doctor(ctx: typer.Context):
     rprint("[cyan]Checking Kiro...[/cyan]")
     _check_kiro(issues, warnings)
 
+    # 4. Check Pi
+    rprint("[cyan]Checking Pi...[/cyan]")
+    _check_pi(issues, warnings)
+
+    # 5. Check if observal skill is installed
+    skill_missing = _check_observal_skill_missing()
+    if skill_missing:
+        warnings.append(
+            f"Observal AI skill not installed for: {', '.join(skill_missing)}. "
+            "LLMs won't have /observal commands available."
+        )
+
     # Report
     rprint("")
     if not issues and not warnings:
@@ -109,10 +114,67 @@ def doctor(ctx: typer.Context):
         for i, warning in enumerate(warnings, 1):
             rprint(f"  [yellow]{i}.[/yellow] {warning}")
 
+    # Offer to fix everything in one go
+    fixable = len(warnings) > 0
+    should_fix = yes
+    if fixable and not yes and sys.stdin.isatty():
+        rprint("")
+        should_fix = typer.confirm(
+            "Fix all issues? (configures telemetry + installs AI skill for all detected IDEs)", default=True
+        )
+    if fixable and should_fix:
+        import subprocess
+
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        subprocess.run(
+            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--all-ides"],
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            env=env,
+        )
+        # Install the observal skill
+        from observal_cli.skill_installer import install_observal_skill
+
+        install_observal_skill()
+    elif fixable and not should_fix:
+        rprint("[dim]  Run [bold]observal doctor patch --all --all-ides[/bold] anytime to fix.[/dim]")
+
     raise typer.Exit(1 if issues else 0)
 
 
+def _check_observal_skill_missing() -> list[str]:
+    """Return list of IDE display names where the observal skill is not installed."""
+    from observal_cli.ide_registry import IDE_REGISTRY
+
+    skill_source = Path(__file__).parent / "skills" / "observal" / "SKILL.md"
+    if not skill_source.exists():
+        return []
+
+    _extra_user_paths: dict[str, str] = {"kiro": "~/.kiro/skills/{name}/SKILL.md"}
+    missing: list[str] = []
+
+    for ide, spec in IDE_REGISTRY.items():
+        skill_file_spec = spec.get("skill_file") or {}
+        user_path = skill_file_spec.get("user") or _extra_user_paths.get(ide)
+        if not user_path:
+            continue
+
+        resolved = user_path.replace("{name}", "observal")
+        dest = Path(resolved.replace("~", str(Path.home())))
+        ide_config_dir = Path.home() / spec.get("config_dir", "")
+        if not ide_config_dir.exists():
+            continue
+
+        if not dest.exists():
+            missing.append(spec["display_name"])
+
+    return missing
+
+
 def _check_observal_config(issues: list, warnings: list):
+    optic.trace("issues={}, warnings={}", issues, warnings)
     config_path = Path.home() / ".observal" / "config.json"
     if not config_path.exists():
         issues.append("~/.observal/config.json not found. Run `observal auth login` first.")
@@ -142,6 +204,7 @@ def _check_observal_config(issues: list, warnings: list):
 
 
 def _check_claude_code(issues: list, warnings: list):
+    optic.trace("issues={}, warnings={}", issues, warnings)
     settings_path = Path.home() / ".claude" / "settings.json"
     if not settings_path.exists():
         rprint("  [dim]No ~/.claude/settings.json found[/dim]")
@@ -169,7 +232,7 @@ def _check_claude_code(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Claude Code session push hooks not installed. "
-            "Run `observal doctor patch --ide claude-code` to inject them."
+            "Run `observal doctor patch --all --ide claude-code` to inject them."
         )
 
     # Check for stale legacy hooks
@@ -190,17 +253,9 @@ def _check_claude_code(issues: list, warnings: list):
             "Run `observal doctor cleanup --ide claude-code` to remove them."
         )
 
-    # Check for stale OTEL env vars
-    env = data.get("env", {})
-    stale_otel = [k for k in env if k.startswith("OTEL_")]
-    if stale_otel:
-        warnings.append(
-            f"Stale OTEL env vars in settings.json: {', '.join(stale_otel)}. "
-            "Run `observal doctor cleanup --ide claude-code` to remove them."
-        )
-
 
 def _check_kiro(issues: list, warnings: list):
+    optic.trace("issues={}, warnings={}", issues, warnings)
     agents_dir = Path.home() / ".kiro" / "agents"
     if not agents_dir.is_dir():
         rprint("  [dim]No ~/.kiro/agents/ found[/dim]")
@@ -229,7 +284,34 @@ def _check_kiro(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Kiro session push hooks not installed in any agent config. "
-            "Run `observal doctor patch --ide kiro` to inject them."
+            "Run `observal doctor patch --all --ide kiro` to inject them."
+        )
+
+
+def _check_pi(issues: list, warnings: list):
+    """Check if Observal pi extension is installed."""
+    optic.debug("_check_pi")
+    pi_dir = Path.home() / ".pi" / "agent"
+    if not pi_dir.exists():
+        rprint("  [dim]Pi not detected[/dim]")
+        return
+
+    settings_path = pi_dir / "settings.json"
+    if not settings_path.exists():
+        rprint("  [dim]No ~/.pi/agent/settings.json found[/dim]")
+        return
+
+    data = _load_json(settings_path)
+    if data is None:
+        issues.append(f"{settings_path}: not valid JSON.")
+        return
+
+    packages = data.get("packages", [])
+    has_observal = any("observal-pi" in (p if isinstance(p, str) else p.get("source", "")) for p in packages)
+
+    if not has_observal:
+        warnings.append(
+            "Observal pi extension not installed. Run `pi install npm:observal-pi` to enable session telemetry."
         )
 
 
@@ -248,13 +330,23 @@ def doctor_cleanup(
 ):
     """Remove ALL Observal hooks, env vars, and legacy telemetry config.
 
-    Strips Observal-managed hooks and OTEL env vars from Claude Code and
-    Kiro settings. Leaves non-Observal hooks untouched.
+    Strips Observal-managed hooks and env vars from Claude Code and
+    Kiro settings. Leaves non-Observal hooks untouched. Useful when you
+    want to fully uninstall Observal instrumentation from an IDE without
+    removing the IDE config files themselves.
+
+    \b
+    Examples:
+      observal doctor cleanup                          # Clean all supported IDEs
+      observal doctor cleanup --ide claude-code        # Claude Code only
+      observal doctor cleanup --ide kiro               # Kiro only
+      observal doctor cleanup --ide claude-code --dry-run  # Preview without changes
     """
+    optic.trace("ide={}, dry_run={}", ide, dry_run)
     targets = [ide] if ide else ["claude-code", "kiro"]
     any_changes = False
 
-    rprint("[bold]Observal Doctor — Cleanup[/bold]\n")
+    rprint("[bold]Observal Doctor - Cleanup[/bold]\n")
 
     for target in targets:
         if target in ("claude-code", "claude_code"):
@@ -271,14 +363,15 @@ def doctor_cleanup(
     if any_changes and not dry_run:
         rprint("\n[green]✓ Cleanup complete.[/green] Restart your IDE sessions to take effect.")
     elif not any_changes:
-        rprint("\n[dim]Nothing to clean up — no Observal artifacts found.[/dim]")
+        rprint("\n[dim]Nothing to clean up - no Observal artifacts found.[/dim]")
 
 
 def _cleanup_claude_code(dry_run: bool) -> bool:
+    optic.trace("dry_run={}", dry_run)
     rprint("[cyan]Claude Code[/cyan]")
     settings_path = Path.home() / ".claude" / "settings.json"
     if not settings_path.exists():
-        rprint("  [dim]No settings.json found — skipping[/dim]")
+        rprint("  [dim]No settings.json found - skipping[/dim]")
         return False
 
     try:
@@ -289,7 +382,7 @@ def _cleanup_claude_code(dry_run: bool) -> bool:
 
     changed = False
 
-    # Remove Observal-managed env vars (OTEL_*, OBSERVAL_*)
+    # Remove Observal-managed env vars (OBSERVAL_*)
     env = data.get("env", {})
     removed_env = []
     for key in list(env):
@@ -337,10 +430,11 @@ def _cleanup_claude_code(dry_run: bool) -> bool:
 
 
 def _cleanup_kiro(dry_run: bool) -> bool:
+    optic.trace("dry_run={}", dry_run)
     rprint("[cyan]Kiro[/cyan]")
     agents_dir = Path.home() / ".kiro" / "agents"
     if not agents_dir.is_dir():
-        rprint("  [dim]No ~/.kiro/agents/ found — skipping[/dim]")
+        rprint("  [dim]No ~/.kiro/agents/ found - skipping[/dim]")
         return False
 
     changed = False
@@ -383,17 +477,9 @@ def _cleanup_kiro(dry_run: bool) -> bool:
 # ── Shim helpers ────────────────────────────────────────────
 
 
-def _is_already_shimmed(entry: dict) -> bool:
-    """Check if an MCP entry is already wrapped with observal-shim."""
-    cmd = entry.get("command", "")
-    args = entry.get("args", [])
-    if cmd == "observal-shim" or "observal-shim" in cmd:
-        return True
-    return bool(any("observal-shim" in str(a) for a in args))
-
-
 def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
     """Wrap an MCP server entry with observal-shim for telemetry."""
+    optic.trace("entry={}, mcp_id={}", entry, mcp_id)
     if entry.get("url"):
         return entry
     shimmed = dict(entry)
@@ -404,6 +490,7 @@ def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
 
 def _backup_config(config_path: Path) -> Path:
     """Create a timestamped backup of the config file."""
+    optic.trace("config_path={}", config_path)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = config_path.with_suffix(f".pre-observal.{ts}.bak")
     shutil.copy2(config_path, backup)
@@ -412,12 +499,13 @@ def _backup_config(config_path: Path) -> Path:
 
 def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
     """Extract MCP servers dict from IDE config using registry-defined key."""
+    optic.trace("config_data={}, ide={}", config_data, ide)
     key = get_mcp_servers_key(ide)
     if key == "mcp.servers":
         return config_data.get("mcp", {}).get("servers", {})
     if key == "mcp":
         return config_data.get("mcp", {})
-    if key == "servers" or ide == "vscode":
+    if key == "servers":
         return config_data.get("servers", config_data.get("mcpServers", {}))
     if ide == "copilot-cli":
         return config_data.get("mcpServers", {})
@@ -429,6 +517,7 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
 
     Returns count of newly shimmed entries.
     """
+    optic.trace("config_path={}, ide={}", config_path, ide)
     if not config_path.exists():
         return 0
     try:
@@ -452,7 +541,7 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
 
 
 _SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items() if path}
-_VALID_IDES = list(_SHIM_TARGETS.keys())
+_VALID_IDES = get_valid_ides()
 
 
 # ── Patch command ────────────────────────────────────────────
@@ -480,6 +569,7 @@ def doctor_patch(
       observal doctor patch --shim --ide cursor        # Cursor shims only
       observal doctor patch --all --all-ides --dry-run # Preview changes
     """
+    optic.trace("hook={}, shim={}", hook, shim)
     do_hooks = hook or all_
     do_shims = shim or all_
 
@@ -505,10 +595,10 @@ def doctor_patch(
 
     any_changes = False
     verb = "Would" if dry_run else "Done"
-    rprint("[bold]Observal Doctor — Patch[/bold]\n")
+    rprint("[bold]Observal Doctor - Patch[/bold]\n")
 
     for target in targets:
-        # ── Hooks (Claude Code + Kiro only) ──
+        # ── Hooks ──
         if do_hooks:
             if target == "claude-code":
                 changed = _patch_claude_code(dry_run)
@@ -516,12 +606,18 @@ def doctor_patch(
             elif target == "kiro":
                 changed = _patch_kiro(dry_run)
                 any_changes = any_changes or changed
+            elif target == "cursor":
+                changed = _patch_cursor(dry_run)
+                any_changes = any_changes or changed
+            elif target == "pi":
+                changed = _patch_pi(dry_run)
+                any_changes = any_changes or changed
 
         # ── Shims (all IDEs with home MCP config) ──
         if do_shims:
             shim_path = _SHIM_TARGETS.get(target)
             if shim_path and shim_path.exists():
-                rprint(f"[cyan]{target} — shims[/cyan]")
+                rprint(f"[cyan]{target} - shims[/cyan]")
                 count = _shim_config_file(shim_path, target, dry_run)
                 if count:
                     any_changes = True
@@ -530,18 +626,27 @@ def doctor_patch(
                     rprint("  [dim]All MCP servers already shimmed[/dim]")
 
     if dry_run:
-        rprint("\n[yellow]Dry run — no changes made.[/yellow]")
+        rprint("\n[yellow]Dry run - no changes made.[/yellow]")
     elif any_changes:
         rprint("\n[green]✓ Patch complete.[/green] Restart your IDE sessions to pick up changes.")
+        from observal_cli.audit import emit_cli_audit
+
+        emit_cli_audit(
+            "doctor.patch",
+            resource_type="ide",
+            detail=f"ides={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
+            sensitivity="high",
+        )
     else:
         rprint("\n[dim]Everything already up to date.[/dim]")
 
 
 def _patch_claude_code(dry_run: bool) -> bool:
     """Install session push hooks into ~/.claude/settings.json."""
+    optic.trace("dry_run={}", dry_run)
     from observal_cli import settings_reconciler
 
-    rprint("[cyan]Claude Code — session push hooks[/cyan]")
+    rprint("[cyan]Claude Code - session push hooks[/cyan]")
 
     settings_path = Path.home() / ".claude" / "settings.json"
     if not settings_path.exists():
@@ -549,7 +654,7 @@ def _patch_claude_code(dry_run: bool) -> bool:
 
     desired_hooks = get_desired_hooks()
 
-    # No env vars needed for session push — config lives in ~/.observal/config.json
+    # No env vars needed for session push - config lives in ~/.observal/config.json
     changes = settings_reconciler.reconcile(desired_hooks, {}, dry_run=dry_run)
 
     if changes:
@@ -563,13 +668,14 @@ def _patch_claude_code(dry_run: bool) -> bool:
 
 def _patch_kiro(dry_run: bool) -> bool:
     """Install session push hooks into Kiro agent configs."""
+    optic.trace("dry_run={}", dry_run)
     from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
 
-    rprint("[cyan]Kiro — session push hooks[/cyan]")
+    rprint("[cyan]Kiro - session push hooks[/cyan]")
 
     agents_dir = Path.home() / ".kiro" / "agents"
     if not agents_dir.is_dir():
-        rprint("  [dim]No ~/.kiro/agents/ directory — skipping[/dim]")
+        rprint("  [dim]No ~/.kiro/agents/ directory - skipping[/dim]")
         return False
 
     agent_files = list(agents_dir.glob("*.json"))
@@ -611,3 +717,119 @@ def _patch_kiro(dry_run: bool) -> bool:
             rprint(f"  [dim]{agent_name}: already up to date[/dim]")
 
     return changed
+
+
+def _patch_cursor(dry_run: bool) -> bool:
+    """Install session push hooks into ~/.cursor/hooks.json."""
+    optic.trace("dry_run={}", dry_run)
+    import sys
+
+    rprint("[cyan]Cursor - session push hooks[/cyan]")
+
+    hooks_path = Path.home() / ".cursor" / "hooks.json"
+    if not hooks_path.parent.is_dir():
+        rprint("  [dim]No ~/.cursor/ directory - skipping[/dim]")
+        return False
+
+    # Use the current interpreter (from the observal CLI's venv) so that
+    # httpx and other dependencies are available when Cursor fires the hook.
+    cmd = f"{sys.executable} -m observal_cli.hooks.cursor_session_push"
+
+    desired = {
+        "version": 1,
+        "hooks": {
+            "beforeSubmitPrompt": [{"command": cmd, "type": "command"}],
+            "stop": [{"command": cmd, "type": "command"}],
+        },
+    }
+
+    # Load existing hooks.json if present
+    existing = {}
+    if hooks_path.exists():
+        try:
+            existing = json.loads(hooks_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Check if already patched
+    existing_hooks = existing.get("hooks", {})
+    needs_update = False
+
+    for event in ("beforeSubmitPrompt", "stop"):
+        entries = existing_hooks.get(event, [])
+        has_observal = any("cursor_session_push" in e.get("command", "") for e in entries)
+        if not has_observal:
+            needs_update = True
+            break
+
+    if not needs_update:
+        rprint("  [dim]Already up to date[/dim]")
+        return False
+
+    # Merge: keep existing non-Observal hooks, add ours
+    merged_hooks = existing_hooks.copy()
+    for event, desired_entries in desired["hooks"].items():
+        current = merged_hooks.get(event, [])
+        # Remove old Observal hooks
+        cleaned = [
+            h
+            for h in current
+            if "cursor_session_push" not in h.get("command", "") and "session_push" not in h.get("command", "")
+        ]
+        merged_hooks[event] = cleaned + desired_entries
+
+    result = {"version": 1, "hooks": merged_hooks}
+
+    if not dry_run:
+        hooks_path.write_text(json.dumps(result, indent=2) + "\n")
+
+    verb = "Would install" if dry_run else "Installed"
+    rprint(f"  {verb} hooks in {hooks_path}")
+    return True
+
+
+def _patch_pi(dry_run: bool) -> bool:
+    """Install observal-pi into ~/.pi/agent/settings.json packages."""
+    optic.trace("dry_run={}", dry_run)
+
+    rprint("[cyan]Pi - session telemetry extension[/cyan]")
+
+    pi_dir = Path.home() / ".pi" / "agent"
+    if not pi_dir.is_dir():
+        rprint("  [dim]No ~/.pi/agent/ directory - skipping[/dim]")
+        return False
+
+    settings_path = pi_dir / "settings.json"
+    package_spec = "npm:observal-pi"
+
+    # Load existing settings
+    data: dict = {}
+    if settings_path.exists():
+        try:
+            data = json.loads(settings_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            data = {}
+
+    packages = data.get("packages", [])
+
+    # Check if already installed
+    already_installed = any(package_spec in (p if isinstance(p, str) else p.get("source", "")) for p in packages)
+
+    if already_installed:
+        rprint("  [dim]Already installed[/dim]")
+        return False
+
+    # Add the package
+    packages.append(package_spec)
+    data["packages"] = packages
+
+    if not dry_run:
+        if settings_path.exists():
+            _backup_config(settings_path)
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        settings_path.write_text(json.dumps(data, indent=2) + "\n")
+
+    verb = "Would install" if dry_run else "Installed"
+    rprint(f"  {verb} {package_spec} in {settings_path}")
+    rprint("  [dim]Restart pi or run /reload to activate[/dim]")
+    return True

@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-License-Identifier: LicenseRef-Observal-Enterprise -->
+
 # SCIM 2.0 Provisioning Setup Guide
 
 This guide covers configuring SCIM 2.0 user provisioning between your identity provider (IdP) and Observal Enterprise. SCIM automates user creation, updates, and deprovisioning so your Observal user directory stays synchronized with your IdP.

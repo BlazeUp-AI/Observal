@@ -1,6 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Infer IDE feature requirements and compatible IDEs from agent components."""
 
 from __future__ import annotations
+
+from loguru import logger as optic
 
 from schemas.constants import IDE_FEATURE_MATRIX
 
@@ -19,24 +24,19 @@ def infer_required_features(
     Returns:
         Sorted list of required feature strings (e.g. ``["mcp_servers", "rules"]``).
     """
+    optic.trace("agent={}, skill_listings={}", agent, skill_listings)
     features: set[str] = set()
     skill_listings = skill_listings or {}
-
-    # Every agent has a prompt / rules file
-    features.add("rules")
 
     for comp in getattr(agent, "components", []):
         if comp.component_type == "mcp":
             features.add("mcp_servers")
         elif comp.component_type == "hook":
-            features.add("hook_bridge")
+            features.add("hooks")
         elif comp.component_type == "skill":
             listing = skill_listings.get(comp.component_id)
-            if listing:
-                if getattr(listing, "slash_command", None):
-                    features.add("skills")
-                if getattr(listing, "is_power", False):
-                    features.add("superpowers")
+            if listing and getattr(listing, "slash_command", None):
+                features.add("skills")
 
     if getattr(agent, "external_mcps", None):
         features.add("mcp_servers")
@@ -46,5 +46,6 @@ def infer_required_features(
 
 def compute_supported_ides(required_features: list[str]) -> list[str]:
     """Return sorted IDE names that support all *required_features*."""
+    optic.trace("required_features={}", required_features)
     required = set(required_features)
     return sorted(ide for ide, capabilities in IDE_FEATURE_MATRIX.items() if required.issubset(capabilities))

@@ -1,10 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+import asyncio
 import enum
 import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger as optic
 from pydantic import BaseModel
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db, require_role, resolve_prefix_id
@@ -18,8 +28,9 @@ from models.sandbox import SandboxListing, SandboxVersion
 from models.skill import SkillListing, SkillVersion
 from models.user import User, UserRole
 from schemas.mcp import ReviewActionRequest
-from services.audit_helpers import audit
+from services.cache import invalidate_namespace
 from services.editing_lock import is_actively_editing
+from services.redis import publish as redis_publish
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
@@ -42,6 +53,7 @@ VERSION_MODELS = {
 
 async def _find_listing(listing_id: str, db: AsyncSession):
     """Find a listing by ID, prefix, or name across all component types."""
+    optic.trace("listing_id={}", listing_id)
     hits = []
     for listing_type, model in LISTING_MODELS.items():
         try:
@@ -73,6 +85,7 @@ async def _find_listing(listing_id: str, db: AsyncSession):
 
 async def _check_agent_components_ready(components, db: AsyncSession) -> tuple[bool, list[dict]]:
     """Check if all of an agent version's components are approved."""
+    optic.trace("components={}", components)
     if not components:
         return True, []
 
@@ -110,6 +123,7 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     # Find agents that have ANY pending version (not just latest_version_id).
     # This ensures version updates appear in the review queue after the first
     # version is approved.
+    optic.debug("_query_pending_agents called")
     pending_versions_stmt = (
         select(AgentVersion).where(AgentVersion.status == AgentStatus.pending).order_by(AgentVersion.created_at.desc())
     )
@@ -131,6 +145,7 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     agents_map = {a.id: a for a in agents_result.scalars().all()}
 
     user_ids = {a.created_by for a in agents_map.values()}
+    user_ids.update(v.released_by for v in seen_agents.values())
     user_map: dict[uuid.UUID, str] = {}
     if user_ids:
         rows = await db.execute(select(User.id, User.email).where(User.id.in_(user_ids)))
@@ -151,8 +166,9 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
                 "version": pending_ver.version,
                 "owner": a.owner or "",
                 "status": pending_ver.status.value,
-                "submitted_by": user_map.get(a.created_by, str(a.created_by)),
+                "submitted_by": user_map.get(pending_ver.released_by, str(pending_ver.released_by)),
                 "created_at": pending_ver.created_at.isoformat() if pending_ver.created_at else "",
+                "prompt": pending_ver.prompt or "",
                 "component_count": len(pending_ver.components) if pending_ver.components else 0,
                 "components_ready": components_ready,
                 "blocking_components": blocking,
@@ -163,6 +179,7 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
 
 
 async def _query_pending_components(db: AsyncSession, type_filter: str | None = None) -> list[dict]:
+    optic.trace("type_filter={}", type_filter)
     models_to_query = (
         {type_filter: LISTING_MODELS[type_filter]} if type_filter and type_filter in LISTING_MODELS else LISTING_MODELS
     )
@@ -265,14 +282,13 @@ async def list_pending(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("type={}", type)
     if tab == "agents":
         result = await _query_pending_agents(db)
-        await audit(current_user, "review.list", detail="tab=agents")
         return result
 
     if tab == "components":
         result = await _query_pending_components(db, type)
-        await audit(current_user, "review.list", detail=f"tab=components type={type}")
         return result
 
     # Default: return both agents and components
@@ -282,8 +298,6 @@ async def list_pending(
     # Merge and sort by created_at (most recent first)
     all_items = agents + components
     all_items.sort(key=lambda x: x["created_at"], reverse=True)
-
-    await audit(current_user, "review.list", detail=f"type={type}")
     return all_items
 
 
@@ -374,6 +388,7 @@ _DETAIL_FIELDS: dict[str, list[str]] = {
 
 
 def _safe_serialize(val: object) -> object:
+    optic.trace("val={}", val)
     if isinstance(val, uuid.UUID):
         return str(val)
     if hasattr(val, "isoformat"):
@@ -385,6 +400,7 @@ def _safe_serialize(val: object) -> object:
 
 def _serialize_listing_detail(listing_type: str, listing) -> dict:
     # Find the pending version if one exists (for reviews, we want pending content)
+    optic.trace("listing_type={}, listing={}", listing_type, listing)
     pending_ver = None
     if hasattr(listing, "versions"):
         pending_ver = next(
@@ -431,6 +447,7 @@ async def get_review(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing_type, listing = await _find_listing(listing_id, db)
 
     if listing:
@@ -460,7 +477,7 @@ async def get_review(
             "version": (ver.version if ver else "") or agent.version or "",
             "owner": agent.owner or "",
             "status": (ver.status.value if ver else agent.status.value),
-            "submitted_by": str(agent.created_by),
+            "submitted_by": str(ver.released_by if ver else agent.created_by),
             "created_at": agent.created_at.isoformat() if agent.created_at else None,
             "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
             "git_url": getattr(agent, "git_url", None),
@@ -514,14 +531,6 @@ async def get_review(
             result["submitted_by"] = user.name or user.email
     except (ValueError, AttributeError):
         pass
-
-    await audit(
-        current_user,
-        "review.view",
-        resource_type=result.get("type", ""),
-        resource_id=result.get("id", ""),
-        resource_name=result.get("name", ""),
-    )
     return result
 
 
@@ -531,6 +540,7 @@ async def approve(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -552,8 +562,12 @@ async def approve(
         pending_ver.reviewed_at = datetime.now(UTC)
         # Flush version changes first to avoid CircularDependencyError
         await db.flush()
-        # Update latest_version_id to point to newly approved version
-        listing.latest_version_id = pending_ver.id
+        # Update latest_version_id via raw UPDATE to avoid circular dependency
+        # between listing.latest_version_id and version.listing_id
+        listing_cls = LISTING_MODELS[listing_type]
+        await db.execute(
+            update(listing_cls).where(listing_cls.id == listing.id).values(latest_version_id=pending_ver.id)
+        )
     else:
         # Fallback: legacy path for listings without versioning
         if listing.latest_version and is_actively_editing(listing.latest_version):
@@ -563,14 +577,8 @@ async def approve(
 
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user,
-        "review.approve",
-        resource_type="listing",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-        detail=f"listing_type={listing_type}",
-    )
+    await invalidate_namespace("dashboard")
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "approved"}))  # noqa: RUF006
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -581,6 +589,7 @@ async def reject(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("listing_id={}, req={}", listing_id, req)
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -608,15 +617,19 @@ async def reject(
         listing.rejection_reason = req.reason
 
     await db.commit()
+
+    # Handle self-learn rejection cascade
+    try:
+        from services.insights.self_learn import handle_component_rejection
+
+        await handle_component_rejection(listing_type, listing.id, db)
+        await db.commit()
+    except Exception:
+        pass  # Non-critical: don't block rejection if cascade fails
+
     await db.refresh(listing)
-    await audit(
-        current_user,
-        "review.reject",
-        resource_type="listing",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-        detail=f"listing_type={listing_type} reason={req.reason}",
-    )
+    await invalidate_namespace("dashboard")
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(listing.id), "action": "rejected"}))  # noqa: RUF006
     return {"type": listing_type, "id": str(listing.id), "name": listing.name, "status": listing.status.value}
 
 
@@ -629,12 +642,18 @@ class AgentRejectRequest(BaseModel):
     reason: str
 
 
+class AgentApproveRequest(BaseModel):
+    category: str | None = None
+
+
 @router.post("/agents/{agent_id}/approve")
 async def approve_agent(
     agent_id: uuid.UUID,
+    req: AgentApproveRequest | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("agent_id={}, req={}", agent_id, req)
     from services.versioning import parse_semver
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
@@ -692,14 +711,12 @@ async def approve_agent(
     if not current_latest or (new_parsed is not None and current_parsed is not None and new_parsed >= current_parsed):
         agent.latest_version_id = newest_pending.id
 
+    if req and req.category:
+        agent.category = req.category
+
     await db.commit()
-    await audit(
-        current_user,
-        "review.agent.approve",
-        resource_type="agent",
-        resource_id=str(agent_id),
-        resource_name=agent.name,
-    )
+    await invalidate_namespace("dashboard")
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "approved"}))  # noqa: RUF006
     return {"id": str(agent.id), "name": agent.name, "status": "approved", "version": newest_pending.version}
 
 
@@ -710,6 +727,7 @@ async def reject_agent(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("agent_id={}, req={}", agent_id, req)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -741,15 +759,9 @@ async def reject_agent(
         await db.flush()
 
     await db.commit()
-    await audit(
-        current_user,
-        "review.agent.reject",
-        resource_type="agent",
-        resource_id=str(agent_id),
-        resource_name=agent.name,
-        detail=f"reason={req.reason}",
-    )
     rejected_version = pending_versions[0].version if pending_versions else ""
+    await invalidate_namespace("dashboard")
+    asyncio.create_task(redis_publish("reviews:updated", {"listing_id": str(agent.id), "action": "rejected"}))  # noqa: RUF006
     return {"id": str(agent.id), "name": agent.name, "status": "rejected", "version": rejected_version}
 
 
@@ -764,6 +776,7 @@ async def approve_bundle(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("bundle_id={}", bundle_id)
     bundle = (await db.execute(select(ComponentBundle).where(ComponentBundle.id == bundle_id))).scalar_one_or_none()
     if not bundle:
         raise HTTPException(status_code=404, detail="Bundle not found")
@@ -782,14 +795,6 @@ async def approve_bundle(
             count += 1
 
     await db.commit()
-    await audit(
-        current_user,
-        "review.bundle.approve",
-        resource_type="bundle",
-        resource_id=str(bundle_id),
-        resource_name=bundle.name,
-        detail=f"approved_count={count}",
-    )
     return {"bundle_id": str(bundle_id), "name": bundle.name, "approved_count": count}
 
 
@@ -800,6 +805,7 @@ async def reject_bundle(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("bundle_id={}, req={}", bundle_id, req)
     bundle = (await db.execute(select(ComponentBundle).where(ComponentBundle.id == bundle_id))).scalar_one_or_none()
     if not bundle:
         raise HTTPException(status_code=404, detail="Bundle not found")
@@ -818,14 +824,6 @@ async def reject_bundle(
             count += 1
 
     await db.commit()
-    await audit(
-        current_user,
-        "review.bundle.reject",
-        resource_type="bundle",
-        resource_id=str(bundle_id),
-        resource_name=bundle.name,
-        detail=f"rejected_count={count} reason={req.reason}",
-    )
     return {"bundle_id": str(bundle_id), "name": bundle.name, "rejected_count": count}
 
 
@@ -840,6 +838,7 @@ async def get_related_skills(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing or listing_type != "mcp":
         return {"skills": []}
@@ -887,14 +886,6 @@ async def get_related_skills(
             for s in skills
         ]
     }
-    await audit(
-        current_user,
-        "review.related_skills",
-        resource_type="listing",
-        resource_id=str(listing.id) if listing else listing_id,
-        resource_name=mcp_name if listing else "",
-        detail=f"skill_count={len(skills)}",
-    )
     return result
 
 
@@ -909,6 +900,7 @@ async def approve_mcp_with_skills(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.reviewer)),
 ):
+    optic.trace("listing_id={}, req={}", listing_id, req)
     listing_type, listing = await _find_listing(listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -932,14 +924,6 @@ async def approve_mcp_with_skills(
 
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user,
-        "review.approve_with_skills",
-        resource_type="listing",
-        resource_id=str(listing.id),
-        resource_name=listing.name,
-        detail=f"listing_type={listing_type} approved_skills={len(approved_skill_ids)} skill_ids={approved_skill_ids}",
-    )
     return {
         "mcp": {"id": str(listing.id), "name": listing.name, "status": listing.status.value},
         "approved_skills": len(approved_skill_ids),

@@ -1,3 +1,7 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-License-Identifier: LicenseRef-Observal-Enterprise -->
+
 # Observal Enterprise CLI & API Reference
 
 Enterprise features are enabled by setting `DEPLOYMENT_MODE=enterprise` in your `.env`. These features require the [Observal Enterprise License](../LICENSE).
@@ -47,7 +51,7 @@ Query audit log entries. Requires admin role.
 | `offset` | int | Pagination offset |
 
 ```bash
-curl "http://localhost:8000/api/v1/admin/audit-log?actor=admin@example.com&limit=20" \
+curl "http://localhost/api/v1/admin/audit-log?actor=admin@example.com&limit=20" \
   -H "X-API-Key: $OBSERVAL_KEY"
 ```
 
@@ -56,7 +60,7 @@ curl "http://localhost:8000/api/v1/admin/audit-log?actor=admin@example.com&limit
 Export audit logs as CSV. Same filters as the query endpoint.
 
 ```bash
-curl "http://localhost:8000/api/v1/admin/audit-log/export?start_date=2026-01-01" \
+curl "http://localhost/api/v1/admin/audit-log/export?start_date=2026-01-01" \
   -H "X-API-Key: $OBSERVAL_KEY" -o audit_log.csv
 ```
 

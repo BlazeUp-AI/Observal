@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for env var detection (analyzer + validator), config generation with docker,
 and MCP submit auto-replace logic."""
 
@@ -551,7 +555,7 @@ class TestAgentConfigDockerMcp:
         return listing
 
     def test_claude_code_passes_docker_image(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         listing = self._make_listing()
         comp_id = uuid.uuid4()
@@ -572,7 +576,7 @@ class TestAgentConfigDockerMcp:
         assert "ghcr.io/github/github-mcp-server" in args_str
 
     def test_claude_code_passes_env_vars(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         listing = self._make_listing()
         comp_id = uuid.uuid4()

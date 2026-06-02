@@ -1,14 +1,27 @@
-"""Tests for _scan_kiro_home: agent, MCP, skill, and hook discovery."""
+# SPDX-FileCopyrightText: 2026 Devaansh Dubey <devaanshdubey@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""Tests for Kiro scanning: agent, MCP, skill, and hook discovery."""
 
 from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
 
-from observal_cli.cmd_scan import _scan_kiro_home
+from observal_cli.ide.kiro import KiroAdapter
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_adapter = KiroAdapter()
+
+
+def _scan_kiro_home(kiro_dir):
+    """Compat wrapper: calls the adapter and returns the old 4-tuple."""
+    # The adapter's scan_home expects the parent of .kiro
+    # But the old function expected .kiro directly, so we call _scan_kiro_dir
+    result = _adapter._scan_kiro_dir(kiro_dir)
+    return result.mcps, result.skills, result.hooks, result.agents
 
 
 def _write_json(path: Path, data: dict) -> None:

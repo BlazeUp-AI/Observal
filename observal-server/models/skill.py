@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import uuid
@@ -26,6 +30,7 @@ class SkillListing(Base):
         UUID(as_uuid=True), ForeignKey("component_bundles.id"), nullable=True
     )
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    co_authors: Mapped[list] = mapped_column(JSON, default=list)
     unique_agents: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -50,7 +55,7 @@ class SkillListing(Base):
     )
 
     # ------------------------------------------------------------------
-    # Deprecated compatibility properties — delegate to latest_version.
+    # Deprecated compatibility properties - delegate to latest_version.
     # ------------------------------------------------------------------
     @property
     def version(self) -> str:
@@ -117,6 +122,76 @@ class SkillListing(Base):
         self.latest_version.skill_path = value
 
     @property
+    def git_url(self) -> str | None:
+        return self.latest_version.git_url if self.latest_version else None
+
+    @git_url.setter
+    def git_url(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set git_url")
+        self.latest_version.git_url = value
+
+    @property
+    def git_ref(self) -> str | None:
+        return self.latest_version.git_ref if self.latest_version else None
+
+    @git_ref.setter
+    def git_ref(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set git_ref")
+        self.latest_version.git_ref = value
+
+    @property
+    def skill_md_content(self) -> str | None:
+        return self.latest_version.skill_md_content if self.latest_version else None
+
+    @skill_md_content.setter
+    def skill_md_content(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set skill_md_content")
+        self.latest_version.skill_md_content = value
+
+    @property
+    def delivery_mode(self) -> str:
+        return self.latest_version.delivery_mode if self.latest_version else "git_fetch"
+
+    @delivery_mode.setter
+    def delivery_mode(self, value: str) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set delivery_mode")
+        self.latest_version.delivery_mode = value
+
+    @property
+    def script_content(self) -> str | None:
+        return self.latest_version.script_content if self.latest_version else None
+
+    @script_content.setter
+    def script_content(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set script_content")
+        self.latest_version.script_content = value
+
+    @property
+    def script_filename(self) -> str | None:
+        return self.latest_version.script_filename if self.latest_version else None
+
+    @script_filename.setter
+    def script_filename(self, value: str | None) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set script_filename")
+        self.latest_version.script_filename = value
+
+    @property
+    def validated(self) -> bool:
+        return self.latest_version.validated if self.latest_version else False
+
+    @validated.setter
+    def validated(self, value: bool) -> None:
+        if not self.latest_version:
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set validated")
+        self.latest_version.validated = value
+
+    @property
     def target_agents(self) -> list:
         return self.latest_version.target_agents if self.latest_version else []
 
@@ -137,16 +212,6 @@ class SkillListing(Base):
         self.latest_version.task_type = value
 
     @property
-    def triggers(self) -> dict | None:
-        return self.latest_version.triggers if self.latest_version else None
-
-    @triggers.setter
-    def triggers(self, value: dict | None) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set triggers")
-        self.latest_version.triggers = value
-
-    @property
     def slash_command(self) -> str | None:
         return self.latest_version.slash_command if self.latest_version else None
 
@@ -155,66 +220,6 @@ class SkillListing(Base):
         if not self.latest_version:
             raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set slash_command")
         self.latest_version.slash_command = value
-
-    @property
-    def has_scripts(self) -> bool:
-        return self.latest_version.has_scripts if self.latest_version else False
-
-    @has_scripts.setter
-    def has_scripts(self, value: bool) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set has_scripts")
-        self.latest_version.has_scripts = value
-
-    @property
-    def has_templates(self) -> bool:
-        return self.latest_version.has_templates if self.latest_version else False
-
-    @has_templates.setter
-    def has_templates(self, value: bool) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set has_templates")
-        self.latest_version.has_templates = value
-
-    @property
-    def is_power(self) -> bool:
-        return self.latest_version.is_power if self.latest_version else False
-
-    @is_power.setter
-    def is_power(self, value: bool) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set is_power")
-        self.latest_version.is_power = value
-
-    @property
-    def power_md(self) -> str | None:
-        return self.latest_version.power_md if self.latest_version else None
-
-    @power_md.setter
-    def power_md(self, value: str | None) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set power_md")
-        self.latest_version.power_md = value
-
-    @property
-    def mcp_server_config(self) -> dict | None:
-        return self.latest_version.mcp_server_config if self.latest_version else None
-
-    @mcp_server_config.setter
-    def mcp_server_config(self, value: dict | None) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set mcp_server_config")
-        self.latest_version.mcp_server_config = value
-
-    @property
-    def activation_keywords(self) -> list | None:
-        return self.latest_version.activation_keywords if self.latest_version else None
-
-    @activation_keywords.setter
-    def activation_keywords(self, value: list | None) -> None:
-        if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set activation_keywords")
-        self.latest_version.activation_keywords = value
 
 
 class SkillDownload(Base):
@@ -252,16 +257,16 @@ class SkillVersion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     supported_ides: Mapped[list] = mapped_column(JSON, default=list)
     skill_path: Mapped[str] = mapped_column(String(500), default="/")
+    git_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    git_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    skill_md_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_mode: Mapped[str] = mapped_column(String(20), server_default="git_fetch", nullable=False)
+    script_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    script_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    validated: Mapped[bool] = mapped_column(Boolean, default=False)
     target_agents: Mapped[list] = mapped_column(JSON, default=list)
     task_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    triggers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     slash_command: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    has_scripts: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_templates: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_power: Mapped[bool] = mapped_column(Boolean, default=False)
-    power_md: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mcp_server_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    activation_keywords: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_editing: Mapped[bool] = mapped_column(Boolean, default=False)
     editing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     editing_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

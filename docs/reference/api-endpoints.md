@@ -1,3 +1,7 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # API endpoints
 
 REST and GraphQL surface of the Observal server. Unless noted, endpoints require authentication via Bearer token or API key (`Authorization: Bearer <token>` or `X-API-Key: <key>`).
@@ -59,7 +63,7 @@ All `{id}` parameters accept a UUID or a name.
 | `POST` | `/telemetry/ingest` | Batch ingest traces, spans, scores |
 | `POST` | `/telemetry/events` | Legacy event ingestion |
 | `GET` | `/telemetry/status` | Data flow status |
-| `GET` | `/otel/crypto/public-key` | Server public key for payload encryption |
+| `GET` | `/crypto/public-key` | Server public key for payload encryption |
 
 ## Telemetry hooks
 
@@ -76,24 +80,6 @@ All `{id}` parameters accept a UUID or a name.
 | `PATCH` | `/alerts/{id}` | Update alert rule |
 | `DELETE` | `/alerts/{id}` | Delete alert rule |
 | `GET` | `/alerts/{id}/history` | Alert firing history |
-
-## Evaluation
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `POST` | `/eval/agents/{id}` | Run evaluation |
-| `GET` | `/eval/agents/{id}/scorecards` | List scorecards |
-| `GET` | `/eval/scorecards/{id}` | Scorecard details |
-| `GET` | `/eval/agents/{id}/compare` | Compare versions |
-| `GET` | `/eval/agents/{id}/aggregate` | Aggregate scoring stats |
-
-### Dashboard helpers
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `POST` | `/dashboard/graphrag-ragas-eval` | Trigger RAGAS evaluation on GraphRAG spans |
-| `GET` | `/dashboard/graphrag-ragas-scores` | Retrieve RAGAS scores |
-
 ## Feedback
 
 | Method | Path | Description |
@@ -114,13 +100,8 @@ Requires `admin` or `super_admin` role.
 | `POST` | `/admin/users` | Create user |
 | `PUT` | `/admin/users/{id}/role` | Change role |
 | `PUT` | `/admin/users/{id}/password` | Reset user password (admin) |
-| `GET` | `/admin/penalties` | List penalty catalog |
-| `PUT` | `/admin/penalties/{id}` | Modify penalty |
 | `GET` | `/admin/weights` | Get dimension weights |
 | `PUT` | `/admin/weights` | Set dimension weights |
-| `GET` | `/admin/canaries/{agent_id}` | List canary configs |
-| `POST` | `/admin/canaries` | Create canary config |
-| `DELETE` | `/admin/canaries/{id}` | Delete canary config |
 | `GET` | `/admin/canaries/{agent_id}/reports` | Canary detection reports |
 
 ## GraphQL
@@ -137,12 +118,12 @@ Subscriptions use `graphql-ws` protocol.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Readiness — checks DB + ClickHouse |
-| `GET` | `/healthz` | Liveness — is the API process alive |
+| `GET` | `/health` | Readiness - checks DB + ClickHouse |
+| `GET` | `/healthz` | Liveness - is the API process alive |
 
 ## Rate limiting
 
-Auth endpoints are subject to `RATE_LIMIT_AUTH` and `RATE_LIMIT_AUTH_STRICT`. Non-auth endpoints are not rate-limited by default — put a reverse proxy or API gateway in front if you need it.
+Auth endpoints are subject to `RATE_LIMIT_AUTH` and `RATE_LIMIT_AUTH_STRICT`. Non-auth endpoints are not rate-limited by default; put a reverse proxy or API gateway in front if you need it.
 
 ## Request size limits
 

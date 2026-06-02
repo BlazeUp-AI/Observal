@@ -1,4 +1,7 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 
 import { useState } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
@@ -12,18 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const IDES = [
-  { value: "cursor", label: "Cursor" },
-  { value: "vscode", label: "VS Code" },
-  { value: "claude-code", label: "Claude Code" },
-  { value: "gemini-cli", label: "Gemini CLI" },
-  { value: "kiro", label: "Kiro" },
-  { value: "codex", label: "Codex" },
-  { value: "copilot", label: "Copilot" },
-];
+import { useIdes } from "@/hooks/use-ides";
 
 export function PullCommand({ agentName }: { agentName: string }) {
+  const { data: ides } = useIdes();
   const [ide, setIde] = useState("cursor");
   const [copied, setCopied] = useState(false);
 
@@ -47,9 +42,9 @@ export function PullCommand({ agentName }: { agentName: string }) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {IDES.map((i) => (
-                <SelectItem key={i.value} value={i.value}>
-                  {i.label}
+              {(ides ?? []).map((i) => (
+                <SelectItem key={i.name} value={i.name}>
+                  {i.display_name}
                 </SelectItem>
               ))}
             </SelectContent>

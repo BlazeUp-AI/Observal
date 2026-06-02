@@ -1,14 +1,19 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # Run a team-wide agent registry
 
-Once two or more people are authoring agents, you need a single source of truth. Observal becomes your team's internal Docker Hub for AI agents — with review, RBAC, telemetry, and evaluation baked in.
+Once two or more people are authoring agents, you need a single source of truth. Observal becomes your team's internal Docker Hub for AI agents, with review, RBAC, and telemetry baked in.
 
 ## What changes at team scale
 
-* **Discovery** — everyone sees the same list of agents, MCPs, skills, hooks, prompts, and sandboxes.
-* **Review** — admins approve what appears in the public listing. Authors' own items are still immediately usable.
-* **Governance** — RBAC roles (`super_admin`, `admin`, `reviewer`, `user`) control who can publish and approve.
-* **Visibility** — centralized dashboards instead of "ask Sarah which version she's running."
-* **Evaluation** — canonical scorecards per agent instead of N engineers evaluating in isolation.
+* **Discovery**: everyone sees the same list of agents, MCPs, skills, hooks, prompts, and sandboxes.
+* **Review**: admins approve what appears in the public listing. Authors' own items are still immediately usable.
+* **Governance**: RBAC roles (`super_admin`, `admin`, `reviewer`, `user`) control who can publish and approve.
+* **Visibility**: centralized dashboards instead of "ask Sarah which version she's running."
 
 ## Setup shape
 
@@ -31,7 +36,7 @@ Deploy once, everyone points at it.
          Claude Code            Kiro                Cursor
 ```
 
-Install the server once — [Self-Hosting](../self-hosting/README.md). Then every engineer installs the CLI and runs `observal auth login` pointed at your shared server URL.
+Install the server once ([Self-Hosting](../self-hosting/README.md). Then every engineer installs the CLI and runs `observal auth login` pointed at your shared server URL.
 
 ## Users and roles
 
@@ -42,7 +47,7 @@ Four roles, RBAC-enforced on every endpoint.
 | `user` | Publish components (subject to review), install agents, view their own traces | Approve submissions, see other users' private traces, change server settings |
 | `reviewer` | Everything `user` can + approve/reject submissions | Change server settings, manage users |
 | `admin` | Everything `reviewer` can + manage users, change server settings | Only restriction: certain super-admin operations |
-| `super_admin` | Everything | — |
+| `super_admin` | Everything | - |
 
 Manage users:
 
@@ -64,13 +69,13 @@ curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh
 observal auth login --server https://observal.your-company.internal
 ```
 
-Self-registration is enabled in `DEPLOYMENT_MODE=local`. For enterprise mode (SSO / SCIM), users provision via your IdP — see [Authentication and SSO](../self-hosting/authentication.md).
+Self-registration is enabled in `DEPLOYMENT_MODE=local`. For enterprise mode (SSO / SCIM), users provision via your IdP. See [Authentication and SSO](../self-hosting/authentication.md).
 
 After registering, they can:
 
 ```bash
 observal agent list                           # see every agent the team has published
-observal pull team-reviewer --ide claude-code # install one
+observal agent pull team-reviewer --ide claude-code # install one
 observal scan                                 # discover what they have installed
 observal doctor patch --all --all-ides        # instrument everything
 ```
@@ -89,7 +94,7 @@ observal admin review reject <id> --reason "missing env var docs"
 What reviewers look for:
 
 * Does the README/description make it clear what the component does?
-* Does the MCP analysis (from `submit`) look correct — tools, env vars, transport?
+* Does the MCP analysis (from `submit`) look correct: tools, env vars, transport?
 * Are required env vars documented?
 * Is the repo URL trustworthy (pinned commit or tag)?
 
@@ -107,16 +112,6 @@ observal ops overview                   # summary stats
 
 Filters in the web UI let you slice by user, agent, IDE, and time range.
 
-## Scorecards as team truth
-
-When someone claims "v2 of the reviewer agent is better," you don't take their word for it:
-
-```bash
-observal admin eval compare team-reviewer --a 1.0.0 --b 2.0.0
-```
-
-If the comparison is favorable, publish v2. If not, v1 stays canonical. See [Evaluate and compare agents](evaluate-agents.md).
-
 ## Enterprise concerns
 
 For orgs that need SSO, SCIM, and audit logging, enable enterprise mode:
@@ -132,4 +127,4 @@ See [Authentication and SSO](../self-hosting/authentication.md). The enterprise 
 
 ## Next
 
-→ [Self-Hosting](../self-hosting/README.md) — the operator's playbook for actually running the server this use case depends on.
+→ [Self-Hosting](../self-hosting/README.md): the operator's playbook for actually running the server this use case depends on.

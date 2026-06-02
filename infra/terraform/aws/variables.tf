@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 variable "region" {
   description = "AWS region to deploy into."
   type        = string
@@ -60,6 +63,12 @@ variable "route53_zone_id" {
   description = "Route 53 hosted zone ID for domain_name. Required if domain_name is set."
   type        = string
   default     = ""
+}
+
+variable "enable_tls" {
+  description = "Enable TLS via ACM. Requires a publicly-resolvable Route53 zone for DNS validation. Set false for private zones."
+  type        = bool
+  default     = true
 }
 
 # ── ECS Fargate (api / web / worker / init) ────────────────────────────────
@@ -203,12 +212,6 @@ variable "clickhouse_cloud_url" {
   sensitive   = true
 }
 
-variable "clickhouse_cloud_user" {
-  description = "ClickHouse Cloud username. Required when clickhouse_mode = 'cloud'."
-  type        = string
-  default     = "default"
-}
-
 variable "clickhouse_cloud_password" {
   description = "ClickHouse Cloud password. Required when clickhouse_mode = 'cloud'."
   type        = string
@@ -264,22 +267,6 @@ variable "alb_ingress_cidrs" {
 
 # ── Application config ─────────────────────────────────────────────────────
 
-variable "deployment_mode" {
-  description = "Observal deployment mode: 'local' (self-registration) or 'enterprise' (SSO-only)."
-  type        = string
-  default     = "enterprise"
-  validation {
-    condition     = contains(["local", "enterprise"], var.deployment_mode)
-    error_message = "deployment_mode must be 'local' or 'enterprise'."
-  }
-}
-
-variable "data_retention_days" {
-  description = "ClickHouse data retention in days. 0 disables TTL."
-  type        = number
-  default     = 90
-}
-
 variable "log_retention_days" {
   description = "CloudWatch log retention for application + infrastructure log groups."
   type        = number
@@ -311,3 +298,96 @@ variable "backup_lifecycle_expire_days" {
   type        = number
   default     = 365
 }
+
+variable "enable_public_ops_paths" {
+  description = "Expose /docs, /redoc, /openapi.json publicly via the ALB. Set true only for internal or dev deployments. Default false blocks these paths with a 403."
+  type        = bool
+  default     = false
+}
+
+# ── License / Edition ──────────────────────────────────────────────────────
+
+variable "observal_license_key" {
+  description = "Observal Enterprise license key. If set, enterprise features are enabled at runtime. Leave empty for community edition."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ── Demo account seeding (optional, first-deploy only) ────────────────────────
+
+variable "demo_super_admin_email" {
+  description = "Email for the demo super-admin account. Leave empty to skip all demo seeding."
+  type        = string
+  default     = ""
+}
+
+variable "demo_super_admin_password" {
+  description = "Password for the demo super-admin account."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "demo_admin_email" {
+  description = "Email for the demo admin account."
+  type        = string
+  default     = ""
+}
+
+variable "demo_admin_password" {
+  description = "Password for the demo admin account."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "demo_reviewer_email" {
+  description = "Email for the demo reviewer account."
+  type        = string
+  default     = ""
+}
+
+variable "demo_reviewer_password" {
+  description = "Password for the demo reviewer account."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "demo_user_email" {
+  description = "Email for the demo user account."
+  type        = string
+  default     = ""
+}
+
+variable "demo_user_password" {
+  description = "Password for the demo user account."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ── Bring-your-own VPC (optional) ─────────────────────────────────────────────
+# Set these to deploy into an existing VPC instead of creating a new one.
+# When vpc_id is set, Terraform skips creating VPC, subnets, IGW, NAT, and
+# route tables. You must provide at least 2 public and 2 private subnet IDs.
+
+variable "vpc_id" {
+  description = "Existing VPC ID. Leave empty to create a new VPC."
+  type        = string
+  default     = ""
+}
+
+variable "private_subnet_ids" {
+  description = "List of existing private subnet IDs (at least 2, in different AZs). Required when vpc_id is set."
+  type        = list(string)
+  default     = []
+}
+
+variable "public_subnet_ids" {
+  description = "List of existing public subnet IDs (at least 2, in different AZs). Required when vpc_id is set."
+  type        = list(string)
+  default     = []
+}
+

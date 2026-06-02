@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import uuid
 from datetime import datetime
 
@@ -13,18 +18,16 @@ class SkillSubmitRequest(BaseModel):
     description: str
     owner: str
     skill_path: str = "/"
-    archive_url: str | None = None
+    git_url: str | None = None
+    git_ref: str | None = None
+    skill_md_content: str | None = None
+    delivery_mode: str = "git_fetch"
+    script_content: str | None = None
+    script_filename: str | None = None
     target_agents: list[str] = []
     task_type: str
-    triggers: dict | None = None
     slash_command: str | None = None
-    has_scripts: bool = False
-    has_templates: bool = False
     supported_ides: list[str] = []
-    is_power: bool = False
-    power_md: str | None = None
-    mcp_server_config: dict | None = None
-    activation_keywords: list[str] | None = None
 
     _validate_task_type = field_validator("task_type")(make_option_validator("task_type", VALID_SKILL_TASK_TYPES))
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
@@ -36,17 +39,16 @@ class SkillDraftRequest(BaseModel):
     description: str = ""
     owner: str = ""
     skill_path: str = "/"
+    git_url: str | None = None
+    git_ref: str | None = None
+    skill_md_content: str | None = None
+    delivery_mode: str = "git_fetch"
+    script_content: str | None = None
+    script_filename: str | None = None
     target_agents: list[str] = []
     task_type: str = "general"
-    triggers: dict | None = None
     slash_command: str | None = None
-    has_scripts: bool = False
-    has_templates: bool = False
     supported_ides: list[str] = []
-    is_power: bool = False
-    power_md: str | None = None
-    mcp_server_config: dict | None = None
-    activation_keywords: list[str] | None = None
 
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
@@ -57,17 +59,16 @@ class SkillUpdateRequest(BaseModel):
     description: str | None = None
     owner: str | None = None
     skill_path: str | None = None
+    git_url: str | None = None
+    git_ref: str | None = None
+    skill_md_content: str | None = None
+    delivery_mode: str | None = None
+    script_content: str | None = None
+    script_filename: str | None = None
     target_agents: list[str] | None = None
     task_type: str | None = None
-    triggers: dict | None = None
     slash_command: str | None = None
-    has_scripts: bool | None = None
-    has_templates: bool | None = None
     supported_ides: list[str] | None = None
-    is_power: bool | None = None
-    power_md: str | None = None
-    mcp_server_config: dict | None = None
-    activation_keywords: list[str] | None = None
 
 
 class SkillListingResponse(BaseModel):
@@ -79,12 +80,27 @@ class SkillListingResponse(BaseModel):
     task_type: str
     target_agents: list[str]
     supported_ides: list[str]
-    is_power: bool
+    skill_path: str
+    git_url: str | None = None
+    git_ref: str | None = None
+    skill_md_content: str | None = None
+    delivery_mode: str = "git_fetch"
+    script_content: str | None = None
+    script_filename: str | None = None
+    validated: bool = False
+    slash_command: str | None = None
     status: ListingStatus
     rejection_reason: str | None = None
     submitted_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    user_permission: str | None = None
+
+    @field_validator("user_permission", mode="before")
+    @classmethod
+    def _coerce_user_permission(cls, v):
+        return v if isinstance(v, str) else None
+
     model_config = {"from_attributes": True}
 
 

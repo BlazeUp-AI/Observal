@@ -1,6 +1,8 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { useTheme } from "next-themes";
+
+import { useTheme } from "@/lib/theme";
 import { Check, Palette } from "lucide-react";
 import {
   DropdownMenu,

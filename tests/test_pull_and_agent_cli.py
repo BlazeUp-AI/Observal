@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shreem Seth <shreemseth26@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the `observal pull` command."""
 
 from __future__ import annotations
@@ -81,21 +87,6 @@ def _cursor_snippet() -> dict:
     }
 
 
-def _vscode_snippet() -> dict:
-    return {
-        "config_snippet": {
-            "rules_file": {
-                "path": ".vscode/rules/my-agent.md",
-                "content": "# VSCode Agent\n",
-            },
-            "mcp_config": {
-                "path": ".vscode/mcp.json",
-                "content": {"mcpServers": {"vscode-srv": {"command": "node", "args": ["server.js"]}}},
-            },
-        }
-    }
-
-
 def _claude_code_snippet() -> dict:
     return {
         "config_snippet": {
@@ -114,10 +105,6 @@ def _claude_code_snippet() -> dict:
             },
             "mcp_config": {"observal-mcp": {"command": "observal-mcp", "args": ["--agent", "abc"]}},
             "mcp_setup_commands": [["claude", "mcp", "add", "observal-mcp", "--", "observal-mcp", "--agent", "abc"]],
-            "otlp_env": {
-                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:8000",
-                "OTEL_SERVICE_NAME": "my-agent",
-            },
         }
     }
 
@@ -174,6 +161,29 @@ def _copilot_snippet() -> dict:
     }
 
 
+def _opencode_snippet() -> dict:
+    return {
+        "config_snippet": {
+            "rules_file": {
+                "path": ".opencode/agents/my-agent.md",
+                "content": "# My Agent Rules\n",
+            },
+            "mcp_config": {
+                "path": ".opencode/opencode.json",
+                "content": {
+                    "mcp": {
+                        "my-server": {
+                            "type": "local",
+                            "command": ["observal-shim", "--mcp-id", "xyz", "--", "npx", "-y", "my-server"],
+                        }
+                    }
+                },
+            },
+            "hooks_config": {"path": ".opencode/plugins/observal-plugin.mjs", "content": "export default {};"},
+        }
+    }
+
+
 # ═══════════════════════════════════════════════════════════════
 # 1. Cursor / VSCode format
 # ═══════════════════════════════════════════════════════════════
@@ -209,18 +219,6 @@ class TestPullCursor:
         flat = result.output.replace("\n", "").replace(" ", "")
         assert "my-agent.md" in flat
         assert "mcp.json" in flat
-
-
-class TestPullVSCode:
-    def test_writes_rules_and_mcp(self, tmp_path: Path):
-        with _patch_config(), _patch_get_agent(), _patch_post(_vscode_snippet()):
-            result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "vscode", "--dir", str(tmp_path), "--no-prompt"]
-            )
-
-        assert result.exit_code == 0, result.output
-        assert (tmp_path / ".vscode" / "rules" / "my-agent.md").exists()
-        assert (tmp_path / ".vscode" / "mcp.json").exists()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -262,14 +260,15 @@ class TestPullClaudeCode:
         assert "Would run these setup commands" in result.output
         assert "claude mcp add" in result.output
 
-    def test_shows_otlp_env(self, tmp_path: Path):
+    def test_no_otlp_env_in_output(self, tmp_path: Path):
+        """OTLP env vars should not be shown in pull output."""
         with _patch_config(), _patch_get_agent(), _patch_post(_claude_code_snippet()):
             result = runner.invoke(
                 cli_app, ["agent", "pull", "abc123", "--ide", "claude-code", "--dir", str(tmp_path), "--no-prompt"]
             )
 
-        assert "OTEL_EXPORTER_OTLP_ENDPOINT" in result.output
-        assert "OTEL_SERVICE_NAME" in result.output
+        assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in result.output
+        assert "OTEL_SERVICE_NAME" not in result.output
 
     def test_mcp_config_without_path_not_written(self, tmp_path: Path):
         """Claude Code mcp_config has no 'path' key — should not write a file for it."""
@@ -317,7 +316,19 @@ class TestPullKiro:
     def test_writes_agent_file(self, tmp_path: Path):
         with _patch_config(), _patch_get_agent(), _patch_post(_kiro_snippet()):
             result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "kiro", "--dir", str(tmp_path), "--no-prompt"]
+                cli_app,
+                [
+                    "agent",
+                    "pull",
+                    "abc123",
+                    "--ide",
+                    "kiro",
+                    "--dir",
+                    str(tmp_path),
+                    "--no-prompt",
+                    "--scope",
+                    "project",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -346,7 +357,19 @@ class TestPullKiro:
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
             result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "kiro", "--dir", str(tmp_path), "--no-prompt"]
+                cli_app,
+                [
+                    "agent",
+                    "pull",
+                    "abc123",
+                    "--ide",
+                    "kiro",
+                    "--dir",
+                    str(tmp_path),
+                    "--no-prompt",
+                    "--scope",
+                    "project",
+                ],
             )
 
         assert result.exit_code == 0, result.output
@@ -393,6 +416,47 @@ class TestPullCopilot:
         rules = tmp_path / ".github" / "copilot-instructions.md"
         assert rules.exists()
         assert "Copilot Instructions" in rules.read_text()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 6b. OpenCode format
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestPullOpenCode:
+    def test_writes_rules_mcp_and_hooks(self, tmp_path: Path):
+        with _patch_config(), _patch_get_agent(), _patch_post(_opencode_snippet()):
+            result = runner.invoke(
+                cli_app,
+                [
+                    "agent",
+                    "pull",
+                    "abc123",
+                    "--ide",
+                    "opencode",
+                    "--dir",
+                    str(tmp_path),
+                    "--no-prompt",
+                    "--scope",
+                    "project",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+
+        rules = tmp_path / ".opencode" / "agents" / "my-agent.md"
+        assert rules.exists()
+        assert "My Agent Rules" in rules.read_text()
+
+        mcp = tmp_path / ".opencode" / "opencode.json"
+        assert mcp.exists()
+        data = json.loads(mcp.read_text())
+        assert "my-server" in data["mcp"]
+        assert data["mcp"]["my-server"]["type"] == "local"
+
+        hook = tmp_path / ".opencode" / "plugins" / "observal-plugin.mjs"
+        assert hook.exists()
+        assert "export default" in hook.read_text()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -647,10 +711,6 @@ def _make_agent_yaml(tmp_path: Path, **overrides) -> Path:
         "model_name": "claude-sonnet-4",
         "prompt": "You are helpful.",
         "components": [],
-        "goal_template": {
-            "description": "Goals for test-agent",
-            "sections": [{"name": "default", "description": "Default goal section"}],
-        },
     }
     data.update(overrides)
     yaml_path = tmp_path / "observal-agent.yaml"
@@ -689,8 +749,6 @@ class TestAgentInit:
         assert data["model_name"] == "claude-sonnet-4"
         assert data["prompt"] == "Do helpful things"
         assert data["components"] == []
-        assert data["goal_template"]["description"] == "Goals for my-agent"
-        assert data["goal_template"]["sections"][0]["name"] == "default"
 
     def test_aborts_if_file_exists_and_user_declines(self, tmp_path: Path):
         """If YAML already exists and user says no, exit code != 0."""

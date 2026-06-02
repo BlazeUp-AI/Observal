@@ -1,5 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+from loguru import logger as optic
+
+
 def generate_sandbox_config(sandbox_listing, ide: str, server_url: str = "http://localhost:8000") -> dict:
     """Generate config snippet that wraps sandbox execution with observal-sandbox-run."""
+    optic.trace("generating sandbox config for ide={}", ide)
     sandbox_id = str(sandbox_listing.id)
     image = str(sandbox_listing.image)
     entrypoint = getattr(sandbox_listing, "entrypoint", None)

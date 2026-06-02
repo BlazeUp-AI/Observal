@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Component version CLI commands.
 
 Provides:
@@ -10,10 +13,12 @@ from __future__ import annotations
 import json as _json
 
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
+from observal_cli.prompts import text_input
 from observal_cli.render import console, output_json, relative_time, spinner, status_badge
 
 # ── Constants ──────────────────────────────────────────────────
@@ -68,7 +73,23 @@ def version_publish(
     supported_ides: list[str] | None = typer.Option(None, "--ide", help="Supported IDEs (repeat for multiple)"),
     extra: str | None = typer.Option(None, "--extra", help="Extra JSON for type-specific fields"),
 ):
-    """Publish a new version for a registry component."""
+    """Publish a new version for a registry component.
+
+    Creates a versioned release for any component type (mcp, skill, hook,
+    prompt, sandbox). If --version is omitted, fetches version suggestions
+    from the server and prompts interactively.
+
+    The --extra flag accepts a JSON string for type-specific metadata
+    (e.g. supported transports for MCP servers).
+
+    \b
+    Examples:
+      observal component version publish mcp my-server -v 2.0.0 -d "Breaking change"
+      observal component version publish hook guard-hook -v 1.1.0 -d "Add timeout" --changelog "Fixed race"
+      observal component version publish skill my-skill -v 1.0.0 -d "Initial" --ide claude-code --ide cursor
+      observal component version publish mcp analyzer --extra '{"transport": "http"}' -d "HTTP support"
+    """
+    optic.trace("component_type={}", component_type)
     _require_valid_type(component_type)
 
     # Validate --extra JSON early
@@ -99,7 +120,7 @@ def version_publish(
             rprint(f"[dim]{hint}[/dim]")
         except (Exception, SystemExit):
             pass
-        version = typer.prompt("Version")
+        version = text_input("Version")
 
     # Build payload (only include optional keys when provided)
     payload: dict = {
@@ -132,7 +153,18 @@ def version_list(
     listing: str = typer.Argument(..., help="Listing name or ID"),
     output: str = typer.Option("table", "--output", "-o", help="Output format: table or json"),
 ):
-    """List version history for a registry component."""
+    """List version history for a registry component.
+
+    Shows all published versions for a component, including status,
+    release date, and who published each version. Supports table and
+    JSON output formats.
+
+    \b
+    Examples:
+      observal component version list mcp my-server
+      observal component version list hook guard-hook --output json
+      observal component version list skill @my-skill-alias
+    """
     _require_valid_type(component_type)
 
     resolved = config.resolve_alias(listing)

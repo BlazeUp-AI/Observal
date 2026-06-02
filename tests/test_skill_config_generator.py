@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for skill_config_generator — IDE-specific skill file generation."""
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ def _make_skill_listing(
     slash_command: str | None = "review",
     git_url: str = "https://github.com/org/skills.git",
     skill_path: str = "skills/code-review",
+    git_ref: str | None = "main",
+    skill_md_content: str | None = None,
 ) -> MagicMock:
     listing = MagicMock()
     listing.id = uuid.uuid4()
@@ -26,6 +32,8 @@ def _make_skill_listing(
     listing.slash_command = slash_command
     listing.git_url = git_url
     listing.skill_path = skill_path
+    listing.git_ref = git_ref
+    listing.skill_md_content = skill_md_content
     return listing
 
 
@@ -73,12 +81,6 @@ class TestGenerateSkillFile:
         listing = _make_skill_listing()
         result = _generate_skill_file(listing, "cursor", scope="user")
         assert result["path"] == "~/.cursor/rules/code-review.mdc"
-
-    def test_vscode(self):
-        listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "vscode")
-        assert result["path"] == ".github/instructions/code-review.instructions.md"
-        assert "alwaysApply: false" in result["content"]
 
     def test_monolithic_ide_returns_none(self):
         listing = _make_skill_listing()
@@ -135,6 +137,28 @@ class TestGenerateSkillConfig:
         listing = _make_skill_listing()
         config = generate_skill_config(listing, "cursor")
         assert config["skill"]["skill_path"] == "skills/code-review"
+
+    def test_git_ref_included(self):
+        listing = _make_skill_listing(git_ref="v2.0")
+        config = generate_skill_config(listing, "claude-code")
+        assert config["skill"]["git_ref"] == "v2.0"
+
+    def test_git_ref_absent_when_none(self):
+        listing = _make_skill_listing(git_ref=None)
+        config = generate_skill_config(listing, "claude-code")
+        assert "git_ref" not in config["skill"]
+
+    def test_skill_md_content_verbatim_in_snippet(self):
+        verbatim = "---\nname: code-review\ndescription: test\n---\n\n## Rules\n"
+        listing = _make_skill_listing(skill_md_content=verbatim)
+        config = generate_skill_config(listing, "claude-code")
+        assert config["skill"]["skill_md_content"] == verbatim
+
+    def test_skill_file_uses_verbatim_content(self):
+        verbatim = "---\nname: code-review\ndescription: Real content\n---\n\n## Real\n"
+        listing = _make_skill_listing(skill_md_content=verbatim)
+        config = generate_skill_config(listing, "claude-code")
+        assert config["skill_file"]["content"] == verbatim
 
     def test_claude_code_allows_env_vars(self):
         listing = _make_skill_listing()

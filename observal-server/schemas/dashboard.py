@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import uuid
 
 from pydantic import BaseModel
@@ -34,7 +41,7 @@ class TopAgentItem(BaseModel):
 
 
 class LeaderboardItem(TopAgentItem):
-    """Same as TopAgentItem — used by the leaderboard endpoint."""
+    """Same as TopAgentItem - used by the leaderboard endpoint."""
 
     created_by_email: str = ""
     created_by_username: str | None = None
@@ -159,46 +166,6 @@ class GraphRagStats(BaseModel):
     avg_embedding_latency_ms: float | None
     relevance_distribution: list[RelevanceBucket]
     recent_queries: list[GraphRagQuery]
-
-
-# --- RAGAS evaluation ---
-
-
-class RagasDimensionScore(BaseModel):
-    avg: float | None
-    count: int
-
-
-class RagasScores(BaseModel):
-    faithfulness: RagasDimensionScore
-    answer_relevancy: RagasDimensionScore
-    context_precision: RagasDimensionScore
-    context_recall: RagasDimensionScore
-
-
-class RagasSpanResult(BaseModel):
-    span_id: str
-    trace_id: str
-    faithfulness: float
-    faithfulness_reason: str
-    answer_relevancy: float
-    answer_relevancy_reason: str
-    context_precision: float
-    context_precision_reason: str
-    context_recall: float
-    context_recall_reason: str
-
-
-class RagasEvalResponse(BaseModel):
-    spans_evaluated: int
-    scores: list[RagasSpanResult]
-    averages: RagasScores
-
-
-class RagasEvalRequest(BaseModel):
-    graphrag_id: str
-    limit: int = 20
-    ground_truths: dict[str, str] | None = None
 
 
 # --- Latency heatmap ---

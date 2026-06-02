@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-License-Identifier: LicenseRef-Observal-Enterprise -->
+
 # CLI Authentication with SSO
 
 This guide covers authenticating the Observal CLI when your deployment uses

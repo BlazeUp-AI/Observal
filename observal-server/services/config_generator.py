@@ -1,55 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import re
 
-from models.mcp import McpListing
-from services.codex_config_generator import generate_codex_config
+from loguru import logger as optic
 
-_SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
+from models.mcp import McpListing
+from services.shared.utils import sanitize_name as _sanitize_name
+
+_SHELL_META_RE = re.compile(r"[|;&`><\n\r]|\$\(|\$\{")
+_DANGEROUS_CMD_RE = re.compile(
+    r"^(?:curl|wget|bash|sh|zsh|fish|dash|python|perl|ruby|nc|ncat|netcat|powershell|cmd\.exe)$",
+    re.IGNORECASE,
+)
+
+
+def validate_mcp_command(command: str, args: list[str] | None = None) -> None:
+    """Raise ValueError if command contains shell metacharacters or uses a dangerous program."""
+    optic.trace("validating MCP command: {} {}", command, args)
+    if not command:
+        return
+    full = " ".join([command, *list(args or [])])
+    if _SHELL_META_RE.search(full):
+        raise ValueError("MCP command contains shell metacharacters")
+    cmd_base = command.strip().split()[0] if command.strip() else ""
+    if _DANGEROUS_CMD_RE.match(cmd_base):
+        raise ValueError(f"MCP command uses a disallowed program: {cmd_base!r}")
+
+
 _DOLLAR_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]+)\}|\$([A-Z][A-Z0-9_]+)")
 
 
-def _sanitize_name(name: str) -> str:
-    if _SAFE_NAME.match(name):
-        return name
-    return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
-
-
-def _otlp_env(observal_url: str) -> dict:
-    """OTLP env vars for IDEs with native OpenTelemetry support."""
-    return {
-        "OTEL_EXPORTER_OTLP_ENDPOINT": observal_url,
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-        "OTEL_METRICS_EXPORTER": "otlp",
-        "OTEL_LOGS_EXPORTER": "otlp",
-        "OTEL_TRACES_EXPORTER": "otlp",
-    }
-
-
-def _claude_otlp_env(observal_url: str) -> dict:
-    """Claude Code specific OTLP env vars."""
-    return {
-        "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
-        "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA": "1",
-        "OTEL_LOG_USER_PROMPTS": "1",
-        "OTEL_LOG_TOOL_DETAILS": "1",
-        "OTEL_LOG_TOOL_CONTENT": "1",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": observal_url,
-        "OTEL_EXPORTER_OTLP_PROTOCOL": "http/json",
-        "OTEL_METRICS_EXPORTER": "otlp",
-        "OTEL_LOGS_EXPORTER": "otlp",
-        "OTEL_TRACES_EXPORTER": "otlp",
-    }
-
-
-def _gemini_otlp_env(observal_url: str) -> dict:
-    """Gemini CLI specific OTLP env vars."""
-    return _otlp_env(observal_url)
-
-
-def _gemini_settings(observal_url: str) -> dict:
+def _gemini_settings() -> dict:
     """Gemini CLI .gemini/settings.json telemetry block.
 
-    Native OTLP is disabled because Gemini CLI hardcodes gRPC export
-    which is incompatible with Observal's HTTP/JSON endpoint.
+    Native telemetry is disabled.
     Telemetry is captured via the hook bridge instead.
     """
     return {
@@ -62,10 +50,12 @@ def _gemini_settings(observal_url: str) -> dict:
 
 def _substitute_dollar_vars(args: list[str], env: dict[str, str] | None) -> list[str]:
     """Replace $VAR and ${VAR} patterns in args with values from env dict."""
+    optic.trace("substituting dollar vars in {} args", len(args))
     if not env:
         return list(args)
 
     def _replacer(m: re.Match) -> str:
+        optic.trace("replacing variable: {}", m.group(0))
         var_name = m.group(1) or m.group(2)
         return env.get(var_name, m.group(0))  # keep original if no value
 
@@ -88,6 +78,7 @@ def _build_run_command(
     - Go: <name> (assumes binary on PATH)
     - Python / unknown: python -m <name>
     """
+    optic.trace("building run command for {} (framework={}, docker={})", name, framework, docker_image)
     # Use stored command/args if available, substituting $VAR placeholders
     if stored_command is not None:
         cmd = [stored_command]
@@ -112,6 +103,7 @@ def _build_run_command(
 
 def _build_server_env(listing: McpListing, env_values: dict[str, str] | None = None) -> dict[str, str]:
     """Build env dict from the listing's declared environment_variables and user-supplied values."""
+    optic.trace("building server env for MCP listing")
     env: dict[str, str] = {}
     for var in listing.environment_variables or []:
         name = var["name"] if isinstance(var, dict) else var.name
@@ -127,6 +119,7 @@ def generate_config(
     env_values: dict[str, str] | None = None,
     header_values: dict[str, str] | None = None,
 ) -> dict:
+    optic.debug("generating MCP config for ide={}", ide)
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
     server_env = _build_server_env(listing, env_values)
@@ -170,7 +163,6 @@ def generate_config(
                 codex_entry["env"] = server_env
             return {
                 "mcp.servers": {name: codex_entry},
-                "codex_config": generate_codex_config(observal_url),
             }
         return {"mcpServers": {name: config}}
 
@@ -181,19 +173,15 @@ def generate_config(
             return {
                 "command": ["claude", "mcp", "add", name, "--url", proxy_url],
                 "type": "shell_command",
-                "otlp_env": _claude_otlp_env(observal_url),
-                "claude_settings_snippet": {"env": {**_claude_otlp_env(observal_url), **server_env}},
             }
         if ide == "gemini-cli":
             return {
                 "mcpServers": {name: {"url": proxy_url, "env": server_env}},
-                "otlp_env": _gemini_otlp_env(observal_url),
-                "gemini_settings_snippet": _gemini_settings(observal_url),
+                "gemini_settings_snippet": _gemini_settings(),
             }
         if ide == "codex":
             return {
                 "mcp.servers": {name: {"url": proxy_url, "env": server_env}},
-                "codex_config": generate_codex_config(observal_url),
             }
         if ide == "copilot":
             return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env}}}
@@ -219,30 +207,22 @@ def generate_config(
         auto_approve_fields = {"autoApprove": listing.auto_approve, "disabled": False}
 
     if ide == "claude-code":
-        otlp = _claude_otlp_env(observal_url)
-        combined_env = {**otlp, **server_env}
-        env_prefix = " ".join(f"{k}={v}" for k, v in combined_env.items())
         return {
             "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
-            "shell_env_prefix": env_prefix,
-            "otlp_env": otlp,
-            "claude_settings_snippet": {"env": combined_env},
         }
     if ide == "gemini-cli":
         return {
             "mcpServers": {
                 name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
             },
-            "otlp_env": _gemini_otlp_env(observal_url),
-            "gemini_settings_snippet": _gemini_settings(observal_url),
+            "gemini_settings_snippet": _gemini_settings(),
         }
     if ide == "codex":
         return {
             "mcp.servers": {
                 name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
             },
-            "codex_config": generate_codex_config(observal_url),
         }
 
     if ide == "copilot":
@@ -279,7 +259,7 @@ def generate_config(
             entry["env"] = server_env
         return {"mcp": {name: entry}}
 
-    # cursor, vscode, kiro, kiro-cli — no native OTel; telemetry collected via observal-shim
+    # cursor, kiro: telemetry collected via observal-shim
     return {
         "mcpServers": {name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}}
     }

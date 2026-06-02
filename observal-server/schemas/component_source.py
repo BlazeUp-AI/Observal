@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import uuid
 from datetime import datetime, timedelta
 
@@ -8,7 +11,6 @@ class ComponentSourceCreate(BaseModel):
     url: str = Field(..., min_length=10, pattern=r"^https://")
     component_type: str = Field(..., pattern="^(mcp|skill|hook|prompt|sandbox)$")
     is_public: bool = True
-    owner_org_id: uuid.UUID | None = None
 
 
 class ComponentSourceResponse(BaseModel):

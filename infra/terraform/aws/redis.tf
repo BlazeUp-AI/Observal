@@ -1,6 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${local.name}-redis"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = local.private_subnet_ids
 }
 
 resource "aws_elasticache_replication_group" "redis" {

@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Shared rendering helpers for the Observal CLI."""
 
 from __future__ import annotations
@@ -93,7 +98,6 @@ def kv_panel(title: str, fields: list[tuple[str, str]], border_style: str = "blu
 
 _IDE_COLORS = {
     "cursor": "cyan",
-    "vscode": "blue",
     "kiro": "magenta",
     "claude_code": "yellow",
     "claude-code": "yellow",

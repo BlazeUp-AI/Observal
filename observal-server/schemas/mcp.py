@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import uuid
 from datetime import datetime
 
@@ -164,6 +169,12 @@ class McpListingResponse(BaseModel):
     updated_at: datetime
     custom_fields: list[McpCustomFieldResponse] = []
     validation_results: list[McpValidationResultResponse] = []
+    user_permission: str | None = None
+
+    @field_validator("user_permission", mode="before")
+    @classmethod
+    def _coerce_user_permission(cls, v):
+        return v if isinstance(v, str) else None
 
     model_config = {"from_attributes": True}
 

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for ClickHouse resource tuning — edge cases around admin-configured
 memory limits, concurrent override swaps, invalid inputs, and query-level
 injection via the HTTP API.
@@ -55,16 +59,16 @@ class TestApplyResourceSettings:
         """Clear overrides before/after each test."""
         import services.clickhouse as ch
 
-        ch._resource_overrides = {}
+        ch._settings._resource_overrides = {}
         yield
-        ch._resource_overrides = {}
+        ch._settings._resource_overrides = {}
 
     async def test_valid_override_sets_bytes(self):
         """Setting max_query_memory_mb=300 produces max_memory_usage=300000000."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "300"})
-        assert ch._resource_overrides == {"max_memory_usage": "300000000"}
+        assert ch._settings._resource_overrides == {"max_memory_usage": "300000000"}
 
     async def test_multiple_overrides(self):
         """All four resource keys map to the correct ClickHouse settings."""
@@ -78,7 +82,7 @@ class TestApplyResourceSettings:
                 "resource.join_memory_mb": "150",
             }
         )
-        assert ch._resource_overrides == {
+        assert ch._settings._resource_overrides == {
             "max_memory_usage": "500000000",
             "max_bytes_before_external_group_by": "250000000",
             "max_bytes_before_external_sort": "250000000",
@@ -90,52 +94,52 @@ class TestApplyResourceSettings:
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "0"})
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_negative_value_ignored(self):
         """Negative values are silently skipped."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "-100"})
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_non_numeric_value_ignored(self):
         """Non-numeric strings are skipped with a warning, not crash."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "not-a-number"})
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_empty_string_ignored(self):
         """Empty string values are skipped."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": ""})
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_unknown_key_ignored(self):
         """Keys not in RESOURCE_SETTINGS_MAP are silently ignored."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.unknown_setting": "100"})
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_empty_overrides_no_change(self):
         """Empty overrides dict leaves _resource_overrides unchanged."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={})
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_swap_replaces_previous(self):
         """Calling apply twice replaces the old overrides entirely."""
         import services.clickhouse as ch
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "400"})
-        assert ch._resource_overrides["max_memory_usage"] == "400000000"
+        assert ch._settings._resource_overrides["max_memory_usage"] == "400000000"
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "200"})
-        assert ch._resource_overrides["max_memory_usage"] == "200000000"
+        assert ch._settings._resource_overrides["max_memory_usage"] == "200000000"
 
     async def test_swap_removes_dropped_keys(self):
         """If the second apply has fewer keys, removed ones disappear."""
@@ -147,11 +151,11 @@ class TestApplyResourceSettings:
                 "resource.join_memory_mb": "100",
             }
         )
-        assert len(ch._resource_overrides) == 2
+        assert len(ch._settings._resource_overrides) == 2
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "400"})
-        assert len(ch._resource_overrides) == 1
-        assert "max_bytes_in_join" not in ch._resource_overrides
+        assert len(ch._settings._resource_overrides) == 1
+        assert "max_bytes_in_join" not in ch._settings._resource_overrides
 
     async def test_extremely_large_value(self):
         """Absurdly large values are accepted — ClickHouse will reject at query time."""
@@ -160,7 +164,7 @@ class TestApplyResourceSettings:
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "999999999"})
         # 999999999 MB = ~1 exabyte — obviously can't allocate, but the
         # override is stored; ClickHouse will clamp or error at query time.
-        assert ch._resource_overrides["max_memory_usage"] == "999999999000000"
+        assert ch._settings._resource_overrides["max_memory_usage"] == "999999999000000"
 
     async def test_fractional_value_truncated(self):
         """Fractional MB values fail int() cast and are skipped."""
@@ -168,7 +172,7 @@ class TestApplyResourceSettings:
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "300.5"})
         # int("300.5") raises ValueError → skipped
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
     async def test_reads_from_enterprise_config(self):
         """When overrides passed directly, they are applied correctly."""
@@ -176,7 +180,7 @@ class TestApplyResourceSettings:
 
         await ch.apply_resource_settings(overrides={"resource.max_query_memory_mb": "350"})
 
-        assert ch._resource_overrides["max_memory_usage"] == "350000000"
+        assert ch._settings._resource_overrides["max_memory_usage"] == "350000000"
 
     async def test_db_failure_gracefully_handled(self):
         """If enterprise_config DB read fails, no overrides are applied."""
@@ -188,7 +192,7 @@ class TestApplyResourceSettings:
         ):
             await ch.apply_resource_settings()  # no overrides, triggers DB read
 
-        assert ch._resource_overrides == {}
+        assert ch._settings._resource_overrides == {}
 
 
 # ── _query injection tests ───────────────────────────────
@@ -201,52 +205,59 @@ class TestQueryInjection:
     def _reset_overrides(self):
         import services.clickhouse as ch
 
-        ch._resource_overrides = {}
+        ch._settings._resource_overrides = {}
         yield
-        ch._resource_overrides = {}
+        ch._settings._resource_overrides = {}
 
     async def test_overrides_injected_into_query_params(self):
         """When overrides are set, they appear in the HTTP query parameters."""
         import services.clickhouse as ch
 
-        ch._resource_overrides = {"max_memory_usage": "300000000"}
+        ch._settings._resource_overrides = {"max_memory_usage": "300000000"}
 
         mock_client = AsyncMock()
         mock_client.post.return_value = _mock_response()
 
-        with patch.object(ch, "_get_client", return_value=mock_client):
+        with patch.object(ch.client, "_get_client", return_value=mock_client):
             await ch._query("SELECT 1")
 
         _, kwargs = mock_client.post.call_args
         params = kwargs.get("params", {})
         assert params["max_memory_usage"] == "300000000"
 
-    async def test_no_overrides_no_extra_params(self):
-        """When no overrides are set, only standard params are sent."""
+    async def test_no_overrides_default_execution_timeout_present(self):
+        """Every query carries a max_execution_time floor even with no admin overrides.
+
+        Row-read/result caps are intentionally NOT in the universal default because
+        insights and batch worker queries legitimately read millions of rows.
+        """
         import services.clickhouse as ch
 
-        ch._resource_overrides = {}
+        ch._settings._resource_overrides = {}
 
         mock_client = AsyncMock()
         mock_client.post.return_value = _mock_response()
 
-        with patch.object(ch, "_get_client", return_value=mock_client):
+        with patch.object(ch.client, "_get_client", return_value=mock_client):
             await ch._query("SELECT 1")
 
         _, kwargs = mock_client.post.call_args
         params = kwargs.get("params", {})
-        assert "max_memory_usage" not in params
+        assert params["max_execution_time"] == "300"
+        # Row caps must NOT be forced on every query (would break insights/batch jobs)
+        assert "max_rows_to_read" not in params
+        assert "max_result_rows" not in params
 
     async def test_query_params_override_resource_params(self):
         """Explicit query params (e.g. param_x) take precedence over overrides."""
         import services.clickhouse as ch
 
-        ch._resource_overrides = {"max_memory_usage": "300000000"}
+        ch._settings._resource_overrides = {"max_memory_usage": "300000000"}
 
         mock_client = AsyncMock()
         mock_client.post.return_value = _mock_response()
 
-        with patch.object(ch, "_get_client", return_value=mock_client):
+        with patch.object(ch.client, "_get_client", return_value=mock_client):
             # Simulate a query with explicit max_memory_usage param
             await ch._query("SELECT 1", params={"max_memory_usage": "999"})
 
@@ -259,12 +270,12 @@ class TestQueryInjection:
         """Resource overrides don't collide with param_* ClickHouse parameters."""
         import services.clickhouse as ch
 
-        ch._resource_overrides = {"max_memory_usage": "300000000"}
+        ch._settings._resource_overrides = {"max_memory_usage": "300000000"}
 
         mock_client = AsyncMock()
         mock_client.post.return_value = _mock_response()
 
-        with patch.object(ch, "_get_client", return_value=mock_client):
+        with patch.object(ch.client, "_get_client", return_value=mock_client):
             await ch._query(
                 "SELECT * FROM t WHERE id = {id:String}",
                 params={"param_id": "abc"},
@@ -364,8 +375,8 @@ class TestMaintainClickhouse:
     """Tests for the maintain_clickhouse worker cron job."""
 
     async def test_optimizes_all_tables(self):
-        """Cron job runs OPTIMIZE TABLE on all three tables."""
-        with patch("services.clickhouse._query", new_callable=AsyncMock) as mock_q:
+        """Cron job runs OPTIMIZE TABLE on all registered tables."""
+        with patch("services.clickhouse.client._query", new_callable=AsyncMock) as mock_q:
             mock_q.return_value = _mock_response()
 
             from worker import maintain_clickhouse
@@ -378,6 +389,8 @@ class TestMaintainClickhouse:
             "traces",
             "spans",
             "scores",
+            "session_events",
+            "session_stats_agg",
         }
 
     async def test_optimize_failure_doesnt_stop_other_tables(self):
@@ -395,7 +408,7 @@ class TestMaintainClickhouse:
                 resp.json.return_value = {"data": []}
             return resp
 
-        with patch("services.clickhouse._query", side_effect=_flaky_query):
+        with patch("services.clickhouse.client._query", side_effect=_flaky_query):
             from worker import maintain_clickhouse
 
             await maintain_clickhouse({})
@@ -413,13 +426,13 @@ class TestMaintainClickhouse:
             return resp
 
         with (
-            patch("services.clickhouse._query", side_effect=_parts_query),
-            patch("worker.logger") as mock_logger,
+            patch("services.clickhouse.client._query", side_effect=_parts_query),
+            patch("jobs.maintenance.optic") as mock_optic,
         ):
             from worker import maintain_clickhouse
 
             await maintain_clickhouse({})
 
         # Check that a warning was logged about high part count
-        warning_calls = [c for c in mock_logger.warning.call_args_list if "500" in str(c) and "parts" in str(c).lower()]
+        warning_calls = [c for c in mock_optic.warning.call_args_list if "500" in str(c) and "parts" in str(c).lower()]
         assert len(warning_calls) > 0

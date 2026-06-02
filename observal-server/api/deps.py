@@ -1,14 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+import asyncio
 import uuid as _uuid
 from collections.abc import AsyncGenerator
 
 import jwt
 from fastapi import Depends, Header, HTTPException
+from loguru import logger as optic
 from redis.exceptions import RedisError
 from sqlalchemy import String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
-from config import settings
+from config import HAS_LICENSE
 from database import async_session
 from models.organization import Organization
 from models.user import User, UserRole
@@ -35,17 +47,36 @@ async def _authenticate_via_jwt(token: str, db: AsyncSession) -> User | None:
     """
     try:
         payload = decode_access_token(token)
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        optic.trace("JWT decode failed: {}", e)
         return None
 
     jti = payload.get("jti")
-    if jti:
-        try:
-            redis = get_redis()
-            if await redis.get(f"revoked_jti:{jti}"):
+    user_id_str = payload.get("sub")
+    try:
+        redis = get_redis()
+        # SEC-002: fail closed on revocation checks - Redis errors must not
+        # re-enable revoked tokens or user-level revocations.
+        # Gather both checks concurrently to reduce latency at scale
+        # (2 sequential GETs → 1 concurrent round-trip).
+        checks = []
+        if jti:
+            checks.append(redis.get(f"revoked_jti:{jti}"))
+        if user_id_str:
+            checks.append(redis.get(f"revoked_user:{user_id_str}"))
+        results = await asyncio.gather(*checks) if checks else []
+        idx = 0
+        if jti:
+            if results[idx]:
                 return None
-        except RedisError:
-            pass  # Fail open if Redis is down
+            idx += 1
+        if user_id_str and results[idx]:
+            return None  # SEC-001: account-wide revocation (e.g. logout all)
+    except RedisError as e:
+        # Redis is down: block all token-based auth to prevent revoked tokens
+        # from regaining access. Requests will receive HTTP 503.
+        optic.error("Redis unavailable during auth - blocking request to prevent revoked token use: {}", e)
+        raise RedisError("Auth service temporarily unavailable - please retry")
 
     user_id = payload.get("sub")
 
@@ -88,25 +119,34 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     if not authorization or not authorization.startswith("Bearer "):
+        optic.trace("request has no Bearer token")
         raise HTTPException(status_code=401, detail="Missing credentials")
     token = authorization.removeprefix("Bearer ").strip()
     user = await _authenticate_via_jwt(token, db)
     if not user:
+        optic.debug("authentication failed - token invalid or expired")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     # Block deactivated users (SCIM sets auth_provider to "deactivated")
     if user.auth_provider == "deactivated":
+        optic.warning("deactivated user {} attempted access", user.id)
         raise HTTPException(status_code=403, detail="Account deactivated")
 
-    # Enforce must_change_password (fail open if Redis is unavailable)
+    # Expose user to audit middleware
+    request.state.audit_user = user
+
+    # Enforce must_change_password - fail closed: if Redis is down we cannot
+    # guarantee the gate is enforced, so block non-exempt requests.
     if request.url.path not in _PASSWORD_CHANGE_EXEMPT_PATHS:
         try:
             redis = get_redis()
             if await redis.get(f"must_change_password:{user.id}"):
                 raise HTTPException(status_code=403, detail="Password change required")
         except RedisError:
-            pass
+            raise HTTPException(status_code=503, detail="Auth service temporarily unavailable")
 
+    request.state.current_user = user
+    request.state.org_id = user.org_id
     return user
 
 
@@ -116,7 +156,7 @@ async def optional_current_user(
 ) -> User | None:
     """Return the authenticated user when a valid token is present, else None.
 
-    Raises HTTP 401 if a Bearer token is present but invalid/expired —
+    Raises HTTP 401 if a Bearer token is present but invalid/expired -
     this distinguishes 'no credentials' from 'bad credentials'.
     """
     if not authorization or not authorization.startswith("Bearer "):
@@ -166,45 +206,46 @@ def require_role(min_role: UserRole):
     return _check
 
 
-def get_user_groups(user: User | None) -> list[str]:
-    """Get user groups extracted from the JWT token during authentication."""
-    if not user:
-        return []
-    return getattr(user, "_groups", [])
-
-
 def get_effective_agent_permission(agent: "Agent", user: User | None) -> str:  # noqa: F821
     """Evaluate effective permission for an agent: 'owner', 'edit', 'view', or 'none'."""
-    # Local import to avoid circular dependency
-    from models.agent import AgentVisibility
-
     if not user:
-        if agent.visibility == AgentVisibility.public:
-            return "view"
-        return "none"
+        return "view"
 
     if agent.created_by == user.id:
+        return "owner"
+
+    # Co-authors have full owner-level access
+    if str(user.id) in [str(uid) for uid in (agent.co_authors or [])]:
         return "owner"
 
     user_role_level = ROLE_HIERARCHY.get(user.role, 999)
     if user_role_level <= ROLE_HIERARCHY[UserRole.admin]:
         return "owner"  # admins can edit anything
 
-    if user.org_id is not None and agent.owner_org_id == user.org_id:
+    return "view"
+
+
+def get_effective_component_permission(listing, user: User | None) -> str:
+    """Evaluate effective permission for a component listing: 'owner', 'view', or 'none'.
+
+    Works with McpListing, HookListing, SandboxListing, PromptListing.
+    Co-authors have full owner-level access (can edit, publish, manage co-authors).
+    """
+    if not user:
         return "view"
 
-    user_groups = get_user_groups(user)
-    best_perm = "none"
-    perm_levels = {"none": 0, "view": 1, "edit": 2, "owner": 3}
+    if listing.submitted_by == user.id:
+        return "owner"
 
-    for access in getattr(agent, "team_accesses", []):
-        if access.group_name in user_groups and perm_levels.get(access.permission, 0) > perm_levels[best_perm]:
-            best_perm = access.permission
+    # Co-authors have full owner-level access
+    if str(user.id) in [str(uid) for uid in (listing.co_authors or [])]:
+        return "owner"
 
-    if best_perm == "none" and agent.visibility == AgentVisibility.public:
-        return "view"
+    user_role_level = ROLE_HIERARCHY.get(user.role, 999)
+    if user_role_level <= ROLE_HIERARCHY[UserRole.admin]:
+        return "owner"  # admins can edit anything
 
-    return best_perm
+    return "view"
 
 
 # Convenience shorthand for super_admin-only endpoints
@@ -241,7 +282,7 @@ async def get_or_create_default_org(db: AsyncSession) -> Organization:
 def require_org_scope():
     """FastAPI dependency that applies org-scoped filtering.
 
-    Returns None when the user has no org (local mode — no filtering).
+    Returns None when the user has no org (local mode - no filtering).
     Returns the org_id UUID when the user belongs to an org.
     """
 
@@ -256,13 +297,16 @@ async def require_local_mode() -> None:
 
     Usage: @router.post("/bootstrap", dependencies=[Depends(require_local_mode)])
     """
-    if settings.DEPLOYMENT_MODE != "local":
+    if HAS_LICENSE:
         raise HTTPException(status_code=403, detail="Disabled in enterprise mode")
 
 
 async def require_password_auth() -> None:
     """FastAPI dependency that blocks the endpoint when SSO_ONLY is enabled."""
-    if settings.SSO_ONLY:
+    import services.dynamic_settings as ds
+
+    sso_only = await ds.get_bool("deployment.sso_only")
+    if sso_only:
         raise HTTPException(status_code=403, detail="Password authentication is disabled (SSO-only mode)")
 
 
@@ -287,6 +331,10 @@ async def resolve_listing(model, identifier: str, db: AsyncSession, *, require_s
         stmt = stmt.order_by(model.created_at.desc())
     result = await db.execute(stmt)
     return result.scalars().first()
+
+
+MIN_ID_PREFIX_LENGTH = 4
+MAX_AMBIGUOUS_MATCHES_SHOWN = 5
 
 
 async def resolve_prefix_id(
@@ -316,7 +364,7 @@ async def resolve_prefix_id(
     except ValueError:
         pass
 
-    if len(norm_id) < 4:
+    if len(norm_id) < MIN_ID_PREFIX_LENGTH:
         raise HTTPException(
             status_code=400,
             detail=f"Prefix '{norm_id}' is too short (minimum 4 characters required)",
@@ -339,10 +387,64 @@ async def resolve_prefix_id(
         return records[0]
 
     matches = []
-    for r in records[:5]:
+    for r in records[:MAX_AMBIGUOUS_MATCHES_SHOWN]:
         label = getattr(r, display_field, None) or "unnamed"
         matches.append(f"{label} ({str(r.id)[:13]}...)")
     detail = f"Ambiguous prefix '{norm_id}' matches {len(records)} records: {', '.join(matches)}"
-    if len(records) > 5:
+    if len(records) > MAX_AMBIGUOUS_MATCHES_SHOWN:
         detail += " and more..."
     raise HTTPException(status_code=400, detail=detail)
+
+
+def apply_visibility_filter(stmt, model, current_user):
+    """Exclude private listings from orgs other than the requesting user's.
+
+    Rules:
+    - Public items (is_private=False) are always visible.
+    - Private items are only visible to users in the same org, or to the
+      submitter directly, or to admins/reviewers.
+    """
+    from sqlalchemy import or_
+
+    from models.user import UserRole
+
+    if not hasattr(model, "is_private"):
+        return stmt
+
+    is_admin = (
+        current_user is not None and ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
+    )
+    if is_admin:
+        return stmt  # admins see everything
+
+    public = model.is_private == False  # noqa: E712
+    if current_user is None:
+        return stmt.where(public)
+
+    # Guard: only match same-org if user actually has an org (not NULL)
+    if current_user.org_id is not None:
+        same_org = (model.is_private == True) & (model.owner_org_id == current_user.org_id)  # noqa: E712
+        own = (model.is_private == True) & (model.submitted_by == current_user.id)  # noqa: E712
+        return stmt.where(or_(public, same_org, own))
+    # User has no org - can only see their own private items
+    own = (model.is_private == True) & (model.submitted_by == current_user.id)  # noqa: E712
+    return stmt.where(or_(public, own))
+
+
+def check_listing_visibility(listing, current_user) -> bool:
+    """Return True if current_user may see this listing.
+
+    Used on detail routes to gate access to private items.
+    """
+    from models.user import UserRole
+
+    if not getattr(listing, "is_private", False):
+        return True
+    if current_user is None:
+        return False
+    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
+    if is_admin:
+        return True
+    if listing.submitted_by == current_user.id:
+        return True
+    return current_user.org_id is not None and listing.owner_org_id == current_user.org_id

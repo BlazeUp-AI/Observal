@@ -1,6 +1,12 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Santhosh Raja <santhoshpkraja2004@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # Setup Guide
 
-Everything you need to get Observal running locally — for development, evaluation, or self-hosted production.
+Everything you need to get Observal running locally for development or self-hosted production.
 
 > **Full operator docs** live at [observal.gitbook.io](https://observal.gitbook.io/observal) ([`/docs`](docs/) in this repo). This file covers the fastest path from zero to a working stack.
 
@@ -10,7 +16,7 @@ Everything you need to get Observal running locally — for development, evaluat
 
 | Requirement       | Minimum               | Notes                                                                                                                                                                                                                                    |
 | ----------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Docker Engine** | 24.0+ with Compose v2 | Use `docker compose` (not `docker-compose`). Homebrew Docker is often outdated — use [Docker Desktop](https://docs.docker.com/get-docker/) or your distro's upstream packages. Check with `docker version` and `docker compose version`. |
+| **Docker Engine** | 24.0+ with Compose v2 | Use `docker compose` (not `docker-compose`). Homebrew Docker is often outdated - use [Docker Desktop](https://docs.docker.com/get-docker/) or your distro's upstream packages. Check with `docker version` and `docker compose version`. |
 | **Python**        | 3.11+                 | Only needed if you install the CLI via Python or run tests.                                                                                                                                                                              |
 | **uv**            | latest                | Recommended for CLI dev installs: `curl -LsSf https://astral.sh/uv/install.sh \| sh`                                                                                                                                                     |
 | **RAM**           | 4 GB+                 | ClickHouse is the memory consumer. 6 GB recommended for comfortable use.                                                                                                                                                                 |
@@ -26,7 +32,7 @@ cd Observal
 cp .env.example .env
 ```
 
-`.env.example` ships with working defaults — you don't need to edit anything for local development. Demo accounts (`super@demo.example` / `super-changeme`, etc.) are seeded automatically on first start.
+`.env.example` ships with working defaults; you don't need to edit anything for local development. Demo accounts (`super@demo.example` / `super-changeme`, etc.) are seeded automatically on first start.
 
 > **Before a real deployment:** change `SECRET_KEY`, `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, and unset all `DEMO_*` variables. See [Configuration](docs/self-hosting/configuration.md).
 
@@ -44,15 +50,15 @@ Or without Make:
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-First build pulls images and compiles the Next.js frontend — expect 3–5 minutes. Subsequent starts are under 30 seconds.
+First build pulls images and compiles the Next.js frontend. Expect 3–5 minutes. Subsequent starts are under 30 seconds.
 
 **What comes up (10 services):**
 
 | Service               | URL                     | Purpose                                  |
 | --------------------- | ----------------------- | ---------------------------------------- |
-| `observal-lb` (nginx) | `http://localhost:8000` | Reverse proxy → API                      |
-| `observal-web`        | `http://localhost:3000` | Web UI (Next.js)                         |
-| `observal-api`        | internal                | FastAPI + OTLP ingestion                 |
+| `observal-lb` (nginx) | `http://localhost`      | Reverse proxy (API + Web)                |
+| `observal-web`        | `http://localhost:3000` | Web UI (Next.js, direct access)          |
+| `observal-api`        | internal                | FastAPI backend                           |
 | `observal-worker`     | internal                | Background jobs (arq)                    |
 | `observal-init`       | internal                | Runs DB migrations on startup then exits |
 | `observal-db`         | `localhost:5432`        | PostgreSQL 16 (registry data)            |
@@ -69,16 +75,16 @@ First build pulls images and compiles the Next.js frontend — expect 3–5 minu
 docker compose -f docker/docker-compose.yml ps
 ```
 
-All services except `observal-init` (which exits after migrations) should show `healthy` or `running`. The API waits for Postgres, ClickHouse, and Redis before starting — allow 15–30 seconds on first boot.
+All services except `observal-init` (which exits after migrations) should show `healthy` or `running`. The API waits for Postgres, ClickHouse, and Redis before starting. Allow 15–30 seconds on first boot.
 
 Confirm the API is up:
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost/health
 # {"status":"ok","initialized":true}
 ```
 
-Open the web UI at **http://localhost:3000**.
+Open the web UI at **http://localhost**.
 
 ---
 
@@ -97,6 +103,12 @@ uv tool install observal-cli
 # or: pipx install observal-cli
 ```
 
+**Via Homebrew** (macOS Apple Silicon, Linux x64/arm64):
+
+```bash
+brew install BlazeUp-AI/observal/observal-cli
+```
+
 Verify: `observal --version`
 
 ---
@@ -109,7 +121,7 @@ observal auth login
 
 On a fresh server this prompts:
 
-1. **Server URL** → press Enter for `http://localhost:8000`
+1. **Server URL** → press Enter for `http://localhost`
 2. **Login method** → `[E]mail`
 3. **Email / Password** → use a demo account:
 
@@ -127,7 +139,7 @@ observal auth whoami
 # super@demo.example (super_admin)
 
 observal auth status
-# Server:  http://localhost:8000 — OK
+# Server:  http://localhost - OK
 # Auth:    super@demo.example (super_admin)
 # Buffer:  0 pending events
 ```
@@ -148,7 +160,7 @@ cd observal-server && uv run --with pytest --with pytest-asyncio --with pyyaml \
   pytest ../tests/ tests/ ../observal_cli/tests/ -q
 ```
 
-All tests mock external services — no Docker or live databases needed to run tests.
+All tests mock external services. No Docker or live databases needed to run tests.
 
 ---
 
@@ -222,7 +234,6 @@ API_HOST_PORT=8001 WEB_HOST_PORT=3001 \
 | 5-minute first trace                 | [Quickstart](docs/getting-started/quickstart.md)                             |
 | All environment variables            | [Reference → Environment variables](docs/reference/environment-variables.md) |
 | Production hardening                 | [Self-Hosting → Configuration](docs/self-hosting/configuration.md)           |
-| Set up the eval engine (LLM scoring) | [Self-Hosting → Evaluation engine](docs/self-hosting/evaluation-engine.md)   |
 | Configure SSO / OIDC                 | [Self-Hosting → Authentication and SSO](docs/self-hosting/authentication.md) |
 | Upgrade safely                       | [Self-Hosting → Upgrades](docs/self-hosting/upgrades.md)                     |
 | Troubleshooting                      | [Self-Hosting → Troubleshooting](docs/self-hosting/troubleshooting.md)       |

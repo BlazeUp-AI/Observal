@@ -1,6 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Shared helpers used by all session JSONL parsers."""
 
 from __future__ import annotations
+
+import re
+
+# ANSI escape sequence pattern (CSI sequences + OSC + simple escapes)
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[^\[]")
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI terminal escape codes from text for clean web display."""
+    return _ANSI_RE.sub("", text) if "\x1b" in text else text
+
+
+def strip_cursor_xml_tags(text: str) -> str:
+    """Remove Cursor's XML wrapper tags from user prompts for clean display."""
+    text = re.sub(r"<timestamp>.*?</timestamp>\s*", "", text, flags=re.DOTALL)
+    text = re.sub(r"</?user_query>\s*", "", text)
+    text = re.sub(r"</?system_reminder>\s*", "", text)
+    text = re.sub(r"</?attached_files>\s*", "", text)
+    return text.strip()
+
 
 _EPOCH_SENTINEL = "1970-01-01"
 

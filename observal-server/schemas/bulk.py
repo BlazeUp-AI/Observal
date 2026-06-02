@@ -1,6 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
-import uuid  # noqa: TC003 — needed at runtime by Pydantic
+import uuid  # noqa: TC003 - needed at runtime by Pydantic
 
 from pydantic import BaseModel, Field
 
@@ -18,7 +21,6 @@ class BulkAgentItem(BaseModel):
     supported_ides: list[str] = []
     components: list[dict] = []  # [{component_type, component_id}]
     external_mcps: list[dict] = []
-    goal_template: dict | None = None
 
 
 class BulkAgentRequest(BaseModel):

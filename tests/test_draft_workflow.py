@@ -1,3 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the draft agent lifecycle (save, update, submit).
 
 Covers creating a draft, updating it, submitting for review,
@@ -69,14 +77,12 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.rejection_reason = None
     m.download_count = 0
     m.unique_users = 0
-    m.visibility = "private"
     m.owner_org_id = None
     m.git_url = None
     m.created_by = created_by or uuid.uuid4()
     m.created_at = datetime.now(UTC)
     m.updated_at = datetime.now(UTC)
     m.components = extra.get("components", [])
-    m.goal_template = extra.get("goal_template")
     # Edit-lock fields on the latest_version mock
     m.latest_version.is_editing = False
     m.latest_version.editing_by = None
@@ -95,7 +101,6 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
         "model_config_json",
         "external_mcps",
         "supported_ides",
-        "visibility",
         "owner_org_id",
         "status",
         "rejection_reason",
@@ -124,10 +129,6 @@ def _draft_request_body(**overrides) -> dict:
         "owner": "testowner",
         "prompt": "Do things",
         "model_name": "claude-sonnet-4",
-        "goal_template": {
-            "description": "Test goal",
-            "sections": [{"name": "section-1"}],
-        },
     }
     body.update(overrides)
     return body
@@ -158,7 +159,7 @@ class TestDraftSave:
 
     @pytest.mark.asyncio
     @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_creates_agent_with_draft_status(self, mock_load):
         """POST /agents/draft creates an agent in draft status."""
         user = _user()
@@ -179,7 +180,7 @@ class TestDraftSave:
 
     @pytest.mark.asyncio
     @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_response_includes_agent_fields(self, mock_load):
         """Draft response includes id, name, and status fields."""
         user = _user()
@@ -209,7 +210,7 @@ class TestDraftUpdate:
 
     @pytest.mark.asyncio
     @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_updates_draft_fields(self, mock_load):
         """PUT /agents/{id}/draft updates the draft agent."""
         user = _user()
@@ -227,7 +228,7 @@ class TestDraftUpdate:
         db.commit.assert_awaited()
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_rejects_update_on_non_draft(self, mock_load):
         """Updating an approved agent returns 400."""
         user = _user()
@@ -244,7 +245,7 @@ class TestDraftUpdate:
         assert r.status_code == 400
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_rejects_update_by_non_owner(self, mock_load):
         """Non-owner cannot update a draft agent (403)."""
         user = _user()
@@ -271,9 +272,9 @@ class TestDraftSubmit:
 
     @pytest.mark.asyncio
     @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
-    @patch("api.routes.agent.emit_registry_event")
-    @patch("api.routes.agent._resolve_component_names")
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft.emit_registry_event")
+    @patch("api.routes.agent.draft._resolve_component_names")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_transitions_to_pending(self, mock_load, mock_resolve, mock_emit):
         """POST /agents/{id}/submit transitions a draft to pending status."""
         user = _user()
@@ -291,9 +292,9 @@ class TestDraftSubmit:
 
     @pytest.mark.asyncio
     @patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot"))
-    @patch("api.routes.agent.emit_registry_event")
-    @patch("api.routes.agent._resolve_component_names")
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft.emit_registry_event")
+    @patch("api.routes.agent.draft._resolve_component_names")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_submit_response_includes_status(self, mock_load, mock_resolve, mock_emit):
         """Submit response body includes the new pending status."""
         user = _user()
@@ -319,7 +320,7 @@ class TestDraftSubmitNotDraft:
     """Test submitting a non-draft agent returns an error."""
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_submit_pending_returns_400(self, mock_load):
         """Submitting a pending agent returns 400."""
         user = _user()
@@ -333,7 +334,7 @@ class TestDraftSubmitNotDraft:
         assert r.status_code == 400
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_submit_active_returns_400(self, mock_load):
         """Submitting an active agent returns 400."""
         user = _user()
@@ -347,7 +348,7 @@ class TestDraftSubmitNotDraft:
         assert r.status_code == 400
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.draft._load_agent")
     async def test_submit_not_found_returns_404(self, mock_load):
         """Submitting a nonexistent agent returns 404."""
         user = _user()

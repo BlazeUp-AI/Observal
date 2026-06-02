@@ -1,8 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 name: Deploy to EC2
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -11,6 +14,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'BlazeUp-AI/Observal'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -23,8 +27,8 @@ jobs:
           script: |
             set -e
             cd ~/Observal
-            git fetch origin --tags
-            git checkout ${{ github.ref_name }}
+            git fetch origin main
+            git reset --hard origin/main
 
             cd docker
             docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build --remove-orphans

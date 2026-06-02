@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 root: ./docs/
 
 structure:
@@ -6,6 +9,3 @@ structure:
 
 redirects:
   cli: cli/README.md
-  eval: concepts/evaluation.md
-  kiro-setup: integrations/kiro.md
-  kiro-compatibility-matrix: integrations/kiro.md

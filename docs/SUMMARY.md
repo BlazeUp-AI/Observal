@@ -1,6 +1,9 @@
-# Summary
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Nithin-Bhargav-07 <gaddamnithinbhargav@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-* [Welcome](README.md)
+# Summary
 
 ## Getting Started
 
@@ -13,7 +16,6 @@
 * [Overview](use-cases/README.md)
 * [Observe MCP traffic](use-cases/observe-mcp-traffic.md)
 * [Share agent configs across IDEs](use-cases/share-agent-configs.md)
-* [Evaluate and compare agents](use-cases/evaluate-agents.md)
 * [Debug agent failures](use-cases/debug-agent-failures.md)
 * [Run a team-wide agent registry](use-cases/team-registry.md)
 
@@ -23,8 +25,10 @@
 * [observal auth](cli/auth.md)
 * [observal config](cli/config.md)
 * [observal scan](cli/scan.md)
-* [observal pull](cli/pull.md)
+* [observal agent pull](cli/pull.md)
 * [observal registry](cli/registry.md)
+* [observal component](cli/component.md)
+* [observal models](cli/models.md)
 * [observal agent](cli/agent.md)
 * [observal ](cli/auth.md)mcp
 * [observal ops](cli/ops.md)
@@ -32,6 +36,10 @@
 * [observal doctor](cli/doctor.md)
 * [observal profile](cli/profile.md)
 * [observal self](cli/self.md)
+* [observal prompt](cli/prompt.md)
+* [observal server](cli/server.md)
+* [observal skill](cli/skill.md)
+* [observal uninstall](cli/uninstall.md)
 
 ## Self-Hosting
 
@@ -43,28 +51,10 @@
 * [Ports and volumes](self-hosting/ports-and-volumes.md)
 * [Databases](self-hosting/databases.md)
 * [Authentication and SSO](self-hosting/authentication.md)
-* [Evaluation engine](self-hosting/evaluation-engine.md)
 * [Telemetry pipeline](self-hosting/telemetry-pipeline.md)
 * [Upgrades](self-hosting/upgrades.md)
 * [Backup and restore](self-hosting/backup-and-restore.md)
 * [Troubleshooting](self-hosting/troubleshooting.md)
-
-## Integrations
-
-* [Overview](integrations/README.md)
-* [Claude Code](integrations/claude-code.md)
-* [Kiro CLI](integrations/kiro.md)
-* [Cursor](integrations/cursor.md)
-* [Gemini CLI](integrations/gemini-cli.md)
-* [VS Code](integrations/vscode.md)
-* [Codex CLI](integrations/codex-cli.md)
-
-## Concepts
-
-* [Overview](concepts/README.md)
-* [Data model](concepts/data-model.md)
-* [Evaluation engine](concepts/evaluation.md)
-* [Shim vs proxy](concepts/shim-vs-proxy.md)
 
 ## Reference
 
@@ -73,3 +63,5 @@
 * [Hooks specification](reference/hooks-spec.md)
 * [Config files](reference/config-files.md)
 
+* [CLI Reference](cli.md)
+* [Config](config.md)

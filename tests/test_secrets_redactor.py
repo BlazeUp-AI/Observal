@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the secrets redactor — verifies redaction accuracy and no over-stripping."""
 
 import sys
@@ -21,7 +26,7 @@ class TestKnownKeyPrefixes:
         assert "OPENAI_KEY=" in result  # key name preserved
 
     def test_openai_classic_key(self):
-        assert REDACTED in redact_secrets("sk-abcdefghijklmnopqrstuvwxyz1234567890")
+        assert REDACTED in redact_secrets("sk-" + "abcdefghijklmnopqrstuvwxyz1234567890")
 
     def test_anthropic_key(self):
         assert REDACTED in redact_secrets("sk-ant-api03-abcdefghijklmnopqrstuvwxyz")
@@ -34,19 +39,19 @@ class TestKnownKeyPrefixes:
         assert REDACTED in redact_secrets("pk_test_FAKEFAKEFAKEFAKEFAKE00")
 
     def test_github_pat(self):
-        assert REDACTED in redact_secrets("ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd")
+        assert REDACTED in redact_secrets("ghp_" + "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd")
 
     def test_github_oauth(self):
-        assert REDACTED in redact_secrets("gho_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd")
+        assert REDACTED in redact_secrets("gho_" + "aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd")
 
     def test_gitlab_pat(self):
         assert REDACTED in redact_secrets("glpat-abcDEFghiJKLmnoPQRstuv")
 
     def test_slack_bot_token(self):
-        assert REDACTED in redact_secrets("xoxb-123456789-abcdefghij")
+        assert REDACTED in redact_secrets("xoxb-" + "123456789-abcdefghij")
 
     def test_aws_access_key(self):
-        assert REDACTED in redact_secrets("AKIAIOSFODNN7EXAMPLE")
+        assert REDACTED in redact_secrets("AKIA" + "IOSFODNN7EXAMPLE")
 
     def test_npm_token(self):
         assert REDACTED in redact_secrets("npm_aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890abcd")
@@ -317,6 +322,79 @@ class TestRedactDict:
         result = redact_dict(data, fields=None)
         assert "sk-proj-" not in result["a"]
         assert result["b"] == "normal"
+
+    def test_redacts_nested_lists_in_selected_field(self):
+        data = {
+            "tool_name": "Read",
+            "tool_input": [
+                "OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345",
+                {"headers": ["Authorization: Bearer abcdef1234567890abcdef1234567890"]},
+            ],
+        }
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert result["tool_name"] == "Read"
+        assert "sk-proj-" not in str(result["tool_input"])
+        assert "abcdef1234567890" not in str(result["tool_input"])
+        assert REDACTED in str(result["tool_input"])
+
+    def test_selected_field_redacts_entire_nested_value(self):
+        data = {
+            "tool_input": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "password=mySuperSecretPassword123!",
+                    }
+                ],
+                "metadata": ("auth_token=very-secret-token-value",),
+            },
+            "session_id": "abc123",
+        }
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert "mySuperSecretPassword123" not in str(result["tool_input"])
+        assert "very-secret-token-value" not in str(result["tool_input"])
+        assert result["session_id"] == "abc123"
+
+    def test_selected_field_preserves_non_string_scalar(self):
+        data = {"tool_input": 42, "tool_name": "Read"}
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert result["tool_input"] == 42
+        assert result["tool_name"] == "Read"
+
+    def test_unselected_list_values_are_preserved(self):
+        data = {
+            "tool_name": ["sk-proj-abc123def456ghi789jkl012mno345"],
+            "tool_input": "normal text",
+        }
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert result["tool_name"] == ["sk-proj-abc123def456ghi789jkl012mno345"]
+        assert result["tool_input"] == "normal text"
+
+    def test_nested_selected_fields_inside_lists_still_redact(self):
+        data = {
+            "events": [{"tool_input": "OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345"}],
+            "tool_name": "Read",
+        }
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert "sk-proj-" not in result["events"][0]["tool_input"]
+        assert result["tool_name"] == "Read"
+        assert "sk-proj-" in data["events"][0]["tool_input"]
+
+    def test_nested_selected_fields_inside_tuples_still_redact(self):
+        data = {
+            "events": ({"tool_input": "OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345"},),
+            "tool_name": "Read",
+        }
+        result = redact_dict(data, fields={"tool_input"})
+
+        assert "sk-proj-" not in result["events"][0]["tool_input"]
+        assert result["tool_name"] == "Read"
+        assert "sk-proj-" in data["events"][0]["tool_input"]
 
 
 # ============================================================================

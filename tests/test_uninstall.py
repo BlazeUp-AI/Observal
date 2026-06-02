@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the `observal uninstall` command."""
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ def test_aborts_on_wrong_confirmation(tmp_path: Path):
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo)],
+        ["self", "uninstall", "--repo-dir", str(repo)],
         input="wrong phrase\n",
     )
     assert result.exit_code == 1
@@ -51,7 +54,7 @@ def test_aborts_on_empty_confirmation(tmp_path: Path):
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo)],
+        ["self", "uninstall", "--repo-dir", str(repo)],
         input="\n",
     )
     assert result.exit_code == 1
@@ -76,7 +79,7 @@ def test_docker_down_called(mock_rmtree: MagicMock, mock_run: MagicMock, tmp_pat
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
+        ["self", "uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
         input=f"{CONFIRMATION_PHRASE}\n",
     )
     assert result.exit_code == 0
@@ -102,7 +105,7 @@ def test_docker_failure_continues(mock_rmtree: MagicMock, mock_run: MagicMock, t
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
+        ["self", "uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
         input=f"{CONFIRMATION_PHRASE}\n",
     )
     assert result.exit_code == 0
@@ -127,7 +130,7 @@ def test_repo_directory_deleted(mock_rmtree: MagicMock, mock_run: MagicMock, tmp
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
+        ["self", "uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
         input=f"{CONFIRMATION_PHRASE}\n",
     )
     assert result.exit_code == 0
@@ -154,7 +157,7 @@ def test_config_directory_deleted(mock_config_dir, mock_rmtree: MagicMock, mock_
     with patch("observal_cli.cmd_uninstall.CONFIG_DIR", fake_config):
         result = runner.invoke(
             cli_app,
-            ["uninstall", "--repo-dir", str(repo), "--keep-cli"],
+            ["self", "uninstall", "--repo-dir", str(repo), "--keep-cli"],
             input=f"{CONFIRMATION_PHRASE}\n",
         )
     assert result.exit_code == 0
@@ -176,7 +179,7 @@ def test_keep_config_flag(mock_rmtree: MagicMock, mock_run: MagicMock, tmp_path:
     with patch("observal_cli.cmd_uninstall.CONFIG_DIR", tmp_path / ".observal"):
         result = runner.invoke(
             cli_app,
-            ["uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
+            ["self", "uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
             input=f"{CONFIRMATION_PHRASE}\n",
         )
     assert result.exit_code == 0
@@ -202,7 +205,7 @@ def test_cli_uninstall_called(mock_rmtree: MagicMock, mock_run: MagicMock, tmp_p
     with patch("observal_cli.cmd_uninstall.CONFIG_DIR", tmp_path / ".observal"):
         result = runner.invoke(
             cli_app,
-            ["uninstall", "--repo-dir", str(repo), "--keep-config"],
+            ["self", "uninstall", "--repo-dir", str(repo), "--keep-config"],
             input=f"{CONFIRMATION_PHRASE}\n",
         )
     assert result.exit_code == 0
@@ -225,7 +228,7 @@ def test_keep_cli_flag(mock_rmtree: MagicMock, mock_run: MagicMock, tmp_path: Pa
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
+        ["self", "uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
         input=f"{CONFIRMATION_PHRASE}\n",
     )
     assert result.exit_code == 0
@@ -251,7 +254,7 @@ def test_explicit_repo_dir_option(mock_rmtree: MagicMock, mock_run: MagicMock, t
 
     result = runner.invoke(
         cli_app,
-        ["uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
+        ["self", "uninstall", "--repo-dir", str(repo), "--keep-config", "--keep-cli"],
         input=f"{CONFIRMATION_PHRASE}\n",
     )
     assert result.exit_code == 0
@@ -276,7 +279,7 @@ def test_repo_not_found_continues(tmp_path: Path):
 
         result = runner.invoke(
             cli_app,
-            ["uninstall", "--keep-config"],
+            ["self", "uninstall", "--keep-config"],
             input=f"{CONFIRMATION_PHRASE}\n",
         )
     assert result.exit_code == 1
@@ -290,7 +293,7 @@ def test_repo_not_found_continues(tmp_path: Path):
 
 def test_help_shows_uninstall():
     """observal uninstall --help should show the command description."""
-    result = runner.invoke(cli_app, ["uninstall", "--help"])
+    result = runner.invoke(cli_app, ["self", "uninstall", "--help"])
     assert result.exit_code == 0
     output = _plain(result.output)
     assert "uninstall" in output.lower()

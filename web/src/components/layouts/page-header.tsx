@@ -1,7 +1,10 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+// SPDX-FileCopyrightText: 2026 Shreem Seth <shreemseth26@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { usePathname } from "next/navigation";
-import Link from "next/link";
+
+import { Link, useLocation } from "@tanstack/react-router";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Breadcrumb,
@@ -44,7 +47,7 @@ export function PageHeader({
   tabs,
   activeTab,
 }: PageHeaderProps) {
-  const pathname = usePathname();
+  const { pathname } = useLocation();
 
   return (
     <div className="sticky top-0 z-30 w-full border-b bg-background">
@@ -60,7 +63,7 @@ export function PageHeader({
                     {i > 0 && <BreadcrumbSeparator />}
                     {crumb.href ? (
                       <BreadcrumbLink asChild>
-                        <Link href={crumb.href}>{crumb.label}</Link>
+                        <Link to={crumb.href}>{crumb.label}</Link>
                       </BreadcrumbLink>
                     ) : (
                       <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
@@ -96,7 +99,7 @@ export function PageHeader({
               {tabs.map((tab) => (
                 <Link
                   key={tab.value}
-                  href={tab.href}
+                  to={tab.href}
                   className={cn(
                     "inline-flex h-full items-center border-b-2 border-transparent px-2 py-0.5 text-sm font-medium whitespace-nowrap transition-colors hover:bg-muted/50",
                     (activeTab === tab.value || pathname === tab.href) &&

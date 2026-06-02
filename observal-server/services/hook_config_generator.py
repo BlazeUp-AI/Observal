@@ -1,6 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shreem Seth <shreemseth26@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+from loguru import logger as optic
+
+
 def generate_hook_telemetry_config(
     hook_listing, ide: str, server_url: str = "http://localhost:8000", platform: str = ""
 ) -> dict:
+    optic.debug("generating hook config for {} (event={})", ide, hook_listing.event)
     if ide in ("kiro", "kiro-cli"):
         event = str(hook_listing.event)
         # Map Claude Code PascalCase events to Kiro camelCase
@@ -15,7 +26,7 @@ def generate_hook_telemetry_config(
 
         if platform == "win32":
             # PowerShell-compatible: pipe stdin through the Python hook script.
-            # No cat/sed/curl/$PPID/$TERM/$SHELL — those don't exist in PowerShell.
+            # No cat/sed/curl/$PPID/$TERM/$SHELL - those don't exist in PowerShell.
             if kiro_event == "stop":
                 ps_stop_cmd = f"python -m observal_cli.hooks.kiro_stop_hook --url {server_url}/api/v1/telemetry/hooks"
                 return {"hooks": {kiro_event: [{"command": ps_stop_cmd}]}}

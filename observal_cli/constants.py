@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Canonical valid-option lists for all registry submit fields.
 
 Mirror of ``observal-server/schemas/constants.py``.
@@ -26,12 +32,8 @@ VALID_IDES: list[str] = get_valid_ides()
 
 IDE_FEATURES: list[str] = [
     "skills",
-    "superpowers",
-    "hook_bridge",
+    "hooks",
     "mcp_servers",
-    "rules",
-    "steering_files",
-    "otlp_telemetry",
 ]
 
 IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()
@@ -139,3 +141,12 @@ VALID_SANDBOX_NETWORK_POLICIES: list[str] = [
     "bridge",
     "restricted",
 ]
+
+# GitHub download redirect allowlist (used by version_check and upgrade_executor)
+REDIRECT_ALLOWLIST = frozenset(
+    [
+        "github.com",
+        "objects.githubusercontent.com",
+        "github-releases.githubusercontent.com",
+    ]
+)

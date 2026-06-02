@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """JWKS discovery endpoint for JWT public key distribution.
 
 Exposes the server's public signing key(s) in standard JWKS format so that
@@ -6,6 +9,7 @@ clients and browsers can verify tokens without a shared secret.
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from loguru import logger as optic
 
 from services.crypto import get_key_manager
 
@@ -20,8 +24,11 @@ async def jwks() -> JSONResponse:
     JWTs issued by this server.  During key rotation, both the current and
     recently retired keys are included so in-flight tokens remain valid.
     """
+    optic.debug("jwks called")
     km = get_key_manager()
     return JSONResponse(
         content=km.get_jwks(),
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
+    optic.debug("jwks.jwks called")

@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Centralized IDE registry -- CLI mirror of schemas/ide_registry.py.
 
 This is kept in sync with ``observal-server/schemas/ide_registry.py``
@@ -10,8 +15,8 @@ from __future__ import annotations
 IDE_REGISTRY: dict[str, dict] = {
     "cursor": {
         "display_name": "Cursor",
-        "session_parser": "claude-code",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
+        "session_parser": "cursor",
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "project",
         "scope_labels": ("project (.cursor/rules/)", "user (~/.cursor/rules/)"),
@@ -32,6 +37,19 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": "markdown_frontmatter",
         "home_mcp_config": "~/.cursor/mcp.json",
         "hook_type": "command",
+        "hook_config_path": {
+            "project": ".cursor/hooks.json",
+            "user": "~/.cursor/hooks.json",
+        },
+        "hook_scripts_dir": ".cursor/hooks",
+        "hook_events_map": {
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "sessionEnd",
+            "SessionStart": "sessionStart",
+            "UserPromptSubmit": "beforeSubmitPrompt",
+            "SubagentStop": "subagentStop",
+        },
         "config_dir": ".cursor",
         "accepts_model_choice": False,
         "auto_sentinel": None,
@@ -39,7 +57,7 @@ IDE_REGISTRY: dict[str, dict] = {
     "kiro": {
         "display_name": "Kiro",
         "session_parser": "kiro",
-        "features": {"superpowers", "hook_bridge", "mcp_servers", "rules", "steering_files", "otlp_telemetry"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "user",
         "scope_labels": ("project (.kiro/agents/)", "user (~/.kiro/agents/)"),
@@ -59,6 +77,17 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.kiro/settings/mcp.json",
         "hook_type": "command",
+        "hook_config_path": {
+            "user": "~/.kiro/agents/{name}.json",
+        },
+        "hook_scripts_dir": ".kiro/hooks",
+        "hook_events_map": {
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "stop",
+            "SessionStart": "agentSpawn",
+            "UserPromptSubmit": "userPromptSubmit",
+        },
         "config_dir": ".kiro",
         "accepts_model_choice": True,
         "auto_sentinel": {"json_value": None},
@@ -66,7 +95,7 @@ IDE_REGISTRY: dict[str, dict] = {
     "claude-code": {
         "display_name": "Claude Code",
         "session_parser": "claude-code",
-        "features": {"skills", "hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
+        "features": {"skills", "hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "project",
         "scope_labels": ("project (.claude/agents/)", "user (~/.claude/agents/)"),
@@ -87,6 +116,20 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.claude.json",
         "hook_type": "command",
+        "hook_config_path": {
+            "project": ".claude/settings.json",
+            "user": "~/.claude/settings.json",
+        },
+        "hook_scripts_dir": ".claude/hooks",
+        "hook_events_map": {
+            "PreToolUse": "PreToolUse",
+            "PostToolUse": "PostToolUse",
+            "Stop": "Stop",
+            "SessionStart": "SessionStart",
+            "UserPromptSubmit": "UserPromptSubmit",
+            "Notification": "Notification",
+            "SubagentStop": "SubagentStop",
+        },
         "config_dir": ".claude",
         "accepts_model_choice": True,
         "auto_sentinel": {"omit_frontmatter_field": True},
@@ -94,7 +137,7 @@ IDE_REGISTRY: dict[str, dict] = {
     "gemini-cli": {
         "display_name": "Gemini CLI",
         "session_parser": "claude-code",
-        "features": {"hook_bridge", "mcp_servers", "rules", "otlp_telemetry"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "project",
         "scope_labels": ("project (GEMINI.md)", "user (~/.gemini/GEMINI.md)"),
@@ -115,39 +158,27 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": "markdown",
         "home_mcp_config": "~/.gemini/settings.json",
         "hook_type": "command",
+        "hook_config_path": {
+            "project": ".gemini/settings.json",
+            "user": "~/.gemini/settings.json",
+        },
+        "hook_scripts_dir": ".gemini/hooks",
+        "hook_events_map": {
+            "PreToolUse": "BeforeTool",
+            "PostToolUse": "AfterTool",
+            "Stop": "SessionEnd",
+            "SessionStart": "SessionStart",
+            "UserPromptSubmit": "BeforeAgent",
+            "Notification": "Notification",
+        },
         "config_dir": ".gemini",
         "accepts_model_choice": True,
         "auto_sentinel": {"omit_setting": True},
     },
-    "vscode": {
-        "display_name": "VS Code",
-        "session_parser": "claude-code",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
-        "scopes": ["project"],
-        "default_scope": "project",
-        "scope_labels": None,
-        "rules_file": {
-            "project": ".github/instructions/{name}.instructions.md",
-        },
-        "rules_format": "markdown_frontmatter",
-        "mcp_config_path": {
-            "project": ".vscode/mcp.json",
-        },
-        "mcp_servers_key": "servers",
-        "skill_file": {
-            "project": ".github/instructions/{name}.instructions.md",
-        },
-        "skill_format": "markdown_frontmatter",
-        "home_mcp_config": None,
-        "hook_type": "command",
-        "config_dir": ".vscode",
-        "accepts_model_choice": False,
-        "auto_sentinel": None,
-    },
     "codex": {
         "display_name": "Codex",
         "session_parser": "claude-code",
-        "features": {"rules"},
+        "features": {"mcp_servers"},
         "scopes": ["user"],
         "default_scope": "user",
         "scope_labels": None,
@@ -162,7 +193,18 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_file": None,
         "skill_format": None,
         "home_mcp_config": "~/.codex/config.toml",
-        "hook_type": None,
+        "hook_type": "command",
+        "hook_config_path": {
+            "project": ".codex/config.toml",
+            "user": "~/.codex/config.toml",
+        },
+        "hook_scripts_dir": ".codex/hooks",
+        "hook_events_map": {
+            "PreToolUse": "pre_tool_use",
+            "PostToolUse": "post_tool_use",
+            "Stop": "session_stop",
+            "UserPromptSubmit": "user_prompt_submit",
+        },
         "config_dir": ".codex",
         "accepts_model_choice": True,
         "auto_sentinel": {"omit_toml_field": True},
@@ -170,7 +212,7 @@ IDE_REGISTRY: dict[str, dict] = {
     "copilot": {
         "display_name": "Copilot",
         "session_parser": "claude-code",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -186,6 +228,16 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": None,
         "home_mcp_config": "~/.vscode/mcp.json",
         "hook_type": "command",
+        "hook_config_path": {
+            "project": ".github/hooks/{name}.json",
+        },
+        "hook_scripts_dir": ".github/hooks/scripts",
+        "hook_events_map": {
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "sessionEnd",
+            "SessionStart": "sessionStart",
+        },
         "config_dir": ".vscode",
         "accepts_model_choice": False,
         "auto_sentinel": None,
@@ -193,7 +245,7 @@ IDE_REGISTRY: dict[str, dict] = {
     "copilot-cli": {
         "display_name": "Copilot CLI",
         "session_parser": "claude-code",
-        "features": {"mcp_servers", "rules", "hook_bridge", "skills"},
+        "features": {"mcp_servers", "hooks", "skills"},
         "scopes": ["project"],
         "default_scope": "project",
         "scope_labels": None,
@@ -212,6 +264,16 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": "markdown",
         "home_mcp_config": "~/.copilot/mcp-config.json",
         "hook_type": "command",
+        "hook_config_path": {
+            "project": ".github/hooks/{name}.json",
+        },
+        "hook_scripts_dir": ".github/hooks/scripts",
+        "hook_events_map": {
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "sessionEnd",
+            "SessionStart": "sessionStart",
+        },
         "config_dir": ".copilot",
         "accepts_model_choice": False,
         "auto_sentinel": None,
@@ -219,13 +281,13 @@ IDE_REGISTRY: dict[str, dict] = {
     "opencode": {
         "display_name": "OpenCode",
         "session_parser": "claude-code",
-        "features": {"hook_bridge", "mcp_servers", "rules"},
+        "features": {"hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "user",
-        "scope_labels": ("project (AGENTS.md)", "user (~/.config/opencode/opencode.json)"),
+        "scope_labels": ("project (.opencode/agents/<name>.md)", "user (~/.config/opencode/agents/<name>.md)"),
         "rules_file": {
-            "project": "AGENTS.md",
-            "user": "~/.config/opencode/AGENTS.md",
+            "project": ".opencode/agents/{name}.md",
+            "user": "~/.config/opencode/agents/{name}.md",
         },
         "rules_format": "markdown",
         "mcp_config_path": {
@@ -239,7 +301,51 @@ IDE_REGISTRY: dict[str, dict] = {
         "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.config/opencode/opencode.json",
         "hook_type": "plugin",
+        "hook_config_path": {
+            "project": ".opencode/plugins/{name}.ts",
+            "user": "~/.config/opencode/plugins/{name}.ts",
+        },
+        "hook_scripts_dir": ".opencode/hooks",
+        "hook_events_map": {
+            "PreToolUse": "tool.execute.before",
+            "PostToolUse": "tool.execute.after",
+            "Stop": "session.deleted",
+            "SessionStart": "session.created",
+        },
         "config_dir": ".config/opencode",
+        "accepts_model_choice": True,
+        "auto_sentinel": {"omit_field": True},
+    },
+    "pi": {
+        "display_name": "Pi",
+        "features": {"skills", "hooks", "mcp_servers"},
+        "session_parser": "pi",
+        "scopes": ["project", "user"],
+        "default_scope": "user",
+        "scope_labels": ("project (.pi/)", "user (~/.pi/agent/)"),
+        "rules_file": {
+            "project": "AGENTS.md",
+            "user": "~/.pi/agent/AGENTS.md",
+        },
+        "rules_format": "markdown",
+        "mcp_config_path": {
+            "project": ".pi/mcp.json",
+            "user": "~/.pi/agent/mcp.json",
+        },
+        "mcp_servers_key": "mcpServers",
+        "skill_file": {
+            "project": ".pi/skills/{name}/SKILL.md",
+            "user": "~/.pi/agent/skills/{name}/SKILL.md",
+        },
+        "skill_format": "yaml_frontmatter",
+        "home_mcp_config": "~/.pi/agent/mcp.json",
+        "hook_type": "extension",
+        "hook_config_path": {
+            "user": "~/.pi/agent/settings.json",
+        },
+        "hook_scripts_dir": None,
+        "hook_events_map": {},
+        "config_dir": ".pi",
         "accepts_model_choice": True,
         "auto_sentinel": {"omit_field": True},
     },

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """observal-proxy: transparent HTTP reverse proxy for MCP servers.
 
 Sits between IDE and an HTTP-transport MCP server, forwards all requests
@@ -12,6 +16,7 @@ import sys
 import time
 
 import httpx
+from loguru import logger as optic
 
 from observal_cli.config import load as load_config
 from observal_cli.shim import ShimState
@@ -82,6 +87,7 @@ async def _handle_request(
 
 async def run_proxy(mcp_id: str, target_url: str, port: int = 0):
     """Start the HTTP proxy server."""
+    optic.debug("proxy started")
     # Resolve auth
     access_token = os.environ.get("OBSERVAL_KEY", "")
     server_url = os.environ.get("OBSERVAL_SERVER", "")

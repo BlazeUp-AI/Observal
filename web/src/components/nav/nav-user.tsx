@@ -1,8 +1,13 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
 
+
+import { Link, useRouter } from "@tanstack/react-router";
 import { LogOut, Settings } from "lucide-react";
 import { ChevronsUpDown } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +17,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
-import Link from "next/link";
-import { clearSession } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { clearSession, getUserAvatar } from "@/lib/api";
+import { useSyncExternalStore } from "react";
 
 function initials(name: string) {
   return name
@@ -31,6 +35,11 @@ interface NavUserProps {
 
 export function NavUser({ user }: NavUserProps) {
   const router = useRouter();
+  const avatarUrl = useSyncExternalStore(
+    (cb) => { window.addEventListener("storage", cb); return () => window.removeEventListener("storage", cb); },
+    () => getUserAvatar(),
+    () => null,
+  );
 
   return (
     <DropdownMenu>
@@ -39,7 +48,8 @@ export function NavUser({ user }: NavUserProps) {
           size="lg"
           className="data-[state=open]:bg-sidebar-accent"
         >
-          <Avatar className="h-8 w-8">
+          <Avatar className="h-8 w-8" key={avatarUrl || "no-avatar"}>
+            {avatarUrl && <AvatarImage src={avatarUrl} alt={user.name} />}
             <AvatarFallback className="text-xs">
               {initials(user.name || "U")}
             </AvatarFallback>
@@ -74,7 +84,7 @@ export function NavUser({ user }: NavUserProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/account">
+          <Link to="/account">
             <Settings className="mr-2 h-4 w-4" />
             Account Settings
           </Link>
@@ -83,7 +93,7 @@ export function NavUser({ user }: NavUserProps) {
         <DropdownMenuItem
           onClick={async () => {
             try {
-              const token = localStorage.getItem("observal_access_token");
+              const token = sessionStorage.getItem("observal_access_token");
               const refreshToken = localStorage.getItem("observal_refresh_token");
               if (token) {
                 await fetch("/api/v1/auth/logout", {
@@ -101,7 +111,7 @@ export function NavUser({ user }: NavUserProps) {
               // Best-effort — proceed with client-side cleanup regardless
             }
             clearSession();
-            router.push("/login");
+            router.navigate({ to: "/login" });
           }}
         >
           <LogOut className="mr-2 h-4 w-4" />

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Claude Code JSONL session parser.
 
 Handles the Claude Code transcript format where each line has:
@@ -8,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from .base import basic_event, pick_timestamp
+from .base import basic_event, pick_timestamp, strip_ansi
 
 _META_TYPES = {"agent-setting", "permission-mode", "debug", "meta"}
 
@@ -187,7 +190,7 @@ def _handle_assistant(
         block_type = block.get("type", "")
 
         if block_type == "thinking":
-            thinking_text = block.get("thinking", "")
+            thinking_text = strip_ansi(block.get("thinking", ""))
             events.append(
                 {
                     "timestamp": ts,

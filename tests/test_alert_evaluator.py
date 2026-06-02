@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for alert evaluation engine, SSRF protection, and webhook delivery."""
 
 import uuid
@@ -51,7 +55,7 @@ class TestIsPrivateUrl:
     def test_public_domain_is_not_private(self):
         from services.alert_evaluator import is_private_url
 
-        with patch("services.alert_evaluator.socket.getaddrinfo") as mock_gai:
+        with patch("services.ssrf_guard.socket.getaddrinfo") as mock_gai:
             mock_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 0))]
             assert is_private_url("https://example.com/webhook") is False
 
@@ -64,7 +68,7 @@ class TestIsPrivateUrl:
         from services.alert_evaluator import is_private_url
 
         with patch(
-            "services.alert_evaluator.socket.getaddrinfo",
+            "services.ssrf_guard.socket.getaddrinfo",
             side_effect=OSError("DNS failed"),
         ):
             assert is_private_url("http://nonexistent.invalid/hook") is True

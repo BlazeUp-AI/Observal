@@ -1,8 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Git mirroring and component discovery service."""
 
 import hashlib
 import json
-import logging
 import re
 import shutil
 import subprocess
@@ -10,15 +13,13 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import settings
+from loguru import logger as optic
 
-logger = logging.getLogger(__name__)
+import services.dynamic_settings as ds
+from services.ssrf_guard import is_private_url as _ssrf_is_private
 
-DEFAULT_MIRROR_BASE = (
-    Path(settings.GIT_MIRROR_BASE_PATH)
-    if settings.GIT_MIRROR_BASE_PATH
-    else Path(tempfile.gettempdir()) / "observal_mirrors"
-)
+_git_mirror_path = ds.get_sync("misc.git_mirror_base_path")
+DEFAULT_MIRROR_BASE = Path(_git_mirror_path) if _git_mirror_path else Path(tempfile.gettempdir()) / "observal_mirrors"
 
 
 @dataclass
@@ -39,12 +40,14 @@ class SyncResult:
 
 def _mirror_path(git_url: str, base: Path = DEFAULT_MIRROR_BASE) -> Path:
     """Content-addressed mirror directory."""
+    optic.trace("computing mirror path for {}", git_url)
     url_hash = hashlib.sha256(git_url.encode()).hexdigest()[:16]
     return base / url_hash
 
 
 def _run_git(args: list[str], cwd: str | None = None, timeout: int = 120) -> subprocess.CompletedProcess:
     """Run a git command with timeout."""
+    optic.trace("running git: {} (timeout={}s)", " ".join(args[:3]), timeout)
     return subprocess.run(
         ["git", *args],
         cwd=cwd,
@@ -56,6 +59,15 @@ def _run_git(args: list[str], cwd: str | None = None, timeout: int = 120) -> sub
 
 def clone_or_update(git_url: str, branch: str = "main", base: Path = DEFAULT_MIRROR_BASE) -> Path:
     """Shallow clone or update a repo mirror. Returns the mirror directory path."""
+    optic.trace("cloning {} (branch={})", git_url, branch)
+    # Block SSRF via git clone (SEC-013).
+    # Set ALLOW_INTERNAL_GIT_URLS=true for self-hosted GitLab / GitHub Enterprise.
+    if (
+        git_url.startswith(("http://", "https://"))
+        and not ds.get_sync_bool("security.allow_internal_git_urls")
+        and _ssrf_is_private(git_url)
+    ):
+        raise ValueError(f"Repository URL resolves to a private/internal address: {git_url}")
     base.mkdir(parents=True, exist_ok=True)
     mirror_dir = _mirror_path(git_url, base)
 
@@ -91,6 +103,7 @@ def clone_or_update(git_url: str, branch: str = "main", base: Path = DEFAULT_MIR
 
 def get_commit_sha(mirror_dir: Path) -> str:
     """Get the current HEAD commit SHA."""
+    optic.trace("scanning mirror directory for components")
     result = _run_git(["rev-parse", "HEAD"], cwd=str(mirror_dir))
     if result.returncode != 0:
         return ""
@@ -99,6 +112,7 @@ def get_commit_sha(mirror_dir: Path) -> str:
 
 def discover_components(mirror_dir: Path, component_type: str | None = None) -> list[DiscoveredComponent]:
     """Discover components using manifest (primary) or convention scan (fallback)."""
+    optic.trace("discovering {} components in mirror", component_type)
     # Try manifest first
     for manifest_name in (".observal.json", "observal.json"):
         manifest_path = mirror_dir / manifest_name
@@ -107,7 +121,7 @@ def discover_components(mirror_dir: Path, component_type: str | None = None) -> 
                 manifest = json.loads(manifest_path.read_text())
                 return _parse_manifest(manifest, component_type, mirror_dir=mirror_dir)
             except (json.JSONDecodeError, KeyError) as e:
-                logger.warning("Invalid manifest %s: %s", manifest_path, e)
+                optic.warning("Invalid manifest {}: {}", manifest_path, e)
                 # Fall through to convention scan
 
     # Convention scan fallback
@@ -116,6 +130,7 @@ def discover_components(mirror_dir: Path, component_type: str | None = None) -> 
 
 def _safe_path(base: Path, rel: str) -> bool:
     """Check that a relative path stays within base (no traversal)."""
+    optic.trace("resolving relative path")
     try:
         resolved = (base / rel).resolve()
         return resolved == base.resolve() or str(resolved).startswith(str(base.resolve()) + "/")
@@ -127,6 +142,7 @@ def _parse_manifest(
     manifest: dict, component_type: str | None = None, mirror_dir: Path | None = None
 ) -> list[DiscoveredComponent]:
     """Parse .observal.json manifest."""
+    optic.trace("parsing component manifest")
     components = []
     type_keys = {
         "mcp": "mcps",
@@ -145,7 +161,7 @@ def _parse_manifest(
             comp_path = entry.get("path", "")
             # Reject path traversal attempts
             if mirror_dir and not _safe_path(mirror_dir, comp_path):
-                logger.warning("Skipping component with unsafe path: %s", comp_path)
+                optic.warning("Skipping component with unsafe path: {}", comp_path)
                 continue
             components.append(
                 DiscoveredComponent(
@@ -180,6 +196,7 @@ _COMPONENT_MARKERS = {
 
 def _scan_by_convention(mirror_dir: Path, component_type: str | None = None) -> list[DiscoveredComponent]:
     """Discover components by scanning conventional directories."""
+    optic.trace("discovering {} components in mirror", component_type)
     components = []
     types_to_scan = (
         {component_type: _CONVENTION_DIRS[component_type]}
@@ -215,6 +232,7 @@ _FASTMCP_PATTERN = re.compile(r"FastMCP\(|from\s+mcp\.server\.fastmcp\s+import|f
 
 def validate_mcp_component(component_path: Path) -> tuple[bool, str]:
     """Validate an MCP component uses FastMCP. Returns (passed, detail)."""
+    optic.trace("validating component at discovered path")
     for py_file in component_path.rglob("*.py"):
         if ".git" in py_file.parts or py_file.is_symlink():
             continue
@@ -231,6 +249,7 @@ def sync_source(
     git_url: str, component_type: str, branch: str = "main", base: Path = DEFAULT_MIRROR_BASE
 ) -> SyncResult:
     """Full sync pipeline: clone -> discover -> validate. Returns SyncResult."""
+    optic.debug("mirroring {} components from {} (branch={})", component_type, git_url, branch)
     try:
         mirror_dir = clone_or_update(git_url, branch=branch, base=base)
         commit_sha = get_commit_sha(mirror_dir)
@@ -243,7 +262,7 @@ def sync_source(
                 comp_path = mirror_dir / comp.path
                 passed, detail = validate_mcp_component(comp_path)
                 if not passed:
-                    logger.warning("MCP validation failed for %s: %s", comp.name, detail)
+                    optic.warning("MCP validation failed for {}: {}", comp.name, detail)
                     continue  # Skip invalid MCPs
             valid_components.append(comp)
 
@@ -253,5 +272,5 @@ def sync_source(
             commit_sha=commit_sha,
         )
     except Exception as e:
-        logger.exception("Sync failed for %s", git_url)
+        optic.error("Sync failed for {}", git_url)
         return SyncResult(success=False, error=str(e))

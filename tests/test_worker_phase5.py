@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Unit tests for Redis service and arq worker: Phase 5."""
 
 import json
@@ -6,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.redis import close, enqueue_eval, get_redis, publish
+from services.redis import close, get_redis, publish
 
 # --- Redis client ---
 
@@ -36,35 +42,6 @@ class TestPublish:
         mock_redis.publish.side_effect = ConnectionError("connection refused")
         with patch("services.redis.get_redis", return_value=mock_redis):
             await publish("ch", {})  # should not raise
-
-
-# --- Enqueue ---
-
-
-class TestEnqueueEval:
-    @pytest.mark.asyncio
-    async def test_enqueues_via_arq(self):
-        mock_pool = AsyncMock()
-        with patch("services.redis._get_arq_pool", return_value=mock_pool):
-            await enqueue_eval("agent-1", "trace-1")
-            mock_pool.enqueue_job.assert_called_once_with(
-                "run_eval",
-                "agent-1",
-                "trace-1",
-                _job_id="eval:agent-1:trace-1",
-            )
-
-    @pytest.mark.asyncio
-    async def test_no_trace_id_dedup_key(self):
-        mock_pool = AsyncMock()
-        with patch("services.redis._get_arq_pool", return_value=mock_pool):
-            await enqueue_eval("agent-1")
-            mock_pool.enqueue_job.assert_called_once_with(
-                "run_eval",
-                "agent-1",
-                None,
-                _job_id="eval:agent-1:all",
-            )
 
 
 # --- Close ---
@@ -100,33 +77,7 @@ class TestWorkerSettings:
     def test_max_jobs(self):
         from worker import WorkerSettings
 
-        assert WorkerSettings.max_jobs == 5
-
-
-class TestRunEval:
-    @pytest.mark.asyncio
-    async def test_calls_eval_and_publishes(self):
-        from worker import run_eval
-
-        mock_traces = [{"trace_id": "t1", "spans": []}]
-        mock_result = {"score": 0.9}
-
-        with (
-            patch("services.eval.eval_service.fetch_traces", new_callable=AsyncMock, return_value=mock_traces),
-            patch("services.eval.eval_service.evaluate_trace", new_callable=AsyncMock, return_value=mock_result),
-            patch("worker.publish", new_callable=AsyncMock) as mock_pub,
-        ):
-            await run_eval({}, "agent-1", "t1")
-            mock_pub.assert_called_once()
-            channel = mock_pub.call_args[0][0]
-            assert channel == "eval:agent-1"
-
-    @pytest.mark.asyncio
-    async def test_handles_eval_error(self):
-        from worker import run_eval
-
-        with patch("services.eval.eval_service.fetch_traces", new_callable=AsyncMock, side_effect=Exception("db down")):
-            await run_eval({}, "agent-1")  # should not raise
+        assert WorkerSettings.max_jobs == 15
 
 
 # --- Docker compose ---
@@ -141,7 +92,7 @@ class TestDockerCompose:
         with open(COMPOSE_PATH) as f:
             compose = yaml.safe_load(f)
         assert "observal-redis" in compose["services"]
-        assert compose["services"]["observal-redis"]["image"] == "redis:7-alpine"
+        assert compose["services"]["observal-redis"]["image"] == "redis:8-alpine"
 
     def test_worker_service_exists(self):
         import yaml

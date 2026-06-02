@@ -1,7 +1,10 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 
 import { useEffect, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { getUserRole } from "@/lib/api";
 
@@ -56,7 +59,7 @@ export function useRoleGuard(minRole: Role) {
     if (isSSR) return;
     if (role !== "" && !hasMinRole(role, minRole)) {
       toast.error("You do not have permission to access this page.");
-      router.replace("/");
+      router.navigate({ to: "/", replace: true });
     }
   }, [isSSR, role, minRole, router]);
 

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for agent release, versions, and pull commands."""
 
 from __future__ import annotations
@@ -32,7 +35,6 @@ def agent_yaml_dir(tmp_path: Path) -> Path:
         "prompt": "You are a helpful agent.",
         "supported_ides": ["claude-code"],
         "components": [{"component_type": "mcp", "component_id": "abc-123"}],
-        "goal_template": {"description": "Do things", "sections": [{"name": "default", "description": "default"}]},
     }
     (tmp_path / "observal-agent.yaml").write_text(yaml.dump(data))
     return tmp_path

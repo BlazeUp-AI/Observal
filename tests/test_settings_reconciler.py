@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the declarative settings reconciler.
 
 Covers: fresh install, HTTP→command upgrade, preserve foreign hooks,
@@ -19,14 +22,13 @@ from observal_cli.ide_specs.claude_code_hooks_spec import (
     HOOKS_SPEC_VERSION,
     get_desired_env,
     get_desired_hooks,
-    is_observal_hook_entry,
-    is_observal_matcher_group,
 )
 from observal_cli.settings_reconciler import (
     reconcile,
     reconcile_env,
     reconcile_hooks,
 )
+from observal_cli.shared.utils import is_observal_hook_entry, is_observal_matcher_group
 
 # ── Fixtures ──────────────────────────────────────────────────
 

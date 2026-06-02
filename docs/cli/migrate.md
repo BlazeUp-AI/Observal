@@ -1,13 +1,16 @@
+<!-- SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # observal migrate
 
 Portable migration tools for moving an Observal instance between environments. The workflow has two phases:
 
-* **Phase 1 (shallow copy)** — exports PostgreSQL registry data (users, agents, components, feedback, eval runs, etc.) to a `.tar.gz` archive of JSONL files.
-* **Phase 2 (deep copy)** — exports ClickHouse telemetry data (traces, spans, scores, audit logs, security events) to monthly Parquet files.
+* **Phase 1 (shallow copy)**: exports PostgreSQL registry data (users, agents, components, feedback, etc.) to a `.tar.gz` archive of JSONL files.
+* **Phase 2 (deep copy)**: exports ClickHouse telemetry data (traces, spans, scores, audit logs, security events) to monthly Parquet files.
 
 Phase 2 depends on Phase 1. You must complete the shallow copy export and import before running the deep copy.
 
-All migrate commands require **admin** or **super_admin** role.
+All migrate commands require **super_admin** role.
 
 ### Prerequisites
 
@@ -50,7 +53,6 @@ All registry tables in dependency order:
 * Agents, agent goal templates, agent components
 * Validation results, downloads, submissions
 * Feedback, alert rules, alert history
-* Eval runs, scorecards, scorecard dimensions
 
 The export uses a `REPEATABLE READ` transaction for a consistent snapshot. No data is modified on the source.
 
@@ -58,9 +60,9 @@ The export uses a `REPEATABLE READ` transaction for a consistent snapshot. No da
 
 The archive contains:
 
-* `manifest.json` — schema version, migration ID, table checksums, row counts, source Alembic version
-* `migration_manifest.json` — used by Phase 2 as a gate (must exist before telemetry export)
-* `pg/<table>.jsonl` — one JSONL file per table
+* `manifest.json`: schema version, migration ID, table checksums, row counts, source Alembic version
+* `migration_manifest.json`: used by Phase 2 as a gate (must exist before telemetry export)
+* `pg/<table>.jsonl`: one JSONL file per table
 
 A sidecar `<archive-name>.manifest.json` is written alongside the archive for Phase 2 consumption.
 
@@ -153,8 +155,8 @@ observal migrate validate --archive <path> [--db-url <postgres-url>]
 
 #### What it checks
 
-1. **Checksum verification** — SHA-256 of each JSONL file matches the manifest
-2. **Cross-database comparison** (when `--db-url` provided) — row counts in the archive vs the live database
+1. **Checksum verification**: SHA-256 of each JSONL file matches the manifest
+2. **Cross-database comparison** (when `--db-url` provided): row counts in the archive vs the live database
 
 #### Example
 
@@ -204,7 +206,7 @@ observal migrate export-telemetry \
 | Option | Description |
 | --- | --- |
 | `--clickhouse-url` | Source ClickHouse connection string (required). Format: `clickhouse://user:pass@host:port/db` |
-| `--manifest` | Path to the `migration_manifest.json` from Phase 1 (required). Acts as a gate — Phase 1 must be complete. |
+| `--manifest` | Path to the `migration_manifest.json` from Phase 1 (required). Acts as a gate; Phase 1 must be complete. |
 | `--output-dir` | Directory for exported Parquet files (required). Must be empty or non-existent. |
 
 #### What it exports
@@ -213,7 +215,7 @@ observal migrate export-telemetry \
 | --- | --- | --- | --- |
 | `traces` | ReplacingMergeTree | `start_time` | Top-level trace records |
 | `spans` | ReplacingMergeTree | `start_time` | Individual span records |
-| `scores` | ReplacingMergeTree | `timestamp` | Eval and feedback scores |
+| `scores` | ReplacingMergeTree | `timestamp` | Feedback and rating scores |
 | `audit_log` | MergeTree | `timestamp` | Audit trail entries |
 | `otel_logs` | MergeTree | `Timestamp` | OpenTelemetry log records |
 | `security_events` | MergeTree | `timestamp` | Security event records |
@@ -221,14 +223,14 @@ observal migrate export-telemetry \
 
 Data is partitioned by month. Each non-empty month produces one Parquet file (e.g. `traces_2025-01.parquet`).
 
-A cutoff timestamp is recorded at export start to ensure consistency — no data written after the export begins is included.
+A cutoff timestamp is recorded at export start to ensure consistency: no data written after the export begins is included.
 
 #### Output
 
 The output directory contains:
 
-* `<table>_<YYYY>-<MM>.parquet` — monthly Parquet files per table
-* `telemetry_manifest.json` — migration ID, checksums, row counts, time ranges, FK validation state
+* `<table>_<YYYY>-<MM>.parquet`: monthly Parquet files per table
+* `telemetry_manifest.json`: migration ID, checksums, row counts, time ranges, FK validation state
 
 #### Example
 
@@ -292,7 +294,7 @@ observal migrate import-telemetry \
 
 * Verifies checksums before importing anything
 * Skips partitions that already have data (idempotent)
-* Maintains resume state (`.import_state.json`) — safe to interrupt and re-run
+* Maintains resume state (`.import_state.json`), safe to interrupt and re-run
 * Validates resume state on restart (re-imports tables that lost data)
 
 #### Example
@@ -356,9 +358,9 @@ observal migrate validate-telemetry \
 
 #### What it checks
 
-1. **Checksum verification** — SHA-256 of each Parquet file matches the telemetry manifest
-2. **Row count comparison** (when `--clickhouse-url` provided) — manifest counts vs live ClickHouse
-3. **FK validation** (when `--target-db-url` provided) — checks that `agent_id`, `mcp_id`, and `user_id` references in telemetry data point to rows that exist in PostgreSQL. Orphaned IDs are reported (up to 10,000 per FK column).
+1. **Checksum verification**: SHA-256 of each Parquet file matches the telemetry manifest
+2. **Row count comparison** (when `--clickhouse-url` provided): manifest counts vs live ClickHouse
+3. **FK validation** (when `--target-db-url` provided): checks that `agent_id`, `mcp_id`, and `user_id` references in telemetry data point to rows that exist in PostgreSQL. Orphaned IDs are reported (up to 10,000 per FK column).
 
 #### Example
 
@@ -398,41 +400,73 @@ FK validation:
 
 ## Full Migration Workflow
 
-A complete environment migration from source to target:
+A complete environment migration from source to target, step by step.
+
+### Prerequisites
 
 ```bash
-# 1. Export PostgreSQL registry (shallow copy)
+# Ensure you're logged in as admin on the target
+observal auth whoami
+
+# Get the target org ID (needed for --org-id and --project-id)
+docker exec <target-db-container> psql -U postgres -d observal \
+  -c "SELECT id FROM organizations LIMIT 1;" -t
+```
+
+Save the org ID; you'll use it in steps 2 and 5.
+
+### Phase 1: Shallow Copy (PostgreSQL registry data)
+
+```bash
+# Step 1: Export from source
 observal migrate export \
-  --db-url "postgresql://user:pass@source-host:5432/observal" \
-  --output ./migration/registry.tar.gz
+  --db-url <source-postgres-url> \
+  --output ./migration/export.tar.gz
 
-# 2. Import into target PostgreSQL
+# Step 2: Import into target (with org remapping)
 observal migrate import \
-  --db-url "postgresql://user:pass@target-host:5432/observal" \
-  --archive ./migration/registry.tar.gz
+  --db-url <target-postgres-url> \
+  --archive ./migration/export.tar.gz \
+  --org-id <target-org-id>
 
-# 3. Validate the import
+# Step 3: Validate
 observal migrate validate \
-  --archive ./migration/registry.tar.gz \
-  --db-url "postgresql://user:pass@target-host:5432/observal"
+  --archive ./migration/export.tar.gz \
+  --db-url <target-postgres-url>
+```
 
-# 4. Export ClickHouse telemetry (deep copy)
+### Phase 2: Deep Copy (ClickHouse telemetry data)
+
+```bash
+# Step 4: Export telemetry from source
 observal migrate export-telemetry \
-  --clickhouse-url "clickhouse://default:pass@source-host:8123/observal" \
-  --manifest ./migration/registry.manifest.json \
+  --clickhouse-url <source-clickhouse-url> \
+  --manifest ./migration/export.manifest.json \
   --output-dir ./migration/telemetry/
 
-# 5. Import telemetry into target ClickHouse
+# Step 5: Import telemetry into target (with project_id remapping)
 observal migrate import-telemetry \
-  --clickhouse-url "clickhouse://default:pass@target-host:8123/observal" \
-  --input-dir ./migration/telemetry/
+  --clickhouse-url <target-clickhouse-url> \
+  --input-dir ./migration/telemetry/ \
+  --project-id <target-org-id>
 
-# 6. Validate telemetry with FK cross-check
+# Step 6: Validate telemetry
 observal migrate validate-telemetry \
   --input-dir ./migration/telemetry/ \
-  --clickhouse-url "clickhouse://default:pass@target-host:8123/observal" \
-  --target-db-url "postgresql://user:pass@target-host:5432/observal"
+  --clickhouse-url <target-clickhouse-url>
 ```
+
+### Verify
+
+```bash
+# Check agents are visible
+observal agent list
+
+# Check telemetry landed
+observal ops traces --limit 5
+```
+
+> **Note:** The `--org-id` and `--project-id` flags use the same value, your target org UUID. This ensures all imported data (PostgreSQL and ClickHouse) is scoped to the correct org and visible in the UI.
 
 ## Connection String Formats
 
@@ -451,7 +485,17 @@ The `clickhouses://` scheme maps to HTTPS with a default port of 8443. Use it wh
 * Archives contain **hashed** credentials (SHA-256 API keys, bcrypt passwords). They cannot be reversed, but treat them as sensitive.
 * Parquet files may contain **PII** in trace input/output fields (user prompts, agent responses).
 * Store migration artifacts securely and delete after successful import and validation.
-* The `--project-id` flag on `import-telemetry` rewrites ownership — use it when migrating between orgs to avoid data leaking across tenants.
+* The `--project-id` flag on `import-telemetry` rewrites ownership. Use it when migrating between orgs to avoid data leaking across tenants.
+
+## Managed Postgres Note
+
+The `migrate import` command uses `SET session_replication_role = 'replica'` to disable trigger-based FK enforcement during bulk import. On managed Postgres services this requires elevated privileges:
+
+* **AWS RDS**: requires `rds_superuser` role membership
+* **Google Cloud SQL**: requires `cloudsqlsuperuser` role
+* **Azure Database for PostgreSQL**: requires `azure_pg_admin` role
+
+If you encounter a permission error during import, ask your DBA to grant the appropriate role to the migration user.
 
 ## Exit Codes
 
@@ -467,5 +511,5 @@ The `clickhouses://` scheme maps to HTTPS with a default port of 8443. Use it wh
 
 ## Related
 
-* [`observal admin`](admin.md) — admin commands (required role for migrate)
-* [`observal auth`](auth.md) — authentication (must be logged in as admin)
+* [`observal admin`](admin.md): admin commands
+* [`observal auth`](auth.md): authentication (must be logged in as super_admin)

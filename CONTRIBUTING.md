@@ -1,10 +1,27 @@
+<!-- SPDX-FileCopyrightText: 2026 Ai-chan-0411 <aoikabu12@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Luca Magrini <lucamagrini1234@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # Contributing to Observal
 
-Thank you for considering contributing to Observal! Contributions of all kinds are welcome: bug reports, bug fixes, new features, documentation improvements, and tests. This guide walks you through the process from setting up your environment to getting your pull request merged.
+Thank you for considering contributing to Observal. Contributions of all kinds are welcome: bug reports, bug fixes, new features, documentation improvements, and tests.
 
-Please note that this project is released with a [Contributor Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project you agree to abide by its terms.
+> [!TIP]
+> This page is a quick-start summary. For the full setup walkthrough, architecture notes, and detailed workflows, see the [Development Guide](docs/DEVELOPMENT_GUIDE.md).
 
-If you have questions about contributing or want to discuss your ideas before opening a PR, join the [Observal Discord](https://discord.observal.io) to chat with the maintainers.
+> [!IMPORTANT]
+> **Discord is our primary communication channel.** Join at [discord.observal.io](https://discord.observal.io) and ask questions in **#contributing**, report bugs in **#bug**, or discuss ideas in **#feature-requests**. GitHub issues and PRs are for concrete, actionable items, not exploratory discussion.
+
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) and [AI Policy](AI_POLICY.md) before contributing.
+
+> Parts of this guide were inspired by the contributing documentation from [AnkiDroid/Anki-Android](https://github.com/ankidroid/Anki-Android). They set a great standard for OSS contributor docs and were one of the first open-source projects some of our maintainers were part of. If you are looking for another welcoming OSS project, check them out.
+
+---
 
 ## Table of Contents
 
@@ -13,8 +30,11 @@ If you have questions about contributing or want to discuss your ideas before op
 - [Making Changes](#making-changes)
 - [Submitting a Pull Request](#submitting-a-pull-request)
 - [Reporting Issues](#reporting-issues)
-- [Codebase Context](#codebase-context)
+- [Enterprise Directory](#enterprise-directory-ee)
 - [License](#license)
+- [CLA](#contributor-license-agreement-cla)
+
+---
 
 ## Getting Started
 
@@ -27,17 +47,9 @@ If you have questions about contributing or want to discuss your ideas before op
 
 ### Fork and Clone
 
-1. Fork the repository on GitHub.
-2. Clone your fork:
-
 ```bash
 git clone https://github.com/YOUR-USERNAME/Observal.git
 cd Observal
-```
-
-3. Add the upstream remote:
-
-```bash
 git remote add upstream https://github.com/BlazeUp-AI/Observal.git
 ```
 
@@ -52,75 +64,49 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-Wait for all services to be healthy (`docker compose -f docker/docker-compose.yml ps`), then install the CLI and log in:
+Wait for services to be healthy, then:
 
 ```bash
 uv tool install --editable .
 observal auth login
 ```
 
-The API starts at http://localhost:8000 and the web UI at http://localhost:3000. The `.env.example` seeds four demo accounts on first startup — log in with `super@demo.example` / `super-changeme` for full admin access. See [SETUP.md](SETUP.md) for all demo credentials and the full step-by-step walkthrough.
+The stack starts at `http://localhost` (nginx LB on port 80). The `.env.example` seeds demo accounts on first startup, log in with `super@demo.example` / `super-changeme` for admin access. See [SETUP.md](SETUP.md) for all credentials.
 
-**Frontend only (for UI work):**
+**Frontend only:**
 
 ```bash
-cd web
-pnpm install
-pnpm dev
+cd web && pnpm install && pnpm dev
 ```
 
-Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `web/.env.local` if the backend is on a different host.
+Set `NEXT_PUBLIC_API_URL=http://localhost` in `web/.env.local` if the backend is on a different host.
 
-See [SETUP.md](SETUP.md) for detailed configuration, eval engine setup, and troubleshooting.
+> [!NOTE]
+> See the [Development Guide](docs/DEVELOPMENT_GUIDE.md) for the full environment setup and troubleshooting steps.
 
-## Enterprise Directory (`ee/`)
-
-The `ee/` directory contains proprietary enterprise features licensed under the [Observal Enterprise License](ee/LICENSE). This code is **source-available** but requires a commercial license for production use.
-
-**Community contributions are not accepted into `ee/`.** All code in that directory is written exclusively by the Observal team. Pull requests that modify files under `ee/` will be closed.
-
-If you are unsure whether your change belongs in the open-source core or the enterprise directory, open an issue to discuss it first.
-
-The open-source core must never depend on code in `ee/`. The dependency direction is strictly one-way:
-
-- `ee/` code **can** import from the open-source core
-- Open-source code **cannot** import from `ee/`
-
-### Enterprise Setup
-
-To develop or test enterprise features locally, set `DEPLOYMENT_MODE=enterprise` in your `.env` and follow the standard setup in [SETUP.md](SETUP.md). Enterprise mode enables SSO-only authentication, SCIM user provisioning, and audit logging. You will need to configure OAuth/OIDC variables (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_SERVER_METADATA_URL`) — see the environment variables table in SETUP.md for details.
+---
 
 ## Finding Work
 
-Before starting work, check the [open issues](https://github.com/BlazeUp-AI/Observal/issues) to see what needs attention.
+Check [open issues](https://github.com/BlazeUp-AI/Observal/issues) before starting. Look for **good first issue** if you are new.
 
-- Look for issues labelled **good first issue** if you are new to the project.
-- For larger features or architectural changes, open an issue to discuss your approach before writing code. This avoids wasted effort if the direction needs adjustment.
+For larger changes, open an issue or discuss in **#contributing** on Discord before writing code.
 
-### Claiming Issues with `/take` and `/drop`
+### Claiming Issues
 
-Instead of commenting manually, you can use slash commands to self-assign issues:
+- **`/take`** on any `good first issue` or `help wanted` issue to self-assign.
+- **`/drop`** to release an issue you can no longer work on.
+- Max **2 open assigned issues** at a time.
+- Issues with no activity for **30 days** are automatically unassigned.
 
-- **`/take`** — Comment `/take` on any issue labeled `good first issue` or `help wanted` to assign it to yourself. The bot will confirm the assignment and link you to this contributing guide.
-- **`/drop`** — Comment `/drop` on an issue you are assigned to if you can no longer work on it. This frees the issue for other contributors.
+> [!WARNING]
+> Issues labeled `keep open` cannot be claimed. Anyone may submit a PR for those without assignment.
 
-**Rules:**
-
-- `/take` only works on issues labeled `good first issue` or `help wanted`.
-- Issues labeled `keep open` cannot be assigned — anyone can submit a PR for those without claiming them.
-- You can have at most **2 open issues** assigned to you at a time. If you try to take a third, the bot will list your current assignments so you can decide which to `/drop`.
-- If an issue is already assigned, `/take` will let you know who is working on it and suggest other available issues.
-- **Stale assignment cleanup:** Issues with no activity for 30 days are automatically unassigned. If you need more time, just post a comment with a progress update to reset the timer. You can always `/take` the issue again afterwards.
+---
 
 ## Making Changes
 
 ### Branch Naming
-
-Do not commit directly to `main`. Create a branch from the latest `main` with one of these prefixes:
-
-- `feature/` for new features
-- `fix/` for bug fixes
-- `docs/` for documentation
 
 ```
 feature/skill-registry
@@ -128,15 +114,28 @@ fix/clickhouse-insert-timeout
 docs/update-setup-guide
 ```
 
+Never commit directly to `main`.
+
 ### Code Style
 
-Python is linted and formatted with `ruff`. Dockerfiles are linted with `hadolint`. Pre-commit hooks enforce both - install them early so issues are caught before you commit.
-
 ```bash
-make hooks     # install pre-commit hooks
-make format    # auto-format
-make lint      # run linters
+make hooks     # install pre-commit hooks (do this first)
+make format    # auto-format Python and TypeScript
+make lint      # run all linters
 ```
+
+Python is formatted with `ruff`. Dockerfiles with `hadolint`. Pre-commit hooks enforce both.
+
+### SPDX Headers
+
+Every source file needs SPDX headers. The pre-commit hook adds them automatically.
+
+```python
+# SPDX-FileCopyrightText: 2026 Your Name <your@email.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+```
+
+Use `// ` for TypeScript, `<!-- -->` for Markdown. CI will block merge if any file is missing headers.
 
 ### Testing
 
@@ -145,15 +144,11 @@ make test      # quick
 make test-v    # verbose
 ```
 
-All tests must pass before submitting a PR. Tests mock all external services, so Docker does not need to be running. If you are adding a new feature or fixing a bug, include tests that cover the change.
+All tests must pass before submitting. Tests mock all external services so Docker is not required. Include tests for any feature or bug fix.
 
 ### Commit Messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>(<scope>): <description>
-```
 
 ```
 feat(cli): add skill submit command
@@ -161,93 +156,65 @@ fix(telemetry): handle null span timestamps
 docs: update contributing guide
 ```
 
-Keep the subject line under 72 characters, use the imperative mood ("add", not "added"), and do not end it with a period. If more detail is needed, add a blank line after the subject and write a longer description wrapped at 80 characters.
-
-### DCO Sign-off
-
-All commits must include a `Signed-off-by` line to certify the [Developer Certificate of Origin (DCO)](https://developercertificate.org/). The DCO is a lightweight agreement that confirms you wrote (or have the right to submit) your contribution and that it is licensed under the project's open-source Apache 2.0 license (for all code outside `ee/`).
-
-You can add the sign-off manually to your commit message:
-
-```
-feat(cli): add skill submit command
-
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-Or use the `-s` flag to have Git append it for you:
-
-```bash
-git commit -s -m "feat(cli): add skill submit command"
-```
-
-> **Note:** The project does not configure or encourage automatic sign-off (e.g. via Git hooks or aliases). The DCO sign-off is a conscious attestation that you have the right to submit your contribution. If you choose to automate it, that is your responsibility — you are still bound by its terms.
-
-Make sure your `user.name` and `user.email` in git config match the identity you want to use. A CI check and a pre-push hook will block PRs that have unsigned commits.
+Subject line under 72 characters, imperative mood, no trailing period.
 
 ### Changelog
 
-We maintain a [CHANGELOG.md](CHANGELOG.md) following the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. When submitting a PR that adds a feature, fixes a bug, or makes any user-facing change, add an entry under the `[Unreleased]` section in the appropriate category:
+Add an entry under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for any user-facing change.
 
-- **Added** for new features
-- **Changed** for changes in existing functionality
-- **Deprecated** for soon-to-be removed features
-- **Removed** for now removed features
-- **Fixed** for bug fixes
-- **Security** for vulnerability fixes
-
-Example:
-
-```markdown
-## [Unreleased]
-
-### Fixed
-
-- Resolve null span timestamp crash in telemetry ingestion
-```
-
-At release time, a maintainer will move unreleased entries into a versioned section.
+---
 
 ## Submitting a Pull Request
 
-1. Make sure your branch is up to date with `main`:
-   ```bash
-   git fetch upstream
-   git rebase upstream/main
-   ```
-2. Push your branch to your fork.
-3. Open a PR against `main` on the [Observal repository](https://github.com/BlazeUp-AI/Observal).
-4. Describe your changes clearly: what you changed and why. Link the related issue if one exists.
-5. Ensure CI passes (linters, tests).
-6. Ensure all commits are signed off (`git commit -s`).
-7. Add a changelog entry if your change is user-facing.
-8. Respond to review feedback and update your code if requested.
+> [!IMPORTANT]
+> Read the [AI Policy](AI_POLICY.md) before submitting. AI-assisted contributions are welcome but must meet the standards described there. **Autonomous coding agents (Devin, SWE-agent, OpenHands, and similar tools that write and submit code without meaningful human authorship) are not permitted**, see the AI Policy for the legal and practical reasons. PRs that show obvious signs of unreviewed AI output will be closed without review.
 
-Keep pull requests focused on a single concern. It is better to open three small PRs that each address one issue than one large PR that mixes unrelated changes. Smaller PRs are easier to review and faster to merge.
+1. Rebase against `main` before opening:
+    ```bash
+    git fetch upstream && git rebase upstream/main
+    ```
+2. Push your branch and open a PR against `main`.
+3. Fill in the PR template completely. PRs with unfilled or placeholder sections will be closed.
+4. Ensure CI passes (linters, tests, docker build).
+5. Add a changelog entry if your change is user-facing.
+6. Respond to review feedback promptly.
+
+Keep PRs focused on a single concern. Smaller PRs are easier to review and faster to merge.
+
+---
 
 ## Reporting Issues
 
-### Bug Reports
+### Bugs
 
-Search [existing issues](https://github.com/BlazeUp-AI/Observal/issues) first to avoid duplicates. When filing a bug report, include:
+Search [existing issues](https://github.com/BlazeUp-AI/Observal/issues) first. Include:
 
-- **Steps to reproduce** the problem
-- **Expected behaviour** vs **actual behaviour**
-- **Environment details**: OS, Python version, Node.js version, Docker version
-- **Error logs or screenshots** if applicable
-
-The more detail you provide, the faster the issue can be diagnosed.
+- Steps to reproduce
+- Expected vs actual behaviour
+- OS, Python, Node.js, Docker versions
+- Error logs or screenshots
 
 ### Feature Requests
 
-Describe the use case clearly. Explain the problem you are trying to solve, not just the solution you have in mind. This helps maintainers evaluate the request in the broader context of the project.
+Describe the problem you are solving, not just the solution. Discuss in **#feature-requests** on Discord first for larger features.
 
-## Codebase Context
+---
 
-See [AGENTS.md](AGENTS.md) for internal architecture notes, file layout, and conventions. See [docs/cli/README.md](docs/cli/README.md) for the full CLI command reference. Both are useful for new contributors and AI coding agents alike.
+## Enterprise Directory (`ee/`)
+
+> [!CAUTION]
+> Community contributions are **not accepted** into `ee/`. Pull requests touching `ee/` files will be closed. The open-source core must never import from `ee/`.
+
+The `ee/` directory is licensed under the [Observal Enterprise License](ee/LICENSE). The dependency is strictly one-way: `ee/` may import from the core, never the reverse.
+
+---
 
 ## License
 
-This repository uses a dual-license structure. By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE), which covers all code outside the `ee/` directory. The `ee/` directory is licensed separately under the [Observal Enterprise License](ee/LICENSE) and does not accept community contributions.
+All code outside `ee/` is licensed under [AGPL-3.0](LICENSE). The `ee/` directory is licensed under the [Observal Enterprise License](ee/LICENSE).
 
-The DCO sign-off on each commit is your explicit acknowledgement of this.
+---
+
+## Contributor License Agreement (CLA)
+
+The [CLA-assistant](https://cla-assistant.io) bot will prompt you to sign the [Observal CLA](CLA.md) on your first PR. You only need to sign once. For corporate contributions, contact contact@observal.io.

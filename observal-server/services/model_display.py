@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Shared display formatting for model catalog rows.
 
 Returns the (primary, secondary, is_rolling) tuple used by every UI surface.
@@ -23,21 +26,24 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
+from loguru import logger as optic
+
 # A trailing -YYYYMMDD (claude-3-5-sonnet-20241022) is the most common shape.
 _DATE_SUFFIX_DASH_COMPACT = re.compile(r"[-_\s](\d{8})$")
 # Sometimes models use -YYYY-MM-DD; not in our seed but tolerated.
 _DATE_SUFFIX_DASH_HYPHEN = re.compile(r"[-_\s](\d{4}-\d{2}-\d{2})$")
-# `Claude 3.5 Sonnet (2024-10-22)` — date in parens at the end of display_name.
+# `Claude 3.5 Sonnet (2024-10-22)` - date in parens at the end of display_name.
 _DATE_SUFFIX_PAREN = re.compile(r"\s*\((\d{4}-\d{2}-\d{2})\)\s*$")
 # `Claude Sonnet 4.5 (latest)` style suffix.
 _LATEST_PAREN = re.compile(r"\s*\(latest\)\s*$", re.IGNORECASE)
-# `gemini-1.5-pro-latest` — only used when display_name is empty and we fall through to model_id.
+# `gemini-1.5-pro-latest` - only used when display_name is empty and we fall through to model_id.
 _LATEST_DASH = re.compile(r"[-_]latest$", re.IGNORECASE)
 
 _MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
 def _strip_trailing_date(text: str) -> str:
+    optic.trace("computing display name from text")
     if not text:
         return text
     out = text
@@ -51,22 +57,24 @@ def _strip_trailing_date(text: str) -> str:
 
 def _has_trailing_date(model_id: str) -> tuple[bool, date | None]:
     """Return (has_date_suffix, parsed_date_or_None) for ``model_id``."""
+    optic.trace("looking up display name for model {}", model_id)
     m = _DATE_SUFFIX_DASH_COMPACT.search(model_id)
     if m:
         try:
-            return True, datetime.strptime(m.group(1), "%Y%m%d").date()
+            return True, datetime.strptime(m.group(1), "%Y%m{}").date()
         except ValueError:
             return True, None
     m = _DATE_SUFFIX_DASH_HYPHEN.search(model_id)
     if m:
         try:
-            return True, datetime.strptime(m.group(1), "%Y-%m-%d").date()
+            return True, datetime.strptime(m.group(1), "%Y-%m-{}").date()
         except ValueError:
             return True, None
     return False, None
 
 
 def _format_date(d: date) -> str:
+    optic.trace("building display entry")
     return f"{_MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"
 
 
@@ -87,6 +95,7 @@ def format_display(
             When True, dated rows render their date as secondary text and
             rolling rows render ``"latest"``.
     """
+    optic.trace("display entry: {} -> {}", model_id, display_name)
     raw = (display_name or model_id).strip()
     primary = _strip_trailing_date(raw) or raw
 

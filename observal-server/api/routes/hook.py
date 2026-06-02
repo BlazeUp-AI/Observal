@@ -1,10 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shreem Seth <shreemseth26@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import ROLE_HIERARCHY, get_db, optional_current_user, require_role, resolve_listing
+from api.deps import (
+    ROLE_HIERARCHY,
+    apply_visibility_filter,
+    check_listing_visibility,
+    get_db,
+    get_effective_component_permission,
+    optional_current_user,
+    require_role,
+    resolve_listing,
+)
 from api.routes.component_versions import create_version_router
 from api.sanitize import escape_like
 from models.hook import HookDownload, HookListing, HookVersion
@@ -12,6 +29,7 @@ from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.hook import (
     HookDraftRequest,
+    HookFileEntry,
     HookInstallRequest,
     HookInstallResponse,
     HookListingResponse,
@@ -19,7 +37,6 @@ from schemas.hook import (
     HookSubmitRequest,
     HookUpdateRequest,
 )
-from services.audit_helpers import audit
 from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
 
 router = APIRouter(prefix="/api/v1/hooks", tags=["hooks"])
@@ -31,6 +48,7 @@ async def submit_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("hook submit: name={}", req.name)
     existing = await db.execute(
         select(HookListing).where(HookListing.name == req.name, HookListing.submitted_by == current_user.id)
     )
@@ -55,12 +73,15 @@ async def submit_hook(
         priority=req.priority,
         handler_type=req.handler_type,
         handler_config=req.handler_config,
-        input_schema=req.input_schema,
-        output_schema=req.output_schema,
         scope=req.scope,
         tool_filter=req.tool_filter,
-        file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
+        script_content=req.script_content,
+        script_filename=req.script_filename,
+        source_url=req.source_url,
+        source_ref=req.source_ref,
+        source_path=req.source_path,
+        requirements=req.requirements,
         status=ListingStatus.pending,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -71,9 +92,6 @@ async def submit_hook(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.submit", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
     return HookListingResponse.model_validate(listing)
 
 
@@ -83,7 +101,9 @@ async def list_hooks(
     scope: str | None = Query(None),
     search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("hook list: search={}", search)
     stmt = (
         select(HookListing)
         .join(HookVersion, HookListing.latest_version_id == HookVersion.id)
@@ -96,9 +116,9 @@ async def list_hooks(
     if search:
         safe = escape_like(search)
         stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookVersion.description.ilike(f"%{safe}%"))
+    stmt = apply_visibility_filter(stmt, HookListing, current_user)
     result = await db.execute(stmt.order_by(HookListing.created_at.desc()))
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(None, "hook.list", resource_type="hook")
     return listings
 
 
@@ -107,12 +127,12 @@ async def my_hooks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("my_hooks called")
     stmt = (
         select(HookListing).where(HookListing.submitted_by == current_user.id).order_by(HookListing.created_at.desc())
     )
     result = await db.execute(stmt)
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
-    await audit(current_user, "hook.my_list", resource_type="hook")
     return listings
 
 
@@ -122,25 +142,21 @@ async def get_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
+    optic.debug("hook get: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        await audit(
-            current_user, "hook.view", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-        )
-        return HookListingResponse.model_validate(listing)
+        resp = HookListingResponse.model_validate(listing)
+        resp.user_permission = get_effective_component_permission(listing, current_user)
+        return resp
 
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    if current_user and (
-        listing.submitted_by == current_user.id
-        or ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.reviewer]
-    ):
-        await audit(
-            current_user, "hook.view", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-        )
-        return HookListingResponse.model_validate(listing)
+    if check_listing_visibility(listing, current_user):
+        resp = HookListingResponse.model_validate(listing)
+        resp.user_permission = get_effective_component_permission(listing, current_user)
+        return resp
 
     raise HTTPException(status_code=404, detail="Listing not found")
 
@@ -153,24 +169,29 @@ async def install_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("hook install: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
         listing = await resolve_listing(HookListing, listing_id, db)
-        if not listing or listing.submitted_by != current_user.id:
+        if not listing or get_effective_component_permission(listing, current_user) != "owner":
             raise HTTPException(status_code=404, detail="Listing not found or not approved")
 
     db.add(HookDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
     await db.commit()
 
-    from api.routes.config import derive_endpoints
-    from services.hook_config_generator import generate_hook_telemetry_config
+    from services.hook_install_generator import generate_hook_install_config
 
-    endpoints = derive_endpoints(request)
-    config = generate_hook_telemetry_config(listing, req.ide, server_url=endpoints["api"], platform=req.platform)
-    await audit(
-        current_user, "hook.install", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
+    result = generate_hook_install_config(listing, req.ide)
+    return HookInstallResponse(
+        listing_id=listing.id,
+        ide=req.ide,
+        config_snippet=result.get("config_snippet", {}),
+        config_path=result.get("config_path", ""),
+        files=[HookFileEntry(**f) for f in result.get("files", [])],
+        requirements=result.get("requirements", []),
+        source_fetch=result.get("source_fetch"),
+        notes=result.get("notes", []),
     )
-    return HookInstallResponse(listing_id=listing.id, ide=req.ide, config_snippet=config)
 
 
 @router.post("/draft", response_model=HookListingResponse)
@@ -179,6 +200,7 @@ async def save_hook_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("req={}", req)
     listing = HookListing(
         name=req.name,
         owner=req.owner or current_user.username or current_user.email,
@@ -197,12 +219,15 @@ async def save_hook_draft(
         priority=req.priority,
         handler_type=req.handler_type,
         handler_config=req.handler_config,
-        input_schema=req.input_schema,
-        output_schema=req.output_schema,
         scope=req.scope,
         tool_filter=req.tool_filter,
-        file_pattern=req.file_pattern,
         supported_ides=req.supported_ides,
+        script_content=req.script_content,
+        script_filename=req.script_filename,
+        source_url=req.source_url,
+        source_ref=req.source_ref,
+        source_path=req.source_path,
+        requirements=req.requirements,
         status=ListingStatus.draft,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -213,9 +238,6 @@ async def save_hook_draft(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.draft.create", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
     return HookListingResponse.model_validate(listing)
 
 
@@ -226,10 +248,11 @@ async def update_hook_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
         raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
@@ -246,12 +269,15 @@ async def update_hook_draft(
         "priority",
         "handler_type",
         "handler_config",
-        "input_schema",
-        "output_schema",
         "scope",
         "tool_filter",
-        "file_pattern",
         "supported_ides",
+        "script_content",
+        "script_filename",
+        "source_url",
+        "source_ref",
+        "source_path",
+        "requirements",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -273,13 +299,10 @@ async def update_hook_draft(
 
     await db.commit()
     await db.refresh(listing)
-    if listing.status == ListingStatus.pending:
-        action = "hook.pending.update"
-    elif listing.status == ListingStatus.rejected:
-        action = "hook.rejected.update"
+    if listing.status == ListingStatus.pending or listing.status == ListingStatus.rejected:
+        pass
     else:
-        action = "hook.draft.update"
-    await audit(current_user, action, resource_type="hook", resource_id=str(listing.id), resource_name=listing.name)
+        pass
     return HookListingResponse.model_validate(listing)
 
 
@@ -289,10 +312,11 @@ async def start_edit_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     ver = listing.latest_version
     if not ver:
@@ -312,10 +336,11 @@ async def cancel_edit_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     ver = listing.latest_version
     if not ver:
@@ -331,10 +356,11 @@ async def submit_hook_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
         raise HTTPException(status_code=400, detail="Listing is not a draft")
@@ -345,9 +371,6 @@ async def submit_hook_draft(
     listing.status = ListingStatus.pending
     await db.commit()
     await db.refresh(listing)
-    await audit(
-        current_user, "hook.draft.submit", resource_type="hook", resource_id=str(listing.id), resource_name=listing.name
-    )
     return HookListingResponse.model_validate(listing)
 
 
@@ -357,11 +380,12 @@ async def delete_hook(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("hook delete: listing_id={}", listing_id)
     listing = await resolve_listing(HookListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
-    if listing.submitted_by != current_user.id and not is_admin:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not authorized")
     if listing.status == ListingStatus.approved and not is_admin:
         raise HTTPException(status_code=400, detail="Cannot delete an approved listing. Contact an admin.")
@@ -370,7 +394,6 @@ async def delete_hook(
         await db.delete(r)
 
     # Break the circular FK (listing → latest_version → listing) before delete
-    listing_name = listing.name
     listing.latest_version_id = None
     listing.latest_version = None
     await db.flush()
@@ -380,9 +403,6 @@ async def delete_hook(
     await db.flush()
     await db.delete(listing)
     await db.commit()
-    await audit(
-        current_user, "hook.delete", resource_type="hook", resource_id=str(listing_id), resource_name=listing_name
-    )
     return {"deleted": str(listing_id)}
 
 

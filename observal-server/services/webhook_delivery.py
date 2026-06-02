@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Async webhook delivery service with HMAC signing and retry logic.
 
 Delivers signed webhooks with exponential backoff. Records delivery
@@ -6,18 +9,16 @@ outcomes to an in-memory buffer for batch-insert to ClickHouse.
 
 import asyncio
 import json
-import logging
 import time
 import uuid
 from dataclasses import dataclass
 from uuid import UUID
 
 import httpx
+from loguru import logger as optic
 
-from services.alert_evaluator import is_private_url
+from services.ssrf_guard import is_private_url
 from services.webhook_signer import HEADER_EVENT_ID, build_headers
-
-logger = logging.getLogger(__name__)
 
 # Buffer for batch ClickHouse inserts (AD-1)
 _delivery_buffer: list[dict] = []
@@ -65,6 +66,7 @@ def _buffer_delivery_record(
     payload_size: int,
 ) -> None:
     """Buffer a delivery record for later batch-insert to ClickHouse."""
+    optic.trace("buffering delivery record for alert rule")
     from datetime import UTC, datetime
 
     record = {
@@ -84,9 +86,9 @@ def _buffer_delivery_record(
 
     # Hard cap: flush immediately if buffer grows too large (burst protection)
     if len(_delivery_buffer) >= _BUFFER_FLUSH_THRESHOLD:
-        logger.info("Delivery buffer hit threshold (%d), scheduling flush", _BUFFER_FLUSH_THRESHOLD)
+        optic.info("Delivery buffer hit threshold ({}), scheduling flush", _BUFFER_FLUSH_THRESHOLD)
         # Note: actual flush is async and called by the evaluator at cycle end
-        # This is a safety net — in practice the evaluator flushes first
+        # This is a safety net - in practice the evaluator flushes first
 
 
 async def flush_delivery_records() -> int:
@@ -108,10 +110,10 @@ async def flush_delivery_records() -> int:
         from services.clickhouse import _insert_webhook_deliveries
 
         await _insert_webhook_deliveries(records)
-        logger.info("Flushed %d delivery records to ClickHouse", len(records))
+        optic.info("Flushed {} delivery records to ClickHouse", len(records))
     except Exception as e:
-        logger.error("Failed to flush delivery records to ClickHouse: %s", e)
-        # Don't re-raise — delivery recording is best-effort
+        optic.error("Failed to flush delivery records to ClickHouse: {}", e)
+        # Don't re-raise - delivery recording is best-effort
 
     return len(records)
 
@@ -143,6 +145,7 @@ async def deliver_webhook(
         DeliveryResult with outcome details.
     """
     # SSRF protection
+    optic.debug("delivery attempt")
     if is_private_url(webhook_url):
         return DeliveryResult(
             success=False,
@@ -198,7 +201,7 @@ async def deliver_webhook(
                         event_id=event_id,
                     )
 
-                # Don't retry 4xx (client error — retrying won't help)
+                # Don't retry 4xx (client error - retrying won't help)
                 if resp.status_code < 500:
                     last_error = f"HTTP {resp.status_code}"
                     break

@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import enum
 import uuid
 from datetime import UTC, datetime
@@ -20,9 +26,15 @@ class InsightReport(Base):
     __tablename__ = "insight_reports"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id"), nullable=False)
-    triggered_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    status: Mapped[InsightReportStatus] = mapped_column(Enum(InsightReportStatus), default=InsightReportStatus.pending)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    triggered_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[InsightReportStatus] = mapped_column(
+        Enum(InsightReportStatus, name="insight_report_status"), default=InsightReportStatus.pending
+    )
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -46,3 +58,7 @@ class InsightReport(Base):
     )
     aggregated_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     report_version: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Self-learn fields
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_items: Mapped[dict | None] = mapped_column(JSON, nullable=True)

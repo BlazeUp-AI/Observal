@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the preview-config endpoint.
 
 Verifies that POST /api/v1/agents/preview-config returns IDE config files
@@ -72,7 +75,6 @@ class TestPreviewConfigNoComponents:
         assert "claude-code" in configs
         assert "kiro" in configs
         assert "cursor" in configs
-        assert "vscode" in configs
         assert "gemini-cli" in configs
         assert "codex" in configs
         assert "copilot" in configs
@@ -126,25 +128,6 @@ class TestPreviewConfigNoComponents:
         assert agent_json["model"] is None
         assert "includeMcpJson" in agent_json
         assert "Agent Specialization" in agent_json["prompt"]
-
-    async def test_vscode_uses_correct_paths(self):
-        app, db, _user = _app_with()
-
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            res = await client.post(
-                "/api/v1/agents/preview-config",
-                json={
-                    "name": "vs-test",
-                    "description": "",
-                    "prompt": "",
-                    "model_name": "",
-                    "components": [],
-                },
-            )
-
-        assert res.status_code == 200
-        files = res.json()["configs"]["vscode"]
-        assert ".github/instructions/vs-test.instructions.md" in files
 
     async def test_copilot_uses_agent_md_path(self):
         app, db, _user = _app_with()

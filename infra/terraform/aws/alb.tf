@@ -1,10 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # tfsec:ignore:aws-elb-alb-not-public Public-facing load balancer is the entrypoint for end users; restrict reachability via var.alb_ingress_cidrs and (optionally) a WAF.
 resource "aws_lb" "app" {
   name               = "${local.name}-alb"
-  internal           = false
+  internal           = local.create_vpc ? false : true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  subnets            = local.create_vpc ? local.public_subnet_ids : local.private_subnet_ids
 
   drop_invalid_header_fields = true
   tags                       = { Name = "${local.name}-alb" }
@@ -16,7 +19,7 @@ resource "aws_lb_target_group" "web" {
   name        = "${local.name}-web-tg"
   port        = 3000
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
   target_type = "ip"
 
   deregistration_delay = 30
@@ -37,7 +40,7 @@ resource "aws_lb_target_group" "api" {
   name        = "${local.name}-api-tg"
   port        = 8000
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
   target_type = "ip"
 
   deregistration_delay = 30
@@ -59,7 +62,7 @@ resource "aws_lb_target_group" "grafana" {
   name        = "${local.name}-grafana-tg"
   port        = 3001
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
   target_type = "ip"
 
   deregistration_delay = 30
@@ -127,8 +130,31 @@ resource "aws_lb_listener_rule" "http_api" {
   }
 }
 
+# Operational metadata paths (/docs, /redoc, /openapi.json).
+# Blocked by default (SEC-018); set enable_public_ops_paths=true to expose them.
+resource "aws_lb_listener_rule" "http_ops_block" {
+  count        = (local.enable_tls ? 0 : 1) * (var.enable_public_ops_paths ? 0 : 1)
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 90
+
+  action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not found"
+      status_code  = "403"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/openapi.json", "/docs", "/docs/*", "/redoc"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "http_api_docs" {
-  count        = local.enable_tls ? 0 : 1
+  count        = (local.enable_tls ? 0 : 1) * (var.enable_public_ops_paths ? 1 : 0)
   listener_arn = aws_lb_listener.http.arn
   priority     = 110
 
@@ -229,8 +255,29 @@ resource "aws_lb_listener_rule" "https_api" {
   }
 }
 
+resource "aws_lb_listener_rule" "https_ops_block" {
+  count        = (local.enable_tls ? 1 : 0) * (var.enable_public_ops_paths ? 0 : 1)
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 90
+
+  action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Not found"
+      status_code  = "403"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/openapi.json", "/docs", "/docs/*", "/redoc"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "https_api_docs" {
-  count        = local.enable_tls ? 1 : 0
+  count        = (local.enable_tls ? 1 : 0) * (var.enable_public_ops_paths ? 1 : 0)
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 110
 

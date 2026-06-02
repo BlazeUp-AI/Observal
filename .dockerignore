@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 SrihariLegend <sriharilegend23@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Version control
 **/.git
 
@@ -46,7 +50,9 @@ otel-collector-config.yaml
 # Docker sub-configs (not needed inside images)
 docker/docker-compose*.yml
 docker/clickhouse/
-docker/nginx*.conf
+docker/nginx.conf
+docker/nginx.dev.conf
+docker/nginx.production.conf
 docker/server-package/
 
 # Environment and logs

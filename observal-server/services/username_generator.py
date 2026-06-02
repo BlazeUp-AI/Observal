@@ -1,8 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Auto-generate unique usernames from email addresses."""
 
 import hashlib
 import re
 
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +32,7 @@ async def generate_unique_username(
 
     Returns a valid username that passes USERNAME_RE validation and is unique in DB.
     """
+    optic.trace("generating unique username from email")
     # Extract and sanitize base
     email_lower = email.lower().strip()
     base = email_lower.split("@")[0]  # Get part before @

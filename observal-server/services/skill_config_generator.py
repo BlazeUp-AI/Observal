@@ -1,10 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 from __future__ import annotations
 
 import re
 
-from schemas.ide_registry import IDE_REGISTRY
+from loguru import logger as optic
 
-_SAFE_NAME = re.compile(r"^[a-zA-Z0-9_-]+$")
+from schemas.ide_registry import IDE_REGISTRY
+from services.shared.utils import sanitize_name as _sanitize_name
 
 
 def _short_description(desc: str, max_len: int = 200) -> str:
@@ -14,6 +21,7 @@ def _short_description(desc: str, max_len: int = 200) -> str:
     back to the first sentence (up to first '.'). Strips leading '# ' markdown
     heading markers.
     """
+    optic.trace("truncating description to {} chars", max_len)
     if not desc:
         return ""
     first_line = desc.split("\n", 1)[0].strip()
@@ -26,18 +34,13 @@ def _short_description(desc: str, max_len: int = 200) -> str:
     return sentence.strip()
 
 
-def _sanitize_name(name: str) -> str:
-    if _SAFE_NAME.match(name):
-        return name
-    return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
-
-
 def _generate_skill_file(skill_listing, ide: str, scope: str = "project") -> dict | None:
     """Generate an IDE-specific skill file dict with path and content.
 
     Returns None for monolithic IDEs (gemini, codex, copilot) that inline
     skills into their rules markdown.
     """
+    optic.debug("generating skill config for {} (ide={}, scope={})", skill_listing.name, ide, scope)
     ide_key = ide.replace("_", "-")
     spec = IDE_REGISTRY.get(ide_key, {})
     skill_paths = spec.get("skill_file")
@@ -49,6 +52,12 @@ def _generate_skill_file(skill_listing, ide: str, scope: str = "project") -> dic
     slash_cmd = getattr(skill_listing, "slash_command", None)
     path = skill_paths.get(scope, next(iter(skill_paths.values()))).format(name=name)
 
+    # Fast path: verbatim SKILL.md cached from the git repo.
+    skill_md_content = getattr(skill_listing, "skill_md_content", None)
+    if skill_md_content:
+        return {"path": path, "content": skill_md_content}
+
+    # Fallback: synthesise a minimal stub from stored fields.
     short_desc = _short_description(desc)
     skill_format = spec.get("skill_format")
     if skill_format == "yaml_frontmatter":
@@ -71,6 +80,7 @@ def generate_skill_config(
     scope: str = "project",
 ) -> dict:
     """Generate config snippet for skill install: telemetry hooks + skill file."""
+    optic.trace("generating skill frontmatter for {} on {}", skill_listing.name, ide)
     skill_id = str(skill_listing.id)
     skill_name = str(skill_listing.name)
 
@@ -96,13 +106,31 @@ def generate_skill_config(
         "listing_id": skill_id,
     }
 
-    # For Kiro, also include the skill path for auto-loading
+    # Always include git coordinates - they are the install-time source of truth.
     git_url = getattr(skill_listing, "git_url", None)
     if git_url:
         config["skill"]["git_url"] = git_url
     skill_path = getattr(skill_listing, "skill_path", None)
     if skill_path:
         config["skill"]["skill_path"] = skill_path
+    git_ref = getattr(skill_listing, "git_ref", None)
+    if git_ref:
+        config["skill"]["git_ref"] = git_ref
+    # Cache skill_md_content as a fast-path fallback (no git needed at install time).
+    skill_md_content = getattr(skill_listing, "skill_md_content", None)
+    if skill_md_content:
+        config["skill"]["skill_md_content"] = skill_md_content
+
+    # Delivery mode and registry-direct script
+    delivery_mode = getattr(skill_listing, "delivery_mode", "git_fetch")
+    config["skill"]["delivery_mode"] = delivery_mode
+    if delivery_mode == "registry_direct":
+        script_content = getattr(skill_listing, "script_content", None)
+        script_filename = getattr(skill_listing, "script_filename", None)
+        if script_content:
+            config["skill"]["script_content"] = script_content
+        if script_filename:
+            config["skill"]["script_filename"] = script_filename
 
     # Generate IDE-specific skill file
     skill_file = _generate_skill_file(skill_listing, ide, scope)

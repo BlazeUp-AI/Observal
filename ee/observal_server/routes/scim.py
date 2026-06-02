@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """SCIM 2.0 provisioning endpoints for enterprise deployments."""
 
 from __future__ import annotations
@@ -29,7 +33,6 @@ from ee.observal_server.services.scim_service import (
 )
 from models.scim_token import ScimToken
 from models.user import User, UserRole
-from services.audit_helpers import audit
 from services.events import UserCreated, UserDeleted, bus
 from services.security_events import (
     EventType,
@@ -40,6 +43,7 @@ from services.security_events import (
 from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.ee.scim")
+
 
 router = APIRouter(prefix="/api/v1/scim", tags=["enterprise-scim"])
 
@@ -218,13 +222,6 @@ async def create_user(
 
     await db.commit()
     await bus.emit(UserCreated(user_id=str(user.id), email=user.email, role=user.role.value))
-    await audit(
-        None,
-        "scim.user.create",
-        resource_type="user",
-        resource_id=str(user.id),
-        detail=f"SCIM provisioned: {email}",
-    )
 
     base_url = str(request.base_url).rstrip("/") + "/api/v1/scim"
     return JSONResponse(
@@ -286,13 +283,6 @@ async def update_user(
         user.auth_provider = "scim"
 
     await db.commit()
-    await audit(
-        None,
-        "scim.user.update",
-        resource_type="user",
-        resource_id=str(user.id),
-        detail=f"SCIM updated: {user.email}",
-    )
 
     base_url = str(request.base_url).rstrip("/") + "/api/v1/scim"
     return JSONResponse(
@@ -321,13 +311,6 @@ async def delete_user(
     await db.commit()
 
     await bus.emit(UserDeleted(user_id=user_id_str, email=email))
-    await audit(
-        None,
-        "scim.user.delete",
-        resource_type="user",
-        resource_id=user_id_str,
-        detail=f"SCIM deprovisioned: {email}",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -427,13 +410,6 @@ async def patch_user(
             )
 
     await db.commit()
-    await audit(
-        None,
-        "scim.user.patch",
-        resource_type="user",
-        resource_id=str(user.id),
-        detail=f"SCIM patched: {user.email}",
-    )
 
     base_url = str(request.base_url).rstrip("/") + "/api/v1/scim"
     return JSONResponse(

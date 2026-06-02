@@ -1,9 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import logging
 import time
 from urllib.parse import urlparse, urlunparse
 
 import httpx
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 from rich.console import Console
 
@@ -12,14 +20,63 @@ from observal_cli import config
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
+# Cached server version for the process lifetime
+_server_version_cache: str | None = None
+# Whether version enforcement has already run this session
+_version_enforced: bool = False
+
+# Subcommands exempt from version enforcement (user needs these to fix mismatches)
+_EXEMPT_SUBCOMMANDS = frozenset({"self", "server"})
+
+
+def _get_cli_version() -> str:
+    """Get current CLI version string for request headers."""
+    try:
+        from importlib.metadata import version
+
+        return version("observal-cli")
+    except Exception:
+        return "0.0.0"
+
 
 def _client() -> tuple[str, dict]:
     cfg = config.get_or_exit()
-    return cfg["server_url"].rstrip("/"), {"Authorization": f"Bearer {cfg['access_token']}"}
+    base_url = cfg["server_url"].rstrip("/")
+    headers = {
+        "Authorization": f"Bearer {cfg['access_token']}",
+        "X-Observal-CLI-Version": _get_cli_version(),
+    }
+    # Run version enforcement once per session (unless exempt subcommand)
+    _enforce_version_once(base_url)
+    return base_url, headers
+
+
+def _enforce_version_once(server_url: str) -> None:
+    """Run version enforcement exactly once per CLI session.
+
+    Checks if CLI major.minor matches server. Hard exits on mismatch.
+    Exempt: `observal self` and `observal server` subcommands.
+    """
+    global _version_enforced
+    if _version_enforced:
+        return
+    _version_enforced = True
+
+    # Check if current subcommand is exempt (handle flags before subcommand)
+    import sys
+
+    positional_args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    if positional_args and positional_args[0] in _EXEMPT_SUBCOMMANDS:
+        return
+
+    from observal_cli.version_check import check_version_compatibility
+
+    check_version_compatibility(server_url)
 
 
 def _handle_error(e: httpx.HTTPStatusError, path: str = ""):
     """Handle HTTP errors with actionable messages."""
+    optic.trace("e={}, path={}", e, path)
     ct = e.response.headers.get("content-type", "")
     if "application/json" in ct:
         try:
@@ -80,6 +137,7 @@ def _handle_connect():
 
 def _handle_timeout(path: str = ""):
     """Handle request timeout."""
+    optic.trace("path={}", path)
     timeout = config.get_timeout()
     path_info = f" ({path})" if path else ""
     rprint(f"[red]Request timed out{path_info}.[/red]")
@@ -135,6 +193,7 @@ def _request_with_retry(
 
     On 401, attempts a token refresh and retries once.
     """
+    optic.trace("method={}, url={}", method, url)
     timeout = config.get_timeout()
     func = getattr(httpx, method)
 
@@ -143,6 +202,10 @@ def _request_with_retry(
         kwargs["params"] = params
     if json is not None:
         kwargs["json"] = json
+
+    safe_url = urlunparse(urlparse(url)._replace(netloc=urlparse(url).hostname or ""))
+    optic.debug("{} {}", method.upper(), safe_url)
+    t0 = time.monotonic()
 
     for attempt in range(_MAX_RETRIES):
         r = func(url, **kwargs)
@@ -153,21 +216,25 @@ def _request_with_retry(
             cfg = config.load()
             headers["Authorization"] = f"Bearer {cfg['access_token']}"
             kwargs["headers"] = headers
+            optic.debug("token refreshed, retrying")
             continue
 
         if r.status_code not in _RETRY_STATUSES or attempt == _MAX_RETRIES - 1:
+            elapsed = (time.monotonic() - t0) * 1000
+            optic.debug("{} {} -> {} ({:.0f}ms)", method.upper(), safe_url, r.status_code, elapsed)
             r.raise_for_status()
             return r
         # Honor Retry-After header if present
         retry_after = r.headers.get("Retry-After")
         delay = float(retry_after) if retry_after else 0.5 * (2**attempt)
-        safe_url = urlunparse(urlparse(url)._replace(netloc=urlparse(url).hostname or ""))
         logger.debug(f"Retrying {method.upper()} {safe_url} (attempt {attempt + 1}, delay {delay:.1f}s)")
+        optic.debug("retrying {} {} (attempt {}, delay {:.1f}s)", method.upper(), safe_url, attempt + 1, delay)
         time.sleep(delay)
     return r  # unreachable but satisfies type checker
 
 
 def get(path: str, params: dict | None = None) -> dict:
+    optic.trace("path={}, params={}", path, params)
     base, headers = _client()
     try:
         r = _request_with_retry("get", f"{base}{path}", headers, params=params)
@@ -186,6 +253,7 @@ def get_with_headers(path: str, params: dict | None = None) -> tuple[dict, dict[
     Useful for paginated endpoints that return the page count via headers like
     ``X-Total-Count``.
     """
+    optic.trace("path={}, params={}", path, params)
     base, headers = _client()
     try:
         r = _request_with_retry("get", f"{base}{path}", headers, params=params)
@@ -201,6 +269,7 @@ def get_with_headers(path: str, params: dict | None = None) -> tuple[dict, dict[
 
 
 def post(path: str, json_data: dict | None = None) -> dict:
+    optic.trace("path={}, json_data={}", path, json_data)
     base, headers = _client()
     try:
         r = _request_with_retry("post", f"{base}{path}", headers, json=json_data)
@@ -214,6 +283,7 @@ def post(path: str, json_data: dict | None = None) -> dict:
 
 
 def put(path: str, json_data: dict | None = None) -> dict:
+    optic.trace("path={}, json_data={}", path, json_data)
     base, headers = _client()
     try:
         r = _request_with_retry("put", f"{base}{path}", headers, json=json_data)
@@ -227,6 +297,7 @@ def put(path: str, json_data: dict | None = None) -> dict:
 
 
 def patch(path: str, json_data: dict | None = None) -> dict:
+    optic.trace("path={}, json_data={}", path, json_data)
     base, headers = _client()
     try:
         r = _request_with_retry("patch", f"{base}{path}", headers, json=json_data)
@@ -240,6 +311,7 @@ def patch(path: str, json_data: dict | None = None) -> dict:
 
 
 def delete(path: str) -> dict:
+    optic.trace("path={}", path)
     base, headers = _client()
     try:
         r = _request_with_retry("delete", f"{base}{path}", headers)
@@ -257,7 +329,7 @@ def delete(path: str) -> dict:
 def get_registered_agents_only() -> bool:
     """Check if the org has registered-agents-only mode enabled.
 
-    Returns False on any error (fail-open, silent — no printed messages).
+    Returns False on any error (fail-open, silent, no printed messages).
     """
     try:
         cfg = config.load()
@@ -338,39 +410,29 @@ def health() -> tuple[bool, float]:
         return False, 0
 
 
-def check_version_compatibility(server_url: str) -> None:
-    """Warn if CLI version is older than server's minimum requirement."""
-    from importlib.metadata import version as pkg_version
+def server_supports(feature: str) -> bool:
+    """Check if the connected server supports a given feature.
 
+    Uses version negotiation: effective = min(cli_version, server_version).
+    Feature availability is determined by the features registry.
+    """
+    optic.trace("feature={}", feature)
+    global _server_version_cache
+    if _server_version_cache is None:
+        try:
+            data = get("/api/v1/config/version")
+            _server_version_cache = data.get("server_version", "0.0.0")
+        except Exception:
+            return False
+
+    from packaging.version import Version
+
+    from observal_cli.features import is_available
+
+    cli_ver = _get_cli_version()
     try:
-        cli_ver_str = pkg_version("observal-cli")
+        effective = str(min(Version(cli_ver), Version(_server_version_cache)))
     except Exception:
-        return  # dev install, skip check
+        effective = _server_version_cache
 
-    try:
-        r = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/version", timeout=5)
-        if r.status_code != 200:
-            return
-        data = r.json()
-    except Exception:
-        return  # server doesn't support this endpoint yet, skip
-
-    min_cli = data.get("min_cli_version")
-    server_ver = data.get("server_version", "unknown")
-    if not min_cli:
-        return
-
-    try:
-        cli_tuple = tuple(int(x) for x in cli_ver_str.split("."))
-        min_tuple = tuple(int(x) for x in min_cli.split("."))
-        if cli_tuple < min_tuple:
-            rprint(
-                f"\n[bold yellow]⚠ CLI version {cli_ver_str} is older than the server requires "
-                f"(minimum {min_cli}).[/bold yellow]\n"
-                f"  Server version: {server_ver}\n"
-                f"  Please upgrade:\n\n"
-                f"    [cyan]uv tool upgrade observal-cli[/cyan]    "
-                f"[dim]# or: pip install --upgrade observal-cli[/dim]\n"
-            )
-    except (ValueError, TypeError):
-        pass
+    return is_available(feature, effective)

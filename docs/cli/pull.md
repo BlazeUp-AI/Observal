@@ -1,11 +1,16 @@
-# observal pull
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-Install a complete agent — MCP servers, skills, hooks, prompts, sandboxes, and IDE-specific config — into an IDE in one command.
+# observal agent pull
+
+Install a complete agent (MCP servers, skills, hooks, prompts, sandboxes, and IDE-specific config) into an IDE in one command.
 
 ## Synopsis
 
 ```bash
-observal pull <agent-id-or-name> --ide <ide> [OPTIONS]
+observal agent pull <agent-id-or-name> --ide <ide> [OPTIONS]
 ```
 
 ## Required
@@ -24,7 +29,7 @@ observal pull <agent-id-or-name> --ide <ide> [OPTIONS]
 | `--scope project\|user` | Claude Code / Kiro / Gemini: install at project or user scope |
 | `--model inherit\|sonnet\|opus\|haiku` | Claude Code only: sub-agent model (default: `inherit`) |
 | `--tools <list>` | Claude Code only: comma-separated tool allowlist |
-| `--yes` / `-y` | Skip confirmation prompts |
+| `--no-prompt` / `-y` | Skip confirmation prompts |
 
 ## What gets installed
 
@@ -52,7 +57,7 @@ For Cursor / VS Code / Gemini CLI: primarily MCP config + rules files at the app
 Every MCP server the agent depends on may declare required env vars (GitHub token, API keys, etc.). The CLI prompts you for each one during pull:
 
 ```
-MCP github-mcp requires GITHUB_TOKEN — enter value (or leave blank to set later):
+MCP github-mcp requires GITHUB_TOKEN: enter value (or leave blank to set later):
 ```
 
 Values are written into your IDE config (not uploaded to Observal).
@@ -62,19 +67,19 @@ Values are written into your IDE config (not uploaded to Observal).
 ### Basic
 
 ```bash
-observal pull code-reviewer --ide claude-code
+observal agent pull code-reviewer --ide claude-code
 ```
 
 ### Preview first
 
 ```bash
-observal pull code-reviewer --ide claude-code --dry-run
+observal agent pull code-reviewer --ide claude-code --dry-run
 ```
 
 ### Project-scoped Claude Code install with a specific model and tool allowlist
 
 ```bash
-observal pull code-reviewer --ide claude-code \
+observal agent pull code-reviewer --ide claude-code \
   --scope project \
   --model sonnet \
   --tools "Read,Bash,Grep"
@@ -84,7 +89,7 @@ observal pull code-reviewer --ide claude-code \
 
 ```bash
 export GITHUB_TOKEN=ghp_...
-observal pull code-reviewer --ide claude-code -y
+observal agent pull code-reviewer --ide claude-code -y
 ```
 
 ## Restart your IDE
@@ -102,8 +107,8 @@ After pull, restart the IDE so it picks up the new config. Telemetry starts flow
 
 ## Related
 
-* [`observal agent`](agent.md) — author and publish agents
-* [`observal scan`](scan.md) -- discover the MCP servers you already have (read-only)
-* [`observal doctor patch`](doctor.md) -- instrument your IDEs (hooks, shims, OTel)
-* [`observal doctor`](doctor.md) — verify the pull wired up correctly
+* [`observal agent`](agent.md): author and publish agents
+* [`observal scan`](scan.md): discover the MCP servers you already have (read-only)
+* [`observal doctor patch`](doctor.md): instrument your IDEs (hooks, shims)
+* [`observal doctor`](doctor.md): verify the pull wired up correctly
 * [Use Cases → Share agent configs across IDEs](../use-cases/share-agent-configs.md)

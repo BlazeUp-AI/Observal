@@ -1,3 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """observal migrate: PostgreSQL shallow-copy migration tools."""
 
 from __future__ import annotations
@@ -33,24 +40,35 @@ from observal_cli.render import spinner
 CHUNK_SIZE = 500
 
 INSERT_ORDER: list[str] = [
-    # Tier 0 — no FK dependencies
+    # Tier 0 - no FK dependencies
     "organizations",
     "enterprise_config",
     "component_sources",
-    "penalty_definitions",
-    # Tier 1 — FK to organizations
+    # Tier 1 - FK to organizations
     "users",
     "exporter_configs",
-    # Tier 1.5 — FK to users
+    # Tier 1.5 - FK to users
     "component_bundles",
-    # Tier 2 — FK to orgs + users + component_bundles
+    # Tier 2 - FK to orgs + users + component_bundles
+    # NOTE: listings/agents have a circular FK with their version tables:
+    #   *_listings.latest_version_id → *_versions.id (nullable, use_alter)
+    #   *_versions.listing_id → *_listings.id (NOT NULL)
+    # The cycle is broken during import by disabling trigger-based FK enforcement
+    # via session_replication_role = 'replica' (see _import_archive).
     "mcp_listings",
     "skill_listings",
     "hook_listings",
     "prompt_listings",
     "sandbox_listings",
     "agents",
-    # Tier 3 — FK to listings/users
+    # Tier 2.5 - FK to listings/agents + users (version tables)
+    "mcp_versions",
+    "skill_versions",
+    "hook_versions",
+    "prompt_versions",
+    "sandbox_versions",
+    "agent_versions",
+    # Tier 3 - FK to listings/users
     "mcp_validation_results",
     "mcp_downloads",
     "skill_downloads",
@@ -59,38 +77,50 @@ INSERT_ORDER: list[str] = [
     "sandbox_downloads",
     "submissions",
     "alert_rules",
-    # Tier 4 — FK to agents
-    "agent_goal_templates",
+    # Tier 4 - FK to agents/agent_versions
     "agent_download_records",
     "component_download_records",
-    "dimension_weights",
-    # Tier 5 — FK to agent_goal_templates
-    "agent_goal_sections",
-    # Tier 6 — FK to agents (polymorphic component_id)
+    # Tier 6 - FK to agent_versions (polymorphic component_id)
     "agent_components",
-    # Tier 7 — FK to users (polymorphic listing_id)
+    # Tier 7 - FK to users (polymorphic listing_id)
     "feedback",
-    # Tier 8 — FK to alert_rules
+    # Tier 8 - FK to alert_rules
     "alert_history",
-    # Tier 9 — FK to agents + users
-    "eval_runs",
-    # Tier 10 — FK to eval_runs
-    "scorecards",
-    # Tier 11 — FK to scorecards + penalty_definitions
-    "scorecard_dimensions",
-    "trace_penalties",
+    # Tier 9 - FK to agents + users (insight tables)
+    "insight_meta_cache",
+    "insight_session_facets",
+    "insight_session_meta",
+    "insight_reports",
 ]
 
 JSONB_COLUMNS: dict[str, list[str]] = {
     "agents": ["model_config_json", "external_mcps", "supported_ides"],
+    "agent_versions": [
+        "model_config_json",
+        "external_mcps",
+        "supported_ides",
+        "required_ide_features",
+        "inferred_supported_ides",
+        "ide_configs",
+        "gaming_flags",
+        "models_by_ide",
+    ],
     "mcp_listings": ["tools_schema", "environment_variables", "supported_ides"],
+    "mcp_versions": ["tools_schema", "environment_variables", "supported_ides", "args", "headers", "auto_approve"],
     "skill_listings": ["supported_ides", "target_agents", "triggers", "mcp_server_config", "activation_keywords"],
+    "skill_versions": ["supported_ides", "target_agents", "triggers", "mcp_server_config", "activation_keywords"],
     "hook_listings": ["supported_ides", "handler_config", "input_schema", "output_schema"],
+    "hook_versions": ["supported_ides", "handler_config", "input_schema", "output_schema"],
     "prompt_listings": ["variables", "model_hints", "tags", "supported_ides"],
+    "prompt_versions": ["variables", "model_hints", "tags", "supported_ides"],
     "sandbox_listings": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
-    "scorecards": ["raw_output", "dimension_scores", "scoring_recommendations", "dimensions_skipped", "warnings"],
+    "sandbox_versions": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
     "agent_components": ["config_override"],
     "exporter_configs": ["config"],
+    "insight_reports": ["metrics", "narrative", "aggregated_data"],
+    "insight_session_facets": ["facets"],
+    "insight_session_meta": ["meta"],
+    "insight_meta_cache": ["session_metas"],
 }
 
 # ── Phase 2: ClickHouse telemetry constants ──────────────
@@ -213,7 +243,7 @@ class TelemetryValidationResult:
 
 
 def _require_admin() -> None:
-    """Verify the current user has admin or super_admin role. Exit if not."""
+    """Verify the current user has super_admin role. Exit if not."""
     try:
         user = client.get("/api/v1/auth/whoami")
     except SystemExit as exc:
@@ -221,24 +251,32 @@ def _require_admin() -> None:
         rprint("[dim]  Run [bold]observal auth login[/bold] first.[/dim]")
         raise typer.Exit(1) from exc
     role = user.get("role", "")
-    if role not in ("admin", "super_admin"):
-        rprint("[red]Permission denied.[/red] The migrate command requires admin or super_admin role.")
+    if role != "super_admin":
+        rprint("[red]Permission denied.[/red] The migrate command requires super_admin role.")
         rprint(f"[dim]  Current role: {role}[/dim]")
         raise typer.Exit(1)
 
 
 def _build_select(table: str, columns: list[str]) -> str:
-    """Build SELECT query, casting JSONB columns to ::text."""
+    """Build SELECT query, casting JSONB columns to ::text.
+
+    Table names are validated against INSERT_ORDER as a defense-in-depth
+    assertion - callers always pass values from INSERT_ORDER, but this
+    guards against accidental misuse by future callers passing unknown tables.
+    """
+    if table not in INSERT_ORDER:
+        msg = f"Unknown table: {table!r}"
+        raise ValueError(msg)
     jsonb_cols = JSONB_COLUMNS.get(table, [])
     if not jsonb_cols:
-        return f"SELECT * FROM {table}"
+        return f'SELECT * FROM "{table}"'
     parts = []
     for col in columns:
         if col in jsonb_cols:
-            parts.append(f"{col}::text AS {col}")
+            parts.append(f'"{col}"::text AS "{col}"')
         else:
-            parts.append(col)
-    return f"SELECT {', '.join(parts)} FROM {table}"
+            parts.append(f'"{col}"')
+    return f'SELECT {", ".join(parts)} FROM "{table}"'
 
 
 def _sha256_file(path: Path) -> str:
@@ -250,10 +288,35 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _safe_tar_extract(tar: tarfile.TarFile, dest: Path) -> None:
+    """Extract tar archive safely, preventing path traversal on all Python versions.
+
+    On Python 3.12+ uses the built-in ``filter="data"`` parameter.
+    On older versions, manually validates each member path.
+    """
+    import sys
+
+    if sys.version_info >= (3, 12):
+        tar.extractall(dest, filter="data")
+    else:
+        # Manual path traversal protection for Python < 3.12
+        dest_resolved = dest.resolve()
+        for member in tar.getmembers():
+            member_path = (dest / member.name).resolve()
+            if not member_path.is_relative_to(dest_resolved):
+                msg = f"Tar member {member.name!r} would escape destination directory"
+                raise ValueError(msg)
+            if member.issym() or member.islnk():
+                msg = f"Tar member {member.name!r} is a symlink (rejected for safety)"
+                raise ValueError(msg)
+        tar.extractall(dest)  # nosec B202 - path traversal validated above
+
+
 def _parse_clickhouse_url(url: str) -> tuple[str, str, str, str]:
     """Parse clickhouse://user:pass@host:port/db -> (http_url, db, user, password).
 
     Supports ``clickhouses://`` for TLS (maps to https, default port 8443).
+    Emits a warning when using unencrypted HTTP transport with credentials.
     """
     from urllib.parse import urlparse
 
@@ -272,6 +335,14 @@ def _parse_clickhouse_url(url: str) -> tuple[str, str, str, str]:
     db = (parsed.path or "/").strip("/") or "default"
     user = parsed.username or "default"
     password = parsed.password or ""
+
+    # Warn about cleartext credentials
+    if scheme == "http" and password:
+        rprint(
+            "[yellow]⚠  ClickHouse credentials will be sent over unencrypted HTTP.[/yellow]\n"
+            "[yellow]   Use clickhouses:// (TLS) for production environments.[/yellow]"
+        )
+
     return http_url, db, user, password
 
 
@@ -318,6 +389,58 @@ async def _get_column_types(conn: asyncpg.Connection, table: str) -> dict[str, s
     return {row["column_name"]: row["udt_name"] for row in rows}
 
 
+async def _get_org_fk_columns(conn: asyncpg.Connection) -> set[str]:
+    """Discover all columns that FK-reference organizations.id from information_schema."""
+    rows = await conn.fetch(
+        """
+        SELECT DISTINCT kcu.column_name
+        FROM information_schema.referential_constraints rc
+        JOIN information_schema.key_column_usage kcu
+            ON kcu.constraint_name = rc.constraint_name
+            AND kcu.constraint_schema = rc.constraint_schema
+        JOIN information_schema.key_column_usage ccu
+            ON ccu.constraint_name = rc.unique_constraint_name
+            AND ccu.constraint_schema = rc.unique_constraint_schema
+        WHERE ccu.table_name = 'organizations'
+            AND ccu.column_name = 'id'
+            AND rc.constraint_schema = 'public'
+        """
+    )
+    return {row["column_name"] for row in rows}
+
+
+async def _get_notnull_json_defaults(conn: asyncpg.Connection, table: str) -> dict[str, str]:
+    """Discover NOT NULL JSON/JSONB columns for a table and provide safe defaults.
+
+    SQLAlchemy models define defaults in Python (default=dict, default=list) which
+    don't appear in information_schema.column_default. We detect NOT NULL JSON columns
+    and provide empty-object defaults so older archives with NULL values don't crash.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT column_name, column_default
+        FROM information_schema.columns
+        WHERE table_name = $1
+            AND table_schema = 'public'
+            AND is_nullable = 'NO'
+            AND udt_name IN ('json', 'jsonb')
+        """,
+        table,
+    )
+    defaults: dict[str, str] = {}
+    for row in rows:
+        col_default = row["column_default"]
+        if col_default:
+            # Has an explicit DB default - extract the JSON value
+            clean = col_default.split("::")[0].strip().strip("'")
+            defaults[row["column_name"]] = clean
+        else:
+            # No DB default but column is NOT NULL - use empty object as safe fallback.
+            # This covers SQLAlchemy models with default=dict or default=list.
+            defaults[row["column_name"]] = "{}"
+    return defaults
+
+
 def _coerce_value(value: object, pg_type: str) -> object:
     """Coerce a JSON-deserialized value to the correct Python type for asyncpg."""
     if value is None:
@@ -334,7 +457,14 @@ def _coerce_value(value: object, pg_type: str) -> object:
         return int(value)
     if pg_type in ("float4", "float8", "numeric") and isinstance(value, (int, float)):
         return float(value)
+    # asyncpg requires JSON/JSONB values as serialized strings
+    if pg_type in ("json", "jsonb") and not isinstance(value, str):
+        return json.dumps(value)
     return value
+
+
+# NOT NULL JSON defaults are now derived from information_schema at runtime
+# (see _get_notnull_json_defaults). No hardcoded map needed.
 
 
 def _build_insert(table: str, columns: list[str], col_types: dict[str, str]) -> str:
@@ -348,7 +478,7 @@ def _build_insert(table: str, columns: list[str], col_types: dict[str, str]) -> 
         else:
             parts.append(f"${i + 1}")
     placeholders = ", ".join(parts)
-    return f'INSERT INTO {table} ({cols_str}) VALUES ({placeholders}) ON CONFLICT ("id") DO NOTHING'
+    return f'INSERT INTO "{table}" ({cols_str}) VALUES ({placeholders}) ON CONFLICT ("id") DO NOTHING'
 
 
 async def _flush_batch(
@@ -357,8 +487,9 @@ async def _flush_batch(
     columns: list[str],
     col_types: dict[str, str],
     batch: list[dict],
-) -> tuple[int, int]:
-    """Flush a batch of rows to the database. Returns (inserted, skipped)."""
+    notnull_defaults: dict[str, str] | None = None,
+) -> tuple[int, int, list[str]]:
+    """Flush a batch of rows to the database. Returns (inserted, skipped, warnings)."""
     try:
         import asyncpg
     except ImportError:
@@ -368,18 +499,29 @@ async def _flush_batch(
         raise typer.Exit(1)
 
     if not batch:
-        return 0, 0
+        return 0, 0, []
 
     query = _build_insert(table, columns, col_types)
 
     inserted = 0
     skipped = 0
+    batch_warnings: list[str] = []
+    defaulted_cols: set[str] = set()
 
     for row in batch:
+        # Apply NOT NULL JSON defaults for columns that are NULL in the archive
+        if notnull_defaults:
+            for col, default_val in notnull_defaults.items():
+                if col in columns and row.get(col) is None:
+                    row[col] = default_val  # Already a JSON string
+                    if col not in defaulted_cols:
+                        rprint(f"[dim]  {table}: substituting default for NULL in NOT NULL column '{col}'[/dim]")
+                        defaulted_cols.add(col)
+
         values = [_coerce_value(row.get(col), col_types.get(col, "")) for col in columns]
         try:
             status = await conn.execute(query, *values)
-            # status is like "INSERT 0 1" (inserted) or "INSERT 0 0" (conflict)
+            # status is like "INSERT 0 1" (inserted) or "INSERT 0 0" (conflict on PK)
             count = int(status.split()[-1])
             if count > 0:
                 inserted += 1
@@ -389,8 +531,16 @@ async def _flush_batch(
             row_id = row.get("id", "unknown")
             rprint(f"[yellow]  FK violation in {table}, row {row_id}: {e.constraint_name}[/yellow]")
             skipped += 1
+        except asyncpg.UniqueViolationError as e:
+            # This fires for unique constraints on non-PK columns (slug, email, etc.)
+            # since PK conflicts are handled by ON CONFLICT ("id") DO NOTHING.
+            row_id = row.get("id", "unknown")
+            msg = f"{table}: unique conflict on row {row_id} ({e.constraint_name})"
+            rprint(f"[yellow]  Unique conflict in {table}, row {row_id}: {e.constraint_name}[/yellow]")
+            batch_warnings.append(msg)
+            skipped += 1
 
-    return inserted, skipped
+    return inserted, skipped, batch_warnings
 
 
 async def _insert_table(
@@ -398,13 +548,20 @@ async def _insert_table(
     table: str,
     jsonl_path: Path,
     col_types: dict[str, str],
-) -> tuple[int, int]:
-    """Insert rows from a JSONL file into a table. Returns (inserted, skipped)."""
+    org_rewrite_map: dict[str, str] | None = None,
+    org_columns: set[str] | None = None,
+    notnull_defaults: dict[str, str] | None = None,
+) -> tuple[int, int, list[str]]:
+    """Insert rows from a JSONL file into a table. Returns (inserted, skipped, warnings)."""
     inserted = 0
     skipped = 0
+    table_warnings: list[str] = []
     batch: list[dict] = []
     columns = sorted(col_types.keys())
     logged_skipped = False
+
+    # Determine which columns in this table need org rewriting
+    rewrite_cols = (org_columns & set(columns)) if org_rewrite_map and org_columns else set()
 
     with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
@@ -422,20 +579,29 @@ async def _insert_table(
                     )
                     logged_skipped = True
 
+            # Rewrite org IDs if normalization is active
+            if rewrite_cols and org_rewrite_map:
+                for col in rewrite_cols:
+                    val = row.get(col)
+                    if val and val in org_rewrite_map:
+                        row[col] = org_rewrite_map[val]
+
             batch.append(row)
 
             if len(batch) >= CHUNK_SIZE:
-                ins, sk = await _flush_batch(conn, table, columns, col_types, batch)
+                ins, sk, bw = await _flush_batch(conn, table, columns, col_types, batch, notnull_defaults)
                 inserted += ins
                 skipped += sk
+                table_warnings.extend(bw)
                 batch = []
 
     if batch and columns:
-        ins, sk = await _flush_batch(conn, table, columns, col_types, batch)
+        ins, sk, bw = await _flush_batch(conn, table, columns, col_types, batch, notnull_defaults)
         inserted += ins
         skipped += sk
+        table_warnings.extend(bw)
 
-    return inserted, skipped
+    return inserted, skipped, table_warnings
 
 
 # ── Phase 2: ClickHouse HTTP helpers ─────────────────────
@@ -663,7 +829,7 @@ def _is_empty_parquet(path: Path) -> bool:
         return True
 
 
-async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
+async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str | None = None) -> ImportResult:
     """Import a migration archive into the target database."""
     t0 = time.monotonic()
     warnings: list[str] = []
@@ -673,7 +839,7 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
     try:
         # Extract archive
         with tarfile.open(archive_path, "r:gz") as tar:
-            tar.extractall(staging_dir, filter="data")
+            _safe_tar_extract(tar, staging_dir)
 
         # Read manifest
         manifest_path = staging_dir / "manifest.json"
@@ -688,7 +854,12 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
         for table in INSERT_ORDER:
             jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
             if not jsonl_path.exists():
+                # Table may not exist in older archives - skip gracefully
+                if table not in manifest["tables"]:
+                    continue
                 failed_checksums.append(f"{table} (file missing)")
+                continue
+            if table not in manifest["tables"]:
                 continue
             expected = manifest["tables"][table]["checksum"]
             actual = _sha256_file(jsonl_path)
@@ -725,25 +896,90 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
                 )
             }
 
-            for table in INSERT_ORDER:
-                jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
+            # Org ID normalization: detect source org(s) and build rewrite map
+            org_rewrite_map: dict[str, str] = {}
+            source_org_ids: set[str] = set()
+            org_jsonl = staging_dir / "pg" / "organizations.jsonl"
+            if org_jsonl.exists():
+                with open(org_jsonl, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        row = json.loads(line)
+                        src_id = row.get("id")
+                        if src_id:
+                            source_org_ids.add(src_id)
 
-                # Skip tables that don't exist on target
-                if table not in existing_tables:
-                    rprint(f"[dim]  Skipping {table} (table does not exist on target)[/dim]")
-                    rows_inserted[table] = 0
-                    rows_skipped[table] = 0
-                    continue
+            if normalize_org_id:
+                for src_id in source_org_ids:
+                    if src_id != normalize_org_id:
+                        org_rewrite_map[src_id] = normalize_org_id
+                if org_rewrite_map:
+                    rprint(f"[dim]  Normalizing {len(org_rewrite_map)} source org(s) to: {normalize_org_id}[/dim]")
+            elif source_org_ids:
+                # Check if any source orgs don't exist on the target
+                target_org_ids = {str(row["id"]) for row in await conn.fetch('SELECT "id" FROM "organizations"')}
+                foreign_orgs = source_org_ids - target_org_ids
+                if foreign_orgs:
+                    rprint(f"[yellow]⚠  Archive contains {len(foreign_orgs)} org(s) not present on target.[/yellow]")
+                    rprint("[yellow]   Data referencing these orgs may be invisible in the UI.[/yellow]")
+                    rprint("[yellow]   Consider re-running with --org-id <target-org-id> to remap.[/yellow]")
+                    warnings.append(f"Archive contains {len(foreign_orgs)} org(s) not on target; use --org-id to remap")
 
-                # Get column types for proper coercion
-                col_types = await _get_column_types(conn, table)
+            # Derive org FK columns from schema (any column referencing organizations.id)
+            org_columns = await _get_org_fk_columns(conn)
 
-                ins, sk = await _insert_table(conn, table, jsonl_path, col_types)
-                rows_inserted[table] = ins
-                rows_skipped[table] = sk
+            # Disable all user-defined triggers (including FK constraint triggers)
+            # for the duration of the bulk import. This is necessary because
+            # listings and their version tables have circular FKs that cannot be
+            # satisfied in any single insert order. The reset is in a finally
+            # block to ensure it runs even if the import raises.
+            # NOTE: This also disables updated_at triggers and audit triggers.
+            # On managed Postgres (RDS without rds_superuser, Cloud SQL) this
+            # requires elevated role membership.
+            await conn.execute("SET session_replication_role = 'replica'")
+            try:
+                for table in INSERT_ORDER:
+                    jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
+
+                    # Skip tables that don't exist on target
+                    if table not in existing_tables:
+                        rprint(f"[dim]  Skipping {table} (table does not exist on target)[/dim]")
+                        rows_inserted[table] = 0
+                        rows_skipped[table] = 0
+                        continue
+
+                    # Skip tables not present in the archive (older export)
+                    if not jsonl_path.exists() or jsonl_path.stat().st_size == 0:
+                        rows_inserted[table] = 0
+                        rows_skipped[table] = 0
+                        continue
+
+                    # Get column types for proper coercion
+                    col_types = await _get_column_types(conn, table)
+
+                    # Get NOT NULL JSON defaults from schema (avoids hardcoded map)
+                    notnull_defaults = await _get_notnull_json_defaults(conn, table)
+
+                    ins, sk, tw = await _insert_table(
+                        conn,
+                        table,
+                        jsonl_path,
+                        col_types,
+                        org_rewrite_map=org_rewrite_map,
+                        org_columns=org_columns,
+                        notnull_defaults=notnull_defaults,
+                    )
+                    rows_inserted[table] = ins
+                    rows_skipped[table] = sk
+                    warnings.extend(tw)
+            finally:
+                # Always restore default trigger behavior, even on error
+                await conn.execute("SET session_replication_role = 'origin'")
 
             # Post-import fixup: backfill NULL owner_org_id from creator's org
-            _org_backfill = [
+            _org_backfill: list[tuple[str, str]] = [
                 ("agents", "created_by"),
                 ("mcp_listings", "submitted_by"),
                 ("skill_listings", "submitted_by"),
@@ -758,11 +994,11 @@ async def _import_archive(db_url: str, archive_path: Path) -> ImportResult:
                 if "owner_org_id" not in tbl_cols:
                     continue
                 result = await conn.execute(
-                    f"UPDATE {tbl} SET owner_org_id = u.org_id "
-                    f"FROM users u "
-                    f"WHERE {tbl}.{creator_col} = u.id "
-                    f"AND {tbl}.owner_org_id IS NULL "
-                    f"AND u.org_id IS NOT NULL"
+                    f'UPDATE "{tbl}" SET "owner_org_id" = "u"."org_id" '
+                    f'FROM "users" "u" '
+                    f'WHERE "{tbl}"."{creator_col}" = "u"."id" '
+                    f'AND "{tbl}"."owner_org_id" IS NULL '
+                    f'AND "u"."org_id" IS NOT NULL'
                 )
                 count = int(result.split()[-1])
                 if count > 0:
@@ -792,7 +1028,7 @@ async def _validate_archive(archive_path: Path, db_url: str | None) -> Validatio
     os.chmod(staging_dir, 0o700)
     try:
         with tarfile.open(archive_path, "r:gz") as tar:
-            tar.extractall(staging_dir, filter="data")
+            _safe_tar_extract(tar, staging_dir)
 
         manifest_path = staging_dir / "manifest.json"
         if not manifest_path.exists():
@@ -803,6 +1039,8 @@ async def _validate_archive(archive_path: Path, db_url: str | None) -> Validatio
         # Verify checksums
         checksum_results: list[ChecksumResult] = []
         for table in INSERT_ORDER:
+            if table not in manifest["tables"]:
+                continue
             jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
             expected = manifest["tables"][table]["checksum"]
             if not jsonl_path.exists():
@@ -826,11 +1064,13 @@ async def _validate_archive(archive_path: Path, db_url: str | None) -> Validatio
                 }
                 cross_db_results = {}
                 for table in INSERT_ORDER:
+                    if table not in manifest["tables"]:
+                        continue
                     archive_count = manifest["tables"][table]["row_count"]
                     if table not in existing_tables:
                         cross_db_results[table] = (archive_count, -1)  # -1 signals table missing
                         continue
-                    db_count = await conn.fetchval(f"SELECT count(*) FROM {table}")
+                    db_count = await conn.fetchval(f'SELECT count(*) FROM "{table}"')
                     cross_db_results[table] = (archive_count, db_count)
             finally:
                 await conn.close()
@@ -891,7 +1131,7 @@ async def _export_database(db_url: str, output_path: Path) -> ExportResult:
                         continue
 
                     # Discover columns via prepared statement
-                    stmt = await conn.prepare(f"SELECT * FROM {table} LIMIT 0")
+                    stmt = await conn.prepare(f'SELECT * FROM "{table}" LIMIT 0')
                     columns = [attr.name for attr in stmt.get_attributes()]
 
                     query = _build_select(table, columns)
@@ -1011,7 +1251,7 @@ async def _export_telemetry(
         raise typer.Exit(1)
     migration_id = p1_manifest["migration_id"]
 
-    # Record cutoff before any queries — use ClickHouse-compatible DateTime64 format
+    # Record cutoff before any queries - use ClickHouse-compatible DateTime64 format
     export_time_cutoff = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     # Parse ClickHouse URL
@@ -1358,7 +1598,7 @@ async def _validate_fk_references(
     fk_values["mcp_id"] |= fk_values.pop("mcp_server_id", set())
     fk_values["user_id"] |= fk_values.pop("actor_id", set())
 
-    # Filter to valid UUIDs only — ClickHouse stores these as String,
+    # Filter to valid UUIDs only - ClickHouse stores these as String,
     # so non-UUID values like "filesystem" or "default" can appear.
     # Normalize to lowercase to match PostgreSQL's canonical form.
     for key in list(fk_values):
@@ -1380,7 +1620,7 @@ async def _validate_fk_references(
             for i in range(0, len(id_list), 1000):
                 batch = id_list[i : i + 1000]
                 rows = await conn.fetch(
-                    f"SELECT id::text FROM {pg_table} WHERE id = ANY($1::uuid[])",
+                    f'SELECT id::text FROM "{pg_table}" WHERE id = ANY($1::uuid[])',
                     batch,
                 )
                 existing.update(row["id"] for row in rows)
@@ -1469,12 +1709,39 @@ async def _validate_telemetry(
 migrate_app = typer.Typer(help="PostgreSQL shallow-copy migration tools")
 
 
+def _require_pyarrow() -> None:
+    """pyarrow is an optional dependency; tell the user how to install it."""
+    try:
+        import pyarrow  # noqa: F401
+    except ImportError as exc:
+        raise typer.BadParameter(
+            "The migrate commands require pyarrow. Install with: pip install 'observal-cli[migrate]'"
+        ) from exc
+
+
+@migrate_app.callback()
+def _migrate_callback() -> None:
+    _require_pyarrow()
+
+
 @migrate_app.command("export")
 def export_cmd(
     db_url: str = typer.Option(..., "--db-url", help="Source PostgreSQL connection string"),
     output: str | None = typer.Option(None, "--output", "-o", help="Output archive path"),
 ) -> None:
-    """Export all PostgreSQL registry data to a portable archive."""
+    """Export all PostgreSQL registry data to a portable archive.
+
+    Connects to the source database, reads all tables in a consistent
+    REPEATABLE READ snapshot, and writes JSONL files packed into a
+    checksummed .tar.gz archive. Requires super_admin role.
+
+    The archive includes a manifest with SHA-256 checksums and the source
+    Alembic migration version for compatibility verification on import.
+
+    Examples:
+        observal migrate export --db-url postgresql://user:pass@host/observal
+        observal migrate export --db-url $DATABASE_URL -o backup.tar.gz
+    """
     _require_admin()
 
     # Default output filename
@@ -1513,8 +1780,25 @@ def export_cmd(
 def import_cmd(
     db_url: str = typer.Option(..., "--db-url", help="Target PostgreSQL connection string"),
     archive: str = typer.Option(..., "--archive", "-a", help="Path to .tar.gz archive"),
+    org_id: str | None = typer.Option(
+        None,
+        "--org-id",
+        help="Rewrite all org references to this UUID (use target org ID when source/target orgs differ)",
+    ),
 ) -> None:
-    """Import a migration archive into the target database."""
+    """Import a migration archive into the target database.
+
+    Verifies checksums before inserting any data. Uses ON CONFLICT DO NOTHING
+    for idempotent imports: existing rows are skipped, not overwritten.
+    Requires super_admin role.
+
+    When migrating between instances with different organizations, use
+    --org-id to remap all organization references to the target org UUID.
+
+    Examples:
+        observal migrate import --db-url postgresql://user:pass@host/observal --archive backup.tar.gz
+        observal migrate import --db-url $DATABASE_URL -a backup.tar.gz --org-id 550e8400-...
+    """
     _require_admin()
 
     archive_path = Path(archive)
@@ -1527,9 +1811,12 @@ def import_cmd(
         rprint("[dim]  Expected a .tar.gz file.[/dim]")
         raise typer.Exit(1)
 
+    if org_id:
+        rprint(f"[dim]  Normalizing org references to: {org_id}[/dim]")
+
     rprint(f"[bold]Importing from:[/bold] {archive_path}")
     with spinner("Importing..."):
-        result = asyncio.run(_import_archive(db_url, archive_path))
+        result = asyncio.run(_import_archive(db_url, archive_path, normalize_org_id=org_id))
 
     total_inserted = sum(result.rows_inserted.values())
     total_skipped = sum(result.rows_skipped.values())
@@ -1552,7 +1839,16 @@ def validate_cmd(
     archive: str = typer.Option(..., "--archive", "-a", help="Path to .tar.gz archive"),
     db_url: str | None = typer.Option(None, "--db-url", help="Optional database for cross-validation"),
 ) -> None:
-    """Validate archive integrity and optionally compare against a database."""
+    """Validate archive integrity and optionally compare against a database.
+
+    Checks SHA-256 checksums for every table file in the archive. If --db-url
+    is provided, also compares row counts between the archive and the live
+    database to detect drift or partial imports. Requires super_admin role.
+
+    Examples:
+        observal migrate validate --archive backup.tar.gz
+        observal migrate validate -a backup.tar.gz --db-url $DATABASE_URL
+    """
     _require_admin()
 
     archive_path = Path(archive)
@@ -1607,7 +1903,21 @@ def export_telemetry_cmd(
     manifest: str = typer.Option(..., "--manifest", help="Path to Phase 1 migration_manifest.json"),
     output_dir: str = typer.Option(..., "--output-dir", help="Directory for exported Parquet files"),
 ) -> None:
-    """Export ClickHouse telemetry data to Parquet files."""
+    """Export ClickHouse telemetry data to Parquet files.
+
+    Phase 2 of migration: exports traces, spans, scores, and other telemetry
+    tables as monthly Parquet partitions. Requires a completed Phase 1 export
+    (the migration_manifest.json produced by 'observal migrate export').
+
+    Uses a time cutoff recorded at export start for consistency. The output
+    directory must be empty or non-existent. Requires super_admin role.
+
+    Examples:
+        observal migrate export-telemetry \\
+            --clickhouse-url clickhouse://default:@localhost:8123/observal \\
+            --manifest ./observal-export-20260101-120000.manifest.json \\
+            --output-dir ./telemetry-export
+    """
     _require_admin()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -1634,7 +1944,24 @@ def import_telemetry_cmd(
         None, "--project-id", help="Rewrite project_id in all tables to this value (use when source/target orgs differ)"
     ),
 ) -> None:
-    """Import Parquet telemetry files into target ClickHouse."""
+    """Import Parquet telemetry files into target ClickHouse.
+
+    Phase 2 import: loads monthly Parquet partitions into the target ClickHouse.
+    Verifies checksums before importing. Skips partitions that already contain
+    data for idempotent re-runs. Persists resume state so interrupted imports
+    can continue where they left off. Requires super_admin role.
+
+    Use --project-id to normalize the project_id column when migrating between
+    instances with different organization identifiers.
+
+    Examples:
+        observal migrate import-telemetry \\
+            --clickhouse-url clickhouse://default:@localhost:8123/observal \\
+            --input-dir ./telemetry-export
+        observal migrate import-telemetry \\
+            --clickhouse-url $CLICKHOUSE_URL \\
+            --input-dir ./telemetry-export --project-id my-new-org-id
+    """
     _require_admin()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -1671,7 +1998,20 @@ def validate_telemetry_cmd(
     ),
     target_db_url: str | None = typer.Option(None, "--target-db-url", help="Target PostgreSQL for FK validation"),
 ) -> None:
-    """Validate telemetry Parquet files and optionally check FK references."""
+    """Validate telemetry Parquet files and optionally check FK references.
+
+    Verifies SHA-256 checksums for all Parquet files in the export directory.
+    Optionally compares row counts against a live ClickHouse instance and
+    checks foreign key references (agent_id, mcp_id, user_id) against
+    PostgreSQL to detect orphaned telemetry records. Requires super_admin role.
+
+    Examples:
+        observal migrate validate-telemetry --input-dir ./telemetry-export
+        observal migrate validate-telemetry \\
+            --input-dir ./telemetry-export \\
+            --clickhouse-url $CLICKHOUSE_URL \\
+            --target-db-url $DATABASE_URL
+    """
     _require_admin()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 

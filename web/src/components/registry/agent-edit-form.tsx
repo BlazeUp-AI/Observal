@@ -1,4 +1,7 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 
 import {
   useState,
@@ -9,11 +12,8 @@ import {
 } from "react";
 import {
   ArrowRight,
-  FileText,
   Loader2,
-  Plus,
   Save,
-  Trash2,
   RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -56,18 +56,12 @@ interface AgentDetail {
   status?: string;
   version?: string;
   owner?: string;
-  visibility?: string;
-  team_accesses?: { group_name: string; permission: "view" | "edit" }[];
   user_permission?: string;
   description?: string;
   prompt?: string;
   model_name?: string;
   component_links?: ComponentLink[];
   mcp_links?: ComponentLink[];
-  goal_template?: {
-    description?: string;
-    sections?: { name: string; description?: string }[];
-  };
   supported_ides?: string[];
   [key: string]: unknown;
 }
@@ -81,17 +75,7 @@ interface ComponentLink {
   mcp_id?: string;
 }
 
-interface CustomPrompt {
-  id: string;
-  title: string;
-  content: string;
-}
 
-interface GoalSection {
-  id: string;
-  title: string;
-  content: string;
-}
 
 export interface AgentEditFormProps {
   agentId: string;
@@ -130,9 +114,6 @@ const REVERSE_TYPE_MAP: Record<string, string> = {
 
 // ── Utilities ─────────────────────────────────────────────────────
 
-function generateId() {
-  return Math.random().toString(36).slice(2, 10);
-}
 
 // ── Component Picker ──────────────────────────────────────────────
 
@@ -234,10 +215,7 @@ export function AgentEditForm({
   const [selectedComponents, setSelectedComponents] = useState<
     Record<string, RegistryItem[]>
   >({ mcps: [], skills: [], hooks: [], prompts: [], sandboxes: [] });
-  const [customPrompts, setCustomPrompts] = useState<CustomPrompt[]>([]);
-  const [goalSections, setGoalSections] = useState<GoalSection[]>([
-    { id: generateId(), title: "", content: "" },
-  ]);
+  const [prompt, setPrompt] = useState<string>(initialPrompt);
 
   // ── Dialog / loading state ────────────────────────────────────
   const [showVersionDialog, setShowVersionDialog] = useState(false);
@@ -249,8 +227,7 @@ export function AgentEditForm({
   const initialStateRef = useRef({
     description: initialDescription,
     modelName: initialModelName,
-    customPrompts: [] as CustomPrompt[],
-    goalSections: [] as GoalSection[],
+    prompt: initialPrompt,
     selectedComponents: {} as Record<string, RegistryItem[]>,
   });
   const [isDirty, setIsDirty] = useState(false);
@@ -299,39 +276,14 @@ export function AgentEditForm({
     setSelectedComponents(grouped);
 
     // Load goal template sections
-    const gt = agent.goal_template;
-    let loadedGoalSections: GoalSection[];
-    if (gt?.sections && gt.sections.length > 0) {
-      loadedGoalSections = gt.sections.map((s) => ({
-        id: generateId(),
-        title: s.name ?? "",
-        content: s.description ?? "",
-      }));
-    } else {
-      loadedGoalSections = [{ id: generateId(), title: "", content: "" }];
-    }
-    setGoalSections(loadedGoalSections);
 
-    // Load custom prompts from prompt string
-    let loadedPrompts: CustomPrompt[] = [];
-    if (initialPrompt.trim()) {
-      const parts = initialPrompt.split(/\n\n(?=## )/).filter(Boolean);
-      loadedPrompts = parts.map((part) => {
-        const match = part.match(/^## (.+)\n([\s\S]*)$/);
-        if (match) {
-          return { id: generateId(), title: match[1].trim(), content: match[2].trim() };
-        }
-        return { id: generateId(), title: "", content: part.trim() };
-      });
-    }
-    setCustomPrompts(loadedPrompts);
+    setPrompt(initialPrompt);
 
     // Sync initial state ref so dirty detection works correctly after re-init
     initialStateRef.current = {
       description: initialDescription,
       modelName: initialModelName,
-      customPrompts: loadedPrompts,
-      goalSections: loadedGoalSections,
+      prompt: initialPrompt,
       selectedComponents: grouped,
     };
     setIsDirty(false);
@@ -344,11 +296,10 @@ export function AgentEditForm({
     const dirty =
       description !== init.description ||
       modelName !== init.modelName ||
-      JSON.stringify(customPrompts) !== JSON.stringify(init.customPrompts) ||
-      JSON.stringify(goalSections) !== JSON.stringify(init.goalSections) ||
+      prompt !== init.prompt ||
       JSON.stringify(selectedComponents) !== JSON.stringify(init.selectedComponents);
     setIsDirty(dirty);
-  }, [description, modelName, customPrompts, goalSections, selectedComponents]);
+  }, [description, modelName, prompt, selectedComponents]);
 
   // ── Debounced validation ──────────────────────────────────────
   useEffect(() => {
@@ -430,39 +381,9 @@ export function AgentEditForm({
     [],
   );
 
-  const addCustomPrompt = useCallback(() => {
-    setCustomPrompts((prev) => [...prev, { id: generateId(), title: "", content: "" }]);
-  }, []);
 
-  const updateCustomPrompt = useCallback(
-    (id: string, field: "title" | "content", value: string) => {
-      setCustomPrompts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)),
-      );
-    },
-    [],
-  );
 
-  const removeCustomPrompt = useCallback((id: string) => {
-    setCustomPrompts((prev) => prev.filter((p) => p.id !== id));
-  }, []);
 
-  const addGoalSection = useCallback(() => {
-    setGoalSections((prev) => [...prev, { id: generateId(), title: "", content: "" }]);
-  }, []);
-
-  const removeGoalSection = useCallback((id: string) => {
-    setGoalSections((prev) => prev.filter((s) => s.id !== id));
-  }, []);
-
-  const updateGoalSection = useCallback(
-    (id: string, field: "title" | "content", value: string) => {
-      setGoalSections((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
-      );
-    },
-    [],
-  );
 
 
   function buildVersionBody(version: string) {
@@ -474,35 +395,15 @@ export function AgentEditForm({
       }
     }
 
-    const sections = goalSections
-      .filter((s) => s.title.trim())
-      .map((s) => ({
-        name: s.title.trim(),
-        description: s.content.trim() || null,
-      }));
-
-    const promptParts = customPrompts
-      .filter((p) => p.content.trim())
-      .map((p) =>
-        p.title.trim()
-          ? `## ${p.title.trim()}\n${p.content.trim()}`
-          : p.content.trim(),
-      );
-
     return {
       version,
       description: description.trim(),
-      prompt: promptParts.join("\n\n"),
+      prompt: prompt.trim(),
       model_name: modelName,
       model_config_json: {},
       external_mcps: [],
       supported_ides: agent.supported_ides ?? [],
       components: components.length > 0 ? components : [],
-      goal_template: {
-        description: description.trim() || agent.name,
-        sections:
-          sections.length > 0 ? sections : [{ name: "Default", description: description.trim() || agent.name }],
-      },
       yaml_snapshot: null,
       is_prerelease: false,
     };
@@ -518,8 +419,7 @@ export function AgentEditForm({
       initialStateRef.current = {
         description,
         modelName,
-        customPrompts,
-        goalSections,
+        prompt,
         selectedComponents,
       };
       setIsDirty(false);
@@ -540,8 +440,7 @@ export function AgentEditForm({
       initialStateRef.current = {
         description,
         modelName,
-        customPrompts,
-        goalSections,
+        prompt,
         selectedComponents,
       };
       setIsDirty(false);
@@ -563,12 +462,7 @@ export function AgentEditForm({
     const init = initialStateRef.current;
     setDescription(init.description);
     setModelName(init.modelName);
-    setCustomPrompts(init.customPrompts);
-    setGoalSections(
-      init.goalSections.length > 0
-        ? init.goalSections
-        : [{ id: generateId(), title: "", content: "" }],
-    );
+    setPrompt(init.prompt ?? "");
     setSelectedComponents(
       Object.keys(init.selectedComponents).length > 0
         ? init.selectedComponents
@@ -585,6 +479,7 @@ export function AgentEditForm({
         <div className="space-y-2">
           <Label htmlFor="agent-name" className="text-sm font-medium">
             Agent Name
+            <span className="ml-1 text-destructive">*</span>
           </Label>
           <Input
             id="agent-name"
@@ -632,6 +527,23 @@ export function AgentEditForm({
         </div>
       </section>
 
+      {/* Agent Prompt */}
+      <section className="space-y-2">
+        <Label htmlFor="agent-prompt" className="text-sm font-medium">
+          Agent Prompt
+          <span className="ml-1 text-destructive">*</span>
+        </Label>
+        <Textarea
+          id="agent-prompt"
+          placeholder="You are a senior Python engineer. You write tests first, prefer composition over inheritance, always explain your reasoning, and never delete existing tests."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={8}
+          className="resize-y text-sm font-mono"
+        />
+        <p className="text-xs text-muted-foreground">Required. Or link a Prompt component in the Components section below.</p>
+      </section>
+
       <Separator />
 
       {/* Components */}
@@ -653,7 +565,7 @@ export function AgentEditForm({
             {COMPONENT_TYPES.map((ct) => {
               const count =
                 (selectedComponents[ct.value] ?? []).length +
-                (ct.value === "prompts" ? customPrompts.length : 0);
+                0;
               return (
                 <TabsTrigger key={ct.value} value={ct.value}>
                   {ct.label}
@@ -688,65 +600,6 @@ export function AgentEditForm({
                 </div>
               )}
 
-              {ct.value === "prompts" && (
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Separator className="flex-1" />
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      or add custom prompt text
-                    </span>
-                    <Separator className="flex-1" />
-                  </div>
-
-                  {customPrompts.map((prompt) => (
-                    <div
-                      key={prompt.id}
-                      className="rounded-md border bg-muted/20 p-4 space-y-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <Input
-                          placeholder="Prompt title (optional)"
-                          value={prompt.title}
-                          onChange={(e) =>
-                            updateCustomPrompt(prompt.id, "title", e.target.value)
-                          }
-                          className="h-8 max-w-xs text-sm font-medium"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeCustomPrompt(prompt.id)}
-                          className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                      <Textarea
-                        placeholder="Enter prompt text..."
-                        value={prompt.content}
-                        onChange={(e) =>
-                          updateCustomPrompt(prompt.id, "content", e.target.value)
-                        }
-                        rows={4}
-                        className="resize-y text-sm"
-                      />
-                    </div>
-                  ))}
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addCustomPrompt}
-                    className="h-8"
-                  >
-                    <Plus className="mr-1 h-3.5 w-3.5" />
-                    Add Custom Prompt
-                  </Button>
-                </div>
-              )}
             </TabsContent>
           ))}
         </Tabs>
@@ -757,68 +610,6 @@ export function AgentEditForm({
         />
       </section>
 
-
-      <Separator />
-
-      {/* Goal Template */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium font-[family-name:var(--font-display)]">
-              Goal Template
-            </h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Define the agent&apos;s objective in structured sections.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={addGoalSection}
-            className="h-8"
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            Add Section
-          </Button>
-        </div>
-
-        <div className="space-y-3">
-          {goalSections.map((section) => (
-            <div
-              key={section.id}
-              className="rounded-md border bg-muted/20 p-4 space-y-3"
-            >
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Section title"
-                  value={section.title}
-                  onChange={(e) => updateGoalSection(section.id, "title", e.target.value)}
-                  className="h-8 max-w-xs text-sm font-medium"
-                />
-                {goalSections.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeGoalSection(section.id)}
-                    className="ml-auto h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-              <Textarea
-                placeholder="Section content..."
-                value={section.content}
-                onChange={(e) => updateGoalSection(section.id, "content", e.target.value)}
-                rows={3}
-                className="resize-y text-sm"
-              />
-            </div>
-          ))}
-        </div>
-      </section>
 
       <Separator />
 

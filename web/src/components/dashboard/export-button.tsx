@@ -1,4 +1,6 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
+
 
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";

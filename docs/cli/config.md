@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # observal config
 
 Local CLI configuration. Config lives in `~/.observal/config.json`; aliases in `~/.observal/aliases.json`.
@@ -112,5 +115,5 @@ observal config aliases
 
 ## Related
 
-* [Config files](../reference/config-files.md) — full schema of `~/.observal/`
-* [Environment variables](../reference/environment-variables.md) — env-var overrides
+* [Config files](../reference/config-files.md): full schema of `~/.observal/`
+* [Environment variables](../reference/environment-variables.md): env-var overrides

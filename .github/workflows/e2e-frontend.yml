@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2025 Observal Contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: E2E Frontend
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-frontend.yml'
+
+concurrency:
+  group: e2e-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: e2e-frontend-flows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.13
+        run: uv python install 3.13
+
+      - name: Start Docker stack
+        run: |
+          cp .env.example .env
+          make up
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Wait for API health
+        run: |
+          echo "Waiting for API health check..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost/health > /dev/null 2>&1; then
+              echo "✓ API is healthy"
+              exit 0
+            fi
+            echo "[$i/30] Waiting for API to be ready..."
+            sleep 2
+          done
+          echo "::error::API failed health check"
+          echo "Docker logs:"
+          cd docker && docker compose logs --tail 50 observal-api observal-init observal-db || true
+          exit 1
+
+      - name: Wait for Web health
+        run: |
+          echo "Waiting for web container..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost/ > /dev/null 2>&1; then
+              echo "✓ Web is healthy"
+              exit 0
+            fi
+            echo "[$i/30] Waiting for web to be ready..."
+            sleep 2
+          done
+          echo "::error::Web failed health check"
+          cd docker && docker compose logs --tail 50 observal-web observal-lb || true
+          exit 1
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run frontend e2e
+        working-directory: web
+        run: pnpm exec playwright test frontend-flows
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-frontend-results
+          path: web/test-results/
+          retention-days: 7

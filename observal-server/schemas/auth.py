@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 import re
 import uuid
 from datetime import datetime
@@ -56,6 +62,7 @@ class UserResponse(BaseModel):
     username: str | None = None
     name: str
     role: UserRole
+    avatar_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

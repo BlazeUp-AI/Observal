@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # observal auth
 
 Authentication and account management.
@@ -39,7 +42,7 @@ observal auth login [--server URL] [--key KEY] [--email EMAIL] [--password PASSW
 
 ```bash
 observal auth login
-# Server URL [http://localhost:8000]: <Enter>
+# Server URL [http://localhost]: <Enter>
 # Method: [E]mail / [K]ey: E
 # Email: admin@demo.example
 # Password: **************
@@ -88,7 +91,7 @@ Print the currently authenticated user.
 
 ```bash
 observal auth whoami
-# alice@example.com (user) — https://observal.your-company.internal
+# alice@example.com (user), https://observal.your-company.internal
 ```
 
 Exits non-zero if you're not logged in.
@@ -101,7 +104,7 @@ Check server connectivity, health, and the local telemetry buffer.
 
 ```bash
 observal auth status
-# Server:   https://observal.your-company.internal — OK (200)
+# Server:   https://observal.your-company.internal: OK (200)
 # Auth:     alice@example.com (user)
 # Buffer:   0 pending events
 # Health:   API ok, Postgres ok, ClickHouse ok, Redis ok
@@ -113,7 +116,7 @@ Useful as the first step when things aren't working.
 
 ## `observal auth reset-password`
 
-Reset a forgotten password. The server logs a 6-character reset code to its console — the operator reads it and passes it to you.
+Reset a forgotten password. The server logs a 6-character reset code to its console. The operator reads it and passes it to you.
 
 ### Synopsis
 
@@ -148,5 +151,5 @@ Full list: [Environment variables](../reference/environment-variables.md).
 
 ## Related
 
-* [`observal config`](config.md) — where credentials live
-* [Self-Hosting → Authentication and SSO](../self-hosting/authentication.md) — server-side auth setup
+* [`observal config`](config.md): where credentials live
+* [Self-Hosting: Authentication and SSO](../self-hosting/authentication.md): server-side auth setup

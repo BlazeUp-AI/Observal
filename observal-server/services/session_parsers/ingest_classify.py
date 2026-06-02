@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Per-IDE JSONL line classifiers for the ingest pipeline.
 
 Each IDE has its own JSONL format.  This module provides:
@@ -21,6 +25,8 @@ support for a new IDE:
 from __future__ import annotations
 
 from collections.abc import Callable
+
+from .base import strip_cursor_xml_tags
 
 _PREVIEW_MAX = 500
 
@@ -233,6 +239,236 @@ def _tool_info_kiro(parsed: dict) -> tuple[str | None, str | None]:
 
 
 # ---------------------------------------------------------------------------
+# Cursor classifier
+# ---------------------------------------------------------------------------
+
+
+def _classify_cursor(parsed: dict) -> str | None:
+    """Classify one Cursor JSONL line.
+
+    Cursor uses ``role`` (not ``type``) with values matching Claude Code's
+    content block structure.  The ``message.content`` array contains blocks
+    with ``type: text|tool_use|tool_result|thinking``.
+    """
+    role = parsed.get("role", "")
+
+    if role == "user":
+        content = parsed.get("message", {}).get("content", [])
+        if not content:
+            return None
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    return "tool_result"
+            return "user_prompt"
+        return "user_prompt"
+
+    if role == "assistant":
+        content = parsed.get("message", {}).get("content", [])
+        if isinstance(content, list) and content:
+            for block in content:
+                if isinstance(block, dict):
+                    btype = block.get("type", "")
+                    if btype == "thinking":
+                        return "thinking"
+                    if btype == "tool_use":
+                        return "tool_call"
+                    if btype == "text":
+                        return "assistant_text"
+        return "assistant_text"
+
+    if not role:
+        return None
+
+    return "system"
+
+
+def _preview_cursor(parsed: dict, event_type: str) -> str:
+    """Extract preview from Cursor JSONL (same content structure as Claude Code)."""
+    try:
+        content = parsed.get("message", {}).get("content", [])
+        if isinstance(content, str):
+            return strip_cursor_xml_tags(content)[:_PREVIEW_MAX]
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type", "")
+                if btype == "text":
+                    text = block.get("text", "")
+                    if event_type == "user_prompt":
+                        text = strip_cursor_xml_tags(text)
+                    parts.append(text[:_PREVIEW_MAX])
+                elif btype == "thinking":
+                    parts.append(block.get("thinking", "")[:_PREVIEW_MAX])
+                elif btype == "tool_use":
+                    parts.append(f"[tool_use: {block.get('name', '')}]")
+                elif btype == "tool_result":
+                    inner = block.get("content", "")
+                    if isinstance(inner, list):
+                        for item in inner:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                parts.append(item.get("text", "")[:_PREVIEW_MAX])
+                    elif isinstance(inner, str):
+                        parts.append(inner[:_PREVIEW_MAX])
+            return " ".join(parts)[:_PREVIEW_MAX]
+    except Exception:
+        pass
+    return ""
+
+
+def _tool_info_cursor(parsed: dict) -> tuple[str | None, str | None]:
+    content = parsed.get("message", {}).get("content", [])
+    if not isinstance(content, list):
+        return None, None
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            return block.get("name"), block.get("id")
+    return None, None
+
+
+# ---------------------------------------------------------------------------
+# Pi classifier
+# ---------------------------------------------------------------------------
+
+_PI_SKIP_TYPES = frozenset({"session", "label", "session_info", "custom"})
+
+
+def _classify_pi(parsed: dict) -> str | None:
+    """Classify one Pi JSONL line.
+
+    Pi uses ``type: "toolCall"`` (not ``tool_use``) in content blocks, and
+    ``message.role: "toolResult"`` as a top-level message role (not a content
+    block inside user messages like Claude Code).
+    """
+    line_type = parsed.get("type", "")
+
+    if line_type in _PI_SKIP_TYPES:
+        return None
+
+    if line_type in ("model_change", "thinking_level_change", "custom_message"):
+        return "system"
+
+    if line_type in ("compaction", "branch_summary"):
+        return "meta"
+
+    if line_type == "message":
+        msg = parsed.get("message", {})
+        role = msg.get("role", "")
+
+        if role == "user":
+            content = msg.get("content", [])
+            if not content:
+                return None
+            return "user_prompt"
+
+        if role == "assistant":
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        btype = block.get("type", "")
+                        if btype == "thinking":
+                            return "thinking"
+                        if btype == "toolCall":
+                            return "tool_call"
+                        if btype == "text":
+                            return "assistant_text"
+            return "assistant_text"
+
+        if role == "toolResult":
+            return "tool_result"
+
+        if role == "bashExecution":
+            return "tool_result"
+
+        if role in ("custom", "branchSummary", "compactionSummary"):
+            return "system"
+
+    # Unknown type -- store as system so nothing is silently dropped
+    return "system"
+
+
+def _preview_pi(parsed: dict, event_type: str) -> str:
+    """Extract preview text from a Pi JSONL line."""
+    try:
+        line_type = parsed.get("type", "")
+
+        if line_type == "message":
+            msg = parsed.get("message", {})
+            role = msg.get("role", "")
+            content = msg.get("content", [])
+
+            if role in ("user", "assistant"):
+                if isinstance(content, str):
+                    return content[:_PREVIEW_MAX]
+                if isinstance(content, list):
+                    parts: list[str] = []
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        btype = block.get("type", "")
+                        if btype == "text":
+                            parts.append(block.get("text", "")[:_PREVIEW_MAX])
+                        elif btype == "thinking":
+                            parts.append(block.get("thinking", "")[:_PREVIEW_MAX])
+                        elif btype == "toolCall":
+                            parts.append(f"[tool_call: {block.get('name', '')}]")
+                    return " ".join(parts)[:_PREVIEW_MAX]
+
+            if role == "toolResult":
+                tool_name = msg.get("toolName", "")
+                inner = msg.get("content", [])
+                if isinstance(inner, list):
+                    for item in inner:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            return f"[{tool_name}] {item.get('text', '')}"[:_PREVIEW_MAX]
+                return f"[{tool_name}]"[:_PREVIEW_MAX]
+
+            if role == "bashExecution":
+                return f"$ {msg.get('command', '')}"[:_PREVIEW_MAX]
+
+        if line_type == "model_change":
+            return f"Model: {parsed.get('provider', '')}/{parsed.get('modelId', '')}"[:_PREVIEW_MAX]
+
+        if line_type == "thinking_level_change":
+            return f"Thinking: {parsed.get('thinkingLevel', '')}"[:_PREVIEW_MAX]
+
+        if line_type in ("compaction", "branch_summary"):
+            return parsed.get("summary", "")[:_PREVIEW_MAX]
+
+        if line_type == "custom_message":
+            c = parsed.get("content", "")
+            if isinstance(c, str):
+                return c[:_PREVIEW_MAX]
+
+    except Exception:
+        pass
+    return ""
+
+
+def _tool_info_pi(parsed: dict) -> tuple[str | None, str | None]:
+    """Extract (tool_name, tool_id) from a Pi JSONL line."""
+    if parsed.get("type") != "message":
+        return None, None
+    msg = parsed.get("message", {})
+    role = msg.get("role", "")
+
+    if role == "assistant":
+        content = msg.get("content", [])
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "toolCall":
+                    return block.get("name"), block.get("id")
+
+    if role == "toolResult":
+        return msg.get("toolName"), msg.get("toolCallId")
+
+    return None, None
+
+
+# ---------------------------------------------------------------------------
 # Registry  -- add new parsers here, update ide_registry.py session_parser key
 # ---------------------------------------------------------------------------
 
@@ -245,6 +481,8 @@ _Classifier = tuple[_ClassifyFn, _PreviewFn, _ToolInfoFn]
 _CLASSIFIERS: dict[str, _Classifier] = {
     "claude-code": (_classify_claude_code, _preview_claude_code, _tool_info_claude_code),
     "kiro": (_classify_kiro, _preview_kiro, _tool_info_kiro),
+    "cursor": (_classify_cursor, _preview_cursor, _tool_info_cursor),
+    "pi": (_classify_pi, _preview_pi, _tool_info_pi),
 }
 
 
@@ -321,9 +559,34 @@ def _ts_kiro(parsed: dict) -> str | None:
         return None
 
 
+def _ts_cursor(parsed: dict) -> str | None:
+    """Return ClickHouse timestamp string from a Cursor JSONL line, or None.
+
+    Cursor does not embed timestamps in its JSONL transcript lines.
+    Return None so the caller uses ingestion time (now) as fallback.
+    """
+    return None
+
+
+def _ts_pi(parsed: dict) -> str | None:
+    """Return ClickHouse timestamp string from a Pi JSONL line, or None.
+
+    Pi uses ISO timestamps at the entry level (``parsed["timestamp"]``).
+    """
+    raw = parsed.get("timestamp")
+    if not raw:
+        return None
+    ts = str(raw).replace("T", " ").rstrip("Z")
+    if "." not in ts:
+        ts += ".000"
+    return ts
+
+
 _TS_EXTRACTORS: dict[str, object] = {
     "claude-code": _ts_claude_code,
     "kiro": _ts_kiro,
+    "cursor": _ts_cursor,
+    "pi": _ts_pi,
 }
 
 
@@ -360,6 +623,8 @@ _ExtraRowsFn = Callable[..., list[dict]]
 _EXTRA_ROWS_HANDLERS: dict[str, _ExtraRowsFn] = {
     "kiro": _kiro_extra_rows,
     "claude-code": _no_extra_rows,
+    "cursor": _no_extra_rows,
+    "pi": _no_extra_rows,
 }
 
 

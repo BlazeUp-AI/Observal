@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Tests for the agent YAML snapshot builder + the matching CLI behaviours.
 
 Covers the bug where per-IDE model overrides set in the web builder never
@@ -96,7 +99,7 @@ async def test_snapshot_drops_blank_overrides():
     """Empty/None override values should be filtered out."""
     from services.agent_snapshot import build_yaml_snapshot
 
-    ver = _mock_version(models_by_ide={"kiro": "", "codex": "gpt-5", "vscode": None})
+    ver = _mock_version(models_by_ide={"kiro": "", "codex": "gpt-5"})
     db = _mock_session_for_snapshot(components=[], goal=None)
 
     text = await build_yaml_snapshot(ver, db)

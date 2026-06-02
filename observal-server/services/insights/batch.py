@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Subramania Raja <dhanpraja231@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Batch insight report generation — discovers agents needing reports and queues jobs.
 
 This module stays in the main repo because it directly interacts with
@@ -9,14 +15,145 @@ from datetime import UTC, datetime, timedelta
 import structlog
 from sqlalchemy import select
 
-from config import settings
 from database import async_session
-from models.agent import Agent, AgentStatus
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.insight_report import InsightReport, InsightReportStatus
 from services.clickhouse import _query
 from services.redis import _get_arq_pool
+from services.secrets_redactor import redact_secrets
 
 logger = structlog.get_logger(__name__)
+
+
+async def _load_agent_config(db, agent_id) -> dict | None:
+    """Load the agent's latest approved version and its components.
+
+    Returns a dict summarizing the agent configuration, or None if no
+    approved version exists.
+    """
+    stmt = (
+        select(AgentVersion)
+        .where(
+            AgentVersion.agent_id == agent_id,
+            AgentVersion.status == AgentStatus.approved,
+        )
+        .order_by(AgentVersion.released_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    version = result.scalar_one_or_none()
+    if not version:
+        return None
+
+    # Build a summary of configured MCPs
+    mcp_names = []
+    skill_names = []
+    for comp in version.components or []:
+        if comp.component_type == "mcp":
+            mcp_names.append(comp.component_name or str(comp.component_id)[:8])
+        elif comp.component_type == "skill":
+            skill_names.append(comp.component_name or str(comp.component_id)[:8])
+
+    # Also include external MCPs from the version config
+    for ext_mcp in version.external_mcps or []:
+        name = ext_mcp.get("name") or ext_mcp.get("server_name", "")
+        if name and name not in mcp_names:
+            mcp_names.append(name)
+
+    config: dict = {
+        "version": version.version,
+        "model": version.model_name,
+        "supported_ides": version.supported_ides or [],
+    }
+
+    if version.prompt:
+        # Include a truncated system prompt (first 2000 chars) for context
+        config["system_prompt_excerpt"] = redact_secrets(version.prompt[:2000])
+        config["system_prompt_length"] = len(version.prompt)
+
+    if mcp_names:
+        config["configured_mcps"] = mcp_names
+    if skill_names:
+        config["configured_skills"] = skill_names
+    if version.model_config_json:
+        config["model_config"] = version.model_config_json
+
+    return config
+
+
+async def _load_registry_catalog(db) -> dict:
+    """Load a summary of available MCPs and skills from the registry.
+
+    Returns a compact catalog for the LLM to reference when suggesting
+    new components the agent could benefit from.
+    """
+    from models.mcp import McpListing, McpVersion
+    from models.skill import SkillListing, SkillVersion
+
+    catalog: dict = {"mcps": [], "skills": []}
+
+    # Public MCPs with their latest version description
+    mcp_stmt = (
+        select(McpListing.id, McpListing.name, McpListing.category, McpVersion.description)
+        .join(McpVersion, McpListing.latest_version_id == McpVersion.id, isouter=True)
+        .where(McpListing.is_private == False)  # noqa: E712 — SQLAlchemy requires ==
+    )
+    mcp_result = await db.execute(mcp_stmt)
+    for row in mcp_result.all():
+        catalog["mcps"].append(
+            {
+                "id": str(row[0]),
+                "name": row[1],
+                "category": row[2],
+                "description": (row[3] or "")[:120],
+            }
+        )
+
+    # Public skills with their latest version description
+    skill_stmt = (
+        select(SkillListing.id, SkillListing.name, SkillVersion.description)
+        .join(SkillVersion, SkillListing.latest_version_id == SkillVersion.id, isouter=True)
+        .where(SkillListing.is_private == False)  # noqa: E712
+    )
+    skill_result = await db.execute(skill_stmt)
+    for row in skill_result.all():
+        catalog["skills"].append(
+            {
+                "id": str(row[0]),
+                "name": row[1],
+                "description": (row[2] or "")[:120],
+            }
+        )
+
+    return catalog
+
+
+# Maximum time a report can stay in 'running' before being considered stale.
+_REPORT_TIMEOUT_MINUTES = 10
+
+
+async def _reap_stale_reports() -> int:
+    """Mark reports stuck in 'running' for too long as failed.
+
+    Handles cases where the worker crashed, system shut off, or the job timed out.
+    Returns the number of reports reaped.
+    """
+    cutoff = datetime.now(UTC) - timedelta(minutes=_REPORT_TIMEOUT_MINUTES)
+    async with async_session() as db:
+        stmt = select(InsightReport).where(
+            InsightReport.status == InsightReportStatus.running,
+            InsightReport.started_at < cutoff,
+        )
+        result = await db.execute(stmt)
+        stale = list(result.scalars().all())
+        for report in stale:
+            report.status = InsightReportStatus.failed
+            report.error_message = f"Timed out after {_REPORT_TIMEOUT_MINUTES} minutes (system may have restarted)"
+            report.completed_at = datetime.now(UTC)
+            logger.warning("insight_report_reaped", report_id=str(report.id), started_at=str(report.started_at))
+        if stale:
+            await db.commit()
+    return len(stale)
 
 
 async def run_single_report(report_id: str) -> None:
@@ -25,7 +162,10 @@ async def run_single_report(report_id: str) -> None:
     This replaces the old generator.generate_report() — orchestration stays
     here in the main repo, computation is delegated to the observal-insights package.
     """
-    from services.insights import generate_report_content
+    from .generator import generate_report_content
+
+    # Reap any stale reports before starting (handles crash recovery)
+    await _reap_stale_reports()
 
     async with async_session() as db:
         stmt = select(InsightReport).where(InsightReport.id == report_id)
@@ -47,6 +187,9 @@ async def run_single_report(report_id: str) -> None:
             agent = agent_result.scalar_one_or_none()
             agent_name = agent.name if agent else "Unknown Agent"
 
+            # Load latest approved version with components for context-aware suggestions
+            agent_config = await _load_agent_config(db, report.agent_id)
+
             start_str = report.period_start.strftime("%Y-%m-%d %H:%M:%S")
             end_str = report.period_end.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -59,6 +202,9 @@ async def run_single_report(report_id: str) -> None:
                 if prev_report and prev_report.aggregated_data:
                     previous_metrics = prev_report.aggregated_data
 
+            # Load registry catalog for component-aware suggestions
+            registry_catalog = await _load_registry_catalog(db)
+
             # Run the insights pipeline
             content = await generate_report_content(
                 agent_name=agent_name,
@@ -66,6 +212,8 @@ async def run_single_report(report_id: str) -> None:
                 period_start=start_str,
                 period_end=end_str,
                 previous_metrics=previous_metrics,
+                agent_config=agent_config,
+                registry_catalog=registry_catalog,
                 db=db,
             )
 
@@ -73,8 +221,13 @@ async def run_single_report(report_id: str) -> None:
             report.metrics = content.get("metrics")
             report.narrative = content.get("narrative")
             report.sessions_analyzed = content.get("sessions_analyzed", 0)
-            report.aggregated_data = content.get("metrics")
-            report.report_version = 2
+            report.aggregated_data = {
+                "metrics": content.get("metrics"),
+                "facets_summary": content.get("facets_summary"),
+                "regressions": content.get("regressions"),
+                "cross_user_patterns": content.get("cross_user_patterns"),
+            }
+            report.report_version = 3
 
             models_used = content.get("models_used", [])
             report.llm_model_used = ", ".join(models_used) if models_used else None
@@ -125,11 +278,18 @@ async def discover_and_queue_reports() -> int:
 
     Returns the number of reports queued.
     """
-    if not settings.INSIGHT_BATCH_ENABLED:
+    # First, reap any reports stuck from crashes/restarts
+    reaped = await _reap_stale_reports()
+    if reaped:
+        logger.info("insight_batch_reaped_stale", count=reaped)
+
+    import services.dynamic_settings as ds
+
+    if not ds.get_sync_bool("insights.batch_enabled", True):
         return 0
 
-    period_days = settings.INSIGHT_BATCH_PERIOD_DAYS
-    min_sessions = settings.INSIGHT_MIN_SESSIONS
+    period_days = ds.get_sync_int("insights.batch_period_days", 14)
+    min_sessions = ds.get_sync_int("insights.min_sessions", 5)
     now = datetime.now(UTC)
     period_start = now - timedelta(days=period_days)
 

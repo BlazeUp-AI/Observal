@@ -1,8 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 """Structured security event logging for SIEM integration.
 
 Emits security events to:
-1. Python logging (observal.security) — picked up by OTEL Collector for SIEM forwarding
-2. ClickHouse security_events table — in-app audit log queries
+1. Python logging (observal.security) - picked up by OTEL Collector for SIEM forwarding
+2. ClickHouse security_events table - in-app audit log queries
 
 Events follow a consistent schema compatible with CEF/LEEF/RFC 5424 formats.
 """
@@ -16,6 +20,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+
+from loguru import logger as optic
 
 logger = logging.getLogger("observal.security")
 
@@ -61,8 +67,6 @@ class EventType(str, Enum):
 
     # Agent security
     INJECTION_DETECTED = "agent.injection_detected"
-    CANARY_PARROTED = "agent.canary_parroted"
-    EVALUATOR_PATH_PROBE = "agent.evaluator_path_probe"
 
     # Ingestion
     SECRETS_REDACTED = "ingestion.secrets_redacted"
@@ -113,6 +117,7 @@ class SecurityEvent:
 
 async def emit_security_event(event: SecurityEvent) -> None:
     """Emit a security event to structured logging and ClickHouse."""
+    optic.trace("emitting security event: {} ({})", event.event_type, event.severity)
     log_data = event.to_log_dict()
 
     log_level = {

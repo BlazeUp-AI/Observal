@@ -1,6 +1,9 @@
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+
 # observal ops
 
-Operational and observability commands — dashboards, traces, spans, metrics, feedback.
+Operational and observability commands: dashboards, traces, spans, metrics, feedback.
 
 ## Subcommands
 
@@ -21,7 +24,7 @@ Operational and observability commands — dashboards, traces, spans, metrics, f
 
 ## `observal ops overview`
 
-Summary stats across your server — total traces, active agents, error rate, top MCPs.
+Summary stats across your server: total traces, active agents, error rate, top MCPs.
 
 ```bash
 observal ops overview
@@ -122,7 +125,7 @@ Flush the local telemetry buffer. When the Observal server is unreachable, hook 
 observal ops sync
 ```
 
-Auto-flush also happens on the next successful CLI invocation — you rarely need to run this manually.
+Auto-flush also happens on the next successful CLI invocation, so you rarely need to run this manually.
 
 ---
 
@@ -145,11 +148,10 @@ Send a test telemetry event. Useful for verifying instrumentation end-to-end.
 
 ```bash
 observal ops telemetry test
-# Test event sent — view at http://localhost:3000/traces
+# Test event sent. View at http://localhost/traces
 ```
 
 ## Related
 
 * [Use Cases → Observe MCP traffic](../use-cases/observe-mcp-traffic.md)
 * [Use Cases → Debug agent failures](../use-cases/debug-agent-failures.md)
-* [Data model](../concepts/data-model.md)

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-License-Identifier: LicenseRef-Observal-Enterprise
+
 """SAML 2.0 SSO endpoints for enterprise deployments."""
 
 from __future__ import annotations
@@ -6,7 +10,9 @@ import hashlib
 import json
 import logging
 import secrets
+import uuid
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
@@ -17,7 +23,8 @@ from api.deps import get_db, get_or_create_default_org
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-from config import settings
+
+import services.dynamic_settings as ds
 from ee.observal_server.services.saml import (
     build_saml_settings,
     decrypt_private_key,
@@ -28,7 +35,6 @@ from ee.observal_server.services.saml import (
 )
 from models.saml_config import SamlConfig
 from models.user import User, UserRole
-from services.audit_helpers import audit
 from services.jwt_service import create_access_token, create_refresh_token
 from services.redis import get_redis
 from services.security_events import (
@@ -40,6 +46,10 @@ from services.security_events import (
 from services.username_generator import generate_unique_username
 
 logger = logging.getLogger("observal.ee.saml")
+
+
+def _get_frontend_url() -> str:
+    return ds.get_sync("deployment.frontend_url", "http://localhost:3000")
 
 
 def _safe_redirect_path(value: str | None) -> str:
@@ -64,13 +74,13 @@ async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
     config = result.scalar_one_or_none()
     if config:
         return config
-    if settings.SAML_IDP_ENTITY_ID and settings.SAML_IDP_SSO_URL:
+    if ds.get_sync("saml.idp_entity_id") and ds.get_sync("saml.idp_sso_url"):
         if _env_saml_config_cache is not None:
             return _env_saml_config_cache
 
-        sp_entity_id = settings.SAML_SP_ENTITY_ID or f"{settings.FRONTEND_URL}/api/v1/sso/saml/metadata"
-        sp_acs_url = settings.SAML_SP_ACS_URL or f"{settings.FRONTEND_URL}/api/v1/sso/saml/acs"
-        enc_password = settings.SAML_SP_KEY_ENCRYPTION_PASSWORD
+        sp_entity_id = ds.get_sync("saml.sp_entity_id") or f"{_get_frontend_url()}/api/v1/sso/saml/metadata"
+        sp_acs_url = ds.get_sync("saml.sp_acs_url") or f"{_get_frontend_url()}/api/v1/sso/saml/acs"
+        enc_password = ds.get_sync("saml.sp_key_encryption_password")
         if not enc_password:
             logger.warning(
                 "SAML_SP_KEY_ENCRYPTION_PASSWORD is not set -- "
@@ -83,16 +93,16 @@ async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
             "EnvSamlConfig",
             (),
             {
-                "idp_entity_id": settings.SAML_IDP_ENTITY_ID,
-                "idp_sso_url": settings.SAML_IDP_SSO_URL,
-                "idp_slo_url": settings.SAML_IDP_SLO_URL,
-                "idp_x509_cert": settings.SAML_IDP_X509_CERT,
+                "idp_entity_id": ds.get_sync("saml.idp_entity_id"),
+                "idp_sso_url": ds.get_sync("saml.idp_sso_url"),
+                "idp_slo_url": ds.get_sync("saml.idp_slo_url"),
+                "idp_x509_cert": ds.get_sync("saml.idp_x509_cert"),
                 "sp_entity_id": sp_entity_id,
                 "sp_acs_url": sp_acs_url,
                 "sp_private_key_enc": sp_key_enc,
                 "sp_x509_cert": cert_pem,
-                "jit_provisioning": settings.SAML_JIT_PROVISIONING,
-                "default_role": settings.SAML_DEFAULT_ROLE,
+                "jit_provisioning": ds.get_sync_bool("saml.jit_provisioning", True),
+                "default_role": ds.get_sync("saml.default_role", "user"),
                 "org_id": None,
             },
         )()
@@ -102,15 +112,17 @@ async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
 
 
 def _decrypt_sp_key(config) -> str:
-    password = settings.SAML_SP_KEY_ENCRYPTION_PASSWORD
+    password = ds.get_sync("saml.sp_key_encryption_password")
     return decrypt_private_key(config.sp_private_key_enc, password)
 
 
 def _prepare_saml_request(request: Request) -> dict:
+    parsed = urlparse(ds.get_sync("deployment.frontend_url", "http://localhost:3000"))
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     return {
-        "https": "on" if request.url.scheme == "https" else "off",
-        "http_host": request.headers.get("host", request.url.hostname or "localhost"),
-        "server_port": str(request.url.port or (443 if request.url.scheme == "https" else 80)),
+        "https": "on" if parsed.scheme == "https" else "off",
+        "http_host": f"{parsed.hostname}:{port}" if port not in (80, 443) else parsed.hostname,
+        "server_port": str(port),
         "script_name": request.url.path,
         "get_data": dict(request.query_params),
         "post_data": {},
@@ -127,7 +139,7 @@ async def _prepare_saml_request_with_body(request: Request) -> dict:
 def _build_auth(config, sp_private_key: str, request_data: dict) -> OneLogin_Saml2_Auth:
     sp_slo_url = ""
     if getattr(config, "idp_slo_url", ""):
-        sp_slo_url = f"{settings.FRONTEND_URL}/api/v1/sso/saml/sls"
+        sp_slo_url = f"{_get_frontend_url()}/api/v1/sso/saml/sls"
     saml_settings = build_saml_settings(
         idp_entity_id=config.idp_entity_id,
         idp_sso_url=config.idp_sso_url,
@@ -145,9 +157,10 @@ def _build_auth(config, sp_private_key: str, request_data: dict) -> OneLogin_Sam
 async def _issue_tokens(user: User) -> tuple[str, str, int]:
     access_token, expires_in = create_access_token(user.id, user.role)
     refresh_token, jti = create_refresh_token(user.id, user.role)
-    refresh_ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+    refresh_ttl = ds.get_sync_int("jwt.refresh_token_expire_days", 7) * 86400
     redis = get_redis()
     await redis.setex(f"refresh_jti:{jti}", refresh_ttl, str(user.id))
+    await redis.delete(f"revoked_user:{user.id}")
     return access_token, refresh_token, expires_in
 
 
@@ -184,6 +197,8 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     auth.process_response()
     errors = auth.get_errors()
 
+    logger.debug("SAML ACS: errors=%s, reason=%s", errors, auth.get_last_error_reason())
+
     source_ip = request.client.host if request.client else ""
     user_agent = request.headers.get("user-agent", "")
 
@@ -205,6 +220,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
             detail=f"SAML validation failed: {error_reason}",
         )
 
+    # Reject unauthenticated assertions
     if not auth.is_authenticated():
         await emit_security_event(
             SecurityEvent(
@@ -258,6 +274,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=503, detail="Unable to verify SAML assertion -- try again")
 
     email, attributes = extract_name_id_and_attrs(auth)
+
     if not email:
         raise HTTPException(status_code=400, detail="No email in SAML assertion NameID")
 
@@ -336,7 +353,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     redis = get_redis()
     await redis.setex(
         f"oauth_code:{code}",
-        30,
+        120,
         json.dumps(
             {
                 "access_token": access_token,
@@ -361,18 +378,73 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
             detail="SAML SSO login",
         )
     )
-    await audit(
-        user,
-        "auth.saml_callback",
-        resource_type="session",
-        resource_id=str(user.id),
-        detail="SAML SSO login",
-    )
 
     relay_state = _safe_redirect_path(request_data["post_data"].get("RelayState"))
 
-    frontend_redirect = f"{settings.FRONTEND_URL}/login?code={code}&next={relay_state}"
-    return RedirectResponse(url=frontend_redirect, status_code=302)
+    token_id = str(uuid.uuid4())
+    redis = get_redis()
+    await redis.setex(
+        f"saml_login:{token_id}",
+        120,
+        json.dumps(
+            {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_in": expires_in,
+                "user_id": str(user.id),
+                "role": user.role.value,
+                "name": user.name,
+                "email": user.email,
+                "username": user.username or "",
+            }
+        ),
+    )
+
+    frontend_url = _get_frontend_url()
+    redirect_url = f"{frontend_url}/login?saml_token={token_id}"
+    if relay_state != "/":
+        redirect_url += f"&next={relay_state}"
+    return RedirectResponse(url=redirect_url, status_code=302)
+
+
+@router.post("/exchange")
+async def saml_exchange(request: Request, token_id: str):
+    """Exchange a one-time SAML login token for credentials.
+
+    Uses POST to keep the token out of server logs and referrer headers.
+    The token is single-use (redis GETDEL) with a 120s TTL.
+    """
+    redis = get_redis()
+
+    # Basic rate-limit: 5 failed attempts per IP per minute
+    source_ip = request.client.host if request.client else "unknown"
+    rate_key = f"saml_exchange_rate:{source_ip}"
+    attempts = await redis.incr(rate_key)
+    if attempts == 1:
+        await redis.expire(rate_key, 60)
+    if attempts > 5:
+        raise HTTPException(status_code=429, detail="Too many attempts")
+
+    data = await redis.getdel(f"saml_login:{token_id}")
+    if not data:
+        raise HTTPException(status_code=400, detail="Invalid or expired SAML token")
+
+    # Reset rate-limit on success
+    await redis.delete(rate_key)
+
+    payload = json.loads(data)
+    return {
+        "access_token": payload["access_token"],
+        "refresh_token": payload["refresh_token"],
+        "expires_in": payload.get("expires_in", 3600),
+        "user": {
+            "id": payload["user_id"],
+            "role": payload["role"],
+            "name": payload["name"],
+            "email": payload["email"],
+            "username": payload.get("username", ""),
+        },
+    }
 
 
 @router.get("/logout")
@@ -381,12 +453,12 @@ async def saml_logout(request: Request, db: AsyncSession = Depends(get_db)):
     config = await _get_saml_config(db)
     if not config or not getattr(config, "idp_slo_url", None):
         # No SLO configured, just redirect to login
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login", status_code=302)
+        return RedirectResponse(url=f"{_get_frontend_url()}/login", status_code=302)
 
     sp_key = _decrypt_sp_key(config)
     request_data = _prepare_saml_request(request)
     auth = _build_auth(config, sp_key, request_data)
-    redirect_url = auth.logout(return_to=f"{settings.FRONTEND_URL}/login")
+    redirect_url = auth.logout(return_to=f"{_get_frontend_url()}/login")
     return RedirectResponse(url=redirect_url, status_code=302)
 
 
@@ -395,7 +467,7 @@ async def saml_sls(request: Request, db: AsyncSession = Depends(get_db)):
     """SLO callback: handle LogoutResponse from IdP after logout completes."""
     config = await _get_saml_config(db)
     if not config:
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login", status_code=302)
+        return RedirectResponse(url=f"{_get_frontend_url()}/login", status_code=302)
 
     sp_key = _decrypt_sp_key(config)
     request_data = _prepare_saml_request(request)
@@ -406,8 +478,8 @@ async def saml_sls(request: Request, db: AsyncSession = Depends(get_db)):
     if errors:
         logger.warning("SAML SLO failed: %s", errors)
 
-    login_url = f"{settings.FRONTEND_URL}/login"
-    redirect_target = url if url and url.startswith(settings.FRONTEND_URL) else login_url
+    login_url = f"{_get_frontend_url()}/login"
+    redirect_target = url if url and url.startswith(_get_frontend_url()) else login_url
     return RedirectResponse(url=redirect_target, status_code=302)
 
 

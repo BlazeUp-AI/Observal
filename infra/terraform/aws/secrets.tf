@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # ── Generated secrets ─────────────────────────────────────────────────────
 
 resource "random_password" "db" {
@@ -60,4 +63,16 @@ resource "aws_ssm_parameter" "urls" {
   value = each.value
 
   tags = { Name = "${local.name}-${lower(each.key)}" }
+}
+
+# ── License key (enterprise only) ────────────────────────────────────────
+
+resource "aws_ssm_parameter" "license_key" {
+  count = local.is_enterprise ? 1 : 0
+
+  name  = "${local.ssm_prefix}/OBSERVAL_LICENSE_KEY"
+  type  = "SecureString"
+  value = var.observal_license_key
+
+  tags = { Name = "${local.name}-license-key" }
 }

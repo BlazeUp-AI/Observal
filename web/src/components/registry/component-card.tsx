@@ -1,6 +1,8 @@
-"use client";
+// SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import Link from "next/link";
+
+import { Link } from "@tanstack/react-router";
 import { GitBranch } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { RegistryType } from "@/lib/api";
@@ -36,7 +38,7 @@ export function ComponentCard({
 }: ComponentCardProps) {
   return (
     <Link
-      href={`/components/${id}?type=${type}`}
+      to="/components/$componentId" params={{ componentId: id }} search={{ type }}
       className={[
         "group block border border-border bg-card p-4 rounded-md",
         "transition-all duration-200 ease-out",
