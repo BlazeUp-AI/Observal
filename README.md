@@ -43,6 +43,7 @@
 | IDE |
 |-----|
 | Claude Code |
+| OpenCode |
 | Kiro |
 | Cursor |
 | Pi |
