@@ -539,6 +539,7 @@ def _do_device_flow_login(server_url: str):
     optic.trace("server_url={}", server_url)
     import time
     import webbrowser
+    from urllib.parse import urlparse
 
     # 1. Request device authorization
     try:
@@ -560,6 +561,24 @@ def _do_device_flow_login(server_url: str):
     verification_uri_complete = data["verification_uri_complete"]
     expires_in = data["expires_in"]
     interval = data.get("interval", 5)
+
+    # If the server returned a localhost URL but we connected to a remote server,
+    # rewrite the verification URLs using the server_url we already know.
+    parsed_verification = urlparse(verification_uri)
+    parsed_server = urlparse(server_url)
+    # None check: urlparse returns hostname=None for malformed URLs (bare paths, etc.)
+    if parsed_verification.hostname in ("localhost", "127.0.0.1", "::1") and parsed_server.hostname not in (
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        None,
+    ):
+        base = f"{parsed_server.scheme}://{parsed_server.netloc}"
+        path = parsed_verification.path or "/device"
+        verification_uri = f"{base}{path}"
+        original_query = urlparse(data.get("verification_uri_complete", "")).query
+        verification_uri_complete = f"{base}{path}?{original_query}" if original_query else f"{base}{path}"
+        optic.debug("rewrote localhost verification_uri to {}", verification_uri)
 
     # 2. Display instructions
     rprint()
