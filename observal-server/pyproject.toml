@@ -34,7 +34,7 @@ dependencies = [
     "python3-saml>=1.16.0",
     "cffi",
     "slowapi",
-    "PyJWT>=2.8.0",
+    "PyJWT>=2.13.0",
     "aiosqlite>=0.22.1",
     "tenacity>=8.0.0",
     "python-multipart>=0.0.26",
