@@ -1,3 +1,4 @@
+
 // SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 // SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
@@ -46,6 +47,7 @@ import type {
 	SystemWarning,
 	InsightReportListItem,
 	InsightReport,
+	InsightAppliedItems,
 	ExecAdoptionResponse,
 	ExecAgentCounts,
 	ExecUsageByCategory,
@@ -179,6 +181,14 @@ async function _tryRefreshToken(): Promise<boolean> {
 	}
 }
 
+/**
+ * Public wrapper for silent token refresh (e.g. new tab with no sessionStorage).
+ * Returns true if the access token was restored successfully.
+ */
+export async function refreshAccessToken(): Promise<boolean> {
+	return _tryRefreshToken();
+}
+
 async function request<T = unknown>(
 	method: string,
 	path: string,
@@ -229,9 +239,15 @@ async function request<T = unknown>(
 					if (retryRes.status === 204) return undefined as T;
 					return retryRes.json() as Promise<T>;
 				}
+				// Retry failed but refresh succeeded, so the individual call
+				// fails gracefully without killing the session
+				const retryText = await retryRes.text().catch(() => "Request failed");
+				const retryErr = new Error(retryText);
+				(retryErr as Error & { status: number }).status = retryRes.status;
+				throw retryErr;
 			}
 
-			// Refresh failed or retry failed, clear session
+			// Refresh itself failed: session is truly expired
 			clearSession();
 			if (typeof window !== "undefined") {
 				window.location.href = "/login?reason=session_expired";
@@ -241,29 +257,38 @@ async function request<T = unknown>(
 
 		const text = await response.text().catch(() => response.statusText);
 		let detail = text;
-		try {
-			const parsed = JSON.parse(text);
-			if (parsed.detail) {
-				if (typeof parsed.detail === "string") {
-					detail = parsed.detail;
-				} else if (Array.isArray(parsed.detail)) {
-					detail = parsed.detail
-						.map(
-							(e: { msg?: string }) =>
-								e.msg?.replace(/^Value error, /i, "") || "Validation error",
-						)
-						.join(". ");
-				} else {
-					detail = JSON.stringify(parsed.detail);
+
+		// Guard against raw HTML responses (e.g. nginx 502 Bad Gateway)
+		if (text.trim().startsWith("<")) {
+			detail =
+				response.status >= 500
+					? "Unable to reach the server. Please try again later."
+					: `Request failed (${response.status})`;
+		} else {
+			try {
+				const parsed = JSON.parse(text);
+				if (parsed.detail) {
+					if (typeof parsed.detail === "string") {
+						detail = parsed.detail;
+					} else if (Array.isArray(parsed.detail)) {
+						detail = parsed.detail
+							.map(
+								(e: { msg?: string }) =>
+									e.msg?.replace(/^Value error, /i, "") || "Validation error",
+							)
+							.join(". ");
+					} else {
+						detail = JSON.stringify(parsed.detail);
+					}
+				} else if (parsed.error) {
+					detail =
+						typeof parsed.error === "string"
+							? parsed.error
+							: JSON.stringify(parsed.error);
 				}
-			} else if (parsed.error) {
-				detail =
-					typeof parsed.error === "string"
-						? parsed.error
-						: JSON.stringify(parsed.error);
+			} catch {
+				// not JSON, use raw text
 			}
-		} catch {
-			// not JSON, use raw text
 		}
 		const err = new Error(detail);
 		(err as Error & { status: number }).status = response.status;
@@ -511,11 +536,15 @@ export const dashboard = {
 		status?: string;
 		platform?: string;
 		days?: number;
+		limit?: number;
+		offset?: number;
 	}) => {
 		const qs = new URLSearchParams();
 		if (params?.status) qs.set("status", params.status);
 		if (params?.platform) qs.set("platform", params.platform);
 		if (params?.days) qs.set("days", String(params.days));
+		if (params?.limit) qs.set("limit", String(params.limit));
+		if (params?.offset) qs.set("offset", String(params.offset));
 		const suffix = qs.toString() ? `?${qs}` : "";
 		return get<Session[]>(`/sessions${suffix}`);
 	},
@@ -549,6 +578,11 @@ export const admin = {
 	updateSetting: (key: string, body: unknown) =>
 		put<unknown>(`/admin/settings/${key}`, body),
 	deleteSetting: (key: string) => del(`/admin/settings/${key}`),
+	revokeSetting: (key: string) =>
+		post<{ revoked: string; message: string }>(
+			`/admin/settings/${key}/revoke`,
+			{},
+		),
 	users: () => get<AdminUser[]>("/admin/users"),
 	createUser: (body: {
 		email: string;
@@ -705,7 +739,6 @@ export type PublicConfig = {
 	sso_enabled: boolean;
 	sso_only: boolean;
 	saml_enabled: boolean;
-	insights_available: boolean;
 	exec_dashboard_available: boolean;
 	licensed_features: string[];
 	branding_logo: string | null;
@@ -744,6 +777,8 @@ export const bulk = {
 
 // ── Insights ───────────────────────────────────────────────────────
 export const insights = {
+	status: () => get<{ available: boolean; reason: string | null }>("/insights/status"),
+	sessionCount: (agentId: string) => get<{ session_count: number }>(`/insights/agents/${agentId}/session-count`),
 	generate: (agentId: string, periodDays?: number) =>
 		post<InsightReportListItem>(
 			`/insights/agents/${agentId}/generate`,
@@ -753,6 +788,11 @@ export const insights = {
 		get<InsightReportListItem[]>(`/insights/agents/${agentId}/reports`),
 	getReport: (reportId: string) =>
 		get<InsightReport>(`/insights/reports/${reportId}`),
+	applySuggestions: (reportId: string, selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] }) =>
+		post<{ applied: boolean; report_id: string; items: InsightAppliedItems }>(
+			`/insights/reports/${reportId}/apply`,
+			selection ?? {},
+		),
 	exportHtml: async (reportId: string): Promise<void> => {
 		const token = getAccessToken();
 		const res = await fetch(`${API}/insights/reports/${reportId}/export/html`, {

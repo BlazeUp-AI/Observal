@@ -91,7 +91,7 @@ Goes through review queue. Use for "new version", "bump", or "release".
    ```bash
    observal agent init --dir ./my-agent
    ```
-2. Add components (second arg is UUID, find with `observal mcp show NAME --output json`):
+2. Add components (second arg is UUID, find with `observal registry mcp show NAME --output json`):
    ```bash
    observal agent add mcp COMPONENT_UUID --dir ./my-agent
    observal agent add skill COMPONENT_UUID --dir ./my-agent
@@ -134,6 +134,25 @@ observal agent versions AGENT_NAME --output json
 After `list`, use row numbers (1, 2, 3...) in subsequent commands.
 
 ---
+
+## Procedure: Manage Co-Authors
+
+Co-authors have full edit and publish access (equal to owner).
+
+```bash
+# List co-authors
+observal co-authors list agents <agent-id-or-name>
+
+# Add by email or username
+observal co-authors add agents <agent-id-or-name> user@example.com
+observal co-authors add agents <agent-id-or-name> @username
+
+# Remove by user UUID (from list output)
+observal co-authors remove agents <agent-id-or-name> <user-uuid>
+```
+
+Works for all entity types: `agents`, `mcps`, `skills`, `hooks`, `prompts`, `sandboxes`.
+
 
 ## Error Reference
 

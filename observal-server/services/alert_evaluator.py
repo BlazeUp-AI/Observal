@@ -4,7 +4,6 @@
 
 """Alert evaluation engine: periodic metric checks and webhook delivery."""
 
-import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -17,15 +16,13 @@ from models.alert_history import AlertHistory
 from services.clickhouse import _query
 from services.ssrf_guard import is_private_url  # noqa: F401 -- re-exported for callers
 
-logger = logging.getLogger(__name__)
-
 LOOKBACK_MINUTES = 5
 WEBHOOK_TIMEOUT = 5
 
 
 async def _query_error_rate(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query the error rate from ClickHouse spans table."""
-    optic.debug("_query_error_rate: target_type={}, target_id={}", target_type, target_id)
+    optic.trace("querying error rate for {} {}", target_type, target_id)
     sql = (
         "SELECT countIf(status='error') / count(*) AS error_rate "
         "FROM spans "
@@ -46,13 +43,13 @@ async def _query_error_rate(target_type: str, target_id: str, lookback_minutes: 
             return None
         return float(text)
     except Exception as e:
-        logger.error("ClickHouse error_rate query failed: %s", e)
+        optic.error("ClickHouse error_rate query failed: {}", e)
         return None
 
 
 async def _query_latency_p99(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query the p99 latency from ClickHouse spans table."""
-    optic.debug("_query_latency_p99: target_type={}, target_id={}", target_type, target_id)
+    optic.trace("querying p99 latency for {} {}", target_type, target_id)
     sql = (
         "SELECT quantile(0.99)(latency_ms) AS latency_p99 "
         "FROM spans "
@@ -73,13 +70,13 @@ async def _query_latency_p99(target_type: str, target_id: str, lookback_minutes:
             return None
         return float(text)
     except Exception as e:
-        logger.error("ClickHouse latency_p99 query failed: %s", e)
+        optic.error("ClickHouse latency_p99 query failed: {}", e)
         return None
 
 
 async def _query_token_usage(target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Query total token usage from ClickHouse spans table."""
-    optic.debug("_query_token_usage: target_type={}, target_id={}", target_type, target_id)
+    optic.trace("querying error rate for {} {}", target_type, target_id)
     sql = (
         "SELECT sum(token_count_total) AS token_usage "
         "FROM spans "
@@ -100,13 +97,13 @@ async def _query_token_usage(target_type: str, target_id: str, lookback_minutes:
             return None
         return float(text)
     except Exception as e:
-        logger.error("ClickHouse token_usage query failed: %s", e)
+        optic.error("ClickHouse token_usage query failed: {}", e)
         return None
 
 
 async def _query_metric(metric: str, target_type: str, target_id: str, lookback_minutes: int) -> float | None:
     """Dispatch to the appropriate metric query helper."""
-    optic.debug("_query_metric: metric={}, target_type={}", metric, target_type)
+    optic.trace("dispatching metric {} query for {}", metric, target_type)
     if metric == "error_rate":
         return await _query_error_rate(target_type, target_id, lookback_minutes)
     elif metric == "latency_p99":
@@ -114,7 +111,7 @@ async def _query_metric(metric: str, target_type: str, target_id: str, lookback_
     elif metric == "token_usage":
         return await _query_token_usage(target_type, target_id, lookback_minutes)
     else:
-        logger.warning("Unknown metric: %s", metric)
+        optic.warning("unknown alert metric {} - cannot evaluate", metric)
         return None
 
 
@@ -126,7 +123,7 @@ async def _deliver_webhook_signed(
     Returns (status_code, error) tuple for AlertHistory compatibility.
     If secret is empty (legacy rule), delivers without signature (AD-4).
     """
-    optic.debug("_deliver_webhook_signed: url={}", url)
+    optic.trace("validating webhook URL: {}", url)
     from services.webhook_delivery import deliver_webhook
 
     result = await deliver_webhook(
@@ -142,7 +139,7 @@ async def _deliver_webhook_signed(
 
 def _condition_met(condition: str, value: float, threshold: float) -> bool:
     """Check if the alert condition is met."""
-    optic.debug("_condition_met: condition={}, value={}", condition, value)
+    optic.trace("checking condition {} against value={}", condition, value)
     if condition == "above":
         return value > threshold
     elif condition == "below":
@@ -152,10 +149,10 @@ def _condition_met(condition: str, value: float, threshold: float) -> bool:
 
 async def evaluate_alerts(ctx: dict) -> None:
     """Main arq cron job: evaluate all active alert rules and fire webhooks."""
-    optic.debug("alert_evaluator: cycle started")
+    optic.debug("alert evaluation cycle starting")
     from services.webhook_delivery import flush_delivery_records
 
-    logger.info("Starting alert evaluation cycle")
+    optic.info("evaluating alert rules")
     async with async_session() as db:
         stmt = select(AlertRule).where(AlertRule.status == "active")
         result = await db.execute(stmt)
@@ -214,8 +211,8 @@ async def evaluate_alerts(ctx: dict) -> None:
                 rule.last_triggered = now
                 await db.commit()
 
-                logger.info(
-                    "Alert '%s' fired: %s=%s (threshold=%s, condition=%s, delivery=%s)",
+                optic.info(
+                    "Alert '{}' fired: {}={} (threshold={}, condition={}, delivery={})",
                     rule.name,
                     rule.metric,
                     value,
@@ -224,8 +221,8 @@ async def evaluate_alerts(ctx: dict) -> None:
                     delivery_status,
                 )
             except Exception as e:
-                logger.exception("Error evaluating alert rule %s: %s", rule.id, e)
+                optic.error("alert rule {} evaluation crashed: {}", rule.id, e)
 
     # AD-1: Batch-flush delivery records to ClickHouse at end of cycle
     await flush_delivery_records()
-    logger.info("Alert evaluation cycle complete")
+    optic.info("alert evaluation cycle complete")

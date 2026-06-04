@@ -133,11 +133,15 @@ def build_saml_settings(
         "security": {
             "authnRequestsSigned": True,
             "wantAssertionsSigned": True,
+            "wantMessagesSigned": False,
+            "wantResponsesSigned": True,
             "wantNameIdEncrypted": False,
             "wantAssertionsEncrypted": False,
             "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
             "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
             "requestedAuthnContext": False,
+            "relaxDestinationValidation": False,
+            "wantNameId": True,
         },
     }
     if sp_slo_url:

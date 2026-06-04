@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 import {
   useState,
@@ -57,8 +56,6 @@ interface AgentDetail {
   status?: string;
   version?: string;
   owner?: string;
-  visibility?: string;
-  team_accesses?: { group_name: string; permission: "view" | "edit" }[];
   user_permission?: string;
   description?: string;
   prompt?: string;

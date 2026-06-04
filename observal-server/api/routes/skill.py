@@ -17,6 +17,7 @@ from api.deps import (
     apply_visibility_filter,
     check_listing_visibility,
     get_db,
+    get_effective_component_permission,
     optional_current_user,
     require_role,
     resolve_listing,
@@ -47,7 +48,7 @@ async def submit_skill(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("skill submit: name={}", req.name)
+    optic.debug("submitting skill: {}", req.name)
     existing = await db.execute(
         select(SkillListing).where(SkillListing.name == req.name, SkillListing.submitted_by == current_user.id)
     )
@@ -61,8 +62,32 @@ async def submit_skill(
     description = req.description
     slash_command = req.slash_command
     skill_path = req.skill_path
+    delivery_mode = req.delivery_mode or "git_fetch"
+    script_content = req.script_content
+    script_filename = req.script_filename
 
-    if req.git_url:
+    if delivery_mode == "registry_direct":
+        # Registry direct: skill_md_content is required, no git validation
+        if not skill_md_content:
+            raise HTTPException(status_code=422, detail="skill_md_content is required for registry_direct delivery")
+        # Parse frontmatter for auto-fill using simple string ops (no regex on user data)
+        import re as _re
+
+        fm_match = _re.match(r"^---\r?\n([\s\S]*?)\r?\n---", skill_md_content)
+        if fm_match:
+            for line in fm_match.group(1).split("\n"):
+                if line.startswith("name:") and not name:
+                    name = line[5:].strip()
+                elif line.startswith("description:") and not description:
+                    val = line[12:].strip()
+                    # Strip surrounding quotes
+                    if len(val) >= 2 and val[0] in ("'", '"') and val[-1] == val[0]:
+                        val = val[1:-1]
+                    description = val
+                elif line.startswith("command:") and slash_command is None:
+                    slash_command = line[8:].strip().lstrip("/")
+        validated = True  # Content is inline, no need to fetch from git
+    elif req.git_url:
         try:
             analysis = await validate_skill_md(
                 req.git_url,
@@ -113,6 +138,9 @@ async def submit_skill(
         git_url=req.git_url,
         git_ref=req.git_ref,
         skill_md_content=skill_md_content,
+        delivery_mode=delivery_mode,
+        script_content=script_content,
+        script_filename=script_filename,
         validated=validated,
         target_agents=req.target_agents,
         task_type=req.task_type,
@@ -139,7 +167,7 @@ async def list_skills(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
-    optic.debug("skill list: task_type={}, search={}", task_type, search)
+    optic.debug("listing skills (task_type={}, search={})", task_type, search)
     stmt = (
         select(SkillListing)
         .join(SkillVersion, SkillListing.latest_version_id == SkillVersion.id)
@@ -180,17 +208,21 @@ async def get_skill(
     db: AsyncSession = Depends(get_db),
     current_user: User | None = Depends(optional_current_user),
 ):
-    optic.debug("skill get: listing_id={}", listing_id)
+    optic.debug("fetching skill {}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db, require_status=ListingStatus.approved)
     if listing:
-        return SkillListingResponse.model_validate(listing)
+        resp = SkillListingResponse.model_validate(listing)
+        resp.user_permission = get_effective_component_permission(listing, current_user)
+        return resp
 
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
     if check_listing_visibility(listing, current_user):
-        return SkillListingResponse.model_validate(listing)
+        resp = SkillListingResponse.model_validate(listing)
+        resp.user_permission = get_effective_component_permission(listing, current_user)
+        return resp
 
     raise HTTPException(status_code=404, detail="Listing not found")
 
@@ -203,11 +235,11 @@ async def install_skill(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("skill install: listing_id={}", listing_id)
+    optic.debug("installing skill {}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db, require_status=ListingStatus.approved)
     if not listing:
         listing = await resolve_listing(SkillListing, listing_id, db)
-        if not listing or listing.submitted_by != current_user.id:
+        if not listing or get_effective_component_permission(listing, current_user) != "owner":
             raise HTTPException(status_code=404, detail="Listing not found or not approved")
 
     db.add(SkillDownload(listing_id=listing.id, user_id=current_user.id, ide=req.ide))
@@ -227,7 +259,7 @@ async def save_skill_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("save_skill_draft: req={}", req)
+    optic.trace("req={}", req)
     listing = SkillListing(
         name=req.name,
         owner=req.owner or current_user.username or current_user.email,
@@ -245,6 +277,9 @@ async def save_skill_draft(
         git_url=req.git_url,
         git_ref=req.git_ref,
         skill_md_content=req.skill_md_content,
+        delivery_mode=req.delivery_mode or "git_fetch",
+        script_content=req.script_content,
+        script_filename=req.script_filename,
         target_agents=req.target_agents,
         task_type=req.task_type,
         slash_command=req.slash_command,
@@ -269,11 +304,11 @@ async def update_skill_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("update_skill_draft: listing_id={}", listing_id)
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     if listing.status not in (ListingStatus.draft, ListingStatus.rejected, ListingStatus.pending):
         raise HTTPException(status_code=400, detail="Only draft, rejected, or pending listings can be edited")
@@ -289,6 +324,9 @@ async def update_skill_draft(
         "git_url",
         "git_ref",
         "skill_md_content",
+        "delivery_mode",
+        "script_content",
+        "script_filename",
         "target_agents",
         "task_type",
         "slash_command",
@@ -327,11 +365,11 @@ async def start_edit_skill(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("start_edit_skill: listing_id={}", listing_id)
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     ver = listing.latest_version
     if not ver:
@@ -351,11 +389,11 @@ async def cancel_edit_skill(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("cancel_edit_skill: listing_id={}", listing_id)
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     ver = listing.latest_version
     if not ver:
@@ -371,11 +409,11 @@ async def submit_skill_draft(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("submit_skill_draft: listing_id={}", listing_id)
+    optic.trace("listing_id={}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not the listing owner")
     if listing.status not in (ListingStatus.draft, ListingStatus.rejected):
         raise HTTPException(status_code=400, detail="Listing is not a draft")
@@ -395,12 +433,12 @@ async def delete_skill(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("skill delete: listing_id={}", listing_id)
+    optic.debug("deleting skill {}", listing_id)
     listing = await resolve_listing(SkillListing, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
-    if listing.submitted_by != current_user.id and not is_admin:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Not authorized")
     if listing.status == ListingStatus.approved and not is_admin:
         raise HTTPException(status_code=400, detail="Cannot delete an approved listing. Contact an admin.")

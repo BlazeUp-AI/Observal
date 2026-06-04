@@ -2,17 +2,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """ClickHouse query functions for all telemetry tables."""
 
-import structlog
+import time
+
 from loguru import logger as optic
 
 import services.clickhouse.client as _client
 
-logger = structlog.get_logger(__name__)
-
 
 async def query_recent_events(minutes: int = 60) -> dict:
     """Get event counts from the last N minutes from the active telemetry tables."""
-    optic.debug("query_recent_events: minutes={}", minutes)
+    _t0 = time.perf_counter()
     minutes = int(minutes)
     tool_count = 0
     agent_count = 0
@@ -28,7 +27,7 @@ async def query_recent_events(minutes: int = 60) -> dict:
         if r.status_code == 200:
             tool_count = int(r.json().get("data", [{}])[0].get("cnt", 0))
     except Exception as e:
-        logger.warning("clickhouse_query_spans_failed", error=str(e))
+        optic.warning("could not count recent spans: {}", e)
 
     try:
         r = await _client._query(
@@ -41,8 +40,16 @@ async def query_recent_events(minutes: int = 60) -> dict:
         if r.status_code == 200:
             agent_count = int(r.json().get("data", [{}])[0].get("cnt", 0))
     except Exception as e:
-        logger.warning("clickhouse_query_traces_failed", error=str(e))
+        optic.warning("could not count recent traces: {}", e)
 
+    _elapsed = (time.perf_counter() - _t0) * 1000
+    optic.debug(
+        "recent events in last {}min: {} tool calls, {} agent traces ({:.0f}ms)",
+        minutes,
+        tool_count,
+        agent_count,
+        _elapsed,
+    )
     return {"tool_call_events": tool_count, "agent_interaction_events": agent_count}
 
 
@@ -58,7 +65,7 @@ async def query_traces(
     offset: int = 0,
 ) -> list[dict]:
     """Query traces with optional filters."""
-    optic.debug("query_traces: project_id={}, trace_type={}, mcp_id={}", project_id, trace_type, mcp_id)
+    _t0 = time.perf_counter()
     conditions = ["project_id = {pid:String}", "is_deleted = 0"]
     params: dict[str, str] = {"param_pid": project_id}
     if trace_type:
@@ -84,15 +91,18 @@ async def query_traces(
     try:
         r = await _client._query(sql, params)
         r.raise_for_status()
-        return r.json().get("data", [])
+        data = r.json().get("data", [])
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.debug("fetched {} traces for project {} ({:.0f}ms)", len(data), project_id, _elapsed)
+        return data
     except Exception as e:
-        logger.error("clickhouse_query_traces_failed", error=str(e))
+        optic.error("traces query failed for project {}: {}", project_id, e)
         return []
 
 
 async def query_trace_by_id(project_id: str, trace_id: str, *, user_id: str | None = None) -> dict | None:
     """Get a single trace by ID, optionally scoped to a user."""
-    optic.debug("query_trace_by_id: project_id={}, trace_id={}, user_id={}", project_id, trace_id, user_id)
+    _t0 = time.perf_counter()
     conditions = [
         "project_id = {pid:String}",
         "trace_id = {tid:String}",
@@ -108,9 +118,12 @@ async def query_trace_by_id(project_id: str, trace_id: str, *, user_id: str | No
         r = await _client._query(sql, params)
         r.raise_for_status()
         data = r.json().get("data", [])
-        return data[0] if data else None
+        found = data[0] if data else None
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.trace("trace lookup: id={}, found={} ({:.0f}ms)", trace_id, found is not None, _elapsed)
+        return found
     except Exception as e:
-        logger.error("clickhouse_query_trace_by_id_failed", error=str(e))
+        optic.error("failed to fetch trace {}: {}", trace_id, e)
         return None
 
 
@@ -123,7 +136,7 @@ async def query_spans(
     limit: int = 200,
 ) -> list[dict]:
     """Query spans for a trace with optional filters."""
-    optic.debug("query_spans: project_id={}, trace_id={}, span_type={}", project_id, trace_id, span_type)
+    _t0 = time.perf_counter()
     conditions = [
         "project_id = {pid:String}",
         "trace_id = {tid:String}",
@@ -141,15 +154,18 @@ async def query_spans(
     try:
         r = await _client._query(sql, params)
         r.raise_for_status()
-        return r.json().get("data", [])
+        data = r.json().get("data", [])
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.debug("fetched {} spans for trace {} ({:.0f}ms)", len(data), trace_id, _elapsed)
+        return data
     except Exception as e:
-        logger.error("clickhouse_query_spans_failed", error=str(e))
+        optic.error("spans query failed for trace {}: {}", trace_id, e)
         return []
 
 
 async def query_span_by_id(project_id: str, span_id: str, *, user_id: str | None = None) -> dict | None:
     """Get a single span by ID, optionally scoped to a user."""
-    optic.debug("query_span_by_id: project_id={}, span_id={}, user_id={}", project_id, span_id, user_id)
+    _t0 = time.perf_counter()
     conditions = [
         "project_id = {pid:String}",
         "span_id = {sid:String}",
@@ -165,9 +181,12 @@ async def query_span_by_id(project_id: str, span_id: str, *, user_id: str | None
         r = await _client._query(sql, params)
         r.raise_for_status()
         data = r.json().get("data", [])
-        return data[0] if data else None
+        found = data[0] if data else None
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.trace("span lookup: id={}, found={} ({:.0f}ms)", span_id, found is not None, _elapsed)
+        return found
     except Exception as e:
-        logger.error("clickhouse_query_span_by_id_failed", error=str(e))
+        optic.error("failed to fetch span {}: {}", span_id, e)
         return None
 
 
@@ -176,11 +195,8 @@ async def query_shim_spans_for_window(
     start_time: str,
     end_time: str,
 ) -> list[dict]:
-    """Fetch shim spans from the spans table that overlap a time window.
-
-    Used for query-time side-load when shim data has no session_id.
-    """
-    optic.debug("query_shim_spans_for_window: user_id={}, start_time={}, end_time={}", user_id, start_time, end_time)
+    """Fetch shim spans overlapping a time window (query-time side-load)."""
+    _t0 = time.perf_counter()
     sql = (
         "SELECT "
         "span_id, trace_id, name, type, method, "
@@ -210,9 +226,12 @@ async def query_shim_spans_for_window(
     try:
         r = await _client._query(sql, params)
         r.raise_for_status()
-        return r.json().get("data", [])
+        data = r.json().get("data", [])
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.debug("found {} shim spans for window {}->{} ({:.0f}ms)", len(data), start_time, end_time, _elapsed)
+        return data
     except Exception as e:
-        logger.error("clickhouse_query_shim_spans_failed", error=str(e))
+        optic.error("shim spans query failed for user {}: {}", user_id, e)
         return []
 
 
@@ -226,7 +245,7 @@ async def query_scores(
     limit: int = 100,
 ) -> list[dict]:
     """Query scores with optional filters."""
-    optic.debug("query_scores: project_id={}, trace_id={}, span_id={}", project_id, trace_id, span_id)
+    _t0 = time.perf_counter()
     conditions = ["project_id = {pid:String}", "is_deleted = 0"]
     params: dict[str, str] = {"param_pid": project_id}
     if trace_id:
@@ -246,9 +265,12 @@ async def query_scores(
     try:
         r = await _client._query(sql, params)
         r.raise_for_status()
-        return r.json().get("data", [])
+        data = r.json().get("data", [])
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.debug("fetched {} scores for project {} ({:.0f}ms)", len(data), project_id, _elapsed)
+        return data
     except Exception as e:
-        logger.error("clickhouse_query_scores_failed", error=str(e))
+        optic.error("scores query failed for project {}: {}", project_id, e)
         return []
 
 
@@ -258,7 +280,7 @@ async def query_session_event_count(session_id: str, project_id: str) -> tuple[i
     Uses FINAL so ReplacingMergeTree dedup is applied before counting.
     Returns (0, -1) when no rows exist.
     """
-    optic.debug("query_session_event_count: session_id={}, project_id={}", session_id, project_id)
+    _t0 = time.perf_counter()
     sql = (
         "SELECT count() AS cnt, max(line_offset) AS max_off "
         "FROM session_events FINAL "
@@ -273,9 +295,11 @@ async def query_session_event_count(session_id: str, project_id: str) -> tuple[i
         row = data[0] if data else {}
         count = int(row.get("cnt", 0))
         max_off = int(row.get("max_off", -1)) if count > 0 else -1
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.trace("session {} has {} events, max_offset={} ({:.0f}ms)", session_id, count, max_off, _elapsed)
         return count, max_off
     except Exception as e:
-        logger.error("clickhouse_query_session_event_count_failed", error=str(e))
+        optic.error("failed to count events for session {}: {}", session_id, e)
         return 0, -1
 
 
@@ -285,13 +309,8 @@ async def query_existing_for_dedup(
     min_offset: int,
     max_offset: int,
 ) -> tuple[frozenset[int], frozenset[str]]:
-    """Return (existing_offsets, existing_hashes) for the given session/range.
-
-    Fail-open: returns (frozenset(), frozenset()) on any error.
-    """
-    optic.debug(
-        "query_existing_for_dedup: session_id={}, project_id={}, min_offset={}", session_id, project_id, min_offset
-    )
+    """Return (existing_offsets, existing_hashes) for dedup.  Fail-open on errors."""
+    _t0 = time.perf_counter()
     if min_offset > max_offset:
         return frozenset(), frozenset()
     sql = (
@@ -313,7 +332,126 @@ async def query_existing_for_dedup(
         data = r.json().get("data", [])
         existing_offsets = frozenset(int(row["line_offset"]) for row in data)
         existing_hashes = frozenset(row["line_hash"] for row in data if row.get("line_hash"))
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.trace(
+            "dedup check for session {}: {} existing offsets, {} hashes in range [{}, {}] ({:.0f}ms)",
+            session_id,
+            len(existing_offsets),
+            len(existing_hashes),
+            min_offset,
+            max_offset,
+            _elapsed,
+        )
         return existing_offsets, existing_hashes
     except Exception as e:
-        logger.warning("clickhouse_query_existing_for_dedup_failed", error=str(e))
+        optic.warning(
+            "dedup query failed for session {} (fail-open, will re-insert): {}",
+            session_id,
+            e,
+        )
         return frozenset(), frozenset()
+
+
+# ---------------------------------------------------------------------------
+# Slim query variants: column-specific for list views (no blob fields).
+# Original SELECT * functions above remain untouched for detail/GraphQL use.
+# ---------------------------------------------------------------------------
+
+_TRACE_LIST_COLUMNS = (
+    "trace_id, parent_trace_id, project_id, mcp_id, agent_id, user_id, "
+    "session_id, ide, environment, start_time, end_time, trace_type, name, "
+    "tags, event_ts, agent_version"
+)
+
+_SPAN_LIST_COLUMNS = (
+    "span_id, trace_id, parent_span_id, project_id, mcp_id, agent_id, "
+    "user_id, type, name, method, start_time, end_time, latency_ms, status, "
+    "level, token_count_input, token_count_output, token_count_total, cost, "
+    "ide, environment, agent_version"
+)
+
+
+async def query_traces_slim(
+    project_id: str,
+    *,
+    trace_type: str | None = None,
+    mcp_id: str | None = None,
+    agent_id: str | None = None,
+    user_id: str | None = None,
+    agent_version: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """Query traces for list views (excludes input/output/metadata blobs)."""
+    _t0 = time.perf_counter()
+    conditions = ["project_id = {pid:String}", "is_deleted = 0"]
+    params: dict[str, str] = {"param_pid": project_id}
+    if trace_type:
+        conditions.append("trace_type = {tt:String}")
+        params["param_tt"] = trace_type
+    if mcp_id:
+        conditions.append("mcp_id = {mid:String}")
+        params["param_mid"] = mcp_id
+    if agent_id:
+        conditions.append("agent_id = {aid:String}")
+        params["param_aid"] = agent_id
+    if user_id:
+        conditions.append("user_id = {uid:String}")
+        params["param_uid"] = user_id
+    if agent_version:
+        conditions.append("agent_version = {av:String}")
+        params["param_av"] = agent_version
+    where = " AND ".join(conditions)
+    sql = (
+        f"SELECT {_TRACE_LIST_COLUMNS} FROM traces FINAL WHERE {where} "
+        f"ORDER BY start_time DESC LIMIT {int(limit)} OFFSET {int(offset)} FORMAT JSON"
+    )
+    try:
+        r = await _client._query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.debug("fetched {} traces (slim) for project {} ({:.0f}ms)", len(data), project_id, _elapsed)
+        return data
+    except Exception as e:
+        optic.error("traces slim query failed for project {}: {}", project_id, e)
+        return []
+
+
+async def query_spans_slim(
+    project_id: str,
+    trace_id: str,
+    *,
+    span_type: str | None = None,
+    status: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    """Query spans for list views (excludes input/output/error/metadata blobs)."""
+    _t0 = time.perf_counter()
+    conditions = [
+        "project_id = {pid:String}",
+        "trace_id = {tid:String}",
+        "is_deleted = 0",
+    ]
+    params: dict[str, str] = {"param_pid": project_id, "param_tid": trace_id}
+    if span_type:
+        conditions.append("type = {st:String}")
+        params["param_st"] = span_type
+    if status:
+        conditions.append("status = {status:String}")
+        params["param_status"] = status
+    where = " AND ".join(conditions)
+    sql = (
+        f"SELECT {_SPAN_LIST_COLUMNS} FROM spans FINAL WHERE {where} "
+        f"ORDER BY start_time ASC LIMIT {int(limit)} FORMAT JSON"
+    )
+    try:
+        r = await _client._query(sql, params)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.debug("fetched {} spans (slim) for trace {} ({:.0f}ms)", len(data), trace_id, _elapsed)
+        return data
+    except Exception as e:
+        optic.error("spans slim query failed for trace {}: {}", trace_id, e)
+        return []

@@ -13,6 +13,14 @@ class GenerateInsightRequest(BaseModel):
     period_days: int = 14
 
 
+class ApplySuggestionsRequest(BaseModel):
+    """Select which suggestions to apply. Omit a field or pass None to skip that category."""
+
+    config_indices: list[int] | None = None
+    feature_indices: list[int] | None = None
+    pattern_indices: list[int] | None = None
+
+
 class InsightReportListItem(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
@@ -44,4 +52,7 @@ class InsightReportResponse(BaseModel):
     previous_report_id: uuid.UUID | None = None
     aggregated_data: dict | None = None
     report_version: int = 3
+    # Self-learn fields
+    applied_at: datetime | None = None
+    applied_items: dict | None = None
     model_config = {"from_attributes": True}

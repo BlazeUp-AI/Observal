@@ -7,12 +7,10 @@ The module intentionally exceeds the 350-line target from refactor.md S1.3;
 the SQL constant cannot be compressed further.
 """
 
-import structlog
 from loguru import logger as optic
 
+import services.clickhouse._settings as _ch_settings
 import services.clickhouse.client as _client
-
-logger = structlog.get_logger(__name__)
 
 # ── DDL ───────────────────────────────────────────────────────────────────────
 
@@ -165,7 +163,7 @@ INIT_SQL = [
     """ALTER TABLE traces ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
     """ALTER TABLE spans ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
     """ALTER TABLE scores ADD INDEX IF NOT EXISTS idx_agent_version agent_version TYPE bloom_filter(0.01) GRANULARITY 1""",
-    # Security events table (SIEM integration — SOC 2 / ISO 27001)
+    # Security events table (SIEM integration - SOC 2 / ISO 27001)
     """CREATE TABLE IF NOT EXISTS security_events (
         event_id    UUID,
         timestamp   DateTime64(3, 'UTC'),
@@ -189,7 +187,7 @@ INIT_SQL = [
     TTL toDateTime(timestamp) + INTERVAL 730 DAY
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (event_type, severity, timestamp)""",
-    # Audit log table (enterprise compliance — SOC 2 / ISO 27001)
+    # Audit log table (enterprise compliance - SOC 2 / ISO 27001)
     """CREATE TABLE IF NOT EXISTS audit_log (
         event_id    UUID,
         timestamp   DateTime64(3, 'UTC'),
@@ -305,18 +303,18 @@ INIT_SQL = [
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS parent_session_id Nullable(String)""",
     # set(0) on parent_session_id: the column is sparse (most rows NULL) and queried
     # only by equality. bloom_filter loses probability mass to NULLs on Nullable columns;
-    # set(0) is exact-match with unlimited cardinality — ideal for sparse equality lookups.
+    # set(0) is exact-match with unlimited cardinality - ideal for sparse equality lookups.
     """ALTER TABLE session_events ADD INDEX IF NOT EXISTS idx_se_parent_session_id parent_session_id TYPE set(0) GRANULARITY 1""",
-    # Materialized token / model columns — extract at ingest, avoid JSONExtract at query time.
+    # Materialized token / model columns - extract at ingest, avoid JSONExtract at query time.
     # Default 0 / '' so existing rows remain queryable without rewriting.
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS input_tokens Int32 DEFAULT 0""",
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS output_tokens Int32 DEFAULT 0""",
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS cache_read_tokens Int32 DEFAULT 0""",
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS cache_write_tokens Int32 DEFAULT 0""",
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS model LowCardinality(String) DEFAULT ''""",
-    # raw_line size guard — 1 when the original line exceeded RAW_LINE_MAX_BYTES and was truncated.
+    # raw_line size guard - 1 when the original line exceeded RAW_LINE_MAX_BYTES and was truncated.
     """ALTER TABLE session_events ADD COLUMN IF NOT EXISTS raw_line_truncated UInt8 DEFAULT 0""",
-    # Pre-aggregated session stats — AggregatingMergeTree table + materialized view.
+    # Pre-aggregated session stats - AggregatingMergeTree table + materialized view.
     #
     # Fires on every INSERT block into session_events and maintains running sums/min/max
     # per (project_id, session_id) so that the session list query and insights metrics
@@ -349,6 +347,7 @@ INIT_SQL = [
         INDEX idx_ssa_user_id  user_id  TYPE bloom_filter(0.01) GRANULARITY 1,
         INDEX idx_ssa_agent_id agent_id TYPE bloom_filter(0.01) GRANULARITY 1
     ) ENGINE = AggregatingMergeTree()
+    PARTITION BY toYYYYMM(first_event_time)
     ORDER BY (project_id, session_id)""",
     """CREATE MATERIALIZED VIEW IF NOT EXISTS session_stats_mv
     TO session_stats_agg AS
@@ -378,7 +377,7 @@ INIT_SQL = [
     # tool_name, event_type, timestamps) is retained indefinitely.
     # The TTL fires on background merge; existing data is not immediately affected.
     # Row-level TTL (set via admin retention_days) is independent and deletes entire rows.
-    # Source: clickhouse.com/docs/guides/developer/ttl — column TTL expression pattern.
+    # Source: clickhouse.com/docs/guides/developer/ttl - column TTL expression pattern.
     """ALTER TABLE session_events MODIFY COLUMN raw_line String TTL timestamp + INTERVAL 30 DAY""",
     # Migrate event_type skip index from bloom_filter -> set(20).
     # LowCardinality(String) with ~10-20 distinct values is a perfect fit for set:
@@ -391,7 +390,7 @@ INIT_SQL = [
     # Migrate parent_session_id skip index from bloom_filter -> set(0).
     # Nullable column where most rows are NULL; bloom_filter on Nullable spreads
     # probability mass across NULL entries causing elevated false-positive rates.
-    # set(0) stores exact values per block with no size cap — correct for equality
+    # set(0) stores exact values per block with no size cap - correct for equality
     # lookups like WHERE parent_session_id = {sid} used in subagent fetches.
     """ALTER TABLE session_events ADD INDEX IF NOT EXISTS idx_se_parent_session_id parent_session_id TYPE set(0) GRANULARITY 1""",
     # Projection for queries that don't need raw_line (the heavy ZSTD(3) blob column).
@@ -409,6 +408,61 @@ INIT_SQL = [
     )""",
     # NOTE: MATERIALIZE PROJECTION is handled conditionally in init_clickhouse()
     # to avoid creating a new mutation on every server restart.
+    # ── Fix Kiro credits double-counting ───────────────────────────────────────
+    # The credits row is idempotent (same line_offset=0xFFFFFFFF, ReplacingMergeTree
+    # deduplicates), but the MV fires on each INSERT, so sum() accumulated
+    # duplicate credits. Switch to max() since each push writes cumulative total.
+    """DROP VIEW IF EXISTS session_stats_mv""",
+    """ALTER TABLE session_stats_agg MODIFY COLUMN total_credits SimpleAggregateFunction(max, Float64)""",
+    """CREATE MATERIALIZED VIEW IF NOT EXISTS session_stats_mv
+    TO session_stats_agg AS
+    SELECT
+        project_id,
+        session_id,
+        coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
+        coalesce(anyIf(user_id, user_id != ''), '')                             AS user_id,
+        coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
+        coalesce(anyIf(ide, ide != ''), '')                                     AS ide,
+        minIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS first_event_time,
+        maxIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS last_event_time,
+        count()                               AS event_count,
+        countIf(event_type = 'user_prompt')   AS prompt_count,
+        countIf(event_type = 'tool_call')     AS tool_call_count,
+        countIf(event_type = 'tool_result')   AS tool_result_count,
+        sum(input_tokens)                     AS input_tokens,
+        sum(output_tokens)                    AS output_tokens,
+        sum(cache_read_tokens)                AS cache_read_tokens,
+        sum(cache_write_tokens)               AS cache_write_tokens,
+        max(credits)                          AS total_credits,
+        anyLastIf(model, model != '')         AS model
+    FROM session_events
+    GROUP BY project_id, session_id""",
+    # ── Fix existing poisoned timestamps in session_stats_agg ──────────────────
+    # The kiro_credits row (timestamp 2099-12-31) previously poisoned min/max.
+    # Truncate the agg table and backfill from source with correct filters.
+    """TRUNCATE TABLE IF EXISTS session_stats_agg""",
+    """INSERT INTO session_stats_agg
+    SELECT
+        project_id,
+        session_id,
+        coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
+        coalesce(anyIf(user_id, user_id != ''), '')                             AS user_id,
+        coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
+        coalesce(anyIf(ide, ide != ''), '')                                     AS ide,
+        minIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS first_event_time,
+        maxIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS last_event_time,
+        count()                               AS event_count,
+        countIf(event_type = 'user_prompt')   AS prompt_count,
+        countIf(event_type = 'tool_call')     AS tool_call_count,
+        countIf(event_type = 'tool_result')   AS tool_result_count,
+        sum(input_tokens)                     AS input_tokens,
+        sum(output_tokens)                    AS output_tokens,
+        sum(cache_read_tokens)                AS cache_read_tokens,
+        sum(cache_write_tokens)               AS cache_write_tokens,
+        max(credits)                          AS total_credits,
+        anyLastIf(model, model != '')         AS model
+    FROM session_events
+    GROUP BY project_id, session_id""",
 ]
 
 # ── Resource tuning ───────────────────────────────────────────────────────────
@@ -422,14 +476,10 @@ RESOURCE_SETTINGS_MAP: dict[str, tuple[str, type]] = {
     "resource.join_memory_mb": ("max_bytes_in_join", int),
 }
 
-# Safety floor applied to every ClickHouse query (SEC-026).
-DEFAULT_QUERY_SETTINGS: dict[str, str] = {
-    "max_execution_time": "300",  # 5 min ceiling
-}
 
-# Per-query overrides injected into every HTTP request.
-# Populated from enterprise_config on startup and when admin clicks "Apply".
-_resource_overrides: dict[str, str] = {}
+# Re-export for backwards compat (tests and __init__ reference these)
+DEFAULT_QUERY_SETTINGS = _ch_settings.DEFAULT_QUERY_SETTINGS
+_resource_overrides = _ch_settings._resource_overrides
 
 
 async def apply_resource_settings(overrides: dict[str, str] | None = None):
@@ -437,7 +487,6 @@ async def apply_resource_settings(overrides: dict[str, str] | None = None):
 
     Reads from enterprise_config (Postgres) unless *overrides* is supplied.
     """
-    global _resource_overrides
     resource_values: dict[str, str] = {}
 
     if overrides is not None:
@@ -454,7 +503,7 @@ async def apply_resource_settings(overrides: dict[str, str] | None = None):
                 for cfg in result.scalars().all():
                     resource_values[cfg.key] = cfg.value
         except Exception as e:
-            logger.debug("Could not read resource settings from DB: %s", e)
+            optic.warning("could not read resource settings from DB (using defaults): {}", e)
 
     if not resource_values:
         return
@@ -470,10 +519,11 @@ async def apply_resource_settings(overrides: dict[str, str] | None = None):
                 continue
             new_overrides[ch_setting] = str(mb * 1_000_000)
         except (ValueError, TypeError):
-            logger.warning("Invalid resource setting %s=%s, skipping", config_key, raw)
+            optic.warning("invalid resource setting {}={}, skipping", config_key, raw)
 
-    _resource_overrides = new_overrides
-    logger.info("ClickHouse resource overrides loaded: %s", new_overrides)
+    _ch_settings._resource_overrides.clear()
+    _ch_settings._resource_overrides.update(new_overrides)
+    optic.info("ClickHouse resource overrides applied: {}", new_overrides)
 
 
 async def _materialize_if_needed():
@@ -493,9 +543,9 @@ async def _materialize_if_needed():
             data = r.json().get("data", [{}])
             if int(data[0].get("cnt", 0)) > 0:
                 await _client._query("ALTER TABLE session_events MATERIALIZE PROJECTION proj_session_view")
-                logger.info("Materialized proj_session_view projection")
+                optic.info("materialized proj_session_view projection on existing parts")
     except Exception as e:
-        logger.warning("materialize_projection_check_failed", error=str(e))
+        optic.warning("could not check projection status: {}", e)
 
     for idx_name in ("idx_se_event_type", "idx_se_parent_session_id"):
         try:
@@ -509,9 +559,122 @@ async def _materialize_if_needed():
                 data = r.json().get("data", [{}])
                 if int(data[0].get("cnt", 0)) > 0:
                     await _client._query(f"ALTER TABLE session_events MATERIALIZE INDEX {idx_name}")
-                    logger.info("Materialized index %s", idx_name)
+                    optic.info("materialized index {} on existing parts", idx_name)
         except Exception as e:
-            logger.warning("materialize_index_check_failed", index=idx_name, error=str(e))
+            optic.warning("could not check index {} status: {}", idx_name, e)
+
+
+async def _migrate_session_stats_partition():
+    """One-time migration: add PARTITION BY to session_stats_agg if missing.
+
+    Checks system.tables for partition_key. If empty (old schema), drops and
+    recreates the table with monthly partitioning, recreates the MV, and
+    backfills from session_events. Idempotent: no-op if already partitioned.
+    """
+    import json
+
+    resp = await _client._query(
+        "SELECT partition_key FROM system.tables "
+        "WHERE database = currentDatabase() AND name = 'session_stats_agg' "
+        "FORMAT JSONEachRow"
+    )
+    if not resp or resp.status_code >= 400 or not resp.text.strip():
+        return  # Table doesn't exist (fresh install will create via INIT_SQL)
+
+    rows = [json.loads(line) for line in resp.text.strip().splitlines() if line.strip()]
+    if not rows:
+        return
+
+    if rows[0].get("partition_key", ""):
+        optic.debug("session_stats_agg already partitioned, skipping migration")
+        return
+
+    optic.info("migrating session_stats_agg: adding PARTITION BY toYYYYMM(first_event_time)")
+
+    steps = [
+        "DROP VIEW IF EXISTS session_stats_mv",
+        "DROP TABLE IF EXISTS session_stats_agg",
+        """CREATE TABLE session_stats_agg (
+            project_id          String,
+            session_id          String,
+            agent_id            LowCardinality(String) DEFAULT '',
+            user_id             String                 DEFAULT '',
+            parent_session_id   String                 DEFAULT '',
+            ide                 LowCardinality(String) DEFAULT '',
+            first_event_time    SimpleAggregateFunction(min,     DateTime64(3, 'UTC')),
+            last_event_time     SimpleAggregateFunction(max,     DateTime64(3, 'UTC')),
+            event_count         SimpleAggregateFunction(sum,     Int64),
+            prompt_count        SimpleAggregateFunction(sum,     Int64),
+            tool_call_count     SimpleAggregateFunction(sum,     Int64),
+            tool_result_count   SimpleAggregateFunction(sum,     Int64),
+            input_tokens        SimpleAggregateFunction(sum,     Int64),
+            output_tokens       SimpleAggregateFunction(sum,     Int64),
+            cache_read_tokens   SimpleAggregateFunction(sum,     Int64),
+            cache_write_tokens  SimpleAggregateFunction(sum,     Int64),
+            total_credits       SimpleAggregateFunction(max,     Float64),
+            model               SimpleAggregateFunction(anyLast, String),
+            INDEX idx_ssa_user_id  user_id  TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_ssa_agent_id agent_id TYPE bloom_filter(0.01) GRANULARITY 1
+        ) ENGINE = AggregatingMergeTree()
+        PARTITION BY toYYYYMM(first_event_time)
+        ORDER BY (project_id, session_id)""",
+        """CREATE MATERIALIZED VIEW session_stats_mv
+        TO session_stats_agg AS
+        SELECT
+            project_id, session_id,
+            coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
+            coalesce(anyIf(user_id, user_id != ''), '') AS user_id,
+            coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
+            coalesce(anyIf(ide, ide != ''), '') AS ide,
+            minIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS first_event_time,
+            maxIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS last_event_time,
+            count() AS event_count,
+            countIf(event_type = 'user_prompt') AS prompt_count,
+            countIf(event_type = 'tool_call') AS tool_call_count,
+            countIf(event_type = 'tool_result') AS tool_result_count,
+            sum(input_tokens) AS input_tokens,
+            sum(output_tokens) AS output_tokens,
+            sum(cache_read_tokens) AS cache_read_tokens,
+            sum(cache_write_tokens) AS cache_write_tokens,
+            max(credits) AS total_credits,
+            anyLastIf(model, model != '') AS model
+        FROM session_events
+        GROUP BY project_id, session_id""",
+        """INSERT INTO session_stats_agg
+        SELECT
+            project_id, session_id,
+            coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
+            coalesce(anyIf(user_id, user_id != ''), '') AS user_id,
+            coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
+            coalesce(anyIf(ide, ide != ''), '') AS ide,
+            minIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS first_event_time,
+            maxIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS last_event_time,
+            count() AS event_count,
+            countIf(event_type = 'user_prompt') AS prompt_count,
+            countIf(event_type = 'tool_call') AS tool_call_count,
+            countIf(event_type = 'tool_result') AS tool_result_count,
+            sum(input_tokens) AS input_tokens,
+            sum(output_tokens) AS output_tokens,
+            sum(cache_read_tokens) AS cache_read_tokens,
+            sum(cache_write_tokens) AS cache_write_tokens,
+            max(credits) AS total_credits,
+            anyLastIf(model, model != '') AS model
+        FROM session_events
+        GROUP BY project_id, session_id""",
+    ]
+
+    try:
+        for stmt in steps:
+            await _client._query(stmt)
+    except Exception as e:
+        optic.error(
+            "session_stats_agg partition migration FAILED mid-way: {} "
+            "— table may be in inconsistent state, manual intervention required",
+            e,
+        )
+        raise
+
+    optic.info("session_stats_agg partition migration complete")
 
 
 async def init_clickhouse():
@@ -519,7 +682,7 @@ async def init_clickhouse():
 
     Raises on unreachable server so startup fails fast.
     """
-    optic.debug("init_clickhouse called")
+    optic.info("initializing ClickHouse schema")
     from services.clickhouse.client import clickhouse_health
 
     if not await clickhouse_health():
@@ -529,8 +692,9 @@ async def init_clickhouse():
         try:
             await _client._query(stmt)
         except Exception as e:
-            logger.warning("clickhouse_init_failed", error=str(e))
+            optic.warning("DDL statement failed (may be harmless if already applied): {}", str(e)[:120])
 
+    await _migrate_session_stats_partition()
     await _materialize_if_needed()
     await apply_resource_settings()
 
@@ -551,10 +715,12 @@ async def init_clickhouse():
                 await _client._query(stmt)
                 applied += 1
             except Exception as e:
-                logger.warning("clickhouse_ttl_failed", error=str(e))
+                optic.warning("TTL statement failed: {}", e)
         if applied == len(ttl_stmts):
-            logger.info("ClickHouse retention set to %d days", retention_days)
+            optic.info("ClickHouse retention configured: {} days across all tables", retention_days)
         else:
-            logger.warning("ClickHouse retention partially applied: %d/%d tables", applied, len(ttl_stmts))
+            optic.warning(
+                "retention only applied to {}/{} tables - some data may not auto-expire", applied, len(ttl_stmts)
+            )
     else:
-        logger.info("ClickHouse data retention disabled (DATA_RETENTION_DAYS=0)")
+        optic.info("data retention disabled (retention_days=0), data kept indefinitely")

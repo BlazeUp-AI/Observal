@@ -58,3 +58,7 @@ class InsightReport(Base):
     )
     aggregated_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     report_version: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Self-learn fields
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_items: Mapped[dict | None] = mapped_column(JSON, nullable=True)

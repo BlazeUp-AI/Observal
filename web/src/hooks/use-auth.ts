@@ -5,10 +5,9 @@
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 import { useEffect, useSyncExternalStore } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import { auth, setUserRole, getUserRole, clearSession } from "@/lib/api";
+import { useRouter, useLocation } from "@tanstack/react-router";
+import { auth, setUserRole, getUserRole, clearSession, refreshAccessToken } from "@/lib/api";
 
 function subscribe(cb: () => void) {
   window.addEventListener("storage", cb);
@@ -19,7 +18,11 @@ function getAuthSnapshot() {
   if (typeof window === "undefined") return "";
   const key = sessionStorage.getItem("observal_access_token");
   const role = getUserRole();
-  return key ? (role || "pending") : "";
+  if (key) return role || "pending";
+  // No access token in sessionStorage, but refresh token may exist (new tab scenario).
+  // Mark as "refreshing" so the guard attempts a silent refresh before redirecting.
+  const hasRefresh = !!localStorage.getItem("observal_refresh_token");
+  return hasRefresh ? "refreshing" : "";
 }
 
 function getServerSnapshot() {
@@ -28,18 +31,34 @@ function getServerSnapshot() {
 
 export function useAuthGuard() {
   const router = useRouter();
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   const snapshot = useSyncExternalStore(subscribe, getAuthSnapshot, getServerSnapshot);
   const isSSR = snapshot === "ssr";
-  const hasToken = !isSSR && snapshot !== "";
+  const hasToken = !isSSR && snapshot !== "" && snapshot !== "refreshing";
+  const isRefreshing = snapshot === "refreshing";
   const ready = hasToken && snapshot !== "pending";
   const role = ready ? snapshot : null;
 
   useEffect(() => {
     if (isSSR) return;
 
+    // New tab: no access token but refresh token exists. Try silent refresh.
+    if (isRefreshing) {
+      refreshAccessToken().then((ok) => {
+        if (ok) {
+          // Token restored, trigger whoami to resolve role
+          window.dispatchEvent(new Event("storage"));
+        } else {
+          clearSession();
+          window.dispatchEvent(new Event("storage"));
+          router.navigate({ to: "/login", replace: true });
+        }
+      });
+      return;
+    }
+
     if (!hasToken && pathname !== "/login") {
-      router.replace("/login");
+      router.navigate({ to: "/login", replace: true });
       return;
     }
     if (!hasToken) return;
@@ -51,10 +70,10 @@ export function useAuthGuard() {
       }).catch(() => {
         clearSession();
         window.dispatchEvent(new Event("storage"));
-        router.replace("/login");
+        router.navigate({ to: "/login", replace: true });
       });
     }
-  }, [isSSR, hasToken, snapshot, pathname, router]);
+  }, [isSSR, hasToken, isRefreshing, snapshot, pathname, router]);
 
   return { ready, role };
 }

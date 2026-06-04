@@ -13,14 +13,11 @@ import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import structlog
 from loguru import logger as optic
 from sqlalchemy import select
 
 from database import async_session
 from models.organization import Organization
-
-logger = structlog.get_logger(__name__)
 
 INTER_ORG_DELAY = 2.0
 
@@ -34,7 +31,7 @@ SCORE_TABLE = {"scores": "timestamp"}
 
 async def _delete_batch(table: str, time_col: str, project_id: str, cutoff_str: str) -> int:
     """Execute a lightweight DELETE. Returns 1 on success, 0 on failure."""
-    optic.debug("_delete_batch: table={}, time_col={}", table, time_col)
+    optic.trace("deleting expired rows from table {}", table)
     from services.clickhouse import _query
 
     sql = (
@@ -44,14 +41,14 @@ async def _delete_batch(table: str, time_col: str, project_id: str, cutoff_str: 
     )
     resp = await _query(sql, {"param_pid": project_id, "param_cutoff": cutoff_str})
     if resp.status_code != 200:
-        logger.warning("retention_delete_failed", table=table, status=resp.status_code, body=resp.text[:200])
+        optic.warning("retention delete failed on table {} (status={}): {}", table, resp.status_code, resp.text[:200])
         return 0
     return 1
 
 
 async def _has_data(project_id: str) -> bool:
     """Quick existence check - does this org have any traces?"""
-    optic.debug("_has_data: project_id={}", project_id)
+    optic.trace("checking retention for project")
     from services.clickhouse import _query
 
     resp = await _query(
@@ -66,7 +63,7 @@ async def _has_data(project_id: str) -> bool:
 
 async def _has_inflight_insights(org_id: uuid.UUID) -> bool:
     """Check if org has insight reports currently being generated."""
-    optic.debug("_has_inflight_insights: org_id={}", org_id)
+    optic.trace("purging retention for org")
     from models.agent import Agent
     from models.insight_report import InsightReport, InsightReportStatus
 
@@ -89,20 +86,20 @@ async def _has_inflight_insights(org_id: uuid.UUID) -> bool:
 
 async def _purge_time_based(project_id: str, cutoff_str: str, tables: dict[str, str]) -> dict[str, int]:
     """Delete rows older than cutoff from specified tables."""
-    optic.debug("_purge_time_based: project_id={}, cutoff_str={}", project_id, cutoff_str)
+    optic.trace("purging data older than {} for project", cutoff_str)
     stats = {}
     for table, time_col in tables.items():
         try:
             stats[table] = await _delete_batch(table, time_col, project_id, cutoff_str)
         except Exception as e:
-            logger.warning("retention_purge_table_error", table=table, error=str(e))
+            optic.warning("retention purge failed on table {}: {}", table, e)
             stats[table] = 0
     return stats
 
 
 async def _purge_session_stats_orphans(project_id: str) -> int:
     """Delete session_stats_agg entries whose sessions no longer have events."""
-    optic.debug("_purge_session_stats_orphans: project_id={}", project_id)
+    optic.trace("checking retention for project")
     from services.clickhouse import _query
 
     sql = (
@@ -115,14 +112,14 @@ async def _purge_session_stats_orphans(project_id: str) -> int:
     )
     resp = await _query(sql, {"param_pid": project_id, "param_pid2": project_id})
     if resp.status_code != 200:
-        logger.warning("retention_session_stats_orphan_failed", status=resp.status_code)
+        optic.warning("session stats orphan cleanup failed (status={})", resp.status_code)
         return 0
     return 1
 
 
 async def _purge_insight_reports(org_id: uuid.UUID, score_cutoff: datetime) -> int:
     """Delete old insight reports from PostgreSQL."""
-    optic.debug("_purge_insight_reports: org_id={}, score_cutoff={}", org_id, score_cutoff)
+    optic.trace("purging scores older than cutoff")
     from models.agent import Agent
     from models.insight_report import InsightReport, InsightReportStatus
 
@@ -159,7 +156,7 @@ async def _purge_insight_reports(org_id: uuid.UUID, score_cutoff: datetime) -> i
 
 async def _purge_count_based(project_id: str, max_trace_count: int) -> int:
     """If trace count exceeds max, find cutoff day and purge oldest."""
-    optic.debug("_purge_count_based: project_id={}, max_trace_count={}", project_id, max_trace_count)
+    optic.trace("enforcing max trace count ({}) for project", max_trace_count)
     from services.clickhouse import _query
 
     # Get daily trace counts, capped at 2 years to bound query cost.
@@ -203,7 +200,7 @@ async def _purge_count_based(project_id: str, max_trace_count: int) -> int:
 
 async def run_retention_purge(ctx: dict | None = None):
     """Main entry point for the retention purge cron job."""
-    optic.debug("retention: purge started")
+    optic.debug("purge started")
     async with async_session() as db:
         result = await db.execute(select(Organization).where(Organization.retention_enabled.is_(True)))
         orgs = result.scalars().all()
@@ -211,20 +208,20 @@ async def run_retention_purge(ctx: dict | None = None):
     if not orgs:
         return
 
-    logger.info("retention_purge_started", org_count=len(orgs))
+    optic.info("starting retention purge for {} orgs", len(orgs))
 
     for org in orgs:
         project_id = str(org.id)
 
         # Skip if no data exists
         if not await _has_data(project_id):
-            logger.debug("retention_purge_skip_empty", org=org.slug)
+            optic.debug("skipping org {} (no retention config)", org.slug)
             await asyncio.sleep(INTER_ORG_DELAY)
             continue
 
         # Skip if insight reports are being generated
         if await _has_inflight_insights(org.id):
-            logger.info("retention_purge_skip_inflight", org=org.slug)
+            optic.info("skipping org {} (purge already in flight)", org.slug)
             await asyncio.sleep(INTER_ORG_DELAY)
             continue
 
@@ -255,7 +252,7 @@ async def run_retention_purge(ctx: dict | None = None):
         if org.data_retention_days:
             await _delete_batch("traces", "start_time", project_id, data_cutoff_str)
 
-        logger.info("retention_purge_org_done", org=org.slug, stats=org_stats)
+        optic.info("retention purge complete for org {}: {}", org.slug, org_stats)
         await asyncio.sleep(INTER_ORG_DELAY)
 
-    logger.info("retention_purge_completed")
+    optic.info("retention_purge_completed")

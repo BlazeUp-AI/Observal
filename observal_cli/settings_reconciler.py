@@ -40,7 +40,7 @@ def _load_claude_settings() -> dict:
     try:
         return json.loads(CLAUDE_SETTINGS_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Could not parse %s: %s", CLAUDE_SETTINGS_PATH, exc)
+        logger.warning("Could not parse {}: {}", CLAUDE_SETTINGS_PATH, exc)
         return {}
 
 
@@ -68,7 +68,7 @@ def reconcile_hooks(
     # 1. For each desired event, reconcile matcher groups
     for event, desired_groups in desired_hooks.items():
         if event not in merged:
-            # New event — add entirely
+            # New event - add entirely
             merged[event] = copy.deepcopy(desired_groups)
             changes.append(f"+ {event}: added ({len(desired_groups)} handler(s))")
             continue
@@ -91,7 +91,7 @@ def reconcile_hooks(
         else:
             changes.append(f"+ {event}: added Observal hooks")
 
-    # 2. Events in current but not in desired — leave them alone
+    # 2. Events in current but not in desired - leave them alone
     #    (they might be non-Observal hooks, or events we no longer manage)
 
     return merged, changes

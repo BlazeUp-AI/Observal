@@ -5,7 +5,7 @@
 
 Fetches SKILL.md from a raw GitHub URL (or generic raw URL), parses YAML
 frontmatter, validates required fields, and extracts slash_command.  Only a
-single HTTP request is made — no git clone at submit time.
+single HTTP request is made - no git clone at submit time.
 
 Port of vercel-labs/agent-skills parseFrontmatter logic to Python.
 """
@@ -16,7 +16,7 @@ import re
 
 import httpx
 import yaml
-from loguru import logger
+from loguru import logger as optic
 from pydantic import BaseModel
 
 _FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---", re.DOTALL)
@@ -57,7 +57,7 @@ async def _discover_skill_path(client: httpx.AsyncClient, git_url: str, git_ref:
     Returns the skill_path (directory containing SKILL.md) or None if not found.
     Only works for GitHub repos. Filters out IDE config copies.
     """
-    logger.debug("_discover_skill_path: client={}, git_url={}, git_ref={}", client, git_url, git_ref)
+    optic.trace("discovering skill path in repo {}", git_url)
     m = _GITHUB_RE.match(git_url.rstrip("/"))
     if not m:
         return None
@@ -93,7 +93,7 @@ def _build_raw_url(git_url: str, skill_path: str, git_ref: str) -> str:
     Supports GitHub repos (converts to raw.githubusercontent.com).
     Falls back to appending /raw/<ref>/<path> for other hosts (e.g. GitLab).
     """
-    logger.debug("_build_raw_url: git_url={}, skill_path={}, git_ref={}", git_url, skill_path, git_ref)
+    optic.trace("building raw URL for skill at {}", skill_path)
     skill_path = skill_path.strip("/")
     skill_md = f"{skill_path}/SKILL.md" if skill_path else "SKILL.md"
 
@@ -116,7 +116,7 @@ def _parse_frontmatter(content: str) -> dict:
     Mirrors vercel-labs parseFrontmatter: regex extraction + yaml.safe_load.
     Never calls eval.  Returns empty dict if no frontmatter found.
     """
-    logger.debug("_parse_frontmatter: content={}", content)
+    optic.trace("parsing skill frontmatter ({} chars)", len(content) if content else 0)
     m = _FRONTMATTER_RE.match(content)
     if not m:
         return {}
@@ -146,7 +146,7 @@ async def validate_skill_md(
     Raises:
         SkillValidationError: if SKILL.md cannot be fetched or is invalid.
     """
-    logger.debug("validate_skill_md: git_url={}, skill_path={}, git_ref={}", git_url, skill_path, git_ref)
+    optic.trace("building raw URL for skill at {}", skill_path)
     raw_url = _build_raw_url(git_url, skill_path, git_ref)
 
     try:

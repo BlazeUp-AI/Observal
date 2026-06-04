@@ -23,8 +23,8 @@ import typer
 from rich import print as rprint
 
 from observal_cli import config
+from observal_cli.constants import REDIRECT_ALLOWLIST
 from observal_cli.install_detector import InstallInfo, InstallMethod
-from observal_cli.version_check import REDIRECT_ALLOWLIST
 
 GITHUB_REPO = "BlazeUp-AI/Observal"
 

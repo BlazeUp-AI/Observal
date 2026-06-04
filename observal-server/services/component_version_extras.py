@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from loguru import logger
+from loguru import logger as optic
 
 # Fields allowed in extra dict per component type
 HOOK_FIELDS = {
@@ -110,7 +110,7 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "setup_instructions": str,
     # int fields
     "priority": int,
-    # bool fields — must come before int since bool is a subclass of int
+    # bool fields - must come before int since bool is a subclass of int
     "has_scripts": bool,
     "has_templates": bool,
     "is_power": bool,
@@ -141,7 +141,7 @@ def validate_and_extract(component_type: str, extra: dict | None) -> dict:
     Returns a dict of field_name -> value to set on the version model.
     Raises HTTPException(422) on validation errors.
     """
-    logger.debug("validate_and_extract: component_type={}, extra={}", component_type, extra)
+    optic.trace("extracting version extras for {} component", component_type)
     allowed = ALLOWED_FIELDS.get(component_type)
     if allowed is None:
         raise HTTPException(status_code=422, detail=f"Unknown component type: {component_type!r}")

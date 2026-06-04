@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""``observal registry models list`` — list the known model catalog."""
+"""``observal registry models list`` - list the known model catalog."""
 
 from __future__ import annotations
 
 import json
 
 import typer
-from loguru import logger
+from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
@@ -42,7 +42,7 @@ def list_models(
       observal registry models list --refresh          # Bypass local cache
       observal registry models list --ide cursor -o plain
     """
-    logger.debug("list_models: ide={}", ide)
+    optic.trace("ide={}", ide)
     catalog = model_catalog.fetch_catalog(refresh=refresh)
     rows = catalog.get("models") or []
     if ide:
@@ -75,7 +75,7 @@ def list_models(
         primary, secondary, _ = format_model(m, disambiguate=True)
         label = f"{primary} ({secondary})" if secondary else primary
         ides = ", ".join(m.get("supported_ides") or [])
-        released = str(m.get("release_date") or "—")
+        released = str(m.get("release_date") or "-")
         deprecated = " [red](deprecated)[/red]" if m.get("deprecated") else ""
         table.add_row(
             m.get("model_id", "") + deprecated,
@@ -87,5 +87,5 @@ def list_models(
 
     rprint(table)
     src = catalog.get("_source") or catalog.get("source") or "?"
-    degraded = " [yellow](degraded — using snapshot)[/yellow]" if catalog.get("degraded") else ""
+    degraded = " [yellow](degraded - using snapshot)[/yellow]" if catalog.get("degraded") else ""
     rprint(f"[dim]source: {src}{degraded}, count: {len(rows)}[/dim]")

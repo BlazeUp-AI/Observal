@@ -7,6 +7,7 @@ Re-exports every public symbol that was previously available from
 work without import changes.
 """
 
+from services.clickhouse._settings import _resource_overrides
 from services.clickhouse.client import (
     CLICKHOUSE_DB,
     CLICKHOUSE_HTTP,
@@ -36,15 +37,16 @@ from services.clickhouse.query import (
     query_shim_spans_for_window,
     query_span_by_id,
     query_spans,
+    query_spans_slim,
     query_trace_by_id,
     query_traces,
+    query_traces_slim,
 )
 from services.clickhouse.schema import (
     DEFAULT_QUERY_SETTINGS,
     INIT_SQL,
     RESOURCE_SETTINGS_MAP,
     _materialize_if_needed,
-    _resource_overrides,
     apply_resource_settings,
     init_clickhouse,
 )
@@ -81,6 +83,8 @@ __all__ = [
     "query_shim_spans_for_window",
     "query_span_by_id",
     "query_spans",
+    "query_spans_slim",
     "query_trace_by_id",
     "query_traces",
+    "query_traces_slim",
 ]

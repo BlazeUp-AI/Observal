@@ -5,15 +5,13 @@
 """Redis-backed response cache for dashboard and OTEL endpoints."""
 
 import hashlib
-import logging
+import time
 
 from loguru import logger as optic
 from redis import asyncio as aioredis
 from starlette.requests import Request
 
 from config import settings
-
-logger = logging.getLogger(__name__)
 
 CACHE_PREFIX = "observal-cache"
 
@@ -23,14 +21,8 @@ _redis: aioredis.Redis | None = None
 def _request_key_builder(func, namespace="", *, request: Request | None = None, **kwargs):
     """Build cache key from auth identity + path + query string.
 
-    Including a per-user identity component prevents a shared cache from
-    serving one authenticated user's response to a different user whose
-    request happens to hit the same path and query string (SEC-023).
-
-    Anonymous requests use the literal identity ``anon`` so they can
-    still share a cache bucket with each other.
+    Per-user identity prevents cross-user cache poisoning (SEC-023).
     """
-    optic.debug("_request_key_builder: func={}, namespace={}", func, namespace)
     prefix = f"{CACHE_PREFIX}:{namespace}" if namespace else CACHE_PREFIX
     url = request.url.path if request else func.__name__
     qs = str(request.query_params) if request and request.query_params else ""
@@ -39,7 +31,6 @@ def _request_key_builder(func, namespace="", *, request: Request | None = None, 
     if request:
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):
-            # Hash the token so the raw credential never appears in a cache key.
             identity = hashlib.sha256(auth.encode(), usedforsecurity=False).hexdigest()[:16]
 
     raw = f"{identity}:{url}?{qs}" if qs else f"{identity}:{url}"
@@ -47,12 +38,8 @@ def _request_key_builder(func, namespace="", *, request: Request | None = None, 
 
 
 async def init_cache() -> None:
-    """Initialize FastAPICache with a Redis backend.
-
-    Uses a separate Redis connection with ``decode_responses=False``
-    because fastapi-cache2 stores binary (bytes) values.
-    """
-    optic.debug("cache: initializing")
+    """Initialize FastAPICache with a Redis backend."""
+    _t0 = time.perf_counter()
     global _redis
     from fastapi_cache import FastAPICache
     from fastapi_cache.backends.redis import RedisBackend
@@ -65,20 +52,21 @@ async def init_cache() -> None:
         socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
     )
     FastAPICache.init(RedisBackend(_redis), prefix=CACHE_PREFIX, key_builder=_request_key_builder)
-    logger.info("FastAPICache initialized (Redis backend, prefix=%s)", CACHE_PREFIX)
+    _elapsed = (time.perf_counter() - _t0) * 1000
+    optic.info("response cache initialized (Redis, prefix='{}', {:.0f}ms)", CACHE_PREFIX, _elapsed)
 
 
 async def close_cache() -> None:
-    optic.debug("close_cache called")
     global _redis
     if _redis:
         await _redis.aclose()
         _redis = None
+        optic.debug("response cache connection closed")
 
 
 async def invalidate_all() -> int:
     """Delete every key under the cache prefix. Returns count deleted."""
-    optic.debug("invalidate_all called")
+    _t0 = time.perf_counter()
     if not _redis:
         return 0
     cursor, keys = 0, []
@@ -90,13 +78,13 @@ async def invalidate_all() -> int:
             break
     if keys:
         await _redis.delete(*keys)
-    logger.info("Cache invalidated: %d keys deleted", len(keys))
+    _elapsed = (time.perf_counter() - _t0) * 1000
+    optic.debug("cache invalidated: {} keys deleted ({:.0f}ms)", len(keys), _elapsed)
     return len(keys)
 
 
 async def invalidate_namespace(namespace: str) -> int:
     """Delete keys matching a specific namespace."""
-    optic.debug("invalidate_namespace: namespace={}", namespace)
     if not _redis:
         return 0
     pattern = f"{CACHE_PREFIX}:{namespace}:*"
@@ -108,4 +96,5 @@ async def invalidate_namespace(namespace: str) -> int:
             break
     if keys:
         await _redis.delete(*keys)
+    optic.trace("invalidated {} keys in namespace '{}'", len(keys), namespace)
     return len(keys)

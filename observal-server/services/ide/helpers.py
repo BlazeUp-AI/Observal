@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger as optic
+
 from schemas.constants import IDE_FEATURE_MATRIX
 from schemas.ide_registry import IDE_REGISTRY
 from services.shared.utils import sanitize_name as _sanitize_name
@@ -36,7 +38,7 @@ _KIRO_EVENT_MAP = {
     "Stop": "stop",
 }
 
-# Session push hook command — reads JSONL incrementally, only needs 2 events.
+# Session push hook command - reads JSONL incrementally, only needs 2 events.
 _SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.session_push"
 _CURSOR_SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.cursor_session_push"
 
@@ -56,7 +58,7 @@ def _claude_code_hooks_frontmatter_lines(
     appended to the frontmatter_lines list before the closing '---'.
 
     Only two events are needed (UserPromptSubmit + Stop) because the hook
-    reads the session JSONL file incrementally — no per-event shell scripts.
+    reads the session JSONL file incrementally - no per-event shell scripts.
 
     custom_hooks: list of dicts with event, handler_type, handler_config
     from hook components attached to the agent.
@@ -137,7 +139,7 @@ def _vscode_copilot_hooks_config() -> dict:
     """Build .github/hooks/observal.json content for VS Code Copilot hooks.
 
     TODO: No JSONL session push implementation for VS Code / Copilot yet.
-    Stub — session_push.py will no-op gracefully when it can't find a
+    Stub - session_push.py will no-op gracefully when it can't find a
     matching session file.
     """
     cmd = _SESSION_PUSH_CMD
@@ -152,7 +154,7 @@ def _vscode_copilot_hooks_config() -> dict:
 def _vscode_copilot_hooks_frontmatter_lines() -> list[str]:
     """Build YAML lines for hooks in a VS Code Copilot .agent.md frontmatter.
 
-    TODO: No JSONL session push for Copilot yet — stub (no-ops gracefully).
+    TODO: No JSONL session push for Copilot yet - stub (no-ops gracefully).
     """
     cmd = _SESSION_PUSH_CMD
     return [
@@ -280,7 +282,7 @@ def _wrap_kiro_prompt(prompt: str, agent_name: str) -> str:
     if not prompt:
         return prompt
     return (
-        f"# {agent_name} — Agent Specialization\n\n"
+        f"# {agent_name} - Agent Specialization\n\n"
         f"You are a Kiro agent with the following specialization.\n\n"
         f"## Instructions\n\n"
         f"{prompt}"
@@ -350,6 +352,13 @@ def _build_mcp_configs(
     mcp_listings = mcp_listings or {}
     env_values = env_values or {}
 
+    optic.debug(
+        "building MCP configs for agent '{}' (ide={}, {} components)",
+        agent.name,
+        ide,
+        sum(1 for c in agent.components if c.component_type == "mcp"),
+    )
+
     for comp in agent.components:
         if comp.component_type != "mcp":
             continue
@@ -366,7 +375,7 @@ def _build_mcp_configs(
             # agent file gets proper mcpServers frontmatter.
             safe = _sanitize_name(listing.name)
             if listing.url:
-                # SSE/streamable-http listing — no shim needed
+                # SSE/streamable-http listing - no shim needed
                 entry: dict = {"type": (listing.transport or "sse").lower(), "url": listing.url}
                 if mcp_env:
                     entry["env"] = mcp_env
@@ -432,6 +441,8 @@ def _build_skill_configs(
                 "git_ref": getattr(listing, "git_ref", None) or "main",
                 "skill_path": getattr(listing, "skill_path", None) or "/",
                 "skill_md_content": getattr(listing, "skill_md_content", None),
+                "script_content": getattr(listing, "script_content", None),
+                "script_filename": getattr(listing, "script_filename", None),
             }
         )
 
@@ -514,12 +525,12 @@ def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[d
         ide_event = events_map.get(event, event)
         handler_config = hc.get("handler_config", {})
         command = handler_config.get("command", "")
-        if not command:
-            continue
-
-        # If hook has a script_filename, rewrite command to the IDE scripts dir
         script_filename = hc.get("script_filename")
-        if script_filename and scripts_dir:
+        if not command and script_filename and scripts_dir:
+            command = f"{scripts_dir}/{script_filename}"
+        elif not command:
+            continue
+        elif script_filename and scripts_dir:
             command = f"{scripts_dir}/{script_filename}"
 
         if ide == "cursor":
@@ -577,6 +588,12 @@ def _build_rules_content(
     """
     sections: list[str] = []
 
+    optic.debug(
+        "building rules content for agent '{}' ({} components, prompt={})",
+        agent.name,
+        len(agent.components),
+        bool(agent.prompt),
+    )
     if agent.prompt:
         sections.append(agent.prompt)
 

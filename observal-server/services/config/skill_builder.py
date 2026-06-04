@@ -16,7 +16,7 @@ from schemas.ide_registry import IDE_REGISTRY
 from services.shared.utils import sanitize_name as _sanitize_name
 
 if TYPE_CHECKING:
-    from services.agent_builder import AgentFile, AgentManifest
+    from services.agent_builder_types import AgentFile, AgentManifest
 
 
 def generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict | None:
@@ -61,7 +61,7 @@ def build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
 
     This is the manifest-based path used by the agent builder.
     """
-    from services.agent_builder import AgentFile
+    from services.agent_builder_types import AgentFile
 
     ide_key = ide.replace("_", "-")
     spec = IDE_REGISTRY.get(ide_key, {})

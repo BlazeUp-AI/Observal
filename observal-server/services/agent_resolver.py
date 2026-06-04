@@ -4,7 +4,6 @@
 
 """Agent composition resolver - looks up and validates all components for an agent."""
 
-import logging
 import uuid
 from typing import Literal
 
@@ -19,8 +18,6 @@ from models.mcp import ListingStatus, McpListing
 from models.prompt import PromptListing
 from models.sandbox import SandboxListing
 from models.skill import SkillListing
-
-logger = logging.getLogger(__name__)
 
 ComponentType = Literal["mcp", "skill", "hook", "prompt", "sandbox"]
 
@@ -78,17 +75,17 @@ class ResolvedAgent(BaseModel):
     @computed_field
     @property
     def ok(self) -> bool:
-        optic.debug("ok called")
+
         return len(self.errors) == 0
 
     def components_by_type(self, component_type: str) -> list[ResolvedComponent]:
-        optic.debug("components_by_type: component_type={}", component_type)
+        optic.trace("filtering components by type {} ({} total)", component_type, len(self.components))
         return [c for c in self.components if c.component_type == component_type]
 
 
 def _extract_extra(listing, component_type: str) -> dict:
     """Pull type-specific fields from a listing into a flat dict for downstream use."""
-    optic.debug("_extract_extra: listing={}, component_type={}", listing, component_type)
+    optic.trace("extracting {} metadata from listing", component_type)
     if component_type == "mcp":
         return {
             "transport": getattr(listing, "transport", None),
@@ -152,7 +149,7 @@ async def resolve_agent(
     Looks up each AgentComponent's listing in the correct table,
     validates status, and returns a ResolvedAgent with full details.
     """
-    optic.debug("agent_resolver: resolving")
+    optic.debug("resolving agent components (require_approved={})", require_approved)
     components: list[ResolvedComponent] = []
     errors: list[ResolutionError] = []
 
@@ -233,7 +230,7 @@ async def validate_component_ids(
     Each dict should have 'component_type' and 'component_id' keys.
     Returns a list of errors (empty if all valid).
     """
-    optic.debug("validate_component_ids: components={}", components)
+    optic.debug("validating {} component references", len(components))
     errors = []
     for ref in components:
         ctype = ref.get("component_type", "")

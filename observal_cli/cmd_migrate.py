@@ -40,16 +40,16 @@ from observal_cli.render import spinner
 CHUNK_SIZE = 500
 
 INSERT_ORDER: list[str] = [
-    # Tier 0 — no FK dependencies
+    # Tier 0 - no FK dependencies
     "organizations",
     "enterprise_config",
     "component_sources",
-    # Tier 1 — FK to organizations
+    # Tier 1 - FK to organizations
     "users",
     "exporter_configs",
-    # Tier 1.5 — FK to users
+    # Tier 1.5 - FK to users
     "component_bundles",
-    # Tier 2 — FK to orgs + users + component_bundles
+    # Tier 2 - FK to orgs + users + component_bundles
     # NOTE: listings/agents have a circular FK with their version tables:
     #   *_listings.latest_version_id → *_versions.id (nullable, use_alter)
     #   *_versions.listing_id → *_listings.id (NOT NULL)
@@ -61,14 +61,14 @@ INSERT_ORDER: list[str] = [
     "prompt_listings",
     "sandbox_listings",
     "agents",
-    # Tier 2.5 — FK to listings/agents + users (version tables)
+    # Tier 2.5 - FK to listings/agents + users (version tables)
     "mcp_versions",
     "skill_versions",
     "hook_versions",
     "prompt_versions",
     "sandbox_versions",
     "agent_versions",
-    # Tier 3 — FK to listings/users
+    # Tier 3 - FK to listings/users
     "mcp_validation_results",
     "mcp_downloads",
     "skill_downloads",
@@ -77,16 +77,16 @@ INSERT_ORDER: list[str] = [
     "sandbox_downloads",
     "submissions",
     "alert_rules",
-    # Tier 4 — FK to agents/agent_versions
+    # Tier 4 - FK to agents/agent_versions
     "agent_download_records",
     "component_download_records",
-    # Tier 6 — FK to agent_versions (polymorphic component_id)
+    # Tier 6 - FK to agent_versions (polymorphic component_id)
     "agent_components",
-    # Tier 7 — FK to users (polymorphic listing_id)
+    # Tier 7 - FK to users (polymorphic listing_id)
     "feedback",
-    # Tier 8 — FK to alert_rules
+    # Tier 8 - FK to alert_rules
     "alert_history",
-    # Tier 9 — FK to agents + users (insight tables)
+    # Tier 9 - FK to agents + users (insight tables)
     "insight_meta_cache",
     "insight_session_facets",
     "insight_session_meta",
@@ -261,7 +261,7 @@ def _build_select(table: str, columns: list[str]) -> str:
     """Build SELECT query, casting JSONB columns to ::text.
 
     Table names are validated against INSERT_ORDER as a defense-in-depth
-    assertion — callers always pass values from INSERT_ORDER, but this
+    assertion - callers always pass values from INSERT_ORDER, but this
     guards against accidental misuse by future callers passing unknown tables.
     """
     if table not in INSERT_ORDER:
@@ -309,7 +309,7 @@ def _safe_tar_extract(tar: tarfile.TarFile, dest: Path) -> None:
             if member.issym() or member.islnk():
                 msg = f"Tar member {member.name!r} is a symlink (rejected for safety)"
                 raise ValueError(msg)
-        tar.extractall(dest)  # nosec B202 — path traversal validated above
+        tar.extractall(dest)  # nosec B202 - path traversal validated above
 
 
 def _parse_clickhouse_url(url: str) -> tuple[str, str, str, str]:
@@ -431,11 +431,11 @@ async def _get_notnull_json_defaults(conn: asyncpg.Connection, table: str) -> di
     for row in rows:
         col_default = row["column_default"]
         if col_default:
-            # Has an explicit DB default — extract the JSON value
+            # Has an explicit DB default - extract the JSON value
             clean = col_default.split("::")[0].strip().strip("'")
             defaults[row["column_name"]] = clean
         else:
-            # No DB default but column is NOT NULL — use empty object as safe fallback.
+            # No DB default but column is NOT NULL - use empty object as safe fallback.
             # This covers SQLAlchemy models with default=dict or default=list.
             defaults[row["column_name"]] = "{}"
     return defaults
@@ -854,7 +854,7 @@ async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str
         for table in INSERT_ORDER:
             jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
             if not jsonl_path.exists():
-                # Table may not exist in older archives — skip gracefully
+                # Table may not exist in older archives - skip gracefully
                 if table not in manifest["tables"]:
                     continue
                 failed_checksums.append(f"{table} (file missing)")
@@ -1251,7 +1251,7 @@ async def _export_telemetry(
         raise typer.Exit(1)
     migration_id = p1_manifest["migration_id"]
 
-    # Record cutoff before any queries — use ClickHouse-compatible DateTime64 format
+    # Record cutoff before any queries - use ClickHouse-compatible DateTime64 format
     export_time_cutoff = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     # Parse ClickHouse URL
@@ -1598,7 +1598,7 @@ async def _validate_fk_references(
     fk_values["mcp_id"] |= fk_values.pop("mcp_server_id", set())
     fk_values["user_id"] |= fk_values.pop("actor_id", set())
 
-    # Filter to valid UUIDs only — ClickHouse stores these as String,
+    # Filter to valid UUIDs only - ClickHouse stores these as String,
     # so non-UUID values like "filesystem" or "default" can appear.
     # Normalize to lowercase to match PostgreSQL's canonical form.
     for key in list(fk_values):

@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Tests for anonymous agent listing visibility.
+"""Tests for agent listing endpoint access.
 
-Verifies that unauthenticated callers cannot see private agents regardless
-of deployment mode, and that the visibility filter behaves correctly for
-anonymous, authenticated, and admin users.
+Verifies that anonymous callers are rejected and authenticated callers
+can list agents.
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -49,77 +48,20 @@ def _mock_db():
     return db
 
 
-# ── Unit: skip_visibility logic ───────────────────────────────────────────────
-
-
-class TestSkipVisibilityLogic:
-    def test_local_mode_anon_does_not_skip(self):
-        """Anonymous callers must not skip visibility even in local mode."""
-        current_user = None
-        skip = "local" == "local" and current_user is not None
-        assert skip is False
-
-    def test_local_mode_authed_skips(self):
-        """Authenticated users in local mode skip visibility (dev convenience)."""
-        current_user = _user()
-        skip = "local" == "local" and current_user is not None
-        assert skip is True
-
-    def test_enterprise_authed_does_not_skip(self):
-        current_user = _user()
-        skip = "enterprise" == "local" and current_user is not None
-        assert skip is False
-
-    def test_enterprise_anon_does_not_skip(self):
-        skip = "enterprise" == "local" and None is not None
-        assert skip is False
-
-
 # ── Integration: GET /api/v1/agents ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_anonymous_cannot_see_private_agents_local_mode():
-    """In local mode, anonymous callers only see public agents (skip_visibility=False for anon)."""
-    from api.deps import get_db, optional_current_user
+async def test_anonymous_rejected_from_list_agents():
+    """Anonymous callers get 401 from the agent list endpoint."""
     from main import app
 
-    mock = _mock_db()
-
-    async def _fake_db():
-        yield mock
-
-    app.dependency_overrides[get_db] = _fake_db
-    app.dependency_overrides[optional_current_user] = lambda: None
+    app.dependency_overrides.clear()
 
     try:
-        with patch("api.routes.agent.crud.HAS_LICENSE", False):
-            async with _make_client() as client:
-                r = await client.get("/api/v1/agents")
-        assert r.status_code == 200
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_anonymous_cannot_see_private_agents_enterprise_mode():
-    """In enterprise mode, anonymous callers only see public agents."""
-    from api.deps import get_db, optional_current_user
-    from main import app
-
-    mock = _mock_db()
-
-    async def _fake_db():
-        yield mock
-
-    app.dependency_overrides[get_db] = _fake_db
-    app.dependency_overrides[optional_current_user] = lambda: None
-
-    try:
-        with patch("api.routes.agent.crud.HAS_LICENSE", True):
-            async with _make_client() as client:
-                r = await client.get("/api/v1/agents")
-        assert r.status_code == 200
+        async with _make_client() as client:
+            r = await client.get("/api/v1/agents")
+        assert r.status_code == 401
     finally:
         app.dependency_overrides.clear()
 
@@ -127,7 +69,7 @@ async def test_anonymous_cannot_see_private_agents_enterprise_mode():
 @pytest.mark.asyncio
 async def test_authenticated_user_can_list_agents():
     """Authenticated users get a 200 from the agent list endpoint."""
-    from api.deps import get_db, optional_current_user
+    from api.deps import get_current_user, get_db
     from main import app
 
     user = _user()
@@ -137,7 +79,7 @@ async def test_authenticated_user_can_list_agents():
         yield mock
 
     app.dependency_overrides[get_db] = _fake_db
-    app.dependency_overrides[optional_current_user] = lambda: user
+    app.dependency_overrides[get_current_user] = lambda: user
 
     try:
         async with _make_client() as client:

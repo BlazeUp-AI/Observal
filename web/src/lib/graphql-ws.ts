@@ -6,7 +6,7 @@ import { createClient, type Client } from "graphql-ws";
 
 function getWsUrl(): string {
   const api =
-    process.env.NEXT_PUBLIC_API_URL ||
+    import.meta.env.VITE_API_URL ||
     (typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.hostname}:8000`
       : "http://localhost:8000");
@@ -53,6 +53,32 @@ export function subscribeToSessionUpdates(
           ?.sessionUpdated;
         if (data) {
           onEvent(data.sessionId, data.eventName);
+        }
+      },
+      error: () => {},
+      complete: () => {},
+    },
+  );
+}
+
+export function subscribeToReviewUpdates(
+  onEvent: (listingId: string, action: string) => void,
+): () => void {
+  return getClient().subscribe(
+    {
+      query: `subscription ReviewUpdated($listingId: String) {
+        reviewUpdated(listingId: $listingId) {
+          listingId
+          action
+        }
+      }`,
+    },
+    {
+      next: (value) => {
+        const data = (value.data as { reviewUpdated?: { listingId: string; action: string } })
+          ?.reviewUpdated;
+        if (data) {
+          onEvent(data.listingId, data.action);
         }
       },
       error: () => {},

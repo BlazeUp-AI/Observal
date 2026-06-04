@@ -11,7 +11,6 @@ Uses asyncio.create_task so the API response is never blocked.
 from __future__ import annotations
 
 import asyncio
-import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -19,21 +18,19 @@ from loguru import logger as optic
 
 from services.clickhouse import insert_audit_log, insert_spans, insert_traces
 
-logger = logging.getLogger(__name__)
-
 # prevent GC of fire-and-forget tasks (same pattern as telemetry.py)
 _background_tasks: set[asyncio.Task] = set()
 
 
 async def _emit(trace: dict, span: dict, audit: dict):
     """Insert a trace + span + audit_log entry. Swallows errors."""
-    optic.debug("_emit: trace={}, span={}, audit={}", trace, span, audit)
+    optic.trace("recording telemetry event (trace={}, span={}, audit={})", trace, span, audit)
     try:
         await insert_traces([trace])
         await insert_spans([span])
         await insert_audit_log([audit])
     except Exception:
-        logger.exception("Registry telemetry write failed")
+        optic.error("Registry telemetry write failed")
 
 
 def emit_registry_event(
@@ -47,7 +44,7 @@ def emit_registry_event(
     metadata: dict[str, str] | None = None,
 ) -> None:
     """Fire-and-forget a registry trace + span + audit_log entry into ClickHouse."""
-    optic.debug("emit_registry_event: action={}, user_id={}, user_email={}", action, user_id, user_email)
+    optic.trace("recording registry action: {}", action)
     now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     trace_id = str(uuid.uuid4())
     span_id = str(uuid.uuid4())

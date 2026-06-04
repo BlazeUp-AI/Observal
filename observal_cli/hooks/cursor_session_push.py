@@ -32,7 +32,7 @@ from observal_cli.sessions.cursor import (
 
 
 def _debug_log(msg: str, home: Path | None = None) -> None:
-    """Write to debug log immediately — used for crash diagnostics."""
+    """Write to debug log immediately - used for crash diagnostics."""
     if home is None:
         home = Path.home()
     try:

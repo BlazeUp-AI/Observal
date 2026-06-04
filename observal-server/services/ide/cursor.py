@@ -5,14 +5,13 @@
 
 from __future__ import annotations
 
-from loguru import logger
+from loguru import logger as optic
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
     _collect_hook_script_files,
     _cursor_hooks_config,
-    _generate_skill_file,
     _merge_hook_components_into_config,
 )
 
@@ -22,11 +21,10 @@ class CursorAdapter:
 
     @property
     def ide_name(self) -> str:
-        logger.debug("ide_name called")
         return "cursor"
 
     def format_config(self, ctx: ConfigContext) -> dict:
-        logger.debug("format_config: ctx={}", ctx)
+        optic.trace("ctx={}", ctx)
         safe_name = ctx.safe_name
         options = ctx.options
         mcp_configs = ctx.mcp_configs
@@ -41,9 +39,6 @@ class CursorAdapter:
         rules_path = rules_paths.get(ide_scope, next(iter(rules_paths.values()), f".rules/{safe_name}.md"))
         mcp_paths = spec.get("mcp_config_path", {})
         mcp_path = mcp_paths.get(ide_scope, next(iter(mcp_paths.values()), ".mcp.json"))
-
-        skill_files = [_generate_skill_file(s, "cursor", ide_scope) for s in skill_configs]
-        skill_files = [f for f in skill_files if f]
 
         # Cursor uses .cursor/agents/<name>.md for subagent registration
         # and .cursor/rules/<name>.mdc for context rules
@@ -75,9 +70,8 @@ class CursorAdapter:
         hook_files = _collect_hook_script_files(hook_configs, ctx.hook_listings, "cursor")
         if hook_files:
             result["hook_files"] = hook_files
-        if skill_files:
-            result["skill_files"] = skill_files
-            result["skill_components"] = [s for s in skill_configs if s.get("git_url")]
+        if skill_configs:
+            result["skill_components"] = skill_configs
         if ctx.compatibility_warnings:
             result["_warnings"] = ctx.compatibility_warnings
 

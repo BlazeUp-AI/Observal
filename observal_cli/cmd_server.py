@@ -46,7 +46,6 @@ console = Console()
 
 def _require_super_admin() -> None:
     """Verify the current user has super_admin role. Exit if not."""
-    optic.debug("_require_super_admin called")
     from rich import print as rprint
 
     from observal_cli import client
@@ -79,7 +78,6 @@ def start(
         observal server start --port 9000
         observal server start --background
     """
-    optic.debug("cli: server start")
     import socket
 
     from observal_cli.server.deps import all_installed, install_dependencies
@@ -88,7 +86,7 @@ def start(
 
     # Check if port is available, try fallbacks if default
     def _port_available(p: int) -> bool:
-        optic.debug("_port_available: p={}", p)
+        optic.trace("p={}", p)
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
                 s.bind(("127.0.0.1", p))
@@ -148,7 +146,6 @@ def stop() -> None:
     Example:
         observal server stop
     """
-    optic.debug("cli: server stop")
     from observal_cli.server.orchestrator import Orchestrator
 
     orch = Orchestrator()
@@ -165,7 +162,7 @@ def restart(
     Example:
         observal server restart
     """
-    optic.debug("restart: port={}, host={}", port, host)
+    optic.trace("port={}, host={}", port, host)
     from observal_cli.server.orchestrator import Orchestrator
 
     orch = Orchestrator(port=port, host=host)
@@ -181,7 +178,6 @@ def status() -> None:
     Example:
         observal server status
     """
-    optic.debug("status called")
     from observal_cli.server.orchestrator import Orchestrator
 
     orch = Orchestrator()
@@ -241,7 +237,7 @@ def logs(
         observal server logs -f
         observal server logs api -n 100
     """
-    optic.debug("logs: service={}, follow={}", service, follow)
+    optic.trace("service={}, follow={}", service, follow)
     log_files = {
         "postgres": LOG_DIR / "postgres.log",
         "clickhouse": LOG_DIR / "clickhouse-startup.log",
@@ -293,7 +289,7 @@ def install(
         observal server install
         observal server install --upgrade
     """
-    optic.debug("install: upgrade={}", upgrade)
+    optic.trace("upgrade={}", upgrade)
     from observal_cli.server.deps import install_dependencies
 
     install_dependencies(force=upgrade)
@@ -312,7 +308,7 @@ def reset(
         observal server reset
         observal server reset --force
     """
-    optic.debug("reset: force={}", force)
+    optic.trace("force={}", force)
     from observal_cli.server.orchestrator import Orchestrator
 
     if not force:
@@ -331,7 +327,6 @@ def config() -> None:
     Example:
         observal server config
     """
-    optic.debug("config called")
     config_file = OBSERVAL_HOME / "observal.yaml"
 
     table = Table(title="Observal Server Configuration")
@@ -371,7 +366,6 @@ def config() -> None:
 def _find_compose_dir() -> Path:
     """Find the Docker Compose directory for the Observal deployment."""
     # Check common locations
-    optic.debug("_find_compose_dir called")
     candidates = [
         Path.cwd() / "docker",  # dev: project root with docker/ subdir
         Path.cwd(),  # production: cwd IS the compose dir
@@ -387,7 +381,7 @@ def _find_compose_dir() -> Path:
 def _get_current_server_version(compose_dir: Path) -> str:
     """Get current OBSERVAL_VERSION from .env file."""
     # Check .env in compose dir first, then parent (dev setup has .env at project root)
-    optic.debug("_get_current_server_version: compose_dir={}", compose_dir)
+    optic.trace("compose_dir={}", compose_dir)
     candidates = [
         compose_dir / ".env",
         compose_dir.parent / ".env",
@@ -402,7 +396,7 @@ def _get_current_server_version(compose_dir: Path) -> str:
 
 def _find_env_file(compose_dir: Path) -> Path:
     """Find the .env file (may be in compose dir or parent)."""
-    optic.debug("_find_env_file: compose_dir={}", compose_dir)
+    optic.trace("compose_dir={}", compose_dir)
     if (compose_dir / ".env").exists():
         return compose_dir / ".env"
     if (compose_dir.parent / ".env").exists():
@@ -416,7 +410,7 @@ def _get_health_url(compose_dir: Path) -> str:
     Reads LB_HOST_PORT (preferred) or API_HOST_PORT from .env to determine
     the correct port. Falls back to 8000 (standard API port) if neither is set.
     """
-    optic.debug("_get_health_url: compose_dir={}", compose_dir)
+    optic.trace("compose_dir={}", compose_dir)
     env_file = _find_env_file(compose_dir)
     lb_port = None
     api_port = None
@@ -433,7 +427,7 @@ def _get_health_url(compose_dir: Path) -> str:
 
 def _update_env_version(compose_dir: Path, version: str) -> None:
     """Update OBSERVAL_VERSION in .env file."""
-    optic.debug("_update_env_version: compose_dir={}, version={}", compose_dir, version)
+    optic.trace("compose_dir={}, version={}", compose_dir, version)
     env_file = _find_env_file(compose_dir)
     if not env_file.exists():
         env_file.write_text(f"OBSERVAL_VERSION={version}\n")
@@ -474,7 +468,7 @@ def server_upgrade(
         observal server upgrade --dry-run
         observal server upgrade --skip-backup --force
     """
-    optic.debug("server_upgrade: version={}, skip_backup={}", version, skip_backup)
+    optic.trace("version={}, skip_backup={}", version, skip_backup)
     _require_super_admin()
     from observal_cli import version_check
     from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
@@ -621,7 +615,7 @@ def server_rollback(
         observal server rollback --from-backup ~/.observal/backups/v0.7.0-20260521T120000
         observal server rollback --force
     """
-    optic.debug("server_rollback: from_backup={}, force={}", from_backup, force)
+    optic.trace("from_backup={}, force={}", from_backup, force)
     _require_super_admin()
     from observal_cli.server.backup import list_backups, restore_backup
     from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
@@ -712,7 +706,6 @@ def server_versions() -> None:
     Examples:
         observal server versions
     """
-    optic.debug("server_versions called")
     _require_super_admin()
     from observal_cli import version_check
     from observal_cli.server.backup import list_backups

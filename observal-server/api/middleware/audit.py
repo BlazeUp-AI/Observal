@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Audit middleware: captures every request lifecycle via loguru."""
@@ -30,9 +31,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
         if sensitivity == "skip":
             return await call_next(request)
 
-        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        if not ip:
-            ip = request.client.host if request.client else "127.0.0.1"
+        # Real IP is resolved by TrustedProxyMiddleware into request.scope["client"]
+        ip = request.client.host if request.client else "127.0.0.1"
 
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start) * 1000

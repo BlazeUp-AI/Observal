@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from loguru import logger
+from loguru import logger as optic
 
 import services.dynamic_settings as ds
 from models.user import UserRole
@@ -28,7 +28,7 @@ def create_access_token(
 
     Returns (encoded_token, expires_in_seconds).
     """
-    logger.debug("create_access_token: user_id={}", user_id)
+    optic.trace("creating access token for user {}", user_id)
     from services.crypto import sign_token
 
     now = datetime.now(UTC)

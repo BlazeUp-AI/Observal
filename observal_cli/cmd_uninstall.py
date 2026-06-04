@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Observal uninstall command — tears down Docker stack, removes repo and config."""
+"""Observal uninstall command - tears down Docker stack, removes repo and config."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 import typer
-from loguru import logger
+from loguru import logger as optic
 from rich import print as rprint
 
 from observal_cli.config import CONFIG_DIR
@@ -253,7 +253,7 @@ def register_uninstall(app: typer.Typer):
             observal uninstall --keep-config --keep-cli
             observal uninstall --repo-dir ~/code/Observal --keep-repo
         """
-        logger.debug("uninstall: repo_dir={}", repo_dir)
+        optic.trace("repo_dir={}", repo_dir)
         repo_root = _find_repo_root(repo_dir)
 
         # Require repo detection - Docker teardown is mandatory
@@ -300,7 +300,7 @@ def register_uninstall(app: typer.Typer):
         if sys.platform == "win32":
             # Windows: defer repo/config deletion and CLI uninstall to a
             # detached PowerShell process so file-locks are released first.
-            rprint("[bold yellow]Windows detected — using deferred cleanup.[/bold yellow]")
+            rprint("[bold yellow]Windows detected - using deferred cleanup.[/bold yellow]")
             rprint("[dim]Cleanup will complete after this process exits.[/dim]\n")
 
             cleanup_repo = repo_root if not keep_repo else None
@@ -316,7 +316,7 @@ def register_uninstall(app: typer.Typer):
             if cleanup_cli:
                 uv_path = shutil.which("uv")
                 if not uv_path:
-                    rprint("[yellow]uv not found in PATH — CLI uninstall will be skipped.[/yellow]")
+                    rprint("[yellow]uv not found in PATH - CLI uninstall will be skipped.[/yellow]")
                     rprint("[dim]You can manually run: uv tool uninstall observal-cli[/dim]")
                     cleanup_cli = False
 

@@ -6,7 +6,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Agent builder — composes resolved components into portable agent manifests.
+"""Agent builder - composes resolved components into portable agent manifests.
 
 Generates IDE-specific agent files from a ResolvedAgent:
 - Claude Code: .claude/agents/<name>.md (markdown) + MCP JSON config
@@ -15,23 +15,28 @@ Generates IDE-specific agent files from a ResolvedAgent:
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
 - Codex: AGENTS.md (markdown)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)
-- OpenCode: AGENTS.md (markdown) + opencode.json (MCP config)
+- OpenCode: .opencode/agents/<name>.md (markdown) + opencode.json (MCP config)
 
 """
 
-import logging
-from typing import Literal
-
 from loguru import logger as optic
-from pydantic import BaseModel, Field
 
 from schemas.ide_registry import get_valid_ides
+from services.agent_builder_types import (
+    AgentFile,
+    AgentManifest,
+    CompositionSummary,
+    HookConfigEntry,
+    HookInstallEntry,
+    IdeAgentConfig,
+    ManifestComponent,
+    ManifestComponents,
+    ManifestError,
+)
 from services.agent_resolver import ResolvedAgent, ResolvedComponent
 from services.ide.helpers import _KIRO_EVENT_MAP, _wrap_kiro_prompt
 from services.model_resolver import resolve_saved_value
 from services.shared.utils import sanitize_name as _sanitize_name
-
-logger = logging.getLogger(__name__)
 
 
 def _saved_model_for(manifest: "AgentManifest", ide: str) -> str | None:
@@ -47,157 +52,6 @@ def _saved_model_for(manifest: "AgentManifest", ide: str) -> str | None:
         model_name=manifest.model_name or "",
         models_by_ide=manifest.models_by_ide or {},
     )
-
-
-# ── Manifest Pydantic Models ────────────────────────────────────────
-
-
-class ManifestComponent(BaseModel):
-    """A single component entry in the agent manifest."""
-
-    name: str
-    version: str
-    git_url: str = ""
-    description: str = ""
-    order: int = 0
-    git_ref: str | None = None
-    config_override: dict | None = None
-    # MCP-specific
-    transport: str | None = None
-    tools: dict | None = None
-    # Skill-specific
-    slash_command: str | None = None
-    task_type: str | None = None
-    # Hook-specific
-    event: str | None = None
-    execution_mode: str | None = None
-    priority: int | None = None
-    handler_type: str | None = None
-    handler_config: dict | None = None
-    # Prompt-specific
-    template: str | None = None
-    variables: list[str] | None = None
-    # Sandbox-specific
-    image: str | None = None
-    runtime_type: str | None = None
-    resource_limits: dict | None = None
-
-    def model_dump_compact(self) -> dict:
-        """Dump only non-None fields for clean manifest output."""
-        return {k: v for k, v in self.model_dump().items() if v is not None}
-
-
-class ManifestComponents(BaseModel):
-    """All components grouped by type."""
-
-    mcps: list[ManifestComponent] = Field(default_factory=list)
-    skills: list[ManifestComponent] = Field(default_factory=list)
-    hooks: list[ManifestComponent] = Field(default_factory=list)
-    prompts: list[ManifestComponent] = Field(default_factory=list)
-    sandboxes: list[ManifestComponent] = Field(default_factory=list)
-
-    def model_dump_compact(self) -> dict:
-        """Only include non-empty component lists."""
-        result = {}
-        for key, items in [
-            ("mcps", self.mcps),
-            ("skills", self.skills),
-            ("hooks", self.hooks),
-            ("prompts", self.prompts),
-            ("sandboxes", self.sandboxes),
-        ]:
-            if items:
-                result[key] = [c.model_dump_compact() for c in items]
-        return result
-
-
-class ManifestError(BaseModel):
-    component_type: str
-    component_id: str
-    reason: str
-
-
-class AgentManifest(BaseModel):
-    """Portable agent manifest — the canonical representation of a composed agent."""
-
-    name: str
-    version: str
-    prompt: str = ""
-    description: str = ""
-    model_name: str = ""
-    models_by_ide: dict[str, str] = Field(default_factory=dict)
-    components: ManifestComponents = Field(default_factory=ManifestComponents)
-    errors: list[ManifestError] = Field(default_factory=list)
-
-    def model_dump_compact(self) -> dict:
-        """Clean manifest output (no empty lists, no None values)."""
-        result: dict = {
-            "name": self.name,
-            "version": self.version,
-            "components": self.components.model_dump_compact(),
-        }
-        if self.prompt:
-            result["prompt"] = self.prompt
-        if self.description:
-            result["description"] = self.description
-        if self.model_name:
-            result["model_name"] = self.model_name
-        if self.models_by_ide:
-            result["models_by_ide"] = dict(self.models_by_ide)
-        if self.errors:
-            result["errors"] = [e.model_dump() for e in self.errors]
-        return result
-
-
-class CompositionSummary(BaseModel):
-    """Lightweight summary of agent composition for API responses."""
-
-    agent_id: str
-    agent_name: str
-    agent_version: str
-    resolved: bool
-    component_counts: dict[str, int] = Field(default_factory=dict)
-    components: dict[str, list[dict]] = Field(default_factory=dict)
-    errors: list[ManifestError] = Field(default_factory=list)
-
-
-# ── IDE Agent File Models ───────────────────────────────────────────
-
-
-class AgentFile(BaseModel):
-    """A single file to write for IDE agent installation."""
-
-    path: str
-    content: str | dict
-    format: Literal["markdown", "json", "toml"] = "json"
-
-
-class HookInstallEntry(BaseModel):
-    """A hook to install as part of agent pull."""
-
-    path: str  # IDE-relative path for the script file
-    content: str  # Script content
-    executable: bool = False
-
-
-class HookConfigEntry(BaseModel):
-    """Hook config snippet to merge into the IDE's hooks config."""
-
-    config_path: str  # Where to write/merge config (e.g., .cursor/hooks.json)
-    config_snippet: dict  # The IDE-specific hook config
-    merge: bool = True  # Whether to merge into existing file
-
-
-class IdeAgentConfig(BaseModel):
-    """Complete IDE-specific agent configuration output."""
-
-    ide: str
-    files: list[AgentFile] = Field(default_factory=list)
-    mcp_servers: dict = Field(default_factory=dict)
-    env: dict[str, str] = Field(default_factory=dict)
-    setup_commands: list[list[str]] = Field(default_factory=list)
-    hook_files: list[HookInstallEntry] = Field(default_factory=list)
-    hook_configs: list[HookConfigEntry] = Field(default_factory=list)
 
 
 # ── Builder Functions ───────────────────────────────────────────────
@@ -255,7 +109,7 @@ def build_agent_manifest(resolved: ResolvedAgent) -> dict:
 
     Returns a clean dict with only populated fields.
     """
-    optic.debug("build_agent_manifest: agent={}", resolved.agent_name)
+    optic.trace("building agent config for {}", resolved.agent_name)
     type_map = {
         "mcp": "mcps",
         "skill": "skills",
@@ -292,7 +146,7 @@ def build_agent_manifest(resolved: ResolvedAgent) -> dict:
 
 def build_composition_summary(resolved: ResolvedAgent) -> dict:
     """Build a lightweight summary of the agent's composition for API responses."""
-    optic.debug("build_composition_summary: agent={}", resolved.agent_name)
+    optic.trace("building agent config for {}", resolved.agent_name)
     type_map = {
         "mcp": "mcps",
         "skill": "skills",
@@ -357,7 +211,7 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
     if manifest.components.mcps:
         lines = ["## MCP Servers", ""]
         for mcp in manifest.components.mcps:
-            desc = f" — {mcp.description}" if mcp.description else ""
+            desc = f" - {mcp.description}" if mcp.description else ""
             lines.append(f"- **{mcp.name}** v{mcp.version}{desc}")
         sections.append("\n".join(lines))
 
@@ -365,7 +219,7 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
         lines = ["## Skills", ""]
         for skill in manifest.components.skills:
             cmd = f" (`/{skill.slash_command}`)" if skill.slash_command else ""
-            desc = f" — {skill.description}" if skill.description else ""
+            desc = f" - {skill.description}" if skill.description else ""
             lines.append(f"- **{skill.name}** v{skill.version}{cmd}{desc}")
         sections.append("\n".join(lines))
 
@@ -743,7 +597,8 @@ def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
 
 
 def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate OpenCode agent config (AGENTS.md + opencode.json with flat command arrays)."""
+    """Generate OpenCode agent config (.opencode/agents/<name>.md + opencode.json with flat command arrays)."""
+    safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
 
@@ -757,7 +612,7 @@ def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
 
     files = [
         AgentFile(
-            path="AGENTS.md",
+            path=f".opencode/agents/{safe_name}.md",
             content=rules_content,
             format="markdown",
         ),
@@ -808,10 +663,10 @@ def generate_ide_agent_files(
 ) -> IdeAgentConfig:
     """Generate IDE-specific agent files from a portable agent manifest.
 
-    This is the universal entry point — takes a Pydantic AgentManifest
+    This is the universal entry point - takes a Pydantic AgentManifest
     and produces the correct file layout for any supported IDE.
     """
-    optic.debug("generate_ide_agent_files: agent={}, ide={}", manifest.name, ide)
+    optic.trace("generating {} config for agent {}", ide, manifest.name)
     generator = _IDE_GENERATORS.get(ide)
     if generator is None:
         raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")

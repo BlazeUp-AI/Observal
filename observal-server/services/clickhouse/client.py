@@ -2,17 +2,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """ClickHouse HTTP client: connection pool, query execution, and timestamp helpers."""
 
+import time
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
-import structlog
 from loguru import logger as optic
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from config import settings
-
-logger = structlog.get_logger(__name__)
 
 _parsed = urlparse(settings.CLICKHOUSE_URL.replace("clickhouse://", "http://"))
 CLICKHOUSE_HTTP = f"http://{_parsed.hostname}:{_parsed.port or 8123}"
@@ -26,11 +24,17 @@ _client: httpx.AsyncClient | None = None
 def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None:
+        optic.debug(
+            "creating ClickHouse HTTP client (host={}, timeout={}s, pool={})",
+            _parsed.hostname,
+            settings.CLICKHOUSE_TIMEOUT,
+            settings.CLICKHOUSE_MAX_CONNECTIONS,
+        )
         _client = httpx.AsyncClient(
             timeout=settings.CLICKHOUSE_TIMEOUT,
             limits=httpx.Limits(
                 max_connections=settings.CLICKHOUSE_MAX_CONNECTIONS,
-                max_keepalive_connections=settings.CLICKHOUSE_MAX_KEEPALIVE,
+                max_keepalive_connections=settings.CLICKHOUSE_MAX_CONNECTIONS,
             ),
         )
     return _client
@@ -54,9 +58,8 @@ async def _query(sql: str, params: dict | None = None, *, data: str | None = Non
             newline.  Used for ``INSERT ... FORMAT JSONEachRow`` where each
             line in *data* is a JSON object.
     """
-    # Import here to avoid a circular dep: schema.py sets _resource_overrides,
-    # which is read here. Importing from schema at module level would create a cycle.
-    from services.clickhouse.schema import DEFAULT_QUERY_SETTINGS, _resource_overrides
+    _t0 = time.perf_counter()
+    from services.clickhouse._settings import DEFAULT_QUERY_SETTINGS, _resource_overrides
 
     client = _get_client()
     query_params: dict[str, str] = {
@@ -69,17 +72,49 @@ async def _query(sql: str, params: dict | None = None, *, data: str | None = Non
         query_params.update(_resource_overrides)
     if params:
         query_params.update(params)
+
     body = f"{sql}\n{data}" if data else sql
-    return await client.post(CLICKHOUSE_HTTP, content=body, params=query_params)
+    optic.trace("executing ClickHouse query (body_len={}, has_data={})", len(body), data is not None)
+
+    try:
+        resp = await client.post(CLICKHOUSE_HTTP, content=body, params=query_params)
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        if resp.status_code >= 400:
+            optic.warning(
+                "ClickHouse query returned HTTP {} in {:.0f}ms - body preview: {}",
+                resp.status_code,
+                _elapsed,
+                resp.text[:200],
+            )
+        else:
+            optic.trace("ClickHouse query OK (status={}, {:.0f}ms)", resp.status_code, _elapsed)
+        return resp
+    except Exception as e:
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.error(
+            "ClickHouse query failed after {:.0f}ms: {} - SQL starts with: {}",
+            _elapsed,
+            e,
+            sql[:80],
+        )
+        raise
 
 
 async def clickhouse_health() -> bool:
     """Check ClickHouse connectivity. Returns True if healthy."""
-    optic.debug("clickhouse_health check")
+    _t0 = time.perf_counter()
     try:
         resp = await _query("SELECT 1")
-        return resp.status_code == 200
-    except Exception:
+        healthy = resp.status_code == 200
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        if healthy:
+            optic.debug("ClickHouse is reachable ({:.0f}ms)", _elapsed)
+        else:
+            optic.warning("ClickHouse health check returned {} ({:.0f}ms)", resp.status_code, _elapsed)
+        return healthy
+    except Exception as e:
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.error("ClickHouse unreachable after {:.0f}ms: {}", _elapsed, e)
         return False
 
 
@@ -108,9 +143,10 @@ def _normalize_ts(value: str | None) -> str | None:
     try:
         parsed = datetime.fromisoformat(v.replace(" ", "T") + "+00:00")
         if parsed >= _TS_SENTINEL_CUTOFF:
+            optic.trace("clamping far-future timestamp {} to now", value)
             v = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:23]
     except ValueError:
-        pass
+        optic.trace("could not parse timestamp '{}', passing through as-is", value)
     return v
 
 
@@ -120,5 +156,5 @@ async def _invalidate_cache():
         from services.cache import invalidate_all
 
         await invalidate_all()
-    except Exception:
-        pass
+    except Exception as e:
+        optic.trace("cache invalidation skipped (best-effort): {}", e)

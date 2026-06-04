@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 import hashlib
-import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -14,8 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.agent import Agent
 from models.download import AgentDownloadRecord, ComponentDownloadRecord
-
-logger = logging.getLogger(__name__)
 
 
 def _anonymous_fingerprint(request: Request) -> str:
@@ -34,7 +31,7 @@ async def record_agent_download(
     db: AsyncSession,
 ) -> bool:
     """Record an agent download with deduplication. Returns True if new download, False if duplicate."""
-    optic.debug("record_agent_download: agent_id={}, user_id={}", agent_id, user_id)
+    optic.trace("recording download for agent {}", agent_id)
     fingerprint = _anonymous_fingerprint(request) if user_id is None else None
 
     record = AgentDownloadRecord(
@@ -55,7 +52,7 @@ async def record_agent_download(
         await _update_agent_counts(agent_id, db)
         return True
     except IntegrityError:
-        logger.debug("Duplicate download for agent %s (user=%s), skipping", agent_id, user_id)
+        optic.debug("skipping duplicate download for agent {} (already counted)", agent_id)
         return False
 
 

@@ -11,16 +11,15 @@ header and guards against deeply-nested JSON payloads (JSON bomb mitigation).
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
+from loguru import logger as optic
 from starlette.middleware.base import BaseHTTPMiddleware
 
 if TYPE_CHECKING:
     from starlette.requests import Request
 
-logger = logging.getLogger(__name__)
 
 # Methods that carry a request body and therefore require Content-Type validation.
 _BODY_METHODS = {"POST", "PUT", "PATCH"}
@@ -34,6 +33,8 @@ _SKIP_PATHS: set[str] = {
 _SKIP_PREFIXES: tuple[str, ...] = (
     "/api/v1/graphql",
     "/api/v1/sso/saml",
+    "/api/v1/ingest/",
+    "/api/v1/telemetry/",
 )
 
 # Accepted content types for normal endpoints.
@@ -99,8 +100,8 @@ class ContentTypeMiddleware(BaseHTTPMiddleware):
         allowed = _ALLOWED_TYPES
 
         if ct not in allowed:
-            logger.warning(
-                "Rejected %s %s with Content-Type: %s",
+            optic.warning(
+                "Rejected {} {} with Content-Type: {}",
                 method,
                 path,
                 request.headers.get("content-type"),
@@ -110,14 +111,14 @@ class ContentTypeMiddleware(BaseHTTPMiddleware):
                 content={"detail": f"Unsupported media type: {ct or '(none)'}. Expected application/json."},
             )
 
-        # JSON depth check — only for application/json bodies.
+        # JSON depth check - only for application/json bodies.
         if ct == "application/json":
             try:
                 body = await request.body()
                 if body:
                     parsed = json.loads(body)
                     if _check_depth(parsed):
-                        logger.warning("Rejected %s %s: JSON nesting exceeds %d levels", method, path, MAX_JSON_DEPTH)
+                        optic.warning("Rejected {} {}: JSON nesting exceeds {} levels", method, path, MAX_JSON_DEPTH)
                         return JSONResponse(
                             status_code=400,
                             content={"detail": f"JSON payload exceeds maximum nesting depth of {MAX_JSON_DEPTH}"},

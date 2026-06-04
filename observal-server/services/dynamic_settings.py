@@ -10,7 +10,7 @@ DB, the hardcoded default is used.
 Usage:
     from services.dynamic_settings import get, get_int, get_bool
 
-    model_name = get("eval.model_name")              # returns "" if not set
+    model_name = get("insights.model_sections")        # returns "" if not set
     batch_days = get_int("insights.batch_period_days")  # returns 14 if not set
     sso_only = get_bool("deployment.sso_only")       # returns False if not set
 """
@@ -21,11 +21,7 @@ import base64
 import hashlib
 from typing import Any
 
-import structlog
 from loguru import logger as optic
-
-logger = structlog.get_logger(__name__)
-
 
 # ─── Encryption for sensitive values ───────────────────────────────────────
 # Uses Fernet symmetric encryption keyed from SECRET_KEY.
@@ -96,7 +92,7 @@ def decrypt_value(stored: str) -> str:
             return old_f.decrypt(ciphertext).decode()
     except Exception:
         pass
-    logger.error("dynamic_settings_decrypt_failed", hint="Neither SECRET_KEY nor OLD_SECRET_KEY can decrypt this value")
+    optic.error("dynamic_settings_decrypt_failed", hint="Neither SECRET_KEY nor OLD_SECRET_KEY can decrypt this value")
     return ""
 
 
@@ -142,10 +138,10 @@ async def reencrypt_on_key_rotation() -> int:
                     count += 1
             if count > 0:
                 await session.commit()
-                logger.info("dynamic_settings_reencrypted", count=count)
+                optic.info("dynamic_settings_reencrypted", count=count)
         return count
     except Exception as e:
-        logger.error("dynamic_settings_reencrypt_failed", error=str(e))
+        optic.error("dynamic_settings_reencrypt_failed", error=str(e))
         return 0
 
 
@@ -158,19 +154,14 @@ _CACHE_TTL = 30  # seconds, short TTL for consistency, Redis is fast
 # DB, these are returned. Once configured via the settings page, DB values win.
 
 DEFAULTS: dict[str, str] = {
-    # LLM / Eval
-    "eval.model_url": "",
-    "eval.model_api_key": "",
-    "eval.model_name": "",
-    "eval.model_provider": "",
-    "eval.aws_region": "us-east-1",
-    "eval.aws_access_key_id": "",
-    "eval.aws_secret_access_key": "",
-    "eval.aws_session_token": "",
-    # Insights
+    # Insights: LLM provider credentials (via LiteLLM)
+    "insights.api_key": "",
+    "insights.api_base": "",
+    # Insights: per-stage models (LiteLLM format: provider/model-name)
     "insights.model_sections": "",
     "insights.model_synthesis": "",
     "insights.model_facets": "",
+    # Insights: batch processing
     "insights.batch_enabled": "true",
     "insights.batch_period_days": "14",
     "insights.min_sessions": "5",
@@ -178,7 +169,7 @@ DEFAULTS: dict[str, str] = {
     "insights.facet_concurrency": "25",
     # Deployment (runtime-tunable, mode itself is boot-time env var)
     "deployment.sso_only": "false",
-    "deployment.frontend_url": "http://localhost:3000",
+    "deployment.frontend_url": "http://localhost",
     "deployment.public_url": "",
     "deployment.cors_origins": "http://localhost:3000",
     # Security
@@ -186,7 +177,12 @@ DEFAULTS: dict[str, str] = {
     "security.allow_draft_install": "false",
     "security.rate_limit_auth": "10/minute",
     "security.rate_limit_auth_strict": "5/minute",
-    "security.trusted_proxy_ips": "",
+    # NOTE: Defaults to RFC 1918 private ranges so the Docker compose stack
+    # works out of the box (nginx LB connects from a Docker-bridge IP).
+    # Tradeoff: any process on the same private network can inject XFF headers
+    # that the middleware will trust. For hardened deployments where the API is
+    # directly exposed, narrow this to only the actual proxy IP(s).
+    "security.trusted_proxy_ips": "172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1",
     # SAML
     "saml.idp_entity_id": "",
     "saml.idp_sso_url": "",
@@ -215,12 +211,10 @@ DEFAULTS: dict[str, str] = {
     "data.cache_ttl_default": "30",
     "data.cache_ttl_dashboard": "60",
     # Observability
-    "observability.log_level": "INFO",
+    "observability.log_level": "INFO",  # TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
     "observability.log_format": "json",  # 'json' or 'console' (colorized). Requires restart.
     "observability.enable_openapi": "false",
     "observability.enable_metrics": "false",
-    # Developer
-    "developer.default_agent_visibility": "public",
     # Misc
     "misc.max_cli_version": "",  # empty = no upper bound
     "misc.api_version": "2026-05-01",  # date-based, bumped on breaking changes
@@ -230,10 +224,7 @@ DEFAULTS: dict[str, str] = {
 
 # Sensitive keys: values are masked in API responses unless explicitly revealed
 SENSITIVE_KEYS: set[str] = {
-    "eval.model_api_key",
-    "eval.aws_access_key_id",
-    "eval.aws_secret_access_key",
-    "eval.aws_session_token",
+    "insights.api_key",
     "saml.idp_x509_cert",
     "saml.sp_key_encryption_password",
 }
@@ -241,16 +232,9 @@ SENSITIVE_KEYS: set[str] = {
 # Section definitions for the settings schema endpoint
 SECTIONS: list[dict[str, Any]] = [
     {
-        "id": "eval",
-        "title": "LLM / Eval Engine",
-        "description": "Configure the LLM used for AI-powered agent scoring. Leave blank to use deterministic fallback scorer.",
-        "icon": "brain",
-        "keys": [k for k in DEFAULTS if k.startswith("eval.")],
-    },
-    {
         "id": "insights",
         "title": "Agent Insights",
-        "description": "Per-model overrides and batch processing settings for the insights engine. Requires 'insights' license feature.",
+        "description": "Configure LLM provider for the insights engine. Supports any LiteLLM-compatible provider (Anthropic, OpenAI, Bedrock, Gemini, Azure, Ollama, etc).",
         "icon": "sparkles",
         "keys": [k for k in DEFAULTS if k.startswith("insights.")],
     },
@@ -307,13 +291,6 @@ SECTIONS: list[dict[str, Any]] = [
         "keys": [k for k in DEFAULTS if k.startswith("observability.")],
     },
     {
-        "id": "developer",
-        "title": "Developer",
-        "description": "Development convenience settings. Controls API docs exposure, default visibility, and other developer-facing behavior.",
-        "icon": "code",
-        "keys": [k for k in DEFAULTS if k.startswith("developer.")],
-    },
-    {
         "id": "misc",
         "title": "Miscellaneous",
         "description": "Other system settings.",
@@ -330,13 +307,13 @@ async def get(key: str, default: str | None = None) -> str:
     """Get a setting value. Checks Redis cache first, then DB, then hardcoded default.
 
     Args:
-        key: Dotted setting key (e.g., "eval.model_name")
+        key: Dotted setting key (e.g., "insights.model_sections")
         default: Override default (if None, uses DEFAULTS dict)
 
     Returns:
         The setting value as a string.
     """
-    optic.debug("dynamic_settings get: key={}", key)
+    optic.trace("reading setting: {}", key)
     # 1. Try Redis cache
     try:
         from services.redis import get_redis
@@ -383,7 +360,7 @@ async def get_int(key: str, default: int | None = None) -> int:
     try:
         return int(raw)
     except (ValueError, TypeError):
-        logger.warning("dynamic_settings_invalid_int", key=key, value=raw)
+        optic.warning("dynamic_settings_invalid_int", key=key, value=raw)
         if default is not None:
             return default
         fallback = DEFAULTS.get(key, "0")
@@ -407,7 +384,7 @@ async def get_float(key: str, default: float | None = None) -> float:
     try:
         return float(raw)
     except (ValueError, TypeError):
-        logger.warning("dynamic_settings_invalid_float", key=key, value=raw)
+        optic.warning("dynamic_settings_invalid_float", key=key, value=raw)
         if default is not None:
             return default
         fallback = DEFAULTS.get(key, "0.0")
@@ -504,7 +481,7 @@ async def _read_from_db(key: str) -> str | None:
                 return decrypt_value(row)
             return row
     except Exception as e:
-        logger.warning("dynamic_settings_db_read_error", key=key, error=str(e))
+        optic.warning("dynamic_settings_db_read_error", key=key, error=str(e))
         return None
 
 
@@ -526,7 +503,7 @@ async def _read_all_from_db() -> dict[str, str]:
                 settings_dict[row.key] = value
             return settings_dict
     except Exception as e:
-        logger.warning("dynamic_settings_db_read_all_error", error=str(e))
+        optic.warning("dynamic_settings_db_read_all_error", error=str(e))
         return {}
 
 
@@ -597,9 +574,9 @@ async def load_sync_cache() -> None:
         _sync_cache = dict(DEFAULTS)
         _sync_cache.update(db_values)
         _sync_cache_loaded = True
-        logger.info("dynamic_settings_cache_loaded", count=len(db_values))
+        optic.info("dynamic_settings_cache_loaded", count=len(db_values))
     except Exception as e:
-        logger.warning("dynamic_settings_cache_load_failed", error=str(e))
+        optic.warning("dynamic_settings_cache_load_failed", error=str(e))
         _sync_cache = dict(DEFAULTS)
         _sync_cache_loaded = True
 

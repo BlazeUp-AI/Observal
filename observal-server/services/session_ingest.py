@@ -14,10 +14,10 @@ default fallback.  Passing an unknown ``ide`` value raises ``KeyError``.
 
 import hashlib
 import json
+import uuid as _uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
-import structlog
 from loguru import logger as optic
 
 from services.clickhouse import insert_session_events, query_existing_for_dedup, query_session_event_count
@@ -108,7 +108,74 @@ def _extract_uuid(parsed: dict, ide: str = "claude-code") -> tuple[str | None, s
     return extractor(parsed)
 
 
-logger = structlog.get_logger(__name__)
+# ---------------------------------------------------------------------------
+# Agent ID resolution (name -> UUID)
+# ---------------------------------------------------------------------------
+
+
+def _is_uuid(value: str) -> bool:
+    """Return True if *value* is a valid UUID string."""
+    try:
+        _uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
+async def _resolve_agent_id(agent_id: str | None) -> str | None:
+    """Resolve an agent name to its UUID if it isn't one already.
+
+    Uses a Redis cache (5min TTL) to avoid hitting Postgres on every
+    ingest push. At 500 active sessions with named agents, this saves
+    ~500 Postgres queries/sec.
+
+    Returns the original value unchanged if it is already a UUID, None,
+    or if the name cannot be resolved.
+    """
+    if not agent_id:
+        return agent_id
+    if _is_uuid(agent_id):
+        return agent_id
+
+    # Check Redis cache first
+    from services.redis import get_redis
+
+    cache_key = f"agent_name_resolve:{agent_id}"
+    redis = None
+    try:
+        redis = get_redis()
+        cached = await redis.get(cache_key)
+        if cached is not None:
+            return cached if cached != "__none__" else agent_id
+    except Exception as e:
+        optic.trace("Redis cache read failed for agent resolution: {}", e)
+
+    # Import lazily to avoid circular deps at module level
+    from sqlalchemy import select
+
+    from database import async_session
+    from models.agent import Agent
+
+    resolved = None
+    try:
+        async with async_session() as db:
+            stmt = select(Agent.id).where(Agent.name == agent_id).limit(1)
+            result = await db.execute(stmt)
+            row = result.scalar_one_or_none()
+            if row:
+                resolved = str(row)
+                optic.debug("resolved agent name '{}' to UUID {}", agent_id, resolved)
+    except Exception as e:
+        optic.warning("agent_id resolution failed: {}", e)
+
+    # Cache result in Redis (5 min TTL)
+    if redis:
+        try:
+            await redis.setex(cache_key, 300, resolved or "__none__")
+        except Exception as e:
+            optic.trace("Redis cache write failed for agent resolution: {}", e)
+
+    return resolved if resolved else agent_id
 
 
 @dataclass
@@ -161,7 +228,12 @@ async def ingest_session_lines(
         An :class:`IngestResult` with ``ingested``, ``skipped``, and
         ``errors`` counts.
     """
-    optic.debug("ingest_session_lines: session_id={}, project_id={}", session_id, project_id)
+    optic.trace("ingesting session lines for session {}", session_id)
+
+    # Normalize agent_id: resolve human-readable names to UUIDs so that
+    # downstream queries (insights, exec dashboard) can match by UUID.
+    agent_id = await _resolve_agent_id(agent_id)
+
     ingested = 0
     skipped = 0
     errors = 0
@@ -171,14 +243,37 @@ async def ingest_session_lines(
         extra = get_extra_rows(ide, session_id, project_id, user_id, agent_id, agent_version, total_credits)
         if extra:
             await insert_session_events(extra)
-        optic.debug("ingest skip: no lines provided for session={}", session_id)
+        optic.debug("no lines to ingest for session {}", session_id)
         return IngestResult(ingested=0, skipped=0, errors=0)
 
     # Pre-check: fetch (existing_offsets, existing_hashes) for this batch range.
+    # Skip the expensive ClickHouse FINAL query on first push (start_offset=0)
+    # when we haven't seen this session before. Use a Redis flag to detect retries.
     max_batch_offset = start_offset + len(lines) - 1
-    existing_offsets, existing_hashes = await query_existing_for_dedup(
-        session_id, project_id, start_offset, max_batch_offset
-    )
+    if start_offset == 0:
+        from services.redis import get_redis
+
+        _flag_key = f"session_ingested:{session_id}"
+        try:
+            _redis = get_redis()
+            _already_seen = await _redis.exists(_flag_key)
+        except Exception as e:
+            optic.trace("Redis flag check failed, falling back to dedup query: {}", e)
+            _already_seen = True  # Fail safe: do the dedup check
+        if not _already_seen:
+            existing_offsets, existing_hashes = frozenset(), frozenset()
+            try:
+                await _redis.setex(_flag_key, 3600, "1")
+            except Exception as e:
+                optic.trace("Redis flag write failed: {}", e)
+        else:
+            existing_offsets, existing_hashes = await query_existing_for_dedup(
+                session_id, project_id, start_offset, max_batch_offset
+            )
+    else:
+        existing_offsets, existing_hashes = await query_existing_for_dedup(
+            session_id, project_id, start_offset, max_batch_offset
+        )
 
     rows: list[dict] = []
     classify_fn, preview_fn, tool_info_fn = get_classifier(ide)
@@ -195,11 +290,12 @@ async def ingest_session_lines(
         try:
             parsed = json.loads(raw_line)
         except (json.JSONDecodeError, ValueError) as exc:
-            logger.warning(
-                "session_ingest_parse_error",
-                session_id=session_id,
-                line_offset=line_offset,
-                error=str(exc),
+            optic.warning(
+                "session_ingest_parse_error: session={}, offset={}, error={}, line_preview={}",
+                session_id,
+                line_offset,
+                str(exc),
+                repr(raw_line[:200]),
             )
             errors += 1
             continue
@@ -210,7 +306,7 @@ async def ingest_session_lines(
             continue
 
         redacted_line = redact_secrets(raw_line)
-        preview = preview_fn(parsed, event_type)
+        preview = redact_secrets(preview_fn(parsed, event_type))
         tool_name, tool_id = tool_info_fn(parsed)
         uuid, parent_uuid = _extract_uuid(parsed, ide)
 
@@ -281,7 +377,7 @@ async def check_session_integrity(
     Queries ``SELECT count(), max(line_offset)`` for the session and
     compares against the expected values.
     """
-    optic.debug("check_session_integrity: session_id={}, project_id={}", session_id, project_id)
+    optic.trace("ingesting session lines for session {}", session_id)
     stored_count, stored_max_offset = await query_session_event_count(session_id, project_id)
     ok = stored_count == expected_line_count and stored_max_offset == expected_offset
     return IntegrityResult(

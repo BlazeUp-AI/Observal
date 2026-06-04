@@ -2,9 +2,8 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { ArrowRight, Plus, Minus, RefreshCw } from "lucide-react";
 import {
 	Dialog,
@@ -25,7 +24,7 @@ import {
 	TooltipProvider,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import yaml from "js-yaml";
 import { YamlDiffView } from "./yaml-diff-view";
@@ -368,7 +367,7 @@ function LinkedComponentDetail({
 					</button>
 				) : (
 					<Link
-						href={href}
+						to={href}
 						className="font-medium hover:underline text-primary"
 					>
 						{name}
@@ -423,10 +422,22 @@ export function ReviewDiffSheet({
 	onReject,
 	onOpenComponentReview,
 }: ReviewDiffSheetProps) {
+	// Defer heavy content render until after the open animation to avoid jank
+	const [ready, setReady] = useState(false);
+	useEffect(() => {
+		if (open) {
+			const id = requestAnimationFrame(() => {
+				requestAnimationFrame(() => setReady(true));
+			});
+			return () => cancelAnimationFrame(id);
+		}
+		setReady(false);
+	}, [open]);
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="max-w-7xl w-[95vw] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
-				{item ? (
+			<DialogContent className="max-w-7xl w-[95vw] h-[85vh] flex flex-col p-0 gap-0 overflow-hidden will-change-transform">
+				{item && ready ? (
 					<DiffDialogBody
 						key={item.id}
 						item={item}

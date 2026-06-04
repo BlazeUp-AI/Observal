@@ -145,7 +145,7 @@ def _build_config_snippet(
 ) -> dict:
     """Build the IDE-specific config snippet."""
 
-    optic.debug("_build_config_snippet: ide={}, ide_info={}", ide, ide_info)
+    optic.trace("ide={}, ide_info={}", ide, ide_info)
     if ide == "claude-code":
         hook_entry: dict = {"type": handler_type, "command": command}
         if timeout:
@@ -187,7 +187,7 @@ def _build_config_snippet(
 
 def _generate_plugin_instructions(hook_listing, ide_info: dict, ide_event: str) -> dict:
     """Generate manual setup instructions for plugin-based IDEs (OpenCode)."""
-    optic.debug("_generate_plugin_instructions: hook_listing={}, ide_info={}", hook_listing, ide_info)
+    optic.trace("hook_listing={}, ide_info={}", hook_listing, ide_info)
     handler_config = getattr(hook_listing, "handler_config", {}) or {}
     command = handler_config.get("command", "")
 

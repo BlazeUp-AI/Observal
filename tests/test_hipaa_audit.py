@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Tests for the HIPAA audit logging system."""
@@ -283,7 +284,7 @@ class TestMiddleware:
             assert kwargs["audit"] is True
             assert kwargs["outcome"] == "success"
             assert kwargs["sensitivity"] == "high"
-            assert kwargs["ip_address"] == "10.0.0.1"
+            assert kwargs["ip_address"] == "127.0.0.1"
             mock_bound.info.assert_called_once_with("audit")
 
     @pytest.mark.asyncio

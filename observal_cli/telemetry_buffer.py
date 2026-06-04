@@ -15,7 +15,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from loguru import logger
+from loguru import logger as optic
 
 DB_PATH = Path.home() / ".observal" / "telemetry_buffer.db"
 MAX_EVENTS = 10_000
@@ -54,7 +54,7 @@ def buffer_event(payload: str, event_type: str = "hook") -> None:
     Enforces the FIFO cap: if the buffer exceeds MAX_EVENTS, the oldest
     pending rows are deleted to make room.
     """
-    logger.debug("buffer_event: type={}", event_type)
+    optic.trace("type={}", event_type)
     conn = _connect()
     try:
         conn.execute(
@@ -69,7 +69,7 @@ def buffer_event(payload: str, event_type: str = "hook") -> None:
 
 def get_pending(limit: int = BATCH_SIZE) -> list[dict]:
     """Return up to *limit* pending events ordered oldest-first."""
-    logger.debug("get_pending: limit={}", limit)
+    optic.trace("limit={}", limit)
     conn = _connect()
     try:
         rows = conn.execute(

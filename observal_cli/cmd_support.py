@@ -21,18 +21,17 @@ import tarfile
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 import typer
-from loguru import logger
 from rich import print as rprint
 from rich.tree import Tree
 
 from observal_cli import config, render
 from observal_cli.render import console, spinner
+from observal_cli.support import CollectorResult
 from observal_cli.support.manifest import BundleManifest, compute_file_entry
 from observal_cli.support.redaction import RedactionStats, redact_value
 
@@ -72,33 +71,6 @@ SIZE_BUDGET_BYTES = 100 * 1024 * 1024  # 100 MB uncompressed warning threshold
 
 
 # ── CollectorResult ──────────────────────────────────────────────────
-
-
-@dataclass
-class CollectorResult:
-    """Result from a single diagnostic collector."""
-
-    name: str  # e.g. "versions", "health_postgres"
-    ok: bool
-    duration_ms: int
-    data: dict | list | str | None
-    error: str | None = None
-
-    @property
-    def target_path(self) -> str:
-        """Relative path in the archive, e.g. 'versions/app.json'."""
-        # Map collector names to archive paths
-        _path_map: dict[str, str] = {
-            "versions": "versions/app.json",
-            "health": "health/health.json",
-            "config": "config/config.json",
-            "aggregates": "aggregates/aggregates.json",
-            "errors": "errors/recent_errors.json",
-            "logs": "logs/recent.ndjson",
-            "config_allowlisted": "config/config.json",
-            "system_info": "system/system.json",
-        }
-        return _path_map.get(self.name, f"{self.name}.json")
 
 
 # ── Local collectors ─────────────────────────────────────────────────
@@ -245,7 +217,6 @@ def bundle(
         observal support bundle -o /tmp/diag.tar.gz --logs-since 2h
         observal support bundle --no-include-system
     """
-    logger.debug("bundle called")
     # Determine output path
     if output is None:
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")

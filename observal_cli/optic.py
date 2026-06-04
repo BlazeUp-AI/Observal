@@ -3,13 +3,14 @@
 
 """Optic: developer debug logging for the Observal CLI.
 
-Configures loguru sinks based on --debug / --verbose flags.
-Call ``setup_optic()`` once in the CLI callback.
-Then use ``from loguru import logger`` in any CLI module.
+Call ``setup_optic()`` once in the CLI main callback.
+Then use ``from loguru import logger as optic`` in any module.
 
-By default (no flags): loguru is silent (no sinks).
---verbose: INFO+ to stderr.
---debug: DEBUG+ to stderr + file.
+Flags:
+  (none)    → silent (loguru no-ops)
+  --verbose → INFO+ to stderr
+  --debug   → DEBUG+ to stderr + file
+  --trace   → TRACE+ to stderr + file (maximum granularity)
 """
 
 from __future__ import annotations
@@ -20,45 +21,40 @@ from pathlib import Path
 from loguru import logger
 
 
-def setup_optic(*, debug: bool = False, verbose: bool = False) -> None:
-    """Configure loguru sinks for CLI based on verbosity flags.
+def setup_optic(*, trace: bool = False, debug: bool = False, verbose: bool = False) -> None:
+    """Configure loguru sinks for CLI.
 
     Args:
-        debug: Enable DEBUG level (stderr + file).
-        verbose: Enable INFO level (stderr only).
+        trace: TRACE+ to stderr + file.  Maximum detail.
+        debug: DEBUG+ to stderr + file.
+        verbose: INFO+ to stderr only.
     """
-    # Remove loguru's default stderr sink
     logger.remove()
 
-    if debug:
-        # Full debug to stderr
-        logger.add(
-            sys.stderr,
-            level="DEBUG",
-            colorize=True,
-            format=(
-                "<green>{time:HH:mm:ss.SSS}</green> | "
-                "<level>{level:<7}</level> | "
-                "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-                "<level>{message}</level>"
-            ),
-        )
-        # Also write to file for post-mortem
+    level = "TRACE" if trace else "DEBUG" if debug else "INFO" if verbose else None
+
+    if level is None:
+        return  # silent
+
+    logger.add(
+        sys.stderr,
+        level=level,
+        colorize=True,
+        format=(
+            "<green>{time:HH:mm:ss.SSS}</green> | "
+            "<level>{level:<7}</level> | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+            "<level>{message}</level>"
+        ),
+    )
+
+    if trace or debug:
         log_path = Path.home() / ".observal" / "logs" / "cli.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         logger.add(
             str(log_path),
-            rotation="5 MB",
-            retention=3,
-            level="DEBUG",
+            rotation="10 MB",
+            retention=5,
+            level="TRACE" if trace else "DEBUG",
             format=("{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<7} | {name}:{function}:{line} - {message}"),
         )
-    elif verbose:
-        # INFO+ to stderr only
-        logger.add(
-            sys.stderr,
-            level="INFO",
-            colorize=True,
-            format=("<green>{time:HH:mm:ss.SSS}</green> | <level>{level:<7}</level> | <level>{message}</level>"),
-        )
-    # else: no sinks = silent (loguru no-ops gracefully)

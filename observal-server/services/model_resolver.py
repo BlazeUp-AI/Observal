@@ -23,7 +23,6 @@ place.
 
 from __future__ import annotations
 
-import structlog
 from loguru import logger as optic
 
 from schemas.ide_registry import accepts_model_choice
@@ -34,8 +33,6 @@ from services.model_catalog import (
     get_catalog,
 )
 
-logger = structlog.get_logger(__name__)
-
 
 def _candidate_for_ide(ide: str, models_by_ide: dict | None, model_name: str | None) -> str | None:
     """Pick the saved model the user wants for ``ide``.
@@ -45,7 +42,7 @@ def _candidate_for_ide(ide: str, models_by_ide: dict | None, model_name: str | N
         2. ``model_name`` - but only for Claude Code (legacy default).
     Other IDEs default to None (= emit auto sentinel) when no override exists.
     """
-    optic.debug("_candidate_for_ide: ide={}, models_by_ide={}", ide, models_by_ide)
+    optic.trace("resolving model for ide={}", ide)
     if models_by_ide and ide in models_by_ide and models_by_ide[ide]:
         return models_by_ide[ide]
     if ide == "claude-code" and model_name:
@@ -54,7 +51,7 @@ def _candidate_for_ide(ide: str, models_by_ide: dict | None, model_name: str | N
 
 
 def _format(ide: str, candidate: str | None, catalog: Catalog | None) -> str | None:
-    optic.debug("_format: ide={}, candidate={}", ide, candidate)
+    optic.trace("candidate model for {}: {}", ide, candidate)
     if not candidate:
         return None
     provider = "anthropic"  # safe default for the legacy claude-code path
@@ -72,7 +69,7 @@ def resolve_saved_value(ide: str, model_name: str, models_by_ide: dict | None) -
     Returns the IDE-formatted string for the saved value, or ``None`` if no
     saved value exists (caller must emit the auto sentinel).
     """
-    optic.debug("resolve_saved_value: ide={}, model_name={}", ide, model_name)
+    optic.trace("resolving model {} for {}", model_name, ide)
     if not accepts_model_choice(ide):
         return None
     candidate = _candidate_for_ide(ide, models_by_ide, model_name)
@@ -92,7 +89,7 @@ async def resolve_model_for_ide(
     should emit the IDE's auto sentinel (e.g. drop the ``model:`` line for
     Claude Code, write ``"model": null`` for Kiro).
     """
-    optic.debug("resolve_model_for_ide: ide={}", ide)
+    optic.trace("no model configured, checking catalog for {}", ide)
     warnings: list[str] = []
 
     if not accepts_model_choice(ide):
@@ -102,7 +99,7 @@ async def resolve_model_for_ide(
 
     candidate = override or _candidate_for_ide(ide, models_by_ide, model_name)
     if not candidate:
-        optic.debug("model resolve: no candidate for ide={}, using auto sentinel", ide)
+        optic.debug("no model configured for {}, using auto-select", ide)
         return None, warnings
 
     # Claude Code short aliases ("sonnet", "opus", "haiku") and the literal
@@ -117,7 +114,7 @@ async def resolve_model_for_ide(
     try:
         catalog = await get_catalog()
     except Exception as e:
-        logger.warning("model_resolver_catalog_error", error=str(e))
+        optic.warning("model_resolver_catalog_error", error=str(e))
         optic.warning("model catalog unavailable: {}", e)
         catalog = None
 
