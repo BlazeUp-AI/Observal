@@ -55,6 +55,12 @@ observal-web/dist/
 docker/data/
 docker/clickhouse/users.d/default-user.xml
 
+# Terraform
+**/.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.backup
+
 # Local / ephemeral
 .playwright-mcp/
 e2e-screenshots/

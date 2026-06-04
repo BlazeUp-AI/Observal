@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 Tanvi Reddy
+# SPDX-License-Identifier: AGPL-3.0-only
+
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  - path: /opt/observal/docker-compose.yml
+    content: |
+      services:
+        clickhouse:
+          image: clickhouse/clickhouse-server:26.5
+          restart: unless-stopped
+          ports:
+            - "8123:8123"
+            - "9000:9000"
+          environment:
+            CLICKHOUSE_DB: ${clickhouse_db}
+            CLICKHOUSE_USER: default
+            CLICKHOUSE_PASSWORD: ${clickhouse_password}
+            MAX_SERVER_MEMORY_USAGE_RATIO: "0.8"
+          volumes:
+            - /data/clickhouse:/var/lib/clickhouse
+          deploy:
+            resources:
+              limits:
+                memory: 6G
+
+        prometheus:
+          image: prom/prometheus:v3.12.0
+          restart: unless-stopped
+          ports:
+            - "9090:9090"
+          volumes:
+            - /opt/observal/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - /data/prometheus:/prometheus
+          deploy:
+            resources:
+              limits:
+                memory: 512M
+
+  - path: /opt/observal/prometheus.yml
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: observal-api
+          metrics_path: /metrics
+          static_configs:
+            - targets: []
+
+runcmd:
+  # Format and mount data disk
+  - |
+    if ! blkid /dev/sdc; then
+      mkfs.ext4 /dev/sdc
+    fi
+    mkdir -p /data
+    mount /dev/sdc /data
+    echo '/dev/sdc /data ext4 defaults,nofail 0 2' >> /etc/fstab
+  - mkdir -p /data/clickhouse /data/prometheus
+  - systemctl enable docker
+  - systemctl start docker
+  - cd /opt/observal && docker compose up -d
