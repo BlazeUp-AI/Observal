@@ -1,7 +1,6 @@
+#cloud-config
 # SPDX-FileCopyrightText: 2026 Tanvi Reddy
 # SPDX-License-Identifier: AGPL-3.0-only
-
-#cloud-config
 package_update: true
 package_upgrade: true
 
@@ -14,7 +13,7 @@ write_files:
     content: |
       services:
         clickhouse:
-          image: clickhouse/clickhouse-server:26.5
+          image: clickhouse/clickhouse-server:25.6
           restart: unless-stopped
           ports:
             - "8123:8123"
@@ -29,7 +28,20 @@ write_files:
           deploy:
             resources:
               limits:
-                memory: 6G
+                memory: 4G
+
+        redis:
+          image: redis:7-alpine
+          restart: unless-stopped
+          ports:
+            - "6379:6379"
+          command: redis-server --maxmemory 512mb --maxmemory-policy volatile-lru --appendonly yes
+          volumes:
+            - /data/redis:/data
+          deploy:
+            resources:
+              limits:
+                memory: 768M
 
         prometheus:
           image: prom/prometheus:v3.12.0
@@ -63,7 +75,7 @@ runcmd:
     mkdir -p /data
     mount /dev/sdc /data
     echo '/dev/sdc /data ext4 defaults,nofail 0 2' >> /etc/fstab
-  - mkdir -p /data/clickhouse /data/prometheus
+  - mkdir -p /data/clickhouse /data/prometheus /data/redis
   - systemctl enable docker
   - systemctl start docker
   - cd /opt/observal && docker compose up -d

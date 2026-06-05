@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Tanvi Reddy
 # SPDX-License-Identifier: AGPL-3.0-only
 
-# Data tier: Azure VM running ClickHouse + Prometheus via docker-compose.
-# When clickhouse_mode = "cloud", none of these resources are created.
+# Data tier: Azure VM running ClickHouse + Redis + Prometheus via docker-compose.
+# The VM is created when clickhouse_mode = "self_hosted" OR redis_mode = "self_hosted".
 
 resource "azurerm_network_interface" "clickhouse" {
-  count               = local.clickhouse_self_hosted ? 1 : 0
-  name                = "${local.name}-clickhouse-nic"
+  count               = local.needs_vm ? 1 : 0
+  name                = "${local.name}-data-nic"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
@@ -20,8 +20,8 @@ resource "azurerm_network_interface" "clickhouse" {
 }
 
 resource "azurerm_managed_disk" "clickhouse_data" {
-  count                = local.clickhouse_self_hosted ? 1 : 0
-  name                 = "${local.name}-clickhouse-data"
+  count                = local.needs_vm ? 1 : 0
+  name                 = "${local.name}-data-disk"
   location             = azurerm_resource_group.main.location
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
@@ -32,8 +32,8 @@ resource "azurerm_managed_disk" "clickhouse_data" {
 }
 
 resource "azurerm_linux_virtual_machine" "clickhouse" {
-  count               = local.clickhouse_self_hosted ? 1 : 0
-  name                = "${local.name}-clickhouse"
+  count               = local.needs_vm ? 1 : 0
+  name                = "${local.name}-data"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   size                = var.clickhouse_vm_size
@@ -72,7 +72,7 @@ resource "azurerm_linux_virtual_machine" "clickhouse" {
 }
 
 resource "azurerm_virtual_machine_data_disk_attachment" "clickhouse_data" {
-  count              = local.clickhouse_self_hosted ? 1 : 0
+  count              = local.needs_vm ? 1 : 0
   managed_disk_id    = azurerm_managed_disk.clickhouse_data[0].id
   virtual_machine_id = azurerm_linux_virtual_machine.clickhouse[0].id
   lun                = 0
@@ -80,7 +80,7 @@ resource "azurerm_virtual_machine_data_disk_attachment" "clickhouse_data" {
 }
 
 resource "tls_private_key" "clickhouse" {
-  count     = local.clickhouse_self_hosted ? 1 : 0
+  count     = local.needs_vm ? 1 : 0
   algorithm = "RSA"
   rsa_bits  = 4096
 }

@@ -10,6 +10,11 @@ resource "azurerm_container_app_environment" "main" {
   infrastructure_subnet_id   = azurerm_subnet.container_apps.id
 
   tags = local.tags
+
+  depends_on = [
+    azurerm_subnet.container_apps,
+    azurerm_virtual_network.main,
+  ]
 }
 
 # -- API service -------------------------------------------------------------

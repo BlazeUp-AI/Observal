@@ -185,7 +185,7 @@ variable "clickhouse_cloud_password" {
 variable "clickhouse_vm_size" {
   description = "Azure VM size for the ClickHouse host."
   type        = string
-  default     = "Standard_D2s_v5"
+  default     = "Standard_D2ads_v7"
 }
 
 variable "clickhouse_disk_size_gb" {
@@ -208,16 +208,20 @@ variable "postgresql_storage_gb" {
   default     = 64
 }
 
-variable "redis_sku" {
-  description = "Azure Cache for Redis SKU (Basic, Standard, Premium)."
+variable "redis_mode" {
+  description = "Where Redis lives. 'self_hosted' = on ClickHouse VM via Docker. 'enterprise' = Azure Managed Redis (requires Enterprise quota)."
   type        = string
-  default     = "Standard"
+  default     = "self_hosted"
+  validation {
+    condition     = contains(["self_hosted", "enterprise"], var.redis_mode)
+    error_message = "redis_mode must be 'self_hosted' or 'enterprise'."
+  }
 }
 
-variable "redis_capacity" {
-  description = "Azure Cache for Redis capacity (0=250MB, 1=1GB, 2=2.5GB, etc)."
-  type        = number
-  default     = 1
+variable "redis_enterprise_sku" {
+  description = "Azure Managed Redis (Enterprise) SKU. Only used when redis_mode = 'enterprise'."
+  type        = string
+  default     = "Enterprise_E5-2"
 }
 
 # -- Observability -----------------------------------------------------------

@@ -5,14 +5,15 @@
 
 subscription_id = "6a0284fc-791a-4d77-9520-69cdaa79ba44"
 environment     = "staging"
-location        = "eastus"
+location        = "centralus"
 name_prefix     = "observal"
 
-# Smaller SKUs for staging
+# Smaller PostgreSQL for staging
 postgresql_sku        = "B_Standard_B2s"
 postgresql_storage_gb = 32
-redis_sku             = "Standard"
-redis_capacity        = 0
+
+# Redis on ClickHouse VM (Enterprise not available on this subscription)
+redis_mode = "self_hosted"
 
 # Minimal replicas
 api_min_replicas    = 1
@@ -23,7 +24,7 @@ worker_min_replicas = 1
 worker_max_replicas = 2
 
 # Smaller ClickHouse VM
-clickhouse_vm_size      = "Standard_D2s_v5"
+clickhouse_vm_size      = "Standard_D2ads_v7"
 clickhouse_disk_size_gb = 50
 
 # Managed Grafana

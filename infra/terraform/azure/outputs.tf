@@ -22,8 +22,8 @@ output "postgresql_fqdn" {
 }
 
 output "redis_hostname" {
-  description = "Redis cache hostname."
-  value       = azurerm_redis_cache.main.hostname
+  description = "Redis endpoint."
+  value       = var.redis_mode == "enterprise" ? azurerm_redis_enterprise_cluster.main[0].hostname : "${azurerm_network_interface.clickhouse[0].private_ip_address}:6379"
 }
 
 output "clickhouse_private_ip" {

@@ -1,9 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Tanvi Reddy
 # SPDX-License-Identifier: AGPL-3.0-only
 
-# Azure Managed Grafana - enterprise-ready observability dashboard.
-# Connects to ClickHouse on the data VM for telemetry queries.
+# Azure Monitor Workspace (required for Managed Grafana integration)
+resource "azurerm_monitor_workspace" "main" {
+  count               = var.grafana_enabled ? 1 : 0
+  name                = "${local.name}-monitor"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
 
+  tags = local.tags
+}
+
+# Azure Managed Grafana - enterprise-ready observability dashboard.
 resource "azurerm_dashboard_grafana" "main" {
   count               = var.grafana_enabled ? 1 : 0
   name                = "${var.name_prefix}-${var.environment}-gf"
@@ -18,7 +26,7 @@ resource "azurerm_dashboard_grafana" "main" {
   }
 
   azure_monitor_workspace_integrations {
-    resource_id = azurerm_log_analytics_workspace.main.id
+    resource_id = azurerm_monitor_workspace.main[0].id
   }
 
   tags = local.tags
