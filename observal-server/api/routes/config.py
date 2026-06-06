@@ -127,6 +127,7 @@ async def get_public_config(db=Depends(get_db)):
     return {
         "licensed": licensed,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
+        "google_sso_enabled": bool((settings.GOOGLE_OAUTH_CLIENT_ID or "").strip()),
         "sso_only": sso_only,
         "saml_enabled": saml_enabled,
         "exec_dashboard_available": exec_dashboard_available,

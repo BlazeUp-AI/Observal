@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     OAUTH_CLIENT_SECRET: str | None = None
     OAUTH_SERVER_METADATA_URL: str | None = None
 
+    GOOGLE_OAUTH_CLIENT_ID: str | None = None
+    GOOGLE_OAUTH_CLIENT_SECRET: str | None = None
+    GOOGLE_OAUTH_ALLOWED_DOMAINS: str | None = None
+
     # Connection pool sizing (boot-time, pool created once at startup)
     DB_POOL_SIZE: int = 30
     DB_MAX_OVERFLOW: int = 50
