@@ -387,8 +387,8 @@ class TestReadCount:
 class TestConstants:
     """Verify CLICKHOUSE_TABLES, FK_PG_TABLE_MAP, and EPOCH_SENTINELS."""
 
-    def test_clickhouse_tables_has_7_entries(self):
-        assert len(CLICKHOUSE_TABLES) == 7
+    def test_clickhouse_tables_has_8_entries(self):
+        assert len(CLICKHOUSE_TABLES) == 8
 
     def test_each_table_has_required_keys(self):
         for table_cfg in CLICKHOUSE_TABLES:
@@ -403,6 +403,7 @@ class TestConstants:
             "traces",
             "spans",
             "scores",
+            "session_events",
             "audit_log",
             "otel_logs",
             "security_events",
@@ -421,6 +422,7 @@ class TestConstants:
     def test_mergetree_tables(self):
         mergetree = [t["name"] for t in CLICKHOUSE_TABLES if t["engine"] == "mergetree"]
         assert set(mergetree) == {
+            "session_events",
             "audit_log",
             "otel_logs",
             "security_events",
