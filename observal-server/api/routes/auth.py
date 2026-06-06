@@ -28,8 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import services.dynamic_settings as ds
 from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode, require_password_auth
 from api.ratelimit import limiter
-from config import settings
+from config import GOOGLE_SSO_ENABLED, settings
 from models.user import User, UserRole
+from models.user_group import UserGroup
 from schemas.auth import (
     ChangePasswordRequest,
     CodeExchangeRequest,
@@ -111,13 +112,11 @@ if settings.OAUTH_CLIENT_ID and settings.OAUTH_CLIENT_SECRET and settings.OAUTH_
     )
 
 GOOGLE_OAUTH_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
-_google_client_id = (settings.GOOGLE_OAUTH_CLIENT_ID or "").strip() or None
-_google_client_secret = (settings.GOOGLE_OAUTH_CLIENT_SECRET or "").strip() or None
-if _google_client_id and _google_client_secret:
+if GOOGLE_SSO_ENABLED:
     oauth.register(
         name="google",
-        client_id=_google_client_id,
-        client_secret=_google_client_secret,
+        client_id=settings.GOOGLE_OAUTH_CLIENT_ID.strip(),
+        client_secret=settings.GOOGLE_OAUTH_CLIENT_SECRET.strip(),
         server_metadata_url=GOOGLE_OAUTH_DISCOVERY_URL,
         client_kwargs={
             "scope": "openid email profile",
@@ -129,6 +128,41 @@ def _parse_allowed_domains(raw: str | None) -> set[str]:
     if not raw:
         return set()
     return {d.strip().lower() for d in raw.split(",") if d.strip()}
+
+
+_GOOGLE_ALLOWED_DOMAINS: frozenset[str] = frozenset(
+    _parse_allowed_domains(settings.GOOGLE_OAUTH_ALLOWED_DOMAINS)
+)
+
+
+def _is_safe_next(next_path: str | None) -> bool:
+    return bool(
+        next_path
+        and next_path.startswith("/")
+        and not next_path.startswith("//")
+        and "\\" not in next_path
+    )
+
+
+async def _start_oauth_flow(
+    request: Request,
+    client,
+    *,
+    callback_path: str,
+    next_path: str | None,
+) -> RedirectResponse:
+    """Stash `next` in the session and kick off the IdP redirect.
+
+    Uses FRONTEND_URL as the redirect_uri base so the value matches what the
+    IdP allowlist expects (e.g. Azure AD) and Docker-internal hostnames don't
+    leak through.
+    """
+    if _is_safe_next(next_path):
+        request.session["oauth_next"] = next_path
+    redirect_uri = (
+        ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + callback_path
+    )
+    return await client.authorize_redirect(request, redirect_uri)
 
 
 async def _issue_tokens(user: User, groups: list[str] | None = None) -> tuple[str, str, int]:
@@ -331,8 +365,6 @@ async def _provision_sso_user(
 
     if groups:
         try:
-            from models.user_group import UserGroup
-
             await db.execute(sa_delete(UserGroup).where(UserGroup.user_id == user.id))
             db.add_all([UserGroup(user_id=user.id, group_name=g) for g in groups])
         except Exception as e:
@@ -346,12 +378,11 @@ async def _complete_sso_login(
     db: AsyncSession,
     user: User,
     groups: list[str] | None,
-    success_event: SecurityEvent | None = None,
 ) -> RedirectResponse:
-    """Issue JWTs, stash a one-time exchange code in Redis, redirect to /login?code=...
+    """Issue JWTs, stash a one-time exchange code in Redis, emit SSO_SUCCESS after commit, redirect.
 
-    Emits `success_event` only after the DB commit succeeds, so a failed commit
-    never produces a misleading "SSO success" audit entry.
+    The SSO_SUCCESS audit event fires only after the DB commit succeeds, so a
+    failed commit never produces a misleading "success" audit entry.
     """
     access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
     await db.commit()
@@ -376,13 +407,24 @@ async def _complete_sso_login(
         optic.warning("Redis unavailable during OAuth callback: {}", e)
         raise HTTPException(status_code=503, detail="Service temporarily unavailable")
 
-    if success_event is not None:
-        await emit_security_event(success_event)
+    source_ip, user_agent = _extract_request_info(request)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.SSO_SUCCESS,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(user.id),
+            actor_email=user.email,
+            actor_role=user.role.value,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
 
     oauth_next = request.session.pop("oauth_next", None)
     frontend_base = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
     frontend_redirect = f"{frontend_base}/login?code={code}"
-    if oauth_next and oauth_next.startswith("/") and not oauth_next.startswith("//") and "\\" not in oauth_next:
+    if _is_safe_next(oauth_next):
         frontend_redirect += f"&next={quote(oauth_next, safe='')}"
     return RedirectResponse(url=frontend_redirect)
 
@@ -393,19 +435,12 @@ async def oauth_login(request: Request, next: str | None = None):
     optic.debug("oauth_login called")
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
-
-    # Preserve the post-login redirect target (e.g. /device?code=XXXX) across the
-    # OAuth round-trip so the user lands on the correct page after SSO completes.
-    if next and next.startswith("/") and not next.startswith("//") and "\\" not in next:
-        request.session["oauth_next"] = next
-
-    # Use FRONTEND_URL as the base so the redirect works through the Next.js proxy.
-    # This avoids Docker-internal hostnames (e.g. observal-api:8000) leaking into
-    # the redirect URI, which would fail Azure AD's redirect URI validation.
-    redirect_uri = (
-        ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + "/api/v1/auth/oauth/callback"
+    return await _start_oauth_flow(
+        request,
+        oauth.oidc,
+        callback_path="/api/v1/auth/oauth/callback",
+        next_path=next,
     )
-    return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/oauth/callback")
@@ -448,18 +483,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     user = await _provision_sso_user(
         db, email=email, name=name, groups=groups, provider="oidc", subject_id=subject
     )
-
-    success_event = SecurityEvent(
-        event_type=EventType.SSO_SUCCESS,
-        severity=Severity.INFO,
-        outcome="success",
-        actor_id=str(user.id),
-        actor_email=email,
-        actor_role=user.role.value,
-        source_ip=source_ip,
-        user_agent=user_agent,
-    )
-    return await _complete_sso_login(request, db, user, groups, success_event=success_event)
+    return await _complete_sso_login(request, db, user, groups)
 
 
 @router.get("/oauth/google/login")
@@ -468,15 +492,12 @@ async def google_oauth_login(request: Request, next: str | None = None):
     optic.debug("google_oauth_login called")
     if not oauth.google:
         raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server")
-
-    if next and next.startswith("/") and not next.startswith("//") and "\\" not in next:
-        request.session["oauth_next"] = next
-
-    redirect_uri = (
-        ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/")
-        + "/api/v1/auth/oauth/google/callback"
+    return await _start_oauth_flow(
+        request,
+        oauth.google,
+        callback_path="/api/v1/auth/oauth/google/callback",
+        next_path=next,
     )
-    return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/oauth/google/callback")
@@ -514,10 +535,9 @@ async def google_oauth_callback(request: Request, db: AsyncSession = Depends(get
 
     email = email.strip().lower()
 
-    allowed = _parse_allowed_domains(settings.GOOGLE_OAUTH_ALLOWED_DOMAINS)
-    if allowed:
-        domain = email.rsplit("@", 1)[-1] if "@" in email else ""
-        if domain not in allowed:
+    if _GOOGLE_ALLOWED_DOMAINS:
+        domain = email.rsplit("@", 1)[-1]
+        if domain not in _GOOGLE_ALLOWED_DOMAINS:
             await emit_security_event(
                 SecurityEvent(
                     event_type=EventType.SSO_FAILURE,
@@ -537,18 +557,7 @@ async def google_oauth_callback(request: Request, db: AsyncSession = Depends(get
     user = await _provision_sso_user(
         db, email=email, name=name, groups=None, provider="google", subject_id=subject
     )
-
-    success_event = SecurityEvent(
-        event_type=EventType.SSO_SUCCESS,
-        severity=Severity.INFO,
-        outcome="success",
-        actor_id=str(user.id),
-        actor_email=email,
-        actor_role=user.role.value,
-        source_ip=source_ip,
-        user_agent=user_agent,
-    )
-    return await _complete_sso_login(request, db, user, None, success_event=success_event)
+    return await _complete_sso_login(request, db, user, None)
 
 
 @router.post("/exchange", response_model=InitResponse)

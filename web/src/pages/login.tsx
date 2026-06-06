@@ -178,23 +178,16 @@ function LoginContent() {
     }
   }
 
-  function handleSsoLogin() {
+  function redirectToOauth(path: string) {
     setSsoLoading(true);
     const nextParam = searchParams.next;
-    const url = nextParam && nextParam.startsWith("/")
-      ? `/api/v1/auth/oauth/login?next=${encodeURIComponent(nextParam)}`
-      : "/api/v1/auth/oauth/login";
-    window.location.href = url;
+    window.location.href = nextParam && nextParam.startsWith("/")
+      ? `${path}?next=${encodeURIComponent(nextParam)}`
+      : path;
   }
 
-  function handleGoogleLogin() {
-    setSsoLoading(true);
-    const nextParam = searchParams.next;
-    const url = nextParam && nextParam.startsWith("/")
-      ? `/api/v1/auth/oauth/google/login?next=${encodeURIComponent(nextParam)}`
-      : "/api/v1/auth/oauth/google/login";
-    window.location.href = url;
-  }
+  const handleSsoLogin = () => redirectToOauth("/api/v1/auth/oauth/login");
+  const handleGoogleLogin = () => redirectToOauth("/api/v1/auth/oauth/google/login");
 
   if (mustChangePassword) {
     return (

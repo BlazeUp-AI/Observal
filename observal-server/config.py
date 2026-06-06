@@ -79,6 +79,11 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+GOOGLE_SSO_ENABLED: bool = bool(
+    (settings.GOOGLE_OAUTH_CLIENT_ID or "").strip()
+    and (settings.GOOGLE_OAUTH_CLIENT_SECRET or "").strip()
+)
+
 # Derived: True when an enterprise license key is configured.
 # Used as the replacement for the removed DEPLOYMENT_MODE env var.
 # Feature availability is still gated by ee.license.is_feature_licensed();
