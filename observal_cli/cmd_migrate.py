@@ -139,6 +139,7 @@ CLICKHOUSE_TABLES: list[TableCfg] = [
     {"name": "traces", "engine": "replacing", "time_col": "start_time", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
     {"name": "spans", "engine": "replacing", "time_col": "start_time", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
     {"name": "scores", "engine": "replacing", "time_col": "timestamp", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
+    {"name": "session_events", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["agent_id", "user_id"]},
     {"name": "audit_log", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["actor_id"]},
     # otel_logs DDL uses capital-T "Timestamp" (OpenTelemetry convention)
     {"name": "otel_logs", "engine": "mergetree", "time_col": "Timestamp", "fk_cols": []},
@@ -410,34 +411,41 @@ async def _get_org_fk_columns(conn: asyncpg.Connection) -> set[str]:
 
 
 async def _get_notnull_json_defaults(conn: asyncpg.Connection, table: str) -> dict[str, str]:
-    """Discover NOT NULL JSON/JSONB columns for a table and provide safe defaults.
+    """Discover NOT NULL columns with defaults for a table.
 
-    SQLAlchemy models define defaults in Python (default=dict, default=list) which
-    don't appear in information_schema.column_default. We detect NOT NULL JSON columns
-    and provide empty-object defaults so older archives with NULL values don't crash.
+    Handles both JSON/JSONB columns (which may lack DB defaults but need empty objects)
+    and all other NOT NULL columns with explicit column_default values (boolean, varchar, etc).
+    For boolean columns without defaults, uses false as fallback.
+    This ensures migration from older schemas doesn't crash on missing columns.
     """
     rows = await conn.fetch(
         """
-        SELECT column_name, column_default
+        SELECT column_name, column_default, udt_name
         FROM information_schema.columns
         WHERE table_name = $1
             AND table_schema = 'public'
             AND is_nullable = 'NO'
-            AND udt_name IN ('json', 'jsonb')
+            AND (udt_name IN ('json', 'jsonb', 'bool') OR column_default IS NOT NULL)
         """,
         table,
     )
     defaults: dict[str, str] = {}
     for row in rows:
+        col_name = row["column_name"]
         col_default = row["column_default"]
+        udt_name = row["udt_name"]
+
         if col_default:
-            # Has an explicit DB default - extract the JSON value
+            # Has an explicit DB default - extract the value
             clean = col_default.split("::")[0].strip().strip("'")
-            defaults[row["column_name"]] = clean
-        else:
-            # No DB default but column is NOT NULL - use empty object as safe fallback.
+            defaults[col_name] = clean
+        elif udt_name in ("json", "jsonb"):
+            # No DB default but column is NOT NULL JSON/JSONB - use empty object as safe fallback.
             # This covers SQLAlchemy models with default=dict or default=list.
-            defaults[row["column_name"]] = "{}"
+            defaults[col_name] = "{}"
+        elif udt_name == "bool":
+            # No DB default but column is NOT NULL boolean - use false as safe fallback.
+            defaults[col_name] = "false"
     return defaults
 
 
@@ -451,8 +459,12 @@ def _coerce_value(value: object, pg_type: str) -> object:
         return datetime.fromisoformat(value)
     if pg_type == "interval" and isinstance(value, (int, float)):
         return timedelta(seconds=value)
-    if pg_type in ("bool",) and isinstance(value, bool):
-        return value
+    if pg_type in ("bool",):
+        if isinstance(value, bool):
+            return value
+        elif isinstance(value, str):
+            # Handle string defaults from column_default ('true', 'false')
+            return value.lower() in ("true", "t", "1", "yes")
     if pg_type in ("int4", "int8", "int2") and isinstance(value, (int, float)):
         return int(value)
     if pg_type in ("float4", "float8", "numeric") and isinstance(value, (int, float)):
@@ -463,7 +475,7 @@ def _coerce_value(value: object, pg_type: str) -> object:
     return value
 
 
-# NOT NULL JSON defaults are now derived from information_schema at runtime
+# NOT NULL defaults are now derived from information_schema at runtime
 # (see _get_notnull_json_defaults). No hardcoded map needed.
 
 
@@ -509,7 +521,7 @@ async def _flush_batch(
     defaulted_cols: set[str] = set()
 
     for row in batch:
-        # Apply NOT NULL JSON defaults for columns that are NULL in the archive
+        # Apply NOT NULL defaults for columns that are NULL in the archive
         if notnull_defaults:
             for col, default_val in notnull_defaults.items():
                 if col in columns and row.get(col) is None:
@@ -693,7 +705,11 @@ async def _ch_import(
     import httpx as _httpx
 
     sql_prefix = f"INSERT INTO {table} FORMAT Parquet"
-    params = {"database": db, "query": sql_prefix}
+    params = {
+        "database": db,
+        "query": sql_prefix,
+        "max_memory_usage": "2000000000",  # 2 GB - handles large Parquet files (e.g. session_events with raw_line)
+    }
 
     async def _file_stream():
         with open(parquet_path, "rb") as f:
@@ -959,7 +975,7 @@ async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str
                     # Get column types for proper coercion
                     col_types = await _get_column_types(conn, table)
 
-                    # Get NOT NULL JSON defaults from schema (avoids hardcoded map)
+                    # Get NOT NULL defaults from schema (handles all types with defaults)
                     notnull_defaults = await _get_notnull_json_defaults(conn, table)
 
                     ins, sk, tw = await _insert_table(
@@ -1280,8 +1296,21 @@ async def _export_telemetry(
         total_size = 0
 
         async with _httpx.AsyncClient(timeout=_httpx.Timeout(300.0, connect=10.0)) as http_client:
+            # Pre-check which tables exist on the source to skip gracefully
+            existing_sql = "SELECT name FROM system.tables WHERE database = {db:String} FORMAT JSON"
+            existing_resp = await _ch_query(
+                http_url, db, user, password, existing_sql, http_client=http_client, extra_params={"param_db": db}
+            )
+            source_tables = {r["name"] for r in existing_resp.json().get("data", [])}
+
             for table_cfg in CLICKHOUSE_TABLES:
                 table_name = table_cfg["name"]
+
+                # Skip tables that don't exist on source
+                if table_name not in source_tables:
+                    table_meta[table_name] = {"files": [], "row_count": 0, "checksum": {}, "time_range": None}
+                    rprint(f"  [dim]{table_name}: table not found on source (skipped)[/dim]")
+                    continue
 
                 # Query time range
                 tr_sql = _build_ch_time_range_query(table_cfg)

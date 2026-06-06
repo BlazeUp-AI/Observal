@@ -1,12 +1,12 @@
 <!-- SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-# observal migrate
+# observal server migrate
 
 Portable migration tools for moving an Observal instance between environments. The workflow has two phases:
 
 * **Phase 1 (shallow copy)**: exports PostgreSQL registry data (users, agents, components, feedback, etc.) to a `.tar.gz` archive of JSONL files.
-* **Phase 2 (deep copy)**: exports ClickHouse telemetry data (traces, spans, scores, audit logs, security events) to monthly Parquet files.
+* **Phase 2 (deep copy)**: exports ClickHouse telemetry data (traces, spans, scores, session events, audit logs, security events) to monthly Parquet files.
 
 Phase 2 depends on Phase 1. You must complete the shallow copy export and import before running the deep copy.
 
@@ -26,14 +26,14 @@ This installs `asyncpg` (PostgreSQL driver) and `pyarrow` (Parquet I/O). Without
 
 ## Phase 1: Shallow Copy (PostgreSQL)
 
-### observal migrate export
+### observal server migrate export
 
 Export all PostgreSQL registry data to a portable `.tar.gz` archive.
 
 #### Synopsis
 
 ```bash
-observal migrate export --db-url <postgres-url> [--output <path>]
+observal server migrate export --db-url <postgres-url> [--output <path>]
 ```
 
 #### Options
@@ -69,7 +69,7 @@ A sidecar `<archive-name>.manifest.json` is written alongside the archive for Ph
 #### Example
 
 ```bash
-observal migrate export \
+observal server migrate export \
   --db-url "postgresql://postgres:postgres@localhost:5432/observal" \
   --output ./migration/observal-export.tar.gz
 ```
@@ -91,14 +91,14 @@ Exporting to: ./migration/observal-export.tar.gz
 
 ---
 
-### observal migrate import
+### observal server migrate import
 
 Import a migration archive into the target PostgreSQL database.
 
 #### Synopsis
 
 ```bash
-observal migrate import --db-url <postgres-url> --archive <path>
+observal server migrate import --db-url <postgres-url> --archive <path> [--org-id <uuid>]
 ```
 
 #### Options
@@ -107,6 +107,7 @@ observal migrate import --db-url <postgres-url> --archive <path>
 | --- | --- |
 | `--db-url` | Target PostgreSQL connection string (required) |
 | `--archive`, `-a` | Path to the `.tar.gz` archive from `export` (required) |
+| `--org-id` | Normalize all org references to this UUID. Use when migrating between different orgs. |
 
 #### Behavior
 
@@ -114,13 +115,16 @@ observal migrate import --db-url <postgres-url> --archive <path>
 * Skips rows that already exist (matched by primary key)
 * Reports inserted vs skipped counts per table
 * Tables that don't exist on the target (older schema) are skipped gracefully
+* NOT NULL columns added in newer schemas are automatically filled with their server defaults (boolean, varchar, JSON, etc.)
+* Schema version mismatches between source and target are handled non-fatally
 
 #### Example
 
 ```bash
-observal migrate import \
+observal server migrate import \
   --db-url "postgresql://postgres:postgres@localhost:5432/observal" \
-  --archive ./migration/observal-export.tar.gz
+  --archive ./migration/observal-export.tar.gz \
+  --org-id "24387a71-352e-437f-ac64-5a41dc1dc44f"
 ```
 
 ```
@@ -136,14 +140,14 @@ Importing from: ./migration/observal-export.tar.gz
 
 ---
 
-### observal migrate validate
+### observal server migrate validate
 
 Validate archive integrity and optionally compare against a live database.
 
 #### Synopsis
 
 ```bash
-observal migrate validate --archive <path> [--db-url <postgres-url>]
+observal server migrate validate --archive <path> [--db-url <postgres-url>]
 ```
 
 #### Options
@@ -161,7 +165,7 @@ observal migrate validate --archive <path> [--db-url <postgres-url>]
 #### Example
 
 ```bash
-observal migrate validate \
+observal server migrate validate \
   --archive ./migration/observal-export.tar.gz \
   --db-url "postgresql://postgres:postgres@localhost:5432/observal"
 ```
@@ -188,14 +192,14 @@ Row count comparison:
 
 ## Phase 2: Deep Copy (ClickHouse Telemetry)
 
-### observal migrate export-telemetry
+### observal server migrate export-telemetry
 
 Export ClickHouse telemetry tables to monthly Parquet files.
 
 #### Synopsis
 
 ```bash
-observal migrate export-telemetry \
+observal server migrate export-telemetry \
   --clickhouse-url <url> \
   --manifest <path> \
   --output-dir <dir>
@@ -216,10 +220,13 @@ observal migrate export-telemetry \
 | `traces` | ReplacingMergeTree | `start_time` | Top-level trace records |
 | `spans` | ReplacingMergeTree | `start_time` | Individual span records |
 | `scores` | ReplacingMergeTree | `timestamp` | Feedback and rating scores |
+| `session_events` | MergeTree | `timestamp` | IDE session transcript events (powers the sessions UI) |
 | `audit_log` | MergeTree | `timestamp` | Audit trail entries |
 | `otel_logs` | MergeTree | `Timestamp` | OpenTelemetry log records |
 | `security_events` | MergeTree | `timestamp` | Security event records |
 | `webhook_deliveries` | MergeTree | `timestamp` | Webhook delivery records |
+
+Tables that don't exist on the source are skipped gracefully (useful when exporting from older instances).
 
 Data is partitioned by month. Each non-empty month produces one Parquet file (e.g. `traces_2025-01.parquet`).
 
@@ -235,7 +242,7 @@ The output directory contains:
 #### Example
 
 ```bash
-observal migrate export-telemetry \
+observal server migrate export-telemetry \
   --clickhouse-url "clickhouse://default:clickhouse@localhost:8123/observal" \
   --manifest ./migration/observal-export.manifest.json \
   --output-dir ./migration/telemetry/
@@ -251,6 +258,8 @@ Exporting telemetry to: ./migration/telemetry/
   Exporting spans_2025-02.parquet (41,220 rows)...
   ✓ spans: 69,324 rows in 2 file(s)
   ✓ scores: 1,205 rows in 1 file(s)
+  Exporting session_events_2025-01.parquet (12,450 rows)...
+  ✓ session_events: 12,450 rows in 1 file(s)
   audit_log: empty
   otel_logs: empty
   security_events: empty
@@ -259,9 +268,9 @@ Exporting telemetry to: ./migration/telemetry/
 ✓ Telemetry export complete
   Directory:  ./migration/telemetry/
   Migration:  a1b2c3d4-...
-  Rows:       79,832
-  Size:       12.4 MB
-  Duration:   18.7s
+  Rows:       92,282
+  Size:       14.2 MB
+  Duration:   21.3s
 
 ⚠  Parquet files may contain PII in trace input/output fields.
    Store securely and delete after import.
@@ -269,14 +278,14 @@ Exporting telemetry to: ./migration/telemetry/
 
 ---
 
-### observal migrate import-telemetry
+### observal server migrate import-telemetry
 
 Import Parquet telemetry files into the target ClickHouse instance.
 
 #### Synopsis
 
 ```bash
-observal migrate import-telemetry \
+observal server migrate import-telemetry \
   --clickhouse-url <url> \
   --input-dir <dir> \
   [--project-id <id>]
@@ -300,7 +309,7 @@ observal migrate import-telemetry \
 #### Example
 
 ```bash
-observal migrate import-telemetry \
+observal server migrate import-telemetry \
   --clickhouse-url "clickhouse://default:clickhouse@localhost:8123/observal" \
   --input-dir ./migration/telemetry/
 ```
@@ -316,18 +325,20 @@ Importing telemetry from: ./migration/telemetry/
   ✓ spans: 69,324 rows
   Importing scores_2025-02.parquet...
   ✓ scores: 1,205 rows
+  Importing session_events_2025-01.parquet...
+  ✓ session_events: 12,450 rows
 
 ✓ Telemetry import complete
   Migration:  a1b2c3d4-...
-  Tables:     3
-  Rows:       79,832
-  Duration:   22.1s
+  Tables:     4
+  Rows:       92,282
+  Duration:   25.4s
 ```
 
 With project ID normalization:
 
 ```bash
-observal migrate import-telemetry \
+observal server migrate import-telemetry \
   --clickhouse-url "clickhouse://default:clickhouse@localhost:8123/observal" \
   --input-dir ./migration/telemetry/ \
   --project-id "my-local-org-id"
@@ -335,14 +346,14 @@ observal migrate import-telemetry \
 
 ---
 
-### observal migrate validate-telemetry
+### observal server migrate validate-telemetry
 
 Validate telemetry Parquet files and optionally cross-check against live databases.
 
 #### Synopsis
 
 ```bash
-observal migrate validate-telemetry \
+observal server migrate validate-telemetry \
   --input-dir <dir> \
   [--clickhouse-url <url>] \
   [--target-db-url <postgres-url>]
@@ -365,7 +376,7 @@ observal migrate validate-telemetry \
 #### Example
 
 ```bash
-observal migrate validate-telemetry \
+observal server migrate validate-telemetry \
   --input-dir ./migration/telemetry/ \
   --clickhouse-url "clickhouse://default:clickhouse@localhost:8123/observal" \
   --target-db-url "postgresql://postgres:postgres@localhost:5432/observal"
@@ -378,6 +389,7 @@ Checksum verification:
   ✓ spans_2025-01.parquet
   ✓ spans_2025-02.parquet
   ✓ scores_2025-02.parquet
+  ✓ session_events_2025-01.parquet
 
 ✓ All checksums valid
 
@@ -385,6 +397,7 @@ Row count comparison:
   ✓ traces: 9,303
   ✓ spans: 69,324
   ✓ scores: 1,205
+  ✓ session_events: 12,450
   - audit_log: table not on target
   - otel_logs: table not on target
 
@@ -419,18 +432,18 @@ Save the org ID; you'll use it in steps 2 and 5.
 
 ```bash
 # Step 1: Export from source
-observal migrate export \
+observal server migrate export \
   --db-url <source-postgres-url> \
   --output ./migration/export.tar.gz
 
 # Step 2: Import into target (with org remapping)
-observal migrate import \
+observal server migrate import \
   --db-url <target-postgres-url> \
   --archive ./migration/export.tar.gz \
   --org-id <target-org-id>
 
 # Step 3: Validate
-observal migrate validate \
+observal server migrate validate \
   --archive ./migration/export.tar.gz \
   --db-url <target-postgres-url>
 ```
@@ -439,19 +452,19 @@ observal migrate validate \
 
 ```bash
 # Step 4: Export telemetry from source
-observal migrate export-telemetry \
+observal server migrate export-telemetry \
   --clickhouse-url <source-clickhouse-url> \
   --manifest ./migration/export.manifest.json \
   --output-dir ./migration/telemetry/
 
 # Step 5: Import telemetry into target (with project_id remapping)
-observal migrate import-telemetry \
+observal server migrate import-telemetry \
   --clickhouse-url <target-clickhouse-url> \
   --input-dir ./migration/telemetry/ \
   --project-id <target-org-id>
 
 # Step 6: Validate telemetry
-observal migrate validate-telemetry \
+observal server migrate validate-telemetry \
   --input-dir ./migration/telemetry/ \
   --clickhouse-url <target-clickhouse-url>
 ```
@@ -479,6 +492,16 @@ observal ops traces --limit 5
 The `--db-url` for PostgreSQL accepts both `postgresql://` and `postgresql+asyncpg://` (the SQLAlchemy dialect prefix is stripped automatically). You can copy the `DATABASE_URL` from your `.env` directly.
 
 The `clickhouses://` scheme maps to HTTPS with a default port of 8443. Use it when connecting to ClickHouse over TLS (e.g. managed ClickHouse Cloud or production instances behind TLS termination).
+
+## Schema Compatibility
+
+The migration handles schema version mismatches between source and target:
+
+* **Extra columns in archive** (source is newer): columns not present on target are silently dropped.
+* **Missing columns in archive** (target is newer): NOT NULL columns with server defaults are filled automatically. This includes boolean (`false`), varchar (e.g. `'git_fetch'`), and JSON/JSONB (`{}`) columns.
+* **Missing tables on source** (ClickHouse): tables that don't exist on the source are skipped during telemetry export.
+
+This makes it safe to migrate between instances at different schema versions without manual intervention.
 
 ## Security Notes
 
@@ -511,5 +534,6 @@ If you encounter a permission error during import, ask your DBA to grant the app
 
 ## Related
 
+* [`observal server`](server.md): server management commands
 * [`observal admin`](admin.md): admin commands
 * [`observal auth`](auth.md): authentication (must be logged in as super_admin)
