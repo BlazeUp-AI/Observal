@@ -86,11 +86,15 @@ def doctor(
     rprint("[cyan]Checking Kiro...[/cyan]")
     _check_kiro(issues, warnings)
 
-    # 4. Check Pi
+    # 4. Check Cursor
+    rprint("[cyan]Checking Cursor...[/cyan]")
+    _check_cursor(issues, warnings)
+
+    # 5. Check Pi
     rprint("[cyan]Checking Pi...[/cyan]")
     _check_pi(issues, warnings)
 
-    # 5. Check if observal skill is installed
+    # 6. Check if observal skill is installed
     skill_missing = _check_observal_skill_missing()
     if skill_missing:
         warnings.append(
@@ -288,6 +292,41 @@ def _check_kiro(issues: list, warnings: list):
         )
 
 
+def _check_cursor(issues: list, warnings: list):
+    optic.trace("issues={}, warnings={}", issues, warnings)
+    cursor_dir = Path.home() / ".cursor"
+    if not cursor_dir.is_dir():
+        rprint("  [dim]No ~/.cursor/ found[/dim]")
+        return
+
+    hooks_path = cursor_dir / "hooks.json"
+    if not hooks_path.exists():
+        warnings.append(
+            "Cursor hooks.json not found. "
+            "Run `observal doctor patch --all --ide cursor` to inject hooks."
+        )
+        return
+
+    try:
+        data = json.loads(hooks_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        issues.append(f"{hooks_path}: not valid JSON.")
+        return
+
+    hooks = data.get("hooks", {})
+    has_session_push = any(
+        "cursor_session_push" in e.get("command", "")
+        for event in ("beforeSubmitPrompt", "stop")
+        for e in hooks.get(event, [])
+    )
+
+    if not has_session_push:
+        warnings.append(
+            "Cursor session push hooks not installed. "
+            "Run `observal doctor patch --all --ide cursor` to inject them."
+        )
+
+
 def _check_pi(issues: list, warnings: list):
     """Check if Observal pi extension is installed."""
     optic.debug("_check_pi")
@@ -324,7 +363,7 @@ def doctor_cleanup(
         None,
         "--ide",
         "-i",
-        help="Target IDE only (claude-code, kiro). Default: all.",
+        help="Target IDE only (claude-code, kiro, cursor). Default: all.",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be removed without doing it"),
 ):
@@ -340,10 +379,11 @@ def doctor_cleanup(
       observal doctor cleanup                          # Clean all supported IDEs
       observal doctor cleanup --ide claude-code        # Claude Code only
       observal doctor cleanup --ide kiro               # Kiro only
+      observal doctor cleanup --ide cursor             # Cursor only
       observal doctor cleanup --ide claude-code --dry-run  # Preview without changes
     """
     optic.trace("ide={}, dry_run={}", ide, dry_run)
-    targets = [ide] if ide else ["claude-code", "kiro"]
+    targets = [ide] if ide else ["claude-code", "kiro", "cursor"]
     any_changes = False
 
     rprint("[bold]Observal Doctor - Cleanup[/bold]\n")
@@ -355,6 +395,10 @@ def doctor_cleanup(
 
         elif target in ("kiro", "kiro-cli"):
             changed = _cleanup_kiro(dry_run)
+            any_changes = any_changes or changed
+
+        elif target == "cursor":
+            changed = _cleanup_cursor(dry_run)
             any_changes = any_changes or changed
 
         else:
@@ -470,6 +514,58 @@ def _cleanup_kiro(dry_run: bool) -> bool:
 
     if not changed:
         rprint("  [dim]No Observal artifacts found in Kiro agents[/dim]")
+
+    return changed
+
+
+def _cleanup_cursor(dry_run: bool) -> bool:
+    optic.trace("dry_run={}", dry_run)
+    rprint("[cyan]Cursor[/cyan]")
+    hooks_path = Path.home() / ".cursor" / "hooks.json"
+    if not hooks_path.exists():
+        rprint("  [dim]No ~/.cursor/hooks.json found - skipping[/dim]")
+        return False
+
+    try:
+        data = json.loads(hooks_path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        rprint(f"  [red]Failed to read hooks.json: {e}[/red]")
+        return False
+
+    hooks = data.get("hooks", {})
+    changed = False
+    removed_events = []
+
+    for event, entries in list(hooks.items()):
+        if not isinstance(entries, list):
+            continue
+        cleaned = [
+            e
+            for e in entries
+            if "cursor_session_push" not in e.get("command", "")
+            and "session_push" not in e.get("command", "")
+        ]
+        if len(cleaned) < len(entries):
+            removed_events.append(f"{event} ({len(entries) - len(cleaned)} removed)")
+            if not dry_run:
+                if cleaned:
+                    hooks[event] = cleaned
+                else:
+                    del hooks[event]
+            changed = True
+
+    if removed_events:
+        verb = "Would remove" if dry_run else "Removed"
+        rprint(f"  {verb} hooks: {', '.join(removed_events)}")
+
+    if changed and not dry_run:
+        if not data.get("hooks"):
+            data.pop("hooks", None)
+        hooks_path.write_text(json.dumps(data, indent=2) + "\n")
+        rprint(f"  [green]Written {hooks_path}[/green]")
+
+    if not changed:
+        rprint("  [dim]No Observal artifacts found[/dim]")
 
     return changed
 
