@@ -818,7 +818,7 @@ def _patch_kiro(dry_run: bool) -> bool:
 def _patch_cursor(dry_run: bool) -> bool:
     """Install session push hooks into ~/.cursor/hooks.json."""
     optic.trace("dry_run={}", dry_run)
-    import sys
+    from observal_cli.ide_specs.cursor_hooks_spec import CURSOR_HOOK_EVENTS, build_cursor_hooks
 
     rprint("[cyan]Cursor - session push hooks[/cyan]")
 
@@ -827,17 +827,7 @@ def _patch_cursor(dry_run: bool) -> bool:
         rprint("  [dim]No ~/.cursor/ directory - skipping[/dim]")
         return False
 
-    # Use the current interpreter (from the observal CLI's venv) so that
-    # httpx and other dependencies are available when Cursor fires the hook.
-    cmd = f"{sys.executable} -m observal_cli.hooks.cursor_session_push"
-
-    desired = {
-        "version": 1,
-        "hooks": {
-            "beforeSubmitPrompt": [{"command": cmd, "type": "command"}],
-            "stop": [{"command": cmd, "type": "command"}],
-        },
-    }
+    desired_hooks = build_cursor_hooks()
 
     # Load existing hooks.json if present
     existing = {}
@@ -847,26 +837,22 @@ def _patch_cursor(dry_run: bool) -> bool:
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Check if already patched
     existing_hooks = existing.get("hooks", {})
-    needs_update = False
 
-    for event in ("beforeSubmitPrompt", "stop"):
-        entries = existing_hooks.get(event, [])
-        has_observal = any("cursor_session_push" in e.get("command", "") for e in entries)
-        if not has_observal:
-            needs_update = True
-            break
+    # Check if already patched (all desired events have an Observal entry)
+    needs_update = any(
+        not any("cursor_session_push" in e.get("command", "") for e in existing_hooks.get(event, []))
+        for event in CURSOR_HOOK_EVENTS
+    )
 
     if not needs_update:
         rprint("  [dim]Already up to date[/dim]")
         return False
 
-    # Merge: keep existing non-Observal hooks, add ours
+    # Merge: keep existing non-Observal hooks, append ours
     merged_hooks = existing_hooks.copy()
-    for event, desired_entries in desired["hooks"].items():
+    for event, desired_entries in desired_hooks.items():
         current = merged_hooks.get(event, [])
-        # Remove old Observal hooks
         cleaned = [
             h
             for h in current
@@ -874,10 +860,8 @@ def _patch_cursor(dry_run: bool) -> bool:
         ]
         merged_hooks[event] = cleaned + desired_entries
 
-    result = {"version": 1, "hooks": merged_hooks}
-
     if not dry_run:
-        hooks_path.write_text(json.dumps(result, indent=2) + "\n")
+        hooks_path.write_text(json.dumps({"version": 1, "hooks": merged_hooks}, indent=2) + "\n")
 
     verb = "Would install" if dry_run else "Installed"
     rprint(f"  {verb} hooks in {hooks_path}")
