@@ -138,15 +138,19 @@ def _cursor_hooks_config(platform: str = "") -> dict:
 def _vscode_copilot_hooks_config() -> dict:
     """Build .github/hooks/observal.json content for VS Code Copilot hooks.
 
-    TODO: No JSONL session push implementation for VS Code / Copilot yet.
-    Stub - session_push.py will no-op gracefully when it can't find a
-    matching session file.
+    Uses the official Copilot hooks format:
+    - "version": 1 (required)
+    - "bash" key for Unix, "powershell" key for Windows
+    - "timeoutSec" for timeout (not "timeout")
+    - PascalCase event names for VS Code compatible payloads
     """
     cmd = _SESSION_PUSH_CMD
+    ps_cmd = "python -m observal_cli.hooks.copilot_cli_session_push"
     return {
+        "version": 1,
         "hooks": {
-            "UserPromptSubmit": [{"type": "command", "command": cmd}],
-            "Stop": [{"type": "command", "command": cmd}],
+            "UserPromptSubmit": [{"type": "command", "bash": cmd, "powershell": ps_cmd, "timeoutSec": 5}],
+            "Stop": [{"type": "command", "bash": cmd, "powershell": ps_cmd, "timeoutSec": 5}],
         },
     }
 
@@ -154,17 +158,22 @@ def _vscode_copilot_hooks_config() -> dict:
 def _vscode_copilot_hooks_frontmatter_lines() -> list[str]:
     """Build YAML lines for hooks in a VS Code Copilot .agent.md frontmatter.
 
-    TODO: No JSONL session push for Copilot yet - stub (no-ops gracefully).
+    Uses the official Copilot hooks format with bash/powershell keys.
     """
     cmd = _SESSION_PUSH_CMD
+    ps_cmd = "python -m observal_cli.hooks.copilot_cli_session_push"
     return [
         "hooks:",
         "  UserPromptSubmit:",
         "    - type: command",
-        f'      command: "{cmd}"',
+        f'      bash: "{cmd}"',
+        f'      powershell: "{ps_cmd}"',
+        "      timeoutSec: 5",
         "  Stop:",
         "    - type: command",
-        f'      command: "{cmd}"',
+        f'      bash: "{cmd}"',
+        f'      powershell: "{ps_cmd}"',
+        "      timeoutSec: 5",
     ]
 
 

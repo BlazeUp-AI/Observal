@@ -218,11 +218,6 @@ const columns: ColumnDef<Session>[] = [
 		accessorFn: (row) => row.total_input_tokens ?? 0,
 		cell: ({ row }) => {
 			const r = row.original;
-			if (isCopilotCliSession(r)) {
-				return (
-					<span className="text-[13px] text-muted-foreground">{"\u2014"}</span>
-				);
-			}
 			if (isKiroSession(r)) {
 				const credits = fmtCredits(r.total_credits ?? r.credits);
 				if (credits) {

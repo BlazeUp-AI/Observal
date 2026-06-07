@@ -437,6 +437,9 @@ def _get_observal_managed_files(lockfile_data: dict, ide: str, project_dir: str 
             elif ide == "codex":
                 managed.add("user:AGENTS.md")
                 managed.add("project:AGENTS.md")
+            elif ide in ("copilot", "copilot-cli"):
+                # Both generate .github/agents/{name}.agent.md (project scope)
+                managed.add(f"project:.github/agents/{agent_name}.agent.md")
 
         # Component files
         for comp in agent.get("components", []):
@@ -449,6 +452,10 @@ def _get_observal_managed_files(lockfile_data: dict, ide: str, project_dir: str 
                     managed.add(f"user:rules/{comp_name}.mdc")
             elif comp_type == "mcp" and comp_name and ide == "codex":
                 managed.add("user:config.toml")
+            elif comp_type == "skill" and comp_name and ide == "copilot-cli":
+                # Copilot CLI skills: project .agents/skills/ + user ~/.copilot/skills/
+                managed.add(f"project:.agents/skills/{comp_name}/SKILL.md")
+                managed.add(f"user:skills/{comp_name}/SKILL.md")
 
     for item in ide_section.get("standalone", []):
         item_name = item.get("name", "")
@@ -460,6 +467,9 @@ def _get_observal_managed_files(lockfile_data: dict, ide: str, project_dir: str 
                 managed.add(f"user:rules/{item_name}.mdc")
         elif item_type == "mcp" and item_name and ide == "codex":
             managed.add("user:config.toml")
+        elif item_type == "skill" and item_name and ide == "copilot-cli":
+            managed.add(f"project:.agents/skills/{item_name}/SKILL.md")
+            managed.add(f"user:skills/{item_name}/SKILL.md")
 
     return managed
 
@@ -473,13 +483,18 @@ def _detect_active_ides() -> list[str]:
     """Detect which first-class IDEs are installed by checking their config directories."""
     from pathlib import Path
 
-    # First-class IDEs only (full session parsing, hooks, scanning, e2e tested)
+    # First-class IDEs (full session parsing, hooks, scanning, e2e tested).
+    # copilot-cli is detected via ~/.copilot (its own home dir).
+    # VS Code copilot has no reliable home-dir marker (uses .github/ + VS Code
+    # settings); its project files are still scanned via project-scope globs
+    # when another IDE triggers a scan.
     ide_dirs = {
         "claude-code": Path.home() / ".claude",
         "cursor": Path.home() / ".cursor",
         "kiro": Path.home() / ".kiro",
         "pi": Path.home() / ".pi" / "agent",
         "codex": Path.home() / ".codex",
+        "copilot-cli": Path.home() / ".copilot",
     }
     return [ide for ide, path in ide_dirs.items() if path.is_dir()]
 

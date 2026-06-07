@@ -98,7 +98,6 @@ class TestGenerateSkillFile:
     def test_monolithic_ide_returns_none(self):
         listing = _make_skill_listing()
         assert _generate_skill_file(listing, "codex") is None
-        assert _generate_skill_file(listing, "copilot") is None
 
     def test_no_slash_command(self):
         listing = _make_skill_listing(slash_command=None)

@@ -534,6 +534,44 @@ def _classify_codex(parsed: dict) -> str | None:
     return "system"
 
 
+# ---------------------------------------------------------------------------
+# Copilot CLI classifier
+# ---------------------------------------------------------------------------
+
+
+def _classify_copilot_cli(parsed: dict) -> str | None:
+    """Classify one Copilot CLI JSONL line.
+
+    Copilot CLI uses an envelope format: {"agentId": "...", "ts": "...", "event": {"type": "...", ...}}
+    The parsed dict here is the raw line.
+    """
+    # Handle envelope format
+    event = parsed.get("event")
+    event_type = event.get("type", "") if isinstance(event, dict) else parsed.get("type", "")
+
+    if not event_type:
+        return None
+
+    if event_type == "user.message":
+        return "user_prompt"
+    if event_type == "assistant.message":
+        return "assistant_text"
+    if event_type == "assistant.message_delta":
+        return None  # skip streaming deltas
+    if event_type == "tool.call":
+        return "tool_call"
+    if event_type in ("tool.result", "tool.execution_complete"):
+        return "tool_result"
+    if event_type == "agent.thinking":
+        return "thinking"
+    if event_type == "assistant.usage":
+        return "usage"
+    if event_type in ("session.start", "session.end"):
+        return "system"
+
+    return "system"
+
+
 def _preview_codex(parsed: dict, event_type: str) -> str:
     """Extract preview from Codex CLI JSONL."""
     try:
@@ -570,6 +608,56 @@ def _preview_codex(parsed: dict, event_type: str) -> str:
     return ""
 
 
+def _preview_copilot_cli(parsed: dict, event_type: str) -> str:
+    """Extract preview from Copilot CLI JSONL."""
+    try:
+        # Handle envelope format
+        event = parsed.get("event")
+        if isinstance(event, dict):
+            data = {k: v for k, v in event.items() if k != "type"}
+            etype = event.get("type", "")
+        else:
+            data = parsed.get("data", {})
+            if not isinstance(data, dict):
+                return ""
+            etype = parsed.get("type", "")
+
+        if etype == "user.message":
+            content = data.get("content", "")
+            if isinstance(content, dict):
+                content = content.get("text", "")
+            return str(content)[:_PREVIEW_MAX]
+
+        if etype == "assistant.message":
+            content = data.get("content", "")
+            if isinstance(content, dict):
+                content = content.get("text", "")
+            return str(content)[:_PREVIEW_MAX]
+
+        if etype == "tool.call":
+            name = data.get("name", data.get("toolName", ""))
+            return f"[tool_call: {name}]"[:_PREVIEW_MAX]
+
+        if etype in ("tool.result", "tool.execution_complete"):
+            output = data.get("output", data.get("result", ""))
+            if isinstance(output, dict):
+                output = output.get("textResultForLlm", output.get("text", ""))
+            return str(output)[:_PREVIEW_MAX]
+
+        if etype == "agent.thinking":
+            content = data.get("content", data.get("thinking", ""))
+            return str(content)[:_PREVIEW_MAX]
+
+        if etype == "session.start":
+            context = data.get("context", {})
+            cwd = context.get("cwd", "") if isinstance(context, dict) else ""
+            return f"session start (cwd: {cwd})"[:_PREVIEW_MAX] if cwd else "session start"
+
+    except Exception:
+        pass
+    return ""
+
+
 def _tool_info_codex(parsed: dict) -> tuple[str | None, str | None]:
     """Extract (tool_name, tool_id) from a Codex JSONL line."""
     if parsed.get("type") != "response_item":
@@ -587,6 +675,24 @@ def _tool_info_codex(parsed: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _tool_info_copilot_cli(parsed: dict) -> tuple[str | None, str | None]:
+    """Extract tool name and ID from a Copilot CLI tool.call event."""
+    # Handle envelope format
+    event = parsed.get("event")
+    if isinstance(event, dict):
+        etype = event.get("type", "")
+        if etype == "tool.call":
+            data = {k: v for k, v in event.items() if k != "type"}
+            return data.get("name", data.get("toolName")), parsed.get("agentId")
+    else:
+        etype = parsed.get("type", "")
+        if etype == "tool.call":
+            data = parsed.get("data", {})
+            if isinstance(data, dict):
+                return data.get("name", data.get("toolName")), parsed.get("id")
+    return None, None
+
+
 # ---------------------------------------------------------------------------
 # Registry  -- add new parsers here, update ide_registry.py session_parser key
 # ---------------------------------------------------------------------------
@@ -600,6 +706,7 @@ _Classifier = tuple[_ClassifyFn, _PreviewFn, _ToolInfoFn]
 _CLASSIFIERS: dict[str, _Classifier] = {
     "claude-code": (_classify_claude_code, _preview_claude_code, _tool_info_claude_code),
     "codex": (_classify_codex, _preview_codex, _tool_info_codex),
+    "copilot-cli": (_classify_copilot_cli, _preview_copilot_cli, _tool_info_copilot_cli),
     "kiro": (_classify_kiro, _preview_kiro, _tool_info_kiro),
     "cursor": (_classify_cursor, _preview_cursor, _tool_info_cursor),
     "pi": (_classify_pi, _preview_pi, _tool_info_pi),
@@ -614,10 +721,13 @@ def get_classifier(ide: str) -> tuple:
 
     Raises ``KeyError`` if the IDE is not registered or has no session_parser,
     so new IDEs cannot silently fall through to a wrong classifier.
+    Raises ``ValueError`` if the IDE has session_parser=None (no parser configured).
     """
     from schemas.ide_registry import IDE_REGISTRY
 
     parser_id = IDE_REGISTRY[ide]["session_parser"]  # KeyError = unknown IDE
+    if parser_id is None:
+        raise ValueError(f"No session parser configured for IDE: {ide}")
     return _CLASSIFIERS[parser_id]  # KeyError = unimplemented parser
 
 
@@ -702,12 +812,31 @@ def _ts_pi(parsed: dict) -> str | None:
     return ts
 
 
+def _ts_copilot_cli(parsed: dict) -> str | None:
+    """Return ClickHouse timestamp string from a Copilot CLI JSONL line, or None.
+
+    Copilot CLI embeds an ISO-8601 timestamp in the envelope ``ts`` field.
+    """
+    raw = parsed.get("ts")
+    if not raw:
+        event = parsed.get("event")
+        if isinstance(event, dict):
+            raw = event.get("ts")
+    if not raw:
+        return None
+    ts = str(raw).replace("T", " ").rstrip("Z")
+    if "." not in ts:
+        ts += ".000"
+    return ts
+
+
 _TS_EXTRACTORS: dict[str, object] = {
     "claude-code": _ts_claude_code,
     "codex": _ts_claude_code,  # Codex uses same timestamp format as Claude Code
     "kiro": _ts_kiro,
     "cursor": _ts_cursor,
     "pi": _ts_pi,
+    "copilot-cli": _ts_copilot_cli,
 }
 
 
@@ -717,10 +846,13 @@ def extract_timestamp(ide: str, parsed: dict) -> str | None:
     Returns None when the line has no timestamp -- callers should use a
     sentinel or inherit from a previous line rather than silently defaulting.
     Raises KeyError for unknown IDEs.
+    Raises ValueError if the IDE has session_parser=None (no parser configured).
     """
     from schemas.ide_registry import IDE_REGISTRY
 
     parser_id = IDE_REGISTRY[ide]["session_parser"]  # KeyError = unknown IDE
+    if parser_id is None:
+        raise ValueError(f"No session parser configured for IDE: {ide}")
     extractor = _TS_EXTRACTORS[parser_id]  # KeyError = unimplemented
     return extractor(parsed)  # type: ignore[call-arg,operator]
 
@@ -747,6 +879,7 @@ _EXTRA_ROWS_HANDLERS: dict[str, _ExtraRowsFn] = {
     "codex": _no_extra_rows,
     "cursor": _no_extra_rows,
     "pi": _no_extra_rows,
+    "copilot-cli": _no_extra_rows,
 }
 
 

@@ -71,6 +71,39 @@ def _usage_codex(parsed: dict) -> dict:
         "cache_write_tokens": 0,
         "model": "",
     }
+def _usage_copilot_cli(parsed: dict) -> dict:
+    """Copilot CLI: tokens are in assistant.message data or assistant.usage events.
+
+    Copilot CLI v1.0.59+ uses flat format:
+      {"type": "assistant.message", "data": {"outputTokens": N, "model": "..."}, ...}
+    Older/SDK format uses envelope:
+      {"agentId": "...", "ts": "...", "event": {"type": "assistant.usage", "data": {...}}}
+    """
+    # Try flat format first (Copilot CLI v1.0.59+)
+    data = parsed.get("data", {})
+    if isinstance(data, dict) and (data.get("outputTokens") or data.get("inputTokens")):
+        return {
+            "input_tokens": int(data.get("inputTokens") or 0),
+            "output_tokens": int(data.get("outputTokens") or 0),
+            "cache_read_tokens": int(data.get("cacheReadTokens") or 0),
+            "cache_write_tokens": int(data.get("cacheWriteTokens") or 0),
+            "model": str(data.get("model") or ""),
+        }
+
+    # Try envelope format (older/SDK)
+    event = parsed.get("event", {})
+    if isinstance(event, dict):
+        edata = event.get("data", {})
+        if isinstance(edata, dict) and (edata.get("outputTokens") or edata.get("inputTokens")):
+            return {
+                "input_tokens": int(edata.get("inputTokens") or 0),
+                "output_tokens": int(edata.get("outputTokens") or 0),
+                "cache_read_tokens": int(edata.get("cacheReadTokens") or 0),
+                "cache_write_tokens": int(edata.get("cacheWriteTokens") or 0),
+                "model": str(edata.get("model") or ""),
+            }
+
+    return {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "model": ""}
 
 
 _UsageFn = Callable[[dict], dict]
@@ -81,6 +114,8 @@ _USAGE_EXTRACTORS: dict[str, _UsageFn] = {
     "kiro": _usage_claude_code,
     "cursor": _usage_claude_code,
     "pi": _usage_pi,
+    "copilot-cli": _usage_copilot_cli,
+    "copilot": _usage_copilot_cli,
 }
 
 

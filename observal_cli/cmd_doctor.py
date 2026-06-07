@@ -614,6 +614,11 @@ def doctor_patch(
                 any_changes = any_changes or changed
             elif target == "codex":
                 changed = _patch_codex(dry_run)
+            elif target == "copilot":
+                changed = _patch_copilot(dry_run)
+                any_changes = any_changes or changed
+            elif target == "copilot-cli":
+                changed = _patch_copilot_cli(dry_run)
                 any_changes = any_changes or changed
 
         # ── Shims (all IDEs with home MCP config) ──
@@ -932,4 +937,178 @@ def _patch_codex(dry_run: bool) -> bool:
         verb = "Would enable" if dry_run else "Enabled"
         rprint(f"  {verb} codex_hooks flag in {config_path}")
 
+    return True
+
+
+
+def _patch_copilot(dry_run: bool) -> bool:
+    """Install session push hooks for Copilot (VS Code).
+
+    1. Installs hooks at .github/hooks/observal.json (project-level)
+    2. Installs run_hook.ps1 wrapper script
+    """
+    optic.debug("_patch_copilot: dry_run={}", dry_run)
+    from observal_cli.ide_specs.copilot_hooks_spec import build_copilot_hooks, build_copilot_run_hook_ps1
+
+    rprint("[cyan]Copilot (VS Code) - session push hooks[/cyan]")
+
+    any_changes = False
+
+    # ── Part 1: Install hooks at .github/hooks/observal.json ──
+    hooks_dir = Path.cwd() / ".github" / "hooks"
+    hooks_path = hooks_dir / "observal.json"
+
+    desired = build_copilot_hooks()
+
+    existing: dict = {}
+    if hooks_path.exists():
+        try:
+            existing = json.loads(hooks_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    existing_hooks = existing.get("hooks", {})
+    needs_hook_update = False
+
+    for event in ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"):
+        entries = existing_hooks.get(event, [])
+        has_observal = any(
+            "run_hook.ps1" in e.get("command", "") or "copilot_cli_session_push" in e.get("command", e.get("bash", ""))
+            for e in entries
+        )
+        if not has_observal:
+            needs_hook_update = True
+            break
+
+    if needs_hook_update:
+        merged_hooks = existing_hooks.copy()
+        for event, desired_entries in desired["hooks"].items():
+            current = merged_hooks.get(event, [])
+            cleaned = [
+                h
+                for h in current
+                if "run_hook.ps1" not in h.get("command", "")
+                and "copilot_cli_session_push" not in h.get("command", h.get("bash", ""))
+                and "session_push" not in h.get("command", h.get("bash", ""))
+            ]
+            merged_hooks[event] = cleaned + desired_entries
+
+        result = {"version": 1, "hooks": merged_hooks}
+
+        if not dry_run:
+            hooks_dir.mkdir(parents=True, exist_ok=True)
+            hooks_path.write_text(json.dumps(result, indent=2) + "\n")
+
+        verb = "Would install" if dry_run else "Installed"
+        rprint(f"  {verb} hooks in {hooks_path}")
+        any_changes = True
+    else:
+        rprint("  [dim]Hooks already up to date[/dim]")
+
+    # ── Part 1b: Install run_hook.ps1 wrapper ──
+    ps1_path = hooks_dir / "run_hook.ps1"
+    # Resolve the Windows Python path for the PS1 wrapper.
+    # On Windows: sys.executable is already correct.
+    # On WSL/Linux: the PS1 runs on Windows, so we need the Windows-side
+    # uv tools Python path. Detect WSL and resolve accordingly.
+    import sys as _sys
+
+    if _sys.platform == "win32":
+        python_path = _sys.executable
+    else:
+        # Running from WSL/Linux: resolve Windows uv tools path
+        # Standard location: %APPDATA%/uv/tools/observal-cli/Scripts/python.exe
+        # In WSL this maps to /mnt/c/Users/<user>/AppData/Roaming/uv/tools/...
+        import os
+
+        # Try to find the Windows user profile via environment or /mnt/c/Users
+        win_appdata = os.environ.get("APPDATA_WIN", "")
+        if not win_appdata:
+            # Infer from WSL mount: find the Windows username
+            # Check if running under /mnt/c/Users/<name>/...
+            cwd_str = str(Path.cwd())
+            if "/mnt/c/Users/" in cwd_str:
+                win_user = cwd_str.split("/mnt/c/Users/")[1].split("/")[0]
+                python_path = f"C:\\Users\\{win_user}\\AppData\\Roaming\\uv\\tools\\observal-cli\\Scripts\\python.exe"
+            else:
+                # Fallback: use bare 'python' and hope it's on Windows PATH
+                python_path = "python"
+        else:
+            python_path = f"{win_appdata}\\uv\\tools\\observal-cli\\Scripts\\python.exe"
+
+    script_path = "observal_cli\\hooks\\copilot_vscode_session_push.py"
+    ps1_content = build_copilot_run_hook_ps1(python_path, script_path)
+
+    needs_ps1_update = True
+    if ps1_path.exists():
+        existing_ps1 = ps1_path.read_text()
+        if "copilot_vscode_session_push" in existing_ps1:
+            needs_ps1_update = False
+
+    if needs_ps1_update:
+        if not dry_run:
+            hooks_dir.mkdir(parents=True, exist_ok=True)
+            ps1_path.write_text(ps1_content)
+        verb = "Would install" if dry_run else "Installed"
+        rprint(f"  {verb} PowerShell wrapper at {ps1_path}")
+        any_changes = True
+
+    return any_changes
+
+
+def _patch_copilot_cli(dry_run: bool) -> bool:
+    """Install session push hooks into ~/.copilot/hooks/observal.json."""
+    optic.debug("_patch_copilot_cli: dry_run={}", dry_run)
+    from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+
+    rprint("[cyan]Copilot CLI - session push hooks[/cyan]")
+
+    hooks_dir = Path.home() / ".copilot" / "hooks"
+    hooks_path = hooks_dir / "observal.json"
+
+    desired = build_copilot_cli_hooks()
+
+    # Load existing hook file if present
+    existing: dict = {}
+    if hooks_path.exists():
+        try:
+            existing = json.loads(hooks_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Check if already patched
+    existing_hooks = existing.get("hooks", {})
+    needs_update = False
+
+    for event in ("sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse", "postToolUse"):
+        entries = existing_hooks.get(event, [])
+        has_observal = any("copilot_cli_session_push" in e.get("bash", "") for e in entries)
+        if not has_observal:
+            needs_update = True
+            break
+
+    if not needs_update:
+        rprint("  [dim]Already up to date[/dim]")
+        return False
+
+    # Merge: keep existing non-Observal hooks, add ours
+    merged_hooks = existing_hooks.copy()
+    for event, desired_entries in desired["hooks"].items():
+        current = merged_hooks.get(event, [])
+        # Remove old Observal hooks
+        cleaned = [
+            h
+            for h in current
+            if "copilot_cli_session_push" not in h.get("bash", "") and "session_push" not in h.get("bash", "")
+        ]
+        merged_hooks[event] = cleaned + desired_entries
+
+    result = {"version": 1, "hooks": merged_hooks}
+
+    if not dry_run:
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        hooks_path.write_text(json.dumps(result, indent=2) + "\n")
+
+    verb = "Would install" if dry_run else "Installed"
+    rprint(f"  {verb} hooks in {hooks_path}")
     return True

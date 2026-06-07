@@ -120,7 +120,7 @@ class TestAdapterProtocol:
             "cursor",
             "kiro",
             "gemini-cli",
-            "copilot",
+            # copilot (VS Code) intentionally omitted: uses OTel export, not hooks
             "copilot-cli",
             "opencode",
         ],
@@ -129,6 +129,15 @@ class TestAdapterProtocol:
         adapter = get_adapter(ide_name)
         spec = adapter.get_hook_spec()
         assert isinstance(spec, HookSpec)
+
+    def test_copilot_get_hook_spec(self):
+        """Copilot VS Code supports hooks with PascalCase events."""
+        adapter = get_adapter("copilot")
+        spec = adapter.get_hook_spec()
+        assert isinstance(spec, HookSpec)
+        assert "SessionStart" in spec.events
+        assert "UserPromptSubmit" in spec.events
+        assert "Stop" in spec.events
 
     @pytest.mark.parametrize(
         "ide_name",

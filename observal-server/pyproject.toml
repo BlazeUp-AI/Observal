@@ -35,6 +35,7 @@ dependencies = [
     "cffi",
     "slowapi",
     "PyJWT>=2.13.0",
+    "aiohttp>=3.14.0",
     "aiosqlite>=0.22.1",
     "tenacity>=8.0.0",
     "python-multipart>=0.0.26",

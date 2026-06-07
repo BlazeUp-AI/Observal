@@ -44,7 +44,7 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   cursor: new Set(["hook_bridge", "mcp_servers", "rules"]),
   "gemini-cli": new Set(["hook_bridge", "mcp_servers", "rules", "otlp_telemetry"]),
   codex: new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
-  copilot: new Set(["mcp_servers", "rules"]),
+  copilot: new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   opencode: new Set(["mcp_servers", "rules"]),
   pi: new Set(["skills", "hook_bridge", "mcp_servers", "rules"]),

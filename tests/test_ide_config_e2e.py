@@ -93,7 +93,41 @@ class TestConstants:
 
     def test_copilot_feature_matrix(self):
         assert "copilot" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot"] == {"hooks", "mcp_servers"}
+        assert IDE_FEATURE_MATRIX["copilot"] == {"mcp_servers", "hooks", "skills"}
+
+    def test_copilot_session_parser(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        assert IDE_REGISTRY["copilot"]["session_parser"] == "copilot-cli"
+
+    def test_copilot_cli_session_parser(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        assert IDE_REGISTRY["copilot-cli"]["session_parser"] == "copilot-cli"
+
+    def test_copilot_cli_hook_events_map(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        expected = {
+            "SessionStart": "sessionStart",
+            "UserPromptSubmit": "userPromptSubmitted",
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "sessionEnd",
+        }
+        assert IDE_REGISTRY["copilot-cli"]["hook_events_map"] == expected
+
+    def test_copilot_hook_events_map(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        expected = {
+            "SessionStart": "SessionStart",
+            "UserPromptSubmit": "UserPromptSubmit",
+            "PreToolUse": "PreToolUse",
+            "PostToolUse": "PostToolUse",
+            "Stop": "Stop",
+        }
+        assert IDE_REGISTRY["copilot"]["hook_events_map"] == expected
 
     def test_gemini_cli_feature_matrix(self):
         assert "gemini-cli" in IDE_FEATURE_MATRIX

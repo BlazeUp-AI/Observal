@@ -1690,6 +1690,7 @@ name = "observal-server"
 version = "1.4.4"
 source = { virtual = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "alembic" },
     { name = "arq" },
@@ -1738,6 +1739,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.14.0" },
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "alembic" },
     { name = "arq" },
