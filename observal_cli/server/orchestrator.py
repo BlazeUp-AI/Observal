@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 import httpx
+from loguru import logger as optic
 from rich.console import Console
 
 from observal_cli.server.config_gen import (
@@ -171,6 +172,7 @@ class Orchestrator:
         data_dir = self.data["postgres"]
         log_file = LOG_DIR / "postgres.log"
 
+        optic.info("starting PostgreSQL (data_dir={}, port={})", data_dir, POSTGRES_PORT)
         console.print("[blue]==>[/blue] Starting PostgreSQL...")
 
         result = subprocess.run(
@@ -192,6 +194,7 @@ class Orchestrator:
         )
 
         if result.returncode != 0:
+            optic.error("PostgreSQL failed to start: {}", result.stderr[:200])
             raise ServiceError(f"PostgreSQL failed to start:\n{result.stderr}\nCheck logs: {log_file}")
 
         # Wait for ready
@@ -201,6 +204,7 @@ class Orchestrator:
         self._ensure_database()
 
         console.print("[green]\u2713[/green] PostgreSQL ready")
+        optic.info("PostgreSQL is ready (port={})", POSTGRES_PORT)
 
     def _wait_for_postgres(self, timeout: int = 30) -> None:
         """Wait for PostgreSQL to accept connections."""
@@ -221,6 +225,7 @@ class Orchestrator:
             if result.returncode == 0:
                 return
             time.sleep(0.5)
+        optic.error("PostgreSQL did not become ready within {}s", timeout)
         raise ServiceError(f"PostgreSQL did not become ready within {timeout}s")
 
     def _ensure_database(self) -> None:
@@ -277,6 +282,7 @@ class Orchestrator:
             (ch_data / subdir).mkdir(parents=True, exist_ok=True)
 
         console.print("[blue]==>[/blue] Starting ClickHouse...")
+        optic.info("starting ClickHouse")
 
         log_handle = (LOG_DIR / "clickhouse-startup.log").open("w")
         self._log_handles.append(log_handle)
@@ -308,6 +314,7 @@ class Orchestrator:
         self._ensure_clickhouse_database()
 
         console.print("[green]\u2713[/green] ClickHouse ready")
+        optic.info("ClickHouse is ready")
 
     def _ensure_clickhouse_database(self) -> None:
         """Create the 'observal' database in ClickHouse if it doesn't exist."""
@@ -376,6 +383,7 @@ class Orchestrator:
             generate_all_configs()
 
         console.print("[blue]==>[/blue] Starting Redis...")
+        optic.info("starting Redis")
 
         proc = subprocess.Popen(
             [
@@ -395,6 +403,7 @@ class Orchestrator:
         # Wait for ready
         self._wait_for_redis()
         console.print("[green]\u2713[/green] Redis ready")
+        optic.info("Redis is ready")
 
     def _wait_for_redis(self, timeout: int = 10) -> None:
         """Wait for Redis to accept connections."""
@@ -471,6 +480,7 @@ class Orchestrator:
         ]
 
         console.print(f"[blue]==>[/blue] Starting Observal API on :{self.port}...")
+        optic.info("starting Observal API on port {}", self.port)
 
         if foreground:
             proc = subprocess.Popen(

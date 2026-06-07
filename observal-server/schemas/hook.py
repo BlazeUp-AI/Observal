@@ -110,6 +110,8 @@ class HookListingResponse(BaseModel):
     handler_config: dict
     scope: str
     supported_ides: list[str]
+    script_content: str | None = None
+    script_filename: str | None = None
     status: ListingStatus
     rejection_reason: str | None = None
     submitted_by: uuid.UUID
@@ -140,7 +142,7 @@ class HookListingSummary(BaseModel):
 
 class HookInstallRequest(BaseModel):
     ide: str
-    platform: str = ""  # e.g. "win32", "darwin", "linux" — empty = Unix default
+    platform: str = ""  # e.g. "win32", "darwin", "linux" - empty = Unix default
 
 
 class HookFileEntry(BaseModel):

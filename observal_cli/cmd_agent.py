@@ -16,7 +16,7 @@ from pathlib import Path
 
 import typer
 import yaml
-from loguru import logger
+from loguru import logger as optic
 from rich import print as rprint
 from rich.panel import Panel
 from rich.table import Table
@@ -123,7 +123,7 @@ def agent_create(
       observal agent create --name my-agent --prompt "You are..." --model claude-sonnet-4
       observal agent create --name my-agent --prompt-file ./PROMPT.md --model claude-sonnet-4 --ide kiro --ide claude-code
     """
-    logger.debug("agent_create: from_file={}", from_file)
+    optic.trace("from_file={}", from_file)
     # ── Path A: From JSON file ───────────────────────────────
     if from_file:
         import json
@@ -134,7 +134,7 @@ def agent_create(
             result = client.post("/api/v1/agents", payload)
         status = result.get("status", "pending")
         rprint(f"[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
-        rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
+        rprint(f"[yellow]Status: {status} - an admin must approve it before it becomes visible.[/yellow]")
         return
 
     # ── Path B: From flags (non-interactive) ─────────────────
@@ -226,7 +226,7 @@ def agent_create(
     for ctype in ("mcp", "skill", "hook", "prompt", "sandbox"):
         items = registry_data[ctype]
         if not items:
-            rprint(f"  [dim]No {ctype}s available — skipping.[/dim]")
+            rprint(f"  [dim]No {ctype}s available - skipping.[/dim]")
             continue
 
         choices = [f"{item['name']}  [dim]({str(item['id'])[:8]})[/dim]" for item in items]
@@ -312,7 +312,7 @@ def agent_create(
         )
     status = result.get("status", "pending")
     rprint(f"\n[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
-    rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
+    rprint(f"[yellow]Status: {status} - an admin must approve it before it becomes visible.[/yellow]")
 
 
 @agent_app.command(name="bulk-create")
@@ -1007,7 +1007,7 @@ def agent_publish(
             result = client.post("/api/v1/agents", payload)
         status = result.get("status", "pending")
         rprint(f"[green]✓ Agent submitted for review![/green] ID: [bold]{result['id']}[/bold]")
-        rprint(f"[yellow]Status: {status} — an admin must approve it before it becomes visible.[/yellow]")
+        rprint(f"[yellow]Status: {status} - an admin must approve it before it becomes visible.[/yellow]")
 
 
 @agent_app.command(name="release")

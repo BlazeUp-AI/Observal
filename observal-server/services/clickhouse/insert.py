@@ -4,17 +4,14 @@
 
 import json
 
-import structlog
 from loguru import logger as optic
 
 import services.clickhouse.client as _client
 
-logger = structlog.get_logger(__name__)
-
 
 async def insert_traces(traces: list[dict]):
     """Batch insert traces into ClickHouse using JSONEachRow."""
-    optic.debug("insert_traces: traces={}", traces)
+    optic.trace("inserting {} traces into ClickHouse", len(traces))
     if not traces:
         return
     event_ts = _client._now_ms()
@@ -59,15 +56,14 @@ async def insert_traces(traces: list[dict]):
     try:
         r = await _client._query(sql, data="\n".join(lines))
         r.raise_for_status()
-        await _client._invalidate_cache()
     except Exception as e:
-        logger.error("clickhouse_insert_traces_failed", error=str(e))
+        optic.error("failed to insert {} traces into ClickHouse: {} - telemetry data is lost", len(traces), e)
         raise
 
 
 async def insert_spans(spans: list[dict]):
     """Batch insert spans into ClickHouse using JSONEachRow."""
-    optic.debug("insert_spans: spans={}", spans)
+    optic.trace("inserting {} spans into ClickHouse", len(spans))
     if not spans:
         return
     event_ts = _client._now_ms()
@@ -147,15 +143,14 @@ async def insert_spans(spans: list[dict]):
     try:
         r = await _client._query(sql, data="\n".join(lines))
         r.raise_for_status()
-        await _client._invalidate_cache()
     except Exception as e:
-        logger.error("clickhouse_insert_spans_failed", error=str(e))
+        optic.error("failed to insert {} spans into ClickHouse: {} - span data is lost", len(spans), e)
         raise
 
 
 async def insert_scores(scores: list[dict]):
     """Batch insert scores into ClickHouse using JSONEachRow."""
-    optic.debug("clickhouse: inserting scores")
+    optic.trace("inserting {} scores into ClickHouse", len(scores))
     if not scores:
         return
     event_ts = _client._now_ms()
@@ -197,13 +192,13 @@ async def insert_scores(scores: list[dict]):
         r.raise_for_status()
         await _client._invalidate_cache()
     except Exception as e:
-        logger.error("clickhouse_insert_scores_failed", error=str(e))
+        optic.error("failed to insert {} scores into ClickHouse: {}", len(scores), e)
         raise
 
 
 async def insert_otel_logs(rows: list[dict]):
     """Batch insert rows into the otel_logs table (OTEL Collector schema)."""
-    optic.debug("insert_otel_logs: rows={}", rows)
+    optic.trace("inserting {} OTEL log rows into ClickHouse", len(rows))
     if not rows:
         return
     lines = []
@@ -226,15 +221,14 @@ async def insert_otel_logs(rows: list[dict]):
     try:
         r = await _client._query(sql, data="\n".join(lines))
         r.raise_for_status()
-        await _client._invalidate_cache()
     except Exception as e:
-        logger.error("clickhouse_insert_otel_logs_failed", error=str(e))
+        optic.error("failed to insert {} OTEL logs into ClickHouse: {}", len(rows), e)
         raise
 
 
 async def insert_audit_log(events: list[dict]):
     """Batch insert audit log events into ClickHouse."""
-    optic.debug("insert_audit_log: count={}", len(events))
+    optic.trace("inserting {} audit log events into ClickHouse", len(events))
     if not events:
         return
     lines = []
@@ -265,18 +259,17 @@ async def insert_audit_log(events: list[dict]):
         }
         lines.append(json.dumps(row, default=str))
     body = "\n".join(lines)
-    sql = "INSERT INTO audit_log FORMAT JSONEachRow"
+    sql = "INSERT INTO audit_log FORMAT JSONEachRow SETTINGS async_insert=0"
     try:
         r = await _client._query(sql, data=body)
         r.raise_for_status()
-        await _client._invalidate_cache()
     except Exception as exc:
-        logger.error("clickhouse_insert_audit_log_failed", error=str(exc))
+        optic.error("failed to insert {} audit events into ClickHouse - audit trail has a gap: {}", len(events), exc)
 
 
 async def _insert_webhook_deliveries(records: list[dict]):
     """Batch insert webhook delivery records into ClickHouse."""
-    optic.debug("_insert_webhook_deliveries: records={}", records)
+    optic.trace("inserting {} webhook delivery records into ClickHouse", len(records))
     if not records:
         return
     lines = []
@@ -305,12 +298,12 @@ async def _insert_webhook_deliveries(records: list[dict]):
         r = await _client._query(sql, data=body)
         r.raise_for_status()
     except Exception as exc:
-        logger.error("clickhouse_insert_webhook_deliveries_failed", error=str(exc))
+        optic.error("failed to record {} webhook deliveries in ClickHouse: {}", len(records), exc)
 
 
 async def insert_session_events(rows: list[dict]):
     """Batch insert session event rows into ClickHouse using JSONEachRow."""
-    optic.debug("clickhouse: inserting session events")
+    optic.trace("inserting {} session events into ClickHouse", len(rows))
     if not rows:
         return
     lines = []
@@ -325,7 +318,21 @@ async def insert_session_events(rows: list[dict]):
     try:
         r = await _client._query(sql, data="\n".join(lines))
         r.raise_for_status()
-        await _client._invalidate_cache()
     except Exception as e:
-        logger.error("clickhouse_insert_session_events_failed", error=str(e))
+        optic.error("failed to insert {} session events - session will appear incomplete: {}", len(rows), e)
+        raise
+
+
+async def insert_layer_snapshot(row: dict):
+    """Insert a single layer snapshot row into ClickHouse."""
+    optic.trace("inserting layer snapshot: hash={}", row.get("hash", "?"))
+    sql = (
+        "INSERT INTO layer_snapshots (hash, project_id, user_id, ide, content, "
+        "file_count, total_size, lockfile_hash) FORMAT JSONEachRow"
+    )
+    try:
+        r = await _client._query(sql, data=json.dumps(row, default=str))
+        r.raise_for_status()
+    except Exception as e:
+        optic.error("failed to insert layer snapshot: {}", e)
         raise

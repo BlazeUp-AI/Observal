@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from loguru import logger
+from loguru import logger as optic
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
@@ -17,11 +17,10 @@ class GeminiCliAdapter:
 
     @property
     def ide_name(self) -> str:
-        logger.debug("ide_name called")
         return "gemini-cli"
 
     def format_config(self, ctx: ConfigContext) -> dict:
-        logger.debug("format_config: ctx={}", ctx)
+        optic.trace("ctx={}", ctx)
         options = ctx.options
         mcp_configs = ctx.mcp_configs
         rules_content = ctx.rules_content

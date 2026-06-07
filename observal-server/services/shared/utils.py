@@ -3,7 +3,7 @@
 
 """Shared utility functions used across multiple server-side services.
 
-Single source of truth — any helper that was duplicated across
+Single source of truth - any helper that was duplicated across
 agent_builder.py, config_generator.py, agent_config_generator.py,
 or skill_config_generator.py lives here instead.
 """

@@ -21,11 +21,7 @@ import base64
 import hashlib
 from typing import Any
 
-import structlog
 from loguru import logger as optic
-
-logger = structlog.get_logger(__name__)
-
 
 # ─── Encryption for sensitive values ───────────────────────────────────────
 # Uses Fernet symmetric encryption keyed from SECRET_KEY.
@@ -96,7 +92,7 @@ def decrypt_value(stored: str) -> str:
             return old_f.decrypt(ciphertext).decode()
     except Exception:
         pass
-    logger.error("dynamic_settings_decrypt_failed", hint="Neither SECRET_KEY nor OLD_SECRET_KEY can decrypt this value")
+    optic.error("dynamic_settings_decrypt_failed", hint="Neither SECRET_KEY nor OLD_SECRET_KEY can decrypt this value")
     return ""
 
 
@@ -142,10 +138,10 @@ async def reencrypt_on_key_rotation() -> int:
                     count += 1
             if count > 0:
                 await session.commit()
-                logger.info("dynamic_settings_reencrypted", count=count)
+                optic.info("dynamic_settings_reencrypted", count=count)
         return count
     except Exception as e:
-        logger.error("dynamic_settings_reencrypt_failed", error=str(e))
+        optic.error("dynamic_settings_reencrypt_failed", error=str(e))
         return 0
 
 
@@ -158,12 +154,10 @@ _CACHE_TTL = 30  # seconds, short TTL for consistency, Redis is fast
 # DB, these are returned. Once configured via the settings page, DB values win.
 
 DEFAULTS: dict[str, str] = {
-    # Insights: AWS Bedrock auth
-    "insights.aws_region": "us-east-1",
-    "insights.aws_access_key_id": "",
-    "insights.aws_secret_access_key": "",
-    "insights.aws_session_token": "",
-    # Insights: per-stage models (Bedrock model IDs)
+    # Insights: LLM provider credentials (via LiteLLM)
+    "insights.api_key": "",
+    "insights.api_base": "",
+    # Insights: per-stage models (LiteLLM format: provider/model-name)
     "insights.model_sections": "",
     "insights.model_synthesis": "",
     "insights.model_facets": "",
@@ -175,7 +169,7 @@ DEFAULTS: dict[str, str] = {
     "insights.facet_concurrency": "25",
     # Deployment (runtime-tunable, mode itself is boot-time env var)
     "deployment.sso_only": "false",
-    "deployment.frontend_url": "http://localhost:3000",
+    "deployment.frontend_url": "http://localhost",
     "deployment.public_url": "",
     "deployment.cors_origins": "http://localhost:3000",
     # Security
@@ -217,7 +211,7 @@ DEFAULTS: dict[str, str] = {
     "data.cache_ttl_default": "30",
     "data.cache_ttl_dashboard": "60",
     # Observability
-    "observability.log_level": "INFO",
+    "observability.log_level": "INFO",  # TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
     "observability.log_format": "json",  # 'json' or 'console' (colorized). Requires restart.
     "observability.enable_openapi": "false",
     "observability.enable_metrics": "false",
@@ -230,9 +224,7 @@ DEFAULTS: dict[str, str] = {
 
 # Sensitive keys: values are masked in API responses unless explicitly revealed
 SENSITIVE_KEYS: set[str] = {
-    "insights.aws_access_key_id",
-    "insights.aws_secret_access_key",
-    "insights.aws_session_token",
+    "insights.api_key",
     "saml.idp_x509_cert",
     "saml.sp_key_encryption_password",
 }
@@ -242,7 +234,7 @@ SECTIONS: list[dict[str, Any]] = [
     {
         "id": "insights",
         "title": "Agent Insights",
-        "description": "Configure AWS Bedrock credentials and models for the insights engine. Requires 'insights' license feature.",
+        "description": "Configure LLM provider for the insights engine. Supports any LiteLLM-compatible provider (Anthropic, OpenAI, Bedrock, Gemini, Azure, Ollama, etc).",
         "icon": "sparkles",
         "keys": [k for k in DEFAULTS if k.startswith("insights.")],
     },
@@ -321,7 +313,7 @@ async def get(key: str, default: str | None = None) -> str:
     Returns:
         The setting value as a string.
     """
-    optic.debug("dynamic_settings get: key={}", key)
+    optic.trace("reading setting: {}", key)
     # 1. Try Redis cache
     try:
         from services.redis import get_redis
@@ -368,7 +360,7 @@ async def get_int(key: str, default: int | None = None) -> int:
     try:
         return int(raw)
     except (ValueError, TypeError):
-        logger.warning("dynamic_settings_invalid_int", key=key, value=raw)
+        optic.warning("dynamic_settings_invalid_int", key=key, value=raw)
         if default is not None:
             return default
         fallback = DEFAULTS.get(key, "0")
@@ -392,7 +384,7 @@ async def get_float(key: str, default: float | None = None) -> float:
     try:
         return float(raw)
     except (ValueError, TypeError):
-        logger.warning("dynamic_settings_invalid_float", key=key, value=raw)
+        optic.warning("dynamic_settings_invalid_float", key=key, value=raw)
         if default is not None:
             return default
         fallback = DEFAULTS.get(key, "0.0")
@@ -489,7 +481,7 @@ async def _read_from_db(key: str) -> str | None:
                 return decrypt_value(row)
             return row
     except Exception as e:
-        logger.warning("dynamic_settings_db_read_error", key=key, error=str(e))
+        optic.warning("dynamic_settings_db_read_error", key=key, error=str(e))
         return None
 
 
@@ -511,7 +503,7 @@ async def _read_all_from_db() -> dict[str, str]:
                 settings_dict[row.key] = value
             return settings_dict
     except Exception as e:
-        logger.warning("dynamic_settings_db_read_all_error", error=str(e))
+        optic.warning("dynamic_settings_db_read_all_error", error=str(e))
         return {}
 
 
@@ -582,9 +574,9 @@ async def load_sync_cache() -> None:
         _sync_cache = dict(DEFAULTS)
         _sync_cache.update(db_values)
         _sync_cache_loaded = True
-        logger.info("dynamic_settings_cache_loaded", count=len(db_values))
+        optic.info("dynamic_settings_cache_loaded", count=len(db_values))
     except Exception as e:
-        logger.warning("dynamic_settings_cache_load_failed", error=str(e))
+        optic.warning("dynamic_settings_cache_load_failed", error=str(e))
         _sync_cache = dict(DEFAULTS)
         _sync_cache_loaded = True
 

@@ -5,7 +5,7 @@
 
 A lightweight MCP server that exposes registered sandboxes as tools.
 When an agent has sandbox components, this server is auto-injected into
-the agent's MCP config — giving the agent a `run_sandbox` tool it can
+the agent's MCP config - giving the agent a `run_sandbox` tool it can
 call naturally without prompt engineering.
 
 Usage:

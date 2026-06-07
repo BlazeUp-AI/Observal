@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Per-type field validation for component version publishing."""
@@ -7,7 +8,10 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
-from loguru import logger
+from loguru import logger as optic
+
+from schemas.skill_commands import normalize_slash_command
+from services.skill_validator import SkillValidationError, validate_skill_md_content_frontmatter
 
 # Fields allowed in extra dict per component type
 HOOK_FIELDS = {
@@ -110,7 +114,7 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "setup_instructions": str,
     # int fields
     "priority": int,
-    # bool fields — must come before int since bool is a subclass of int
+    # bool fields - must come before int since bool is a subclass of int
     "has_scripts": bool,
     "has_templates": bool,
     "is_power": bool,
@@ -141,7 +145,7 @@ def validate_and_extract(component_type: str, extra: dict | None) -> dict:
     Returns a dict of field_name -> value to set on the version model.
     Raises HTTPException(422) on validation errors.
     """
-    logger.debug("validate_and_extract: component_type={}, extra={}", component_type, extra)
+    optic.trace("extracting version extras for {} component", component_type)
     allowed = ALLOWED_FIELDS.get(component_type)
     if allowed is None:
         raise HTTPException(status_code=422, detail=f"Unknown component type: {component_type!r}")
@@ -204,4 +208,19 @@ def validate_and_extract(component_type: str, extra: dict | None) -> dict:
                 detail=f"Field {field!r} must be a {expected_name}, got {type(value).__name__}",
             )
 
-    return {k: v for k, v in extra.items() if k in allowed}
+    clean = {k: v for k, v in extra.items() if k in allowed}
+    if component_type == "skill":
+        try:
+            if "slash_command" in clean:
+                clean["slash_command"] = normalize_slash_command(clean["slash_command"])
+            if "skill_md_content" in clean:
+                analysis = validate_skill_md_content_frontmatter(
+                    clean.get("skill_md_content"),
+                    slash_command=clean.get("slash_command") if "slash_command" in clean else None,
+                )
+                if analysis.slash_command is not None:
+                    clean["slash_command"] = analysis.slash_command
+        except (SkillValidationError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid skill metadata: {exc}") from exc
+
+    return clean

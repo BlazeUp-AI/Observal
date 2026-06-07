@@ -6,7 +6,7 @@
 import hashlib
 import re
 
-from loguru import logger
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,7 @@ async def generate_unique_username(
 
     Returns a valid username that passes USERNAME_RE validation and is unique in DB.
     """
-    logger.debug("generate_unique_username: email={}, max_attempts={}", email, max_attempts)
+    optic.trace("generating unique username from email")
     # Extract and sanitize base
     email_lower = email.lower().strip()
     base = email_lower.split("@")[0]  # Get part before @

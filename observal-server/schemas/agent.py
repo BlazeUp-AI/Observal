@@ -207,7 +207,8 @@ class AgentInstallRequest(BaseModel):
     env_values: dict[str, dict[str, str]] = {}  # {mcp_listing_id: {VAR: value}}
     # IDE-specific install options (e.g. scope, model, tools, color for Claude Code)
     options: dict = {}
-    platform: str = ""  # e.g. "win32", "darwin", "linux" — empty = Unix default
+    platform: str = ""  # e.g. "win32", "darwin", "linux" - empty = Unix default
+    version: str | None = None  # Specific version to install (None = latest)
 
 
 class AgentInstallResponse(BaseModel):

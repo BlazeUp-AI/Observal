@@ -10,6 +10,7 @@ from datetime import datetime as dt
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi_cache.decorator import cache
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1886,6 +1887,7 @@ class AIInsightsResponse(BaseModel):
 
 
 @router.get("/ai-insights", response_model=AIInsightsResponse)
+@cache(expire=1800, namespace="ai-insights")
 async def get_ai_insights(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),

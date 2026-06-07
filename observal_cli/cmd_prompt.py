@@ -11,7 +11,6 @@ from __future__ import annotations
 import json as _json
 
 import typer
-from loguru import logger
 from rich import print as rprint
 from rich.table import Table
 
@@ -24,7 +23,6 @@ prompt_app = typer.Typer(help="Prompt registry commands")
 
 
 def register_prompt(app: typer.Typer):
-    logger.debug("register_prompt called")
     app.add_typer(prompt_app, name="prompt")
 
 

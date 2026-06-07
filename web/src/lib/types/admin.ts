@@ -22,6 +22,8 @@ export interface AdminUser {
 export interface AdminSetting {
 	key: string;
 	value: string;
+	is_sensitive?: boolean;
+	is_set?: boolean;
 }
 
 export interface AuditLogEntry {
@@ -210,6 +212,15 @@ export interface InsightReport {
 	started_at: string;
 	completed_at: string | null;
 	created_at: string;
+	applied_at: string | null;
+	applied_items: InsightAppliedItems | null;
+}
+
+export interface InsightAppliedItems {
+	agent_version: { id: string; version: string; additions_count: number; linked_components: number } | null;
+	skills: { id: string; name: string; description: string; type: string }[];
+	hooks: { id: string; name: string; description: string; type: string }[];
+	prompts: { id: string; name: string; description: string; type: string }[];
 }
 
 // ── Telemetry ───────────────────────────────────────────────────────

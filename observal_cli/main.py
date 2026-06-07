@@ -97,6 +97,9 @@ def main(
     # Auto-update on minor/patch releases (non-blocking, exempt self/server commands)
     _try_auto_update()
 
+    # One-time migration: .observal/agent markers → lockfile.json
+    _try_lockfile_migration()
+
 
 def _try_auto_update() -> None:
     """Attempt auto-update for minor/patch releases on startup.
@@ -125,12 +128,31 @@ def _try_auto_update() -> None:
         pass  # Never crash the CLI for auto-update
 
 
+def _try_lockfile_migration() -> None:
+    """One-time migration of .observal/agent markers to lockfile.json.
+
+    Runs only when: lockfile.json doesn't exist but config.json DOES
+    (meaning the user has previously logged in but never had a lockfile).
+    Skips entirely if ~/.observal/ doesn't exist yet (fresh install).
+    """
+    try:
+        from observal_cli.lockfile import CONFIG_DIR, LOCKFILE_PATH, migrate_agent_markers
+
+        # Don't run if the config dir doesn't exist yet (auth login hasn't happened)
+        if not CONFIG_DIR.exists():
+            return
+        if not LOCKFILE_PATH.exists():
+            migrate_agent_markers()
+    except Exception:
+        pass  # Never crash the CLI for migration
+
+
 # ── Register command groups ──────────────────────────────
 
 from observal_cli.cmd_agent import agent_app
 from observal_cli.cmd_auth import auth_app, register_config
 from observal_cli.cmd_co_authors import co_authors_app
-from observal_cli.cmd_component import component_app
+from observal_cli.cmd_component import version_app
 from observal_cli.cmd_doctor import doctor_app
 from observal_cli.cmd_hook import hook_app
 from observal_cli.cmd_logs import logs_app
@@ -142,7 +164,7 @@ from observal_cli.cmd_ops import (
     ops_app,
     self_app,
 )
-from observal_cli.cmd_profile import register_use
+from observal_cli.cmd_outdated import register_outdated
 from observal_cli.cmd_prompt import prompt_app
 from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import sandbox_app
@@ -167,6 +189,7 @@ registry_app.add_typer(hook_app, name="hook")
 registry_app.add_typer(prompt_app, name="prompt")
 registry_app.add_typer(sandbox_app, name="sandbox")
 registry_app.add_typer(models_app, name="models")
+registry_app.add_typer(version_app, name="version")
 
 # ── Auth subgroup ────────────────────────────────────────
 app.add_typer(auth_app, name="auth")
@@ -174,8 +197,8 @@ app.add_typer(auth_app, name="auth")
 # ── Primary user workflows (root) ─────────────────────────
 register_config(app)
 register_scan(app)
-register_uninstall(app)
-register_use(app)
+register_outdated(app)
+
 
 # ── Agent pull (full-featured, lives under `observal agent pull`) ──
 register_pull(agent_app)
@@ -183,27 +206,30 @@ register_pull(agent_app)
 # ── Subgroups ─────────────────────────────────────────────
 app.add_typer(registry_app, name="registry")
 app.add_typer(agent_app, name="agent")
-app.add_typer(mcp_app, name="mcp")
-app.add_typer(skill_app, name="skill")
-app.add_typer(prompt_app, name="prompt")
-app.add_typer(sandbox_app, name="sandbox")
-app.add_typer(component_app, name="component")
 app.add_typer(ops_app, name="ops")
 app.add_typer(admin_app, name="admin")
 app.add_typer(self_app, name="self")
 app.add_typer(doctor_app, name="doctor")
-app.add_typer(support_app, name="support")
 app.add_typer(co_authors_app, name="co-authors")
-app.add_typer(migrate_app, name="migrate")
-app.add_typer(logs_app, name="logs")
+
+# ── Nest under parent groups ──────────────────────────────
+# logs → ops logs (dev log viewer, complements traces/telemetry)
+ops_app.add_typer(logs_app, name="logs")
+# support → doctor support (diagnostic bundles, related to doctor troubleshooting)
+doctor_app.add_typer(support_app, name="support")
+# uninstall → self uninstall (CLI lifecycle alongside upgrade/downgrade/rollback)
+register_uninstall(self_app)
+# migrate → server migrate (operator infra tooling)
 
 # Server management (embedded + Docker)
 try:
     from observal_cli.cmd_server import server_app
 
+    server_app.add_typer(migrate_app, name="migrate")
     app.add_typer(server_app, name="server")
 except ImportError:
-    pass  # server deps not installed
+    # server deps not installed; register migrate at top level as fallback
+    app.add_typer(migrate_app, name="migrate")
 
 
 def _show_update_banner() -> None:

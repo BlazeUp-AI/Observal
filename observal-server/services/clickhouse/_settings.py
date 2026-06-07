@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Shared ClickHouse query settings — imported by both client and schema modules."""
+"""Shared ClickHouse query settings - imported by both client and schema modules."""
 
 # Safety floor applied to every ClickHouse query (SEC-026).
 DEFAULT_QUERY_SETTINGS: dict[str, str] = {

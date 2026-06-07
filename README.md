@@ -22,7 +22,7 @@
  ╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝
 </pre>
 
-**A self-hosted registry for distributing AI coding agents across your team, with shared observability built in. Every session, prompt, and tool call is captured. Enterprise edition adds AI-powered insights, HIPAA audit logging, and SSO.**
+**A unified platform for agent registry and analytics. Enterprise edition adds SSO, SCIM provisioning, and organizational AI insights.**
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="License"></a>
@@ -123,22 +123,6 @@ Browse published agents, see which IDEs they support, check download counts and 
 
 ---
 
-## Session Observability
-
-**Full session overview with token counts, models, tools, and turn-by-turn timeline:**
-
-![Session detail showing tokens, tools, models, and turns](docs/img/ses1.png)
-
-**Every turn captured: user prompt, tool calls, thinking block, assistant response:**
-
-![Turn expanded showing user prompt, thinking, and response](docs/img/complete_capture_thinking_response.png)
-
-**Drill into any span to see exact tool inputs and outputs:**
-
-![Span detail showing bash command input and full output](docs/img/span.png)
-
----
-
 ## Agent Registry
 
 **Browse, search, and install agents with IDE compatibility badges:**
@@ -171,24 +155,29 @@ Browse published agents, see which IDEs they support, check download counts and 
 
 ---
 
+## Agent Insights
+
+**AI-powered insight reports** analyze usage patterns across all sessions — what's working, what's hindering, and quick wins. Powered by [LiteLLM](https://docs.litellm.ai/docs/providers), works with any provider (Anthropic, OpenAI, Bedrock, Gemini, Azure, Ollama).
+
+![Insight report with What's Working, What's Hindering, Quick Wins](docs/img/insights.png)
+
+See [Insights LLM Setup](docs/insights-setup.md) for configuration.
+
+---
+
 ## Enterprise Edition
 
 Source-available under a separate license. Activated with a signed JWT key. Core never imports from `ee/`, the open-source edition is fully functional without it.
 
 Enterprise adds:
 
-- **AI-powered insight reports** analyzing usage patterns across all sessions
-- **HIPAA audit logging** with sensitivity classification, chain hashes, and CSV export
+- **Audit trail/logs** with parameterized search and CSV export
 - **SAML SSO** and **SCIM provisioning**
 - **Executive dashboard** for org-wide agent performance
 
-**HIPAA-compliant audit log with parameterized search:**
+**Audit log with parameterized search:**
 
 ![Audit log with PHI sensitivity badges and chain hashes](docs/img/audit_logging.png)
-
-**AI insight reports generated from session telemetry:**
-
-![Insight report with What's Working, What's Hindering, Quick Wins](docs/img/insights.png)
 
 ```bash
 # Enterprise install

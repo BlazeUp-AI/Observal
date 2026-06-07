@@ -5,8 +5,8 @@
 """Structured security event logging for SIEM integration.
 
 Emits security events to:
-1. Python logging (observal.security) — picked up by OTEL Collector for SIEM forwarding
-2. ClickHouse security_events table — in-app audit log queries
+1. Python logging (observal.security) - picked up by OTEL Collector for SIEM forwarding
+2. ClickHouse security_events table - in-app audit log queries
 
 Events follow a consistent schema compatible with CEF/LEEF/RFC 5424 formats.
 """
@@ -117,7 +117,7 @@ class SecurityEvent:
 
 async def emit_security_event(event: SecurityEvent) -> None:
     """Emit a security event to structured logging and ClickHouse."""
-    optic.debug("emit_security_event: type={}, severity={}", event.event_type, event.severity)
+    optic.trace("emitting security event: {} ({})", event.event_type, event.severity)
     log_data = event.to_log_dict()
 
     log_level = {

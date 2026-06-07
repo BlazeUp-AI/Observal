@@ -26,7 +26,6 @@ from pathlib import Path
 
 import httpx
 import typer
-from loguru import logger
 from rich import print as rprint
 from rich.tree import Tree
 
@@ -218,7 +217,6 @@ def bundle(
         observal support bundle -o /tmp/diag.tar.gz --logs-since 2h
         observal support bundle --no-include-system
     """
-    logger.debug("bundle called")
     # Determine output path
     if output is None:
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")

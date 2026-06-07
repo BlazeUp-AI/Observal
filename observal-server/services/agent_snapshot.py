@@ -7,7 +7,7 @@ The snapshot is the canonical text the reviewer reads when approving a
 new version, and the source for the version-diff endpoint when neither
 side carries a client-supplied snapshot. Centralising the shape here
 guarantees the web builder, the CLI publish flow and the diff fallback
-all surface the same fields — including per-IDE model overrides
+all surface the same fields - including per-IDE model overrides
 (``models_by_ide``) which are otherwise easy to omit.
 """
 
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from models.agent import AgentVersion
-from loguru import logger
+from loguru import logger as optic
 
 _LISTING_MODELS = {
     "mcp": McpListing,
@@ -42,7 +42,7 @@ _LISTING_MODELS = {
 
 def _normalise_models_by_ide(value: object) -> dict[str, str]:
     """Coerce ``models_by_ide`` into a plain dict for YAML serialisation."""
-    logger.debug("_normalise_models_by_ide: value={}", value)
+    optic.trace("normalising models_by_ide value: {}", type(value).__name__)
     if not isinstance(value, dict):
         return {}
     return {str(k): str(v) for k, v in value.items() if v}
@@ -56,7 +56,7 @@ async def _resolve_component_details(ver: AgentVersion, db: AsyncSession) -> lis
     when a freshly created version's components were added in the same
     session but the back-reference wasn't synchronously synced.
     """
-    logger.debug("_resolve_component_details: ver={}", ver)
+    optic.trace("resolving component details for version {}", getattr(ver, "version", "?"))
     rows = (
         (
             await db.execute(
@@ -104,7 +104,7 @@ async def build_yaml_snapshot(ver: AgentVersion, db: AsyncSession) -> str:
     didn't override anything) so a reviewer can trust an empty section
     means "no per-IDE overrides", not "missing data".
     """
-    logger.debug("build_yaml_snapshot: ver={}", ver)
+    optic.trace("resolving component details for version {}", getattr(ver, "version", "?"))
     components = await _resolve_component_details(ver, db)
     data: dict = {
         "version": ver.version,
@@ -118,5 +118,5 @@ async def build_yaml_snapshot(ver: AgentVersion, db: AsyncSession) -> str:
     }
     if ver.model_config_json:
         data["model_config_json"] = ver.model_config_json
-    header = "# Auto-generated snapshot — review the structured fields above and the prompt below.\n"
+    header = "# Auto-generated snapshot - review the structured fields above and the prompt below.\n"
     return header + yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True)

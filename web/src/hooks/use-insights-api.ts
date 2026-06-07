@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+// SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 // SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
@@ -9,7 +10,6 @@
 // SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 import {
   useQuery,
@@ -53,7 +53,7 @@ export function useInsightsStatus() {
   return useQuery({
     queryKey: ["insights", "status"],
     queryFn: () => insights.status(),
-    staleTime: 60_000,
+    staleTime: 0,
   });
 }
 
@@ -104,6 +104,21 @@ export function useGenerateInsight() {
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to generate insight");
+    },
+  });
+}
+
+export function useApplyInsightSuggestions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { reportId: string; selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] } }) =>
+      insights.applySuggestions(vars.reportId, vars.selection),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["insights", "report", vars.reportId] });
+      toast.success("Suggestions applied: items added to review queue");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to apply suggestions");
     },
   });
 }

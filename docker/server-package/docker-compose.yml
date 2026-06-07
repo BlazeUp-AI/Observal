@@ -167,8 +167,6 @@ services:
     image: ghcr.io/blazeup-ai/observal-web:${OBSERVAL_VERSION:-latest}
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://observal-lb:80}
     depends_on:
       observal-lb:
         condition: service_started
@@ -203,7 +201,7 @@ services:
       - observal-net
 
   observal-prometheus:
-    image: prom/prometheus:v3.11.3
+    image: prom/prometheus:v3.12.0
     ports:
       - "${PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:

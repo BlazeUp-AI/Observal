@@ -41,7 +41,7 @@ mcp_app = typer.Typer(help="MCP server registry commands")
 
 def _parse_env_file(file_path: str) -> list[dict]:
     """Parse a .env-style file and return env var dicts."""
-    optic.debug("_parse_env_file: file_path={}", file_path)
+    optic.trace("file_path={}", file_path)
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
         rprint(f"[red]File not found:[/red] {path}")
@@ -66,7 +66,7 @@ def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
       2. Load from an env file path
       3. Enter manually
     """
-    optic.debug("_configure_env_vars_interactive: detected={}", detected)
+    optic.trace("detected={}", detected)
     is_tty = sys.stdin.isatty()
 
     if detected:
@@ -123,7 +123,7 @@ def _configure_env_vars_interactive(detected: list[dict]) -> list[dict]:
 
 def _review_env_vars(env_vars: list[dict]) -> list[dict]:
     """Let the developer review, remove, and annotate each env var."""
-    optic.debug("_review_env_vars: env_vars={}", env_vars)
+    optic.trace("env_vars={}", env_vars)
     reviewed: list[dict] = []
 
     rprint("\n[bold]Review each variable[/bold]\n")
@@ -162,7 +162,6 @@ def _review_env_vars(env_vars: list[dict]) -> list[dict]:
 
 def _enter_env_vars_manually() -> list[dict]:
     """Prompt the developer to enter env vars one by one."""
-    optic.debug("_enter_env_vars_manually called")
     env_vars: list[dict] = []
     rprint("\n[bold]Enter env vars one at a time[/bold] [dim](empty name to finish)[/dim]\n")
 
@@ -191,7 +190,7 @@ def _dollar_to_placeholder(value: str) -> str:
         "Bearer $TOKEN1 $TOKEN2"  → "Bearer <TOKEN1> <TOKEN2>"
         "$API_KEY"                → "<API_KEY>"
     """
-    optic.debug("_dollar_to_placeholder: value={}", value)
+    optic.trace("value={}", value)
     return _DOLLAR_VAR_RE.sub(lambda m: f"<{m.group(1)}>", value)
 
 
@@ -202,7 +201,7 @@ def _extract_dollar_vars(args: list[str], env: dict[str, str]) -> list[str]:
     and the *values* (not keys) of the env dict, filtered to exclude
     system/infrastructure vars (PATH, HOME, CI_*, etc.).
     """
-    optic.debug("_extract_dollar_vars: args={}, env={}", args, env)
+    optic.trace("args={}, env={}", args, env)
     from observal_cli.analyzer import _is_filtered_env_var
 
     found: set[str] = set()
@@ -228,7 +227,7 @@ def _unwrap_mcp_config(cfg: dict) -> tuple[dict, str | None]:
     Returns (inner_config, server_name | None).
     """
     # Shape 1: wrapped under mcpServers
-    optic.debug("_unwrap_mcp_config: cfg={}", cfg)
+    optic.trace("cfg={}", cfg)
     if "mcpServers" in cfg and isinstance(cfg["mcpServers"], dict):
         servers = cfg["mcpServers"]
         if len(servers) == 1:
@@ -259,7 +258,7 @@ def _parse_server_json_manifest(cfg: dict) -> dict | None:
     Returns parsed dict if this looks like a server.json manifest, None otherwise.
     """
     # Handle registry format: unwrap "server" envelope
-    optic.debug("_parse_server_json_manifest: cfg={}", cfg)
+    optic.trace("cfg={}", cfg)
     manifest = cfg
     server_meta = cfg.get("server")
     if isinstance(server_meta, dict) and ("remotes" in server_meta or "packages" in server_meta):
@@ -328,7 +327,7 @@ def _parse_direct_config(cfg: dict) -> dict:
     - SSE/HTTP: {url, type, headers, autoApprove}
     """
     # Try server.json manifest format first
-    optic.debug("_parse_direct_config: cfg={}", cfg)
+    optic.trace("cfg={}", cfg)
     manifest_result = _parse_server_json_manifest(cfg)
     if manifest_result is not None:
         return manifest_result
@@ -421,7 +420,7 @@ def _parse_direct_config(cfg: dict) -> dict:
 
 def _build_config_preview(server_name: str, parsed: dict) -> dict:
     """Build a mcp.json-style preview dict for display during submit."""
-    optic.debug("_build_config_preview: server_name={}, parsed={}", server_name, parsed)
+    optic.trace("server_name={}, parsed={}", server_name, parsed)
     preview: dict = {}
 
     if parsed.get("url"):
@@ -472,7 +471,7 @@ def _build_config_preview(server_name: str, parsed: dict) -> dict:
 
 def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False):
     # ── Path B/C: Direct JSON config (no git URL needed) ─────
-    optic.debug("_submit_impl: git_url={}, name={}", git_url, name)
+    optic.trace("git_url={}, name={}", git_url, name)
     if direct_config:
         rprint("[bold]Paste your MCP server JSON config below.[/bold]")
         rprint("[dim]Press Enter on an empty line when done.[/dim]\n")
@@ -889,7 +888,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
 
 
 def _list_impl(category, search, limit, sort, output, interactive=False):
-    optic.debug("_list_impl: category={}, search={}", category, search)
+    optic.trace("category={}, search={}", category, search)
     params = {}
     if category:
         params["category"] = category
@@ -906,7 +905,7 @@ def _list_impl(category, search, limit, sort, output, interactive=False):
     if interactive:
 
         def _display(item: dict) -> str:
-            optic.debug("_display: item={}", item)
+            optic.trace("item={}", item)
             return f"{item['name']}  v{item.get('version', '?')}  [{item.get('category', '')}]  {item.get('owner', '')}"
 
         selected = fuzzy_select(data, _display, label="Select MCP server")
@@ -953,7 +952,7 @@ def _list_impl(category, search, limit, sort, output, interactive=False):
 
 
 def _show_impl(mcp_id, output):
-    optic.debug("_show_impl: mcp_id={}, output={}", mcp_id, output)
+    optic.trace("mcp_id={}, output={}", mcp_id, output)
     resolved = config.resolve_alias(mcp_id)
     with spinner():
         item = client.get(f"/api/v1/mcps/{resolved}")
@@ -988,8 +987,8 @@ def _show_impl(mcp_id, output):
             rprint(f"  {icon} {v['stage']}: {v.get('details', '') or 'passed'}")
 
 
-def _install_impl(mcp_id, ide, raw):
-    optic.debug("_install_impl: mcp_id={}, ide={}", mcp_id, ide)
+def _install_impl(mcp_id, ide, raw, version=None):
+    optic.trace("mcp_id={}, ide={}, version={}", mcp_id, ide, version)
     import json as _json
 
     resolved = config.resolve_alias(mcp_id)
@@ -1047,15 +1046,33 @@ def _install_impl(mcp_id, ide, raw):
             header_values[h["name"]] = f"<{h['name']}>"
 
     with spinner(f"Generating {ide} config..."):
+        install_body = {"ide": ide, "env_values": env_values, "header_values": header_values}
+        if version:
+            install_body["version"] = version
         result = client.post(
             f"/api/v1/mcps/{resolved}/install",
-            {"ide": ide, "env_values": env_values, "header_values": header_values},
+            install_body,
         )
 
     snippet = result.get("config_snippet", {})
     if raw:
         print(_json.dumps(snippet, indent=2))
         return
+
+    # Write to lock file (track the install regardless of how user applies config)
+    try:
+        from observal_cli.lockfile import upsert_standalone
+
+        upsert_standalone(
+            ide,
+            component_type="mcp",
+            name=listing.get("name", resolved),
+            component_id=str(listing.get("id", resolved)),
+            version=version or listing.get("version") or listing.get("latest_version"),
+            scope="user",
+        )
+    except Exception:
+        pass  # Never block install on lockfile failure
 
     ide_config_paths = {
         "kiro": ".kiro/settings/mcp.json",
@@ -1085,7 +1102,7 @@ def _install_impl(mcp_id, ide, raw):
 
 
 def _delete_impl(mcp_id, yes):
-    optic.debug("_delete_impl: mcp_id={}, yes={}", mcp_id, yes)
+    optic.trace("mcp_id={}, yes={}", mcp_id, yes)
     resolved = config.resolve_alias(mcp_id)
     if not yes:
         with spinner():
@@ -1140,7 +1157,6 @@ def submit(
         # Submit an existing draft for review
         observal registry mcp submit --submit my-server
     """
-    optic.debug("cli: mcp submit")
     if draft and submit_draft:
         rprint(
             "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
@@ -1197,7 +1213,6 @@ def list_mcps(
         # Sort by category, limit to 10 results
         observal registry mcp list --sort category --limit 10
     """
-    optic.debug("cli: mcp list")
     _list_impl(category, search, limit, sort, output, interactive=interactive)
 
 
@@ -1221,7 +1236,7 @@ def mcp_my(
         # Plain output (one per line)
         observal registry mcp my --output plain
     """
-    optic.debug("mcp_my: output={}", output)
+    optic.trace("output={}", output)
     with spinner("Fetching your MCPs..."):
         data = client.get("/api/v1/mcps/my")
     if not data:
@@ -1278,7 +1293,7 @@ def show(
         # JSON output
         observal registry mcp show my-server --output json
     """
-    optic.debug("show: mcp_id={}, output={}", mcp_id, output)
+    optic.trace("mcp_id={}, output={}", mcp_id, output)
     _show_impl(mcp_id, output)
 
 
@@ -1287,6 +1302,9 @@ def install(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
+    version: str | None = typer.Option(
+        None, "--version", "-V", help="Install a specific version (e.g. '2.1.0'). Defaults to latest."
+    ),
 ):
     """Generate an install config snippet for an MCP server.
 
@@ -1310,8 +1328,8 @@ def install(
         # Install using an alias
         observal registry mcp install @db --ide kiro
     """
-    optic.debug("install: mcp_id={}, ide={}", mcp_id, ide)
-    _install_impl(mcp_id, ide, raw)
+    optic.trace("mcp_id={}, ide={}", mcp_id, ide)
+    _install_impl(mcp_id, ide, raw, version=version)
 
 
 @mcp_app.command(name="edit")
@@ -1352,7 +1370,7 @@ def edit_mcp(
         # Change the git URL
         observal registry mcp edit my-server --git-url https://github.com/org/new-repo
     """
-    optic.debug("edit_mcp: mcp_id={}, from_file={}", mcp_id, from_file)
+    optic.trace("mcp_id={}, from_file={}", mcp_id, from_file)
     resolved = config.resolve_alias(mcp_id)
     if from_file:
         try:
@@ -1539,5 +1557,5 @@ def delete_mcp(
         # Delete by alias
         observal registry mcp delete @old-server
     """
-    optic.debug("delete_mcp: mcp_id={}, yes={}", mcp_id, yes)
+    optic.trace("mcp_id={}, yes={}", mcp_id, yes)
     _delete_impl(mcp_id, yes)

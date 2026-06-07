@@ -13,12 +13,9 @@ from __future__ import annotations
 
 import json
 
-import structlog
 from loguru import logger as optic
 
 from services.insights import call_model
-
-logger = structlog.get_logger(__name__)
 
 SYSTEM_PREAMBLE = """You are the AI Strategy Advisor for an engineering organization that uses AI coding agents. You produce strategic insight reports for engineering leadership.
 
@@ -97,12 +94,12 @@ async def generate_strategic_insights(metrics_data: dict) -> dict:
     Returns:
         Dict with structured strategic recommendations.
     """
-    optic.debug("strategic_insights: generating")
+    optic.debug("generating")
     import services.dynamic_settings as ds
 
     configured_model = await ds.get("insights.model_synthesis") or await ds.get("insights.model_sections")
     if not configured_model:
-        logger.warning("strategic_insights_no_model", reason="no insights model configured")
+        optic.warning("strategic_insights_no_model", reason="no insights model configured")
         return {}
 
     data_block = _build_data_block(metrics_data)
@@ -113,18 +110,18 @@ async def generate_strategic_insights(metrics_data: dict) -> dict:
     try:
         result = await call_model(prompt, model_override=model, max_tokens=4096)
         if result and isinstance(result, dict):
-            logger.info("strategic_insights_generated", keys=list(result.keys()))
+            optic.info("strategic_insights_generated", keys=list(result.keys()))
             return result
-        logger.warning("strategic_insights_empty_response")
+        optic.warning("strategic_insights_empty_response")
         return {}
     except Exception as e:
-        logger.error("strategic_insights_failed", error=str(e))
+        optic.error("strategic_insights_failed", error=str(e))
         return {}
 
 
 def _build_data_block(metrics: dict) -> str:
     """Build the data block string from collected metrics."""
-    optic.debug("_build_data_block: metrics={}", metrics)
+    optic.trace("computing strategic insights from metrics")
     sections = []
 
     if metrics.get("adoption"):

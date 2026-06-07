@@ -55,13 +55,12 @@ _PASSWORD_REQUIREMENTS = [
 
 def _validate_password(password: str) -> list[str]:
     """Return list of unmet requirement descriptions, empty if valid."""
-    optic.debug("_validate_password called")
     return [label for label, check in _PASSWORD_REQUIREMENTS if not check(password)]
 
 
 def _prompt_password(prompt_text: str = "New password") -> str:
     """Prompt for a password, show requirements, retry until valid."""
-    optic.debug("_prompt_password: prompt_text={}", prompt_text)
+    optic.trace("prompt_text={}", prompt_text)
     rprint("\n[dim]Password requirements:[/dim]")
     for label, _ in _PASSWORD_REQUIREMENTS:
         rprint(f"  [dim]· {label}[/dim]")
@@ -99,7 +98,6 @@ def login(
         observal auth login -e admin@example.com -p 'MyP@ss1234!'
         observal auth login --sso
     """
-    optic.debug("cli: auth login")
     welcome_banner()
 
     server_url = server or text_input("Server URL", default="") or "http://localhost:80"
@@ -212,26 +210,6 @@ def login(
 
 
 @auth_app.command()
-def init():
-    """[Removed] Use 'observal auth login' + 'observal agent pull' instead.
-
-    This command has been removed. The login command now handles server
-    initialization automatically, and agent pull fetches configs.
-
-    Examples:
-        observal auth login
-        observal agent pull my-agent
-    """
-    optic.debug("init called")
-    rprint("[yellow]'observal auth init' has been removed.[/yellow]")
-    rprint()
-    rprint("Use these commands instead:")
-    rprint("  [bold]observal auth login[/bold]   - connect to your server")
-    rprint("  [bold]observal agent pull[/bold]   - pull agent config to your IDE")
-    raise typer.Exit(1)
-
-
-@auth_app.command()
 def logout():
     """Clear saved credentials.
 
@@ -244,7 +222,6 @@ def logout():
         observal auth logout
     """
     # Best-effort: revoke tokens on the server before clearing locally
-    optic.debug("cli: auth logout")
     if config.CONFIG_FILE.exists():
         import json
 
@@ -292,7 +269,6 @@ def whoami(
         observal auth whoami
         observal auth whoami --output json
     """
-    optic.debug("cli: auth whoami")
     with spinner("Checking..."):
         user = client.get("/api/v1/auth/whoami")
     if output == "json":
@@ -324,7 +300,6 @@ def status():
     Examples:
         observal auth status
     """
-    optic.debug("status called")
     cfg = config.load()
     url = cfg.get("server_url", "not set")
     has_token = bool(cfg.get("access_token"))
@@ -367,7 +342,6 @@ def change_password():
     Examples:
         observal auth change-password
     """
-    optic.debug("change_password called")
     cfg = config.load()
     server_url = cfg.get("server_url")
     token = cfg.get("access_token")
@@ -416,7 +390,7 @@ def set_username(
         observal auth set-username alice
         observal auth set-username my-dev-handle
     """
-    optic.debug("set_username: username={}", username)
+    optic.trace("username={}", username)
     from observal_cli import client as _client
 
     try:
@@ -448,7 +422,7 @@ def _fetch_endpoints(server_url: str) -> dict:
     Returns a dict with api, web URLs.
     Falls back to sensible defaults if the endpoint is unavailable.
     """
-    optic.debug("_fetch_endpoints: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         r = httpx.get(f"{server_url.rstrip('/')}/api/v1/config/endpoints", timeout=5)
         if r.status_code == 200:
@@ -464,7 +438,7 @@ def _fetch_server_public_key(server_url: str):
     Best-effort: silently ignored if the server doesn't expose the endpoint
     yet (older server versions) or if connectivity fails.
     """
-    optic.debug("_fetch_server_public_key: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         r = httpx.get(f"{server_url.rstrip('/')}/api/v1/sessions/crypto/public-key", timeout=5)
         if r.status_code == 200:
@@ -480,7 +454,7 @@ def _fetch_server_public_key(server_url: str):
 
 def _do_password_login(server_url: str, email: str, password: str):
     """Authenticate with email/username + password."""
-    optic.debug("_do_password_login: server_url={}, email={}", server_url, email)
+    optic.trace("server_url={}, email={}", server_url, email)
     try:
         with spinner("Authenticating..."):
             r = httpx.post(
@@ -543,9 +517,10 @@ def _do_password_login(server_url: str, email: str, password: str):
 
 def _do_device_flow_login(server_url: str):
     """Authenticate via browser-based SSO using the device authorization flow."""
-    optic.debug("_do_device_flow_login: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     import time
     import webbrowser
+    from urllib.parse import urlparse
 
     # 1. Request device authorization
     try:
@@ -567,6 +542,24 @@ def _do_device_flow_login(server_url: str):
     verification_uri_complete = data["verification_uri_complete"]
     expires_in = data["expires_in"]
     interval = data.get("interval", 5)
+
+    # If the server returned a localhost URL but we connected to a remote server,
+    # rewrite the verification URLs using the server_url we already know.
+    parsed_verification = urlparse(verification_uri)
+    parsed_server = urlparse(server_url)
+    # None check: urlparse returns hostname=None for malformed URLs (bare paths, etc.)
+    if parsed_verification.hostname in ("localhost", "127.0.0.1", "::1") and parsed_server.hostname not in (
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        None,
+    ):
+        base = f"{parsed_server.scheme}://{parsed_server.netloc}"
+        path = parsed_verification.path or "/device"
+        verification_uri = f"{base}{path}"
+        original_query = urlparse(data.get("verification_uri_complete", "")).query
+        verification_uri_complete = f"{base}{path}?{original_query}" if original_query else f"{base}{path}"
+        optic.debug("rewrote localhost verification_uri to {}", verification_uri)
 
     # 2. Display instructions
     rprint()
@@ -673,7 +666,6 @@ def register_config(app: typer.Typer):
         Examples:
             observal config show
         """
-        optic.debug("config_show called")
         cfg = config.load()
         safe = dict(cfg)
         if safe.get("access_token"):
@@ -702,7 +694,7 @@ def register_config(app: typer.Typer):
             observal config set color false
             observal config set server_url http://observal.internal:80
         """
-        optic.debug("config_set: key={}, value={}", key, value)
+        optic.trace("key={}, value={}", key, value)
         if key == "color":
             config.save({key: value.lower() in ("true", "1", "yes")})
         else:
@@ -720,7 +712,6 @@ def register_config(app: typer.Typer):
             observal config path
             cat $(observal config path)
         """
-        optic.debug("config_path called")
         rprint(str(config.CONFIG_FILE))
 
     @config_app.command(name="alias")
@@ -738,7 +729,7 @@ def register_config(app: typer.Typer):
             observal config alias myagent 550e8400-e29b-41d4-a716-446655440000
             observal config alias myagent
         """
-        optic.debug("config_alias: name={}, target={}", name, target)
+        optic.trace("name={}, target={}", name, target)
         aliases = config.load_aliases()
         if target:
             aliases[name] = target
@@ -762,7 +753,6 @@ def register_config(app: typer.Typer):
         Examples:
             observal config aliases
         """
-        optic.debug("config_aliases called")
         aliases = config.load_aliases()
         if not aliases:
             rprint("[dim]No aliases set. Use: observal config alias <name> <id>[/dim]")
@@ -774,8 +764,9 @@ def register_config(app: typer.Typer):
 
 
 def _post_login_setup():
-    """Post-login setup: run observal doctor which checks and offers to fix."""
-    optic.debug("_post_login_setup called")
+    """Post-login setup: install skills unconditionally, then run doctor."""
+    _install_observal_skill()
+    _generate_initial_layer_snapshot()
     rprint()
     try:
         from unittest.mock import MagicMock
@@ -796,7 +787,6 @@ def _post_login_setup():
 
 def _post_auth_onboarding():
     """Detect local IDE configs and show what was found."""
-    optic.debug("_post_auth_onboarding called")
     try:
         _ide_dirs = {
             "Claude Code": (Path.home() / ".claude", "claude-code"),
@@ -847,6 +837,20 @@ def _post_auth_onboarding():
         pass
 
 
+def _generate_initial_layer_snapshot():
+    """Generate ~/.observal/layer_snapshot.json scanning all detected IDEs.
+
+    Runs once after login to establish the initial baseline of the user's
+    IDE configuration state. Silent on failure.
+    """
+    try:
+        from observal_cli.layer import ensure_local_snapshot
+
+        ensure_local_snapshot()
+    except Exception:
+        pass  # Never block login on snapshot failure
+
+
 def _install_observal_skill():
     """Install the bundled Observal skills to all detected IDE skill directories."""
     from observal_cli.skill_installer import install_observal_skill
@@ -856,7 +860,7 @@ def _install_observal_skill():
 
 def _run_doctor_patch(ide_name: str):
     """Run 'observal doctor patch --all --ide <name>' as a subprocess."""
-    optic.debug("_run_doctor_patch: ide_name={}", ide_name)
+    optic.trace("ide_name={}", ide_name)
     import subprocess
     import sys
 
@@ -882,7 +886,7 @@ def _run_doctor_patch(ide_name: str):
 
 def _configure_cursor(server_url: str):
     """Check for Cursor (IDE or CLI) and offer to configure its telemetry hooks."""
-    optic.debug("_configure_cursor: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     cursor_dir = Path.home() / ".cursor"
 
     try:
@@ -905,7 +909,7 @@ def _configure_cursor(server_url: str):
 
 def _configure_kiro(server_url: str):
     """Check for Kiro CLI and offer to configure its telemetry hooks."""
-    optic.debug("_configure_kiro: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     kiro_dir = Path.home() / ".kiro"
 
     try:
@@ -928,7 +932,7 @@ def _configure_kiro(server_url: str):
 
 def _configure_gemini_cli(server_url: str):
     """Check for Gemini CLI and configure telemetry via doctor patch."""
-    optic.debug("_configure_gemini_cli: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         # The gemini binary is the definitive signal.
         # ~/.gemini/settings.json can be created by a previous observal doctor patch,
@@ -951,7 +955,7 @@ def _configure_gemini_cli(server_url: str):
 
 def _configure_codex(server_url: str):
     """Check for Codex CLI and configure telemetry via doctor patch."""
-    optic.debug("_configure_codex: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     codex_dir = Path.home() / ".codex"
 
     try:
@@ -974,7 +978,7 @@ def _configure_codex(server_url: str):
 
 def _configure_copilot(server_url: str):
     """Check for GitHub Copilot (VS Code) and configure telemetry via doctor patch."""
-    optic.debug("_configure_copilot: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         vscode_dir = Path.home() / ".vscode"
         if not vscode_dir.is_dir():
@@ -1002,7 +1006,7 @@ def _configure_copilot(server_url: str):
 
 def _configure_copilot_cli(server_url: str):
     """Check for Copilot CLI and configure telemetry via doctor patch."""
-    optic.debug("_configure_copilot_cli: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         # The copilot binary is the definitive signal.
         # ~/.copilot/config.json can be created by a previous observal doctor patch,
@@ -1024,7 +1028,7 @@ def _configure_copilot_cli(server_url: str):
 
 def _configure_opencode(server_url: str):
     """Check for OpenCode and configure telemetry via doctor patch."""
-    optic.debug("_configure_opencode: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         # The opencode binary is the strongest signal.
         # ~/.config/opencode/opencode.json can be created by a previous observal
@@ -1050,7 +1054,7 @@ def _configure_claude_code(server_url: str, access_token: str):
     Fetches a long-lived hooks token first (needed by the patch command),
     then delegates to 'observal doctor patch --all --ide claude-code'.
     """
-    optic.debug("_configure_claude_code: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     claude_dir = Path.home() / ".claude"
 
     try:
@@ -1083,7 +1087,7 @@ def _fetch_hooks_token(server_url: str, access_token: str) -> str:
 
     Falls back to the session access_token if the endpoint fails.
     """
-    optic.debug("_fetch_hooks_token: server_url={}", server_url)
+    optic.trace("server_url={}", server_url)
     try:
         r = httpx.post(
             f"{server_url.rstrip('/')}/api/v1/auth/hooks-token",

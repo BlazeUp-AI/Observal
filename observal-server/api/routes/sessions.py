@@ -17,7 +17,6 @@ raw JSONL rows into frontend-friendly event dicts.
 """
 
 import asyncio
-import logging
 import uuid as _uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -31,29 +30,28 @@ from database import async_session
 from models.user import User, UserRole
 from services.clickhouse import _query
 
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 
 async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
-    optic.debug("_ch_json: sql={}, params={}", sql, params)
+    optic.trace("sql={}, params={}", sql, params)
     try:
         r = await _query(f"{sql} FORMAT JSON", params)
         if r.status_code == 200:
             return r.json().get("data", [])
     except Exception as e:
-        logger.warning("clickhouse_query_failed: %s", e)
+        optic.warning("clickhouse_query_failed: {}", e)
     return []
 
 
 def _is_admin_user(user: User) -> bool:
-    optic.debug("_is_admin_user: user_id={}", user.id)
+    optic.trace("user_id={}", user.id)
     return user.role in (UserRole.admin, UserRole.super_admin)
 
 
 def _has_admin_trace_access(user: User) -> bool:
     """Check if user has admin-level trace access."""
-    optic.debug("_has_admin_trace_access: user_id={}", user.id)
+    optic.trace("user_id={}", user.id)
     if not _is_admin_user(user):
         return False
     if user.role == UserRole.super_admin:
@@ -81,7 +79,7 @@ async def list_sessions(
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("list_sessions: status={}, platform={}", status, platform)
+    optic.trace("status={}, platform={}", status, platform)
     is_admin = _has_admin_trace_access(current_user)
     uid_str = str(current_user.id)
     capped_days = min(days, 365) if days is not None and days > 0 else days
@@ -125,7 +123,7 @@ async def list_sessions(
                     for u_id, u_name in result.all():
                         uid_to_name[str(u_id)] = u_name
         except Exception:
-            logger.warning("User name resolution failed", exc_info=True)
+            optic.warning("User name resolution failed", exc_info=True)
 
     _platform_names = {
         "kiro": "Kiro",
@@ -161,7 +159,7 @@ async def list_sessions(
                     for a_id, a_name in result.all():
                         agent_id_to_name[str(a_id)] = a_name
         except Exception:
-            logger.warning("Agent name resolution failed", exc_info=True)
+            optic.warning("Agent name resolution failed", exc_info=True)
 
     for row in rows:
         uid = row.get("user_id", "")
@@ -194,7 +192,7 @@ async def _list_sessions_query(
     FINAL merges parts at read time; at ~1 row per session this is fast and
     avoids illegal nested-aggregation errors with SimpleAggregateFunction columns.
     """
-    optic.debug("_list_sessions_query: platform={}, days={}, is_admin={}", platform, days, is_admin)
+    optic.trace("platform={}, days={}, is_admin={}", platform, days, is_admin)
     where_parts = ["session_id != ''", "parent_session_id = ''", "prompt_count > 0"]
     params: dict[str, str] = {}
 
@@ -238,7 +236,7 @@ async def _list_sessions_query(
 async def sessions_summary(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    optic.debug("sessions_summary: user_id={}", current_user.id)
+    optic.trace("user_id={}", current_user.id)
     is_admin = _has_admin_trace_access(current_user)
     user_filter = ""
     params: dict[str, str] = {}
@@ -272,7 +270,7 @@ async def sessions_stats(current_user: User = Depends(require_role(UserRole.admi
     # Use pre-aggregated session_stats_agg - avoids a full session_events FINAL scan.
     # prompt_count / tool_call_count in the MV correspond to 'user_prompt' / 'tool_call'
     # event types (legacy otel names 'user' / 'tool_use' are not present in V3 events).
-    optic.debug("sessions_stats: user_id={}", current_user.id)
+    optic.trace("user_id={}", current_user.id)
     rows = await _ch_json(
         "SELECT "
         "count() AS total_sessions, "
@@ -301,8 +299,14 @@ async def sessions_stats(current_user: User = Depends(require_role(UserRole.admi
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str, current_user: User = Depends(require_role(UserRole.user))):
-    optic.debug("get_session: session_id={}", session_id)
+async def get_session(
+    session_id: str,
+    after_offset: int | None = Query(
+        None, ge=0, description="Return only events after this line_offset (incremental fetch)"
+    ),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    optic.trace("session_id={}, after_offset={}", session_id, after_offset)
     is_admin = _has_admin_trace_access(current_user)
     params: dict[str, str] = {"param_sid": session_id}
 
@@ -316,38 +320,52 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         if not ownership:
             return {"session_id": session_id, "ide": "", "events": []}
 
+    # Build offset filter for incremental fetches
+    _offset_filter = ""
+    if after_offset is not None:
+        _offset_filter = "AND line_offset > {offset:UInt32} "
+        params["param_offset"] = str(after_offset)
+
     # Fan out both FINAL scans in parallel - wall time ≈ max(t1, t2) not t1+t2.
     # do_not_merge_across_partitions_select_final=1 lets CH process each monthly
     # partition independently instead of a single cross-partition merge pass.
-    # (ClickHouse docs benchmark: 2.3s → 0.99s on 59M rows with yearly partitioning)
     _main_sql = (
         "SELECT "
-        "timestamp, event_type, content_preview, tool_name, tool_id, "
+        "line_offset, timestamp, event_type, content_preview, tool_name, tool_id, "
         "uuid, parent_uuid, content_length, ide, raw_line, raw_line_truncated, "
         "credits, ingested_at "
         "FROM session_events FINAL "
-        "WHERE session_id = {sid:String} "
-        "ORDER BY line_offset ASC "
+        "WHERE session_id = {sid:String} " + _offset_filter + "ORDER BY line_offset ASC "
         "SETTINGS max_final_threads = 4, do_not_merge_across_partitions_select_final = 1"
     )
+    _sub_params = {"param_sid": session_id}
+    _sub_offset_filter = ""
+    if after_offset is not None:
+        _sub_offset_filter = "AND line_offset > {offset:UInt32} "
+        _sub_params["param_offset"] = str(after_offset)
     _sub_sql = (
         "SELECT session_id, timestamp, event_type, content_preview, "
         "tool_name, tool_id, uuid, parent_uuid, content_length, ide, "
         "raw_line, raw_line_truncated, credits, ingested_at, line_offset "
         "FROM session_events FINAL "
-        "WHERE parent_session_id = {sid:String} "
-        "ORDER BY session_id, line_offset ASC "
+        "WHERE parent_session_id = {sid:String} " + _sub_offset_filter + "ORDER BY session_id, line_offset ASC "
         "SETTINGS max_final_threads = 4, do_not_merge_across_partitions_select_final = 1"
     )
     rows, sub_rows_all = await asyncio.gather(
         _ch_json(_main_sql, params),
-        _ch_json(_sub_sql, {"param_sid": session_id}),
+        _ch_json(_sub_sql, _sub_params),
     )
 
     if not rows:
+        if after_offset is not None:
+            # Incremental fetch with no new data
+            return {"session_id": session_id, "events": [], "max_offset": after_offset}
         return {"session_id": session_id, "service_name": "", "events": [], "traces": []}
 
     ide = rows[0].get("ide", "claude-code")
+
+    # Track max line_offset for incremental fetch cursor
+    max_offset = max(int(r.get("line_offset", 0)) for r in rows) if rows else (after_offset or 0)
 
     # Parse raw events through the session parser for rich rendering
     from services.session_parsers import parse_raw_events
@@ -382,6 +400,7 @@ async def get_session(session_id: str, current_user: User = Depends(require_role
         "events": events,
         "traces": [],
         "subagent_sessions": subagent_sessions,
+        "max_offset": max_offset,
     }
 
 
@@ -392,7 +411,7 @@ async def bind_session_agent(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Explicitly bind a session to an agent name."""
-    optic.debug("bind_session_agent: session_id={}, agent_name={}", session_id, agent_name)
+    optic.trace("session_id={}, agent_name={}", session_id, agent_name)
     is_admin = _is_admin_user(current_user)
     if not is_admin:
         params = {"param_sid": session_id, "param_uid": str(current_user.id)}

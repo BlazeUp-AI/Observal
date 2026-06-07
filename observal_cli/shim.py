@@ -467,7 +467,7 @@ async def run_shim(mcp_id: str, command: list[str]):
     if sys.platform == "win32":
         # On Windows, write directly to stdout buffer instead of using
         # connect_write_pipe which fails on the Proactor event loop.
-        ide_stdout = None  # sentinel — _relay_mcp_to_ide will write to sys.stdout
+        ide_stdout = None  # sentinel - _relay_mcp_to_ide will write to sys.stdout
     else:
         ide_writer_transport, ide_writer_protocol = await asyncio.get_event_loop().connect_write_pipe(
             asyncio.streams.FlowControlMixin, sys.stdout

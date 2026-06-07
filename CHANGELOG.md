@@ -4,12 +4,205 @@
 <!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 SrihariLegend <sriharilegend23@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 DoomsCoder <vedantkakade05@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.4] - 2026-06-01
+
+### Added
+
+- allow agent owners and co-authors to generate insights (**insights**) ([d285cd7](https://github.com/BlazeUp-AI/Observal/commit/d285cd7c3ba68cc42fb799461b0d0b4db9f8fede))
+- replace custom LLM calls with LiteLLM (**insights**) ([0b59845](https://github.com/BlazeUp-AI/Observal/commit/0b59845a45cf3ddfaf4aae86a6e803079e876791))
+
+### Changed
+
+- remove global admin Insights page from sidebar (**web**) ([68ef1e2](https://github.com/BlazeUp-AI/Observal/commit/68ef1e2677441dd4f843155400bc8e8f6e73e4d6))
+- consolidate command structure, remove duplicates (**cli**) ([a222745](https://github.com/BlazeUp-AI/Observal/commit/a22274599bc6d55b349eb200add889dbba1a0655))
+
+### Fixed
+
+- remove dots from approved/pending badges, remove placeholder Analytics tab (**web**) ([4851822](https://github.com/BlazeUp-AI/Observal/commit/485182235f3a7fa0a92029aedd224e22dc21bce0))
+- skip AWS credential check when direct API key is configured (**insights**) ([4b72c76](https://github.com/BlazeUp-AI/Observal/commit/4b72c76c1513ed04cea182e834af01a4d7beb3be))
+- increase API health check start_period to 60s (**docker**) ([de74ff4](https://github.com/BlazeUp-AI/Observal/commit/de74ff4ba56647fd59843eff9d895b7878eb9653))
+- chunk all session push paths to respect MAX_SESSION_LINES (**ingest**) ([1478885](https://github.com/BlazeUp-AI/Observal/commit/1478885b1657949486e39df448e877c2a3d25791))
+## [1.4.3] - 2026-05-31
+
+### Added
+
+- persist audit log search filters in URL params (**web**) ([bbf7e47](https://github.com/BlazeUp-AI/Observal/commit/bbf7e473a6a0f4352778fa5ce4d34c922fa9bdbc))
+- persist trace filters in URL search params ([324d47f](https://github.com/BlazeUp-AI/Observal/commit/324d47fcd68bffabcea433b5f3d2c7bc0f502077))
+
+### Documentation
+
+- add cli/skill.md reference (#1207) ([3e8d0bf](https://github.com/BlazeUp-AI/Observal/commit/3e8d0bf01f03e22147818e213e092adcafa1151c))
+
+### Fixed
+
+- support BYO-VPC Fargate deployment with private zones (**infra**) ([5dabfc0](https://github.com/BlazeUp-AI/Observal/commit/5dabfc01027ca9362d92161e65af39047095f7bf))
+- use dynamic agent-specific rules file paths (**opencode**) ([c1097b7](https://github.com/BlazeUp-AI/Observal/commit/c1097b7cbfe717a23d033eed15ebcfea051ee7e1))
+- unify loading skeletons via shared canonical layouts (**web**) ([5b56253](https://github.com/BlazeUp-AI/Observal/commit/5b56253199ea27e7516dff99d2ad0453b48f628c))
+- replace magic status codes with constants in test_payload_protection.py (**lint**) ([0ee8bd1](https://github.com/BlazeUp-AI/Observal/commit/0ee8bd1f56daab81efb233795d7c1e8299cf83b2))
+
+### Testing
+
+- add E2E tests for auth and scan commands (**cli**) ([feb6f29](https://github.com/BlazeUp-AI/Observal/commit/feb6f29e12e86480ffb699486f385a94fea5e684))
+## [1.4.2] - 2026-05-31
+
+### Added
+
+- add dependency review action for PR license gate (**ci**) ([b6327d9](https://github.com/BlazeUp-AI/Observal/commit/b6327d951fc6a8f9ce37d311bde8c2e74c8c19a1))
+- add OpenVEX and THIRD_PARTY_NOTICES generation (**ci**) ([6687430](https://github.com/BlazeUp-AI/Observal/commit/6687430908ea2105e8a24ee9eb725d1d6000e90e))
+- move insights out of ee/ and remove license gate ([4330b37](https://github.com/BlazeUp-AI/Observal/commit/4330b373a0b0063c2348959999a69ba37b11cc19))
+
+### Documentation
+
+- add commercial licensing whitepaper for enterprise buyers ([55f4535](https://github.com/BlazeUp-AI/Observal/commit/55f45356b85214166265c0de512ec5c998b4ae29))
+
+### Fixed
+
+- resolve all prod deployment failures in Terraform module (**infra**) ([3579aa0](https://github.com/BlazeUp-AI/Observal/commit/3579aa02bdf5b82b9d4a5cf51cf59bb501157a04))
+## [1.4.1] - 2026-05-31
+
+### Added
+
+- add GCP Terraform module for self-hosting (**infra**) ([3f4312b](https://github.com/BlazeUp-AI/Observal/commit/3f4312b1c9456d0074a3f5819fe673fb44cc62ea))
+
+### Fixed
+
+- close API key redaction gaps across ingest, GraphQL, and settings (**security**) ([100c272](https://github.com/BlazeUp-AI/Observal/commit/100c27281bd7aa83d7e0418c1d51dd3148a2db9d))
+- auto-enable APIs, fix Cloud SQL edition, AR proxy for ghcr.io (**infra/gcp**) ([31652c0](https://github.com/BlazeUp-AI/Observal/commit/31652c0a9fb2520f8b0a1257b4f2b938aa773388))
+- align Terraform env vars with v1.0 and fix template bugs (**infra**) ([685cca3](https://github.com/BlazeUp-AI/Observal/commit/685cca3e4cd294c7b25178283620af00de44c4bb))
+## [1.4.0] - 2026-05-31
+
+### Added
+
+- make sensitive settings write-once and retractable (**security**) ([b6b4fc1](https://github.com/BlazeUp-AI/Observal/commit/b6b4fc1f4f90d30c3c6bceef9d62d6faa5d214c7))
+
+### Fixed
+
+- correct tool count and strip ANSI from thinking blocks (**ui+parser**) ([cb97420](https://github.com/BlazeUp-AI/Observal/commit/cb974206eb1aead4429f2345b59a80296bcd9e3b))
+- fix off-by-one in byte offset tracking (**pi-extension**) ([39e2135](https://github.com/BlazeUp-AI/Observal/commit/39e2135ea59eeb4c43a87fdb66fac2d5f3ef1f22))
+- prevent partial line reads during concurrent agent writes (**cli**) ([c9f9b32](https://github.com/BlazeUp-AI/Observal/commit/c9f9b32cfc9c5f94ebbbf4f851f23ad868c84e86))
+- fix TS type errors in incremental session fetch (**frontend**) ([794f98b](https://github.com/BlazeUp-AI/Observal/commit/794f98b1eb55bbdaaaa0c0935b11a550b2b53ec6))
+- add tmpfs mounts and remove enterprise image logic (**infra**) ([02886aa](https://github.com/BlazeUp-AI/Observal/commit/02886aa8312169683a45e5306e4443c3dbc592e1))
+
+### Other
+
+- remove obsolete release-enterprise workflow ([cdf0078](https://github.com/BlazeUp-AI/Observal/commit/cdf007890efe0c23dd0d83ff8aaf563770cb8ef7))
+
+### Performance
+
+- add partition key to session_stats_agg (**clickhouse**) ([013aae1](https://github.com/BlazeUp-AI/Observal/commit/013aae196ec58bc5e6c3394572c7650bf973e72a))
+- tune for 512M container with 500+ concurrent users (**postgres**) ([bc161e0](https://github.com/BlazeUp-AI/Observal/commit/bc161e03a8a2667f40a223bd38e363dd58aac09c))
+- convert 3 BaseHTTPMiddleware to pure ASGI (**middleware**) ([0b7096a](https://github.com/BlazeUp-AI/Observal/commit/0b7096aa86d303735ef1ba4a925bb1a806f8d29d))
+- add slim query variants without blob columns (**clickhouse**) ([1415fb1](https://github.com/BlazeUp-AI/Observal/commit/1415fb11696456510ed3b290900ec2d9ff5c4443))
+- skip dedup query on first push with Redis flag guard (**ingest**) ([575842d](https://github.com/BlazeUp-AI/Observal/commit/575842dd3facf0aa5f186543ee4b16604655cdd0))
+- incremental session detail fetch with after_offset (**frontend**) ([b64a8a2](https://github.com/BlazeUp-AI/Observal/commit/b64a8a2f2e2c96110d9c3b2159334546309d3342))
+- add after_offset param for incremental detail fetch (**sessions**) ([6e2676b](https://github.com/BlazeUp-AI/Observal/commit/6e2676bc6dbba781b1f101d2027eb9f6ff83d885))
+- raise merge tree part thresholds for high ingest (**clickhouse**) ([cce4b91](https://github.com/BlazeUp-AI/Observal/commit/cce4b91f14cee7cdd16bc17c33ecd0eb84f2dffd))
+- cache agent_id name→UUID resolution in Redis (5min TTL) (**ingest**) ([90e19fd](https://github.com/BlazeUp-AI/Observal/commit/90e19fdbfd5063f798d7875d0cca3a57860ee8a4))
+- combine 15 regex patterns into single alternation (**redactor**) ([847ecde](https://github.com/BlazeUp-AI/Observal/commit/847ecde2d807c48e1120039502f179d2960b8882))
+- enable async_insert with sync override for audit (**clickhouse**) ([b890023](https://github.com/BlazeUp-AI/Observal/commit/b89002305ed1e4b55b10b31e2878af7412d6f244))
+- set maxmemory 200mb with volatile-lru eviction (**redis**) ([22a4f2b](https://github.com/BlazeUp-AI/Observal/commit/22a4f2b5994d3ca96a35b212d0d7f8467784425b))
+- add rate limit of 300/minute per client IP (**ingest**) ([cd66b15](https://github.com/BlazeUp-AI/Observal/commit/cd66b152b3f2b7e2ad7e2a3a1cf00981482dc078))
+- skip ContentType depth check on ingest/telemetry (**middleware**) ([22acc2b](https://github.com/BlazeUp-AI/Observal/commit/22acc2bff68c083c6175c8a49ba093109707066a))
+- remove GZipMiddleware, nginx handles compression (**middleware**) ([0d68724](https://github.com/BlazeUp-AI/Observal/commit/0d68724b846781aea78eba30d82a17040f2f94c8))
+- remove _invalidate_cache from hot-path inserts (**cache**) ([8314cca](https://github.com/BlazeUp-AI/Observal/commit/8314cca002410e7a5300f30ff5ef65d2d9ad3c40))
+- reduce session detail polling to 5s fallback (**frontend**) ([cd0a61c](https://github.com/BlazeUp-AI/Observal/commit/cd0a61c64717e37b0cf815898a784988ecab4704))
+- increase max_jobs from 5 to 15 (**worker**) ([9504a75](https://github.com/BlazeUp-AI/Observal/commit/9504a75e05b25a743d77116df87019577bf505a6))
+- add uvicorn workers for multi-core throughput (**docker**) ([8c7181d](https://github.com/BlazeUp-AI/Observal/commit/8c7181dbe1955f4c3dc1c0a3fd1d733435aa8c30))
+- increase connection pool sizes for 500+ concurrent users (**scale**) ([c28d325](https://github.com/BlazeUp-AI/Observal/commit/c28d3255193a1b5f9f5fe566108a33df772cad0a))
+- set keepalive connections equal to max connections (**clickhouse**) ([8ffb7ee](https://github.com/BlazeUp-AI/Observal/commit/8ffb7eee53d75e0246cdfe5b82f123bc571326cf))
+- add upstream keepalive and WebSocket timeout (**nginx**) ([6465c6e](https://github.com/BlazeUp-AI/Observal/commit/6465c6ef88832639bb0b358c9ed6bd4dfe5967ff))
+- fire-and-forget Redis publish on session ingest (**ingest**) ([cf502c4](https://github.com/BlazeUp-AI/Observal/commit/cf502c4e5e984589b1ab33e049a6ab4cdead69fa))
+- use session-specific channels for targeted fan-out (**pubsub**) ([bc615fe](https://github.com/BlazeUp-AI/Observal/commit/bc615fe5ded1eafc111edb8febdffe9b38eb9d54))
+- use OrderedDict for O(1) LRU eviction in registry cache (**cache**) ([c1fa3fd](https://github.com/BlazeUp-AI/Observal/commit/c1fa3fd3d31a737022be50080aaec9a3ca17bbd7))
+- add partition-independent FINAL optimization (**dashboard**) ([c8f09ad](https://github.com/BlazeUp-AI/Observal/commit/c8f09ad6b71ec9c4daee1fc6929a573ce6899412))
+- parallelize ClickHouse queries with asyncio.gather (**dashboard**) ([dcb03fd](https://github.com/BlazeUp-AI/Observal/commit/dcb03fdfa4c42913c921c3ee4b8fe65edde83158))
+- pipeline 3 Redis checks into 1 round-trip (**auth**) ([9a777fd](https://github.com/BlazeUp-AI/Observal/commit/9a777fd6e051f3b8213924208059c7e7e783812d))
+- publish sessions:updated on successful session ingest (**ingest**) ([f6e8450](https://github.com/BlazeUp-AI/Observal/commit/f6e84505138dc382840fd02b4acc5747dc6d0765))
+## [1.3.1] - 2026-05-30
+
+### Added
+
+- migrate from Next.js to Vite + TanStack Router (**web**) ([c4578d7](https://github.com/BlazeUp-AI/Observal/commit/c4578d78ccea5385ed618cbd2cfed55b64cc0e1d))
+- add ring buffer sink, SSE log streaming, CLI --remote (**optic**) ([76979cb](https://github.com/BlazeUp-AI/Observal/commit/76979cb99a1788d085c494434bdadb29829ea506))
+- add Okta OIDC setup documentation (**saml**) ([2657aa3](https://github.com/BlazeUp-AI/Observal/commit/2657aa37a1f8afdf5b298d4934a8b0f006915528))
+- implement SAML SSO login with hash-based token exchange (**saml**) ([02e9742](https://github.com/BlazeUp-AI/Observal/commit/02e97421bee1e75209c03cc9fee726d5ecbb9609))
+- self-learning pipeline, apply suggestions to review queue (**insights**) ([07a6677](https://github.com/BlazeUp-AI/Observal/commit/07a66779202b3ca8ac0a900ecf92f295d7b497b0))
+- add model efficiency analysis with tier classification (**insights**) ([01e45dd](https://github.com/BlazeUp-AI/Observal/commit/01e45dd4470e6ddd050b0ae1840c128d782ae0d5))
+- add live review updates via GraphQL subscription (**web,server**) ([2076114](https://github.com/BlazeUp-AI/Observal/commit/2076114645973de2c0526ebecb42764656084bd1))
+
+### Changed
+
+- unify CLI to optic alias, instrument data pipeline (**optic**) ([937807d](https://github.com/BlazeUp-AI/Observal/commit/937807dc159af9254ce00ef0b009a0de510986f8))
+- unify routes, middleware, jobs to optic alias (**optic**) ([bf9ad39](https://github.com/BlazeUp-AI/Observal/commit/bf9ad39708fa32eb1c3a77b7433bde8dc560070f))
+- unify all services to optic alias with descriptive logs (**optic**) ([9c554df](https://github.com/BlazeUp-AI/Observal/commit/9c554df0832df140d96d726f65ae659108d2b58c))
+- split types.ts into domain-scoped type files (**web**) ([d4c5b31](https://github.com/BlazeUp-AI/Observal/commit/d4c5b316df299afc8c1d9ba63afc0732e10dcf52))
+- split use-api.ts into domain-scoped hook files (**web**) ([467682a](https://github.com/BlazeUp-AI/Observal/commit/467682a87cbbb166cd5d2f3cf2c17312a50c71a0))
+- break cmd_support/collectors cycle via support package (**cli**) ([b0f7222](https://github.com/BlazeUp-AI/Observal/commit/b0f7222767a5d134283e477e5ab5461b39794777))
+- break sessions/base <-> claude_code cycle via agent_marker (**cli**) ([94c4ea5](https://github.com/BlazeUp-AI/Observal/commit/94c4ea587cb0204a4d6eaea2d912b2eb849d8f48))
+- break cmd_auth/cmd_doctor cycle via skill_installer module (**cli**) ([7183ec3](https://github.com/BlazeUp-AI/Observal/commit/7183ec3109e3c1c24e6ec81cc05bfec48dff4bde))
+- break version_check/upgrade_executor cycle (**cli**) ([50fd893](https://github.com/BlazeUp-AI/Observal/commit/50fd893fa2486073f8090a65370a313baecd0654))
+- break webhook/alert cycle by importing from ssrf_guard directly (**server**) ([d9a5299](https://github.com/BlazeUp-AI/Observal/commit/d9a52998be6b038cb6b2bf17e80f303e37617a53))
+- extract agent_builder_types to break builder cycle (**server**) ([abb0018](https://github.com/BlazeUp-AI/Observal/commit/abb0018559ddb202ceb3f90fb030b62ef9e5976c))
+- break clickhouse client/schema cycle via _settings module (**server**) ([e65b884](https://github.com/BlazeUp-AI/Observal/commit/e65b884b5cacc574a4df9f20611bcb10817649a6))
+- extract DashboardRangeContext to break 3 import cycles (**web**) ([bbc105e](https://github.com/BlazeUp-AI/Observal/commit/bbc105e912bb8fc8af5ab390a6be3dc2c3c8de2c))
+
+### Fixed
+
+- escape shell variable in user-data.sh.tftpl (**infra**) ([b60cd16](https://github.com/BlazeUp-AI/Observal/commit/b60cd161c6fbda5ba2cd2d6af77714ae6d9ae36a))
+- remove references to nonexistent enterprise artifacts (**infra**) ([9292cf9](https://github.com/BlazeUp-AI/Observal/commit/9292cf90b8d73f4d30be84bc1ca1c09f9297b50e))
+- update scancode license-policy path after move to .reuse/ (**ci**) ([d081dfa](https://github.com/BlazeUp-AI/Observal/commit/d081dfaacde4f3ea9623db0440d0407c8bf49d85))
+- restructure LICENSE for GitHub detection and move license-policy ([47d6ed4](https://github.com/BlazeUp-AI/Observal/commit/47d6ed4fe3902d3eac6c9f40eb5349bcbf037e7e))
+- update tests and remove stray %d from model/schema docstrings ([8775295](https://github.com/BlazeUp-AI/Observal/commit/8775295cca06933d69d10161e7ed62e11e6c78fc))
+- harden token exchange and restore security defaults (**saml**) ([f55f555](https://github.com/BlazeUp-AI/Observal/commit/f55f555e9ec177a3ae71bd7257ae6c581d6aa066))
+- respect ?next= param after SAML login for device flow (**saml**) ([1abc169](https://github.com/BlazeUp-AI/Observal/commit/1abc16928bfad6d15e08ade3119a47eddc74033b))
+- show full sidebar in new tabs opened via middle-click (**nav**) ([43a1a35](https://github.com/BlazeUp-AI/Observal/commit/43a1a359c3c61429aa7e2dd89cd15c2c7ee0c82c))
+- cache AI insights and fix tab freeze on reload (**dashboard**) ([038b775](https://github.com/BlazeUp-AI/Observal/commit/038b775d7404474ae6f9749298c339c1cfbc9466))
+- increase Bedrock read timeout to 300s for large prompts (**insights**) ([d3c5de4](https://github.com/BlazeUp-AI/Observal/commit/d3c5de40aafb9861a4f4c6a9838cab8f25a4e5f7))
+- enforce strict SAML signature validation (#1266) (**saml**) ([7fed485](https://github.com/BlazeUp-AI/Observal/commit/7fed485035d2c767a6c260ccddac41d2f03dd1e0))
+- resolve CI lint and test failures ([6e0d859](https://github.com/BlazeUp-AI/Observal/commit/6e0d859118c68257b842c759512917efd29f8062))
+- clear user revocation flag on SAML login (**saml**) ([cad8ac6](https://github.com/BlazeUp-AI/Observal/commit/cad8ac6e0a431d7b4107722feaa34214126f0e51))
+- resolve session expired error after SAML SSO login (**saml**) ([d06253a](https://github.com/BlazeUp-AI/Observal/commit/d06253ad44bfc3ed3144e0853624b1657c992889))
+- handle truncated LLM responses gracefully (**insights**) ([0e73df8](https://github.com/BlazeUp-AI/Observal/commit/0e73df84d0c2a2a8961ce6a140db3752fa2a4193))
+- distinguish null vs zero metrics, add credits support (**insights**) ([703177a](https://github.com/BlazeUp-AI/Observal/commit/703177ac4b9318e48e07ade82e0e6de7d44c14ee))
+- remove error string exposure in insights status endpoint ([aafb6df](https://github.com/BlazeUp-AI/Observal/commit/aafb6df5a01320ae3fec66646b213a857a6455ca))
+- insights session count and descriptive error reporting ([cfcf033](https://github.com/BlazeUp-AI/Observal/commit/cfcf0330a363cf88a4cd8a9b742172ffeb8265bd))
+- patch SBOM vulnerabilities #1243 (**security**) ([39d054e](https://github.com/BlazeUp-AI/Observal/commit/39d054ec4ae0810539caa6b7c61b4139dcfd966c))
+- use session_stats_agg for adoption and fix AI insights config (**dashboard**) ([f143ada](https://github.com/BlazeUp-AI/Observal/commit/f143adaf28cec93a004c5e22397f13eb73424fc8))
+- block generation when not configured or 0 sessions (**insights**) ([3b175b2](https://github.com/BlazeUp-AI/Observal/commit/3b175b2a98f50f1948efa503d36ec3702c83ed28))
+- increase credits retry to 5 attempts with exponential backoff (**kiro**) ([11be678](https://github.com/BlazeUp-AI/Observal/commit/11be67898bfbe6998f59512fe22f51fcb7336c04))
+- unified agent attribution without marker file (**kiro,claude-code**) ([eb6ab0a](https://github.com/BlazeUp-AI/Observal/commit/eb6ab0aeb646f3334dbfa5410f9ab75c98b919e5))
+- add Kiro JSONL format support to session meta extractor (**insights**) ([1d727b4](https://github.com/BlazeUp-AI/Observal/commit/1d727b4943b65e664dceedea5877661be8d265fe))
+- lower substantive session threshold from 60s to 10s (**insights**) ([a2e8145](https://github.com/BlazeUp-AI/Observal/commit/a2e814508cb4bac0ed8f9d9d687a7c4ce8fee3f6))
+- remove misleading 0-sessions warning from insights card (**web**) ([edbac73](https://github.com/BlazeUp-AI/Observal/commit/edbac7335162bfff3e2b0078838b844b0f19db01))
+- require auth on agent list/get/version-suggestions endpoints (**server**) ([387506d](https://github.com/BlazeUp-AI/Observal/commit/387506d69c182f31e01cb70fe6ad1a24ed393a9f))
+- replace hardcoded platform filter with parameterized search (**web**) ([4dcc4d8](https://github.com/BlazeUp-AI/Observal/commit/4dcc4d8576503fdc0ac6dc264cb511899dcb3b9c))
+- remove approved badge animation and fix stale status (**web**) ([85cdca5](https://github.com/BlazeUp-AI/Observal/commit/85cdca5a5346ea0baa73e5e0c718387c56a1686c))
+- eliminate review diff dialog animation jank (**web**) ([270de2e](https://github.com/BlazeUp-AI/Observal/commit/270de2e4104402ec7f15be3a3f34560bf67355ff))
+- raise device token poll rate limit from 10 to 30/min (**server**) ([a11c695](https://github.com/BlazeUp-AI/Observal/commit/a11c6956a2a50634fdeebdc3546bf5bbb453adf3))
+- replace slide-in dialog animation with center zoom (**web**) ([c808704](https://github.com/BlazeUp-AI/Observal/commit/c808704b5bc5b669bf888a8fd92d12bf3a249951))
+- support new-tab navigation and unify CLI login options (**auth**) ([f8d0a8b](https://github.com/BlazeUp-AI/Observal/commit/f8d0a8be7cbe609a2763b37ae2ecf4c8be1adea3))
+- resolve credits, duration, active status, and traces sorting (**kiro**) ([947b26a](https://github.com/BlazeUp-AI/Observal/commit/947b26a600aeee8074de95212acef26330bb42e2))
+- remove score column and fix Kiro credits double-counting (**web,server**) ([990d7f1](https://github.com/BlazeUp-AI/Observal/commit/990d7f1561d332e90819a3586e1d0ccdf466fd19))
+
+### Other
+
+- set version to 1.3.0 (skip burned release) ([9318611](https://github.com/BlazeUp-AI/Observal/commit/93186116796e13089ec73a856365d96f00585eed))
+- update actions/setup-node action to v6 (#1278) (**deps**) ([1a015f4](https://github.com/BlazeUp-AI/Observal/commit/1a015f4f569b0177801afc40e1f698f2788b02c1))
+- remove outdated docs, images, and stale references ([b831dd5](https://github.com/BlazeUp-AI/Observal/commit/b831dd555d5f5efcb5902aef9710dc82da0df774))
+- update pnpm to v10.34.1 (#1277) (**deps**) ([192e1e0](https://github.com/BlazeUp-AI/Observal/commit/192e1e05ba65df197083400d0045ca7157d45686))
+- update dependency ruff to v0.15.15 (#1275) (**deps**) ([90b3fb4](https://github.com/BlazeUp-AI/Observal/commit/90b3fb413dd5f62eff9ccd4cc4eaa1e8a54b4d18))
+- update docker images (minor/patch) (#1276) (**deps**) ([e287405](https://github.com/BlazeUp-AI/Observal/commit/e287405c45997b8c02715abaedc3b02fe982753d))
+
+### Testing
+
+- update agent listing tests for auth requirement ([f74a674](https://github.com/BlazeUp-AI/Observal/commit/f74a674337a827c978c9d40e45b78bcf0396b04f))
 ## [1.2.1] - 2026-05-27
 
 ### Changed
@@ -1656,4 +1849,3 @@ All notable changes to this project will be documented in this file.
 ### Ui
 
 - brighter borders, responsive text scaling, observal favicon ([909a9b6](https://github.com/BlazeUp-AI/Observal/commit/909a9b6dd7cedc9ddaff31b208f09ace9d35be7e))
-

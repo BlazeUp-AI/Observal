@@ -6,7 +6,7 @@
 
 import re
 
-from loguru import logger
+from loguru import logger as optic
 
 from models.mcp import McpListing
 from services.shared.utils import sanitize_name as _sanitize_name
@@ -20,7 +20,7 @@ _DANGEROUS_CMD_RE = re.compile(
 
 def validate_mcp_command(command: str, args: list[str] | None = None) -> None:
     """Raise ValueError if command contains shell metacharacters or uses a dangerous program."""
-    logger.debug("validate_mcp_command: command={}, args={}", command, args)
+    optic.trace("validating MCP command: {} {}", command, args)
     if not command:
         return
     full = " ".join([command, *list(args or [])])
@@ -40,7 +40,6 @@ def _gemini_settings() -> dict:
     Native telemetry is disabled.
     Telemetry is captured via the hook bridge instead.
     """
-    logger.debug("_gemini_settings called")
     return {
         "telemetry": {
             "enabled": False,
@@ -51,12 +50,12 @@ def _gemini_settings() -> dict:
 
 def _substitute_dollar_vars(args: list[str], env: dict[str, str] | None) -> list[str]:
     """Replace $VAR and ${VAR} patterns in args with values from env dict."""
-    logger.debug("_substitute_dollar_vars: args={}, env={}", args, env)
+    optic.trace("substituting dollar vars in {} args", len(args))
     if not env:
         return list(args)
 
     def _replacer(m: re.Match) -> str:
-        logger.debug("_replacer: m={}", m)
+        optic.trace("replacing variable: {}", m.group(0))
         var_name = m.group(1) or m.group(2)
         return env.get(var_name, m.group(0))  # keep original if no value
 
@@ -79,7 +78,7 @@ def _build_run_command(
     - Go: <name> (assumes binary on PATH)
     - Python / unknown: python -m <name>
     """
-    logger.debug("_build_run_command: name={}, framework={}, docker_image={}", name, framework, docker_image)
+    optic.trace("building run command for {} (framework={}, docker={})", name, framework, docker_image)
     # Use stored command/args if available, substituting $VAR placeholders
     if stored_command is not None:
         cmd = [stored_command]
@@ -104,7 +103,7 @@ def _build_run_command(
 
 def _build_server_env(listing: McpListing, env_values: dict[str, str] | None = None) -> dict[str, str]:
     """Build env dict from the listing's declared environment_variables and user-supplied values."""
-    logger.debug("_build_server_env: listing={}, env_values={}", listing, env_values)
+    optic.trace("building server env for MCP listing")
     env: dict[str, str] = {}
     for var in listing.environment_variables or []:
         name = var["name"] if isinstance(var, dict) else var.name
@@ -120,7 +119,7 @@ def generate_config(
     env_values: dict[str, str] | None = None,
     header_values: dict[str, str] | None = None,
 ) -> dict:
-    logger.debug("generate_config: listing={}, ide={}, proxy_port={}", listing, ide, proxy_port)
+    optic.debug("generating MCP config for ide={}", ide)
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
     server_env = _build_server_env(listing, env_values)

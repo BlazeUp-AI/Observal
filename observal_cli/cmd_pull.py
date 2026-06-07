@@ -33,6 +33,53 @@ from observal_cli.render import spinner
 _HOOK_SCRIPT_NAMES = ("observal-hook.sh", "observal-stop-hook.sh")
 
 
+def _warn_component_conflicts(ide: str, agent_name: str, components: list[dict]) -> None:
+    """Warn if pulling this agent would overwrite a component pinned by another agent.
+
+    Checks the lockfile for other agents in the same IDE that share a component
+    name but at a different version. Prints a warning but never blocks.
+    """
+    try:
+        from observal_cli.lockfile import read_lockfile
+
+        data = read_lockfile()
+        ide_section = data.get("ides", {}).get(ide, {})
+        other_agents = ide_section.get("agents", [])
+
+        # Build map of component name → (version, owning agent) from other agents
+        existing: dict[str, list[tuple[str, str]]] = {}  # {comp_name: [(version, agent_name)]}
+        for other in other_agents:
+            if other.get("name") == agent_name:
+                continue  # Skip self (re-pull of same agent)
+            for comp in other.get("components", []):
+                comp_name = comp.get("name", "")
+                comp_version = comp.get("version")
+                if comp_name and comp_version:
+                    existing.setdefault(comp_name, []).append((comp_version, other.get("name", "?")))
+
+        # Check incoming components against existing
+        conflicts: list[str] = []
+        for comp in components:
+            comp_name = comp.get("name", "")
+            comp_version = comp.get("version")
+            if not comp_name or not comp_version:
+                continue
+            for ex_version, ex_agent in existing.get(comp_name, []):
+                if ex_version != comp_version:
+                    conflicts.append(
+                        f"  [yellow]⚠[/yellow]  {comp.get('type', 'component')} [bold]{comp_name}[/bold]: "
+                        f"v{comp_version} (this agent) vs v{ex_version} (from {ex_agent})"
+                    )
+
+        if conflicts:
+            rprint("\n[yellow]Version conflict detected:[/yellow]")
+            for c in conflicts:
+                rprint(c)
+            rprint("[dim]The newer version will be written to disk. Both agents will use it.[/dim]\n")
+    except Exception:
+        pass  # Never crash on conflict detection
+
+
 def _resolve_hook_paths(content: str) -> str:
     """Replace hook script names with absolute paths in agent file content.
 
@@ -44,7 +91,7 @@ def _resolve_hook_paths(content: str) -> str:
     ``"observal-hook.sh --agent-name foo"`` are resolved correctly,
     but comments or prose mentioning the script name are not affected.
     """
-    optic.debug("_resolve_hook_paths: content={}", content)
+    optic.trace("content={}", content)
     import shutil
 
     hooks_dir = Path(__file__).parent / "hooks"
@@ -69,7 +116,7 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
 
     Returns {mcp_listing_id: {VAR_NAME: value}} for all MCPs that have env vars.
     """
-    optic.debug("_collect_mcp_env_vars: agent_detail={}", agent_detail)
+    optic.trace("agent_detail={}", agent_detail)
     env_values: dict[str, dict[str, str]] = {}
 
     # Collect MCP component IDs from both mcp_links and component_links
@@ -126,7 +173,7 @@ def _collect_mcp_env_vars(agent_detail: dict) -> dict[str, dict[str, str]]:
 
 def _dict_to_toml(d: dict) -> str:
     """Very basic TOML serializer for MCP configs."""
-    optic.debug("_dict_to_toml: d={}", d)
+    optic.trace("d={}", d)
     lines = []
     for section, servers in d.items():
         for name, srv in servers.items():
@@ -156,7 +203,7 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
 
     Returns a human-readable status string ("created", "updated", "merged").
     """
-    optic.debug("_write_file: path={}, len={}", path, len(str(content)))
+    optic.trace("path={}, len={}", path, len(str(content)))
     path.parent.mkdir(parents=True, exist_ok=True)
     existed = path.exists()
 
@@ -193,7 +240,7 @@ def _rewrite_kiro_hooks(content: dict) -> dict:
     The server generates commands with bare 'python3' which won't find
     observal_cli when installed in a project-local virtual environment.
     """
-    optic.debug("_rewrite_kiro_hooks: content={}", content)
+    optic.trace("content={}", content)
     hooks = content.get("hooks")
     agent_name = content.get("name")
     if not hooks or not agent_name:
@@ -226,7 +273,7 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
     Raises typer.Exit if the resolved path escapes *target_dir* (and home
     expansion is not permitted).
     """
-    optic.debug("_resolve_path: raw_path={}, target_dir={}", raw_path, target_dir)
+    optic.trace("raw_path={}, target_dir={}", raw_path, target_dir)
     if raw_path.startswith("~/") or raw_path.startswith("~\\"):
         if allow_home:
             return Path(raw_path).expanduser().resolve()
@@ -256,7 +303,7 @@ def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str
 
     Returns ``(default_value, per_ide_overrides)``.
     """
-    optic.debug("_parse_model_overrides: values={}", values)
+    optic.trace("values={}", values)
     default: str | None = None
     overrides: dict[str, str] = {}
     for raw in values or []:
@@ -279,7 +326,7 @@ def _agent_saved_model(agent_detail: dict | None, ide: str) -> str | None:
     ``services.model_resolver._candidate_for_ide`` rules so the CLI never
     re-prompts when the author has already chosen a model.
     """
-    optic.debug("_agent_saved_model: agent_detail={}, ide={}", agent_detail, ide)
+    optic.trace("agent_detail={}, ide={}", agent_detail, ide)
     if not agent_detail:
         return None
     raw = agent_detail.get("models_by_ide") if isinstance(agent_detail, dict) else None
@@ -317,7 +364,7 @@ def _collect_install_options(
     silently - the picker is skipped so authoring decisions aren't undone
     by a stray Enter at the prompt.
     """
-    optic.debug("_collect_install_options: ide={}", ide)
+    optic.trace("ide={}", ide)
     import sys
 
     from observal_cli.ide_registry import accepts_model_choice
@@ -406,6 +453,9 @@ def register_pull(app: typer.Typer):
             False, "--refresh-models", help="Bust the local model catalog cache before showing the model picker"
         ),
         no_prompt: bool = typer.Option(False, "--no-prompt", "-y", help="Skip interactive prompts"),
+        version: str | None = typer.Option(
+            None, "--version", "-V", help="Install a specific version (e.g. '1.2.0'). Defaults to latest."
+        ),
     ):
         """Fetch agent config and write IDE files to disk.
 
@@ -415,10 +465,10 @@ def register_pull(app: typer.Typer):
 
         Examples:
           observal agent pull my-agent --ide claude-code --no-prompt
+          observal agent pull my-agent --ide claude-code --version 1.2.0
           observal agent pull my-agent --ide kiro --no-prompt --scope user
           observal agent pull my-agent --ide cursor --no-prompt --dry-run
         """
-        optic.debug("cli: pull started")
         resolved = config.resolve_alias(agent_id)
         target_dir = Path(directory).resolve()
 
@@ -449,9 +499,12 @@ def register_pull(app: typer.Typer):
             rprint("  [dim]Files will be written to your home directory (user scope).[/dim]")
 
         with spinner(f"Pulling {ide} config for agent {resolved[:8]}..."):
+            install_body: dict = {"ide": ide, "env_values": env_values, "options": options, "platform": sys.platform}
+            if version:
+                install_body["version"] = version
             result = client.post(
                 f"/api/v1/agents/{resolved}/install",
-                {"ide": ide, "env_values": env_values, "options": options, "platform": sys.platform},
+                install_body,
             )
 
         snippet = result.get("config_snippet", {})
@@ -612,27 +665,53 @@ def register_pull(app: typer.Typer):
             rprint()
             raise typer.Exit(1)
 
-        # ── Agent marker (all IDEs) ─────────────────────────
-        # Write <target_dir>/.observal/agent so session_push hooks can attribute
-        # telemetry to this agent without needing OBSERVAL_AGENT_ID in the shell.
-        # Both Claude Code and Kiro pass cwd in their hook events, so one marker
-        # file covers all JSONL-based IDEs.
+        # ── Lock file (all IDEs) ────────────────────────────
+        # Write agent + components to ~/.observal/lockfile.json so session_push
+        # can attribute telemetry and compute layer_hash.
         if not dry_run:
             agent_uuid = agent_detail.get("id", resolved)
             agent_version = agent_detail.get("version") or agent_detail.get("latest_version")
-            marker_dir = target_dir / ".observal"
-            marker_dir.mkdir(parents=True, exist_ok=True)
-            import datetime as _dt
 
-            (marker_dir / "agent").write_text(
-                json.dumps(
-                    {
-                        "agent_id": agent_uuid,
-                        "agent_version": agent_version,
-                        "pulled_at": _dt.datetime.now(_dt.UTC).isoformat(),
-                    }
+            # Build component list from agent_detail
+            lock_components = []
+            for link in agent_detail.get("component_links", []):
+                comp_entry = {
+                    "type": link.get("component_type", "unknown"),
+                    "name": link.get("component_name", ""),
+                    "id": str(link.get("component_id", "")),
+                    "version": link.get("version_ref"),
+                }
+                lock_components.append(comp_entry)
+
+            try:
+                from observal_cli.lockfile import upsert_agent
+
+                # Detect version conflicts with already-installed agents
+                _warn_component_conflicts(
+                    ide,
+                    agent_name=agent_detail.get("name", resolved),
+                    components=lock_components,
                 )
-            )
+
+                upsert_agent(
+                    ide,
+                    name=agent_detail.get("name", resolved),
+                    agent_id=str(agent_uuid),
+                    version=agent_version,
+                    scope=options.get("scope", "project"),
+                    directory=str(target_dir),
+                    components=lock_components,
+                )
+            except Exception:
+                pass  # Never block pull on lockfile failure
+
+            # Generate/update local layer snapshot after pull
+            try:
+                from observal_cli.layer import ensure_local_snapshot
+
+                ensure_local_snapshot(project_dir=str(target_dir))
+            except Exception:
+                pass  # Never block pull on snapshot failure
 
             # For IDEs without a project-scoped cwd (e.g. pi), write the binding
             # into the global config so the telemetry extension can attribute sessions.

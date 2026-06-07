@@ -11,7 +11,7 @@ Skills go to .pi/skills/ or ~/.pi/agent/skills/.
 
 from __future__ import annotations
 
-from loguru import logger
+from loguru import logger as optic
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
@@ -22,7 +22,6 @@ class PiAdapter:
 
     @property
     def ide_name(self) -> str:
-        logger.debug("PiAdapter.ide_name called")
         return "pi"
 
     def format_config(self, ctx: ConfigContext) -> dict:
@@ -33,7 +32,7 @@ class PiAdapter:
         - .pi/mcp.json or ~/.pi/agent/mcp.json for MCP servers (pi-mcp-adapter)
         - .pi/skills/{name}/SKILL.md for skills
         """
-        logger.debug("PiAdapter.format_config: agent={}", ctx.safe_name)
+        optic.debug("PiAdapter.format_config: agent={}", ctx.safe_name)
         options = ctx.options
         scope = options.get("scope", IDE_REGISTRY["pi"]["default_scope"])
 

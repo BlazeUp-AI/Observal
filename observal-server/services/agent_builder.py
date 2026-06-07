@@ -6,7 +6,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Agent builder — composes resolved components into portable agent manifests.
+"""Agent builder - composes resolved components into portable agent manifests.
 
 Generates IDE-specific agent files from a ResolvedAgent:
 - Claude Code: .claude/agents/<name>.md (markdown) + MCP JSON config
@@ -15,11 +15,9 @@ Generates IDE-specific agent files from a ResolvedAgent:
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
 - Codex: AGENTS.md (markdown)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)
-- OpenCode: AGENTS.md (markdown) + opencode.json (MCP config)
+- OpenCode: .opencode/agents/<name>.md (markdown) + opencode.json (MCP config)
 
 """
-
-import logging
 
 from loguru import logger as optic
 
@@ -39,8 +37,6 @@ from services.agent_resolver import ResolvedAgent, ResolvedComponent
 from services.ide.helpers import _KIRO_EVENT_MAP, _wrap_kiro_prompt
 from services.model_resolver import resolve_saved_value
 from services.shared.utils import sanitize_name as _sanitize_name
-
-logger = logging.getLogger(__name__)
 
 
 def _saved_model_for(manifest: "AgentManifest", ide: str) -> str | None:
@@ -113,7 +109,7 @@ def build_agent_manifest(resolved: ResolvedAgent) -> dict:
 
     Returns a clean dict with only populated fields.
     """
-    optic.debug("build_agent_manifest: agent={}", resolved.agent_name)
+    optic.trace("building agent config for {}", resolved.agent_name)
     type_map = {
         "mcp": "mcps",
         "skill": "skills",
@@ -150,7 +146,7 @@ def build_agent_manifest(resolved: ResolvedAgent) -> dict:
 
 def build_composition_summary(resolved: ResolvedAgent) -> dict:
     """Build a lightweight summary of the agent's composition for API responses."""
-    optic.debug("build_composition_summary: agent={}", resolved.agent_name)
+    optic.trace("building agent config for {}", resolved.agent_name)
     type_map = {
         "mcp": "mcps",
         "skill": "skills",
@@ -215,7 +211,7 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
     if manifest.components.mcps:
         lines = ["## MCP Servers", ""]
         for mcp in manifest.components.mcps:
-            desc = f" — {mcp.description}" if mcp.description else ""
+            desc = f" - {mcp.description}" if mcp.description else ""
             lines.append(f"- **{mcp.name}** v{mcp.version}{desc}")
         sections.append("\n".join(lines))
 
@@ -223,7 +219,7 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
         lines = ["## Skills", ""]
         for skill in manifest.components.skills:
             cmd = f" (`/{skill.slash_command}`)" if skill.slash_command else ""
-            desc = f" — {skill.description}" if skill.description else ""
+            desc = f" - {skill.description}" if skill.description else ""
             lines.append(f"- **{skill.name}** v{skill.version}{cmd}{desc}")
         sections.append("\n".join(lines))
 
@@ -601,7 +597,8 @@ def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
 
 
 def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate OpenCode agent config (AGENTS.md + opencode.json with flat command arrays)."""
+    """Generate OpenCode agent config (.opencode/agents/<name>.md + opencode.json with flat command arrays)."""
+    safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
     rules_content = _build_rules_markdown(manifest)
 
@@ -615,7 +612,7 @@ def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
 
     files = [
         AgentFile(
-            path="AGENTS.md",
+            path=f".opencode/agents/{safe_name}.md",
             content=rules_content,
             format="markdown",
         ),
@@ -666,10 +663,10 @@ def generate_ide_agent_files(
 ) -> IdeAgentConfig:
     """Generate IDE-specific agent files from a portable agent manifest.
 
-    This is the universal entry point — takes a Pydantic AgentManifest
+    This is the universal entry point - takes a Pydantic AgentManifest
     and produces the correct file layout for any supported IDE.
     """
-    optic.debug("generate_ide_agent_files: agent={}, ide={}", manifest.name, ide)
+    optic.trace("generating {} config for agent {}", ide, manifest.name)
     generator = _IDE_GENERATORS.get(ide)
     if generator is None:
         raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")

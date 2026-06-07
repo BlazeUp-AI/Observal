@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import secrets
+import uuid
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -159,6 +160,7 @@ async def _issue_tokens(user: User) -> tuple[str, str, int]:
     refresh_ttl = ds.get_sync_int("jwt.refresh_token_expire_days", 7) * 86400
     redis = get_redis()
     await redis.setex(f"refresh_jti:{jti}", refresh_ttl, str(user.id))
+    await redis.delete(f"revoked_user:{user.id}")
     return access_token, refresh_token, expires_in
 
 
@@ -195,6 +197,8 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     auth.process_response()
     errors = auth.get_errors()
 
+    logger.debug("SAML ACS: errors=%s, reason=%s", errors, auth.get_last_error_reason())
+
     source_ip = request.client.host if request.client else ""
     user_agent = request.headers.get("user-agent", "")
 
@@ -216,6 +220,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
             detail=f"SAML validation failed: {error_reason}",
         )
 
+    # Reject unauthenticated assertions
     if not auth.is_authenticated():
         await emit_security_event(
             SecurityEvent(
@@ -269,6 +274,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=503, detail="Unable to verify SAML assertion -- try again")
 
     email, attributes = extract_name_id_and_attrs(auth)
+
     if not email:
         raise HTTPException(status_code=400, detail="No email in SAML assertion NameID")
 
@@ -347,7 +353,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     redis = get_redis()
     await redis.setex(
         f"oauth_code:{code}",
-        30,
+        120,
         json.dumps(
             {
                 "access_token": access_token,
@@ -375,8 +381,70 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
 
     relay_state = _safe_redirect_path(request_data["post_data"].get("RelayState"))
 
-    frontend_redirect = f"{_get_frontend_url()}/login?code={code}&next={relay_state}"
-    return RedirectResponse(url=frontend_redirect, status_code=302)
+    token_id = str(uuid.uuid4())
+    redis = get_redis()
+    await redis.setex(
+        f"saml_login:{token_id}",
+        120,
+        json.dumps(
+            {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_in": expires_in,
+                "user_id": str(user.id),
+                "role": user.role.value,
+                "name": user.name,
+                "email": user.email,
+                "username": user.username or "",
+            }
+        ),
+    )
+
+    frontend_url = _get_frontend_url()
+    redirect_url = f"{frontend_url}/login?saml_token={token_id}"
+    if relay_state != "/":
+        redirect_url += f"&next={relay_state}"
+    return RedirectResponse(url=redirect_url, status_code=302)
+
+
+@router.post("/exchange")
+async def saml_exchange(request: Request, token_id: str):
+    """Exchange a one-time SAML login token for credentials.
+
+    Uses POST to keep the token out of server logs and referrer headers.
+    The token is single-use (redis GETDEL) with a 120s TTL.
+    """
+    redis = get_redis()
+
+    # Basic rate-limit: 5 failed attempts per IP per minute
+    source_ip = request.client.host if request.client else "unknown"
+    rate_key = f"saml_exchange_rate:{source_ip}"
+    attempts = await redis.incr(rate_key)
+    if attempts == 1:
+        await redis.expire(rate_key, 60)
+    if attempts > 5:
+        raise HTTPException(status_code=429, detail="Too many attempts")
+
+    data = await redis.getdel(f"saml_login:{token_id}")
+    if not data:
+        raise HTTPException(status_code=400, detail="Invalid or expired SAML token")
+
+    # Reset rate-limit on success
+    await redis.delete(rate_key)
+
+    payload = json.loads(data)
+    return {
+        "access_token": payload["access_token"],
+        "refresh_token": payload["refresh_token"],
+        "expires_in": payload.get("expires_in", 3600),
+        "user": {
+            "id": payload["user_id"],
+            "role": payload["role"],
+            "name": payload["name"],
+            "email": payload["email"],
+            "username": payload.get("username", ""),
+        },
+    }
 
 
 @router.get("/logout")

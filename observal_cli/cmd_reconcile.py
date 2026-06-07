@@ -24,7 +24,7 @@ import json
 import time
 from pathlib import Path
 
-from loguru import logger
+from loguru import logger as optic
 
 from observal_cli.sessions.claude_code import find_sessions_dir as _find_claude_sessions_dir_impl
 from observal_cli.sessions.kiro import find_sessions_dir as _find_kiro_sessions_dir_impl
@@ -215,7 +215,7 @@ def find_stale_sessions(home: Path | None = None) -> list[dict]:
     - The JSONL mtime is between 2 minutes and 7 days old
       (avoids touching an actively-running session)
     """
-    logger.debug("find_stale_sessions: home={}", home)
+    optic.trace("home={}", home)
     if home is None:
         home = Path.home()
 
@@ -281,8 +281,7 @@ def recover_stale_session(
     recovered again.
     """
     from observal_cli.sessions.base import (
-        build_payload,
-        post_to_server,
+        post_lines_chunked,
         read_new_lines,
         write_cursor,
     )
@@ -298,20 +297,17 @@ def recover_stale_session(
         return True
 
     new_offset = cursor_offset + bytes_read
-    payload = build_payload(
+    success = post_lines_chunked(
+        server_url=config["server_url"],
+        access_token=config["access_token"],
         session_id=session_id,
         lines=lines,
         start_offset=cursor_line_count,
         hook_event="Stop",
         line_count_before=cursor_line_count,
         new_offset=new_offset,
-    )
-    payload["crash_recovered"] = True
-
-    success = post_to_server(
-        server_url=config["server_url"],
-        access_token=config["access_token"],
-        payload=payload,
+        config=config,
+        extra_fields={"crash_recovered": True},
     )
 
     if success:

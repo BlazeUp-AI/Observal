@@ -15,14 +15,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from git import Repo
-from loguru import logger
+from loguru import logger as optic
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.mcp import McpListing, McpValidationResult
 from services.ssrf_guard import is_private_url as _ssrf_is_private
 
-ALLOWED_SCHEMES = {"https", "http"}
+ALLOW_HTTP_GIT = os.environ.get("MCP_ALLOW_HTTP_GIT", "").lower() in ("1", "true", "yes")
+ALLOWED_SCHEMES = {"https"} | ({"http"} if ALLOW_HTTP_GIT else set())
 BLOCKED_SCHEMES = {"file", "ftp", "ssh", "git"}
 
 # Self-hosted deployments set ALLOW_INTERNAL_GIT_URLS=true to allow corporate
@@ -61,6 +62,13 @@ def _validate_git_url(url: str) -> str | None:
     if not ALLOW_INTERNAL_URLS and _ssrf_is_private(url):
         return "Internal/private URLs not allowed (set ALLOW_INTERNAL_URLS=true for self-hosted deployments)"
     return None
+
+
+def _git_url_warning(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme == "http" and ALLOW_HTTP_GIT:
+        return "Warning: insecure http:// Git URL accepted because MCP_ALLOW_HTTP_GIT=true."
+    return ""
 
 
 def _build_clone_url(git_url: str) -> str:
@@ -176,7 +184,7 @@ def _is_filtered_env_var(name: str) -> bool:
     return any(name.startswith(prefix) for prefix in _FILTERED_PREFIXES)
 
 
-# Directories that contain test / internal / build code — not user-facing config
+# Directories that contain test / internal / build code - not user-facing config
 _SKIP_DIRS = frozenset(
     {
         "test",
@@ -237,7 +245,7 @@ def _extract_manifest_env_vars(root: Path, found: dict[str, str]) -> bool:
     """Extract env vars from a server.json MCP manifest (authoritative source).
 
     The manifest is the standard MCP server descriptor. Env vars declared here
-    are always included — they bypass the prefix filter since the author
+    are always included - they bypass the prefix filter since the author
     explicitly listed them as required.
 
     Returns True if a valid server.json was found (even if it declares no env vars).
@@ -249,18 +257,18 @@ def _extract_manifest_env_vars(root: Path, found: dict[str, str]) -> bool:
         data = json.loads(manifest.read_text(errors="ignore"))
     except Exception:
         return False
-    # packages[].runtimeArguments — Docker -e flags (e.g. GitHub MCP server)
+    # packages[].runtimeArguments - Docker -e flags (e.g. GitHub MCP server)
     for pkg in data.get("packages", []):
         for arg in pkg.get("runtimeArguments", []):
             value = arg.get("value", "")
-            # Pattern: "ENV_VAR={placeholder}" — extract the var name before '='
+            # Pattern: "ENV_VAR={placeholder}" - extract the var name before '='
             if "=" in value:
                 var_name = value.split("=", 1)[0]
                 if var_name and var_name == var_name.upper():
                     desc = arg.get("description", "")
                     found.setdefault(var_name, desc)
 
-    # remotes[].variables — URL-interpolated secrets (e.g. ?api_key={key})
+    # remotes[].variables - URL-interpolated secrets (e.g. ?api_key={key})
     for remote in data.get("remotes", []):
         for var_key, var_meta in (remote.get("variables") or {}).items():
             desc = var_meta.get("description", "") if isinstance(var_meta, dict) else ""
@@ -289,28 +297,28 @@ def _detect_env_vars(tmp_dir: str) -> list[dict]:
     """Scan repo files for required environment variables.
 
     Tiered detection (stops at first tier that finds results):
-      1. server.json manifest (authoritative — author's explicit declaration)
+      1. server.json manifest (authoritative - author's explicit declaration)
       2. README + .env.example (author's documentation)
-      3. Source code scanning (last resort — catches os.Getenv / process.env / etc.)
+      3. Source code scanning (last resort - catches os.Getenv / process.env / etc.)
     """
     root = Path(tmp_dir)
     found: dict[str, str] = {}
 
-    # Tier 1: MCP server manifest — authoritative, skip everything else
+    # Tier 1: MCP server manifest - authoritative, skip everything else
     if _extract_manifest_env_vars(root, found):
         return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
 
-    # Tier 2: README — author's documented config (export, docker -e, JSON examples)
+    # Tier 2: README - author's documented config (export, docker -e, JSON examples)
     _scan_readme_for_env_vars(root, found)
     if found:
         return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
 
-    # Tier 3: .env.example — explicit config template
+    # Tier 3: .env.example - explicit config template
     _scan_env_example(root, found)
     if found:
         return [{"name": k, "description": v, "required": True} for k, v in sorted(found.items())]
 
-    # Tier 4: Source code scanning — last resort
+    # Tier 4: Source code scanning - last resort
     _scan_files_for_env_vars(root, "*.py", _ENV_VAR_PATTERN_PYTHON, found)
     _scan_files_for_env_vars(root, "*.go", _ENV_VAR_PATTERN_GO, found)
     for ext in ("*.ts", "*.js", "*.mts", "*.mjs"):
@@ -335,7 +343,7 @@ def _detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
     Priority: compose image > README reference > GHCR inference from git URL.
     Dockerfile FROM is not returned (it's the build base, not the published image).
     """
-    # 1. docker-compose / compose files — most authoritative for pre-built images
+    # 1. docker-compose / compose files - most authoritative for pre-built images
     for compose_name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
         compose_file = root / compose_name
         if compose_file.exists():
@@ -350,7 +358,7 @@ def _detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
             except Exception:
                 pass
 
-    # 2. README — look for registry image references
+    # 2. README - look for registry image references
     for readme_name in ("README.md", "README.rst", "README.txt", "README"):
         readme = root / readme_name
         if not readme.exists():
@@ -450,7 +458,7 @@ def _extract_repo_name(git_url: str, tmp_dir: str) -> str:
 
 
 async def run_validation(listing: McpListing, db: AsyncSession):
-    logger.debug("run_validation: listing_id={}, git_url={}", listing.id, listing.git_url)
+    optic.trace("running MCP validation for listing {}", listing.id)
     await db.execute(delete(McpValidationResult).where(McpValidationResult.listing_id == listing.id))
     await db.commit()
 
@@ -473,6 +481,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
         db.add(McpValidationResult(listing_id=listing.id, stage="clone_and_inspect", passed=False, details=url_err))
         await db.commit()
         return None
+    url_warning = _git_url_warning(listing.git_url)
     clone_url = _build_clone_url(listing.git_url)
     try:
         await _async_clone(clone_url, tmp_dir)
@@ -526,7 +535,9 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
                 listing_id=listing.id,
                 stage="clone_and_inspect",
                 passed=True,
-                details=f"Found MCP entry point: {entry_point.relative_to(tmp_dir)}",
+                details="\n".join(
+                    part for part in (f"Found MCP entry point: {entry_point.relative_to(tmp_dir)}", url_warning) if part
+                ),
             )
         )
         await db.commit()
@@ -550,13 +561,15 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
                 listing_id=listing.id,
                 stage="clone_and_inspect",
                 passed=True,
-                details=f"Found non-Python MCP framework: {non_python_framework}",
+                details="\n".join(
+                    part for part in (f"Found non-Python MCP framework: {non_python_framework}", url_warning) if part
+                ),
             )
         )
         await db.commit()
         return None
 
-    # No known framework detected — still mark as validated but note unknown framework
+    # No known framework detected - still mark as validated but note unknown framework
     listing.mcp_validated = True
     docker_image, _ = _detect_docker_image(Path(tmp_dir), listing.git_url or "")
     if docker_image and not listing.docker_image:
@@ -571,11 +584,16 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
             listing_id=listing.id,
             stage="clone_and_inspect",
             passed=True,
-            details=(
-                "No recognized MCP framework detected. "
-                "Marked as validated with framework: unknown. "
-                "Supported detection: FastMCP, MCP SDK (Python/TypeScript/Go), "
-                "and common MCP patterns."
+            details="\n".join(
+                part
+                for part in (
+                    "No recognized MCP framework detected. "
+                    "Marked as validated with framework: unknown. "
+                    "Supported detection: FastMCP, MCP SDK (Python/TypeScript/Go), "
+                    "and common MCP patterns.",
+                    url_warning,
+                )
+                if part
             ),
         )
     )

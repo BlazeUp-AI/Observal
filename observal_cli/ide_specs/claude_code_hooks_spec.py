@@ -64,9 +64,9 @@ def get_desired_hooks() -> dict[str, list[dict]]:
 
 
 def get_desired_env(*_args, **_kwargs) -> dict[str, str]:
-    """Legacy stub — no env vars needed for session JSONL push.
+    """Legacy stub - no env vars needed for session JSONL push.
 
-    Old callers pass (server_url, hooks_token, ...) — ignored.
+    Old callers pass (server_url, hooks_token, ...) - ignored.
     Config now lives in ~/.observal/config.json.
     """
     return {}

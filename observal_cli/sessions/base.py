@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from loguru import logger as optic
+
 # ---------------------------------------------------------------------------
 # Offset / cursor state
 # ---------------------------------------------------------------------------
@@ -76,7 +78,9 @@ def read_new_lines(jsonl_path: Path, offset: int) -> tuple[list[str], int]:
     """Read bytes from *offset* to EOF in *jsonl_path*.
 
     Returns (lines, bytes_read).  Empty lines are filtered.  Lines are raw
-    strings — not parsed.
+    strings - not parsed.  If the file ends without a newline (incomplete
+    write in progress), the partial last line is excluded and bytes_read
+    is adjusted so the next call re-reads it once complete.
     """
     with open(jsonl_path, "rb") as f:
         f.seek(offset)
@@ -84,8 +88,20 @@ def read_new_lines(jsonl_path: Path, offset: int) -> tuple[list[str], int]:
     if not raw:
         return [], 0
     text = raw.decode("utf-8", errors="replace")
+    # If the file doesn't end with newline, the last "line" is likely a
+    # partial write still being flushed by the agent.  Exclude it and
+    # adjust bytes_read so we re-read from that point next time.
+    if not text.endswith("\n"):
+        last_nl = text.rfind("\n")
+        if last_nl == -1:
+            # No complete line at all - wait for more data
+            return [], 0
+        text = text[: last_nl + 1]
+        bytes_read = len(text.encode("utf-8"))
+    else:
+        bytes_read = len(raw)
     lines = [ln for ln in text.split("\n") if ln.strip()]
-    return lines, len(raw)
+    return lines, bytes_read
 
 
 # ---------------------------------------------------------------------------
@@ -159,19 +175,28 @@ def post_to_server(server_url: str, access_token: str, payload: dict, config: di
     On 401, attempts one token refresh then retries.
     Returns True on HTTP 2xx, False on any error.
     """
+    import time
+
     import httpx
 
-    url = f"{server_url.rstrip('/')}/api/v1/ingest/session"
+    _t0 = time.perf_counter()
+    url = "{}/api/v1/ingest/session".format(server_url.rstrip("/"))
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
+    session_id = payload.get("session_id", "?")[:12]
+    line_count = len(payload.get("lines", []))
+
     try:
         with httpx.Client(timeout=10.0) as client:
             response = client.post(url, json=payload, headers=headers)
             if response.status_code < 300:
+                _elapsed = (time.perf_counter() - _t0) * 1000
+                optic.debug("uploaded {} lines for session {} ({:.0f}ms)", line_count, session_id, _elapsed)
                 return True
             if response.status_code == 401 and config:
+                optic.debug("got 401, attempting token refresh")
                 refresh_token = config.get("refresh_token", "")
                 config_path = config.get("_config_path", "")
                 if refresh_token and config_path:
@@ -179,10 +204,106 @@ def post_to_server(server_url: str, access_token: str, payload: dict, config: di
                     if new_token:
                         headers["Authorization"] = f"Bearer {new_token}"
                         retry = client.post(url, json=payload, headers=headers)
-                        return retry.status_code < 300
+                        if retry.status_code < 300:
+                            _elapsed = (time.perf_counter() - _t0) * 1000
+                            optic.debug("uploaded {} lines after token refresh ({:.0f}ms)", line_count, _elapsed)
+                            return True
+            optic.warning(
+                "ingest POST returned {} for session {} - server rejected the payload",
+                response.status_code,
+                session_id,
+            )
             return False
-    except Exception:
+    except Exception as e:
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        optic.error(
+            "ingest POST failed for session {} after {:.0f}ms: {} - lines are buffered locally but not on server",
+            session_id,
+            _elapsed,
+            e,
+        )
         return False
+
+
+# ---------------------------------------------------------------------------
+# Chunked posting
+# ---------------------------------------------------------------------------
+
+MAX_CHUNK_SIZE = 500
+
+
+def post_lines_chunked(
+    server_url: str,
+    access_token: str,
+    session_id: str,
+    lines: list[str],
+    start_offset: int,
+    hook_event: str,
+    line_count_before: int,
+    new_offset: int = 0,
+    cwd: str = "",
+    parent_session_id: str | None = None,
+    session_jsonl: Path | None = None,
+    ide: str = "claude-code",
+    config: dict | None = None,
+    extra_fields: dict | None = None,
+) -> bool:
+    """Post lines to ingest in chunks of MAX_CHUNK_SIZE.
+
+    Returns True if ALL chunks succeed, False on first failure.
+    Callers should only advance the cursor on True.
+    """
+    if not lines:
+        return True
+
+    total_chunks = (len(lines) + MAX_CHUNK_SIZE - 1) // MAX_CHUNK_SIZE
+
+    for i in range(0, len(lines), MAX_CHUNK_SIZE):
+        chunk = lines[i : i + MAX_CHUNK_SIZE]
+        chunk_index = i // MAX_CHUNK_SIZE
+        is_last = chunk_index == total_chunks - 1
+
+        payload = build_payload(
+            session_id=session_id,
+            lines=chunk,
+            start_offset=line_count_before + i,
+            hook_event=hook_event,
+            line_count_before=line_count_before + i,
+            new_offset=new_offset if is_last else 0,
+            cwd=cwd,
+            parent_session_id=parent_session_id,
+            session_jsonl=session_jsonl,
+        )
+        payload["ide"] = ide
+        # Only mark final on the last chunk if the hook_event warrants it
+        if not is_last:
+            payload.pop("final", None)
+            payload.pop("total_line_count", None)
+            payload.pop("total_offset", None)
+        if extra_fields:
+            payload.update(extra_fields)
+
+        success = post_to_server(
+            server_url=server_url,
+            access_token=access_token,
+            payload=payload,
+            config=config,
+        )
+        if not success:
+            return False
+
+        # On first chunk, upload layer snapshot if hash changed
+        if i == 0 and payload.get("layer_hash"):
+            _maybe_upload_layer_snapshot(
+                server_url=server_url,
+                access_token=access_token,
+                layer_hash=payload["layer_hash"],
+                ide=ide,
+                cwd=cwd,
+                config=config,
+            )
+
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -207,11 +328,13 @@ def build_payload(
     for other IDEs.
     """
     agent_id, agent_version = _resolve_agent(cwd, lines, session_jsonl)
+    layer_hash = _get_cached_layer_hash(session_id, cwd)
     payload: dict = {
         "session_id": session_id,
         "ide": "claude-code",
         "agent_id": agent_id,
         "agent_version": agent_version,
+        "layer_hash": layer_hash,
         "lines": lines,
         "start_offset": start_offset,
         "hook_event": hook_event,
@@ -221,7 +344,106 @@ def build_payload(
         payload["final"] = True
         payload["total_line_count"] = line_count_before + len(lines)
         payload["total_offset"] = new_offset
+        _evict_layer_hash_cache(session_id)
     return payload
+
+
+# Per-session layer_hash cache: avoids re-scanning IDE dirs on every chunk
+_layer_hash_cache: dict[str, str | None] = {}
+
+
+def _get_cached_layer_hash(session_id: str, cwd: str) -> str | None:
+    """Return cached layer_hash for this session, computing once on first call."""
+    if session_id not in _layer_hash_cache:
+        _layer_hash_cache[session_id] = _compute_layer_hash_safe(cwd, "claude-code")
+    return _layer_hash_cache[session_id]
+
+
+def _evict_layer_hash_cache(session_id: str) -> None:
+    """Remove cached hash when session ends (Stop event)."""
+    _layer_hash_cache.pop(session_id, None)
+
+
+def _compute_layer_hash_safe(cwd: str, ide: str) -> str | None:
+    """Compute layer_hash without ever blocking the session push.
+
+    Computes across ALL detected IDEs (not just the session's IDE).
+    Returns None on any failure.
+    """
+    try:
+        from observal_cli.layer import compute_layer_hash
+
+        return compute_layer_hash(ide=None, project_dir=cwd or None)
+    except Exception:
+        return None
+
+
+def _is_layer_canonical() -> bool | None:
+    """Check if the current layer state matches lockfile integrity (canonical).
+
+    Returns True if no drift detected, False if files were modified,
+    None if unable to determine.
+    """
+    try:
+        from observal_cli.layer import _compute_drift, _detect_active_ides, build_layer_manifest
+        from observal_cli.lockfile import read_lockfile
+
+        lockfile_data = read_lockfile()
+        ides_section: dict = {}
+        for scan_ide in _detect_active_ides():
+            ides_section[scan_ide] = build_layer_manifest(scan_ide, include_content=False)
+
+        drift = _compute_drift(lockfile_data, ides_section)
+        return drift["is_canonical"]
+    except Exception:
+        return None
+
+
+def _maybe_upload_layer_snapshot(
+    server_url: str,
+    access_token: str,
+    layer_hash: str,
+    ide: str,
+    cwd: str,
+    config: dict | None = None,
+) -> None:
+    """Upload layer snapshot to server if the hash has changed since last upload.
+
+    Fire-and-forget: never blocks session push on failure.
+    Saves the snapshot locally as ~/.observal/layer_snapshot.json (mirror of server).
+    """
+    try:
+        from observal_cli.layer import (
+            build_upload_payload,
+            needs_upload,
+            save_local_snapshot,
+        )
+
+        if not needs_upload(layer_hash):
+            return
+
+        # Build the full manifest with content
+        payload = build_upload_payload(ide, project_dir=cwd or None)
+
+        # POST to server
+        import httpx
+
+        url = f"{server_url.rstrip('/')}/api/v1/layer-snapshots"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(url, json=payload, headers=headers)
+            if resp.status_code < 300:
+                # Save locally: same content as what server now has
+                save_local_snapshot(payload)
+                optic.debug("layer snapshot uploaded and saved locally: hash={}", layer_hash)
+            else:
+                optic.debug("layer snapshot upload failed: status={}", resp.status_code)
+    except Exception as e:
+        optic.debug("layer snapshot upload skipped: {}", e)
 
 
 def _resolve_agent(cwd: str, lines: list[str], session_jsonl: Path | None) -> tuple[str | None, str | None]:
@@ -229,6 +451,7 @@ def _resolve_agent(cwd: str, lines: list[str], session_jsonl: Path | None) -> tu
 
     1. OBSERVAL_AGENT_NAME env var (Kiro per-agent hook commands)
     2. agent-setting line in JSONL (Claude Code embeds active agent)
+    3. Lock file lookup by cwd + IDE
     """
     import os
 
@@ -241,6 +464,19 @@ def _resolve_agent(cwd: str, lines: list[str], session_jsonl: Path | None) -> tu
     agent_from_jsonl = _parse_agent_from_lines(lines)
     if agent_from_jsonl:
         return agent_from_jsonl, None
+
+    # 3. Lock file lookup
+    if cwd:
+        try:
+            from observal_cli.lockfile import get_agent_for_directory
+
+            # Try common IDEs (the caller may override ide later)
+            for ide in ("claude-code", "cursor", "kiro", "pi"):
+                agent = get_agent_for_directory(ide, cwd)
+                if agent:
+                    return agent.get("id") or agent.get("name"), agent.get("version")
+        except Exception:
+            pass
 
     return None, None
 
