@@ -28,6 +28,7 @@ from .codex import parse_rows as _parse_codex
 from .copilot_cli import parse_rows as _parse_copilot_cli
 from .cursor import parse_rows as _parse_cursor
 from .kiro import parse_rows as _parse_kiro
+from .opencode import parse_rows as _parse_opencode
 from .pi import parse_rows as _parse_pi
 
 # Maps session_parser ID -> parse_rows callable.
@@ -39,6 +40,7 @@ _PARSERS: dict[str, _ParseFn] = {
     "copilot-cli": _parse_copilot_cli,
     "cursor": _parse_cursor,
     "kiro": _parse_kiro,
+    "opencode": _parse_opencode,
     "pi": _parse_pi,
 }
 

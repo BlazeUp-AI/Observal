@@ -285,8 +285,8 @@ IDE_REGISTRY: dict[str, dict] = {
     },
     "opencode": {
         "display_name": "OpenCode",
-        "session_parser": "claude-code",
-        "features": {"hooks", "mcp_servers"},
+        "session_parser": "opencode",
+        "features": {"skills", "hooks", "mcp_servers"},
         "scopes": ["project", "user"],
         "default_scope": "user",
         "scope_labels": ("project (.opencode/agents/<name>.md)", "user (~/.config/opencode/agents/<name>.md)"),
@@ -296,6 +296,7 @@ IDE_REGISTRY: dict[str, dict] = {
         },
         "rules_format": "markdown",
         "mcp_config_path": {
+            "project": "opencode.json",
             "user": "~/.config/opencode/opencode.json",
         },
         "mcp_servers_key": "mcp",
@@ -314,8 +315,9 @@ IDE_REGISTRY: dict[str, dict] = {
         "hook_events_map": {
             "PreToolUse": "tool.execute.before",
             "PostToolUse": "tool.execute.after",
-            "Stop": "session.deleted",
+            "Stop": "session.idle",
             "SessionStart": "session.created",
+            "UserPromptSubmit": "message.updated",
         },
         "config_dir": ".config/opencode",
         "accepts_model_choice": True,

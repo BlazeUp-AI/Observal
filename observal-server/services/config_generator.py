@@ -256,7 +256,7 @@ def generate_config(
         flat_cmd = ["observal-shim", *shim_args]
         entry: dict = {"type": "local", "command": flat_cmd}
         if server_env:
-            entry["env"] = server_env
+            entry["environment"] = server_env
         return {"mcp": {name: entry}}
 
     # cursor, kiro: telemetry collected via observal-shim

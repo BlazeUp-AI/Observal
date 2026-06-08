@@ -118,6 +118,7 @@ _USAGE_EXTRACTORS: dict[str, _UsageFn] = {
     "pi": _usage_pi,
     "copilot-cli": _usage_copilot_cli,
     "copilot": _usage_copilot_cli,
+    "opencode": _usage_claude_code,
 }
 
 
@@ -142,6 +143,7 @@ _UUID_EXTRACTORS: dict[str, _UuidFn] = {
     "claude-code": _uuid_default,
     "kiro": _uuid_default,
     "cursor": _uuid_default,
+    "opencode": _uuid_default,
     "pi": _uuid_pi,
 }
 

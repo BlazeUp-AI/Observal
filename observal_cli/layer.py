@@ -495,6 +495,7 @@ def _detect_active_ides() -> list[str]:
         "pi": Path.home() / ".pi" / "agent",
         "codex": Path.home() / ".codex",
         "copilot-cli": Path.home() / ".copilot",
+        "opencode": Path.home() / ".config" / "opencode",
     }
     return [ide for ide, path in ide_dirs.items() if path.is_dir()]
 

@@ -46,7 +46,7 @@ export const IDE_FEATURE_MATRIX: Record<IdeName, ReadonlySet<IdeFeature>> = {
   codex: new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   copilot: new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   "copilot-cli": new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
-  opencode: new Set(["mcp_servers", "rules"]),
+  opencode: new Set(["mcp_servers", "rules", "hook_bridge", "skills"]),
   pi: new Set(["skills", "hook_bridge", "mcp_servers", "rules"]),
 };
 
