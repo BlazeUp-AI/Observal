@@ -1,15 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
+# ruff: noqa: E402, I001
 
 """Unit tests for Cursor-specific doctor helpers.
 
 All tests use tmp_path so they never touch the real ~/.cursor directory.
 
-`typer` and `rich` are not installed in the minimal test environment, so we
-inject lightweight stubs into sys.modules before importing cmd_doctor.  The
-stubs only need to satisfy the module-level code that runs at import time;
-the actual test targets (_check_cursor / _patch_cursor / _cleanup_cursor) use
-nothing from those two packages.
+When ``typer`` or ``rich`` are absent from the test environment (e.g. the
+minimal CI matrix) we inject self-referential stubs into sys.modules *before*
+importing cmd_doctor.  ``setdefault`` is a no-op when the real packages are
+already present, so the stubs never interfere with other test files that
+import typer directly.  The ``_Fake`` sentinel handles every attribute /
+call pattern that typer and rich use at module-import time.
 """
 
 from __future__ import annotations
@@ -21,50 +23,61 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-# ── Minimal stubs for CLI-only deps ──────────────────────────
+# ── Self-referential stub that satisfies any typer/rich usage ─
+
+
+class _Fake:
+    """A callable sentinel that returns itself for any attribute or call.
+
+    Covers:
+    - ``typer.Typer()``              → _Fake instance with .callback / .command
+    - ``@app.callback(...)``         → decorator that returns the wrapped fn
+    - ``@app.command(name=...)``     → decorator that returns the wrapped fn
+    - ``typer.Option(default, ...)`` → returns the default value
+    - ``typer.Argument(default,..)`` → returns the default value
+    - ``typer.Context``              → usable as a type annotation
+    - any other attribute access     → returns a new _Fake
+    """
+
+    def __init__(self, _default=None):
+        self._default = _default
+
+    def __call__(self, *args, **kwargs):
+        # Decorator pattern: single callable arg → return it unchanged.
+        if len(args) == 1 and callable(args[0]) and not isinstance(args[0], type):
+            return args[0]
+        # Option/Argument pattern: first positional arg is the default.
+        if args:
+            return args[0]
+        return _Fake()
+
+    def __getattr__(self, name: str) -> _Fake:
+        return _Fake()
 
 
 def _make_typer_stub() -> types.ModuleType:
     stub = types.ModuleType("typer")
-
-    class _FakeApp:
-        def callback(self, *a, **kw):
-            def deco(f):
-                return f
-
-            return deco
-
-        def command(self, *a, **kw):
-            def deco(f):
-                return f
-
-            return deco
-
-    stub.Typer = lambda **kw: _FakeApp()
-    stub.Option = lambda *a, **kw: a[0] if a else None
-    stub.Context = type("Context", (), {})
-    stub.Exit = type("Exit", (SystemExit,), {})
-    stub.confirm = lambda *a, **kw: False
+    stub.__getattr__ = lambda name: _Fake()  # type: ignore[attr-defined]
+    # Exit must be an exception subclass so `raise typer.Exit(...)` works.
+    stub.Exit = type("Exit", (SystemExit,), {})  # type: ignore[attr-defined]
     return stub
 
 
 def _make_rich_stub() -> types.ModuleType:
     stub = types.ModuleType("rich")
-    stub.print = print  # redirect to stdlib
+    stub.print = print  # type: ignore[attr-defined]
     return stub
 
 
+# Only inject when the real packages are absent — setdefault is a no-op
+# if typer/rich are already installed in the current Python environment.
 sys.modules.setdefault("typer", _make_typer_stub())
 sys.modules.setdefault("rich", _make_rich_stub())
 
-# Ensure `from rich import print as rprint` resolves from our stub
-if hasattr(sys.modules["rich"], "print"):
-    pass  # already set above
 
+# ── Import helpers under test (after stubs are in place) ─────
 
-# ── Import helpers under test ────────────────────────────────
-
-from observal_cli.cmd_doctor import _check_cursor, _cleanup_cursor, _patch_cursor  # noqa: E402
+from observal_cli.cmd_doctor import _check_cursor, _cleanup_cursor, _patch_cursor
 
 
 # ── Small test helpers ────────────────────────────────────────
