@@ -216,14 +216,19 @@ validate_standard() {
     [ -n "$pub" ] && pass "public_subnet_ids set" || fail "vpc_id set but public_subnet_ids missing"
   fi
 
-  # Check GHCR image accessibility
+  # Check GHCR image accessibility (requires token even for public images)
   local tag="${image_tag:-latest}"
-  local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" "https://ghcr.io/v2/blazeup-ai/observal-api/manifests/$tag" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" 2>/dev/null || echo "000")
-  if [ "$status" = "200" ] || [ "$status" = "302" ]; then
+  local token status
+  token=$(curl -s "https://ghcr.io/token?scope=repository:blazeup-ai/observal-api:pull" 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin).get("token",""))' 2>/dev/null || echo "")
+  if [ -n "$token" ]; then
+    status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token" -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "https://ghcr.io/v2/blazeup-ai/observal-api/manifests/$tag" 2>/dev/null || echo "000")
+  else
+    status="000"
+  fi
+  if [ "$status" = "200" ]; then
     pass "GHCR image observal-api:$tag reachable"
   else
-    warn "Cannot verify GHCR image (HTTP $status) — may need auth token"
+    warn "Cannot verify GHCR image observal-api:$tag (HTTP $status)"
   fi
 }
 
