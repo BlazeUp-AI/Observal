@@ -106,8 +106,8 @@ resource "aws_ecs_task_definition" "api" {
   family                   = "${local.name}-api"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.api_cpu)
-  memory                   = tostring(var.api_memory)
+  cpu                      = tostring(local.effective_api_cpu)
+  memory                   = tostring(local.effective_api_memory)
 
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
@@ -158,8 +158,8 @@ resource "aws_ecs_task_definition" "worker" {
   family                   = "${local.name}-worker"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.worker_cpu)
-  memory                   = tostring(var.worker_memory)
+  cpu                      = tostring(local.effective_worker_cpu)
+  memory                   = tostring(local.effective_worker_memory)
 
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
@@ -198,8 +198,8 @@ resource "aws_ecs_task_definition" "web" {
   family                   = "${local.name}-web"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.web_cpu)
-  memory                   = tostring(var.web_memory)
+  cpu                      = tostring(local.effective_web_cpu)
+  memory                   = tostring(local.effective_web_memory)
 
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
@@ -249,7 +249,7 @@ resource "aws_ecs_service" "api" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
   launch_type     = "FARGATE"
-  desired_count   = var.api_desired_count
+  desired_count   = local.effective_api_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
@@ -257,7 +257,7 @@ resource "aws_ecs_service" "api" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    security_groups  = [local.ecs_sg_id]
     assign_public_ip = false
   }
 
@@ -284,7 +284,7 @@ resource "aws_ecs_service" "web" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.web.arn
   launch_type     = "FARGATE"
-  desired_count   = var.web_desired_count
+  desired_count   = local.effective_web_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
@@ -292,7 +292,7 @@ resource "aws_ecs_service" "web" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    security_groups  = [local.ecs_sg_id]
     assign_public_ip = false
   }
 
@@ -316,14 +316,14 @@ resource "aws_ecs_service" "worker" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.worker.arn
   launch_type     = "FARGATE"
-  desired_count   = var.worker_desired_count
+  desired_count   = local.effective_worker_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    security_groups  = [local.ecs_sg_id]
     assign_public_ip = false
   }
 
@@ -368,7 +368,7 @@ resource "null_resource" "run_init" {
         --cluster ${aws_ecs_cluster.main.name} \
         --launch-type FARGATE \
         --task-definition ${aws_ecs_task_definition.init.arn} \
-        --network-configuration "awsvpcConfiguration={subnets=[${join(",", local.private_subnet_ids)}],securityGroups=[${aws_security_group.ecs_tasks.id}],assignPublicIp=DISABLED}" \
+        --network-configuration "awsvpcConfiguration={subnets=[${join(",", local.private_subnet_ids)}],securityGroups=[${local.ecs_sg_id}],assignPublicIp=DISABLED}" \
         --query 'tasks[0].taskArn' --output text)
       echo "Init task started: $task_arn"
       aws ecs wait tasks-stopped --region ${var.region} --cluster ${aws_ecs_cluster.main.name} --tasks "$task_arn"
@@ -397,8 +397,8 @@ resource "aws_appautoscaling_target" "api" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.api.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.api_autoscale_min
-  max_capacity       = var.api_autoscale_max
+  min_capacity       = local.effective_api_autoscale_min
+  max_capacity       = local.effective_api_autoscale_max
 }
 
 resource "aws_appautoscaling_policy" "api_cpu" {
@@ -422,8 +422,8 @@ resource "aws_appautoscaling_target" "web" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.web_autoscale_min
-  max_capacity       = var.web_autoscale_max
+  min_capacity       = local.effective_web_autoscale_min
+  max_capacity       = local.effective_web_autoscale_max
 }
 
 resource "aws_appautoscaling_policy" "web_cpu" {
@@ -447,8 +447,8 @@ resource "aws_appautoscaling_target" "worker" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.worker.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.worker_autoscale_min
-  max_capacity       = var.worker_autoscale_max
+  min_capacity       = local.effective_worker_autoscale_min
+  max_capacity       = local.effective_worker_autoscale_max
 }
 
 resource "aws_appautoscaling_policy" "worker_cpu" {

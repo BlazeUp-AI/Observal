@@ -35,7 +35,7 @@ data "aws_ami" "al2023" {
 resource "aws_ebs_volume" "data" {
   count             = local.clickhouse_self_hosted ? 1 : 0
   availability_zone = local.azs[0]
-  size              = var.data_volume_size_gb
+  size              = local.effective_data_volume_size_gb
   type              = "gp3"
   encrypted         = true
 
@@ -69,7 +69,7 @@ locals {
 resource "aws_instance" "data_host" {
   count                = local.clickhouse_self_hosted ? 1 : 0
   ami                  = data.aws_ami.al2023[0].id
-  instance_type        = var.data_instance_type
+  instance_type        = local.effective_data_instance_type
   iam_instance_profile = aws_iam_instance_profile.data_host[0].name
 
   network_interface {

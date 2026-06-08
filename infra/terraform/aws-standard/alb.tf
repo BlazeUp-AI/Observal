@@ -1,12 +1,11 @@
-# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com>
+# SPDX-FileCopyrightText: 2026 BlazeUp AI
 # SPDX-License-Identifier: AGPL-3.0-only
 
-# tfsec:ignore:aws-elb-alb-not-public Public-facing load balancer is the entrypoint for end users; restrict reachability via var.alb_ingress_cidrs and (optionally) a WAF.
 resource "aws_lb" "app" {
   name               = "${local.name}-alb"
   internal           = var.alb_scheme == "internal"
   load_balancer_type = "application"
-  security_groups    = [local.alb_sg_id]
+  security_groups    = [aws_security_group.alb.id]
   subnets            = var.alb_scheme == "internal" ? local.private_subnet_ids : local.public_subnet_ids
 
   drop_invalid_header_fields = true
@@ -14,27 +13,6 @@ resource "aws_lb" "app" {
 }
 
 # ── Target groups ─────────────────────────────────────────────────────────
-
-resource "aws_lb_target_group" "web" {
-  name        = "${local.name}-web-tg"
-  port        = 3000
-  protocol    = "HTTP"
-  vpc_id      = local.vpc_id
-  target_type = "ip"
-
-  deregistration_delay = 30
-
-  health_check {
-    path                = "/"
-    matcher             = "200-399"
-    interval            = 30
-    timeout             = 10
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-  }
-
-  tags = { Name = "${local.name}-web-tg" }
-}
 
 resource "aws_lb_target_group" "api" {
   name        = "${local.name}-api-tg"
@@ -57,8 +35,28 @@ resource "aws_lb_target_group" "api" {
   tags = { Name = "${local.name}-api-tg" }
 }
 
+resource "aws_lb_target_group" "web" {
+  name        = "${local.name}-web-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = local.vpc_id
+  target_type = "ip"
+
+  deregistration_delay = 30
+
+  health_check {
+    path                = "/"
+    matcher             = "200-399"
+    interval            = 30
+    timeout             = 10
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+
+  tags = { Name = "${local.name}-web-tg" }
+}
+
 resource "aws_lb_target_group" "grafana" {
-  count       = local.clickhouse_self_hosted ? 1 : 0
   name        = "${local.name}-grafana-tg"
   port        = 3001
   protocol    = "HTTP"
@@ -80,16 +78,14 @@ resource "aws_lb_target_group" "grafana" {
 }
 
 resource "aws_lb_target_group_attachment" "grafana" {
-  count            = local.clickhouse_self_hosted ? 1 : 0
-  target_group_arn = aws_lb_target_group.grafana[0].arn
-  target_id        = aws_network_interface.data_host[0].private_ip
+  target_group_arn = aws_lb_target_group.grafana.arn
+  target_id        = aws_network_interface.data_host.private_ip
   port             = 3001
 }
 
 # ── HTTP listener ─────────────────────────────────────────────────────────
-# When TLS is enabled, redirect to HTTPS. Otherwise terminate HTTP and
-# forward to the web target group (eval / no-domain mode).
-# tfsec:ignore:aws-elb-http-not-used HTTP listener is a 301 to HTTPS when TLS is enabled; otherwise eval-mode HTTP-only.
+# When TLS is enabled, redirect to HTTPS. Otherwise forward to web target group.
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app.arn
   port              = 80
@@ -112,7 +108,6 @@ resource "aws_lb_listener" "http" {
 }
 
 # Path-based rules on the HTTP listener (no-TLS mode).
-# Split across two rules — AWS allows max 5 path patterns per path_pattern condition.
 resource "aws_lb_listener_rule" "http_api" {
   count        = local.enable_tls ? 0 : 1
   listener_arn = aws_lb_listener.http.arn
@@ -125,59 +120,19 @@ resource "aws_lb_listener_rule" "http_api" {
 
   condition {
     path_pattern {
-      values = ["/api/*", "/auth/*", "/readyz", "/healthz", "/metrics"]
-    }
-  }
-}
-
-# Operational metadata paths (/docs, /redoc, /openapi.json).
-# Blocked by default (SEC-018); set enable_public_ops_paths=true to expose them.
-resource "aws_lb_listener_rule" "http_ops_block" {
-  count        = (local.enable_tls ? 0 : 1) * (var.enable_public_ops_paths ? 0 : 1)
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 90
-
-  action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Not found"
-      status_code  = "403"
-    }
-  }
-
-  condition {
-    path_pattern {
-      values = ["/openapi.json", "/docs", "/docs/*", "/redoc"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "http_api_docs" {
-  count        = (local.enable_tls ? 0 : 1) * (var.enable_public_ops_paths ? 1 : 0)
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 110
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/openapi.json", "/docs", "/docs/*", "/redoc"]
+      values = ["/api/*", "/auth/*", "/readyz", "/healthz"]
     }
   }
 }
 
 resource "aws_lb_listener_rule" "http_grafana" {
-  count        = (local.enable_tls ? 0 : 1) * (local.clickhouse_self_hosted ? 1 : 0)
+  count        = local.enable_tls ? 0 : 1
   listener_arn = aws_lb_listener.http.arn
   priority     = 200
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.grafana[0].arn
+    target_group_arn = aws_lb_target_group.grafana.arn
   }
 
   condition {
@@ -250,57 +205,19 @@ resource "aws_lb_listener_rule" "https_api" {
 
   condition {
     path_pattern {
-      values = ["/api/*", "/auth/*", "/readyz", "/healthz", "/metrics"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "https_ops_block" {
-  count        = (local.enable_tls ? 1 : 0) * (var.enable_public_ops_paths ? 0 : 1)
-  listener_arn = aws_lb_listener.https[0].arn
-  priority     = 90
-
-  action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "Not found"
-      status_code  = "403"
-    }
-  }
-
-  condition {
-    path_pattern {
-      values = ["/openapi.json", "/docs", "/docs/*", "/redoc"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "https_api_docs" {
-  count        = (local.enable_tls ? 1 : 0) * (var.enable_public_ops_paths ? 1 : 0)
-  listener_arn = aws_lb_listener.https[0].arn
-  priority     = 110
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.api.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/openapi.json", "/docs", "/docs/*", "/redoc"]
+      values = ["/api/*", "/auth/*", "/readyz", "/healthz"]
     }
   }
 }
 
 resource "aws_lb_listener_rule" "https_grafana" {
-  count        = (local.enable_tls ? 1 : 0) * (local.clickhouse_self_hosted ? 1 : 0)
+  count        = local.enable_tls ? 1 : 0
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 200
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.grafana[0].arn
+    target_group_arn = aws_lb_target_group.grafana.arn
   }
 
   condition {

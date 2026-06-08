@@ -1,0 +1,17 @@
+region      = "us-east-1"
+environment = "prod"
+name_prefix = "observal"
+
+vpc_id             = "vpc-0abc1234def56789a"
+private_subnet_ids = ["subnet-aaa11111", "subnet-bbb22222"]
+public_subnet_ids  = ["subnet-xxx11111", "subnet-yyy22222"]
+
+# Optional: use pre-created security groups
+# alb_security_group_id = "sg-0abc1234def56789a"
+# ecs_security_group_id = "sg-0abc1234def56789b"
+
+# Use "internal" if deploying behind a Transit Gateway or private network
+alb_scheme = "internet-facing"
+
+# Restrict to your corporate network
+# alb_ingress_cidrs = ["10.0.0.0/8"]

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # Deploy Observal onto the EC2 instance provisioned by Terraform.
+# Uses pre-built images from GHCR (no source builds required).
 # Run this AFTER `terraform apply` completes.
 #
 # Usage: ./deploy.sh
@@ -15,6 +16,7 @@ INSTANCE_ID=$(terraform output -raw instance_id)
 PUBLIC_IP=$(terraform output -raw public_ip)
 REGION=$(terraform output -raw region)
 DOMAIN=$(terraform output -raw domain)
+IMAGE_TAG=$(terraform output -raw image_tag)
 OBSERVAL_REF=$(terraform output -raw observal_ref)
 OBSERVAL_REPO=$(terraform output -raw observal_repo)
 ENV_OVERRIDES=$(terraform output -json env_overrides 2>/dev/null || echo "{}")
@@ -24,7 +26,7 @@ echo "  Instance:  $INSTANCE_ID"
 echo "  IP:        $PUBLIC_IP"
 echo "  Region:    $REGION"
 echo "  Domain:    ${DOMAIN:-"(none — HTTP only)"}"
-echo "  Ref:       $OBSERVAL_REF"
+echo "  Image:     ghcr.io/blazeup-ai/observal-api:$IMAGE_TAG"
 echo ""
 
 # ── Helper: run command on instance via SSM ──────────────────────────────────
@@ -111,101 +113,47 @@ for i in $(seq 1 60); do
   sleep 5
 done
 
-# ── Clone and checkout ───────────────────────────────────────────────────────
+# ── Deploy server package (pre-built images from GHCR) ───────────────────────
 
-echo "Cloning Observal ($OBSERVAL_REF)..."
-run_remote "rm -rf /opt/observal && git clone $OBSERVAL_REPO /opt/observal && cd /opt/observal && git checkout $OBSERVAL_REF"
+echo "Setting up Observal server package..."
+
+# Clone only the server-package config files (nginx, grafana, clickhouse configs)
+run_remote "rm -rf /opt/observal && git clone --depth 1 --branch $OBSERVAL_REF $OBSERVAL_REPO /opt/observal-src && mkdir -p /opt/observal && cp /opt/observal-src/docker/server-package/* /opt/observal/ && cp -r /opt/observal-src/docker/server-package/clickhouse /opt/observal/ 2>/dev/null || true && cp -r /opt/observal-src/docker/server-package/grafana /opt/observal/ 2>/dev/null || true && cp -r /opt/observal-src/docker/server-package/prometheus* /opt/observal/ 2>/dev/null || true && rm -rf /opt/observal-src"
 
 # ── Configure .env ───────────────────────────────────────────────────────────
 
 echo "Configuring environment..."
 SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || openssl rand -base64 32)
+POSTGRES_PW=$(python3 -c "import secrets; print(secrets.token_urlsafe(18))" 2>/dev/null || openssl rand -base64 18)
+CLICKHOUSE_PW=$(python3 -c "import secrets; print(secrets.token_urlsafe(18))" 2>/dev/null || openssl rand -base64 18)
 
-# Build sed commands for env overrides (skip empty values)
-SED_CMDS="sed -i \"s|SECRET_KEY=.*|SECRET_KEY=$SECRET_KEY|\" .env"
+FRONTEND_URL="${DOMAIN:+https://$DOMAIN}"
+FRONTEND_URL="${FRONTEND_URL:-http://$PUBLIC_IP}"
+
+# Generate .env from template
+run_remote "cd /opt/observal && cp env.template .env && sed -i 's|__SECRET_KEY__|$SECRET_KEY|g' .env && sed -i 's|__POSTGRES_PASSWORD__|$POSTGRES_PW|g' .env && sed -i 's|__CLICKHOUSE_PASSWORD__|$CLICKHOUSE_PW|g' .env && sed -i 's|__FRONTEND_URL__|$FRONTEND_URL|g' .env && echo 'OBSERVAL_VERSION=$IMAGE_TAG' >> .env && chmod 600 .env"
+
+# Apply env overrides (skip empty values)
 while IFS='=' read -r key value; do
   [ -z "$key" ] && continue
   [ -z "$value" ] && continue
-  SED_CMDS="$SED_CMDS && sed -i \"s|${key}=.*|${key}=${value}|\" .env"
+  run_remote "cd /opt/observal && sed -i \"s|${key}=.*|${key}=${value}|\" .env || echo '${key}=${value}' >> .env"
 done < <(echo "$ENV_OVERRIDES" | python3 -c "import sys,json; [print(f'{k}={v}') for k,v in json.load(sys.stdin).items()]" 2>/dev/null || true)
 
-run_remote "cd /opt/observal && cp .env.example .env && $SED_CMDS"
-
-# ── Configure nginx + TLS ────────────────────────────────────────────────────
+# ── Configure TLS (if domain set) ───────────────────────────────────────────
 
 if [ -n "$DOMAIN" ]; then
-  echo "Configuring HTTPS for $DOMAIN..."
-  run_remote "cd /opt/observal && sed -i 's/server_name .*/server_name $DOMAIN;/' docker/nginx.production.conf && sed -i 's|ssl_certificate .*|ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;|' docker/nginx.production.conf && sed -i 's|ssl_certificate_key .*|ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;|' docker/nginx.production.conf"
-
-  echo "Obtaining TLS certificate..."
+  echo "Obtaining TLS certificate for $DOMAIN..."
   run_remote "certbot certonly --standalone -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN"
-else
-  echo "No domain configured — setting up HTTP-only access..."
-  # Replace nginx config with HTTP-only version
-  run_remote "cd /opt/observal && cat > docker/nginx.production.conf << 'NGINXEOF'
-upstream observal_api {
-    server observal-api:8000;
-}
-upstream observal_web {
-    server observal-web:3000;
-}
-server {
-    listen 80;
-    server_name _;
-
-    location /api/ {
-        proxy_pass http://observal_api;
-        proxy_set_header Host \\\$host;
-        proxy_set_header X-Real-IP \\\$remote_addr;
-        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \\\$scheme;
-        proxy_read_timeout 600s;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \\\$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
-    }
-    location /health { proxy_pass http://observal_api; proxy_set_header Host \\\$host; }
-    location /livez { proxy_pass http://observal_api; proxy_set_header Host \\\$host; }
-    location /readyz { proxy_pass http://observal_api; proxy_set_header Host \\\$host; }
-    location /graphql {
-        proxy_pass http://observal_api;
-        proxy_set_header Host \\\$host;
-        proxy_set_header X-Real-IP \\\$remote_addr;
-        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \\\$scheme;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \\\$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
-    }
-    location /v1/ {
-        proxy_pass http://observal_api;
-        proxy_set_header Host \\\$host;
-        proxy_set_header X-Real-IP \\\$remote_addr;
-        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \\\$scheme;
-        client_max_body_size 10m;
-    }
-    location / {
-        proxy_pass http://observal_web;
-        proxy_set_header Host \\\$host;
-        proxy_set_header X-Real-IP \\\$remote_addr;
-        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \\\$scheme;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \\\$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
-    }
-}
-NGINXEOF"
 fi
 
-# ── Build and start ──────────────────────────────────────────────────────────
+# ── Pull and start (pre-built images — fast) ────────────────────────────────
 
-echo "Building Docker images (this takes 5-10 minutes on first run)..."
-run_remote "cd /opt/observal && docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.production.yml build" 900
+echo "Pulling pre-built images from GHCR..."
+run_remote "cd /opt/observal && docker compose pull" 300
 
 echo "Starting services..."
-run_remote "cd /opt/observal && docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.production.yml up -d"
+run_remote "cd /opt/observal && docker compose --env-file .env up -d"
 
 # ── Health check ─────────────────────────────────────────────────────────────
 
@@ -231,8 +179,8 @@ done
 
 echo ""
 echo "WARNING: Health check did not pass within 10 minutes."
-echo "The build may still be running. Check with:"
+echo "Services may still be starting. Check with:"
 echo "  aws ssm start-session --target $INSTANCE_ID --region $REGION"
-echo "  sudo docker ps"
+echo "  sudo docker compose -f /opt/observal/docker-compose.yml ps"
 echo ""
 exit 1

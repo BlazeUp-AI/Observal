@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 BlazeUp AI
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Copy to terraform.tfvars and fill in.
+# terraform.tfvars is gitignored — never commit secrets or per-customer values.
+
+region      = "us-east-1"
+environment = "prod"
+name_prefix = "observal"
+
+# ── Sizing preset ────────────────────────────────────────────────────────
+# "small" (~$120/mo): 1× t3.large ECS, t3.medium data host, 50 GB EBS
+# "medium" (~$155/mo): 1× t3.large ECS, t3.medium data host, 100 GB EBS
+# "custom": full manual control via the variables below
+sizing = "medium"
+
+# ── DNS / TLS (optional) ──────────────────────────────────────────────
+# Leave both empty to expose the install over plain HTTP on the ALB DNS name.
+# domain_name     = "observal.example.com"
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# ── Image tag (matches the Observal release you want to install) ──────
+image_tag = "latest"
+
+# ── ECS EC2 cluster ──────────────────────────────────────────────────
+# ecs_instance_type    = "t3.large"
+# api_cpu              = 512
+# api_memory           = 1024
+# api_desired_count    = 1
+# web_cpu              = 256
+# web_memory           = 512
+# web_desired_count    = 1
+# worker_cpu           = 512
+# worker_memory        = 1024
+# worker_desired_count = 1
+
+# ── Data tier EC2 (Postgres + Redis + ClickHouse + Grafana + Prometheus) ──
+# data_instance_type   = "t3.medium"
+# data_volume_size_gb  = 100
+
+# ── Access ────────────────────────────────────────────────────────────
+# Restrict ALB ingress for private installs (e.g. office VPN, corporate egress).
+# alb_ingress_cidrs = ["203.0.113.0/24"]
+# alb_scheme        = "internet-facing"
+
+# ── App config ────────────────────────────────────────────────────────
+log_retention_days = 30
+
+# ── License ──────────────────────────────────────────────────────────────────
+# Provide your enterprise license key to enable enterprise features.
+# Without a key, community edition is deployed (same image, features gated at runtime).
+# observal_license_key = "eyJ...<your-key>..."
+
+# ── Bring-your-own VPC (BYO-VPC) ─────────────────────────────────────────────
+# Deploy into an existing VPC instead of creating one.
+#
+# vpc_id             = "vpc-08ffcfb6fed514106"
+# public_subnet_ids  = ["subnet-05b9a5aa32f4e6460", "subnet-09c4c954239fc48c0"]
+# private_subnet_ids = ["subnet-05b9a5aa32f4e6460", "subnet-09c4c954239fc48c0"]
+
+# ── TLS ──────────────────────────────────────────────────────────────────────
+# Set enable_tls = false for private Route53 zones where ACM DNS validation
+# cannot complete.
+#
+# enable_tls = false

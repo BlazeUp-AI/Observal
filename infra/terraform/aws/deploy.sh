@@ -332,6 +332,29 @@ if [ "$TFVARS_EXISTS" = "false" ] && [ "$MODE" != "check" ]; then
     V_TAG="${V_TAG:-latest}"
 
     echo ""
+    echo "  Sizing (determines CPU, memory, instance types, replica counts):"
+    echo "    small  — evaluation / dev  (~\$150/mo): 1× api, 1× web, t3.medium data"
+    echo "    medium — production team   (~\$255/mo): 2× api, 2× web, t3.large data"
+    echo "    large  — enterprise scale  (~\$600/mo): 3× api, 3× web, r6i.xlarge data"
+    echo "    custom — set individual sizes in terraform.tfvars manually"
+    read -rp "  Sizing [medium]: " V_SIZING
+    V_SIZING="${V_SIZING:-medium}"
+
+    echo ""
+    echo "  ClickHouse (analytics database):"
+    echo "    self_hosted — bundled on EC2, simpler, single point of failure"
+    echo "    cloud       — ClickHouse Cloud, HA, you supply the URL"
+    read -rp "  ClickHouse mode [self_hosted]: " V_CH_MODE
+    V_CH_MODE="${V_CH_MODE:-self_hosted}"
+
+    V_CH_URL="" V_CH_PASS=""
+    if [ "$V_CH_MODE" = "cloud" ]; then
+      read -rp "  ClickHouse Cloud URL: " V_CH_URL
+      read -rsp "  ClickHouse Cloud password: " V_CH_PASS
+      echo ""
+    fi
+
+    echo ""
     echo "  License key enables: insights, SAML, SCIM, exec dashboard, audit."
     read -rp "  License key (empty = community): " V_LICENSE
 
@@ -374,9 +397,18 @@ name_prefix = "observal"
 image_tag   = "$V_TAG"
 EOF
 
+    [ "$V_SIZING" != "custom" ] && echo "sizing = \"$V_SIZING\"" >> terraform.tfvars
     [ -n "$V_DOMAIN" ] && echo "domain_name     = \"$V_DOMAIN\"" >> terraform.tfvars
     [ -n "$V_ZONE" ] && echo "route53_zone_id = \"$V_ZONE\"" >> terraform.tfvars
     [ -n "$V_LICENSE" ] && echo "observal_license_key = \"$V_LICENSE\"" >> terraform.tfvars
+
+    if [ "$V_CH_MODE" = "cloud" ]; then
+      cat >> terraform.tfvars <<CHEOF
+clickhouse_mode           = "cloud"
+clickhouse_cloud_url      = "$V_CH_URL"
+clickhouse_cloud_password = "$V_CH_PASS"
+CHEOF
+    fi
 
     if [ -n "$V_VPC" ]; then
       PRIV_LIST=$(echo "$V_PRIV" | sed 's/ //g' | sed 's/,/", "/g')
@@ -426,22 +458,74 @@ fi
 echo -e "  ${PASS} ${BOLD}All checks passed.${NC}"
 echo ""
 
-section "Next Steps"
-echo ""
-echo "  Run these commands in order:"
-echo ""
-echo -e "  ${BOLD}1.${NC} $TF init"
-echo -e "  ${BOLD}2.${NC} $TF plan -out=tfplan"
-echo -e "  ${BOLD}3.${NC} Review the plan output carefully"
-echo -e "  ${BOLD}4.${NC} $TF apply tfplan"
-echo ""
-echo "  Estimated time: 8-15 minutes for first deploy."
-echo ""
-echo "  After deployment:"
-echo -e "  ${BOLD}5.${NC} $TF output          # Get ALB URL and connection info"
-echo -e "  ${BOLD}6.${NC} observal config set server_url <URL>"
-echo -e "  ${BOLD}7.${NC} observal auth login  # Use demo credentials"
-echo ""
-echo "  To tear down:"
-echo -e "     $TF destroy"
-echo ""
+# ── Optional: Auto-apply ────────────────────────────────────────────────────
+if [ -n "$TF" ] && [ -f "terraform.tfvars" ]; then
+  echo ""
+  read -rp "  Run terraform init + plan + apply now? [y/N]: " V_APPLY
+  V_APPLY="${V_APPLY:-N}"
+  if [[ "$V_APPLY" =~ ^[Yy] ]]; then
+    section "Deploying"
+    echo ""
+    info "Running: $TF init"
+    if ! $TF init; then
+      fail "terraform init failed"
+      exit 1
+    fi
+    echo ""
+    info "Running: $TF plan -out=tfplan"
+    if ! $TF plan -out=tfplan; then
+      fail "terraform plan failed"
+      exit 1
+    fi
+    echo ""
+    read -rp "  Plan looks good. Apply? [y/N]: " V_CONFIRM
+    V_CONFIRM="${V_CONFIRM:-N}"
+    if [[ "$V_CONFIRM" =~ ^[Yy] ]]; then
+      $TF apply tfplan
+      echo ""
+      pass "Deployment complete!"
+      echo ""
+      echo -e "  App URL: ${BOLD}$($TF output -raw app_url 2>/dev/null || echo '(check: terraform output app_url)')${NC}"
+      echo ""
+      echo "  After deployment:"
+      echo -e "  ${BOLD}1.${NC} $TF output          # Get ALB URL and connection info"
+      echo -e "  ${BOLD}2.${NC} observal config set server_url <URL>"
+      echo -e "  ${BOLD}3.${NC} observal auth login  # Use demo credentials"
+      echo ""
+    else
+      info "Skipped. Run manually: $TF apply tfplan"
+    fi
+  else
+    section "Next Steps"
+    echo ""
+    echo "  Run these commands in order:"
+    echo ""
+    echo -e "  ${BOLD}1.${NC} $TF init"
+    echo -e "  ${BOLD}2.${NC} $TF plan -out=tfplan"
+    echo -e "  ${BOLD}3.${NC} Review the plan output carefully"
+    echo -e "  ${BOLD}4.${NC} $TF apply tfplan"
+    echo ""
+    echo "  Estimated time: 8-15 minutes for first deploy."
+    echo ""
+    echo "  After deployment:"
+    echo -e "  ${BOLD}5.${NC} $TF output          # Get ALB URL and connection info"
+    echo -e "  ${BOLD}6.${NC} observal config set server_url <URL>"
+    echo -e "  ${BOLD}7.${NC} observal auth login  # Use demo credentials"
+    echo ""
+    echo "  To tear down:"
+    echo -e "     $TF destroy"
+    echo ""
+  fi
+else
+  section "Next Steps"
+  echo ""
+  echo "  Run these commands in order:"
+  echo ""
+  echo -e "  ${BOLD}1.${NC} $TF init"
+  echo -e "  ${BOLD}2.${NC} $TF plan -out=tfplan"
+  echo -e "  ${BOLD}3.${NC} Review the plan output carefully"
+  echo -e "  ${BOLD}4.${NC} $TF apply tfplan"
+  echo ""
+  echo "  Estimated time: 8-15 minutes for first deploy."
+  echo ""
+fi

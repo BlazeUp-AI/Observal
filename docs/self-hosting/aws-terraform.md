@@ -89,6 +89,7 @@ The install comes up on the ALB's AWS-assigned hostname (e.g. `observal-prod-alb
 ```hcl
 region      = "us-east-1"
 environment = "prod"
+sizing      = "medium"
 
 domain_name     = "observal.example.com"
 route53_zone_id = "Z0123456789ABCDEFGHIJ"
@@ -99,11 +100,36 @@ alb_ingress_cidrs = ["203.0.113.0/24", "198.51.100.0/24"]
 
 Terraform requests an ACM certificate, validates it via DNS records in your hosted zone, attaches it to the ALB, and creates the alias A record pointing the domain at the ALB. There is no manual DNS step.
 
-### Sizing
+### Sizing presets
 
-ECS Fargate sizing defaults give you HA out of the box. Bump task counts or CPU/memory for higher load:
+Instead of tuning 12+ resource variables, pick a preset:
 
 ```hcl
+sizing = "medium"   # small | medium | large | custom
+```
+
+| Preset | ~$/mo | API tasks | Web tasks | Worker tasks | Data host | RDS | Redis |
+|--------|-------|-----------|-----------|--------------|-----------|-----|-------|
+| `small` | $150 | 1× (0.25 vCPU) | 1× (0.25 vCPU) | 1× (0.25 vCPU) | t3.medium (50 GB) | db.t4g.micro | cache.t4g.micro |
+| `medium` | $255 | 2× (0.5 vCPU) | 2× (0.25 vCPU) | 1× (0.5 vCPU) | t3.large (100 GB) | db.t4g.small | cache.t4g.micro |
+| `large` | $600 | 3× (1 vCPU) | 3× (0.5 vCPU) | 2× (1 vCPU) | r6i.xlarge (500 GB) | db.r6g.large | cache.r6g.large |
+
+**Important: Presets vs. individual variables**
+
+Presets and individual resource variables (`api_cpu`, `db_instance_class`, etc.) are **mutually exclusive**:
+
+- When `sizing = "small|medium|large"`: all individual resource variables are **ignored**. The preset values are used unconditionally.
+- When `sizing = "custom"`: individual variables take effect normally.
+
+If you set `sizing = "medium"` and also `api_cpu = 1024`, the medium preset wins — `api_cpu` has no effect. To override individual values, set `sizing = "custom"` first.
+
+### Custom sizing
+
+Set `sizing = "custom"` to control each resource independently:
+
+```hcl
+sizing = "custom"
+
 api_cpu              = 512   # 0.5 vCPU; raise to 1024+ for sustained >100 req/s
 api_memory           = 1024
 api_desired_count    = 2
@@ -164,6 +190,42 @@ When `observal_license_key` is set, Terraform:
 Leave `observal_license_key` empty (the default) to deploy community edition.
 
 See [Configuration](configuration.md) for the meaning of each application setting.
+
+### Bring Your Own VPC
+
+Deploy Observal into an existing VPC rather than having Terraform create a new one. Use this when you have Transit Gateway, shared-services VPCs, compliance requirements, or peered networks.
+
+```hcl
+# Use an existing VPC
+vpc_id             = "vpc-0abc1234def56789a"
+private_subnet_ids = ["subnet-aaa11111", "subnet-bbb22222"]
+public_subnet_ids  = ["subnet-xxx11111", "subnet-yyy22222"]
+
+# Control ALB placement independently
+alb_scheme = "internet-facing"   # or "internal"
+```
+
+When `vpc_id` is set, Terraform skips creating VPC, subnets, IGW, NAT gateway, route tables, and VPC flow logs. All other resources (ALB, ECS, RDS, Redis, data host) are created inside your existing VPC.
+
+**VPC requirements:**
+
+- DNS support enabled (`enableDnsSupport = true`, `enableDnsHostnames = true`)
+- Private subnets must have outbound internet access (via NAT Gateway or Transit Gateway) for container image pulls (`ghcr.io`) and AWS API endpoints (SSM, CloudWatch, ECR)
+- Public subnets must have an Internet Gateway route (only needed if `alb_scheme = "internet-facing"`)
+- Subnets should span at least 2 AZs for RDS Multi-AZ and ECS placement
+
+**Optional: Bring your own security groups:**
+
+For environments with strict firewall policies, supply pre-created SG IDs:
+
+```hcl
+alb_security_group_id = "sg-0abc1234def56789a"
+ecs_security_group_id = "sg-0abc1234def56789b"
+```
+
+The ALB SG must allow inbound TCP 80/443 from your desired CIDRs. The ECS SG must allow inbound TCP 8000 and 3000 from the ALB SG, with outbound to all.
+
+A full working example lives at [`infra/terraform/aws/examples/byovpc`](../../infra/terraform/aws/examples/byovpc/).
 
 ## Required IAM permissions
 

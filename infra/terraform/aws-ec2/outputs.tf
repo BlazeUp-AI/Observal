@@ -46,3 +46,8 @@ output "observal_repo" {
   description = "Git repository URL"
   value       = var.observal_repo
 }
+
+output "image_tag" {
+  description = "Observal image tag being deployed"
+  value       = var.image_tag
+}
