@@ -113,7 +113,7 @@ services:
       POSTGRES_USER: observal
       POSTGRES_PASSWORD: "$${DB_PASSWORD}"
     volumes:
-      - /data/postgres:/var/lib/postgresql/data
+      - /data/postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U observal"]
       interval: 10s

@@ -129,8 +129,8 @@ resource "null_resource" "run_init" {
       set -euo pipefail
 
       # Give the data-host EC2 instance time to bootstrap services.
-      echo "Waiting 120s for data-tier bootstrap to complete..."
-      sleep 120
+      echo "Waiting 180s for data-tier bootstrap to complete..."
+      sleep 180
 
       task_arn=$(aws ecs run-task \
         --region ${var.region} \
