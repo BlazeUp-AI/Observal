@@ -356,15 +356,15 @@ if [[ ! "$CONFIRM" =~ ^[Yy] ]]; then
 fi
 
 echo ""
-info "Applying..."
-APPLY_OUTPUT=$($TF -chdir="$MODULE_DIR" apply tfplan 2>&1)
-APPLY_EXIT=$?
+info "Applying (live output below)..."
+echo ""
+$TF -chdir="$MODULE_DIR" apply tfplan 2>&1 | tee /tmp/observal-apply-output.log
+APPLY_EXIT=${PIPESTATUS[0]}
 
 if [ "$APPLY_EXIT" -ne 0 ]; then
-  echo "$APPLY_OUTPUT"
   echo ""
 
-  if echo "$APPLY_OUTPUT" | grep -qi "already exists\|AlreadyExists\|BucketAlreadyExists\|EntityAlreadyExists\|ResourceAlreadyExistsException\|ParameterAlreadyExists"; then
+  if grep -qi "already exists\|AlreadyExists\|BucketAlreadyExists\|EntityAlreadyExists\|ResourceAlreadyExistsException\|ParameterAlreadyExists" /tmp/observal-apply-output.log 2>/dev/null; then
     echo -e "  ${FAIL} ${BOLD}Resource conflict: some AWS resources already exist.${NC}"
     echo ""
     echo "  This usually means a previous deployment with the same name_prefix + environment"
@@ -388,8 +388,10 @@ if [ "$APPLY_EXIT" -ne 0 ]; then
   else
     fail "terraform apply failed (see errors above)"
   fi
+  rm -f /tmp/observal-apply-output.log
   exit 1
 fi
+rm -f /tmp/observal-apply-output.log
 
 # ── Post-apply ───────────────────────────────────────────────────────────────
 section "Post-Deploy"
