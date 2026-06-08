@@ -37,7 +37,6 @@ _IDE_PROJECT_CONFIGS = {
     "kiro": ".kiro/settings/mcp.json",
     "copilot": ".vscode/mcp.json",
     "copilot-cli": ".mcp.json",
-    "gemini-cli": ".gemini/settings.json",
     "opencode": "opencode.json",
     "codex": ".codex/config.toml",
 }
@@ -80,15 +79,6 @@ def _scan_copilot_cli_home(copilot_dir: Path):
     return result.mcps, result.skills, result.hooks, result.agents
 
 
-def _scan_gemini_home(gemini_dir: Path):
-    """Backward-compat wrapper for tests."""
-    from observal_cli.ide.gemini_cli import GeminiCliAdapter
-
-    adapter = GeminiCliAdapter()
-    result = adapter.scan_home(gemini_dir.parent)
-    return result.mcps, result.skills, result.hooks, result.agents
-
-
 def _scan_claude_home(claude_dir: Path):
     """Backward-compat wrapper for tests."""
     from observal_cli.ide.claude_code import ClaudeCodeAdapter
@@ -112,7 +102,6 @@ def _scan_kiro_home(kiro_dir: Path):
 _IDE_HOME_DIRS: dict[str, str] = {
     "claude-code": "~/.claude",
     "kiro": "~/.kiro",
-    "gemini-cli": "~/.gemini",
     "codex": "~/.codex",
     "copilot": "~/.vscode",
     "copilot-cli": "~/.copilot",

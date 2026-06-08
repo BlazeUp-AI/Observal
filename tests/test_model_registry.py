@@ -530,23 +530,6 @@ class TestBuilderModelEmission:
         kiro_json = cfg.files[0].content
         assert kiro_json["model"] is None
 
-    def test_gemini_cli_settings_carries_model(self):
-        from services.agent_builder import _generate_gemini_cli
-
-        manifest = _empty_manifest(models_by_ide={"gemini-cli": "gemini-2.5-pro"})
-        cfg = _generate_gemini_cli(manifest)
-        settings_file = next(f for f in cfg.files if f.path == ".gemini/settings.json")
-        assert isinstance(settings_file.content, dict)
-        assert settings_file.content["model"] == "gemini-2.5-pro"
-
-    def test_gemini_cli_omits_model_setting_without_override(self):
-        from services.agent_builder import _generate_gemini_cli
-
-        manifest = _empty_manifest()
-        cfg = _generate_gemini_cli(manifest)
-        settings_file = next(f for f in cfg.files if f.path == ".gemini/settings.json")
-        assert "model" not in settings_file.content
-
     def test_codex_toml_carries_model(self):
         from services.agent_builder import _generate_codex
 

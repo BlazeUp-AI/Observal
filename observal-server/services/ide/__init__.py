@@ -81,7 +81,6 @@ def get_adapter(ide: str) -> IdeAdapter | None:
 # Underscore aliases for backward compatibility
 _IDE_ALIASES: dict[str, str] = {
     "claude_code": "claude-code",
-    "gemini_cli": "gemini-cli",
     "copilot_cli": "copilot-cli",
 }
 

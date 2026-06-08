@@ -433,7 +433,7 @@ def register_pull(app: typer.Typer):
             ...,
             "--ide",
             "-i",
-            help="Target IDE (cursor, vscode, claude-code, gemini-cli, kiro, codex, copilot, opencode)",
+            help="Target IDE (cursor, vscode, claude-code, kiro, codex, copilot, copilot-cli, opencode)",
         ),
         directory: str = typer.Option(".", "--dir", "-d", help="Target directory for written files"),
         dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview files without writing"),

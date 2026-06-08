@@ -436,28 +436,6 @@ class TestGenerateKiro:
 # ═══════════════════════════════════════════════════════════════════
 
 
-class TestGenerateGemini:
-    def test_rules_path(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert cfg["rules_file"]["path"] == "GEMINI.md"
-
-    def test_mcp_path(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert cfg["mcp_config"]["path"] == ".gemini/settings.json"
-
-    def test_gemini_underscore_alias(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini_cli")
-        assert cfg["rules_file"]["path"] == "GEMINI.md"
-
-    def test_no_otlp_env_in_config(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" not in cfg
-
-
 # ═══════════════════════════════════════════════════════════════════
 # 8. generate_agent_config — Codex
 # ═══════════════════════════════════════════════════════════════════
@@ -723,14 +701,6 @@ class TestBuilderKiro:
         assert "*" in tools
 
 
-class TestBuilderGemini:
-    def test_rules_path(self):
-        manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "gemini-cli")
-        paths = [f.path for f in result.files]
-        assert "GEMINI.md" in paths
-
-
 class TestBuilderCodex:
     def test_rules_path(self):
         manifest = _make_manifest()
@@ -918,7 +888,7 @@ class TestGenerateKiroPreservation:
 
     def test_non_kiro_cursor_ides_unaffected_by_platform(self):
         agent = _make_agent()
-        for ide in ["claude-code", "gemini-cli", "codex", "copilot", "opencode"]:
+        for ide in ["claude-code", "codex", "copilot", "opencode"]:
             cfg_default = generate_agent_config(agent, ide)
             cfg_win32 = generate_agent_config(agent, ide, platform="win32")
             assert cfg_default == cfg_win32, f"{ide} config changed with platform=win32"

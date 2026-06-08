@@ -1204,23 +1204,6 @@ class TestGenerateIdeAgentFiles:
 
     # ── Gemini CLI ─────────────────────────────────────────────
 
-    def test_gemini_cli_generates_gemini_md(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini-cli")
-        assert config.ide == "gemini-cli"
-        gemini_md = [f for f in config.files if f.path == "GEMINI.md"]
-        assert len(gemini_md) == 1
-        assert "You are a helpful coding assistant." in gemini_md[0].content
-
-    def test_gemini_cli_underscore_alias(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini_cli")
-        assert config.ide == "gemini-cli"
-
     # ── Kiro ───────────────────────────────────────────────────
 
     def test_kiro_generates_agent_json(self):
@@ -1395,7 +1378,7 @@ class TestGenerateIdeAgentFiles:
                 ],
             ),
         )
-        config = generate_ide_agent_files(manifest, "gemini-cli")
+        config = generate_ide_agent_files(manifest, "claude-code")
         content = config.files[0].content
         assert "## Hooks" in content
         assert "**lint-hook**" in content

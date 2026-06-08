@@ -796,7 +796,6 @@ def _post_auth_onboarding():
             "Claude Code": (Path.home() / ".claude", "claude-code"),
             "Kiro CLI": (Path.home() / ".kiro", "kiro"),
             "Cursor": (Path.home() / ".cursor", "cursor"),
-            "Gemini CLI": (Path.home() / ".gemini", "gemini-cli"),
             "Codex": (Path.home() / ".codex", "codex"),
             "Copilot": (Path.home() / ".vscode", "copilot"),
             "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
@@ -932,29 +931,6 @@ def _configure_kiro(server_url: str):
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Kiro automatically: {e}[/yellow]")
         rprint("Run [bold]observal doctor patch --all --ide kiro[/bold] to set up manually.")
-
-
-def _configure_gemini_cli(server_url: str):
-    """Check for Gemini CLI and configure telemetry via doctor patch."""
-    optic.trace("server_url={}", server_url)
-    try:
-        # The gemini binary is the definitive signal.
-        # ~/.gemini/settings.json can be created by a previous observal doctor patch,
-        # so its presence alone doesn't mean Gemini CLI is actually installed.
-        if not shutil.which("gemini"):
-            return
-
-        if not typer.confirm(
-            "\nDetected Gemini CLI. Configure telemetry -> Observal?",
-            default=True,
-        ):
-            return
-
-        _run_doctor_patch("gemini-cli")
-
-    except Exception as e:
-        rprint(f"\n[yellow]Could not configure Gemini CLI automatically: {e}[/yellow]")
-        rprint("Run [bold]observal doctor patch --all --ide gemini-cli[/bold] to set up manually.")
 
 
 def _configure_codex(server_url: str):

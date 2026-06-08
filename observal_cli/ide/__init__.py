@@ -47,7 +47,6 @@ _ADAPTER_REGISTRY: dict[str, IdeAdapter] = {}
 
 _IDE_ALIASES: dict[str, str] = {
     "claude_code": "claude-code",
-    "gemini_cli": "gemini-cli",
     "copilot_cli": "copilot-cli",
 }
 

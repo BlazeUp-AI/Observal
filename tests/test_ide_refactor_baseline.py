@@ -28,7 +28,6 @@ ALL_IDES = [
     "claude-code",
     "cursor",
     "kiro",
-    "gemini-cli",
     "codex",
     "copilot",
     "copilot-cli",

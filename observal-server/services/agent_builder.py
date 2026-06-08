@@ -305,11 +305,6 @@ def _materialize_hook_components(
             all_hook_entries.setdefault(ide_event, []).append({"matcher": "*", "hooks": [hook_entry]})
         elif ide == "cursor":
             all_hook_entries.setdefault(ide_event, []).append({"command": actual_command})
-        elif ide == "gemini-cli":
-            entry: dict = {"matcher": "*", "command": actual_command}
-            if timeout:
-                entry["timeout"] = timeout
-            all_hook_entries.setdefault(ide_event, []).append(entry)
         else:
             all_hook_entries.setdefault(ide_event, []).append({"command": actual_command})
 
@@ -400,46 +395,6 @@ def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
             *skill_files,
         ],
         mcp_servers=mcp_entries,
-    )
-
-
-def _generate_gemini_cli(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate Gemini CLI agent config (GEMINI.md + .gemini/settings.json)."""
-    mcp_entries = _build_mcp_entries(manifest)
-    rules_content = _build_rules_markdown(manifest)
-
-    settings: dict = {
-        "telemetry": {
-            "enabled": False,
-            "logPrompts": True,
-        },
-    }
-    if mcp_entries:
-        settings["mcpServers"] = mcp_entries
-
-    saved_model = _saved_model_for(manifest, "gemini-cli")
-    if saved_model:
-        settings["model"] = saved_model
-
-    env: dict[str, str] = {}
-
-    return IdeAgentConfig(
-        ide="gemini-cli",
-        files=[
-            AgentFile(
-                path="GEMINI.md",
-                content=rules_content,
-                format="markdown",
-            ),
-            AgentFile(
-                path=".gemini/settings.json",
-                content=settings,
-                format="json",
-            ),
-            *_build_skill_files(manifest, "gemini-cli"),
-        ],
-        mcp_servers=mcp_entries,
-        env=env,
     )
 
 
@@ -644,8 +599,6 @@ _IDE_GENERATORS = {
     "claude-code": _generate_claude_code,
     "claude_code": _generate_claude_code,
     "cursor": _generate_cursor,
-    "gemini-cli": _generate_gemini_cli,
-    "gemini_cli": _generate_gemini_cli,
     "kiro": _generate_kiro,
     "codex": _generate_codex,
     "copilot": _generate_copilot,

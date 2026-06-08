@@ -118,7 +118,7 @@ class TestSkillFilePaths:
 class TestGenerateIdeAgentFilesWithSkills:
     @pytest.mark.parametrize(
         "ide",
-        ["claude-code", "cursor", "kiro", "gemini-cli", "opencode"],
+        ["claude-code", "cursor", "kiro", "opencode"],
     )
     def test_skill_file_in_ide_output(self, ide: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)

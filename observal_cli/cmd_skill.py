@@ -427,7 +427,7 @@ def skill_install(
         observal registry skill install my-skill --ide claude-code
         observal registry skill install @sk --ide kiro --scope project
         observal registry skill install 2 --ide cursor --raw > config.json
-        observal registry skill install my-skill --ide gemini-cli --no-write
+        observal registry skill install my-skill --ide opencode --no-write
     """
     resolved = config.resolve_alias(skill_id)
     with spinner(f"Generating {ide} config..."):
@@ -493,7 +493,6 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
     ("claude-code", ".claude"),
     ("cursor", ".cursor"),
     ("kiro", ".kiro"),
-    ("gemini-cli", ".gemini"),
     ("opencode", ".opencode"),
 ]
 
@@ -501,7 +500,6 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
 _USER_SKILL_DIRS: dict[str, str] = {
     "claude-code": "~/.claude/skills",
     "kiro": "~/.kiro/skills",
-    "gemini-cli": "~/.gemini/skills",
     "opencode": "~/.config/opencode/skills",
     "cursor": "~/.cursor/rules",
     "copilot": "~/.copilot/skills",

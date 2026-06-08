@@ -83,28 +83,6 @@ class TestScanCommand:
         # The IDE detection table should list kiro
         assert "kiro" in result.output
 
-    def test_scan_discovers_gemini_mcp_server(self, sandbox_home: Path) -> None:
-        """A Gemini CLI MCP entry must show up in the scan output.
-
-        Gemini stores MCPs directly in ``~/.gemini/settings.json`` under
-        ``mcpServers`` — the simplest schema among the supported IDEs.
-        """
-        gemini = sandbox_home / ".gemini"
-        _write_json(
-            gemini / "settings.json",
-            {
-                "mcpServers": {
-                    "gemini-mcp-test": {"command": "node", "args": ["server.js"]},
-                }
-            },
-        )
-
-        result = runner.invoke(app, ["scan"])
-
-        assert result.exit_code == 0, result.output
-        assert "gemini-mcp-test" in result.output
-        assert "gemini-cli" in result.output
-
     def test_scan_discovers_multiple_ides_at_once(self, sandbox_home: Path) -> None:
         """A scan with two IDEs configured must surface both in one run."""
         _write_json(
@@ -112,15 +90,14 @@ class TestScanCommand:
             {"mcpServers": {"kiro-srv": {"command": "npx", "args": ["-y", "kiro-srv"]}}},
         )
         _write_json(
-            sandbox_home / ".gemini" / "settings.json",
-            {"mcpServers": {"gemini-srv": {"command": "node", "args": ["g.js"]}}},
+            sandbox_home / ".codex" / "config.toml",
+            {},
         )
 
         result = runner.invoke(app, ["scan"])
 
         assert result.exit_code == 0, result.output
         assert "kiro-srv" in result.output
-        assert "gemini-srv" in result.output
 
     def test_scan_with_ide_filter_excludes_other_ides(self, sandbox_home: Path) -> None:
         """``--ide kiro`` must scan Kiro and skip Claude Code."""

@@ -110,21 +110,6 @@ def _claude_code_snippet() -> dict:
     }
 
 
-def _gemini_snippet() -> dict:
-    return {
-        "config_snippet": {
-            "rules_file": {
-                "path": "GEMINI.md",
-                "content": "# Gemini Agent\n",
-            },
-            "mcp_config": {
-                "path": ".gemini/mcp.json",
-                "content": {"mcpServers": {"gemini-srv": {"command": "python", "args": ["serve.py"]}}},
-            },
-        }
-    }
-
-
 def _kiro_snippet() -> dict:
     return {
         "config_snippet": {
@@ -288,24 +273,6 @@ class TestPullClaudeCode:
 # ═══════════════════════════════════════════════════════════════
 # 3. Gemini CLI format
 # ═══════════════════════════════════════════════════════════════
-
-
-class TestPullGemini:
-    def test_writes_rules_and_mcp(self, tmp_path: Path):
-        with _patch_config(), _patch_get_agent(), _patch_post(_gemini_snippet()):
-            result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--no-prompt"]
-            )
-
-        assert result.exit_code == 0, result.output
-        rules = tmp_path / "GEMINI.md"
-        assert rules.exists()
-        assert "Gemini Agent" in rules.read_text()
-
-        mcp = tmp_path / ".gemini" / "mcp.json"
-        assert mcp.exists()
-        data = json.loads(mcp.read_text())
-        assert "gemini-srv" in data["mcpServers"]
 
 
 # ═══════════════════════════════════════════════════════════════

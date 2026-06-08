@@ -645,7 +645,7 @@ def agent_install(
       observal agent install my-agent --ide claude-code
       observal agent install my-agent --ide kiro
       observal agent install my-agent --ide cursor --raw > config.json
-      observal agent install @myalias --ide gemini-cli
+      observal agent install @myalias --ide opencode
     """
     resolved = config.resolve_alias(agent_id)
     with spinner(f"Generating {ide} config..."):

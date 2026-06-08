@@ -1078,8 +1078,6 @@ def _install_impl(mcp_id, ide, raw, version=None):
         "cursor": ".cursor/mcp.json",
         "claude-code": "(run the command below)",
         "claude_code": "(run the command below)",
-        "gemini-cli": ".gemini/settings.json",
-        "gemini_cli": ".gemini/settings.json",
         "opencode": ".config/opencode/opencode.json",
         "codex": "~/.codex/config.toml",
     }

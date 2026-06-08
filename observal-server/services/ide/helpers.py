@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from models.agent import Agent
 from services.config_generator import (
     _build_run_command,
-    _gemini_settings,  # noqa: F401 (re-exported for adapters)
     generate_config,
 )
 
@@ -175,24 +174,6 @@ def _vscode_copilot_hooks_frontmatter_lines() -> list[str]:
         f'      powershell: "{ps_cmd}"',
         "      timeoutSec: 5",
     ]
-
-
-def _gemini_hooks_config() -> dict:
-    """Build the hooks block for Gemini CLI settings.json.
-
-    Gemini uses SessionStart/SessionEnd.  We hook SessionStart (first turn)
-    and SessionEnd (final flush) which maps to our UserPromptSubmit + Stop pattern.
-
-    TODO: No JSONL session push for Gemini CLI yet.  session_push.py will
-    no-op when it can't locate a matching session JSONL file.
-    """
-    cmd = _SESSION_PUSH_CMD
-    return {
-        "hooks": {
-            "SessionStart": [{"hooks": [{"type": "command", "command": cmd}]}],
-            "SessionEnd": [{"hooks": [{"type": "command", "command": cmd}]}],
-        },
-    }
 
 
 def _opencode_plugin_js() -> str:
@@ -669,7 +650,6 @@ def _get_hook_scripts_dir(ide: str) -> str:
 
 _HOOK_SCRIPTS_DIR: dict[str, str] = {
     "cursor": ".cursor/hooks",
-    "gemini-cli": ".gemini/hooks",
     "codex": ".codex/hooks",
     "copilot": ".github/hooks/scripts",
     "copilot-cli": ".github/hooks/scripts",
@@ -704,12 +684,6 @@ def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[d
             hooks_dict.setdefault(ide_event, []).append({"command": command})
         elif ide in ("copilot", "copilot-cli"):
             hooks_dict.setdefault(ide_event, []).append({"type": "command", "command": command})
-        elif ide == "gemini-cli":
-            entry: dict = {"matcher": "*", "command": command}
-            timeout = handler_config.get("timeout")
-            if timeout:
-                entry["timeout"] = timeout
-            hooks_dict.setdefault(ide_event, []).append(entry)
         else:
             hooks_dict.setdefault(ide_event, []).append({"command": command})
 

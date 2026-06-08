@@ -58,7 +58,7 @@ class SkillValidationError(Exception):
 
 # Installed/IDE copy prefixes to exclude during discovery (mirrors client-side logic)
 _INSTALLED_PREFIX = re.compile(
-    r"^(\.agents|\.(?:claude|kiro|cursor|gemini|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)/"
+    r"^(\.agents|\.(?:claude|kiro|cursor|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)/"
 )
 
 

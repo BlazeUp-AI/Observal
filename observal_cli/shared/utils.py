@@ -144,8 +144,6 @@ _OBSERVAL_HOOK_MARKERS = (
     # Legacy hook modules
     "observal_cli.hooks.kiro_hook",
     "observal_cli.hooks.kiro_stop_hook",
-    "observal_cli.hooks.gemini_hook",
-    "observal_cli.hooks.gemini_stop_hook",
     "observal_cli.hooks.copilot_cli_hook",
     "observal_cli.hooks.copilot_cli_stop_hook",
     "observal_cli.hooks.buffer_event",

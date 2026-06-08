@@ -33,7 +33,6 @@ class TestAdapterRegistry:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
@@ -48,7 +47,6 @@ class TestAdapterRegistry:
 
     def test_get_adapter_by_underscore_alias(self):
         assert get_adapter("claude_code").ide_name == "claude-code"
-        assert get_adapter("gemini_cli").ide_name == "gemini-cli"
         assert get_adapter("copilot_cli").ide_name == "copilot-cli"
 
     def test_get_adapter_unknown_raises_keyerror(self):
@@ -79,7 +77,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
@@ -101,7 +98,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
@@ -119,7 +115,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             # copilot (VS Code) intentionally omitted: uses OTel export, not hooks
             "copilot-cli",
             "opencode",
@@ -145,7 +140,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "copilot",
             "copilot-cli",
             "opencode",
@@ -162,7 +156,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
