@@ -35,8 +35,10 @@ When a user runs `observal scan`, Observal reads those same locations to discove
 | 8 | `observal_cli/ide_specs/<ide_name>_hooks_spec.py` | Hook spec: what hooks to install, event names |
 | 9 | `observal_cli/sessions/<ide_name>.py` | Session parser (if IDE writes JSONL sessions) |
 | 10 | `observal_cli/hooks/<ide_name>_session_push.py` | Session push hook script |
-| 11 | `tests/test_cli_ide_adapters.py` | Adapter unit tests |
-| 12 | `web/src/lib/ide-features.ts` | Frontend IDE display (name, icon, capabilities) |
+| 11 | `observal_cli/cmd_doctor.py` | Doctor diagnose/patch/cleanup coverage for the new IDE |
+| 12 | `observal_cli/layer.py` | Layer scanning globs (`IDE_LAYER_CONFIGS`) and managed file attribution |
+| 13 | `tests/test_cli_ide_adapters.py` | Adapter unit tests |
+| 14 | `web/src/lib/ide-features.ts` | Frontend IDE display (name, icon, capabilities) |
 
 ## Step 1: Research the IDE
 
@@ -124,6 +126,21 @@ The test `tests/test_constants_sync.py` enforces they're identical.
     "auto_sentinel": None,
 }
 ```
+
+## Step 2.5: Update Doctor and Layer Scan (required)
+
+Before moving on, always wire the new IDE into these shared paths:
+
+- `observal_cli/cmd_doctor.py`:
+  - Add a `_check_<ide>()` diagnose function
+  - Add `_patch_<ide>()` support in `doctor patch`
+  - Add `_cleanup_<ide>()` support in `doctor cleanup`
+- `observal_cli/layer.py`:
+  - Add user/project file globs under `IDE_LAYER_CONFIGS`
+  - Update `_get_observal_managed_files()` for source attribution if needed
+  - Ensure `_detect_active_ides()` has a reliable home-dir marker
+
+If these are skipped, the IDE can appear supported in pull/scan while doctor and layer observability remain incomplete.
 
 ## Step 3: Create CLI Adapter (Scanning)
 

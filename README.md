@@ -49,6 +49,7 @@
 | Copilot (CLI & VS Code Extension) |
 | Codex |
 | OpenCode |
+| Antigravity CLI |
 
 One command to install any agent into any supported IDE. The config files are generated per-IDE automatically.
 
