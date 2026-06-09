@@ -17,7 +17,7 @@ resource "aws_db_instance" "postgres" {
   identifier     = "${local.name}-pg"
   engine         = "postgres"
   engine_version = "16"
-  instance_class = var.db_instance_class
+  instance_class = local.effective_db_instance_class
 
   allocated_storage     = var.db_allocated_storage_gb
   max_allocated_storage = var.db_max_allocated_storage_gb

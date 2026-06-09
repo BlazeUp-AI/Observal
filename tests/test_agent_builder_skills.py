@@ -93,9 +93,8 @@ class TestBuildSkillFilesFallbackPath:
     def test_monolithic_ides_return_empty(self):
         """Only IDEs with no skill_file entry in IDE_REGISTRY return empty."""
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        # codex and copilot (GitHub Copilot viewer) have no skill_file in IDE_REGISTRY.
+        # codex has no skill_file in IDE_REGISTRY.
         assert _build_skill_files(manifest, "codex") == []
-        assert _build_skill_files(manifest, "copilot") == []
 
 
 class TestSkillFilePaths:
@@ -119,7 +118,7 @@ class TestSkillFilePaths:
 class TestGenerateIdeAgentFilesWithSkills:
     @pytest.mark.parametrize(
         "ide",
-        ["claude-code", "cursor", "kiro", "gemini-cli", "opencode"],
+        ["claude-code", "cursor", "kiro", "opencode"],
     )
     def test_skill_file_in_ide_output(self, ide: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)

@@ -12,12 +12,12 @@ Classification dispatches strictly by IDE via
 default fallback.  Passing an unknown ``ide`` value raises ``KeyError``.
 """
 
-import hashlib
-import json
 import uuid as _uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import orjson
+import xxhash
 from loguru import logger as optic
 
 from services.clickhouse import insert_session_events, query_existing_for_dedup, query_session_event_count
@@ -55,13 +55,82 @@ def _usage_pi(parsed: dict) -> dict:
     }
 
 
+def _usage_antigravity(parsed: dict) -> dict:
+    """Antigravity: no token counts in transcript format."""
+    return {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "model": "",
+    }
+
+
+def _usage_codex(parsed: dict) -> dict:
+    """Codex: event_msg/token_count has payload.info.total_token_usage."""
+    payload = parsed.get("payload", {})
+    if not isinstance(payload, dict):
+        return {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "model": ""}
+    info = payload.get("info", {})
+    if not isinstance(info, dict):
+        info = {}
+    usage = info.get("last_token_usage") or info.get("total_token_usage") or {}
+    return {
+        "input_tokens": int(usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("output_tokens") or 0),
+        "cache_read_tokens": int(usage.get("cached_input_tokens") or 0),
+        "cache_write_tokens": 0,
+        "model": "",
+    }
+
+
+def _usage_copilot_cli(parsed: dict) -> dict:
+    """Copilot CLI: tokens are in assistant.message data or assistant.usage events.
+
+    Copilot CLI v1.0.59+ uses flat format:
+      {"type": "assistant.message", "data": {"outputTokens": N, "model": "..."}, ...}
+    Older/SDK format uses envelope:
+      {"agentId": "...", "ts": "...", "event": {"type": "assistant.usage", "data": {...}}}
+    """
+    # Try flat format first (Copilot CLI v1.0.59+)
+    data = parsed.get("data", {})
+    if isinstance(data, dict) and (data.get("outputTokens") or data.get("inputTokens")):
+        return {
+            "input_tokens": int(data.get("inputTokens") or 0),
+            "output_tokens": int(data.get("outputTokens") or 0),
+            "cache_read_tokens": int(data.get("cacheReadTokens") or 0),
+            "cache_write_tokens": int(data.get("cacheWriteTokens") or 0),
+            "model": str(data.get("model") or ""),
+        }
+
+    # Try envelope format (older/SDK)
+    event = parsed.get("event", {})
+    if isinstance(event, dict):
+        edata = event.get("data", {})
+        if isinstance(edata, dict) and (edata.get("outputTokens") or edata.get("inputTokens")):
+            return {
+                "input_tokens": int(edata.get("inputTokens") or 0),
+                "output_tokens": int(edata.get("outputTokens") or 0),
+                "cache_read_tokens": int(edata.get("cacheReadTokens") or 0),
+                "cache_write_tokens": int(edata.get("cacheWriteTokens") or 0),
+                "model": str(edata.get("model") or ""),
+            }
+
+    return {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "model": ""}
+
+
 _UsageFn = Callable[[dict], dict]
 
 _USAGE_EXTRACTORS: dict[str, _UsageFn] = {
     "claude-code": _usage_claude_code,
+    "codex": _usage_codex,
     "kiro": _usage_claude_code,
     "cursor": _usage_claude_code,
     "pi": _usage_pi,
+    "copilot-cli": _usage_copilot_cli,
+    "copilot": _usage_copilot_cli,
+    "opencode": _usage_claude_code,
+    "antigravity": _usage_antigravity,
 }
 
 
@@ -80,13 +149,23 @@ def _uuid_pi(parsed: dict) -> tuple[str | None, str | None]:
     return parsed.get("id"), parsed.get("parentId")
 
 
+def _uuid_antigravity(parsed: dict) -> tuple[str | None, str | None]:
+    """Antigravity: use step_index as a pseudo-UUID (no native UUIDs)."""
+    step = parsed.get("step_index")
+    if step is not None:
+        return str(step), None
+    return None, None
+
+
 _UuidFn = Callable[[dict], "tuple[str | None, str | None]"]
 
 _UUID_EXTRACTORS: dict[str, _UuidFn] = {
     "claude-code": _uuid_default,
     "kiro": _uuid_default,
     "cursor": _uuid_default,
+    "opencode": _uuid_default,
     "pi": _uuid_pi,
+    "antigravity": _uuid_antigravity,
 }
 
 
@@ -281,15 +360,15 @@ async def ingest_session_lines(
 
     for i, raw_line in enumerate(lines):
         line_offset = start_offset + i
-        line_hash = hashlib.sha256(raw_line.encode("utf-8", errors="replace")).hexdigest()
+        line_hash = xxhash.xxh128(raw_line.encode("utf-8", errors="replace")).hexdigest()
 
         if line_offset in existing_offsets or line_hash in existing_hashes:
             skipped += 1
             continue
 
         try:
-            parsed = json.loads(raw_line)
-        except (json.JSONDecodeError, ValueError) as exc:
+            parsed = orjson.loads(raw_line)
+        except (orjson.JSONDecodeError, ValueError) as exc:
             optic.warning(
                 "session_ingest_parse_error: session={}, offset={}, error={}, line_preview={}",
                 session_id,

@@ -77,7 +77,6 @@ def test_ide_registry_model_choice_fields():
         "claude-code": True,
         "kiro": True,
         "codex": True,
-        "gemini-cli": True,
         "opencode": True,
         "pi": True,
         "cursor": False,

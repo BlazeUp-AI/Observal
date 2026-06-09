@@ -10,6 +10,21 @@ from loguru import logger as optic
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
 
+_CODEX_SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.codex_session_push"
+
+
+def _codex_hooks_config(agent_name: str = "") -> dict:
+    """Build ~/.codex/hooks.json content for Codex CLI (Claude Code format)."""
+    cmd = _CODEX_SESSION_PUSH_CMD
+    if agent_name:
+        cmd = f"OBSERVAL_AGENT_NAME={agent_name} {cmd}"
+    return {
+        "hooks": {
+            "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": cmd}]}],
+            "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": cmd}]}],
+        },
+    }
+
 
 class CodexAdapter:
     """Codex CLI IDE adapter."""
@@ -34,6 +49,10 @@ class CodexAdapter:
         result: dict = {
             "rules_file": {"path": codex_spec["rules_file"][codex_scope], "content": rules_content},
             "mcp_config": {"path": codex_spec["mcp_config_path"][codex_scope], "content": codex_content},
+            "hooks_config": {
+                "path": "~/.codex/hooks.json",
+                "content": _codex_hooks_config(agent_name=ctx.safe_name),
+            },
             "scope": codex_scope,
         }
 

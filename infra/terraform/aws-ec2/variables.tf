@@ -48,8 +48,14 @@ variable "env_overrides" {
   default     = {}
 }
 
+variable "image_tag" {
+  description = "Observal image tag to deploy from GHCR (e.g. 'latest', 'v1.5.0')"
+  type        = string
+  default     = "latest"
+}
+
 variable "observal_ref" {
-  description = "Git branch, tag, or commit SHA to deploy"
+  description = "Git branch, tag, or commit SHA (used only for config files, not image builds)"
   type        = string
   default     = "main"
 }

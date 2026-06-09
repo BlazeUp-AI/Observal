@@ -4,10 +4,10 @@
 # tfsec:ignore:aws-elb-alb-not-public Public-facing load balancer is the entrypoint for end users; restrict reachability via var.alb_ingress_cidrs and (optionally) a WAF.
 resource "aws_lb" "app" {
   name               = "${local.name}-alb"
-  internal           = local.create_vpc ? false : true
+  internal           = var.alb_scheme == "internal"
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = local.create_vpc ? local.public_subnet_ids : local.private_subnet_ids
+  security_groups    = [local.alb_sg_id]
+  subnets            = var.alb_scheme == "internal" ? local.private_subnet_ids : local.public_subnet_ids
 
   drop_invalid_header_fields = true
   tags                       = { Name = "${local.name}-alb" }
@@ -125,7 +125,7 @@ resource "aws_lb_listener_rule" "http_api" {
 
   condition {
     path_pattern {
-      values = ["/api/*", "/auth/*", "/readyz", "/healthz", "/metrics"]
+      values = ["/api/*", "/auth/*", "/readyz", "/healthz", "/health", "/metrics"]
     }
   }
 }
@@ -250,7 +250,7 @@ resource "aws_lb_listener_rule" "https_api" {
 
   condition {
     path_pattern {
-      values = ["/api/*", "/auth/*", "/readyz", "/healthz", "/metrics"]
+      values = ["/api/*", "/auth/*", "/readyz", "/healthz", "/health", "/metrics"]
     }
   }
 }

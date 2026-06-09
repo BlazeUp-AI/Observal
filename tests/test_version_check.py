@@ -367,7 +367,7 @@ class TestCheckVersionCompatibility:
         fresh_cache = {
             "server_version": "1.0.5",
             "source": "server",
-            "last_checked": time.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            "last_checked": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
         }
         monkeypatch.setattr(version_check, "_read_cache", lambda: fresh_cache)
         network_called = {"hit": False}

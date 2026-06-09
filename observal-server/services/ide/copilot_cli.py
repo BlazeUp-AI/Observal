@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Copilot CLI IDE adapter for agent config generation."""
@@ -10,9 +11,37 @@ from loguru import logger as optic
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
 from services.ide.helpers import (
-    _vscode_copilot_hooks_config,
-    _vscode_copilot_hooks_frontmatter_lines,
+    _collect_hook_script_files,
+    _generate_skill_file,
+    _merge_hook_components_into_config,
 )
+
+# Session push command used in generated hook files
+_SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.copilot_cli_session_push"
+_SESSION_PUSH_CMD_WIN = "python -m observal_cli.hooks.copilot_cli_session_push"
+
+# Events that Copilot CLI hooks support
+_COPILOT_CLI_HOOK_EVENTS = (
+    "sessionStart",
+    "sessionEnd",
+    "userPromptSubmitted",
+    "preToolUse",
+    "postToolUse",
+)
+
+
+def _copilot_cli_hooks_config() -> dict:
+    """Build .github/hooks/observal.json content for Copilot CLI.
+
+    Uses the Copilot CLI hook file format:
+    {"version": 1, "hooks": {"eventName": [{"type": "command", "bash": "...", "powershell": "...", "timeoutSec": 5}]}}
+    """
+    hooks: dict[str, list[dict]] = {}
+    for event in _COPILOT_CLI_HOOK_EVENTS:
+        hooks[event] = [
+            {"type": "command", "bash": _SESSION_PUSH_CMD, "powershell": _SESSION_PUSH_CMD_WIN, "timeoutSec": 5}
+        ]
+    return {"version": 1, "hooks": hooks}
 
 
 class CopilotCliAdapter:
@@ -27,7 +56,10 @@ class CopilotCliAdapter:
         safe_name = ctx.safe_name
         mcp_configs = ctx.mcp_configs
         rules_content = ctx.rules_content
+        hook_configs = ctx.hook_configs
+        skill_configs = ctx.skill_configs
 
+        # Build MCP config entries with Copilot CLI format
         copilot_cli_configs = {}
         for k, v in mcp_configs.items():
             if v.get("url"):
@@ -47,14 +79,40 @@ class CopilotCliAdapter:
 
         copilot_cli_spec = IDE_REGISTRY["copilot-cli"]
 
+        # Build .agent.md with YAML frontmatter
+        agent_desc = getattr(ctx.agent, "description", "") or ""
         frontmatter_lines = [
             "---",
             f"name: {safe_name}",
-            "tools: ['*']",
         ]
-        frontmatter_lines.extend(_vscode_copilot_hooks_frontmatter_lines())
+        if agent_desc:
+            frontmatter_lines.append(f'description: "{agent_desc}"')
+        frontmatter_lines.append("tools: ['*']")
+        # Add mcp-servers to frontmatter if present
+        if copilot_cli_configs:
+            frontmatter_lines.append("mcp-servers:")
+            for mcp_name in copilot_cli_configs:
+                frontmatter_lines.append(f"  {mcp_name}:")
+                cfg = copilot_cli_configs[mcp_name]
+                if cfg.get("type"):
+                    frontmatter_lines.append(f"    type: {cfg['type']}")
+                if cfg.get("command"):
+                    frontmatter_lines.append(f"    command: {cfg['command']}")
+                if cfg.get("args"):
+                    args_str = ", ".join(str(a) for a in cfg["args"])
+                    frontmatter_lines.append(f"    args: [{args_str}]")
+                if cfg.get("url"):
+                    frontmatter_lines.append(f"    url: {cfg['url']}")
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
+
+        # Build hooks config in Copilot CLI format
+        hooks_content = _copilot_cli_hooks_config()
+        _merge_hook_components_into_config(hooks_content, hook_configs, "copilot-cli")
+
+        # Build skill files
+        skill_files = [_generate_skill_file(s, "copilot-cli", "project") for s in skill_configs]
+        skill_files = [f for f in skill_files if f]
 
         result: dict = {
             "rules_file": {
@@ -67,10 +125,18 @@ class CopilotCliAdapter:
             },
             "hooks_config": {
                 "path": ".github/hooks/observal.json",
-                "content": _vscode_copilot_hooks_config(),
+                "content": hooks_content,
             },
             "scope": copilot_cli_spec["default_scope"],
         }
+
+        # Hook script files
+        hook_files = _collect_hook_script_files(hook_configs, ctx.hook_listings, "copilot-cli")
+        if hook_files:
+            result["hook_files"] = hook_files
+        if skill_files:
+            result["skill_files"] = skill_files
+            result["skill_components"] = [s for s in skill_configs if s.get("git_url")]
         if ctx.compatibility_warnings:
             result["_warnings"] = ctx.compatibility_warnings
 

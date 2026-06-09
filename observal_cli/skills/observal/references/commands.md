@@ -104,6 +104,10 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal ops top`: Show top MCP servers or agents by usage.
   - `observal ops traces`: List recent traces.
 
+**`observal reconcile`**: Push local session transcripts to the server
+
+- (no subcommands)
+
 **`observal registry`**: Component registry (MCPs, skills, hooks, prompts, sandboxes)
 
 - `observal registry hook`: Hook registry commands

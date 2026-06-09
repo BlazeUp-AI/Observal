@@ -1,7 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Naraen Rammoorthi <naraen13@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Copilot IDE adapter for agent config generation."""
+"""Copilot (VS Code) IDE adapter for agent config generation.
+
+Copilot in VS Code does not support hooks. Telemetry flows via OTel export
+(opt-in) and MCP shim wrapping (always-on). This adapter generates:
+- .github/agents/{name}.agent.md (agent file with YAML frontmatter)
+- .vscode/mcp.json (MCP server config with "servers" key)
+"""
 
 from __future__ import annotations
 
@@ -9,14 +16,10 @@ from loguru import logger as optic
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
-from services.ide.helpers import (
-    _vscode_copilot_hooks_config,
-    _vscode_copilot_hooks_frontmatter_lines,
-)
 
 
 class CopilotAdapter:
-    """GitHub Copilot IDE adapter."""
+    """GitHub Copilot (VS Code) IDE adapter."""
 
     @property
     def ide_name(self) -> str:
@@ -42,13 +45,30 @@ class CopilotAdapter:
 
         copilot_spec = IDE_REGISTRY["copilot"]
 
-        # Build .agent.md with hooks in frontmatter
+        # Build .agent.md (no hooks in frontmatter - VS Code doesn't support them)
+        agent_desc = getattr(ctx.agent, "description", "") or ""
         frontmatter_lines = [
             "---",
             f"name: {safe_name}",
-            "tools: ['*']",
         ]
-        frontmatter_lines.extend(_vscode_copilot_hooks_frontmatter_lines())
+        if agent_desc:
+            frontmatter_lines.append(f'description: "{agent_desc}"')
+        frontmatter_lines.append("tools: ['*']")
+        # Add mcp-servers to frontmatter
+        if copilot_configs:
+            frontmatter_lines.append("mcp-servers:")
+            for mcp_name in copilot_configs:
+                cfg = copilot_configs[mcp_name]
+                frontmatter_lines.append(f"  {mcp_name}:")
+                if cfg.get("type"):
+                    frontmatter_lines.append(f"    type: {cfg['type']}")
+                if cfg.get("command"):
+                    frontmatter_lines.append(f"    command: {cfg['command']}")
+                if cfg.get("args"):
+                    args_str = ", ".join(str(a) for a in cfg["args"])
+                    frontmatter_lines.append(f"    args: [{args_str}]")
+                if cfg.get("url"):
+                    frontmatter_lines.append(f"    url: {cfg['url']}")
         frontmatter_lines.append("---")
         agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
@@ -60,10 +80,6 @@ class CopilotAdapter:
             "mcp_config": {
                 "path": copilot_spec["mcp_config_path"]["project"],
                 "content": {copilot_spec["mcp_servers_key"]: copilot_configs},
-            },
-            "hooks_config": {
-                "path": ".github/hooks/observal.json",
-                "content": _vscode_copilot_hooks_config(),
             },
             "scope": copilot_spec["default_scope"],
         }

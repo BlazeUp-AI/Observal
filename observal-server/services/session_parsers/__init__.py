@@ -23,9 +23,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from .antigravity import parse_rows as _parse_antigravity
 from .claude_code import parse_rows as _parse_claude_code
+from .codex import parse_rows as _parse_codex
+from .copilot_cli import parse_rows as _parse_copilot_cli
 from .cursor import parse_rows as _parse_cursor
 from .kiro import parse_rows as _parse_kiro
+from .opencode import parse_rows as _parse_opencode
 from .pi import parse_rows as _parse_pi
 
 # Maps session_parser ID -> parse_rows callable.
@@ -33,9 +37,13 @@ from .pi import parse_rows as _parse_pi
 _ParseFn = Callable[[list[dict]], list[dict]]
 _PARSERS: dict[str, _ParseFn] = {
     "claude-code": _parse_claude_code,
+    "codex": _parse_codex,
+    "copilot-cli": _parse_copilot_cli,
     "cursor": _parse_cursor,
     "kiro": _parse_kiro,
+    "opencode": _parse_opencode,
     "pi": _parse_pi,
+    "antigravity": _parse_antigravity,
 }
 
 
@@ -54,5 +62,7 @@ def parse_raw_events(rows: list[dict]) -> list[dict]:
     from schemas.ide_registry import IDE_REGISTRY
 
     parser_id = IDE_REGISTRY[ide]["session_parser"]  # KeyError = unknown IDE
+    if parser_id is None:
+        return []
     parser = _PARSERS[parser_id]  # KeyError = unimplemented parser
     return parser(rows)

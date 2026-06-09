@@ -6,14 +6,30 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from observal_cli.ide import (
     DiscoveredMcp,
+    HookSpec,
     ScanResult,
     register_adapter,
 )
 from observal_cli.ide.base import BaseAdapter
+
+
+def _vscode_user_settings_path(home: Path | None = None) -> Path:
+    """Return the platform-specific path to VS Code user settings.json."""
+    if home is None:
+        home = Path.home()
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support" / "Code" / "User" / "settings.json"
+    elif sys.platform == "win32":
+        appdata = Path.home() / "AppData" / "Roaming"
+        return appdata / "Code" / "User" / "settings.json"
+    else:
+        # Linux and other Unix
+        return home / ".config" / "Code" / "User" / "settings.json"
 
 
 class CopilotAdapter(BaseAdapter):
@@ -22,6 +38,13 @@ class CopilotAdapter(BaseAdapter):
     @property
     def ide_name(self) -> str:
         return "copilot"
+
+    def get_hook_spec(self) -> HookSpec:
+        return HookSpec(
+            events=["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"],
+            format="command",
+            markers=["observal", "OBSERVAL"],
+        )
 
     def scan_home(self, home: Path | None = None) -> ScanResult:
         home = home or Path.home()
@@ -74,6 +97,50 @@ class CopilotAdapter(BaseAdapter):
             return ScanResult(mcps=mcps)
         except (json.JSONDecodeError, OSError):
             return ScanResult()
+
+    def detect_hooks(self, config_dir: Path) -> str:
+        """Detect telemetry hooks for Copilot.
+
+        Checks for hook files at .github/hooks/*.json or ~/.copilot/hooks/*.json
+        with observal markers.
+
+        Returns "installed" when hooks are configured, "missing" otherwise.
+        """
+        # Check for hook files in the project
+        hooks_dir = config_dir.parent / ".github" / "hooks" if config_dir.name == ".vscode" else config_dir
+        if hooks_dir.is_dir():
+            for hook_file in hooks_dir.glob("*.json"):
+                try:
+                    data = json.loads(hook_file.read_text())
+                    hooks = data.get("hooks", {})
+                    for entries in hooks.values():
+                        if isinstance(entries, list):
+                            for entry in entries:
+                                if isinstance(entry, dict):
+                                    cmd = entry.get("command", entry.get("bash", ""))
+                                    if "observal" in cmd or "session_push" in cmd:
+                                        return "installed"
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+        # Check user-level hooks
+        user_hooks_dir = Path.home() / ".copilot" / "hooks"
+        if user_hooks_dir.is_dir():
+            for hook_file in user_hooks_dir.glob("*.json"):
+                try:
+                    data = json.loads(hook_file.read_text())
+                    hooks = data.get("hooks", {})
+                    for entries in hooks.values():
+                        if isinstance(entries, list):
+                            for entry in entries:
+                                if isinstance(entry, dict):
+                                    cmd = entry.get("command", entry.get("bash", ""))
+                                    if "observal" in cmd or "session_push" in cmd:
+                                        return "installed"
+                except (json.JSONDecodeError, OSError):
+                    continue
+
+        return "missing"
 
     def shim_status(self, mcps: list[DiscoveredMcp]) -> str:
         return super().shim_status(mcps)

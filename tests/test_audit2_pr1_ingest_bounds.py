@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Regression coverage for Audit 2 PR1 ingest abuse guardrails."""
@@ -181,6 +182,35 @@ def test_mcp_validator_warning_is_empty_for_https_urls():
     with patch.object(mcp_validator, "ALLOW_HTTP_GIT", True):
         assert mcp_validator._git_url_warning("https://github.com/example/repo") == ""
         assert mcp_validator._git_url_warning("https://gitlab.example.com/x.git") == ""
+
+
+@pytest.mark.asyncio
+async def test_mcp_validator_redacts_clone_token_from_validation_details(monkeypatch):
+    import uuid
+
+    import services.mcp_validator as mcp_validator
+
+    token = "super-secret-git-token-1234567890"
+    listing = SimpleNamespace(id=uuid.uuid4(), git_url="https://github.com/example/private-repo.git")
+    db = MagicMock()
+    db.commit = AsyncMock()
+
+    clone_error = RuntimeError(
+        f"fatal: Authentication failed for 'https://x-access-token:{token}@github.com/example/private-repo.git/'"
+    )
+    monkeypatch.setenv("GIT_CLONE_TOKEN", token)
+
+    with (
+        patch.object(mcp_validator, "_validate_git_url", return_value=None),
+        patch.object(mcp_validator, "_async_clone", new=AsyncMock(side_effect=clone_error)),
+    ):
+        result = await mcp_validator._clone_and_inspect(listing, db, "/tmp/unused")
+
+    assert result is None
+    validation_result = db.add.call_args.args[0]
+    assert token not in validation_result.details
+    assert "Failed to clone repo:" in validation_result.details
+    assert "**REDACTED**" in validation_result.details
 
 
 def test_mcp_validator_env_var_controls_allowed_schemes_at_import():

@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: 2026 BlazeUp AI
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# ── ALB ────────────────────────────────────────────────────────────────────
+resource "aws_security_group" "alb" {
+  name        = "${local.name}-alb"
+  description = "Public ingress to the load balancer."
+  vpc_id      = local.vpc_id
+
+  ingress {
+    description = "HTTP from approved CIDRs"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = var.alb_ingress_cidrs
+  }
+
+  ingress {
+    description = "HTTPS from approved CIDRs"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = var.alb_ingress_cidrs
+  }
+
+  egress {
+    description = "All egress (load balancer to targets)"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${local.name}-alb-sg" }
+}
+
+# ── ECS instances (api/web/worker) ────────────────────────────────────────
+resource "aws_security_group" "ecs_instances" {
+  name        = "${local.name}-ecs-instances"
+  description = "ECS EC2 instances running api/web/worker. Inbound from ALB only."
+  vpc_id      = local.vpc_id
+
+  ingress {
+    description     = "API HTTP from ALB"
+    from_port       = 8000
+    to_port         = 8000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  ingress {
+    description     = "Web HTTP from ALB"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "All egress"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${local.name}-ecs-instances-sg" }
+}
+
+# ── Data host (Postgres + Redis + ClickHouse + Grafana + Prometheus) ──────
+resource "aws_security_group" "data_host" {
+  name        = "${local.name}-data-host"
+  description = "Data tier EC2: Postgres, Redis, ClickHouse, Grafana, Prometheus."
+  vpc_id      = local.vpc_id
+
+  ingress {
+    description     = "Postgres from ECS instances"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_instances.id]
+  }
+
+  ingress {
+    description     = "Redis from ECS instances"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_instances.id]
+  }
+
+  ingress {
+    description     = "ClickHouse HTTP from ECS instances"
+    from_port       = 8123
+    to_port         = 8123
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_instances.id]
+  }
+
+  ingress {
+    description     = "ClickHouse native protocol from ECS instances"
+    from_port       = 9000
+    to_port         = 9000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_instances.id]
+  }
+
+  ingress {
+    description     = "Grafana UI from ALB"
+    from_port       = 3001
+    to_port         = 3001
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "All egress (image pulls, OS updates, AWS APIs)"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${local.name}-data-host-sg" }
+}

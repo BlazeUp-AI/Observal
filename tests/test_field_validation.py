@@ -76,9 +76,9 @@ class TestMcpValidation:
             owner="testowner",
             category="general",
             git_url="https://github.com/example/mcp-server",
-            supported_ides=["claude_code", "gemini_cli"],
+            supported_ides=["claude_code"],
         )
-        assert r.supported_ides == ["claude-code", "gemini-cli"]
+        assert r.supported_ides == ["claude-code"]
 
 
 # ═══════════════════════════════════════════════════════════

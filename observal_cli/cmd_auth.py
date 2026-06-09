@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
 # SPDX-FileCopyrightText: 2026 Harishankar <harishankar0301@gmail.com>
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
@@ -151,6 +152,7 @@ def login(
                 "refresh_token": data["refresh_token"],
                 "user_id": user.get("id", ""),
                 "user_name": user.get("name", ""),
+                "username": user.get("username", ""),
             }
             if endpoints:
                 cfg_data["web_url"] = endpoints.get("web", "")
@@ -495,6 +497,7 @@ def _do_password_login(server_url: str, email: str, password: str):
             "refresh_token": data["refresh_token"],
             "user_id": user.get("id", ""),
             "user_name": user.get("name", ""),
+            "username": user.get("username", ""),
         }
         if endpoints:
             cfg_data["web_url"] = endpoints.get("web", "")
@@ -608,6 +611,7 @@ def _do_device_flow_login(server_url: str):
                     "refresh_token": token_data["refresh_token"],
                     "user_id": user.get("id", ""),
                     "user_name": user.get("name", ""),
+                    "username": user.get("username", ""),
                 }
                 if endpoints:
                     cfg_data["web_url"] = endpoints.get("web", "")
@@ -792,7 +796,6 @@ def _post_auth_onboarding():
             "Claude Code": (Path.home() / ".claude", "claude-code"),
             "Kiro CLI": (Path.home() / ".kiro", "kiro"),
             "Cursor": (Path.home() / ".cursor", "cursor"),
-            "Gemini CLI": (Path.home() / ".gemini", "gemini-cli"),
             "Codex": (Path.home() / ".codex", "codex"),
             "Copilot": (Path.home() / ".vscode", "copilot"),
             "OpenCode": (Path.home() / ".config" / "opencode", "opencode"),
@@ -928,29 +931,6 @@ def _configure_kiro(server_url: str):
     except Exception as e:
         rprint(f"\n[yellow]Could not configure Kiro automatically: {e}[/yellow]")
         rprint("Run [bold]observal doctor patch --all --ide kiro[/bold] to set up manually.")
-
-
-def _configure_gemini_cli(server_url: str):
-    """Check for Gemini CLI and configure telemetry via doctor patch."""
-    optic.trace("server_url={}", server_url)
-    try:
-        # The gemini binary is the definitive signal.
-        # ~/.gemini/settings.json can be created by a previous observal doctor patch,
-        # so its presence alone doesn't mean Gemini CLI is actually installed.
-        if not shutil.which("gemini"):
-            return
-
-        if not typer.confirm(
-            "\nDetected Gemini CLI. Configure telemetry -> Observal?",
-            default=True,
-        ):
-            return
-
-        _run_doctor_patch("gemini-cli")
-
-    except Exception as e:
-        rprint(f"\n[yellow]Could not configure Gemini CLI automatically: {e}[/yellow]")
-        rprint("Run [bold]observal doctor patch --all --ide gemini-cli[/bold] to set up manually.")
 
 
 def _configure_codex(server_url: str):

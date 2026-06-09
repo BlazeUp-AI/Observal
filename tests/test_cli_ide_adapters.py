@@ -33,12 +33,12 @@ class TestAdapterRegistry:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
             "opencode",
             "pi",
+            "antigravity",
         }
         assert set(adapters.keys()) == expected
 
@@ -48,7 +48,6 @@ class TestAdapterRegistry:
 
     def test_get_adapter_by_underscore_alias(self):
         assert get_adapter("claude_code").ide_name == "claude-code"
-        assert get_adapter("gemini_cli").ide_name == "gemini-cli"
         assert get_adapter("copilot_cli").ide_name == "copilot-cli"
 
     def test_get_adapter_unknown_raises_keyerror(self):
@@ -79,7 +78,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
@@ -101,7 +99,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
@@ -119,8 +116,7 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
-            "copilot",
+            # copilot (VS Code) intentionally omitted: uses OTel export, not hooks
             "copilot-cli",
             "opencode",
         ],
@@ -130,13 +126,21 @@ class TestAdapterProtocol:
         spec = adapter.get_hook_spec()
         assert isinstance(spec, HookSpec)
 
+    def test_copilot_get_hook_spec(self):
+        """Copilot VS Code supports hooks with PascalCase events."""
+        adapter = get_adapter("copilot")
+        spec = adapter.get_hook_spec()
+        assert isinstance(spec, HookSpec)
+        assert "SessionStart" in spec.events
+        assert "UserPromptSubmit" in spec.events
+        assert "Stop" in spec.events
+
     @pytest.mark.parametrize(
         "ide_name",
         [
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "copilot",
             "copilot-cli",
             "opencode",
@@ -153,7 +157,6 @@ class TestAdapterProtocol:
             "claude-code",
             "cursor",
             "kiro",
-            "gemini-cli",
             "codex",
             "copilot",
             "copilot-cli",
@@ -309,18 +312,19 @@ class TestShimStatus:
 class TestFeatureGating:
     """Test that IDE_Registry feature flags gate method access."""
 
-    def test_codex_lacks_hooks_raises_on_get_hook_spec(self):
+    def test_codex_has_hooks_allows_get_hook_spec(self):
         adapter = get_adapter("codex")
-        with pytest.raises(NotSupported, match="does not support get_hook_spec"):
-            adapter.get_hook_spec()
+        spec = adapter.get_hook_spec()
+        assert isinstance(spec, HookSpec)
+        assert "UserPromptSubmit" in spec.events
 
-    def test_codex_lacks_hooks_raises_on_detect_hooks(self):
+    def test_codex_has_hooks_allows_detect_hooks(self):
         import tempfile
         from pathlib import Path
 
         adapter = get_adapter("codex")
-        with pytest.raises(NotSupported, match="does not support detect_hooks"):
-            adapter.detect_hooks(Path(tempfile.mkdtemp()))
+        result = adapter.detect_hooks(Path(tempfile.mkdtemp()))
+        assert result in ("installed", "missing")
 
     def test_codex_has_mcp_servers_allows_scan_home(self):
         import tempfile

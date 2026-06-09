@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
@@ -172,7 +173,7 @@ def skill_submit(
             "name": text_input("Skill name", default=prefill.get("name", "")),
             "version": text_input("Version", default="1.0.0"),
             "description": text_input("Description", default=prefill.get("description", "")),
-            "owner": text_input("Owner", default=config.load().get("user_name", "")),
+            "owner": config.load().get("username", ""),
             "task_type": select_one("Task type", VALID_SKILL_TASK_TYPES),
             "target_agents": [a.strip() for a in agents_input.split(",") if a.strip()],
             "delivery_mode": effective_delivery_mode,
@@ -426,7 +427,7 @@ def skill_install(
         observal registry skill install my-skill --ide claude-code
         observal registry skill install @sk --ide kiro --scope project
         observal registry skill install 2 --ide cursor --raw > config.json
-        observal registry skill install my-skill --ide gemini-cli --no-write
+        observal registry skill install my-skill --ide opencode --no-write
     """
     resolved = config.resolve_alias(skill_id)
     with spinner(f"Generating {ide} config..."):
@@ -492,7 +493,6 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
     ("claude-code", ".claude"),
     ("cursor", ".cursor"),
     ("kiro", ".kiro"),
-    ("gemini-cli", ".gemini"),
     ("opencode", ".opencode"),
 ]
 
@@ -500,7 +500,6 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
 _USER_SKILL_DIRS: dict[str, str] = {
     "claude-code": "~/.claude/skills",
     "kiro": "~/.kiro/skills",
-    "gemini-cli": "~/.gemini/skills",
     "opencode": "~/.config/opencode/skills",
     "cursor": "~/.cursor/rules",
     "copilot": "~/.copilot/skills",

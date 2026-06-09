@@ -100,7 +100,6 @@ def _patch_post_login_hooks(stack: ExitStack) -> MagicMock:
         "_post_login_setup",
         "_configure_claude_code",
         "_configure_kiro",
-        "_configure_gemini_cli",
         "_configure_codex",
         "_configure_copilot",
         "_configure_copilot_cli",

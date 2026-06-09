@@ -251,6 +251,7 @@ async function request<T = unknown>(
 			clearSession();
 			if (typeof window !== "undefined") {
 				window.location.href = "/login?reason=session_expired";
+				return new Promise<T>(() => {});
 			}
 			throw new Error("Session expired");
 		}
@@ -583,6 +584,14 @@ export const admin = {
 			`/admin/settings/${key}/revoke`,
 			{},
 		),
+	testInsightsConnection: (body?: { model?: string }) =>
+		post<{
+			success: boolean;
+			model?: string;
+			latency_ms?: number;
+			error?: string;
+			hint?: string;
+		}>("/admin/insights/test-connection", body ?? {}),
 	users: () => get<AdminUser[]>("/admin/users"),
 	createUser: (body: {
 		email: string;

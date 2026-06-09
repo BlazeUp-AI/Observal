@@ -29,7 +29,6 @@ from observal_cli.cmd_scan import (
     _IDE_PROJECT_CONFIGS,
     _parse_project_mcp_servers,
     _scan_copilot_cli_home,
-    _scan_gemini_home,
     _scan_project_dir,
 )
 from observal_cli.constants import IDE_FEATURE_MATRIX, VALID_IDES
@@ -81,27 +80,54 @@ class TestConstants:
     def test_copilot_in_valid_ides(self):
         assert "copilot" in VALID_IDES
 
-    def test_gemini_cli_in_valid_ides(self):
-        assert "gemini-cli" in VALID_IDES
-
     def test_opencode_in_valid_ides(self):
         assert "opencode" in VALID_IDES
 
     def test_codex_feature_matrix(self):
         assert "codex" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["codex"] == {"mcp_servers"}
+        assert IDE_FEATURE_MATRIX["codex"] == {"mcp_servers", "hooks", "skills"}
 
     def test_copilot_feature_matrix(self):
         assert "copilot" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["copilot"] == {"hooks", "mcp_servers"}
+        assert IDE_FEATURE_MATRIX["copilot"] == {"mcp_servers", "hooks", "skills"}
 
-    def test_gemini_cli_feature_matrix(self):
-        assert "gemini-cli" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["gemini-cli"] == {"hooks", "mcp_servers"}
+    def test_copilot_session_parser(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        assert IDE_REGISTRY["copilot"]["session_parser"] == "copilot-cli"
+
+    def test_copilot_cli_session_parser(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        assert IDE_REGISTRY["copilot-cli"]["session_parser"] == "copilot-cli"
+
+    def test_copilot_cli_hook_events_map(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        expected = {
+            "SessionStart": "sessionStart",
+            "UserPromptSubmit": "userPromptSubmitted",
+            "PreToolUse": "preToolUse",
+            "PostToolUse": "postToolUse",
+            "Stop": "sessionEnd",
+        }
+        assert IDE_REGISTRY["copilot-cli"]["hook_events_map"] == expected
+
+    def test_copilot_hook_events_map(self):
+        from observal_cli.ide_registry import IDE_REGISTRY
+
+        expected = {
+            "SessionStart": "SessionStart",
+            "UserPromptSubmit": "UserPromptSubmit",
+            "PreToolUse": "PreToolUse",
+            "PostToolUse": "PostToolUse",
+            "Stop": "Stop",
+        }
+        assert IDE_REGISTRY["copilot"]["hook_events_map"] == expected
 
     def test_opencode_feature_matrix(self):
         assert "opencode" in IDE_FEATURE_MATRIX
-        assert IDE_FEATURE_MATRIX["opencode"] == {"hooks", "mcp_servers"}
+        assert IDE_FEATURE_MATRIX["opencode"] == {"hooks", "mcp_servers", "skills"}
 
     def test_copilot_cli_in_valid_ides(self):
         assert "copilot-cli" in VALID_IDES
@@ -114,14 +140,12 @@ class TestConstants:
         assert "codex" in _IDE_PROJECT_CONFIGS
         assert "copilot" in _IDE_PROJECT_CONFIGS
         assert "copilot-cli" in _IDE_PROJECT_CONFIGS
-        assert "gemini-cli" in _IDE_PROJECT_CONFIGS
         assert "opencode" in _IDE_PROJECT_CONFIGS
 
     def test_ide_project_config_paths(self):
         assert _IDE_PROJECT_CONFIGS["codex"] == ".codex/config.toml"
         assert _IDE_PROJECT_CONFIGS["copilot"] == ".vscode/mcp.json"
         assert _IDE_PROJECT_CONFIGS["copilot-cli"] == ".mcp.json"
-        assert _IDE_PROJECT_CONFIGS["gemini-cli"] == ".gemini/settings.json"
         assert _IDE_PROJECT_CONFIGS["opencode"] == "opencode.json"
 
 
@@ -369,8 +393,8 @@ class TestGenerateOpenCodeConfig:
         agent = _make_agent(external_mcps=ext)
         cfg = generate_agent_config(agent, "opencode")
         entry = cfg["mcp_config"]["content"]["mcp"]["my-server"]
-        assert entry["env"]["FOO"] == "bar"
-        assert entry["env"]["OBSERVAL_AGENT_ID"] == str(agent.id)
+        assert entry["environment"]["FOO"] == "bar"
+        assert entry["environment"]["OBSERVAL_AGENT_ID"] == str(agent.id)
 
     def test_scope_is_user(self):
         agent = _make_agent()
@@ -400,60 +424,12 @@ class TestGenerateOpenCodeConfig:
         agent = _make_agent()
         cfg = generate_agent_config(agent, "opencode")
         plugin = cfg["hooks_config"]["content"]
-        assert 'import { execSync } from "child_process";' in plugin
+        assert 'import { request as httpRequest } from "http";' in plugin
         assert "from loguru import logger" not in plugin
         assert "export const ObservalPlugin" in plugin
         assert '"session.created"' in plugin
         assert '"session.idle"' in plugin
-
-
-class TestGenerateGeminiConfig:
-    def test_rules_path_project_scope(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert cfg["rules_file"]["path"] == "GEMINI.md"
-
-    def test_rules_path_user_scope(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli", options={"scope": "user"})
-        assert cfg["rules_file"]["path"] == "~/.gemini/GEMINI.md"
-
-    def test_mcp_path_project_scope(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert cfg["mcp_config"]["path"] == ".gemini/settings.json"
-
-    def test_mcp_path_user_scope(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli", options={"scope": "user"})
-        assert cfg["mcp_config"]["path"] == "~/.gemini/settings.json"
-
-    def test_mcp_config_uses_mcpservers_key(self):
-        ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
-        agent = _make_agent(external_mcps=ext)
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "mcpServers" in cfg["mcp_config"]["content"]
-        assert "my-server" in cfg["mcp_config"]["content"]["mcpServers"]
-
-    def test_gemini_no_otlp_env(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" not in cfg
-
-    def test_gemini_settings_snippet_present(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "gemini_settings_snippet" in cfg
-
-    def test_gemini_underscore_alias(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini_cli")
-        assert cfg["rules_file"]["path"] == "GEMINI.md"
-
-    def test_scope_defaults_to_project(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert cfg["scope"] == "project"
+        assert '"message.updated"' in plugin
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -474,23 +450,17 @@ class TestIdeCompatibilityWarnings:
         warnings = _check_ide_compatibility(agent, "copilot")
         assert len(warnings) == 0
 
-    def test_gemini_supports_mcp(self):
-        agent = _make_agent()
-        agent.required_ide_features = ["mcp_servers"]
-        warnings = _check_ide_compatibility(agent, "gemini-cli")
-        assert len(warnings) == 0
-
     def test_opencode_warns_on_unsupported_features(self):
         agent = _make_agent()
         agent.required_ide_features = ["skills", "hooks"]
         warnings = _check_ide_compatibility(agent, "opencode")
-        # opencode now supports hooks (via plugins), only "skills" is unsupported
-        assert len(warnings) == 1
+        # opencode now supports both hooks and skills
+        assert len(warnings) == 0
 
     def test_no_warnings_for_supported_features(self):
         agent = _make_agent()
         agent.required_ide_features = []
-        for ide in ("codex", "copilot", "gemini-cli", "opencode"):
+        for ide in ("codex", "copilot", "opencode"):
             if ide in IDE_FEATURE_MATRIX:
                 warnings = _check_ide_compatibility(agent, ide)
                 assert len(warnings) == 0, f"Unexpected warnings for {ide}: {warnings}"
@@ -511,14 +481,15 @@ class TestIdeCompatibilityWarnings:
         agent = _make_agent()
         agent.required_ide_features = ["skills", "hooks"]
         warnings = _check_ide_compatibility(agent, "codex")
-        assert len(warnings) == 2
+        # Codex now supports hooks and skills
+        assert len(warnings) == 0
 
     def test_codex_warns_on_skills_requirement(self):
         agent = _make_agent()
         agent.required_ide_features = ["skills"]
         warnings = _check_ide_compatibility(agent, "codex")
-        assert len(warnings) > 0
-        assert any("skill" in w.lower() for w in warnings)
+        # Codex now supports skills
+        assert len(warnings) == 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -543,11 +514,6 @@ class TestParseProjectMcpServers:
         config = {"mcp": {}}
         result = _parse_project_mcp_servers(config, "codex")
         assert result == {}
-
-    def test_gemini_extracts_mcpservers(self):
-        config = {"mcpServers": {"my-srv": {"command": "python", "args": ["serve.py"]}}}
-        result = _parse_project_mcp_servers(config, "gemini-cli")
-        assert "my-srv" in result
 
     def test_copilot_extracts_servers_key(self):
         config = {"servers": {"my-srv": {"type": "stdio", "command": "npx", "args": ["-y", "my-srv"]}}}
@@ -599,15 +565,6 @@ class TestScanProjectDir:
         ide_names = [(e[0], e[1]) for e in entries]
         assert any(ide == "codex" for ide, _ in ide_names)
 
-    def test_detects_gemini_settings(self, tmp_path):
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir()
-        settings = gemini_dir / "settings.json"
-        settings.write_text(json.dumps({"mcpServers": {"gemini-srv": {"command": "python"}}}))
-        entries = _scan_project_dir(tmp_path, None)
-        ide_names = [(e[0], e[1]) for e in entries]
-        assert any(ide == "gemini-cli" for ide, _ in ide_names)
-
     def test_detects_copilot_mcp_json(self, tmp_path):
         vscode_dir = tmp_path / ".vscode"
         vscode_dir.mkdir()
@@ -629,14 +586,9 @@ class TestScanProjectDir:
         vscode_dir.mkdir()
         mcp_file = vscode_dir / "mcp.json"
         mcp_file.write_text(json.dumps({"servers": {"vscode-srv": {"type": "stdio", "command": "npx"}}}))
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir()
-        settings = gemini_dir / "settings.json"
-        settings.write_text(json.dumps({"mcpServers": {"gemini-srv": {"command": "python"}}}))
         entries = _scan_project_dir(tmp_path, "copilot")
         ide_names = [e[0] for e in entries]
         assert "copilot" in ide_names
-        assert "gemini-cli" not in ide_names
 
     def test_includes_already_shimmed_with_flag(self, tmp_path):
         vscode_dir = tmp_path / ".vscode"
@@ -965,40 +917,6 @@ class TestPullOpenCode:
         assert (tmp_path / ".opencode" / "agents" / "test-agent.md").exists()
 
 
-class TestPullGemini:
-    def test_writes_gemini_md_and_settings(self, tmp_path):
-        snippet = {
-            "config_snippet": {
-                "rules_file": {
-                    "path": "GEMINI.md",
-                    "content": "# Gemini Rules\n\nUse TypeScript.\n",
-                },
-                "mcp_config": {
-                    "path": ".gemini/settings.json",
-                    "content": {
-                        "mcpServers": {
-                            "my-server": {
-                                "command": "observal-shim",
-                                "args": ["--mcp-id", "test", "--", "npx", "-y", "my-server"],
-                            }
-                        }
-                    },
-                },
-            }
-        }
-        with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--no-prompt"]
-            )
-        assert result.exit_code == 0, result.output
-        rules = tmp_path / "GEMINI.md"
-        assert rules.exists()
-        settings = tmp_path / ".gemini" / "settings.json"
-        assert settings.exists()
-        data = json.loads(settings.read_text())
-        assert "mcpServers" in data
-
-
 class TestPullDryRunAllIdes:
     @pytest.mark.parametrize("ide", ["codex", "copilot", "opencode"])
     def test_dry_run_does_not_write_files(self, tmp_path, ide):
@@ -1024,25 +942,6 @@ class TestPullDryRunAllIdes:
         assert result.exit_code == 0, result.output
         assert "Dry run" in result.output
         assert not (tmp_path / rules_path).exists()
-
-    def test_dry_run_gemini(self, tmp_path):
-        snippet = {
-            "config_snippet": {
-                "rules_file": {
-                    "path": "GEMINI.md",
-                    "content": "# Gemini\n",
-                },
-            }
-        }
-        with _patch_config(), _patch_get_agent(), _patch_post(snippet):
-            result = runner.invoke(
-                cli_app,
-                ["agent", "pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--dry-run", "--no-prompt"],
-            )
-
-        assert result.exit_code == 0, result.output
-        assert "Dry run" in result.output
-        assert not (tmp_path / "GEMINI.md").exists()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1109,15 +1008,6 @@ class TestOpenCodeJsonFormat:
         cfg = generate_agent_config(agent, "opencode")
         entry = cfg["mcp_config"]["content"]["mcp"]["my-srv"]
         assert entry["type"] == "local"
-
-
-class TestGeminiJsonFormat:
-    def test_gemini_mcp_uses_mcpservers_key(self):
-        agent = _make_agent(external_mcps=[{"name": "my-srv", "command": "npx", "args": ["-y", "my-srv"]}])
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "mcpServers" in cfg["mcp_config"]["content"]
-        assert "servers" not in cfg["mcp_config"]["content"]
-        assert "mcp" not in cfg["mcp_config"]["content"]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1395,7 +1285,7 @@ class TestConfigGeneratorOpenCode:
             env_values={"API_KEY": "secret"},
         )
         entry = cfg["mcp"]["my-mcp"]
-        assert entry["env"]["API_KEY"] == "secret"
+        assert entry["environment"]["API_KEY"] == "secret"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1419,75 +1309,11 @@ class TestPullOpenCodeScope:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 17. GEMINI — config_generator uses observal_url param
 # ═══════════════════════════════════════════════════════════════════
 
 
-class TestGeminiConfigGenerator:
-    def test_gemini_settings_disables_native_otlp(self):
-        from services.config_generator import _gemini_settings
-
-        settings = _gemini_settings()
-        assert settings["telemetry"]["enabled"] is False
-        assert settings["telemetry"]["logPrompts"] is True
-
-    def test_gemini_settings_no_target(self):
-        from services.config_generator import _gemini_settings
-
-        settings = _gemini_settings()
-        assert "target" not in settings["telemetry"]
-        assert "otlpEndpoint" not in settings["telemetry"]
-
-    def test_gemini_otlp_env_removed(self):
-        """OTLP env vars are no longer generated for Gemini CLI."""
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "otlp_env" not in cfg
-
-    def test_gemini_settings_snippet_in_agent_config(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "gemini-cli")
-        assert "gemini_settings_snippet" in cfg
-        snippet = cfg["gemini_settings_snippet"]
-        assert snippet["telemetry"]["enabled"] is False
-        assert snippet["telemetry"]["logPrompts"] is True
-        assert "target" not in snippet["telemetry"]
-        assert "otlpEndpoint" not in snippet["telemetry"]
-
-
 # ═══════════════════════════════════════════════════════════════════
-# 18. DOCTOR — Gemini CLI config checks
 # ═══════════════════════════════════════════════════════════════════
-
-
-class TestScanGeminiHome:
-    def test_scan_gemini_home_finds_mcp_servers(self, tmp_path):
-
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir()
-        settings = gemini_dir / "settings.json"
-        settings.write_text(json.dumps({"mcpServers": {"my-server": {"command": "python", "args": ["serve.py"]}}}))
-        mcps, skills, hooks, agents = _scan_gemini_home(gemini_dir)
-        assert len(mcps) == 1
-        assert mcps[0].name == "my-server"
-        assert mcps[0].source == "gemini:global"
-
-    def test_scan_gemini_home_empty_dir(self, tmp_path):
-
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir()
-        mcps, skills, hooks, agents = _scan_gemini_home(gemini_dir)
-        assert len(mcps) == 0
-
-    def test_scan_gemini_home_handles_mcp_servers_wrapper(self, tmp_path):
-
-        gemini_dir = tmp_path / ".gemini"
-        gemini_dir.mkdir()
-        settings = gemini_dir / "settings.json"
-        settings.write_text(json.dumps({"mcpServers": {"wrapped": {"command": "npx"}}, "telemetry": {"enabled": True}}))
-        mcps, _, _, _ = _scan_gemini_home(gemini_dir)
-        assert len(mcps) == 1
-        assert mcps[0].name == "wrapped"
 
 
 # ═══════════════════════════════════════════════════════════════════

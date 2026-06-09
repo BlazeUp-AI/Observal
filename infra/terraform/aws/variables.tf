@@ -71,6 +71,30 @@ variable "enable_tls" {
   default     = true
 }
 
+# ── Sizing preset ─────────────────────────────────────────────────────────
+# Pick a preset to configure all resource sizes at once. Individual resource
+# variables (api_cpu, db_instance_class, etc.) are IGNORED when sizing != "custom".
+#
+# IMPORTANT: Presets and individual vars are mutually exclusive.
+# When sizing = "small|medium|large", individual resource variables have no effect.
+# Set sizing = "custom" to control each resource variable independently.
+#
+# Presets:
+#   small  (~$150/mo) — 1× api, 1× web, 1× worker, t3.medium data, db.t4g.micro
+#   medium (~$255/mo) — 2× api, 2× web, 1× worker, t3.large data, db.t4g.small
+#   large  (~$600/mo) — 3× api, 3× web, 2× worker, r6i.xlarge data, db.r6g.large
+
+variable "sizing" {
+  description = "Resource sizing preset. Set 'custom' to use individual resource variables instead."
+  type        = string
+  default     = "medium"
+
+  validation {
+    condition     = contains(["small", "medium", "large", "custom"], var.sizing)
+    error_message = "sizing must be 'small', 'medium', 'large', or 'custom'."
+  }
+}
+
 # ── ECS Fargate (api / web / worker / init) ────────────────────────────────
 
 variable "image_repo_api" {
@@ -374,20 +398,73 @@ variable "demo_user_password" {
 # route tables. You must provide at least 2 public and 2 private subnet IDs.
 
 variable "vpc_id" {
-  description = "Existing VPC ID. Leave empty to create a new VPC."
+  description = "ID of an existing VPC to reuse. Leave empty to create a new VPC."
   type        = string
-  default     = ""
+  default     = null
+
+  validation {
+    condition     = var.vpc_id == null || can(regex("^vpc-", var.vpc_id))
+    error_message = "VPC ID must start with 'vpc-' if provided."
+  }
 }
 
 variable "private_subnet_ids" {
-  description = "List of existing private subnet IDs (at least 2, in different AZs). Required when vpc_id is set."
+  description = "List of private subnet IDs (required when using existing VPC). At least 2, in different AZs."
   type        = list(string)
-  default     = []
+  default     = null
+
+  validation {
+    condition     = var.private_subnet_ids == null || length(coalesce(var.private_subnet_ids, [])) >= 2
+    error_message = "At least 2 private_subnet_ids are required when using an existing VPC."
+  }
 }
 
 variable "public_subnet_ids" {
-  description = "List of existing public subnet IDs (at least 2, in different AZs). Required when vpc_id is set."
+  description = "List of public subnet IDs (required when using existing VPC). At least 2, in different AZs."
   type        = list(string)
-  default     = []
+  default     = null
+
+  validation {
+    condition     = var.public_subnet_ids == null || length(coalesce(var.public_subnet_ids, [])) >= 2
+    error_message = "At least 2 public_subnet_ids are required when using an existing VPC."
+  }
+}
+
+# ── Bring-your-own Security Groups (optional) ────────────────────────────────
+# Advanced: supply pre-created SG IDs to skip security group creation.
+# The ALB SG must allow inbound 80/443 from your desired CIDRs.
+# The ECS SG must allow inbound 8000/3000 from the ALB SG.
+
+variable "alb_security_group_id" {
+  description = "Existing ALB security group ID. Leave empty to create one."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.alb_security_group_id == null || can(regex("^sg-", var.alb_security_group_id))
+    error_message = "alb_security_group_id must start with 'sg-' if provided."
+  }
+}
+
+variable "ecs_security_group_id" {
+  description = "Existing ECS tasks security group ID. Leave empty to create one."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.ecs_security_group_id == null || can(regex("^sg-", var.ecs_security_group_id))
+    error_message = "ecs_security_group_id must start with 'sg-' if provided."
+  }
+}
+
+variable "alb_scheme" {
+  description = "Scheme for the ALB: 'internet-facing' or 'internal'."
+  type        = string
+  default     = "internet-facing"
+
+  validation {
+    condition     = contains(["internet-facing", "internal"], var.alb_scheme)
+    error_message = "alb_scheme must be 'internet-facing' or 'internal'."
+  }
 }
 

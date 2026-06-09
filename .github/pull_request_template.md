@@ -1,5 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Piyush <pranyasharma55555@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 <!--- Please fill the necessary details below -->
@@ -37,3 +38,9 @@ _For each new external resource, add a row to the table below:_
 | --- | --- | --- |
 | Sample Icon Library | Sample Description | [MIT License](https://opensource.org/licenses/MIT) |
 --->
+
+## AI Assistance
+_Was generative AI tooling used to co-author this PR?_
+
+- [ ] Yes(Please Specify the tool):
+- [ ] Was the generated code manually reviewed and tested?

@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
@@ -105,21 +106,6 @@ def _claude_code_snippet() -> dict:
             },
             "mcp_config": {"observal-mcp": {"command": "observal-mcp", "args": ["--agent", "abc"]}},
             "mcp_setup_commands": [["claude", "mcp", "add", "observal-mcp", "--", "observal-mcp", "--agent", "abc"]],
-        }
-    }
-
-
-def _gemini_snippet() -> dict:
-    return {
-        "config_snippet": {
-            "rules_file": {
-                "path": "GEMINI.md",
-                "content": "# Gemini Agent\n",
-            },
-            "mcp_config": {
-                "path": ".gemini/mcp.json",
-                "content": {"mcpServers": {"gemini-srv": {"command": "python", "args": ["serve.py"]}}},
-            },
         }
     }
 
@@ -287,24 +273,6 @@ class TestPullClaudeCode:
 # ═══════════════════════════════════════════════════════════════
 # 3. Gemini CLI format
 # ═══════════════════════════════════════════════════════════════
-
-
-class TestPullGemini:
-    def test_writes_rules_and_mcp(self, tmp_path: Path):
-        with _patch_config(), _patch_get_agent(), _patch_post(_gemini_snippet()):
-            result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--ide", "gemini-cli", "--dir", str(tmp_path), "--no-prompt"]
-            )
-
-        assert result.exit_code == 0, result.output
-        rules = tmp_path / "GEMINI.md"
-        assert rules.exists()
-        assert "Gemini Agent" in rules.read_text()
-
-        mcp = tmp_path / ".gemini" / "mcp.json"
-        assert mcp.exists()
-        data = json.loads(mcp.read_text())
-        assert "gemini-srv" in data["mcpServers"]
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -729,12 +697,13 @@ def _patch_put(return_value):
 class TestAgentInit:
     def test_creates_yaml_with_correct_fields(self, tmp_path: Path):
         """Interactive prompts produce a valid YAML file."""
-        inputs = "my-agent\n1.0.0\nA cool agent\nmy-team\nclaude-sonnet-4\nDo helpful things\n"
-        result = runner.invoke(
-            cli_app,
-            ["agent", "init", "--dir", str(tmp_path)],
-            input=inputs,
-        )
+        inputs = "my-agent\n1.0.0\nA cool agent\nclaude-sonnet-4\nDo helpful things\n"
+        with patch("observal_cli.config.load", return_value={"username": "my-team"}):
+            result = runner.invoke(
+                cli_app,
+                ["agent", "init", "--dir", str(tmp_path)],
+                input=inputs,
+            )
         assert result.exit_code == 0, result.output
         assert "Created" in result.output
 

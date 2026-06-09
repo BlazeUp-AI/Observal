@@ -34,20 +34,6 @@ def validate_mcp_command(command: str, args: list[str] | None = None) -> None:
 _DOLLAR_VAR = re.compile(r"\$\{([A-Z][A-Z0-9_]+)\}|\$([A-Z][A-Z0-9_]+)")
 
 
-def _gemini_settings() -> dict:
-    """Gemini CLI .gemini/settings.json telemetry block.
-
-    Native telemetry is disabled.
-    Telemetry is captured via the hook bridge instead.
-    """
-    return {
-        "telemetry": {
-            "enabled": False,
-            "logPrompts": True,
-        }
-    }
-
-
 def _substitute_dollar_vars(args: list[str], env: dict[str, str] | None) -> list[str]:
     """Replace $VAR and ${VAR} patterns in args with values from env dict."""
     optic.trace("substituting dollar vars in {} args", len(args))
@@ -174,11 +160,6 @@ def generate_config(
                 "command": ["claude", "mcp", "add", name, "--url", proxy_url],
                 "type": "shell_command",
             }
-        if ide == "gemini-cli":
-            return {
-                "mcpServers": {name: {"url": proxy_url, "env": server_env}},
-                "gemini_settings_snippet": _gemini_settings(),
-            }
         if ide == "codex":
             return {
                 "mcp.servers": {name: {"url": proxy_url, "env": server_env}},
@@ -210,13 +191,6 @@ def generate_config(
         return {
             "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
-        }
-    if ide == "gemini-cli":
-        return {
-            "mcpServers": {
-                name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
-            },
-            "gemini_settings_snippet": _gemini_settings(),
         }
     if ide == "codex":
         return {
@@ -256,7 +230,7 @@ def generate_config(
         flat_cmd = ["observal-shim", *shim_args]
         entry: dict = {"type": "local", "command": flat_cmd}
         if server_env:
-            entry["env"] = server_env
+            entry["environment"] = server_env
         return {"mcp": {name: entry}}
 
     # cursor, kiro: telemetry collected via observal-shim

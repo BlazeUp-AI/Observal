@@ -75,7 +75,6 @@ class TestPreviewConfigNoComponents:
         assert "claude-code" in configs
         assert "kiro" in configs
         assert "cursor" in configs
-        assert "gemini-cli" in configs
         assert "codex" in configs
         assert "copilot" in configs
         assert "opencode" in configs

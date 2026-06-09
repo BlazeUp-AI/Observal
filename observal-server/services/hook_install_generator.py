@@ -160,12 +160,6 @@ def _build_config_snippet(
         hook_entry = {"command": command}
         return {"hooks": {ide_event: [hook_entry]}}
 
-    if ide == "gemini-cli":
-        hook_entry = {"matcher": "*", "command": command}
-        if timeout:
-            hook_entry["timeout"] = timeout
-        return {"hooks": {ide_event: [hook_entry]}}
-
     if ide in ("copilot", "copilot-cli"):
         hook_entry = {"command": command}
         return {"hooks": {ide_event: [hook_entry]}}

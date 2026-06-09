@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 import ast
@@ -20,6 +21,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.mcp import McpListing, McpValidationResult
+from services.secrets_redactor import REDACTED, redact_secrets
 from services.ssrf_guard import is_private_url as _ssrf_is_private
 
 ALLOW_HTTP_GIT = os.environ.get("MCP_ALLOW_HTTP_GIT", "").lower() in ("1", "true", "yes")
@@ -82,6 +84,14 @@ def _build_clone_url(git_url: str) -> str:
     #   GitLab:  "oauth2" for OAuth tokens, or "private-token" for PATs
     token_user = os.environ.get("GIT_CLONE_TOKEN_USER", "x-access-token")
     return f"{parsed.scheme}://{token_user}:{git_token}@{parsed.hostname}{parsed.path}"
+
+
+def _redact_clone_error(error: Exception) -> str:
+    message = str(error)
+    git_token = os.environ.get("GIT_CLONE_TOKEN", "")
+    if git_token:
+        message = message.replace(git_token, REDACTED)
+    return redact_secrets(message)
 
 
 async def _async_clone(clone_url: str, dest: str, depth: int = 1) -> None:
@@ -502,7 +512,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
                 listing_id=listing.id,
                 stage="clone_and_inspect",
                 passed=False,
-                details=f"Failed to clone repo: {e}",
+                details=f"Failed to clone repo: {_redact_clone_error(e)}",
             )
         )
         await db.commit()
