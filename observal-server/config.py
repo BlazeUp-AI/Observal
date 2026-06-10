@@ -80,8 +80,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 GOOGLE_SSO_ENABLED: bool = bool(
-    (settings.GOOGLE_OAUTH_CLIENT_ID or "").strip()
-    and (settings.GOOGLE_OAUTH_CLIENT_SECRET or "").strip()
+    (settings.GOOGLE_OAUTH_CLIENT_ID or "").strip() and (settings.GOOGLE_OAUTH_CLIENT_SECRET or "").strip()
 )
 
 # Derived: True when an enterprise license key is configured.

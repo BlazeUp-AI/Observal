@@ -11,14 +11,17 @@ the domain-allowlist parser.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi.responses import RedirectResponse
+from httpx import ASGITransport, AsyncClient
 
+from api.ratelimit import limiter
 from api.routes import auth as auth_module
+from main import app
+from services.crypto import init_key_manager
 
 
 @pytest.fixture(autouse=True, scope="module")
 def _init_key_manager(tmp_path_factory):
-    from services.crypto import init_key_manager
-
     key_dir = tmp_path_factory.mktemp("keys")
     init_key_manager(key_dir=str(key_dir), key_password=None)
 
@@ -33,11 +36,6 @@ def _mock_google_client(userinfo: dict | None = None):
 @pytest.fixture
 async def google_client(monkeypatch):
     """Yields (httpx client, set_google) — set_google swaps oauth.google for the test."""
-    from httpx import ASGITransport, AsyncClient
-
-    from api.ratelimit import limiter
-    from main import app
-
     limiter.enabled = False
 
     def set_google(client):
@@ -94,12 +92,16 @@ class TestGoogleCallback:
     @pytest.mark.asyncio
     async def test_rejects_unverified_email(self, google_client):
         http, set_google = google_client
-        set_google(_mock_google_client({
-            "sub": "g-123",
-            "email": "bob@acme.com",
-            "email_verified": False,
-            "name": "Bob",
-        }))
+        set_google(
+            _mock_google_client(
+                {
+                    "sub": "g-123",
+                    "email": "bob@acme.com",
+                    "email_verified": False,
+                    "name": "Bob",
+                }
+            )
+        )
         resp = await http.get("/api/v1/auth/oauth/google/callback")
         assert resp.status_code == 400
         assert "not verified" in resp.json()["detail"].lower()
@@ -108,12 +110,16 @@ class TestGoogleCallback:
     async def test_rejects_disallowed_domain(self, google_client, monkeypatch):
         http, set_google = google_client
         monkeypatch.setattr(auth_module, "_GOOGLE_ALLOWED_DOMAINS", frozenset({"acme.com", "acme.io"}))
-        set_google(_mock_google_client({
-            "sub": "g-123",
-            "email": "bob@gmail.com",
-            "email_verified": True,
-            "name": "Bob",
-        }))
+        set_google(
+            _mock_google_client(
+                {
+                    "sub": "g-123",
+                    "email": "bob@gmail.com",
+                    "email_verified": True,
+                    "name": "Bob",
+                }
+            )
+        )
         resp = await http.get("/api/v1/auth/oauth/google/callback")
         assert resp.status_code == 403
         assert "domain" in resp.json()["detail"].lower()
@@ -121,16 +127,18 @@ class TestGoogleCallback:
     @pytest.mark.asyncio
     async def test_allowlisted_domain_reaches_provisioning(self, google_client, monkeypatch):
         """Happy path: claim validation passes, provisioner is called with provider='google'."""
-        from fastapi.responses import RedirectResponse
-
         http, set_google = google_client
         monkeypatch.setattr(auth_module, "_GOOGLE_ALLOWED_DOMAINS", frozenset({"acme.com"}))
-        set_google(_mock_google_client({
-            "sub": "g-123",
-            "email": "Alice@Acme.com",
-            "email_verified": True,
-            "name": "Alice",
-        }))
+        set_google(
+            _mock_google_client(
+                {
+                    "sub": "g-123",
+                    "email": "Alice@Acme.com",
+                    "email_verified": True,
+                    "name": "Alice",
+                }
+            )
+        )
 
         fake_user = MagicMock()
         fake_user.id = "u-1"

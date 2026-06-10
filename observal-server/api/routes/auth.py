@@ -21,7 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from loguru import logger as optic
 from redis.exceptions import RedisError
-from sqlalchemy import delete as sa_delete, func, or_, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -130,18 +131,11 @@ def _parse_allowed_domains(raw: str | None) -> set[str]:
     return {d.strip().lower() for d in raw.split(",") if d.strip()}
 
 
-_GOOGLE_ALLOWED_DOMAINS: frozenset[str] = frozenset(
-    _parse_allowed_domains(settings.GOOGLE_OAUTH_ALLOWED_DOMAINS)
-)
+_GOOGLE_ALLOWED_DOMAINS: frozenset[str] = frozenset(_parse_allowed_domains(settings.GOOGLE_OAUTH_ALLOWED_DOMAINS))
 
 
 def _is_safe_next(next_path: str | None) -> bool:
-    return bool(
-        next_path
-        and next_path.startswith("/")
-        and not next_path.startswith("//")
-        and "\\" not in next_path
-    )
+    return bool(next_path and next_path.startswith("/") and not next_path.startswith("//") and "\\" not in next_path)
 
 
 async def _start_oauth_flow(
@@ -159,9 +153,7 @@ async def _start_oauth_flow(
     """
     if _is_safe_next(next_path):
         request.session["oauth_next"] = next_path
-    redirect_uri = (
-        ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + callback_path
-    )
+    redirect_uri = ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + callback_path
     return await client.authorize_redirect(request, redirect_uri)
 
 
@@ -480,9 +472,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
     email = email.strip().lower()
 
-    user = await _provision_sso_user(
-        db, email=email, name=name, groups=groups, provider="oidc", subject_id=subject
-    )
+    user = await _provision_sso_user(db, email=email, name=name, groups=groups, provider="oidc", subject_id=subject)
     return await _complete_sso_login(request, db, user, groups)
 
 
@@ -554,9 +544,7 @@ async def google_oauth_callback(request: Request, db: AsyncSession = Depends(get
     name = userinfo.get("name") or userinfo.get("given_name") or "Google User"
     subject = userinfo.get("sub")
 
-    user = await _provision_sso_user(
-        db, email=email, name=name, groups=None, provider="google", subject_id=subject
-    )
+    user = await _provision_sso_user(db, email=email, name=name, groups=None, provider="google", subject_id=subject)
     return await _complete_sso_login(request, db, user, None)
 
 
