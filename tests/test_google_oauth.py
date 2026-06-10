@@ -170,3 +170,253 @@ class TestAllowedDomainsParser:
 
     def test_comma_separated_input_is_lowercased_and_stripped(self):
         assert auth_module._parse_allowed_domains("Acme.com, ACME.io ,  ") == {"acme.com", "acme.io"}
+
+
+class TestIsSafeNext:
+    """`_is_safe_next` guards the post-OAuth redirect from open-redirect payloads."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [None, "", "no-leading-slash", "https://evil.com", "//evil.com/path", "/back\\slash"],
+    )
+    def test_rejects_unsafe_or_missing(self, value):
+        assert auth_module._is_safe_next(value) is False
+
+    @pytest.mark.parametrize("value", ["/", "/device", "/login?code=abc", "/admin/users/123"])
+    def test_accepts_local_paths(self, value):
+        assert auth_module._is_safe_next(value) is True
+
+
+class TestGoogleLoginRedirect:
+    """When Google is configured, /oauth/google/login delegates to Authlib's authorize_redirect."""
+
+    @pytest.mark.asyncio
+    async def test_redirect_uri_targets_google_callback_path(self, google_client):
+        from starlette.responses import Response as StarletteResponse
+
+        http, set_google = google_client
+        client = MagicMock()
+        client.authorize_redirect = AsyncMock(return_value=StarletteResponse("ok"))
+        set_google(client)
+
+        resp = await http.get("/api/v1/auth/oauth/google/login")
+
+        assert resp.status_code == 200
+        client.authorize_redirect.assert_awaited_once()
+        # authorize_redirect(request, redirect_uri) — redirect_uri is positional arg 1.
+        redirect_uri = client.authorize_redirect.await_args.args[1]
+        assert redirect_uri.endswith("/api/v1/auth/oauth/google/callback")
+
+
+class TestOidcCallbackRefactored:
+    """The refactored /oauth/callback (generic OIDC) uses the shared SSO helpers."""
+
+    @pytest.mark.asyncio
+    async def test_callback_calls_provisioner_with_oidc_provider(self, google_client, monkeypatch):
+        """Happy path: an OIDC userinfo lands on _provision_sso_user with provider='oidc'."""
+        http, _set_google = google_client
+
+        oidc = MagicMock()
+        oidc.authorize_access_token = AsyncMock(
+            return_value={
+                "userinfo": {
+                    "sub": "oidc-sub-42",
+                    "email": "Bob@Corp.com",
+                    "name": "Bob",
+                    "groups": ["eng", "admins"],
+                }
+            }
+        )
+        monkeypatch.setattr(auth_module.oauth, "oidc", oidc, raising=False)
+
+        fake_user = MagicMock()
+        fake_user.id = "u-2"
+        fake_user.email = "bob@corp.com"
+        fake_user.role = MagicMock(value="user")
+
+        provision_mock = AsyncMock(return_value=fake_user)
+        complete_mock = AsyncMock(return_value=RedirectResponse(url="http://test/login?code=yyy", status_code=302))
+        monkeypatch.setattr(auth_module, "_provision_sso_user", provision_mock)
+        monkeypatch.setattr(auth_module, "_complete_sso_login", complete_mock)
+
+        resp = await http.get("/api/v1/auth/oauth/callback", follow_redirects=False)
+
+        assert resp.status_code in (302, 307)
+        kwargs = provision_mock.await_args.kwargs
+        assert kwargs["provider"] == "oidc"
+        assert kwargs["email"] == "bob@corp.com"
+        assert kwargs["subject_id"] == "oidc-sub-42"
+        assert kwargs["groups"] == ["eng", "admins"]
+
+    @pytest.mark.asyncio
+    async def test_callback_returns_500_when_not_configured(self, monkeypatch):
+        from httpx import ASGITransport, AsyncClient
+
+        monkeypatch.setattr(auth_module.oauth, "oidc", None, raising=False)
+        async with AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as http:
+            resp = await http.get("/api/v1/auth/oauth/callback")
+        assert resp.status_code == 500
+
+
+class TestProvisionSsoUser:
+    """The shared SSO provisioning helper — covers create/lookup/upgrade branches."""
+
+    def _mock_db_with_existing(self, existing_user):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = existing_user
+        db = MagicMock()
+        db.execute = AsyncMock(return_value=result)
+        db.flush = AsyncMock()
+        db.rollback = AsyncMock()
+        return db
+
+    @pytest.mark.asyncio
+    async def test_creates_new_user_with_provider_and_subject(self, monkeypatch):
+        db = self._mock_db_with_existing(None)
+        default_org = MagicMock(id="org-1")
+        monkeypatch.setattr(auth_module, "get_or_create_default_org", AsyncMock(return_value=default_org))
+        monkeypatch.setattr(auth_module, "generate_unique_username", AsyncMock(return_value="alice"))
+
+        user = await auth_module._provision_sso_user(
+            db,
+            email="alice@acme.com",
+            name="Alice",
+            groups=None,
+            provider="google",
+            subject_id="g-sub-1",
+        )
+
+        db.add.assert_called_once()
+        added = db.add.call_args.args[0]
+        assert added.email == "alice@acme.com"
+        assert added.auth_provider == "google"
+        assert added.sso_subject_id == "g-sub-1"
+        assert added.org_id == "org-1"
+        assert user is added
+
+    @pytest.mark.asyncio
+    async def test_returns_existing_user_unchanged_when_already_provisioned(self):
+        existing = MagicMock()
+        existing.auth_provider = "google"
+        existing.sso_subject_id = "g-sub-old"
+        db = self._mock_db_with_existing(existing)
+
+        user = await auth_module._provision_sso_user(
+            db,
+            email="alice@acme.com",
+            name="Alice",
+            groups=None,
+            provider="google",
+            subject_id="g-sub-new",
+        )
+
+        assert user is existing
+        assert existing.sso_subject_id == "g-sub-old"
+        db.add.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_upgrades_local_user_on_first_sso_signin(self):
+        existing = MagicMock()
+        existing.auth_provider = "local"
+        existing.sso_subject_id = None
+        db = self._mock_db_with_existing(existing)
+
+        await auth_module._provision_sso_user(
+            db,
+            email="alice@acme.com",
+            name="Alice",
+            groups=None,
+            provider="google",
+            subject_id="g-sub-fresh",
+        )
+
+        assert existing.auth_provider == "google"
+        assert existing.sso_subject_id == "g-sub-fresh"
+
+
+class TestCompleteSsoLogin:
+    """Happy path for _complete_sso_login — verifies commit-then-emit ordering and the redirect."""
+
+    @pytest.mark.asyncio
+    async def test_emits_success_after_commit_and_redirects_with_code(self, monkeypatch):
+        request = MagicMock()
+        request.session = {}
+        user = MagicMock()
+        user.id = "u-1"
+        user.email = "alice@acme.com"
+        user.role = MagicMock(value="user")
+
+        order: list[str] = []
+
+        async def fake_commit():
+            order.append("commit")
+
+        db = MagicMock()
+        db.commit = fake_commit
+
+        fake_redis = MagicMock()
+
+        async def fake_setex(*args, **kwargs):
+            order.append("setex")
+
+        fake_redis.setex = fake_setex
+
+        async def fake_emit(_event):
+            order.append("emit")
+
+        monkeypatch.setattr(auth_module, "_issue_tokens", AsyncMock(return_value=("access", "refresh", 3600)))
+        monkeypatch.setattr(auth_module, "get_redis", lambda: fake_redis)
+        monkeypatch.setattr(auth_module, "_extract_request_info", lambda _r: ("1.2.3.4", "ua-test"))
+        monkeypatch.setattr(auth_module, "emit_security_event", fake_emit)
+        monkeypatch.setattr(auth_module.ds, "get_sync", lambda _k, default: "http://localhost:3000")
+
+        resp = await auth_module._complete_sso_login(request, db, user, None)
+
+        assert order == ["commit", "setex", "emit"]
+        assert resp.status_code == 307
+        assert "/login?code=" in resp.headers["location"]
+
+
+class TestPublicConfigGoogleFlag:
+    """/config/public exposes google_sso_enabled."""
+
+    @pytest.mark.asyncio
+    async def test_flag_reflects_module_constant(self, monkeypatch):
+        from api.deps import get_db
+        from api.routes import config as config_module
+
+        result = MagicMock()
+        result.scalars.return_value = MagicMock(all=lambda: [])
+        result.scalar_one_or_none.return_value = None
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+
+        async def _mock_get_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _mock_get_db
+
+        try:
+            monkeypatch.setattr(config_module, "GOOGLE_SSO_ENABLED", True)
+            async with AsyncClient(
+                transport=ASGITransport(app=app, raise_app_exceptions=False),
+                base_url="http://test",
+            ) as http:
+                resp = await http.get("/api/v1/config/public")
+
+            assert resp.status_code == 200
+            assert resp.json()["google_sso_enabled"] is True
+
+            monkeypatch.setattr(config_module, "GOOGLE_SSO_ENABLED", False)
+            async with AsyncClient(
+                transport=ASGITransport(app=app, raise_app_exceptions=False),
+                base_url="http://test",
+            ) as http:
+                resp = await http.get("/api/v1/config/public")
+
+            assert resp.json()["google_sso_enabled"] is False
+        finally:
+            app.dependency_overrides.clear()
