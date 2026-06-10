@@ -1235,6 +1235,7 @@ export default function SettingsPage() {
 									value={appNameDraft}
 									onChange={(e) => setAppNameOverride(e.target.value)}
 									placeholder="Observal"
+									autoComplete="off"
 									maxLength={30}
 									className="h-8 text-sm w-48"
 								/>
