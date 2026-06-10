@@ -47,7 +47,7 @@ observal-server/       FastAPI server
     clickhouse/        ClickHouse subpackage (client, schema, insert, query)
     ide/               Server-side IDE adapters (config generation)
     session_parsers/   Per-IDE JSONL parsers (claude_code, kiro, cursor, pi)
-    audit/             HIPAA audit system (loguru-based)
+    audit/             Compliance audit system (loguru-based)
     config/            Config generation helpers (mcp_builder, skill_builder)
     insights/          Insight engine (report generation, facets, sections, HTML export)
     shared/            Cross-service utilities
@@ -188,7 +188,7 @@ Source-available, separate license. Loaded via signed JWT (`OBSERVAL_LICENSE_KEY
 
 **Critical constraint:** Core never imports from `ee/`. The `ee/` code imports core. Open-source is fully functional without a license key.
 
-Contents: SAML SSO, SCIM provisioning, exec dashboard, HIPAA audit, license generation script.
+Contents: SAML SSO, SCIM provisioning, exec dashboard, compliance audit, license generation script.
 
 ## Commands
 

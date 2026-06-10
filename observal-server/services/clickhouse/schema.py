@@ -211,7 +211,7 @@ INIT_SQL = [
     TTL toDateTime(timestamp) + INTERVAL 730 DAY
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (action, resource_type, timestamp)""",
-    # HIPAA audit log schema expansion
+    # Audit log schema expansion
     """ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS org_id String DEFAULT ''""",
     """ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS sensitivity LowCardinality(String) DEFAULT 'standard'""",
     """ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS request_id String DEFAULT ''""",
