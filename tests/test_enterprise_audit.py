@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Yash Gadgil <yashgadgil08@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for the HIPAA audit logging system."""
+"""Tests for the enterprise audit logging system."""
 
 from __future__ import annotations
 
