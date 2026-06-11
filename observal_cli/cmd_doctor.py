@@ -402,13 +402,20 @@ def _is_already_shimmed(entry: dict) -> bool:
     return bool(any("observal-shim" in str(a) for a in args))
 
 
-def _wrap_with_shim(entry: dict, mcp_id: str) -> dict:
-    """Wrap an MCP server entry with observal-shim for telemetry."""
+def _wrap_with_shim(entry: dict, mcp_id: str, ide: str | None = None) -> dict:
+    """Wrap an MCP server entry with observal-shim for telemetry.
+
+    When *ide* is given, sets ``OBSERVAL_IDE`` in the entry's env so the shim
+    tags emitted traces/spans with the originating IDE (otherwise they land
+    with an empty ``ide`` and lose per-IDE attribution).
+    """
     if entry.get("url"):
         return entry
     shimmed = dict(entry)
     shimmed["command"] = "observal-shim"
     shimmed["args"] = ["--mcp-id", mcp_id, "--", entry.get("command", ""), *entry.get("args", [])]
+    if ide:
+        shimmed["env"] = {**entry.get("env", {}), "OBSERVAL_IDE": ide}
     return shimmed
 
 
@@ -451,7 +458,7 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
     for name, entry in servers.items():
         if not _is_already_shimmed(entry) and not entry.get("url"):
             if not dry_run:
-                servers[name] = _wrap_with_shim(entry, name)
+                servers[name] = _wrap_with_shim(entry, name, ide)
             shimmed += 1
 
     if shimmed and not dry_run:
