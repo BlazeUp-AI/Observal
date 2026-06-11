@@ -108,6 +108,7 @@ from observal_cli.cmd_profile import register_use
 from observal_cli.cmd_prompt import prompt_app
 from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import sandbox_app
+from observal_cli.cmd_cursor_sync import register_cursor_sync
 from observal_cli.cmd_scan import register_scan
 from observal_cli.cmd_skill import skill_app
 from observal_cli.cmd_support import support_app
@@ -137,6 +138,7 @@ register_config(app)
 register_scan(app)
 register_uninstall(app)
 register_use(app)
+register_cursor_sync(app)
 
 # ── Agent pull (full-featured, lives under `observal agent pull`) ──
 register_pull(agent_app)
