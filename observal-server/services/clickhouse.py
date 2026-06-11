@@ -437,7 +437,7 @@ INIT_SQL = [
     SELECT
         project_id,
         session_id,
-        anyIf(agent_id, agent_id IS NOT NULL AND agent_id != '') AS agent_id,
+        coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
         anyIf(user_id, user_id != '')                            AS user_id,
         anyIf(coalesce(parent_session_id, ''), parent_session_id IS NOT NULL AND parent_session_id != '') AS parent_session_id,
         anyIf(ide, ide != '')                                    AS ide,
