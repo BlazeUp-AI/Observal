@@ -17,7 +17,9 @@ import {
 	ArrowDown,
 	BarChart3,
 	SlidersHorizontal,
+	HelpCircle,
 } from "lucide-react";
+import { useHelp } from "@/components/wiki/help-context";
 import {
 	useSessions2,
 	useSessionsSummary,
@@ -416,6 +418,7 @@ function SortIcon({ sorted }: { sorted: false | "asc" | "desc" }) {
 // ── Page ─────────────────────────────────────────────────────────────
 
 export default function TracesPage() {
+	const helpCtx = useHelp();
 	const router = useRouter();
 	const { search: searchParam } = useSearch({ from: "/_authed/_user/traces/" });
 	const { pathname } = useLocation();
@@ -565,6 +568,16 @@ export default function TracesPage() {
 					{ label: "Dashboard", href: "/dashboard" },
 					{ label: "Traces" },
 				]}
+				actionButtonsRight={
+					<button
+						type="button"
+						className="text-muted-foreground hover:text-primary transition-colors"
+						onClick={() => helpCtx.openHelp({ pageKey: "traces" })}
+						title="Telemetry documentation"
+					>
+						<HelpCircle className="h-4 w-4" />
+					</button>
+				}
 			/>
 			<div className="p-6 w-full mx-auto space-y-5">
 				{isLoading ? (
