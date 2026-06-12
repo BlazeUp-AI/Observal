@@ -30,6 +30,7 @@
 * [observal component](cli/component.md)
 * [observal models](cli/models.md)
 * [observal agent](cli/agent.md)
+* [observal ](cli/auth.md)mcp
 * [observal ops](cli/ops.md)
 * [observal admin](cli/admin.md)
 * [observal doctor](cli/doctor.md)
@@ -65,8 +66,5 @@
 * [Hooks specification](reference/hooks-spec.md)
 * [Config files](reference/config-files.md)
 
-## Contributing
-
-* [Contributing Guide](../CONTRIBUTING.md)
-* [Development Guide](DEVELOPMENT_GUIDE.md)
-* [AI Policy](../AI_POLICY.md)
+* [CLI Reference](cli.md)
+* [Config](config.md)

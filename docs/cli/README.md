@@ -23,6 +23,7 @@ Complete reference for the `observal` CLI. Every subcommand has its own page; th
 | [`observal component`](component.md) | Manage component versions |
 | [`observal models`](models.md) | Browse and manage model configurations |
 | [`observal agent`](agent.md) | Author and publish agents |
+| [`observal mcp`](mcp.md) | Manage MCP server listings |
 | [`observal ops`](ops.md) | Observability and operations (traces, spans, metrics, feedback) |
 | [`observal admin`](admin.md) | Admin operations (settings, users, review, security) |
 | [`observal support`](support.md) | Generate and inspect diagnostic support bundles |
