@@ -139,11 +139,10 @@ async def submit_mcp(
         .first()
     )
     if existing:
-        if existing.status == ListingStatus.approved:
-            raise HTTPException(status_code=409, detail=f"You already have an approved listing named '{req.name}'")
-        # Replace the old pending/rejected listing
-        await db.delete(existing)
-        await db.flush()
+        raise HTTPException(
+            status_code=409,
+            detail=("A listing with this name already exists"),
+        )
 
     listing = McpListing(
         name=req.name,
@@ -182,7 +181,6 @@ async def submit_mcp(
     listing.latest_version_id = version.id
     await db.commit()
     await db.refresh(listing)
-
     if req.client_analysis:
         # CLI already cloned and analyzed locally - store results directly
         await _store_client_analysis(listing, req.client_analysis, db)
