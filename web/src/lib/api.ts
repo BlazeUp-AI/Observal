@@ -834,11 +834,12 @@ export interface IdeEntry {
 
 interface IdesResponse {
 	ides: IdeEntry[];
+	default_ide?: string | null;
 }
 
 export const config = {
 	public: () => get<PublicConfig>("/config/public"),
-	ides: () => get<IdesResponse>("/config/ides").then((r) => r.ides),
+	ides: () => get<IdesResponse>("/config/ides"),
 };
 
 // ── Models ─────────────────────────────────────────────────────────
