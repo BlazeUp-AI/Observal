@@ -221,16 +221,7 @@ async def create_user(
         )
 
     await db.commit()
-    await bus.emit(
-        UserCreated(
-            user_id=str(user.id),
-            email=user.email,
-            role=user.role.value,
-            name=user.name,
-            org_id=str(user.org_id) if user.org_id else None,
-            auth_provider="scim",
-        )
-    )
+    await bus.emit(UserCreated(user_id=str(user.id), email=user.email, role=user.role.value))
 
     base_url = str(request.base_url).rstrip("/") + "/api/v1/scim"
     return JSONResponse(

@@ -63,14 +63,6 @@ CONFIG_ALLOWLIST = frozenset(
         "RATE_LIMIT_AUTH",
         "RATE_LIMIT_AUTH_STRICT",
         "DATA_RETENTION_DAYS",
-        "PRODUCT_ANALYTICS_ENABLED",
-        # Value is redacted by the Redaction Layer (key matches api_key pattern)
-        "POSTHOG_API_KEY",
-        "POSTHOG_HOST",
-        "GTM_SIGNUP_WEBHOOK_ENABLED",
-        "GTM_SIGNUP_WEBHOOK_URL",
-        "GTM_SIGNUP_WEBHOOK_SECRET",
-        "GTM_SIGNUP_WEBHOOK_TIMEOUT_SEC",
     }
 )
 
