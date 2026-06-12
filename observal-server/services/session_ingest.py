@@ -21,7 +21,8 @@ import xxhash
 from loguru import logger as optic
 
 from services.clickhouse import insert_session_events, query_existing_for_dedup, query_session_event_count
-from services.secrets_redactor import redact_secrets
+from services.privacy import PRIVACY_MODE_FULL, PRIVACY_MODE_REDACTED, normalize_privacy_mode
+from services.secrets_redactor import redact_secrets, redact_value
 from services.session_parsers.ingest_classify import extract_timestamp, get_classifier, get_extra_rows
 
 # ---------------------------------------------------------------------------
@@ -285,6 +286,7 @@ async def ingest_session_lines(
     start_offset: int = 0,
     total_credits: float | None = None,
     parent_session_id: str | None = None,
+    privacy_mode: str = "full",
 ) -> IngestResult:
     """Parse, classify, and batch-insert JSONL transcript lines.
 
@@ -374,7 +376,7 @@ async def ingest_session_lines(
                 session_id,
                 line_offset,
                 str(exc),
-                repr(raw_line[:200]),
+                repr(redact_secrets(raw_line[:200])),
             )
             errors += 1
             continue
@@ -384,9 +386,22 @@ async def ingest_session_lines(
             skipped += 1
             continue
 
-        redacted_line = redact_secrets(raw_line)
-        preview = redact_secrets(preview_fn(parsed, event_type))
-        tool_name, tool_id = tool_info_fn(parsed)
+        # Secret redaction is always applied; privacy_mode controls how much raw
+        # payload survives: full keeps the line + preview, redacted keeps only the
+        # short preview, metadata_only/disabled_raw keep neither (classification and
+        # identifiers below are retained in every mode).
+        mode = normalize_privacy_mode(privacy_mode)
+        redacted_parsed = redact_value(parsed)
+        if mode == PRIVACY_MODE_FULL:
+            redacted_line = json.dumps(redacted_parsed, default=str)
+            preview = preview_fn(redacted_parsed, event_type)
+        elif mode == PRIVACY_MODE_REDACTED:
+            redacted_line = ""
+            preview = preview_fn(redacted_parsed, event_type)
+        else:  # metadata_only, disabled_raw
+            redacted_line = ""
+            preview = ""
+        tool_name, tool_id = tool_info_fn(redacted_parsed)
         uuid, parent_uuid = _extract_uuid(parsed, ide)
 
         ts = extract_timestamp(ide, parsed)

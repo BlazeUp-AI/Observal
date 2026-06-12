@@ -696,6 +696,25 @@ async def _migrate_session_stats_partition():
     optic.info("session_stats_agg partition migration complete")
 
 
+def _raw_payload_ttl_statements(days: int) -> list[str]:
+    """Column-level TTL statements that expire raw payload content after ``days``.
+
+    Raw payloads (free-text trace/span input/output/error and session raw lines)
+    carry the most sensitive content; this expires them independently of -- and
+    typically sooner than -- the aggregate-metric row TTL, so counts/durations
+    survive after the heavy raw content is gone. Each MODIFY COLUMN restates the
+    column's type/codec, which ClickHouse requires.
+    """
+    return [
+        f"ALTER TABLE traces MODIFY COLUMN input Nullable(String) CODEC(ZSTD(3)) TTL start_time + INTERVAL {days} DAY",
+        f"ALTER TABLE traces MODIFY COLUMN output Nullable(String) CODEC(ZSTD(3)) TTL start_time + INTERVAL {days} DAY",
+        f"ALTER TABLE spans MODIFY COLUMN input Nullable(String) CODEC(ZSTD(3)) TTL start_time + INTERVAL {days} DAY",
+        f"ALTER TABLE spans MODIFY COLUMN output Nullable(String) CODEC(ZSTD(3)) TTL start_time + INTERVAL {days} DAY",
+        f"ALTER TABLE spans MODIFY COLUMN error Nullable(String) CODEC(ZSTD(3)) TTL start_time + INTERVAL {days} DAY",
+        f"ALTER TABLE session_events MODIFY COLUMN raw_line String TTL timestamp + INTERVAL {days} DAY",
+    ]
+
+
 async def init_clickhouse():
     """Create ClickHouse tables if they don't exist and configure retention.
 
@@ -743,3 +762,24 @@ async def init_clickhouse():
             )
     else:
         optic.info("data retention disabled (retention_days=0), data kept indefinitely")
+
+    # Raw payload retention is split from the metric/row retention above: raw
+    # free-text columns expire on their own (usually shorter) schedule.
+    raw_retention_days = await ds.get_int("data.raw_retention_days")
+    if raw_retention_days > 0:
+        applied_raw = 0
+        raw_stmts = _raw_payload_ttl_statements(raw_retention_days)
+        for stmt in raw_stmts:
+            try:
+                await _client._query(stmt)
+                applied_raw += 1
+            except Exception as e:
+                optic.warning("raw-payload TTL statement failed: {}", e)
+        optic.info(
+            "ClickHouse raw-payload retention configured: {} days ({}/{} columns)",
+            raw_retention_days,
+            applied_raw,
+            len(raw_stmts),
+        )
+    else:
+        optic.info("raw-payload retention disabled (raw_retention_days=0)")
