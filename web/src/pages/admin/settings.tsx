@@ -28,6 +28,8 @@ import {
 import { InsightsSection } from "./settings/insights-section";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { useHelp } from "@/components/wiki/help-context";
+import { SETTING_DOCS, SECTION_DOCS } from "@/lib/docs-map";
 import { useAdminSettings, useSystemWarnings } from "@/hooks/use-api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { useRoleGuard, hasMinRole } from "@/hooks/use-role-guard";
@@ -45,6 +47,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -65,6 +74,19 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 const REDACTED_VALUE = "**REDACTED**";
+
+const IDE_OPTIONS = [
+	{ value: "cursor", label: "Cursor" },
+	{ value: "claude_code", label: "Claude Code" },
+	{ value: "kiro", label: "Kiro" },
+	{ value: "pi", label: "Pi" },
+	{ value: "copilot", label: "Copilot" },
+	{ value: "copilot_cli", label: "Copilot CLI" },
+	{ value: "codex", label: "Codex" },
+	{ value: "opencode", label: "OpenCode" },
+	{ value: "gemini_cli", label: "Gemini CLI" },
+	{ value: "antigravity", label: "Antigravity" },
+];
 
 /** Generate a helpful placeholder for the value input based on the key */
 function getPlaceholder(key: string): string {
@@ -397,7 +419,7 @@ const SETTING_SECTIONS: SettingSection[] = [
 				label: "JIT Provisioning",
 				subtitle: "Auto-create users on first SAML login",
 				tooltip:
-					"When enabled, users who authenticate via SAML are automatically created in Observal if they don't already exist. Disable to require pre-provisioning (e.g., via SCIM).",
+					"When enabled, users who authenticate via SAML are automatically created in Observal if they don't already exist. Disable to require manual user creation before login.",
 			},
 			{
 				key: "saml.default_role",
@@ -612,6 +634,20 @@ const SETTING_SECTIONS: SettingSection[] = [
 		description: "Other system settings.",
 		settings: [
 			{
+				key: "misc.ide_allowlist",
+				label: "IDE Allowlist",
+				subtitle: "Restrict available IDEs (comma-separated)",
+				tooltip:
+					"Comma-separated IDE identifiers. Only these IDEs appear in install dropdowns and agent compatibility. Leave blank for all. Valid: cursor, claude_code, kiro, pi, copilot, copilot_cli, codex, opencode, gemini_cli, antigravity",
+			},
+			{
+				key: "misc.default_ide",
+				label: "Default IDE",
+				subtitle: "Pre-selected IDE in install dropdowns",
+				tooltip:
+					"The IDE pre-selected in install dropdowns and used as the default for 'observal pull'. Must be one of the allowed IDEs if an allowlist is set.",
+			},
+			{
 				key: "misc.git_mirror_base_path",
 				label: "Git Mirror Path",
 				subtitle: "Directory for cloned repo mirrors",
@@ -623,6 +659,87 @@ const SETTING_SECTIONS: SettingSection[] = [
 ];
 
 const ALL_DEFAULT_SETTINGS = SETTING_SECTIONS.flatMap((s) => s.settings);
+
+function splitIdeList(value: string): string[] {
+	return value
+		.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
+}
+
+function joinIdeList(values: string[]): string {
+	return Array.from(new Set(values)).join(",");
+}
+
+function getIdeLabel(value: string): string {
+	return IDE_OPTIONS.find((ide) => ide.value === value)?.label ?? value;
+}
+
+function IdeAllowlistEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+	const selected = splitIdeList(value);
+	const available = IDE_OPTIONS.filter((ide) => !selected.includes(ide.value));
+
+	const addIde = (ide: string) => {
+		const next = ide.trim();
+		if (!next) return;
+		onChange(joinIdeList([...selected, next]));
+	};
+
+	const removeIde = (ide: string) => {
+		onChange(joinIdeList(selected.filter((item) => item !== ide)));
+	};
+
+	return (
+		<div className="flex-1 space-y-2">
+			<div className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1">
+				{selected.length === 0 ? (
+					<span className="text-xs text-muted-foreground">All supported IDEs</span>
+				) : (
+					selected.map((ide) => (
+						<span key={ide} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground">
+							{getIdeLabel(ide)}
+							<button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => removeIde(ide)}>
+								<X className="h-3 w-3" />
+							</button>
+						</span>
+					))
+				)}
+			</div>
+			<div className="flex items-center gap-2">
+				<Select value="" onValueChange={addIde}>
+					<SelectTrigger className="h-8 text-sm flex-1">
+						<SelectValue placeholder={selected.length === 0 ? "Restrict to specific IDEs" : "Add IDE"} />
+					</SelectTrigger>
+					<SelectContent>
+						{available.map((ide) => (
+							<SelectItem key={ide.value} value={ide.value}>{ide.label}</SelectItem>
+						))}
+						{available.length === 0 && <SelectItem value="__none__" disabled>All listed IDEs selected</SelectItem>}
+					</SelectContent>
+				</Select>
+				{selected.length > 0 && (
+					<Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => onChange("")}>Allow all</Button>
+				)}
+			</div>
+		</div>
+	);
+}
+
+/** Help icon that shows a tooltip. If the setting has docs, modifier+click on the card handles it. */
+function SettingHelpIcon({ settingKey, tooltip, openHelp }: { settingKey: string; tooltip: string; openHelp: (key?: string) => boolean }) {
+	return (
+		<div className="absolute right-2 top-2">
+			<Tooltip>
+				<TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+					<HelpCircle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-foreground transition-colors cursor-help" />
+				</TooltipTrigger>
+				<TooltipContent side="left" className="max-w-[340px] text-sm leading-relaxed p-3">
+					{tooltip}
+				</TooltipContent>
+			</Tooltip>
+		</div>
+	);
+}
 
 export default function SettingsPage() {
 	const { ready } = useRoleGuard("super_admin");
@@ -684,7 +801,24 @@ export default function SettingsPage() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const wordmarkInputRef = useRef<HTMLInputElement>(null);
 
+	// Help mode: modifier key + click opens contextual docs (provided by HelpProvider)
+	const { helpActive, openHelp: openHelpCtx } = useHelp();
+	const [helpBannerDismissed, setHelpBannerDismissed] = useState(() =>
+		sessionStorage.getItem("observal_help_banner_dismissed") === "1"
+	);
+
 	const logoPreview = logoOverride !== undefined ? logoOverride : brandingLogo;
+
+	/** Open the help panel for a setting key or section title */
+	const openHelp = useCallback((settingKey?: string, sectionTitle?: string) => {
+		return openHelpCtx({ settingKey, sectionTitle });
+	}, [openHelpCtx]);
+
+	/** CSS class applied to setting cards that have docs, when help mode is active */
+	const helpTargetClass = (key: string) =>
+		helpActive && SETTING_DOCS[key]
+			? "ring-2 ring-primary/60 cursor-help transition-shadow"
+			: "";
 	const wordmarkPreview =
 		wordmarkOverride !== undefined ? wordmarkOverride : brandingWordmark;
 	const appNameDraft =
@@ -969,6 +1103,9 @@ export default function SettingsPage() {
 		try {
 			await admin.updateSetting(editingKey, { value: editingValue });
 			toast.success(`Saved ${editingKey}`);
+			if (editingKey === "misc.ide_allowlist" || editingKey === "misc.default_ide") {
+				queryClient.invalidateQueries({ queryKey: ["config", "ides"] });
+			}
 			setEditingKey(null);
 			setEditingValue("");
 			refetch();
@@ -977,7 +1114,44 @@ export default function SettingsPage() {
 		} finally {
 			setSaving(false);
 		}
-	}, [editingKey, editingValue, refetch]);
+	}, [editingKey, editingValue, queryClient, refetch]);
+
+	const renderSettingEditor = (key: string) => {
+		if (key === "misc.ide_allowlist") {
+			return <IdeAllowlistEditor value={editingValue} onChange={setEditingValue} />;
+		}
+		if (key === "misc.default_ide") {
+			return (
+				<Select value={editingValue || "__none__"} onValueChange={(value) => setEditingValue(value === "__none__" ? "" : value)}>
+					<SelectTrigger className="h-8 text-sm flex-1">
+						<SelectValue placeholder="Choose default IDE" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="__none__">Use first allowed IDE</SelectItem>
+						{IDE_OPTIONS.map((ide) => (
+							<SelectItem key={ide.value} value={ide.value}>{ide.label}</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			);
+		}
+		return (
+			<Input
+				value={editingValue}
+				onChange={(e) => setEditingValue(e.target.value)}
+				placeholder={getPlaceholder(key)}
+				className="h-8 text-sm flex-1 font-[family-name:var(--font-mono)]"
+				autoFocus
+				onKeyDown={(e) => {
+					if (e.key === "Enter") handleInlineSave();
+					if (e.key === "Escape") {
+						setEditingKey(null);
+						setEditingValue("");
+					}
+				}}
+			/>
+		);
+	};
 
 	const handleApplyResources = useCallback(async () => {
 		setApplyingResources(true);
@@ -1555,6 +1729,22 @@ export default function SettingsPage() {
 					<ErrorState message={error?.message} onRetry={() => refetch()} />
 				) : (
 					<div className="animate-in space-y-6">
+						{/* Help mode hint banner */}
+						{!helpBannerDismissed && (
+							<div className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-2.5">
+								<kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-mono font-medium text-muted-foreground">
+									{navigator.platform?.includes("Mac") ? "\u2318" : "Ctrl"}
+								</kbd>
+								<span className="text-sm text-foreground/80">Hold and click any setting for detailed documentation</span>
+								<button
+									type="button"
+									className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+									onClick={() => { setHelpBannerDismissed(true); sessionStorage.setItem("observal_help_banner_dismissed", "1"); }}
+								>
+									<X className="h-3.5 w-3.5" />
+								</button>
+							</div>
+						)}
 						{/* Add new setting form */}
 						{/* Unified sections — each setting stays in its section */}
 						<TooltipProvider delayDuration={300}>
@@ -1583,7 +1773,10 @@ export default function SettingsPage() {
 								const hasDeprecatedSettings = section.title === "Agent Insights" && !hasNewApiKey && entries.some((e) => deprecatedAwsKeys.includes(e.key) && e.value && e.value !== "");
 								return (
 								<section key={section.title} className="mb-6">
-									<h3 className="text-sm font-semibold uppercase tracking-wider text-foreground/80 mb-1 flex items-center gap-1.5">
+									<h3
+										className={`text-sm font-semibold uppercase tracking-wider text-foreground/80 mb-1 flex items-center gap-1.5 ${SECTION_DOCS[section.title] ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+										onClick={() => openHelp(undefined, section.title)}
+									>
 										{section.icon}
 										{section.title}
 									</h3>
@@ -1605,10 +1798,10 @@ export default function SettingsPage() {
 										const isEditing = editingKey === d.key;
 										if (isEditing) {
 											return (
-												<div key={d.key} className="rounded-md border-2 border-primary/50 bg-card p-3">
+												<div key={d.key} className={`rounded-md border-2 border-primary/50 bg-card p-3 ${helpTargetClass(d.key)}`} onClick={(e) => { if ((e.ctrlKey || e.metaKey) && openHelp(d.key)) { e.preventDefault(); e.stopPropagation(); } }}>
 													<span className="text-sm font-semibold text-foreground mb-2 block">{d.label}</span>
 													<div className="flex items-center gap-2">
-														<Input value={editingValue} onChange={(e) => setEditingValue(e.target.value)} placeholder={getPlaceholder(d.key)} className="h-8 text-sm flex-1 font-[family-name:var(--font-mono)]" autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleInlineSave(); if (e.key === "Escape") { setEditingKey(null); setEditingValue(""); } }} />
+														{renderSettingEditor(d.key)}
 														<Button size="sm" className="h-8" onClick={handleInlineSave} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}</Button>
 														<Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditingKey(null); setEditingValue(""); }}><X className="h-3.5 w-3.5" /></Button>
 													</div>
@@ -1619,8 +1812,8 @@ export default function SettingsPage() {
 											const isSensitive = (existing as AdminSetting).is_sensitive || SENSITIVE_KEYS.has(d.key);
 											const isSet = (existing as AdminSetting).is_set ?? !!existing.value;
 											return (
-												<div key={d.key} className="rounded-md border-2 border-border bg-card p-3 relative">
-													<div className="absolute right-2 top-2"><Tooltip><TooltipTrigger asChild><HelpCircle className="h-5 w-5 text-muted-foreground/40 hover:text-foreground transition-colors cursor-help" /></TooltipTrigger><TooltipContent side="left" className="max-w-[340px] text-sm leading-relaxed p-3">{d.tooltip}</TooltipContent></Tooltip></div>
+												<div key={d.key} className={`rounded-md border-2 border-border bg-card p-3 relative ${helpTargetClass(d.key)}`} onClick={(e) => { if ((e.ctrlKey || e.metaKey) && openHelp(d.key)) { e.preventDefault(); e.stopPropagation(); } }}>
+													<SettingHelpIcon settingKey={d.key} tooltip={d.tooltip} openHelp={openHelp} />
 													<span className="text-sm font-semibold text-foreground">{d.label}</span>
 													<div className="flex items-center gap-2 mt-1.5">
 														{isSensitive ? (
@@ -1639,8 +1832,8 @@ export default function SettingsPage() {
 											);
 										}
 										return (
-											<button key={d.key} type="button" onClick={() => { setEditingKey(d.key); setEditingValue(""); }} className="text-left rounded-md border-2 border-dashed border-border/80 p-3 hover:border-primary/40 hover:bg-background transition-colors relative">
-												<div className="absolute right-2 top-2"><Tooltip><TooltipTrigger asChild onClick={(e) => e.stopPropagation()}><HelpCircle className="h-5 w-5 text-muted-foreground/40 hover:text-foreground transition-colors cursor-help" /></TooltipTrigger><TooltipContent side="left" className="max-w-[340px] text-sm leading-relaxed p-3">{d.tooltip}</TooltipContent></Tooltip></div>
+											<button key={d.key} type="button" onClick={(e) => { if ((e.ctrlKey || e.metaKey) && openHelp(d.key)) { e.preventDefault(); return; } setEditingKey(d.key); setEditingValue(""); }} className={`text-left rounded-md border-2 border-dashed border-border/80 p-3 hover:border-primary/40 hover:bg-background transition-colors relative ${helpTargetClass(d.key)}`}>
+												<SettingHelpIcon settingKey={d.key} tooltip={d.tooltip} openHelp={openHelp} />
 												<span className="text-sm font-semibold text-foreground/60">+ {d.label}</span>
 											</button>
 										);
@@ -1667,7 +1860,7 @@ export default function SettingsPage() {
 												<details key={section.title} className="group rounded-md border-l-4 border-amber-500/60 border-2 border-border/70 bg-card">
 													<summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none hover:bg-muted/30 transition-colors">
 														{section.icon}
-														<span className="text-sm font-semibold text-foreground/80 flex-1">{section.title}</span>
+														<span className={`text-sm font-semibold text-foreground/80 flex-1 ${SECTION_DOCS[section.title] ? "hover:text-primary transition-colors" : ""}`} onClick={(e) => { if (SECTION_DOCS[section.title]) { e.preventDefault(); e.stopPropagation(); openHelp(undefined, section.title); } }}>{section.title}</span>
 														<span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">CAUTION</span>
 													</summary>
 													<div className="px-4 pb-4 pt-1">
@@ -1683,7 +1876,7 @@ export default function SettingsPage() {
 																<div key={d.key} className="rounded-md border-2 border-primary/50 bg-card p-3">
 																	<span className="text-sm font-semibold text-foreground mb-2 block">{d.label}</span>
 																	<div className="flex items-center gap-2">
-																		<Input value={editingValue} onChange={(e) => setEditingValue(e.target.value)} placeholder={getPlaceholder(d.key)} className="h-8 text-sm flex-1 font-[family-name:var(--font-mono)]" autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleInlineSave(); if (e.key === "Escape") { setEditingKey(null); setEditingValue(""); } }} />
+																		{renderSettingEditor(d.key)}
 																		<Button size="sm" className="h-8" onClick={handleInlineSave} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}</Button>
 																		<Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditingKey(null); setEditingValue(""); }}><X className="h-3.5 w-3.5" /></Button>
 																	</div>
@@ -1694,8 +1887,8 @@ export default function SettingsPage() {
 															const isSensitive = (existing as AdminSetting).is_sensitive || SENSITIVE_KEYS.has(d.key);
 															const isSet = (existing as AdminSetting).is_set ?? !!existing.value;
 															return (
-																<div key={d.key} className="rounded-md border-2 border-border bg-card p-3 relative">
-																	<div className="absolute right-2 top-2"><Tooltip><TooltipTrigger asChild><HelpCircle className="h-5 w-5 text-muted-foreground/40 hover:text-foreground transition-colors cursor-help" /></TooltipTrigger><TooltipContent side="left" className="max-w-[340px] text-sm leading-relaxed p-3">{d.tooltip}</TooltipContent></Tooltip></div>
+																<div key={d.key} className={`rounded-md border-2 border-border bg-card p-3 relative ${helpTargetClass(d.key)}`} onClick={(e) => { if ((e.ctrlKey || e.metaKey) && openHelp(d.key)) { e.preventDefault(); e.stopPropagation(); } }}>
+																	<SettingHelpIcon settingKey={d.key} tooltip={d.tooltip} openHelp={openHelp} />
 																	<span className="text-sm font-semibold text-foreground">{d.label}</span>
 																	<div className="flex items-center gap-2 mt-1.5">
 																		{isSensitive ? (
@@ -1714,8 +1907,8 @@ export default function SettingsPage() {
 															);
 														}
 														return (
-															<button key={d.key} type="button" onClick={() => { setEditingKey(d.key); setEditingValue(""); }} className="text-left rounded-md border-2 border-dashed border-border/80 p-3 hover:border-primary/40 hover:bg-background transition-colors relative">
-																<div className="absolute right-2 top-2"><Tooltip><TooltipTrigger asChild onClick={(e) => e.stopPropagation()}><HelpCircle className="h-5 w-5 text-muted-foreground/40 hover:text-foreground transition-colors cursor-help" /></TooltipTrigger><TooltipContent side="left" className="max-w-[340px] text-sm leading-relaxed p-3">{d.tooltip}</TooltipContent></Tooltip></div>
+															<button key={d.key} type="button" onClick={(e) => { if ((e.ctrlKey || e.metaKey) && openHelp(d.key)) { e.preventDefault(); return; } setEditingKey(d.key); setEditingValue(""); }} className={`text-left rounded-md border-2 border-dashed border-border/80 p-3 hover:border-primary/40 hover:bg-background transition-colors relative ${helpTargetClass(d.key)}`}>
+																<SettingHelpIcon settingKey={d.key} tooltip={d.tooltip} openHelp={openHelp} />
 																<span className="text-sm font-semibold text-foreground/60">+ {d.label}</span>
 															</button>
 														);
