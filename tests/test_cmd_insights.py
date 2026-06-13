@@ -17,7 +17,7 @@ def test_insights_list_resolves_agent_name_before_report_lookup(monkeypatch):
         calls.append((path, params))
         if path == "/api/v1/agents/ultra-pi":
             return {"id": "c6185803-8c32-4c39-b347-78f8281e306e", "name": "ultra-pi"}
-        if path == "/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/reports":
+        if path == "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports":
             return []
         raise AssertionError(f"unexpected path: {path}")
 
@@ -29,7 +29,7 @@ def test_insights_list_resolves_agent_name_before_report_lookup(monkeypatch):
     assert result.exit_code == 0, result.output
     assert calls == [
         ("/api/v1/agents/ultra-pi", None),
-        ("/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/reports", None),
+        ("/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports", None),
     ]
 
 
@@ -46,7 +46,7 @@ def test_insights_generate_resolves_agent_name_before_generate(monkeypatch):
 
     def fake_post(path: str, data: dict):
         calls.append(("POST", path, data))
-        if path == "/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/generate":
+        if path == "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports":
             return {
                 "id": "be5aa083-d84a-49e7-8a35-b37b3e687780",
                 "status": "pending",
@@ -67,7 +67,7 @@ def test_insights_generate_resolves_agent_name_before_generate(monkeypatch):
         ("GET", "/api/v1/agents/ultra-pi", None),
         (
             "POST",
-            "/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/generate",
+            "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports",
             {"period_days": 30},
         ),
     ]
@@ -93,12 +93,15 @@ def test_insights_show_agent_name_uses_latest_completed_report(monkeypatch):
         calls.append((path, params))
         if path == "/api/v1/agents/ultra-pi":
             return {"id": "c6185803-8c32-4c39-b347-78f8281e306e", "name": "ultra-pi"}
-        if path == "/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/reports":
+        if path == "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports":
             return [
                 {"id": "34029e91-cf7d-4e0d-9b87-a1962e8ef2a7", "status": "failed"},
                 {"id": "be5aa083-d84a-49e7-8a35-b37b3e687780", "status": "completed"},
             ]
-        if path == "/api/v1/insights/reports/be5aa083-d84a-49e7-8a35-b37b3e687780":
+        if (
+            path
+            == "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports/be5aa083-d84a-49e7-8a35-b37b3e687780"
+        ):
             return _completed_report("be5aa083-d84a-49e7-8a35-b37b3e687780")
         raise AssertionError(f"unexpected path: {path}")
 
@@ -110,8 +113,11 @@ def test_insights_show_agent_name_uses_latest_completed_report(monkeypatch):
     assert result.exit_code == 0, result.output
     assert calls == [
         ("/api/v1/agents/ultra-pi", None),
-        ("/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/reports", None),
-        ("/api/v1/insights/reports/be5aa083-d84a-49e7-8a35-b37b3e687780", None),
+        ("/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports", None),
+        (
+            "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports/be5aa083-d84a-49e7-8a35-b37b3e687780",
+            None,
+        ),
     ]
 
 
@@ -122,12 +128,15 @@ def test_insights_show_agent_name_accepts_report_row(monkeypatch):
         calls.append((path, params))
         if path == "/api/v1/agents/ultra-pi":
             return {"id": "c6185803-8c32-4c39-b347-78f8281e306e", "name": "ultra-pi"}
-        if path == "/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/reports":
+        if path == "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports":
             return [
                 {"id": "be5aa083-d84a-49e7-8a35-b37b3e687780", "status": "completed"},
                 {"id": "b7c416a4-b501-42d7-a066-3cc95b76e656", "status": "completed"},
             ]
-        if path == "/api/v1/insights/reports/b7c416a4-b501-42d7-a066-3cc95b76e656":
+        if (
+            path
+            == "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports/b7c416a4-b501-42d7-a066-3cc95b76e656"
+        ):
             return _completed_report("b7c416a4-b501-42d7-a066-3cc95b76e656")
         raise AssertionError(f"unexpected path: {path}")
 
@@ -139,6 +148,9 @@ def test_insights_show_agent_name_accepts_report_row(monkeypatch):
     assert result.exit_code == 0, result.output
     assert calls == [
         ("/api/v1/agents/ultra-pi", None),
-        ("/api/v1/insights/agents/c6185803-8c32-4c39-b347-78f8281e306e/reports", None),
-        ("/api/v1/insights/reports/b7c416a4-b501-42d7-a066-3cc95b76e656", None),
+        ("/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports", None),
+        (
+            "/api/v1/agents/c6185803-8c32-4c39-b347-78f8281e306e/insights/reports/b7c416a4-b501-42d7-a066-3cc95b76e656",
+            None,
+        ),
     ]

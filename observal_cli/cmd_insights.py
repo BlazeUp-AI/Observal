@@ -55,9 +55,9 @@ def _select_report_id(reports: list[dict], report_ref: str | None) -> str:
 
 def _resolve_report_for_show(target: str, report_ref: str | None) -> dict:
     agent_id = _resolve_agent_id(target)
-    reports = client.get(f"/api/v1/insights/agents/{agent_id}/reports")
+    reports = client.get(f"/api/v1/agents/{agent_id}/insights/reports")
     report_id = _select_report_id(reports, report_ref)
-    return client.get(f"/api/v1/insights/reports/{report_id}")
+    return client.get(f"/api/v1/agents/{agent_id}/insights/reports/{report_id}")
 
 
 @insights_app.command(name="list")
@@ -75,7 +75,7 @@ def insights_list(
     """
     with spinner("Fetching insight reports..."):
         resolved = _resolve_agent_id(agent_id)
-        data = client.get(f"/api/v1/insights/agents/{resolved}/reports")
+        data = client.get(f"/api/v1/agents/{resolved}/insights/reports")
     if output == "json":
         output_json(data)
         return
@@ -451,7 +451,7 @@ def insights_generate(
 
     with spinner("Generating insight report..."):
         resolved = _resolve_agent_id(agent_id)
-        data = client.post(f"/api/v1/insights/agents/{resolved}/generate", {"period_days": period_days})
+        data = client.post(f"/api/v1/agents/{resolved}/insights/reports", {"period_days": period_days})
     if output == "json":
         output_json(data)
         return

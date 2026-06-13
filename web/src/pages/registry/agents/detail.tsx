@@ -270,8 +270,8 @@ function InsightsTab({ agentId }: { agentId: string }) {
             {reports.map((report) => (
               <Link
                 key={report.id}
-                to="/insights/$reportId"
-                params={{ reportId: report.id }}
+                to="/agents/$agentId/insights/$reportId"
+                params={{ agentId, reportId: report.id }}
                 className="flex items-center justify-between gap-4 rounded-md border border-border p-3 hover:bg-muted/50 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0">

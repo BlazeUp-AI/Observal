@@ -649,7 +649,11 @@ function SuggestionsSection({ data, report }: { data: unknown; report?: InsightR
 			selection.pattern_indices = [...selectedPatterns];
 		}
 		const hasSelection = Object.keys(selection).length > 0;
-		applySuggestions.mutate({ reportId: report.id, selection: hasSelection ? selection : undefined });
+		applySuggestions.mutate({
+			agentId: report.agent_id,
+			reportId: report.id,
+			selection: hasSelection ? selection : undefined,
+		});
 		setShowConfirm(false);
 	};
 
@@ -1681,9 +1685,9 @@ function ReportContent({ report }: { report: InsightReport }) {
 // ── Page Component ──────────────────────────────────────────────────────
 
 export default function InsightReportPage() {
-	const { reportId } = useParams({ from: "/_authed/insights/$reportId" });
+	const { agentId, reportId } = useParams({ from: "/_authed/agents/$agentId/insights/$reportId" });
 	const router = useRouter();
-	const { data: report, isLoading, isError } = useInsightReport(reportId);
+	const { data: report, isLoading, isError } = useInsightReport(agentId, reportId);
 
 	return (
 		<>
@@ -1696,7 +1700,7 @@ export default function InsightReportPage() {
 								variant="outline"
 								size="sm"
 								className="gap-1.5"
-								onClick={() => insights.exportHtml(reportId)}
+								onClick={() => insights.exportHtml(agentId, reportId)}
 							>
 								<Download className="h-4 w-4" /> Export HTML
 							</Button>

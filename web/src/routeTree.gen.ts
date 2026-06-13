@@ -35,6 +35,7 @@ import { Route as AuthedAdminDashboardRouteImport } from './routes/_authed/_admi
 import { Route as AuthedAdminAuditLogRouteImport } from './routes/_authed/_admin/audit-log'
 import { Route as AuthedUserTracesIndexRouteImport } from './routes/_authed/_user/traces/index'
 import { Route as AuthedUserTracesTraceIdRouteImport } from './routes/_authed/_user/traces/$traceId'
+import { Route as AuthedAgentsAgentIdInsightsReportIdRouteImport } from './routes/_authed/agents/$agentId/insights/$reportId'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -165,6 +166,12 @@ const AuthedUserTracesTraceIdRoute = AuthedUserTracesTraceIdRouteImport.update({
   path: '/traces/$traceId',
   getParentRoute: () => AuthedUserRoute,
 } as any)
+const AuthedAgentsAgentIdInsightsReportIdRoute =
+  AuthedAgentsAgentIdInsightsReportIdRouteImport.update({
+    id: '/insights/$reportId',
+    path: '/insights/$reportId',
+    getParentRoute: () => AuthedAgentsAgentIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -181,7 +188,7 @@ export interface FileRoutesByFullPath {
   '/sso': typeof AuthedAdminSsoRoute
   '/users': typeof AuthedAdminUsersRoute
   '/account': typeof AuthedUserAccountRoute
-  '/agents/$agentId': typeof AuthedAgentsAgentIdRoute
+  '/agents/$agentId': typeof AuthedAgentsAgentIdRouteWithChildren
   '/agents/builder': typeof AuthedAgentsBuilderRoute
   '/components/$componentId': typeof AuthedComponentsComponentIdRoute
   '/insights/$reportId': typeof AuthedInsightsReportIdRoute
@@ -190,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/wiki/': typeof AuthedWikiIndexRoute
   '/traces/$traceId': typeof AuthedUserTracesTraceIdRoute
   '/traces/': typeof AuthedUserTracesIndexRoute
+  '/agents/$agentId/insights/$reportId': typeof AuthedAgentsAgentIdInsightsReportIdRoute
 }
 export interface FileRoutesByTo {
   '/device': typeof authDeviceRoute
@@ -206,7 +214,7 @@ export interface FileRoutesByTo {
   '/sso': typeof AuthedAdminSsoRoute
   '/users': typeof AuthedAdminUsersRoute
   '/account': typeof AuthedUserAccountRoute
-  '/agents/$agentId': typeof AuthedAgentsAgentIdRoute
+  '/agents/$agentId': typeof AuthedAgentsAgentIdRouteWithChildren
   '/agents/builder': typeof AuthedAgentsBuilderRoute
   '/components/$componentId': typeof AuthedComponentsComponentIdRoute
   '/insights/$reportId': typeof AuthedInsightsReportIdRoute
@@ -215,6 +223,7 @@ export interface FileRoutesByTo {
   '/wiki': typeof AuthedWikiIndexRoute
   '/traces/$traceId': typeof AuthedUserTracesTraceIdRoute
   '/traces': typeof AuthedUserTracesIndexRoute
+  '/agents/$agentId/insights/$reportId': typeof AuthedAgentsAgentIdInsightsReportIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -235,7 +244,7 @@ export interface FileRoutesById {
   '/_authed/_admin/sso': typeof AuthedAdminSsoRoute
   '/_authed/_admin/users': typeof AuthedAdminUsersRoute
   '/_authed/_user/account': typeof AuthedUserAccountRoute
-  '/_authed/agents/$agentId': typeof AuthedAgentsAgentIdRoute
+  '/_authed/agents/$agentId': typeof AuthedAgentsAgentIdRouteWithChildren
   '/_authed/agents/builder': typeof AuthedAgentsBuilderRoute
   '/_authed/components/$componentId': typeof AuthedComponentsComponentIdRoute
   '/_authed/insights/$reportId': typeof AuthedInsightsReportIdRoute
@@ -244,6 +253,7 @@ export interface FileRoutesById {
   '/_authed/wiki/': typeof AuthedWikiIndexRoute
   '/_authed/_user/traces/$traceId': typeof AuthedUserTracesTraceIdRoute
   '/_authed/_user/traces/': typeof AuthedUserTracesIndexRoute
+  '/_authed/agents/$agentId/insights/$reportId': typeof AuthedAgentsAgentIdInsightsReportIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -271,6 +281,7 @@ export interface FileRouteTypes {
     | '/wiki/'
     | '/traces/$traceId'
     | '/traces/'
+    | '/agents/$agentId/insights/$reportId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/device'
@@ -296,6 +307,7 @@ export interface FileRouteTypes {
     | '/wiki'
     | '/traces/$traceId'
     | '/traces'
+    | '/agents/$agentId/insights/$reportId'
   id:
     | '__root__'
     | '/_authed'
@@ -324,6 +336,7 @@ export interface FileRouteTypes {
     | '/_authed/wiki/'
     | '/_authed/_user/traces/$traceId'
     | '/_authed/_user/traces/'
+    | '/_authed/agents/$agentId/insights/$reportId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -516,6 +529,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedUserTracesTraceIdRouteImport
       parentRoute: typeof AuthedUserRoute
     }
+    '/_authed/agents/$agentId/insights/$reportId': {
+      id: '/_authed/agents/$agentId/insights/$reportId'
+      path: '/insights/$reportId'
+      fullPath: '/agents/$agentId/insights/$reportId'
+      preLoaderRoute: typeof AuthedAgentsAgentIdInsightsReportIdRouteImport
+      parentRoute: typeof AuthedAgentsAgentIdRoute
+    }
   }
 }
 
@@ -563,12 +583,24 @@ const AuthedUserRouteWithChildren = AuthedUserRoute._addFileChildren(
   AuthedUserRouteChildren,
 )
 
+interface AuthedAgentsAgentIdRouteChildren {
+  AuthedAgentsAgentIdInsightsReportIdRoute: typeof AuthedAgentsAgentIdInsightsReportIdRoute
+}
+
+const AuthedAgentsAgentIdRouteChildren: AuthedAgentsAgentIdRouteChildren = {
+  AuthedAgentsAgentIdInsightsReportIdRoute:
+    AuthedAgentsAgentIdInsightsReportIdRoute,
+}
+
+const AuthedAgentsAgentIdRouteWithChildren =
+  AuthedAgentsAgentIdRoute._addFileChildren(AuthedAgentsAgentIdRouteChildren)
+
 interface AuthedRouteChildren {
   AuthedAdminRoute: typeof AuthedAdminRouteWithChildren
   AuthedUserRoute: typeof AuthedUserRouteWithChildren
   AuthedLeaderboardRoute: typeof AuthedLeaderboardRoute
   AuthedIndexRoute: typeof AuthedIndexRoute
-  AuthedAgentsAgentIdRoute: typeof AuthedAgentsAgentIdRoute
+  AuthedAgentsAgentIdRoute: typeof AuthedAgentsAgentIdRouteWithChildren
   AuthedAgentsBuilderRoute: typeof AuthedAgentsBuilderRoute
   AuthedComponentsComponentIdRoute: typeof AuthedComponentsComponentIdRoute
   AuthedInsightsReportIdRoute: typeof AuthedInsightsReportIdRoute
@@ -582,7 +614,7 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedUserRoute: AuthedUserRouteWithChildren,
   AuthedLeaderboardRoute: AuthedLeaderboardRoute,
   AuthedIndexRoute: AuthedIndexRoute,
-  AuthedAgentsAgentIdRoute: AuthedAgentsAgentIdRoute,
+  AuthedAgentsAgentIdRoute: AuthedAgentsAgentIdRouteWithChildren,
   AuthedAgentsBuilderRoute: AuthedAgentsBuilderRoute,
   AuthedComponentsComponentIdRoute: AuthedComponentsComponentIdRoute,
   AuthedInsightsReportIdRoute: AuthedInsightsReportIdRoute,

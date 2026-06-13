@@ -797,24 +797,26 @@ export const bulk = {
 // ── Insights ───────────────────────────────────────────────────────
 export const insights = {
 	status: () => get<{ available: boolean; reason: string | null }>("/insights/status"),
-	sessionCount: (agentId: string) => get<{ session_count: number }>(`/insights/agents/${agentId}/session-count`),
+	sessionCount: (agentId: string) => get<{ session_count: number }>(`/agents/${agentId}/insights/session-count`),
 	generate: (agentId: string, periodDays?: number) =>
 		post<InsightReportListItem>(
-			`/insights/agents/${agentId}/generate`,
+			`/agents/${agentId}/insights/reports`,
 			periodDays ? { period_days: periodDays } : {},
 		),
 	listReports: (agentId: string) =>
-		get<InsightReportListItem[]>(`/insights/agents/${agentId}/reports`),
-	getReport: (reportId: string) =>
+		get<InsightReportListItem[]>(`/agents/${agentId}/insights/reports`),
+	getReport: (agentId: string, reportId: string) =>
+		get<InsightReport>(`/agents/${agentId}/insights/reports/${reportId}`),
+	getReportById: (reportId: string) =>
 		get<InsightReport>(`/insights/reports/${reportId}`),
-	applySuggestions: (reportId: string, selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] }) =>
+	applySuggestions: (agentId: string, reportId: string, selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] }) =>
 		post<{ applied: boolean; report_id: string; items: InsightAppliedItems }>(
-			`/insights/reports/${reportId}/apply`,
+			`/agents/${agentId}/insights/reports/${reportId}/apply`,
 			selection ?? {},
 		),
-	exportHtml: async (reportId: string): Promise<void> => {
+	exportHtml: async (agentId: string, reportId: string): Promise<void> => {
 		const token = getAccessToken();
-		const res = await fetch(`${API}/insights/reports/${reportId}/export/html`, {
+		const res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
 			headers: token ? { Authorization: `Bearer ${token}` } : {},
 		});
 		if (!res.ok) throw new Error("Export failed");

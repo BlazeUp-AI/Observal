@@ -13,7 +13,8 @@ from loguru import logger as optic
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db, get_effective_agent_permission, require_role, resolve_prefix_id
+from api.deps import get_db, get_effective_agent_permission, require_role
+from api.routes.agent.helpers import _load_agent
 from models.agent import Agent
 from models.insight_meta_cache import InsightMetaCache
 from models.insight_report import InsightReport, InsightReportStatus
@@ -45,6 +46,23 @@ def _require_agent_edit_access(agent: Agent, user: User) -> None:
     perm = get_effective_agent_permission(agent, user)
     if perm not in ("owner", "edit"):
         raise HTTPException(status_code=403, detail="Insufficient permissions for this agent")
+
+
+async def _resolve_insights_agent(agent_id: str, db: AsyncSession, current_user: User) -> Agent:
+    """Resolve an insights agent by UUID, ID prefix, or name."""
+    agent = await _load_agent(
+        db,
+        agent_id,
+        prefer_user_id=current_user.id,
+        org_id=current_user.org_id,
+        include_all_statuses=True,
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _require_agent_edit_access(agent, current_user)
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    return agent
 
 
 @router.get("/status")
@@ -123,8 +141,7 @@ async def agent_session_count(
     """Return the number of sessions available for insight generation."""
     from services.clickhouse import _query
 
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-    _require_agent_edit_access(agent, current_user)
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
     now = datetime.now(UTC)
     period_start = now - timedelta(days=14)
 
@@ -163,11 +180,7 @@ async def generate_insight(
     """Trigger generation of an insight report for an agent."""
     optic.trace("agent_id={}, req={}", agent_id, req)
     _require_insights()
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-    _require_agent_edit_access(agent, current_user)
-
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
 
     period_days = req.period_days if req else 14
     now = datetime.now(UTC)
@@ -246,11 +259,7 @@ async def list_reports(
     """List insight reports for an agent, newest first."""
     optic.trace("agent_id={}", agent_id)
     _require_insights()
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-    _require_agent_edit_access(agent, current_user)
-
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
 
     stmt = (
         select(InsightReport)
@@ -352,10 +361,7 @@ async def clear_agent_reports(
     """Delete all insight reports and cached data for an agent."""
     optic.trace("agent_id={}", agent_id)
     _require_insights()
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
 
     # Delete reports
     report_result = await db.execute(delete(InsightReport).where(InsightReport.agent_id == agent.id))

@@ -122,15 +122,22 @@ export function useInsightReports(agentId: string | undefined) {
   });
 }
 
-export function useInsightReport(reportId: string) {
+export function useInsightReport(agentId: string, reportId: string) {
   return useQuery({
-    queryKey: ["insights", "report", reportId],
-    queryFn: () => insights.getReport(reportId),
+    queryKey: ["insights", "report", agentId, reportId],
+    queryFn: () => insights.getReport(agentId, reportId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       if (status === "pending" || status === "running") return 3000;
       return false;
     },
+  });
+}
+
+export function useLegacyInsightReport(reportId: string) {
+  return useQuery({
+    queryKey: ["insights", "legacy-report", reportId],
+    queryFn: () => insights.getReportById(reportId),
   });
 }
 
@@ -152,10 +159,10 @@ export function useGenerateInsight() {
 export function useApplyInsightSuggestions() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { reportId: string; selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] } }) =>
-      insights.applySuggestions(vars.reportId, vars.selection),
+    mutationFn: (vars: { agentId: string; reportId: string; selection?: { config_indices?: number[]; feature_indices?: number[]; pattern_indices?: number[] } }) =>
+      insights.applySuggestions(vars.agentId, vars.reportId, vars.selection),
     onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["insights", "report", vars.reportId] });
+      qc.invalidateQueries({ queryKey: ["insights", "report", vars.agentId, vars.reportId] });
       toast.success("Suggestions applied: items added to review queue");
     },
     onError: (err: Error) => {
