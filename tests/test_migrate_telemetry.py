@@ -79,22 +79,22 @@ class TestCLIRegistration:
     """Verify Phase 2 telemetry subcommands appear in migrate --help."""
 
     def test_export_telemetry_in_help(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         assert "export-telemetry" in _plain(result.output)
 
     def test_import_telemetry_in_help(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         assert "import-telemetry" in _plain(result.output)
 
     def test_validate_telemetry_in_help(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         assert "validate-telemetry" in _plain(result.output)
 
     def test_export_telemetry_help_shows_options(self):
-        result = runner.invoke(cli_app, ["migrate", "export-telemetry", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "export-telemetry", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "--clickhouse-url" in out
@@ -102,14 +102,14 @@ class TestCLIRegistration:
         assert "--output-dir" in out
 
     def test_import_telemetry_help_shows_options(self):
-        result = runner.invoke(cli_app, ["migrate", "import-telemetry", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "import-telemetry", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "--clickhouse-url" in out
         assert "--input-dir" in out
 
     def test_validate_telemetry_help_shows_options(self):
-        result = runner.invoke(cli_app, ["migrate", "validate-telemetry", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "validate-telemetry", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "--input-dir" in out
@@ -387,8 +387,8 @@ class TestReadCount:
 class TestConstants:
     """Verify CLICKHOUSE_TABLES, FK_PG_TABLE_MAP, and EPOCH_SENTINELS."""
 
-    def test_clickhouse_tables_has_7_entries(self):
-        assert len(CLICKHOUSE_TABLES) == 7
+    def test_clickhouse_tables_has_8_entries(self):
+        assert len(CLICKHOUSE_TABLES) == 8
 
     def test_each_table_has_required_keys(self):
         for table_cfg in CLICKHOUSE_TABLES:
@@ -403,6 +403,7 @@ class TestConstants:
             "traces",
             "spans",
             "scores",
+            "session_events",
             "audit_log",
             "otel_logs",
             "security_events",
@@ -421,6 +422,7 @@ class TestConstants:
     def test_mergetree_tables(self):
         mergetree = [t["name"] for t in CLICKHOUSE_TABLES if t["engine"] == "mergetree"]
         assert set(mergetree) == {
+            "session_events",
             "audit_log",
             "otel_logs",
             "security_events",
@@ -513,7 +515,7 @@ class TestErrorPaths:
 
     def test_export_telemetry_missing_options(self):
         """export-telemetry without required options should fail."""
-        result = runner.invoke(cli_app, ["migrate", "export-telemetry"])
+        result = runner.invoke(cli_app, ["server", "migrate", "export-telemetry"])
         assert result.exit_code != 0
 
     @patch("observal_cli.cmd_migrate._require_admin")
@@ -633,12 +635,12 @@ class TestSecurity:
 
 
 class TestAdminRoleGateProperty:
-    """Property 1: Only admin and super_admin roles pass the gate.
+    """Property 1: Only super_admin role passes the gate.
 
     **Validates: Requirements 1.5**
     """
 
-    ALLOWED_ROLES = {"admin", "super_admin"}
+    ALLOWED_ROLES = {"super_admin"}
 
     @given(
         role=st.text(

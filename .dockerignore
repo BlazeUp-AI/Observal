@@ -17,10 +17,8 @@ htmlcov/
 **/node_modules
 **/.next
 
-# Documentation (not copied by any Dockerfile)
-*.md
+# Documentation assets (screenshots not needed in images)
 LICENSE
-docs/
 screenshots/
 
 # Testing (not shipped in images)
@@ -50,7 +48,9 @@ otel-collector-config.yaml
 # Docker sub-configs (not needed inside images)
 docker/docker-compose*.yml
 docker/clickhouse/
-docker/nginx*.conf
+docker/nginx.conf
+docker/nginx.dev.conf
+docker/nginx.production.conf
 docker/server-package/
 
 # Environment and logs

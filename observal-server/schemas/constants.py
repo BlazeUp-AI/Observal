@@ -36,12 +36,8 @@ VALID_IDES: list[str] = get_valid_ides()
 
 IDE_FEATURES: list[str] = [
     "skills",
-    "superpowers",
-    "hook_bridge",
+    "hooks",
     "mcp_servers",
-    "rules",
-    "steering_files",
-    "otlp_telemetry",
 ]
 
 IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()
@@ -123,6 +119,12 @@ VALID_HOOK_SCOPES: list[str] = [
     "session",
     "global",
 ]
+
+HOOK_TIMEOUT_CAPS: dict[str, int] = {
+    "blocking": 30,
+    "sync": 10,
+    "async": 60,
+}
 
 # ── Prompts ─────────────────────────────────────────────────
 VALID_PROMPT_CATEGORIES: list[str] = [

@@ -120,7 +120,7 @@ def build_saml_settings(
             },
             "x509cert": sp_cert_clean,
             "privateKey": sp_key_clean,
-            "NameIDFormat": "urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress",
+            "NameIDFormat": "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
         },
         "idp": {
             "entityId": idp_entity_id,
@@ -133,10 +133,15 @@ def build_saml_settings(
         "security": {
             "authnRequestsSigned": True,
             "wantAssertionsSigned": True,
+            "wantMessagesSigned": False,
+            "wantResponsesSigned": True,
             "wantNameIdEncrypted": False,
             "wantAssertionsEncrypted": False,
             "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
             "digestAlgorithm": "http://www.w3.org/2001/04/xmlenc#sha256",
+            "requestedAuthnContext": False,
+            "relaxDestinationValidation": False,
+            "wantNameId": True,
         },
     }
     if sp_slo_url:

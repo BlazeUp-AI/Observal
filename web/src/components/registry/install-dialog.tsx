@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -11,15 +10,7 @@ import { Button } from "@/components/ui/button";
 import { registry, type RegistryType } from "@/lib/api";
 import { Copy, Check, Download, AlertTriangle } from "lucide-react";
 import { copyToClipboard } from "@/lib/utils";
-
-const IDE_OPTIONS = [
-  "Cursor",
-  "Kiro IDE",
-  "Kiro CLI",
-  "Claude Code",
-  "VS Code",
-  "Gemini CLI",
-];
+import { useIdes } from "@/hooks/use-ides";
 
 interface InstallDialogProps {
   type: RegistryType;
@@ -28,6 +19,7 @@ interface InstallDialogProps {
 }
 
 export function InstallDialog({ type, id, name }: InstallDialogProps) {
+  const { data: ides } = useIdes();
   const [ide, setIde] = useState("");
   const [config, setConfig] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -76,8 +68,8 @@ export function InstallDialog({ type, id, name }: InstallDialogProps) {
             <SelectValue placeholder="Select IDE" />
           </SelectTrigger>
           <SelectContent>
-            {IDE_OPTIONS.map((o) => (
-              <SelectItem key={o} value={o}>{o}</SelectItem>
+            {(ides ?? []).map((o) => (
+              <SelectItem key={o.name} value={o.name}>{o.display_name}</SelectItem>
             ))}
           </SelectContent>
         </Select>

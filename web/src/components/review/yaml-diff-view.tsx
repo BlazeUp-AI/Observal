@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 export interface YamlDiffViewProps {
   diff: string;
@@ -154,7 +153,7 @@ function DiffPane({
                 >
                   {num ?? ""}
                 </td>
-                <td className="px-3 whitespace-pre-wrap break-all">
+                <td className="px-3 whitespace-pre-wrap break-words leading-relaxed">
                   {text ?? ""}
                 </td>
               </tr>

@@ -19,6 +19,8 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 
+from loguru import logger as optic
+
 # Hostnames that must always be blocked regardless of IP resolution.
 _BLOCKED_HOSTNAMES = frozenset(
     {
@@ -48,6 +50,7 @@ _PRIVATE_NETWORKS = [
 
 
 def _ip_is_private(addr_str: str) -> bool:
+    optic.trace("checking if {} is a private address", addr_str)
     try:
         addr = ipaddress.ip_address(addr_str)
     except ValueError:
@@ -70,6 +73,7 @@ def is_private_url(url: str) -> bool:
 
     DNS failures are treated as private (fail closed).
     """
+    optic.trace("SSRF check for URL: {}", url)
     if not url:
         return True
     try:

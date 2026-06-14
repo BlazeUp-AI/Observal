@@ -32,12 +32,8 @@ VALID_IDES: list[str] = get_valid_ides()
 
 IDE_FEATURES: list[str] = [
     "skills",
-    "superpowers",
-    "hook_bridge",
+    "hooks",
     "mcp_servers",
-    "rules",
-    "steering_files",
-    "otlp_telemetry",
 ]
 
 IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()
@@ -145,3 +141,12 @@ VALID_SANDBOX_NETWORK_POLICIES: list[str] = [
     "bridge",
     "restricted",
 ]
+
+# GitHub download redirect allowlist (used by version_check and upgrade_executor)
+REDIRECT_ALLOWLIST = frozenset(
+    [
+        "github.com",
+        "objects.githubusercontent.com",
+        "github-releases.githubusercontent.com",
+    ]
+)

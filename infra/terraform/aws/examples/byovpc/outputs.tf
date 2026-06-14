@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 BlazeUp AI
+# SPDX-License-Identifier: AGPL-3.0-only
+
+output "app_url" {
+  description = "Observal application URL."
+  value       = module.observal.app_url
+}
+
+output "alb_dns_name" {
+  description = "ALB DNS name."
+  value       = module.observal.alb_dns_name
+}
+
+output "ecs_cluster_name" {
+  description = "ECS cluster name."
+  value       = module.observal.ecs_cluster_name
+}

@@ -3,9 +3,10 @@
 
 # ── ALB ────────────────────────────────────────────────────────────────────
 resource "aws_security_group" "alb" {
+  count       = local.create_alb_sg ? 1 : 0
   name        = "${local.name}-alb"
   description = "Public ingress to the load balancer."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   # tfsec:ignore:aws-ec2-no-public-ingress-sgr ALB is internet-facing by design; restrict via var.alb_ingress_cidrs.
   ingress {
@@ -39,16 +40,17 @@ resource "aws_security_group" "alb" {
 
 # ── ECS task ENIs (api/web/worker) ─────────────────────────────────────────
 resource "aws_security_group" "ecs_tasks" {
+  count       = local.create_ecs_sg ? 1 : 0
   name        = "${local.name}-ecs-tasks"
   description = "Fargate task ENIs for api/web/worker. Inbound only from ALB."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   ingress {
     description     = "API HTTP from ALB"
     from_port       = 8000
     to_port         = 8000
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = [local.alb_sg_id]
   }
 
   ingress {
@@ -56,7 +58,7 @@ resource "aws_security_group" "ecs_tasks" {
     from_port       = 3000
     to_port         = 3000
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = [local.alb_sg_id]
   }
 
   # tfsec:ignore:aws-ec2-no-public-egress-sgr Required: image pulls (ghcr.io), AWS API endpoints (SSM, CloudWatch, ECR), Postgres/Redis/ClickHouse in-VPC.
@@ -76,14 +78,14 @@ resource "aws_security_group" "data_host" {
   count       = local.clickhouse_self_hosted ? 1 : 0
   name        = "${local.name}-data-host"
   description = "ClickHouse + Grafana + Prometheus EC2. Inbound from ALB (Grafana) and ECS tasks (ClickHouse)."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   ingress {
     description     = "Grafana UI from ALB"
     from_port       = 3001
     to_port         = 3001
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    security_groups = [local.alb_sg_id]
   }
 
   ingress {
@@ -91,7 +93,7 @@ resource "aws_security_group" "data_host" {
     from_port       = 8123
     to_port         = 8123
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    security_groups = [local.ecs_sg_id]
   }
 
   ingress {
@@ -99,7 +101,7 @@ resource "aws_security_group" "data_host" {
     from_port       = 9000
     to_port         = 9000
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    security_groups = [local.ecs_sg_id]
   }
 
   # tfsec:ignore:aws-ec2-no-public-egress-sgr Required: image pulls (ghcr.io), GitHub release tarball, SSM/EC2/CloudWatch endpoints, OS package mirrors.
@@ -118,14 +120,14 @@ resource "aws_security_group" "data_host" {
 resource "aws_security_group" "db" {
   name        = "${local.name}-db"
   description = "Postgres reachable only from ECS tasks."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   ingress {
     description     = "Postgres from ECS tasks"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    security_groups = [local.ecs_sg_id]
   }
 
   egress {
@@ -133,7 +135,7 @@ resource "aws_security_group" "db" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [aws_vpc.main.cidr_block]
+    cidr_blocks = [local.vpc_cidr]
   }
 
   tags = { Name = "${local.name}-db-sg" }
@@ -143,14 +145,14 @@ resource "aws_security_group" "db" {
 resource "aws_security_group" "redis" {
   name        = "${local.name}-redis"
   description = "Redis reachable from ECS tasks (api + worker)."
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   ingress {
     description     = "Redis from ECS tasks"
     from_port       = 6379
     to_port         = 6379
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs_tasks.id]
+    security_groups = [local.ecs_sg_id]
   }
 
   egress {
@@ -158,7 +160,7 @@ resource "aws_security_group" "redis" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = [aws_vpc.main.cidr_block]
+    cidr_blocks = [local.vpc_cidr]
   }
 
   tags = { Name = "${local.name}-redis-sg" }

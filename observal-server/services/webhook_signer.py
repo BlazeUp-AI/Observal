@@ -16,6 +16,8 @@ import hmac
 import time
 import uuid
 
+from loguru import logger as optic
+
 HEADER_SIGNATURE = "X-Observal-Signature"
 HEADER_TIMESTAMP = "X-Observal-Timestamp"
 HEADER_EVENT_ID = "X-Observal-Event-Id"
@@ -32,6 +34,7 @@ def sign_payload(secret: str, timestamp: int, body: bytes) -> str:
     Returns:
         64-character lowercase hex string.
     """
+    optic.trace("computing HMAC signature")
     message = f"{timestamp}.".encode() + body
     return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
 
@@ -51,6 +54,7 @@ def build_headers(secret: str, body: bytes) -> dict[str, str]:
     Returns:
         Dict of header name -> header value.
     """
+    optic.trace("building signed headers for webhook")
     timestamp = int(time.time())
     signature = sign_payload(secret, timestamp, body)
     event_id = str(uuid.uuid4())
@@ -83,6 +87,7 @@ def verify_signature(
     Returns:
         True only if timestamp is fresh AND signature matches (constant-time).
     """
+    optic.trace("verifying webhook signature")
     now = int(time.time())
     if abs(now - timestamp) > tolerance_seconds:
         return False

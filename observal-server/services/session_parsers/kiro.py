@@ -240,7 +240,7 @@ def _extract_result_text(result_content: list) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Write-path extras — called by ingest_classify.get_extra_rows()
+# Write-path extras - called by ingest_classify.get_extra_rows()
 # ---------------------------------------------------------------------------
 
 

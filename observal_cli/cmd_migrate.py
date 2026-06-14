@@ -40,17 +40,16 @@ from observal_cli.render import spinner
 CHUNK_SIZE = 500
 
 INSERT_ORDER: list[str] = [
-    # Tier 0 — no FK dependencies
+    # Tier 0 - no FK dependencies
     "organizations",
     "enterprise_config",
     "component_sources",
-    "penalty_definitions",
-    # Tier 1 — FK to organizations
+    # Tier 1 - FK to organizations
     "users",
     "exporter_configs",
-    # Tier 1.5 — FK to users
+    # Tier 1.5 - FK to users
     "component_bundles",
-    # Tier 2 — FK to orgs + users + component_bundles
+    # Tier 2 - FK to orgs + users + component_bundles
     # NOTE: listings/agents have a circular FK with their version tables:
     #   *_listings.latest_version_id → *_versions.id (nullable, use_alter)
     #   *_versions.listing_id → *_listings.id (NOT NULL)
@@ -62,14 +61,14 @@ INSERT_ORDER: list[str] = [
     "prompt_listings",
     "sandbox_listings",
     "agents",
-    # Tier 2.5 — FK to listings/agents + users (version tables)
+    # Tier 2.5 - FK to listings/agents + users (version tables)
     "mcp_versions",
     "skill_versions",
     "hook_versions",
     "prompt_versions",
     "sandbox_versions",
     "agent_versions",
-    # Tier 3 — FK to listings/users
+    # Tier 3 - FK to listings/users
     "mcp_validation_results",
     "mcp_downloads",
     "skill_downloads",
@@ -78,27 +77,16 @@ INSERT_ORDER: list[str] = [
     "sandbox_downloads",
     "submissions",
     "alert_rules",
-    # Tier 4 — FK to agents/agent_versions
-    "agent_goal_templates",
+    # Tier 4 - FK to agents/agent_versions
     "agent_download_records",
     "component_download_records",
-    "dimension_weights",
-    # Tier 5 — FK to agent_goal_templates
-    "agent_goal_sections",
-    # Tier 6 — FK to agent_versions (polymorphic component_id)
+    # Tier 6 - FK to agent_versions (polymorphic component_id)
     "agent_components",
-    # Tier 7 — FK to users (polymorphic listing_id)
+    # Tier 7 - FK to users (polymorphic listing_id)
     "feedback",
-    # Tier 8 — FK to alert_rules
+    # Tier 8 - FK to alert_rules
     "alert_history",
-    # Tier 9 — FK to agents + users
-    "eval_runs",
-    # Tier 10 — FK to eval_runs
-    "scorecards",
-    # Tier 11 — FK to scorecards + penalty_definitions
-    "scorecard_dimensions",
-    "trace_penalties",
-    # Tier 12 — FK to agents + users (insight tables)
+    # Tier 9 - FK to agents + users (insight tables)
     "insight_meta_cache",
     "insight_session_facets",
     "insight_session_meta",
@@ -127,7 +115,6 @@ JSONB_COLUMNS: dict[str, list[str]] = {
     "prompt_versions": ["variables", "model_hints", "tags", "supported_ides"],
     "sandbox_listings": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
     "sandbox_versions": ["resource_limits", "allowed_mounts", "env_vars", "supported_ides"],
-    "scorecards": ["raw_output", "dimension_scores", "scoring_recommendations", "dimensions_skipped", "warnings"],
     "agent_components": ["config_override"],
     "exporter_configs": ["config"],
     "insight_reports": ["metrics", "narrative", "aggregated_data"],
@@ -152,6 +139,7 @@ CLICKHOUSE_TABLES: list[TableCfg] = [
     {"name": "traces", "engine": "replacing", "time_col": "start_time", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
     {"name": "spans", "engine": "replacing", "time_col": "start_time", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
     {"name": "scores", "engine": "replacing", "time_col": "timestamp", "fk_cols": ["agent_id", "mcp_id", "user_id"]},
+    {"name": "session_events", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["agent_id", "user_id"]},
     {"name": "audit_log", "engine": "mergetree", "time_col": "timestamp", "fk_cols": ["actor_id"]},
     # otel_logs DDL uses capital-T "Timestamp" (OpenTelemetry convention)
     {"name": "otel_logs", "engine": "mergetree", "time_col": "Timestamp", "fk_cols": []},
@@ -256,7 +244,7 @@ class TelemetryValidationResult:
 
 
 def _require_admin() -> None:
-    """Verify the current user has admin or super_admin role. Exit if not."""
+    """Verify the current user has super_admin role. Exit if not."""
     try:
         user = client.get("/api/v1/auth/whoami")
     except SystemExit as exc:
@@ -264,8 +252,8 @@ def _require_admin() -> None:
         rprint("[dim]  Run [bold]observal auth login[/bold] first.[/dim]")
         raise typer.Exit(1) from exc
     role = user.get("role", "")
-    if role not in ("admin", "super_admin"):
-        rprint("[red]Permission denied.[/red] The migrate command requires admin or super_admin role.")
+    if role != "super_admin":
+        rprint("[red]Permission denied.[/red] The migrate command requires super_admin role.")
         rprint(f"[dim]  Current role: {role}[/dim]")
         raise typer.Exit(1)
 
@@ -274,7 +262,7 @@ def _build_select(table: str, columns: list[str]) -> str:
     """Build SELECT query, casting JSONB columns to ::text.
 
     Table names are validated against INSERT_ORDER as a defense-in-depth
-    assertion — callers always pass values from INSERT_ORDER, but this
+    assertion - callers always pass values from INSERT_ORDER, but this
     guards against accidental misuse by future callers passing unknown tables.
     """
     if table not in INSERT_ORDER:
@@ -322,7 +310,7 @@ def _safe_tar_extract(tar: tarfile.TarFile, dest: Path) -> None:
             if member.issym() or member.islnk():
                 msg = f"Tar member {member.name!r} is a symlink (rejected for safety)"
                 raise ValueError(msg)
-        tar.extractall(dest)  # nosec B202 — path traversal validated above
+        tar.extractall(dest)  # nosec B202 - path traversal validated above
 
 
 def _parse_clickhouse_url(url: str) -> tuple[str, str, str, str]:
@@ -423,34 +411,41 @@ async def _get_org_fk_columns(conn: asyncpg.Connection) -> set[str]:
 
 
 async def _get_notnull_json_defaults(conn: asyncpg.Connection, table: str) -> dict[str, str]:
-    """Discover NOT NULL JSON/JSONB columns for a table and provide safe defaults.
+    """Discover NOT NULL columns with defaults for a table.
 
-    SQLAlchemy models define defaults in Python (default=dict, default=list) which
-    don't appear in information_schema.column_default. We detect NOT NULL JSON columns
-    and provide empty-object defaults so older archives with NULL values don't crash.
+    Handles both JSON/JSONB columns (which may lack DB defaults but need empty objects)
+    and all other NOT NULL columns with explicit column_default values (boolean, varchar, etc).
+    For boolean columns without defaults, uses false as fallback.
+    This ensures migration from older schemas doesn't crash on missing columns.
     """
     rows = await conn.fetch(
         """
-        SELECT column_name, column_default
+        SELECT column_name, column_default, udt_name
         FROM information_schema.columns
         WHERE table_name = $1
             AND table_schema = 'public'
             AND is_nullable = 'NO'
-            AND udt_name IN ('json', 'jsonb')
+            AND (udt_name IN ('json', 'jsonb', 'bool') OR column_default IS NOT NULL)
         """,
         table,
     )
     defaults: dict[str, str] = {}
     for row in rows:
+        col_name = row["column_name"]
         col_default = row["column_default"]
+        udt_name = row["udt_name"]
+
         if col_default:
-            # Has an explicit DB default — extract the JSON value
+            # Has an explicit DB default - extract the value
             clean = col_default.split("::")[0].strip().strip("'")
-            defaults[row["column_name"]] = clean
-        else:
-            # No DB default but column is NOT NULL — use empty object as safe fallback.
+            defaults[col_name] = clean
+        elif udt_name in ("json", "jsonb"):
+            # No DB default but column is NOT NULL JSON/JSONB - use empty object as safe fallback.
             # This covers SQLAlchemy models with default=dict or default=list.
-            defaults[row["column_name"]] = "{}"
+            defaults[col_name] = "{}"
+        elif udt_name == "bool":
+            # No DB default but column is NOT NULL boolean - use false as safe fallback.
+            defaults[col_name] = "false"
     return defaults
 
 
@@ -464,8 +459,12 @@ def _coerce_value(value: object, pg_type: str) -> object:
         return datetime.fromisoformat(value)
     if pg_type == "interval" and isinstance(value, (int, float)):
         return timedelta(seconds=value)
-    if pg_type in ("bool",) and isinstance(value, bool):
-        return value
+    if pg_type in ("bool",):
+        if isinstance(value, bool):
+            return value
+        elif isinstance(value, str):
+            # Handle string defaults from column_default ('true', 'false')
+            return value.lower() in ("true", "t", "1", "yes")
     if pg_type in ("int4", "int8", "int2") and isinstance(value, (int, float)):
         return int(value)
     if pg_type in ("float4", "float8", "numeric") and isinstance(value, (int, float)):
@@ -476,7 +475,7 @@ def _coerce_value(value: object, pg_type: str) -> object:
     return value
 
 
-# NOT NULL JSON defaults are now derived from information_schema at runtime
+# NOT NULL defaults are now derived from information_schema at runtime
 # (see _get_notnull_json_defaults). No hardcoded map needed.
 
 
@@ -522,7 +521,7 @@ async def _flush_batch(
     defaulted_cols: set[str] = set()
 
     for row in batch:
-        # Apply NOT NULL JSON defaults for columns that are NULL in the archive
+        # Apply NOT NULL defaults for columns that are NULL in the archive
         if notnull_defaults:
             for col, default_val in notnull_defaults.items():
                 if col in columns and row.get(col) is None:
@@ -706,7 +705,11 @@ async def _ch_import(
     import httpx as _httpx
 
     sql_prefix = f"INSERT INTO {table} FORMAT Parquet"
-    params = {"database": db, "query": sql_prefix}
+    params = {
+        "database": db,
+        "query": sql_prefix,
+        "max_memory_usage": "2000000000",  # 2 GB - handles large Parquet files (e.g. session_events with raw_line)
+    }
 
     async def _file_stream():
         with open(parquet_path, "rb") as f:
@@ -867,7 +870,7 @@ async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str
         for table in INSERT_ORDER:
             jsonl_path = staging_dir / "pg" / f"{table}.jsonl"
             if not jsonl_path.exists():
-                # Table may not exist in older archives — skip gracefully
+                # Table may not exist in older archives - skip gracefully
                 if table not in manifest["tables"]:
                     continue
                 failed_checksums.append(f"{table} (file missing)")
@@ -972,7 +975,7 @@ async def _import_archive(db_url: str, archive_path: Path, normalize_org_id: str
                     # Get column types for proper coercion
                     col_types = await _get_column_types(conn, table)
 
-                    # Get NOT NULL JSON defaults from schema (avoids hardcoded map)
+                    # Get NOT NULL defaults from schema (handles all types with defaults)
                     notnull_defaults = await _get_notnull_json_defaults(conn, table)
 
                     ins, sk, tw = await _insert_table(
@@ -1264,7 +1267,7 @@ async def _export_telemetry(
         raise typer.Exit(1)
     migration_id = p1_manifest["migration_id"]
 
-    # Record cutoff before any queries — use ClickHouse-compatible DateTime64 format
+    # Record cutoff before any queries - use ClickHouse-compatible DateTime64 format
     export_time_cutoff = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     # Parse ClickHouse URL
@@ -1293,8 +1296,21 @@ async def _export_telemetry(
         total_size = 0
 
         async with _httpx.AsyncClient(timeout=_httpx.Timeout(300.0, connect=10.0)) as http_client:
+            # Pre-check which tables exist on the source to skip gracefully
+            existing_sql = "SELECT name FROM system.tables WHERE database = {db:String} FORMAT JSON"
+            existing_resp = await _ch_query(
+                http_url, db, user, password, existing_sql, http_client=http_client, extra_params={"param_db": db}
+            )
+            source_tables = {r["name"] for r in existing_resp.json().get("data", [])}
+
             for table_cfg in CLICKHOUSE_TABLES:
                 table_name = table_cfg["name"]
+
+                # Skip tables that don't exist on source
+                if table_name not in source_tables:
+                    table_meta[table_name] = {"files": [], "row_count": 0, "checksum": {}, "time_range": None}
+                    rprint(f"  [dim]{table_name}: table not found on source (skipped)[/dim]")
+                    continue
 
                 # Query time range
                 tr_sql = _build_ch_time_range_query(table_cfg)
@@ -1611,7 +1627,7 @@ async def _validate_fk_references(
     fk_values["mcp_id"] |= fk_values.pop("mcp_server_id", set())
     fk_values["user_id"] |= fk_values.pop("actor_id", set())
 
-    # Filter to valid UUIDs only — ClickHouse stores these as String,
+    # Filter to valid UUIDs only - ClickHouse stores these as String,
     # so non-UUID values like "filesystem" or "default" can appear.
     # Normalize to lowercase to match PostgreSQL's canonical form.
     for key in list(fk_values):
@@ -1722,12 +1738,39 @@ async def _validate_telemetry(
 migrate_app = typer.Typer(help="PostgreSQL shallow-copy migration tools")
 
 
+def _require_pyarrow() -> None:
+    """pyarrow is an optional dependency; tell the user how to install it."""
+    try:
+        import pyarrow  # noqa: F401
+    except ImportError as exc:
+        raise typer.BadParameter(
+            "The migrate commands require pyarrow. Install with: pip install 'observal-cli[migrate]'"
+        ) from exc
+
+
+@migrate_app.callback()
+def _migrate_callback() -> None:
+    _require_pyarrow()
+
+
 @migrate_app.command("export")
 def export_cmd(
     db_url: str = typer.Option(..., "--db-url", help="Source PostgreSQL connection string"),
     output: str | None = typer.Option(None, "--output", "-o", help="Output archive path"),
 ) -> None:
-    """Export all PostgreSQL registry data to a portable archive."""
+    """Export all PostgreSQL registry data to a portable archive.
+
+    Connects to the source database, reads all tables in a consistent
+    REPEATABLE READ snapshot, and writes JSONL files packed into a
+    checksummed .tar.gz archive. Requires super_admin role.
+
+    The archive includes a manifest with SHA-256 checksums and the source
+    Alembic migration version for compatibility verification on import.
+
+    Examples:
+        observal migrate export --db-url postgresql://user:pass@host/observal
+        observal migrate export --db-url $DATABASE_URL -o backup.tar.gz
+    """
     _require_admin()
 
     # Default output filename
@@ -1772,7 +1815,19 @@ def import_cmd(
         help="Rewrite all org references to this UUID (use target org ID when source/target orgs differ)",
     ),
 ) -> None:
-    """Import a migration archive into the target database."""
+    """Import a migration archive into the target database.
+
+    Verifies checksums before inserting any data. Uses ON CONFLICT DO NOTHING
+    for idempotent imports: existing rows are skipped, not overwritten.
+    Requires super_admin role.
+
+    When migrating between instances with different organizations, use
+    --org-id to remap all organization references to the target org UUID.
+
+    Examples:
+        observal migrate import --db-url postgresql://user:pass@host/observal --archive backup.tar.gz
+        observal migrate import --db-url $DATABASE_URL -a backup.tar.gz --org-id 550e8400-...
+    """
     _require_admin()
 
     archive_path = Path(archive)
@@ -1813,7 +1868,16 @@ def validate_cmd(
     archive: str = typer.Option(..., "--archive", "-a", help="Path to .tar.gz archive"),
     db_url: str | None = typer.Option(None, "--db-url", help="Optional database for cross-validation"),
 ) -> None:
-    """Validate archive integrity and optionally compare against a database."""
+    """Validate archive integrity and optionally compare against a database.
+
+    Checks SHA-256 checksums for every table file in the archive. If --db-url
+    is provided, also compares row counts between the archive and the live
+    database to detect drift or partial imports. Requires super_admin role.
+
+    Examples:
+        observal migrate validate --archive backup.tar.gz
+        observal migrate validate -a backup.tar.gz --db-url $DATABASE_URL
+    """
     _require_admin()
 
     archive_path = Path(archive)
@@ -1868,7 +1932,21 @@ def export_telemetry_cmd(
     manifest: str = typer.Option(..., "--manifest", help="Path to Phase 1 migration_manifest.json"),
     output_dir: str = typer.Option(..., "--output-dir", help="Directory for exported Parquet files"),
 ) -> None:
-    """Export ClickHouse telemetry data to Parquet files."""
+    """Export ClickHouse telemetry data to Parquet files.
+
+    Phase 2 of migration: exports traces, spans, scores, and other telemetry
+    tables as monthly Parquet partitions. Requires a completed Phase 1 export
+    (the migration_manifest.json produced by 'observal migrate export').
+
+    Uses a time cutoff recorded at export start for consistency. The output
+    directory must be empty or non-existent. Requires super_admin role.
+
+    Examples:
+        observal migrate export-telemetry \\
+            --clickhouse-url clickhouse://default:@localhost:8123/observal \\
+            --manifest ./observal-export-20260101-120000.manifest.json \\
+            --output-dir ./telemetry-export
+    """
     _require_admin()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -1895,7 +1973,24 @@ def import_telemetry_cmd(
         None, "--project-id", help="Rewrite project_id in all tables to this value (use when source/target orgs differ)"
     ),
 ) -> None:
-    """Import Parquet telemetry files into target ClickHouse."""
+    """Import Parquet telemetry files into target ClickHouse.
+
+    Phase 2 import: loads monthly Parquet partitions into the target ClickHouse.
+    Verifies checksums before importing. Skips partitions that already contain
+    data for idempotent re-runs. Persists resume state so interrupted imports
+    can continue where they left off. Requires super_admin role.
+
+    Use --project-id to normalize the project_id column when migrating between
+    instances with different organization identifiers.
+
+    Examples:
+        observal migrate import-telemetry \\
+            --clickhouse-url clickhouse://default:@localhost:8123/observal \\
+            --input-dir ./telemetry-export
+        observal migrate import-telemetry \\
+            --clickhouse-url $CLICKHOUSE_URL \\
+            --input-dir ./telemetry-export --project-id my-new-org-id
+    """
     _require_admin()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -1932,7 +2027,20 @@ def validate_telemetry_cmd(
     ),
     target_db_url: str | None = typer.Option(None, "--target-db-url", help="Target PostgreSQL for FK validation"),
 ) -> None:
-    """Validate telemetry Parquet files and optionally check FK references."""
+    """Validate telemetry Parquet files and optionally check FK references.
+
+    Verifies SHA-256 checksums for all Parquet files in the export directory.
+    Optionally compares row counts against a live ClickHouse instance and
+    checks foreign key references (agent_id, mcp_id, user_id) against
+    PostgreSQL to detect orphaned telemetry records. Requires super_admin role.
+
+    Examples:
+        observal migrate validate-telemetry --input-dir ./telemetry-export
+        observal migrate validate-telemetry \\
+            --input-dir ./telemetry-export \\
+            --clickhouse-url $CLICKHOUSE_URL \\
+            --target-db-url $DATABASE_URL
+    """
     _require_admin()
     logging.getLogger("httpx").setLevel(logging.WARNING)
 

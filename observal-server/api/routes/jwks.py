@@ -9,6 +9,7 @@ clients and browsers can verify tokens without a shared secret.
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from loguru import logger as optic
 
 from services.crypto import get_key_manager
 
@@ -23,6 +24,7 @@ async def jwks() -> JSONResponse:
     JWTs issued by this server.  During key rotation, both the current and
     recently retired keys are included so in-flight tokens remain valid.
     """
+    optic.debug("jwks called")
     km = get_key_manager()
     return JSONResponse(
         content=km.get_jwks(),

@@ -169,6 +169,13 @@ class McpListingResponse(BaseModel):
     updated_at: datetime
     custom_fields: list[McpCustomFieldResponse] = []
     validation_results: list[McpValidationResultResponse] = []
+    download_count: int = 0
+    user_permission: str | None = None
+
+    @field_validator("user_permission", mode="before")
+    @classmethod
+    def _coerce_user_permission(cls, v):
+        return v if isinstance(v, str) else None
 
     model_config = {"from_attributes": True}
 
@@ -191,6 +198,7 @@ class McpInstallRequest(BaseModel):
     ide: str
     env_values: dict[str, str] = {}
     header_values: dict[str, str] = {}
+    version: str | None = None  # Specific version to install (None = latest)
 
 
 class McpInstallResponse(BaseModel):

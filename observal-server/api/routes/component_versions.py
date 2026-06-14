@@ -15,14 +15,14 @@ import re
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger as optic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: TC002
 
-from api.deps import get_db, require_role, resolve_listing
+from api.deps import get_db, get_effective_component_permission, require_role, resolve_listing
 from models.mcp import ListingStatus
 from models.user import User, UserRole
 from schemas.component_version import VersionPublishRequest, VersionReviewRequest  # noqa: TC001
-from services.audit_helpers import audit
 from services.component_version_extras import ALLOWED_FIELDS, validate_and_extract
 
 # Semver pattern: X.Y.Z or X.Y.Z-prerelease
@@ -31,12 +31,14 @@ SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$")
 
 def _parse_semver(v: str) -> tuple[int, ...]:
     """Parse 'X.Y.Z' or 'X.Y.Z-pre' into (X, Y, Z) for comparison."""
+    optic.trace("v={}", v)
     base = v.split("-", 1)[0]
     return tuple(int(p) for p in base.split("."))
 
 
 def _version_to_dict(v, component_type: str) -> dict:
     """Serialize a version ORM object to a plain dict for API responses."""
+    optic.trace("v={}, component_type={}", v, component_type)
     d = {
         "id": str(v.id),
         "listing_id": str(v.listing_id),
@@ -72,6 +74,7 @@ async def _list_versions(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("listing_id={}, page={}", listing_id, page)
     listing = await resolve_listing(listing_model, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -107,6 +110,7 @@ async def _get_version(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("listing_id={}, version={}", listing_id, version)
     listing = await resolve_listing(listing_model, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -132,6 +136,7 @@ async def _publish_version(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("listing_id={}, listing_model={}", listing_id, listing_model)
     if not SEMVER_RE.match(req.version):
         raise HTTPException(status_code=422, detail=f"Invalid semver string: {req.version!r}")
 
@@ -139,7 +144,7 @@ async def _publish_version(
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    if listing.submitted_by != current_user.id:
+    if get_effective_component_permission(listing, current_user) != "owner":
         raise HTTPException(status_code=403, detail="Only the listing owner can publish versions")
 
     # Duplicate check
@@ -165,17 +170,33 @@ async def _publish_version(
     )
     for field_name, value in extra_fields.items():
         setattr(ver, field_name, value)
+
+    # Auto-snapshot content from listing when not explicitly provided in extras.
+    # This ensures each version preserves the content at publish time.
+    content_fields = {
+        "skill": [
+            "skill_md_content",
+            "script_content",
+            "script_filename",
+            "delivery_mode",
+            "git_url",
+            "git_ref",
+            "skill_path",
+            "task_type",
+        ],
+        "hook": ["hook_content", "script_content", "handler_type", "event", "git_url", "git_ref"],
+        "prompt": ["template", "category"],
+        "mcp": ["git_url", "git_ref", "command", "args", "url", "transport"],
+        "sandbox": ["dockerfile_content", "git_url", "git_ref"],
+    }
+    for field in content_fields.get(component_type, []):
+        if field not in extra_fields and hasattr(listing, field):
+            listing_val = getattr(listing, field, None)
+            if listing_val is not None and hasattr(ver, field):
+                setattr(ver, field, listing_val)
+
     db.add(ver)
     await db.commit()
-
-    await audit(
-        current_user,
-        f"{component_type}.version.publish",
-        resource_type=component_type,
-        resource_id=str(listing.id),
-        resource_name=getattr(listing, "name", ""),
-        detail=req.version,
-    )
 
     return _version_to_dict(ver, component_type)
 
@@ -183,17 +204,33 @@ async def _publish_version(
 async def _version_suggestions(
     listing_id: str,
     listing_model,
+    version_model,
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("listing_id={}, listing_model={}", listing_id, listing_model)
     listing = await resolve_listing(listing_model, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    from services.versioning import suggest_versions
+    from services.versioning import parse_semver, suggest_versions
 
-    current = listing.latest_version.version if listing.latest_version else "0.0.0"
-    return {"current": current, "suggestions": suggest_versions(current)}
+    # Use the highest existing version (including pending) to avoid duplicate suggestions
+    all_ver_stmt = (
+        select(version_model.version)
+        .where(version_model.listing_id == listing.id)
+        .order_by(version_model.released_at.desc())
+    )
+    all_ver_result = await db.execute(all_ver_stmt)
+    all_versions = [v for (v,) in all_ver_result.all()]
+
+    highest = listing.latest_version.version if listing.latest_version else "0.0.0"
+    for v in all_versions:
+        parsed = parse_semver(v)
+        if parsed and parsed > (parse_semver(highest) or (0, 0, 0)):
+            highest = v
+
+    return {"current": highest, "suggestions": suggest_versions(highest)}
 
 
 async def _review_version(
@@ -206,6 +243,7 @@ async def _review_version(
     db: AsyncSession,
     current_user: User,
 ) -> dict:
+    optic.trace("listing_id={}, version={}", listing_id, version)
     listing = await resolve_listing(listing_model, listing_id, db)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -240,15 +278,6 @@ async def _review_version(
 
     await db.commit()
 
-    await audit(
-        current_user,
-        f"{component_type}.version.{req.action}",
-        resource_type=component_type,
-        resource_id=str(listing.id),
-        resource_name=getattr(listing, "name", ""),
-        detail=version,
-    )
-
     return {
         "version": version,
         "new_status": ver.status.value,
@@ -268,6 +297,7 @@ def create_version_router(
 ) -> APIRouter:
     """Return an APIRouter with 4 version endpoints for the given component type."""
 
+    optic.trace("component_type={}, listing_model={}", component_type, listing_model)
     router = APIRouter(tags=[f"{component_type}-versions"])
 
     @router.get("/{listing_id}/versions")
@@ -278,6 +308,7 @@ def create_version_router(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(require_role(UserRole.user)),
     ):
+        optic.trace("listing_id={}, page={}", listing_id, page)
         return await _list_versions(
             listing_id=listing_id,
             page=page,
@@ -296,6 +327,7 @@ def create_version_router(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(require_role(UserRole.user)),
     ):
+        optic.trace("listing_id={}, version={}", listing_id, version)
         return await _get_version(
             listing_id=listing_id,
             version=version,
@@ -313,6 +345,7 @@ def create_version_router(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(require_role(UserRole.user)),
     ):
+        optic.trace("listing_id={}", listing_id)
         return await _publish_version(
             listing_id=listing_id,
             req=req,
@@ -331,6 +364,7 @@ def create_version_router(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(require_role(UserRole.reviewer)),
     ):
+        optic.trace("listing_id={}, version={}", listing_id, version)
         return await _review_version(
             listing_id=listing_id,
             version=version,
@@ -348,9 +382,11 @@ def create_version_router(
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(require_role(UserRole.user)),
     ):
+        optic.trace("listing_id={}", listing_id)
         return await _version_suggestions(
             listing_id=listing_id,
             listing_model=listing_model,
+            version_model=version_model,
             db=db,
             current_user=current_user,
         )

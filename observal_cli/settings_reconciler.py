@@ -19,12 +19,14 @@ import json
 import logging
 from pathlib import Path
 
+from loguru import logger as optic
+
 from observal_cli import config
 from observal_cli.ide_specs.claude_code_hooks_spec import (
     HOOKS_SPEC_VERSION,
     MANAGED_ENV_KEYS,
-    is_observal_matcher_group,
 )
+from observal_cli.shared.utils import is_observal_matcher_group
 
 logger = logging.getLogger("observal.reconciler")
 
@@ -38,7 +40,7 @@ def _load_claude_settings() -> dict:
     try:
         return json.loads(CLAUDE_SETTINGS_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Could not parse %s: %s", CLAUDE_SETTINGS_PATH, exc)
+        logger.warning("Could not parse {}: {}", CLAUDE_SETTINGS_PATH, exc)
         return {}
 
 
@@ -66,7 +68,7 @@ def reconcile_hooks(
     # 1. For each desired event, reconcile matcher groups
     for event, desired_groups in desired_hooks.items():
         if event not in merged:
-            # New event — add entirely
+            # New event - add entirely
             merged[event] = copy.deepcopy(desired_groups)
             changes.append(f"+ {event}: added ({len(desired_groups)} handler(s))")
             continue
@@ -89,7 +91,7 @@ def reconcile_hooks(
         else:
             changes.append(f"+ {event}: added Observal hooks")
 
-    # 2. Events in current but not in desired — leave them alone
+    # 2. Events in current but not in desired - leave them alone
     #    (they might be non-Observal hooks, or events we no longer manage)
 
     return merged, changes
@@ -111,14 +113,6 @@ def reconcile_env(
         if key not in MANAGED_ENV_KEYS:
             continue
         old = merged.get(key)
-        # OTEL_RESOURCE_ATTRIBUTES is comma-separated; merge our attrs
-        # into any existing user-defined attributes instead of overwriting.
-        if key == "OTEL_RESOURCE_ATTRIBUTES" and old:
-            existing_pairs = {p.split("=", 1)[0]: p for p in old.split(",") if "=" in p}
-            for pair in value.split(","):
-                k = pair.split("=", 1)[0] if "=" in pair else pair
-                existing_pairs[k] = pair
-            value = ",".join(existing_pairs.values())
         if old != value:
             merged[key] = value
             if old is None:
@@ -140,6 +134,7 @@ def reconcile(
     Returns list of change descriptions (empty = already up to date).
     If dry_run=True, computes changes but does not write.
     """
+    optic.debug("settings reconcile: dry_run={}, desired_hooks={}", dry_run, len(desired_hooks))
     settings = _load_claude_settings()
     all_changes: list[str] = []
 

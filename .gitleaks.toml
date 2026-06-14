@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Observal Gitleaks Config"
+
+[allowlist]
+  description = "Global allowlist"
+  paths = [
+    '''(^|\/)\.?pnpm-lock\.yaml$''',
+    '''(^|\/)package-lock\.json$''',
+    '''(^|\/)uv\.lock$''',
+    '''(^|\/)go\.sum$''',
+    '''(^|\/)\.env(\.example)?$''',
+    '''(^|\/)\.gitleaks\.toml$''',
+    '''(^|\/)tests?\/.*(fixture|mock|fake)''',
+  ]

@@ -26,24 +26,6 @@ class AgentStatus(str, enum.Enum):
     archived = "archived"
 
 
-class AgentVisibility(str, enum.Enum):
-    public = "public"
-    private = "private"
-
-
-class AgentTeamAccess(Base):
-    __tablename__ = "agent_team_access"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
-    )
-    group_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    permission: Mapped[str] = mapped_column(String(50), nullable=False)  # 'view', 'edit'
-
-    agent: Mapped["Agent"] = relationship(back_populates="team_accesses")
-
-
 class AgentVersion(Base):
     __tablename__ = "agent_versions"
     __table_args__ = (
@@ -94,9 +76,6 @@ class AgentVersion(Base):
         order_by="AgentComponent.order_index",
         cascade="all, delete-orphan",
     )
-    goal_template: Mapped["AgentGoalTemplate | None"] = relationship(
-        back_populates="agent_version", lazy="selectin", uselist=False, cascade="all, delete-orphan"
-    )
 
 
 class Agent(Base):
@@ -106,16 +85,16 @@ class Agent(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
-    visibility: Mapped[AgentVisibility] = mapped_column(Enum(AgentVisibility), default=AgentVisibility.private)
     owner_org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
-    co_maintainers: Mapped[list] = mapped_column(JSON, default=list)
+    co_authors: Mapped[list] = mapped_column(JSON, default=list)
     latest_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("agent_versions.id", use_alter=True, ondelete="SET NULL"),
         nullable=True,
     )
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -131,14 +110,11 @@ class Agent(Base):
         foreign_keys="AgentVersion.agent_id",
     )
     latest_version: Mapped["AgentVersion | None"] = relationship(
-        foreign_keys=[latest_version_id], lazy="selectin", uselist=False
-    )
-    team_accesses: Mapped[list["AgentTeamAccess"]] = relationship(
-        back_populates="agent", lazy="selectin", cascade="all, delete-orphan"
+        foreign_keys=[latest_version_id], lazy="selectin", uselist=False, post_update=True
     )
 
     # ------------------------------------------------------------------
-    # Deprecated compatibility properties — delegate to latest_version.
+    # Deprecated compatibility properties - delegate to latest_version.
     # These allow existing route/service code to keep working until the
     # version-aware API endpoints (issues #620/#621) replace them.
     # ------------------------------------------------------------------
@@ -277,40 +253,6 @@ class Agent(Base):
     @property
     def components(self) -> list:
         return self.latest_version.components if self.latest_version else []
-
-    @property
-    def goal_template(self):
-        return self.latest_version.goal_template if self.latest_version else None
-
-
-class AgentGoalTemplate(Base):
-    __tablename__ = "agent_goal_templates"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    agent_version_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agent_versions.id", ondelete="CASCADE"), unique=True, nullable=False
-    )
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-
-    agent_version: Mapped["AgentVersion"] = relationship(back_populates="goal_template")
-    sections: Mapped[list["AgentGoalSection"]] = relationship(
-        back_populates="goal_template", lazy="selectin", order_by="AgentGoalSection.order", cascade="all, delete-orphan"
-    )
-
-
-class AgentGoalSection(Base):
-    __tablename__ = "agent_goal_sections"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    goal_template_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agent_goal_templates.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    grounding_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    order: Mapped[int] = mapped_column(Integer, default=0)
-
-    goal_template: Mapped["AgentGoalTemplate"] = relationship(back_populates="sections")
 
 
 from models.agent_component import AgentComponent  # noqa: E402

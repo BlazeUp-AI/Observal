@@ -14,31 +14,31 @@ A single `terraform apply` creates:
 - **VPC** with public + private subnets across two availability zones, NAT gateway, VPC flow logs
 - **Application Load Balancer** with HTTPS (ACM certificate, DNS-validated) when you supply a domain; HTTP-only otherwise. Path-based rules: `/api/*` → api service, `/grafana/*` → Grafana, default → web
 - **ECS Fargate cluster** running:
-  - `api` (FastAPI) — 2 tasks by default, autoscales 2–10 on CPU
-  - `web` (Next.js) — 2 tasks by default, autoscales 2–6 on CPU
-  - `worker` (arq background jobs) — 1 task by default, autoscales 1–5 on CPU
-  - `init` (one-shot migrations + seeds) — runs as a Fargate `RunTask` whenever `image_tag` changes
-- **RDS Postgres 16** — Multi-AZ on `prod`, encrypted, automated daily backups, Performance Insights, Enhanced Monitoring, log exports
-- **ElastiCache Redis 7** — 2-node replication group with automatic failover on `prod`, slow-log to CloudWatch
-- **Data tier EC2** (Amazon Linux 2023) — single host running ClickHouse + Grafana + Prometheus on EBS gp3, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
-- **S3 backups bucket** — versioned, AES256, lifecycle to STANDARD_IA → GLACIER_IR → expire, TLS-only
-- **CloudWatch log groups** — per ECS service, data host, RDS, Redis slow log, VPC flow logs
-- **SSM Parameter Store** — generated DB / ClickHouse / SECRET_KEY / Grafana passwords, plus pre-built connection URLs injected into ECS tasks
-- **SSM Session Manager** — shell access to the data host, no SSH
+    - `api` (FastAPI): 2 tasks by default, autoscales 2–10 on CPU
+    - `web` (Next.js): 2 tasks by default, autoscales 2–6 on CPU
+    - `worker` (arq background jobs): 1 task by default, autoscales 1–5 on CPU
+    - `init` (one-shot migrations + seeds): runs as a Fargate `RunTask` whenever `image_tag` changes
+- **RDS Postgres 16**: Multi-AZ on `prod`, encrypted, automated daily backups, Performance Insights, Enhanced Monitoring, log exports
+- **ElastiCache Redis 7**: 2-node replication group with automatic failover on `prod`, slow-log to CloudWatch
+- **Data tier EC2** (Amazon Linux 2023): single host running ClickHouse + Grafana + Prometheus on EBS gp3, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
+- **S3 backups bucket**: versioned, AES256, lifecycle to STANDARD_IA → GLACIER_IR → expire, TLS-only
+- **CloudWatch log groups**: per ECS service, data host, RDS, Redis slow log, VPC flow logs
+- **SSM Parameter Store**: generated DB / ClickHouse / SECRET_KEY / Grafana passwords, plus pre-built connection URLs injected into ECS tasks
+- **SSM Session Manager**: shell access to the data host, no SSH
 
 ClickHouse runs on EC2 because AWS does not offer a managed ClickHouse service. The data volume keeps it durable across instance replacements. For real ClickHouse HA, set `clickhouse_mode = "cloud"` and point at ClickHouse Cloud.
 
 ## Prerequisites
 
-| Requirement | Why |
-|---|---|
-| AWS account with billing enabled | obvious |
-| Terraform ≥ 1.6 | `brew install terraform` or use [tenv](https://tofuutils.github.io/tenv/) |
-| AWS CLI v2 | `brew install awscli` — also used by the one-shot init task runner |
-| [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) | shell access into the data host |
-| IAM principal with sufficient rights | see [Required IAM permissions](#required-iam-permissions) |
-| (Optional) Route 53 hosted zone | required for HTTPS on a custom domain |
-| (Recommended) S3 bucket + DynamoDB table | remote Terraform state — see [Remote state](#remote-state) |
+| Requirement                                                                                                                             | Why                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| AWS account with billing enabled                                                                                                        | obvious                                                                   |
+| Terraform ≥ 1.6                                                                                                                         | `brew install terraform` or use [tenv](https://tofuutils.github.io/tenv/) |
+| AWS CLI v2                                                                                                                              | `brew install awscli` - also used by the one-shot init task runner        |
+| [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) | shell access into the data host                                           |
+| IAM principal with sufficient rights                                                                                                    | see [Required IAM permissions](#required-iam-permissions)                 |
+| (Optional) Route 53 hosted zone                                                                                                         | required for HTTPS on a custom domain                                     |
+| (Recommended) S3 bucket + DynamoDB table                                                                                                | remote Terraform state - see [Remote state](#remote-state)                |
 
 ## Quickstart
 
@@ -61,7 +61,7 @@ terraform plan -out tf.plan
 terraform apply tf.plan
 ```
 
-First-time apply takes 12–15 minutes — RDS provisioning dominates. When it finishes:
+First-time apply takes 12–15 minutes. RDS provisioning dominates. When it finishes:
 
 ```bash
 terraform output app_url
@@ -73,7 +73,7 @@ A ready-to-apply call of the module lives at [`infra/terraform/aws/examples/mini
 
 ## Configuration
 
-All inputs live in `terraform.tfvars`. The defaults are production-shaped — you can apply with very little changed.
+All inputs live in `terraform.tfvars`. The defaults are production-shaped; you can apply with very little changed.
 
 ### Minimal configuration (HTTP, no custom domain)
 
@@ -89,6 +89,7 @@ The install comes up on the ALB's AWS-assigned hostname (e.g. `observal-prod-alb
 ```hcl
 region      = "us-east-1"
 environment = "prod"
+sizing      = "medium"
 
 domain_name     = "observal.example.com"
 route53_zone_id = "Z0123456789ABCDEFGHIJ"
@@ -99,11 +100,36 @@ alb_ingress_cidrs = ["203.0.113.0/24", "198.51.100.0/24"]
 
 Terraform requests an ACM certificate, validates it via DNS records in your hosted zone, attaches it to the ALB, and creates the alias A record pointing the domain at the ALB. There is no manual DNS step.
 
-### Sizing
+### Sizing presets
 
-ECS Fargate sizing defaults give you HA out of the box. Bump task counts or CPU/memory for higher load:
+Instead of tuning 12+ resource variables, pick a preset:
 
 ```hcl
+sizing = "medium"   # small | medium | large | custom
+```
+
+| Preset | ~$/mo | API tasks | Web tasks | Worker tasks | Data host | RDS | Redis |
+|--------|-------|-----------|-----------|--------------|-----------|-----|-------|
+| `small` | $150 | 1× (0.25 vCPU) | 1× (0.25 vCPU) | 1× (0.25 vCPU) | t3.medium (50 GB) | db.t4g.micro | cache.t4g.micro |
+| `medium` | $255 | 2× (0.5 vCPU) | 2× (0.25 vCPU) | 1× (0.5 vCPU) | t3.large (100 GB) | db.t4g.small | cache.t4g.micro |
+| `large` | $600 | 3× (1 vCPU) | 3× (0.5 vCPU) | 2× (1 vCPU) | r6i.xlarge (500 GB) | db.r6g.large | cache.r6g.large |
+
+**Important: Presets vs. individual variables**
+
+Presets and individual resource variables (`api_cpu`, `db_instance_class`, etc.) are **mutually exclusive**:
+
+- When `sizing = "small|medium|large"`: all individual resource variables are **ignored**. The preset values are used unconditionally.
+- When `sizing = "custom"`: individual variables take effect normally.
+
+If you set `sizing = "medium"` and also `api_cpu = 1024`, the medium preset wins — `api_cpu` has no effect. To override individual values, set `sizing = "custom"` first.
+
+### Custom sizing
+
+Set `sizing = "custom"` to control each resource independently:
+
+```hcl
+sizing = "custom"
+
 api_cpu              = 512   # 0.5 vCPU; raise to 1024+ for sustained >100 req/s
 api_memory           = 1024
 api_desired_count    = 2
@@ -113,7 +139,7 @@ web_desired_count    = 2
 worker_desired_count = 1
 
 # Data tier (ClickHouse + Grafana + Prometheus)
-data_instance_type   = "t3.large"   # 8 GB — minimum viable for ClickHouse
+data_instance_type   = "t3.large"   # 8 GB - minimum viable for ClickHouse
 data_volume_size_gb  = 100
 
 db_instance_class    = "db.t4g.small"
@@ -136,32 +162,89 @@ The EC2 data host, EBS volume, internal DNS records, Grafana, and Prometheus are
 ### Application options
 
 ```hcl
-deployment_mode     = "enterprise"   # SSO-only login, SCIM provisioning
+deployment_mode     = "enterprise"   # SSO-only login
 data_retention_days = 90             # ClickHouse TTL; 0 to disable
 log_retention_days  = 30             # CloudWatch log group retention
 image_tag           = "v1.4.0"       # specific Observal release; "latest" pulls main
 ```
 
+### License and edition
+
+Provide an enterprise license key to deploy the enterprise edition with private GHCR images.
+
+```hcl
+observal_license_key = "eyJ...your-key..."
+
+# edition defaults to "auto": enterprise if a key is present, community otherwise.
+# Override explicitly if needed:
+# edition = "enterprise"
+```
+
+When `observal_license_key` is set, Terraform:
+
+- Stores the key in SSM Parameter Store as a `SecureString`
+- Injects `OBSERVAL_LICENSE_KEY` into every ECS task at startup
+- Switches `api` and `web` image repos to the enterprise GHCR images
+- Reports the active edition via the `edition` output (`terraform output --raw edition`)
+
+Leave `observal_license_key` empty (the default) to deploy community edition.
+
 See [Configuration](configuration.md) for the meaning of each application setting.
+
+### Bring Your Own VPC
+
+Deploy Observal into an existing VPC rather than having Terraform create a new one. Use this when you have Transit Gateway, shared-services VPCs, compliance requirements, or peered networks.
+
+```hcl
+# Use an existing VPC
+vpc_id             = "vpc-0abc1234def56789a"
+private_subnet_ids = ["subnet-aaa11111", "subnet-bbb22222"]
+public_subnet_ids  = ["subnet-xxx11111", "subnet-yyy22222"]
+
+# Control ALB placement independently
+alb_scheme = "internet-facing"   # or "internal"
+```
+
+When `vpc_id` is set, Terraform skips creating VPC, subnets, IGW, NAT gateway, route tables, and VPC flow logs. All other resources (ALB, ECS, RDS, Redis, data host) are created inside your existing VPC.
+
+**VPC requirements:**
+
+- DNS support enabled (`enableDnsSupport = true`, `enableDnsHostnames = true`)
+- Private subnets must have outbound internet access (via NAT Gateway or Transit Gateway) for container image pulls (`ghcr.io`) and AWS API endpoints (SSM, CloudWatch, ECR)
+- Public subnets must have an Internet Gateway route (only needed if `alb_scheme = "internet-facing"`)
+- Subnets should span at least 2 AZs for RDS Multi-AZ and ECS placement
+
+**Optional: Bring your own security groups:**
+
+For environments with strict firewall policies, supply pre-created SG IDs:
+
+```hcl
+alb_security_group_id = "sg-0abc1234def56789a"
+ecs_security_group_id = "sg-0abc1234def56789b"
+```
+
+The ALB SG must allow inbound TCP 80/443 from your desired CIDRs. The ECS SG must allow inbound TCP 8000 and 3000 from the ALB SG, with outbound to all.
+
+A full working example lives at [`infra/terraform/aws/examples/byovpc`](../../infra/terraform/aws/examples/byovpc/).
 
 ## Required IAM permissions
 
 The IAM principal running Terraform needs permission to manage resources across these services. The simplest path is to attach the AWS-managed policies below; for a tighter custom policy, see [Hardened IAM policy](#hardened-iam-policy).
 
-| Service | Managed policy |
-|---|---|
-| VPC, EC2 | `AmazonEC2FullAccess` |
-| ECS | `AmazonECS_FullAccess` |
-| RDS | `AmazonRDSFullAccess` |
-| ElastiCache | `AmazonElastiCacheFullAccess` |
-| Load balancer | `ElasticLoadBalancingFullAccess` |
-| Certificates | `AWSCertificateManagerFullAccess` |
-| DNS | `AmazonRoute53FullAccess` |
-| IAM (creates ECS + EC2 + RDS roles) | `IAMFullAccess` |
-| Parameter Store + Session Manager | `AmazonSSMFullAccess` |
-| S3 (backups bucket) | `AmazonS3FullAccess` |
-| Logs | `CloudWatchLogsFullAccess` |
-| Application Auto Scaling | `AutoScalingFullAccess` |
+| Service                             | Managed policy                    |
+| ----------------------------------- | --------------------------------- |
+| VPC, EC2                            | `AmazonEC2FullAccess`             |
+| ECS                                 | `AmazonECS_FullAccess`            |
+| RDS                                 | `AmazonRDSFullAccess`             |
+| ElastiCache                         | `AmazonElastiCacheFullAccess`     |
+| Load balancer                       | `ElasticLoadBalancingFullAccess`  |
+| Certificates                        | `AWSCertificateManagerFullAccess` |
+| DNS                                 | `AmazonRoute53FullAccess`         |
+| IAM (creates ECS + EC2 + RDS roles) | `IAMFullAccess`                   |
+| Parameter Store + Session Manager   | `AmazonSSMFullAccess`             |
+| S3 (backups bucket)                 | `AmazonS3FullAccess`              |
+| Logs                                | `CloudWatchLogsFullAccess`        |
+| Application Auto Scaling            | `AutoScalingFullAccess`           |
 
 ## Operating the install
 
@@ -256,15 +339,15 @@ By default, Terraform writes state to your laptop (`terraform.tfstate`). For a r
 1. Create an S3 bucket (versioned, encrypted) and a DynamoDB table with hash key `LockID`.
 2. Uncomment and fill the backend block in `versions.tf`:
 
-   ```hcl
-   backend "s3" {
-     bucket         = "your-tf-state-bucket"
-     key            = "observal/prod/terraform.tfstate"
-     region         = "us-east-1"
-     dynamodb_table = "your-tf-lock-table"
-     encrypt        = true
-   }
-   ```
+    ```hcl
+    backend "s3" {
+      bucket         = "your-tf-state-bucket"
+      key            = "observal/prod/terraform.tfstate"
+      region         = "us-east-1"
+      dynamodb_table = "your-tf-lock-table"
+      encrypt        = true
+    }
+    ```
 
 3. Re-run `terraform init` and answer "yes" when prompted to migrate state.
 
@@ -272,21 +355,21 @@ By default, Terraform writes state to your laptop (`terraform.tfstate`). For a r
 
 Rough monthly baseline in `us-east-1` at on-demand rates (May 2026):
 
-| Component | ~$/month |
-|---|---|
-| Fargate api 2× (0.5 vCPU / 1 GB) | $30 |
-| Fargate web 2× (0.25 vCPU / 0.5 GB) | $15 |
-| Fargate worker 1× (0.5 vCPU / 1 GB) | $15 |
-| EC2 `t3.large` (data host) | $60 |
-| RDS `db.t4g.small` Multi-AZ | $50 |
-| ElastiCache (2× `cache.t4g.micro`) | $25 |
-| ALB | $20 |
-| NAT Gateway | $33 + egress |
-| EBS gp3 100 GB | $8 |
-| S3 backups (1 GB cold) | $0.10 |
-| **Baseline** | **~$255** |
+| Component                           | ~$/month     |
+| ----------------------------------- | ------------ |
+| Fargate api 2× (0.5 vCPU / 1 GB)    | $30          |
+| Fargate web 2× (0.25 vCPU / 0.5 GB) | $15          |
+| Fargate worker 1× (0.5 vCPU / 1 GB) | $15          |
+| EC2 `t3.large` (data host)          | $60          |
+| RDS `db.t4g.small` Multi-AZ         | $50          |
+| ElastiCache (2× `cache.t4g.micro`)  | $25          |
+| ALB                                 | $20          |
+| NAT Gateway                         | $33 + egress |
+| EBS gp3 100 GB                      | $8           |
+| S3 backups (1 GB cold)              | $0.10        |
+| **Baseline**                        | **~$255**    |
 
-Set `environment = "staging"` to drop RDS to single-AZ, run a single Redis node, and skip RDS deletion protection — typically halves the bill. Drop `worker_desired_count` and `web_desired_count` for further savings.
+Set `environment = "staging"` to drop RDS to single-AZ, run a single Redis node, and skip RDS deletion protection, typically halves the bill. Drop `worker_desired_count` and `web_desired_count` for further savings.
 
 ## Production hardening checklist
 
@@ -299,7 +382,7 @@ The defaults are safe but conservative. Before pointing real traffic at this:
 - [ ] Attach AWS WAF to the ALB
 - [ ] Set `transit_encryption_enabled = true` on the ElastiCache replication group and switch `REDIS_URL` to `rediss://...`
 - [ ] Move ClickHouse to ClickHouse Cloud (`clickhouse_mode = "cloud"`) for actual HA
-- [ ] Configure Observal SSO — see [Authentication and SSO](authentication.md)
+- [ ] Configure Observal SSO. See [Authentication and SSO](authentication.md)
 - [ ] Test the [backup and restore](backup-and-restore.md) procedure end-to-end
 - [ ] Replace the GitHub tarball download in `user-data.sh.tftpl` with an artifact URL you control
 
@@ -316,16 +399,18 @@ aws ecs describe-services \
 aws logs tail /aws/ecs/observal-prod/api --follow
 ```
 
-The `null_resource.run_init` step also runs migrations before the api service comes up — if the init task fails, the api service won't start.
+The `null_resource.run_init` step also runs migrations before the api service comes up. If the init task fails, the api service won't start.
 
 **Init task fails.**
 Check the `/aws/ecs/observal-prod/init` log group. The most common failures are:
-- RDS not yet reachable (transient on first apply — re-running fixes it)
+
+- RDS not yet reachable (transient on first apply; re-running fixes it)
 - Migration error (look at the entrypoint output)
 
 To re-run by hand: `$(terraform output -raw init_run_task_command)`.
 
 **ALB target health is `unhealthy`.**
+
 - For `api`: health check hits `/readyz` on port 8000. Tail the api log group for startup errors.
 - For `web`: health check hits `/` on port 3000. Check the web log group.
 - For Grafana: health check hits `/api/health` on port 3001. SSM into the data host and check `docker compose ps`.
@@ -336,4 +421,4 @@ The DNS validation records were not created in your hosted zone. Verify `route53
 **RDS storage is full.**
 `max_allocated_storage` autoscales up to 500 GB by default. Raise `db_max_allocated_storage_gb` if you have heavier audit-log volume.
 
-For application-level issues (login fails, traces missing, eval errors) see [Troubleshooting](troubleshooting.md).
+For application-level issues (login fails, traces missing) see [Troubleshooting](troubleshooting.md).

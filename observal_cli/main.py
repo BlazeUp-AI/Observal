@@ -10,6 +10,7 @@
 
 """Observal CLI: MCP Server & Agent Registry."""
 
+import atexit
 import logging
 import os
 import sys
@@ -84,18 +85,78 @@ def main(
     debug: bool = typer.Option(False, "--debug", help="Debug logging"),
 ):
     """Observal: MCP Server & Agent Registry CLI"""
+    from observal_cli.optic import setup_optic
+
+    setup_optic(debug=debug, verbose=verbose)
+
     if debug:
         logging.basicConfig(level=logging.DEBUG, format="%(levelname)s %(name)s: %(message)s")
     elif verbose:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    # Auto-update on minor/patch releases (non-blocking, exempt self/server commands)
+    _try_auto_update()
+
+    # One-time migration: .observal/agent markers → lockfile.json
+    _try_lockfile_migration()
+
+
+def _try_auto_update() -> None:
+    """Attempt auto-update for minor/patch releases on startup.
+
+    Runs silently. Logs a message on success so the user knows the next
+    invocation will use the new version.
+    Exempt: self/server subcommands, CI, non-TTY.
+    """
+    # Skip exempt subcommands (check positional args, not flags)
+    positional_args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    if positional_args and positional_args[0] in ("self", "server"):
+        return
+    if os.environ.get("CI") or os.environ.get("OBSERVAL_NO_UPDATE_CHECK"):
+        return
+    if not sys.stdout.isatty():
+        return  # Never auto-update in non-interactive environments
+
+    try:
+        from observal_cli.version_check import auto_update_if_needed
+
+        if auto_update_if_needed():
+            from rich import print as _rprint
+
+            _rprint("[dim]Updated. The new version will be used on your next command.[/dim]")
+    except Exception:
+        pass  # Never crash the CLI for auto-update
+
+
+def _try_lockfile_migration() -> None:
+    """One-time migration of .observal/agent markers to lockfile.json.
+
+    Runs only when: lockfile.json doesn't exist but config.json DOES
+    (meaning the user has previously logged in but never had a lockfile).
+    Skips entirely if ~/.observal/ doesn't exist yet (fresh install).
+    """
+    try:
+        from observal_cli.lockfile import CONFIG_DIR, LOCKFILE_PATH, migrate_agent_markers
+
+        # Don't run if the config dir doesn't exist yet (auth login hasn't happened)
+        if not CONFIG_DIR.exists():
+            return
+        if not LOCKFILE_PATH.exists():
+            migrate_agent_markers()
+    except Exception:
+        pass  # Never crash the CLI for migration
 
 
 # ── Register command groups ──────────────────────────────
 
 from observal_cli.cmd_agent import agent_app
 from observal_cli.cmd_auth import auth_app, register_config
-from observal_cli.cmd_component import component_app
+from observal_cli.cmd_co_authors import make_co_authors_typer
+from observal_cli.cmd_component import version_app
 from observal_cli.cmd_doctor import doctor_app
+from observal_cli.cmd_hook import hook_app
+from observal_cli.cmd_insights import insights_app
+from observal_cli.cmd_logs import logs_app
 from observal_cli.cmd_mcp import mcp_app
 from observal_cli.cmd_migrate import migrate_app
 from observal_cli.cmd_models import models_app
@@ -104,7 +165,7 @@ from observal_cli.cmd_ops import (
     ops_app,
     self_app,
 )
-from observal_cli.cmd_profile import register_use
+from observal_cli.cmd_outdated import register_outdated
 from observal_cli.cmd_prompt import prompt_app
 from observal_cli.cmd_pull import register_pull
 from observal_cli.cmd_sandbox import sandbox_app
@@ -114,7 +175,7 @@ from observal_cli.cmd_support import support_app
 from observal_cli.cmd_uninstall import register_uninstall
 
 # ═══════════════════════════════════════════════════════════
-# registry_app — Component registry parent group
+# registry_app: Component registry parent group
 # ═══════════════════════════════════════════════════════════
 
 registry_app = typer.Typer(
@@ -125,9 +186,19 @@ registry_app = typer.Typer(
 
 registry_app.add_typer(mcp_app, name="mcp")
 registry_app.add_typer(skill_app, name="skill")
+registry_app.add_typer(hook_app, name="hook")
 registry_app.add_typer(prompt_app, name="prompt")
 registry_app.add_typer(sandbox_app, name="sandbox")
 registry_app.add_typer(models_app, name="models")
+registry_app.add_typer(version_app, name="version")
+
+# ── Co-authors sub-typers ────────────────────────────────
+mcp_app.add_typer(make_co_authors_typer("mcps"), name="co-authors")
+skill_app.add_typer(make_co_authors_typer("skills"), name="co-authors")
+hook_app.add_typer(make_co_authors_typer("hooks"), name="co-authors")
+prompt_app.add_typer(make_co_authors_typer("prompts"), name="co-authors")
+sandbox_app.add_typer(make_co_authors_typer("sandboxes"), name="co-authors")
+agent_app.add_typer(make_co_authors_typer("agents"), name="co-authors")
 
 # ── Auth subgroup ────────────────────────────────────────
 app.add_typer(auth_app, name="auth")
@@ -135,8 +206,8 @@ app.add_typer(auth_app, name="auth")
 # ── Primary user workflows (root) ─────────────────────────
 register_config(app)
 register_scan(app)
-register_uninstall(app)
-register_use(app)
+register_outdated(app)
+
 
 # ── Agent pull (full-featured, lives under `observal agent pull`) ──
 register_pull(agent_app)
@@ -144,18 +215,80 @@ register_pull(agent_app)
 # ── Subgroups ─────────────────────────────────────────────
 app.add_typer(registry_app, name="registry")
 app.add_typer(agent_app, name="agent")
-app.add_typer(mcp_app, name="mcp")
-app.add_typer(skill_app, name="skill")
-app.add_typer(prompt_app, name="prompt")
-app.add_typer(sandbox_app, name="sandbox")
-app.add_typer(component_app, name="component")
 app.add_typer(ops_app, name="ops")
 app.add_typer(admin_app, name="admin")
 app.add_typer(self_app, name="self")
 app.add_typer(doctor_app, name="doctor")
-app.add_typer(support_app, name="support")
-app.add_typer(migrate_app, name="migrate")
 
+# ── Nest under parent groups ──────────────────────────────
+# logs → ops logs (dev log viewer, complements traces/telemetry)
+ops_app.add_typer(logs_app, name="logs")
+# insights → ops insights (agent insight reports)
+ops_app.add_typer(insights_app, name="insights")
+# support → doctor support (diagnostic bundles, related to doctor troubleshooting)
+doctor_app.add_typer(support_app, name="support")
+# uninstall → self uninstall (CLI lifecycle alongside upgrade/downgrade/rollback)
+register_uninstall(self_app)
+# migrate → server migrate (operator infra tooling)
+
+# Reconcile (push local sessions to server)
+from observal_cli.cmd_reconcile_cli import reconcile_app
+
+app.add_typer(reconcile_app, name="reconcile")
+
+# Server management (embedded + Docker)
+try:
+    from observal_cli.cmd_server import server_app
+
+    server_app.add_typer(migrate_app, name="migrate")
+    app.add_typer(server_app, name="server")
+except ImportError:
+    # server deps not installed; register migrate at top level as fallback
+    app.add_typer(migrate_app, name="migrate")
+
+
+def _show_update_banner() -> None:
+    """Post-command hook: show major version notification only.
+
+    Minor/patch mismatches are handled by auto-update.
+    Major.minor mismatches are hard-blocked by the version enforcement gate.
+    This banner only fires for major upgrades available in community mode.
+    """
+    import sys as _sys
+
+    if not (_sys.stdout.isatty() and _sys.stderr.isatty()):
+        return
+    if len(_sys.argv) > 1 and _sys.argv[1] in ("self", "server"):
+        return
+    if os.environ.get("CI") or os.environ.get("OBSERVAL_NO_UPDATE_CHECK"):
+        return
+
+    try:
+        from observal_cli.version_check import maybe_check
+
+        update = maybe_check()
+        if not update:
+            return
+
+        from packaging.version import Version
+        from rich import print as _rprint
+
+        # Only show banner for major version upgrades (community mode)
+        # Hard block already handles minor mismatches; auto-update handles patches
+        if update.source == "github":
+            current_v = Version(update.current)
+            latest_v = Version(update.latest)
+            if latest_v.major > current_v.major:
+                _rprint(
+                    f"\n[yellow]Major update available: v{update.current} \u2192 v{update.latest}[/yellow]\n"
+                    f"  Run: [bold cyan]observal self upgrade --version {update.latest}[/bold cyan]"
+                )
+    except Exception:
+        pass  # Never crash the CLI for a version check
+
+
+# Register update banner as atexit handler so it runs via any entry point
+atexit.register(_show_update_banner)
 
 if __name__ == "__main__":
     app()

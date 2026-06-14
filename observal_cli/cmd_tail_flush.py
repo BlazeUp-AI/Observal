@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Delayed tail flush — captures lines written after the Stop hook fires.
+"""Delayed tail flush - captures lines written after the Stop hook fires.
 
 Claude Code writes ~5 lines after Stop (final assistant response with token
 usage, turn_duration, hook summary, etc.).  This subprocess is spawned by
@@ -18,6 +18,8 @@ import sys
 import time
 from pathlib import Path
 
+from loguru import logger as optic
+
 # Delay before reading the tail.  Claude Code typically finishes writing
 # within 1-2 seconds of Stop, so 3 seconds gives comfortable margin.
 _FLUSH_DELAY_SECS = 3
@@ -29,16 +31,17 @@ _RETRY_DELAY_SECS = 2
 
 def tail_flush(session_id: str, home: Path | None = None) -> None:
     """Push any post-Stop lines for *session_id* and mark it finalized."""
+    optic.trace("session_id={}, home={}", session_id, home)
     from observal_cli.cmd_reconcile import _find_session_file
-    from observal_cli.hooks.session_push import (
+    from observal_cli.sessions.base import (
         build_payload,
         load_config,
         post_to_server,
-        push_subagent_sessions,
         read_cursor,
         read_new_lines,
         write_cursor,
     )
+    from observal_cli.sessions.claude_code import push_subagent_sessions
 
     if home is None:
         home = Path.home()
@@ -58,7 +61,7 @@ def tail_flush(session_id: str, home: Path | None = None) -> None:
         lines, bytes_read = read_new_lines(jsonl_path, offset)
 
         if not lines:
-            # Nothing new — file didn't grow after Stop. Finalize.
+            # Nothing new - file didn't grow after Stop. Finalize.
             write_cursor(session_id, offset, line_count, finalized=True, home=home)
             return
 
@@ -83,21 +86,21 @@ def tail_flush(session_id: str, home: Path | None = None) -> None:
             write_cursor(session_id, new_offset, line_count + len(lines), finalized=True, home=home)
 
             # Also flush any subagent tails that may have grown
-            from observal_cli.hooks.session_push import get_parent_session_id
+            from observal_cli.sessions.claude_code import get_parent_session_id
 
             parent_session_id = get_parent_session_id(jsonl_path)
             if parent_session_id is None:
-                # This IS the parent — push subagent tails too
+                # This IS the parent - push subagent tails too
                 push_subagent_sessions(session_id, jsonl_path, config, home=home)
 
             return
         else:
-            # Push failed — retry after a short delay
+            # Push failed - retry after a short delay
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_DELAY_SECS)
             else:
                 # Leave un-finalized so crash recovery can pick it up later
-                from observal_cli.hooks.session_push import log_error
+                from observal_cli.sessions.base import log_error
 
                 log_error(
                     f"tail_flush: POST failed for session {session_id} after {_MAX_RETRIES + 1} attempts",
@@ -106,7 +109,7 @@ def tail_flush(session_id: str, home: Path | None = None) -> None:
 
 
 def main() -> None:
-    """Entry point. Never raises — background processes must not leave zombies."""
+    """Entry point. Never raises - background processes must not leave zombies."""
     try:
         if len(sys.argv) < 2:
             return

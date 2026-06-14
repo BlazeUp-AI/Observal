@@ -1,0 +1,228 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2026 BlazeUp AI
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -eo pipefail
+
+# Bootstrap the data tier host: Postgres + Redis + ClickHouse + Grafana + Prometheus via Docker Compose.
+
+exec > >(tee /var/log/observal-bootstrap.log | logger -t observal-bootstrap -s 2>/dev/console) 2>&1
+echo "Observal data-host bootstrap starting at $(date -u)"
+
+# ── Packages ─────────────────────────────────────────────────────
+dnf -y update
+dnf -y install docker jq awscli
+systemctl enable --now docker
+
+# Compose v2 plugin
+DOCKER_COMPOSE_VERSION="v2.35.1"
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/$${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+# ── Mount /data on the EBS volume ────────────────────────────────
+DEVICE=""
+for d in /dev/nvme1n1 /dev/xvdf /dev/sdf; do
+  if [ -b "$d" ]; then DEVICE="$d"; break; fi
+done
+if [ -z "$DEVICE" ]; then
+  echo "Data volume not found"; exit 1
+fi
+if ! blkid "$DEVICE" >/dev/null 2>&1; then
+  mkfs.ext4 -F "$DEVICE"
+fi
+mkdir -p /data
+UUID=$(blkid -s UUID -o value "$DEVICE")
+grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /data ext4 defaults,nofail 0 2" >> /etc/fstab
+mount -a
+mkdir -p /data/postgres /data/redis /data/clickhouse /data/grafana /data/prometheus
+chown -R 999:999 /data/postgres      || true   # postgres user
+chown -R 999:1000 /data/redis        || true   # redis user
+chown -R 101:101 /data/clickhouse    || true   # clickhouse user
+chown -R 472:472 /data/grafana       || true   # grafana user
+chown -R 65534:65534 /data/prometheus || true   # nobody
+
+# ── Pull secrets from SSM ────────────────────────────────────────
+set +x
+fetch() { aws ssm get-parameter --with-decryption --name "$1" --region "${region}" --query Parameter.Value --output text; }
+
+DB_PASSWORD=$(fetch "${ssm_prefix}/DB_PASSWORD")
+CLICKHOUSE_PASSWORD=$(fetch "${ssm_prefix}/CLICKHOUSE_PASSWORD")
+set -x
+
+# ── Render docker-compose.yml ────────────────────────────────────
+INSTALL_DIR=/opt/observal
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+
+# ClickHouse config
+mkdir -p "$INSTALL_DIR/clickhouse/config.d" "$INSTALL_DIR/clickhouse/users.d"
+
+cat > "$INSTALL_DIR/clickhouse/config.d/memory.xml" <<'CHCFG'
+<clickhouse>
+    <listen_host>::</listen_host>
+    <listen_host>0.0.0.0</listen_host>
+    <listen_try>1</listen_try>
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+    <merge_tree>
+        <parts_to_delay_insert>200</parts_to_delay_insert>
+        <parts_to_throw_insert>500</parts_to_throw_insert>
+    </merge_tree>
+</clickhouse>
+CHCFG
+
+cat > "$INSTALL_DIR/clickhouse/users.d/default-user.xml" <<CHUSER
+<clickhouse>
+  <users>
+    <default remove="remove"></default>
+    <default>
+      <profile>default</profile>
+      <networks><ip>::/0</ip></networks>
+      <password><![CDATA[$${CLICKHOUSE_PASSWORD}]]></password>
+      <quota>default</quota>
+      <access_management>0</access_management>
+    </default>
+  </users>
+</clickhouse>
+CHUSER
+
+# Prometheus config
+cat > "$INSTALL_DIR/prometheus.yml" <<'PROM'
+global:
+  scrape_interval: 30s
+scrape_configs:
+  - job_name: observal-clickhouse
+    static_configs:
+      - targets: ['clickhouse:9363']
+  - job_name: observal-postgres
+    static_configs:
+      - targets: ['localhost:9187']
+PROM
+
+cat > "$INSTALL_DIR/docker-compose.yml" <<COMPOSE
+services:
+  postgres:
+    image: postgres:18
+    container_name: observal-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: observal
+      POSTGRES_USER: observal
+      POSTGRES_PASSWORD: "$${DB_PASSWORD}"
+    volumes:
+      - /data/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8
+    container_name: observal-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - /data/redis:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.5
+    container_name: observal-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: observal
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: "$${CLICKHOUSE_PASSWORD}"
+    volumes:
+      - /data/clickhouse:/var/lib/clickhouse
+      - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+      - ./clickhouse/users.d:/etc/clickhouse-server/users.d
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana-oss:11.6.5
+    container_name: observal-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "$${CLICKHOUSE_PASSWORD}"
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_SERVER_ROOT_URL: "${grafana_root_url}/grafana"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - /data/grafana:/var/lib/grafana
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.11.3
+    container_name: observal-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /data/prometheus:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+COMPOSE
+
+# ── Start ────────────────────────────────────────────────────────
+docker compose -f "$INSTALL_DIR/docker-compose.yml" pull
+docker compose -f "$INSTALL_DIR/docker-compose.yml" up -d
+
+# Wait for Postgres to become healthy
+echo "Waiting for Postgres..."
+for i in $(seq 1 30); do
+  if docker exec observal-postgres pg_isready -U observal >/dev/null 2>&1; then
+    echo "Postgres healthy after $i attempts"
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo "ERROR: Postgres did not become healthy within 5 minutes"
+    docker compose -f "$INSTALL_DIR/docker-compose.yml" logs postgres | tail -30
+    exit 1
+  fi
+  sleep 10
+done
+
+# Wait for ClickHouse
+echo "Waiting for ClickHouse..."
+for i in $(seq 1 30); do
+  if wget -q --spider http://localhost:8123/ping 2>/dev/null; then
+    echo "ClickHouse healthy after $i attempts"
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo "ERROR: ClickHouse did not become healthy within 5 minutes"
+    docker compose -f "$INSTALL_DIR/docker-compose.yml" logs clickhouse | tail -30
+    exit 1
+  fi
+  sleep 10
+done
+
+# ── Signal completion ────────────────────────────────────────────
+touch /var/log/observal-bootstrap-complete
+echo "Observal data-host bootstrap finished at $(date -u)"

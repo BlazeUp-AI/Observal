@@ -9,13 +9,13 @@ Every Observal server setting lives in `.env`. Defaults are sane for local devel
 
 Override these before going live:
 
-| Variable | Default | Why change |
-| --- | --- | --- |
-| `SECRET_KEY` | `change-me-to-a-random-string` | Session signing key. **The server refuses to start with this default when `DEPLOYMENT_MODE` is not `local`.** Generate a real one. |
-| `POSTGRES_PASSWORD` | `postgres` | Default password is not secure. |
-| `CLICKHOUSE_PASSWORD` | `clickhouse` | Same. |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Scope to your real frontend origin(s). |
-| `FRONTEND_URL` | `http://localhost:3000` | Used for OAuth redirects and email links. |
+| Variable               | Default                        | Why change                                                                                                                         |
+| ---------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`           | `change-me-to-a-random-string` | Session signing key. **The server refuses to start with this default when `DEPLOYMENT_MODE` is not `local`.** Generate a real one. |
+| `POSTGRES_PASSWORD`    | `postgres`                     | Default password is not secure.                                                                                                    |
+| `CLICKHOUSE_PASSWORD`  | `clickhouse`                   | Same.                                                                                                                              |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000`        | Scope to your real frontend origin(s).                                                                                             |
+| `FRONTEND_URL`         | `http://localhost:3000`        | Used for OAuth redirects and email links.                                                                                          |
 
 Generate a secret key:
 
@@ -29,16 +29,26 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 DEPLOYMENT_MODE=local
 ```
 
-| Mode | Self-registration | Bootstrap admin | Auth methods |
-| --- | --- | --- | --- |
-| `local` (default) | Yes | Yes | Email + password, API key, SSO (if configured) |
-| `enterprise` | No | No | SSO only; SCIM provisioning |
+| Mode              | Self-registration | Bootstrap admin | Auth methods                                   |
+| ----------------- | ----------------- | --------------- | ---------------------------------------------- |
+| `local` (default) | Yes               | Yes             | Email + password, API key, SSO (if configured) |
+| `enterprise`      | No                | No              | SSO only                                      |
 
 Switch to `enterprise` when you want IdP-only access.
 
+## Enterprise license key
+
+```
+OBSERVAL_LICENSE_KEY=
+```
+
+Set this to your Ed25519-signed license key to enable enterprise features such as SAML and AI insight reports. Leave it unset for community edition. The server validates the key at startup and logs the result.
+
+The `setup.sh` interactive setup and both installer scripts (`install.sh`, `install-server.sh`) also accept the key via `--license-key` or this env var and write it into `.env` automatically.
+
 ## Demo accounts
 
-Seeded on first startup *only* when no users exist:
+Seeded on first startup _only_ when no users exist:
 
 ```
 DEMO_SUPER_ADMIN_EMAIL=super@demo.example
@@ -51,7 +61,7 @@ DEMO_USER_EMAIL=user@demo.example
 DEMO_USER_PASSWORD=user-changeme
 ```
 
-**Unset every `DEMO_*` env var before a real deployment.** Existing demo users survive after unsetting — delete them manually (`observal admin delete-user <email>`).
+**Unset every `DEMO_*` env var before a real deployment.** Existing demo users survive after unsetting. Delete them manually (`observal admin delete-user <email>`).
 
 > **Admin settings warning:** If demo accounts are still active or `SECRET_KEY` is insecure, the admin Settings page will display a warning banner at the top so operators can spot and fix the issue without digging through logs.
 
@@ -77,29 +87,6 @@ OAUTH_SERVER_METADATA_URL=https://accounts.example.com/.well-known/openid-config
 
 Full setup in [Authentication and SSO](authentication.md).
 
-## Evaluation engine
-
-Either Bedrock:
-
-```
-EVAL_MODEL_NAME=us.anthropic.claude-3-5-haiku-20241022-v1:0
-EVAL_MODEL_PROVIDER=bedrock
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1
-```
-
-Or OpenAI-compatible:
-
-```
-EVAL_MODEL_URL=https://api.openai.com/v1
-EVAL_MODEL_API_KEY=sk-...
-EVAL_MODEL_NAME=gpt-4o
-EVAL_MODEL_PROVIDER=openai
-```
-
-Deep dive: [Evaluation engine](evaluation-engine.md).
-
 ## Rate limiting
 
 ```
@@ -115,7 +102,7 @@ Tighten for higher-traffic deployments.
 DATA_RETENTION_DAYS=90
 ```
 
-Traces, spans, and scores older than this are TTL'd by ClickHouse. Set to `0` to disable retention (keep everything forever — disk grows without bound). The minimum non-zero value enforced on startup is 7.
+Traces, spans, and scores older than this are TTL'd by ClickHouse. Set to `0` to disable retention (keep everything forever, and disk grows without bound). The minimum non-zero value enforced on startup is 7.
 
 ## JWT keys
 
@@ -124,7 +111,7 @@ JWT_SIGNING_ALGORITHM=ES256        # ES256 (default) or RS256
 JWT_KEY_DIR=/data/keys             # persisted in the apidata volume
 ```
 
-The server generates asymmetric keys on first boot and stores them in `$JWT_KEY_DIR`. **Back up this directory** — losing the keys invalidates every session.
+The server generates asymmetric keys on first boot and stores them in `$JWT_KEY_DIR`. **Back up this directory**: losing the keys invalidates every session.
 
 More: [Authentication and SSO](authentication.md).
 
@@ -141,13 +128,13 @@ GIT_CLONE_TIMEOUT=120              # seconds
 
 ## Observal CLI (client-side) env vars
 
-Not set in `.env` on the server — these live on the CLI user's machine.
+Not set in `.env` on the server. These live on the CLI user's machine.
 
-| Variable | Purpose |
-| --- | --- |
-| `OBSERVAL_SERVER_URL` | Default server URL |
+| Variable                                     | Purpose                          |
+| -------------------------------------------- | -------------------------------- |
+| `OBSERVAL_SERVER_URL`                        | Default server URL               |
 | `OBSERVAL_ACCESS_TOKEN` / `OBSERVAL_API_KEY` | Pre-authenticate without `login` |
-| `OBSERVAL_TIMEOUT` | Request timeout (seconds) |
+| `OBSERVAL_TIMEOUT`                           | Request timeout (seconds)        |
 
 Full list: [Environment variables](../reference/environment-variables.md).
 

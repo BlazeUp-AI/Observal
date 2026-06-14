@@ -3,10 +3,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createClient, type Client } from "graphql-ws";
+import { clearSession } from "@/lib/api";
 
 function getWsUrl(): string {
   const api =
-    process.env.NEXT_PUBLIC_API_URL ||
+    import.meta.env.VITE_API_URL ||
     (typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.hostname}:8000`
       : "http://localhost:8000");
@@ -19,6 +20,21 @@ function getToken(): string | null {
 }
 
 let client: Client | null = null;
+
+function handleSubscriptionAuthError(err: unknown) {
+  const msg = String(err ?? "").toLowerCase();
+  if (
+    msg.includes("not authenticated") ||
+    msg.includes("unauthorized") ||
+    msg.includes("invalid token") ||
+    msg.includes("token expired")
+  ) {
+    clearSession();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login?reason=session_expired";
+    }
+  }
+}
 
 function getClient(): Client {
   if (!client) {
@@ -55,7 +71,33 @@ export function subscribeToSessionUpdates(
           onEvent(data.sessionId, data.eventName);
         }
       },
-      error: () => {},
+      error: (err) => handleSubscriptionAuthError(err),
+      complete: () => {},
+    },
+  );
+}
+
+export function subscribeToReviewUpdates(
+  onEvent: (listingId: string, action: string) => void,
+): () => void {
+  return getClient().subscribe(
+    {
+      query: `subscription ReviewUpdated($listingId: String) {
+        reviewUpdated(listingId: $listingId) {
+          listingId
+          action
+        }
+      }`,
+    },
+    {
+      next: (value) => {
+        const data = (value.data as { reviewUpdated?: { listingId: string; action: string } })
+          ?.reviewUpdated;
+        if (data) {
+          onEvent(data.listingId, data.action);
+        }
+      },
+      error: (err) => handleSubscriptionAuthError(err),
       complete: () => {},
     },
   );

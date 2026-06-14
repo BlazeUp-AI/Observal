@@ -6,7 +6,8 @@ import secrets
 import uuid
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,13 +24,13 @@ from schemas.alert import (
     WebhookSecretRotateResponse,
     WebhookTestResponse,
 )
-from services.alert_evaluator import is_private_url
-from services.audit_helpers import audit
+from services.ssrf_guard import is_private_url
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
 
 
 def _validate_webhook_url(url: str) -> None:
+    optic.trace("validating webhook URL: {}", url)
     if not url:
         return  # empty URL is OK (no webhook)
     parsed = urlparse(url)
@@ -44,6 +45,7 @@ async def list_alerts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("alert list")
     stmt = select(AlertRule).order_by(AlertRule.created_at.desc())
     if ROLE_HIERARCHY.get(current_user.role, 999) > ROLE_HIERARCHY[UserRole.admin]:
         stmt = stmt.where(AlertRule.created_by == current_user.id)
@@ -51,10 +53,9 @@ async def list_alerts(
         # Admin sees all alerts within their org (filter through user table)
         org_user_ids = select(User.id).where(User.org_id == current_user.org_id)
         stmt = stmt.where(AlertRule.created_by.in_(org_user_ids))
-    # else: admin with no org (local mode) — no filter, sees everything
+    # else: admin with no org (local mode) - no filter, sees everything
     result = await db.execute(stmt)
     alerts = result.scalars().all()
-    await audit(current_user, "alert.list", resource_type="alert_rule")
     return [AlertRuleResponse.from_rule(r) for r in alerts]
 
 
@@ -64,6 +65,7 @@ async def create_alert(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("alert create")
     _validate_webhook_url(body.webhook_url)
     rule = AlertRule(
         name=body.name,
@@ -79,9 +81,6 @@ async def create_alert(
     db.add(rule)
     await db.commit()
     await db.refresh(rule)
-    await audit(
-        current_user, "alert.create", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name
-    )
     return AlertRuleResponse.from_rule(rule)
 
 
@@ -92,6 +91,7 @@ async def update_alert(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("alert update")
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
@@ -110,9 +110,6 @@ async def update_alert(
         rule.webhook_url = body.webhook_url
     await db.commit()
     await db.refresh(rule)
-    await audit(
-        current_user, "alert.update", resource_type="alert_rule", resource_id=str(rule.id), resource_name=rule.name
-    )
     return AlertRuleResponse.from_rule(rule)
 
 
@@ -122,6 +119,7 @@ async def delete_alert(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("alert delete")
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
@@ -133,23 +131,20 @@ async def delete_alert(
     is_admin_or_above = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
     if rule.created_by != current_user.id and not is_admin_or_above:
         raise HTTPException(403, "Not authorized to delete this alert rule")
-    alert_id_str = str(rule.id)
-    alert_name = rule.name
+    str(rule.id)
     await db.delete(rule)
     await db.commit()
-    await audit(
-        current_user, "alert.delete", resource_type="alert_rule", resource_id=alert_id_str, resource_name=alert_name
-    )
 
 
 @router.get("/{alert_id}/history", response_model=list[AlertHistoryResponse])
 async def get_alert_history(
     alert_id: uuid.UUID,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("fetching alert history for {} (limit={})", alert_id, limit)
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
@@ -171,9 +166,6 @@ async def get_alert_history(
     )
     result = await db.execute(stmt)
     history = result.scalars().all()
-    await audit(
-        current_user, "alert.history", resource_type="alert_rule", resource_id=str(alert_id), resource_name=rule.name
-    )
     return history
 
 
@@ -184,6 +176,7 @@ async def rotate_webhook_secret(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Rotate the webhook signing secret for an alert rule. Admin only."""
+    optic.debug("rotating webhook secret for alert {}", alert_id)
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
@@ -193,15 +186,6 @@ async def rotate_webhook_secret(
     rule.webhook_secret = secrets.token_hex(32)
     await db.commit()
     await db.refresh(rule)
-
-    await audit(
-        current_user,
-        "alert.webhook_secret.rotate",
-        resource_type="alert_rule",
-        resource_id=str(alert_id),
-        resource_name=rule.name,
-        detail="Webhook secret rotated",
-    )
     return WebhookSecretRotateResponse(
         webhook_secret_last4=rule.webhook_secret[-4:],
         rotated_at=datetime.now(UTC),
@@ -215,6 +199,7 @@ async def reveal_webhook_secret(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Reveal the full webhook secret. Admin only, audit-logged."""
+    optic.debug("revealing webhook secret for alert {}", alert_id)
     import logging
 
     logger = logging.getLogger(__name__)
@@ -224,18 +209,9 @@ async def reveal_webhook_secret(
         raise HTTPException(404, "Alert rule not found")
 
     logger.info(
-        "Webhook secret revealed: alert_rule_id=%s by user_id=%s",
+        "Webhook secret revealed: alert_rule_id={} by user_id={}",
         alert_id,
         current_user.id,
-    )
-
-    await audit(
-        current_user,
-        "alert.webhook_secret.reveal",
-        resource_type="alert_rule",
-        resource_id=str(alert_id),
-        resource_name=rule.name,
-        detail="Webhook secret revealed",
     )
     return WebhookSecretResponse(webhook_secret=rule.webhook_secret)
 
@@ -247,6 +223,7 @@ async def test_webhook(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Send a test webhook to the configured URL. Owner or admin."""
+    optic.debug("sending test webhook for alert {}", alert_id)
     rule = await db.get(AlertRule, alert_id)
     if not rule:
         raise HTTPException(404, "Alert rule not found")
@@ -277,15 +254,6 @@ async def test_webhook(
         webhook_secret=rule.webhook_secret,
         payload=payload,
         alert_rule_id=rule.id,
-    )
-
-    await audit(
-        current_user,
-        "alert.webhook.test",
-        resource_type="alert_rule",
-        resource_id=str(alert_id),
-        resource_name=rule.name,
-        detail=f"Test webhook sent, success={result.success}",
     )
     return WebhookTestResponse(
         success=result.success,

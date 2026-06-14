@@ -24,6 +24,9 @@ DEFAULTS = {
     "access_token": "",
     "refresh_token": "",
     "timeout": 30,
+    "update_check": True,
+    "update_check_interval": 86400,  # seconds (24h)
+    "update_check_repo": "",  # empty = BlazeUp-AI/Observal
 }
 
 
@@ -155,7 +158,7 @@ def resolve_alias(name: str) -> str:
         if 1 <= idx <= len(ids):
             return ids[idx - 1]
 
-    # Pass names through as-is — the server resolves names natively.
+    # Pass names through as-is. The server resolves names natively.
     # Previously we looked up names in a local cache (last_results.json),
     # but that cache goes stale after a database reset, causing 404s
     # when the same name gets a new UUID.

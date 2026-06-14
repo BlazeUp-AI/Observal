@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,6 @@ from schemas.component_source import (
     ComponentSourceResponse,
     SyncResponse,
 )
-from services.audit_helpers import audit
 from services.git_mirror_service import sync_source
 
 router = APIRouter(prefix="/api/v1/component-sources", tags=["component-sources"])
@@ -32,6 +32,7 @@ async def add_source(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     # Detect provider from URL
+    optic.trace("req={}", req)
     provider = "github"
     url_lower = req.url.lower()
     if "gitlab" in url_lower:
@@ -39,7 +40,7 @@ async def add_source(
     elif "bitbucket" in url_lower:
         provider = "bitbucket"
 
-    # Always derive owner from the authenticated user's org — never trust client-supplied org
+    # Always derive owner from the authenticated user's org - never trust client-supplied org
     source = ComponentSource(
         url=req.url,
         provider=provider,
@@ -54,14 +55,6 @@ async def add_source(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Source with this URL and component type already exists")
-
-    await audit(
-        current_user,
-        "source.add",
-        resource_type="component_source",
-        resource_id=str(source.id),
-        resource_name=source.url,
-    )
     return ComponentSourceResponse.model_validate(source)
 
 
@@ -71,6 +64,7 @@ async def list_sources(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.debug("component_source list")
     stmt = select(ComponentSource)
     if component_type:
         stmt = stmt.where(ComponentSource.component_type == component_type)
@@ -84,7 +78,6 @@ async def list_sources(
         stmt = stmt.where(ComponentSource.is_public == True)  # noqa: E712
     result = await db.execute(stmt.order_by(ComponentSource.created_at.desc()))
     sources = result.scalars().all()
-    await audit(current_user, "source.list", resource_type="component_source")
     return [ComponentSourceResponse.model_validate(s) for s in sources]
 
 
@@ -94,19 +87,13 @@ async def get_source(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
+    optic.trace("source_id={}", source_id)
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     # Private sources are only visible to the owning org
     if not source.is_public and (current_user.org_id is None or source.owner_org_id != current_user.org_id):
         raise HTTPException(status_code=404, detail="Source not found")
-    await audit(
-        current_user,
-        "source.view",
-        resource_type="component_source",
-        resource_id=str(source.id),
-        resource_name=source.url,
-    )
     return ComponentSourceResponse.model_validate(source)
 
 
@@ -116,6 +103,7 @@ async def trigger_sync(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
+    optic.trace("source_id={}", source_id)
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -135,15 +123,6 @@ async def trigger_sync(
 
     await db.commit()
     await db.refresh(source)
-
-    await audit(
-        current_user,
-        "source.sync",
-        resource_type="component_source",
-        resource_id=str(source.id),
-        resource_name=source.url,
-        detail=f"Sync status={source.sync_status}",
-    )
     return SyncResponse(
         source_id=source.id,
         status=source.sync_status,
@@ -159,17 +138,10 @@ async def delete_source(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
+    optic.debug("component_source delete")
     source = await db.get(ComponentSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
-    source_url = source.url
     await db.delete(source)
     await db.commit()
-    await audit(
-        current_user,
-        "source.delete",
-        resource_type="component_source",
-        resource_id=str(source_id),
-        resource_name=source_url,
-    )
     return {"deleted": str(source_id)}

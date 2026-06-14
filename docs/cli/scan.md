@@ -1,12 +1,13 @@
 <!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
 <!-- SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # observal scan
 
 Discover MCP servers, hooks, and telemetry configuration across your IDE configs. `scan` is **read-only** -- it shows what you have without modifying any files.
 
-To actually instrument your IDEs (wrap MCP servers with `observal-shim`, install hooks, configure OTel), use [`observal doctor patch`](doctor.md).
+To actually instrument your IDEs (wrap MCP servers with `observal-shim` and install hooks), use [`observal doctor patch`](doctor.md).
 
 ## Synopsis
 
@@ -32,7 +33,7 @@ If you run `observal scan` with no flags, it auto-detects every installed IDE an
    * Gemini CLI: `.gemini/settings.json`
    * Copilot CLI: `~/.copilot/mcp-config.json`
 2. Lists every MCP server found, its transport type, and whether it is already wrapped by `observal-shim`.
-3. Reports any installed telemetry hooks and OTel configuration.
+3. Reports any installed telemetry hooks.
 
 No files are written. No servers are contacted. No registration happens.
 
@@ -66,7 +67,7 @@ observal scan --ide claude-code
 Once you see what's installed, instrument it:
 
 ```bash
-# Instrument everything (hooks + shims + OTel config) across all IDEs
+# Instrument everything (hooks + shims) across all IDEs
 observal doctor patch --all --all-ides
 
 # Or target a specific IDE
@@ -89,7 +90,7 @@ observal doctor patch --all --all-ides --dry-run
 
 ## Related
 
-* [`observal doctor patch`](doctor.md) — instrument your IDEs (hooks, shims, OTel)
-* [`observal pull`](pull.md) — install a full agent (also wires up MCP servers)
-* [`observal doctor`](doctor.md) — diagnose instrumentation end-to-end
-* [Use Cases -- Observe MCP traffic](../use-cases/observe-mcp-traffic.md) — narrative walkthrough
+* [`observal doctor patch`](doctor.md): instrument your IDEs (hooks, shims)
+* [`observal agent pull`](pull.md): install a full agent (also wires up MCP servers)
+* [`observal doctor`](doctor.md): diagnose instrumentation end-to-end
+* [Use Cases -- Observe MCP traffic](../use-cases/observe-mcp-traffic.md): narrative walkthrough

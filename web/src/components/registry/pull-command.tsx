@@ -2,9 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { copyToClipboard } from "@/lib/utils";
@@ -16,22 +14,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useIdes } from "@/hooks/use-ides";
 
-const IDES = [
-  { value: "cursor", label: "Cursor" },
-  { value: "vscode", label: "VS Code" },
-  { value: "claude-code", label: "Claude Code" },
-  { value: "gemini-cli", label: "Gemini CLI" },
-  { value: "kiro", label: "Kiro" },
-  { value: "codex", label: "Codex" },
-  { value: "copilot", label: "Copilot" },
-];
-
-export function PullCommand({ agentName }: { agentName: string }) {
-  const [ide, setIde] = useState("cursor");
+export function PullCommand({ agentName, versions }: { agentName: string; versions?: { version: string; status: string }[] }) {
+  const { data: ides, defaultIde } = useIdes();
+  const [ide, setIde] = useState("");
   const [copied, setCopied] = useState(false);
+  const [selectedVersion, setSelectedVersion] = useState<string>("latest");
 
-  const command = `observal agent pull ${agentName} --ide ${ide}`;
+  useEffect(() => {
+    if (!ides || ides.length === 0) return;
+    const defaultAllowed = defaultIde && ides.some((i) => i.name === defaultIde) ? defaultIde : ides[0].name;
+    if (!ide || !ides.some((i) => i.name === ide)) {
+      setIde(defaultAllowed);
+    }
+  }, [ides, defaultIde, ide]);
+
+  const approvedVersions = (versions ?? []).filter((v) => v.status === "approved");
+  const effectiveIde = ide || (defaultIde && ides?.some((i) => i.name === defaultIde) ? defaultIde : ides?.[0]?.name) || "cursor";
+  const versionFlag = selectedVersion && selectedVersion !== "latest" ? ` --version ${selectedVersion}` : "";
+  const command = `observal agent pull ${agentName} --ide ${effectiveIde}${versionFlag}`;
 
   function handleCopy() {
     copyToClipboard(command);
@@ -45,15 +47,30 @@ export function PullCommand({ agentName }: { agentName: string }) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border">
         <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">Install</span>
-        <div className="ml-auto">
-          <Select value={ide} onValueChange={setIde}>
+        <div className="ml-auto flex items-center gap-2">
+          {approvedVersions.length > 1 && (
+            <Select value={selectedVersion} onValueChange={setSelectedVersion}>
+              <SelectTrigger className="h-7 w-[100px] text-xs border-border">
+                <SelectValue placeholder="latest" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">latest</SelectItem>
+                {approvedVersions.map((v) => (
+                  <SelectItem key={v.version} value={v.version}>
+                    v{v.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={effectiveIde} onValueChange={setIde}>
             <SelectTrigger className="h-7 w-[130px] text-xs border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {IDES.map((i) => (
-                <SelectItem key={i.value} value={i.value}>
-                  {i.label}
+              {(ides ?? []).map((i) => (
+                <SelectItem key={i.name} value={i.name}>
+                  {i.display_name}
                 </SelectItem>
               ))}
             </SelectContent>

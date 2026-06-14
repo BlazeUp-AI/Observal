@@ -71,7 +71,7 @@ class TestComponentLinkResponseSchema:
 
 class TestAgentCreateRequestWithComponents:
     def test_create_request_accepts_components(self):
-        from schemas.agent import AgentCreateRequest, ComponentRef, GoalSectionRequest, GoalTemplateRequest
+        from schemas.agent import AgentCreateRequest, ComponentRef
 
         cid = uuid.uuid4()
         req = AgentCreateRequest(
@@ -79,53 +79,44 @@ class TestAgentCreateRequestWithComponents:
             version="1.0.0",
             owner="test",
             model_name="claude-sonnet-4-6",
+            prompt="You are a test agent.",
             components=[
                 ComponentRef(component_type="mcp", component_id=cid),
                 ComponentRef(component_type="skill", component_id=uuid.uuid4()),
             ],
-            goal_template=GoalTemplateRequest(
-                description="test",
-                sections=[GoalSectionRequest(name="s1")],
-            ),
         )
         assert len(req.components) == 2
         assert req.components[0].component_type == "mcp"
 
     def test_create_request_backwards_compat(self):
         """mcp_server_ids should still work."""
-        from schemas.agent import AgentCreateRequest, GoalSectionRequest, GoalTemplateRequest
+        from schemas.agent import AgentCreateRequest
 
         req = AgentCreateRequest(
             name="legacy-agent",
             version="1.0.0",
             owner="test",
             model_name="claude-sonnet-4-6",
+            prompt="You are a test agent.",
             mcp_server_ids=[uuid.uuid4()],
-            goal_template=GoalTemplateRequest(
-                description="test",
-                sections=[GoalSectionRequest(name="s1")],
-            ),
         )
         assert len(req.mcp_server_ids) == 1
         assert len(req.components) == 0
 
     def test_create_request_both_fields(self):
         """Both mcp_server_ids and components can coexist."""
-        from schemas.agent import AgentCreateRequest, ComponentRef, GoalSectionRequest, GoalTemplateRequest
+        from schemas.agent import AgentCreateRequest, ComponentRef
 
         req = AgentCreateRequest(
             name="dual-agent",
             version="1.0.0",
             owner="test",
             model_name="claude-sonnet-4-6",
+            prompt="You are a test agent.",
             mcp_server_ids=[uuid.uuid4()],
             components=[
                 ComponentRef(component_type="skill", component_id=uuid.uuid4()),
             ],
-            goal_template=GoalTemplateRequest(
-                description="test",
-                sections=[GoalSectionRequest(name="s1")],
-            ),
         )
         assert len(req.mcp_server_ids) == 1
         assert len(req.components) == 1
@@ -421,7 +412,7 @@ class TestResolveAgent:
         agent.components = [comp]
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.all.return_value = []
         db = AsyncMock()
         db.execute.return_value = mock_result
 
@@ -448,11 +439,12 @@ class TestResolveAgent:
         agent.components = [comp]
 
         listing = MagicMock()
+        listing.id = comp.component_id
         listing.status = ListingStatus.pending
         listing.name = "pending-mcp"
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = listing
+        mock_result.scalars.return_value.all.return_value = [listing]
         db = AsyncMock()
         db.execute.return_value = mock_result
 
@@ -481,6 +473,7 @@ class TestResolveAgent:
         agent.components = [comp]
 
         listing = MagicMock()
+        listing.id = comp.component_id
         listing.status = ListingStatus.approved
         listing.name = "good-mcp"
         listing.version = "2.0.0"
@@ -493,7 +486,7 @@ class TestResolveAgent:
         listing.setup_instructions = None
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = listing
+        mock_result.scalars.return_value.all.return_value = [listing]
         db = AsyncMock()
         db.execute.return_value = mock_result
 
@@ -526,6 +519,7 @@ class TestResolveAgent:
         agent.components = [comp]
 
         listing = MagicMock()
+        listing.id = comp.component_id
         listing.status = ListingStatus.pending
         listing.name = "pending-skill"
         listing.version = "1.0.0"
@@ -538,7 +532,7 @@ class TestResolveAgent:
         listing.skill_md_content = None
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = listing
+        mock_result.scalars.return_value.all.return_value = [listing]
         db = AsyncMock()
         db.execute.return_value = mock_result
 
@@ -575,6 +569,7 @@ class TestResolveAgent:
         agent.components = [good_comp, bad_comp]
 
         good_listing = MagicMock()
+        good_listing.id = good_comp.component_id
         good_listing.status = ListingStatus.approved
         good_listing.name = "good-mcp"
         good_listing.version = "1.0"
@@ -586,14 +581,13 @@ class TestResolveAgent:
         good_listing.mcp_validated = True
         good_listing.setup_instructions = None
 
-        # Return good listing for first call, None for second
-        mock_result_good = MagicMock()
-        mock_result_good.scalar_one_or_none.return_value = good_listing
-        mock_result_bad = MagicMock()
-        mock_result_bad.scalar_one_or_none.return_value = None
+        # Both components are type "mcp" so they are fetched in one batch.
+        # Only good_listing is returned, so bad_comp is "not found".
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [good_listing]
 
         db = AsyncMock()
-        db.execute.side_effect = [mock_result_good, mock_result_bad]
+        db.execute.return_value = mock_result
 
         resolved = await resolve_agent(agent, db)
         assert resolved.ok is False
@@ -1184,14 +1178,6 @@ class TestGenerateIdeAgentFiles:
         assert config.setup_commands[0][:3] == ["claude", "mcp", "add"]
         assert "github-mcp" in config.setup_commands[0]
 
-    def test_claude_code_env_includes_telemetry(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "claude-code")
-        assert "CLAUDE_CODE_ENABLE_TELEMETRY" in config.env
-        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
-
     def test_claude_code_underscore_alias(self):
         from services.agent_builder import generate_ide_agent_files
 
@@ -1216,42 +1202,7 @@ class TestGenerateIdeAgentFiles:
 
     # ── VS Code ────────────────────────────────────────────────
 
-    def test_vscode_generates_rules_and_mcp_json(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "vscode")
-        assert config.ide == "vscode"
-        rules = next(f for f in config.files if f.format == "markdown")
-        mcp_json = next(f for f in config.files if f.format == "json")
-        assert rules.path == ".vscode/rules/test-agent.md"
-        assert mcp_json.path == ".vscode/mcp.json"
-
     # ── Gemini CLI ─────────────────────────────────────────────
-
-    def test_gemini_cli_generates_gemini_md(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini-cli")
-        assert config.ide == "gemini-cli"
-        gemini_md = [f for f in config.files if f.path == "GEMINI.md"]
-        assert len(gemini_md) == 1
-        assert "You are a helpful coding assistant." in gemini_md[0].content
-
-    def test_gemini_cli_env_includes_otel(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini-cli")
-        assert config.env["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/json"
-
-    def test_gemini_cli_underscore_alias(self):
-        from services.agent_builder import generate_ide_agent_files
-
-        manifest = self._make_manifest()
-        config = generate_ide_agent_files(manifest, "gemini_cli")
-        assert config.ide == "gemini-cli"
 
     # ── Kiro ───────────────────────────────────────────────────
 
@@ -1427,7 +1378,7 @@ class TestGenerateIdeAgentFiles:
                 ],
             ),
         )
-        config = generate_ide_agent_files(manifest, "gemini-cli")
+        config = generate_ide_agent_files(manifest, "claude-code")
         content = config.files[0].content
         assert "## Hooks" in content
         assert "**lint-hook**" in content

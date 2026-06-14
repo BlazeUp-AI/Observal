@@ -3,7 +3,7 @@
 
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${local.name}-redis"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = local.private_subnet_ids
 }
 
 resource "aws_elasticache_replication_group" "redis" {
@@ -12,7 +12,7 @@ resource "aws_elasticache_replication_group" "redis" {
 
   engine         = "redis"
   engine_version = "7.1"
-  node_type      = var.redis_node_type
+  node_type      = local.effective_redis_node_type
   port           = 6379
 
   num_cache_clusters         = var.environment == "prod" ? 2 : 1

@@ -3,7 +3,7 @@
 
 """observal support: generate and inspect diagnostic support bundles.
 
-Bundles contain no customer data or row contents — only aggregate counts,
+Bundles contain no customer data or row contents - only aggregate counts,
 version info, sanitised configuration, health probes, and optional system
 metrics.  Every value passes through the central Redaction Layer before
 being written to the archive.
@@ -21,7 +21,6 @@ import tarfile
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +31,7 @@ from rich.tree import Tree
 
 from observal_cli import config, render
 from observal_cli.render import console, spinner
+from observal_cli.support import CollectorResult
 from observal_cli.support.manifest import BundleManifest, compute_file_entry
 from observal_cli.support.redaction import RedactionStats, redact_value
 
@@ -63,7 +63,6 @@ CONFIG_ALLOWLIST = frozenset(
         "RATE_LIMIT_AUTH",
         "RATE_LIMIT_AUTH_STRICT",
         "DATA_RETENTION_DAYS",
-        "DEPLOYMENT_MODE",
     }
 )
 
@@ -72,33 +71,6 @@ SIZE_BUDGET_BYTES = 100 * 1024 * 1024  # 100 MB uncompressed warning threshold
 
 
 # ── CollectorResult ──────────────────────────────────────────────────
-
-
-@dataclass
-class CollectorResult:
-    """Result from a single diagnostic collector."""
-
-    name: str  # e.g. "versions", "health_postgres"
-    ok: bool
-    duration_ms: int
-    data: dict | list | str | None
-    error: str | None = None
-
-    @property
-    def target_path(self) -> str:
-        """Relative path in the archive, e.g. 'versions/app.json'."""
-        # Map collector names to archive paths
-        _path_map: dict[str, str] = {
-            "versions": "versions/app.json",
-            "health": "health/health.json",
-            "config": "config/config.json",
-            "aggregates": "aggregates/aggregates.json",
-            "errors": "errors/recent_errors.json",
-            "logs": "logs/recent.ndjson",
-            "config_allowlisted": "config/config.json",
-            "system_info": "system/system.json",
-        }
-        return _path_map.get(self.name, f"{self.name}.json")
 
 
 # ── Local collectors ─────────────────────────────────────────────────
@@ -231,7 +203,20 @@ def bundle(
         help="Include OS/CPU/memory/disk metrics",
     ),
 ) -> None:
-    """Generate a diagnostic support bundle. No customer data or row contents are included."""
+    """Generate a diagnostic support bundle. No customer data or row contents included.
+
+    Collects version info, health probes, aggregate counts, recent logs, and
+    system metrics into a .tar.gz archive. No customer data or row contents
+    are included: all values pass through the Redaction Layer before writing.
+
+    The bundle is useful for sharing with support or diagnosing issues without
+    exposing sensitive data. Archive permissions are set to 0600.
+
+    Examples:
+        observal support bundle
+        observal support bundle -o /tmp/diag.tar.gz --logs-since 2h
+        observal support bundle --no-include-system
+    """
     # Determine output path
     if output is None:
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -318,7 +303,7 @@ def bundle(
         futures = [pool.submit(fn) for fn in local_tasks]
         for future in futures:
             try:
-                # Note: timeout only stops waiting — it does not kill the worker
+                # Note: timeout only stops waiting - it does not kill the worker
                 # thread. For these short collectors (system info, config filter)
                 # this is fine; a hanging thread will be cleaned up at process exit.
                 result = future.result(timeout=10)
@@ -516,7 +501,16 @@ def inspect(
         help="Print contents of a specific file from the archive",
     ),
 ) -> None:
-    """Inspect a support bundle. Displays the manifest, file tree, and optionally a single file."""
+    """Inspect a support bundle.
+
+    Displays the bundle manifest (schema version, collector results, redaction
+    counts), a file tree with sizes, and optionally prints the contents of a
+    specific file from the archive using --show.
+
+    Examples:
+        observal support inspect ./observal-support-20260101-120000.tar.gz
+        observal support inspect bundle.tar.gz --show health/postgres.json
+    """
     if not bundle_path.exists():
         render.error(f"Bundle not found: {bundle_path}")
         raise typer.Exit(1)

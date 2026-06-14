@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Typed async event bus for core ↔ ee/ decoupling.
+"""Typed async event bus for core / ee/ decoupling.
 
 Core defines event types (frozen dataclasses) and fires them at natural points.
 ee/ registers async handlers during startup. Handlers are fire-and-forget:
@@ -11,13 +11,13 @@ errors are logged, never raised to the emitter.
 
 from __future__ import annotations
 
-import logging
+import time
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger("observal.events")
+from loguru import logger as optic
 
 # Type alias for async event handlers
 EventHandler = Callable[..., Coroutine[Any, Any, Any]]
@@ -91,13 +91,7 @@ class AgentLifecycleEvent(Event):
 
 @dataclass(frozen=True, slots=True)
 class AuditableAction(Event):
-    """Generic audit event for HIPAA-level logging.
-
-    Covers all reads and writes across every endpoint. The ``action``
-    field uses dotted strings like ``"trace.view"`` or ``"review.approve"``.
-    HTTP context (IP, user agent, method, path) is injected by the
-    ee/ audit handler via contextvars — not carried on this event.
-    """
+    """Deprecated: retained only for ee/ backward compatibility."""
 
     actor_id: str
     actor_email: str
@@ -119,17 +113,11 @@ class EventBus:
         self._handlers: dict[type[Event], list[EventHandler]] = defaultdict(list)
 
     def on(self, event_type: type[Event]) -> Callable[[EventHandler], EventHandler]:
-        """Decorator to register a handler for an event type.
-
-        Usage::
-
-            @bus.on(UserCreated)
-            async def log_user(event: UserCreated) -> None:
-                ...
-        """
+        """Decorator to register a handler for an event type."""
 
         def decorator(fn: EventHandler) -> EventHandler:
             self._handlers[event_type].append(fn)
+            optic.trace("registered handler '{}' for {}", fn.__name__, event_type.__name__)
             return fn
 
         return decorator
@@ -137,27 +125,48 @@ class EventBus:
     def register(self, event_type: type[Event], handler: EventHandler) -> None:
         """Imperative registration (useful for ee/ modules)."""
         self._handlers[event_type].append(handler)
+        optic.trace("registered handler '{}' for {}", handler.__name__, event_type.__name__)
 
     async def emit(self, event: Event) -> None:
         """Fire all handlers for this event type.
 
-        Errors are logged, never raised — a broken handler must not
+        Errors are logged, never raised - a broken handler must not
         prevent the calling operation from completing.
         """
+        _t0 = time.perf_counter()
+        event_name = type(event).__name__
         handlers = self._handlers.get(type(event), [])
+
+        if not handlers:
+            optic.trace("event {} fired but no handlers registered", event_name)
+            return
+
+        optic.debug("firing {} with {} handler(s)", event_name, len(handlers))
+        failures = 0
         for handler in handlers:
             try:
                 await handler(event)
-            except Exception:
-                logger.exception(
-                    "Event handler %s failed for %s",
+            except Exception as e:
+                failures += 1
+                optic.error(
+                    "handler '{}' crashed on {} - event processing continues "
+                    "but this handler's side-effects are lost: {}",
                     handler.__name__,
-                    type(event).__name__,
+                    event_name,
+                    e,
                 )
+
+        _elapsed = (time.perf_counter() - _t0) * 1000
+        if failures:
+            optic.warning("{}: {}/{} handlers failed ({:.0f}ms)", event_name, failures, len(handlers), _elapsed)
+        else:
+            optic.trace("{}: all {} handlers completed ({:.0f}ms)", event_name, len(handlers), _elapsed)
 
     def clear(self) -> None:
         """Remove all handlers. Useful for testing."""
+        count = sum(len(h) for h in self._handlers.values())
         self._handlers.clear()
+        optic.trace("event bus cleared ({} handlers removed)", count)
 
     @property
     def handler_count(self) -> int:
@@ -165,5 +174,5 @@ class EventBus:
         return sum(len(h) for h in self._handlers.values())
 
 
-# Module-level singleton — import from anywhere in core
+# Module-level singleton
 bus = EventBus()

@@ -76,14 +76,12 @@ def _agent_mock(status=AgentStatus.approved, created_by=None, **extra):
     m.rejection_reason = None
     m.download_count = 0
     m.unique_users = 0
-    m.visibility = "private"
     m.owner_org_id = None
     m.git_url = None
     m.created_by = created_by or uuid.uuid4()
     m.created_at = datetime.now(UTC)
     m.updated_at = datetime.now(UTC)
     m.components = extra.get("components", [])
-    m.goal_template = extra.get("goal_template")
     col_keys = [
         "id",
         "name",
@@ -96,7 +94,6 @@ def _agent_mock(status=AgentStatus.approved, created_by=None, **extra):
         "model_config_json",
         "external_mcps",
         "supported_ides",
-        "visibility",
         "owner_org_id",
         "status",
         "rejection_reason",
@@ -125,13 +122,12 @@ class TestAgentNameLookup:
     """Ensure _load_agent resolves hyphenated and short names correctly."""
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._resolve_component_names", return_value={})
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.crud._resolve_component_names", return_value={})
+    @patch("api.routes.agent.crud._load_agent")
     async def test_hyphenated_name_resolves(self, mock_load, mock_names):
         """GET /agents/my-cool-agent resolves via name lookup."""
         user = _user()
         agent = _agent_mock(name="my-cool-agent", created_by=user.id)
-        agent.visibility = "public"
         mock_load.return_value = agent
 
         app, db, _ = _app_with(user=user, db=_mock_db())
@@ -148,13 +144,12 @@ class TestAgentNameLookup:
         assert r.json()["name"] == "my-cool-agent"
 
     @pytest.mark.asyncio
-    @patch("api.routes.agent._resolve_component_names", return_value={})
-    @patch("api.routes.agent._load_agent")
+    @patch("api.routes.agent.crud._resolve_component_names", return_value={})
+    @patch("api.routes.agent.crud._load_agent")
     async def test_short_hyphenated_name_resolves(self, mock_load, mock_names):
         """GET /agents/a-b resolves via name lookup (not rejected as short prefix)."""
         user = _user()
         agent = _agent_mock(name="a-b", created_by=user.id)
-        agent.visibility = "public"
         mock_load.return_value = agent
 
         app, db, _ = _app_with(user=user, db=_mock_db())
@@ -182,7 +177,7 @@ class TestAgentNameValidation:
             description="test",
             owner="testowner",
             model_name="claude-sonnet-4",
-            goal_template={"description": "g", "sections": [{"name": "s"}]},
+            prompt="You are a test agent.",
         )
         assert req.name == "my-cool-agent"
 
@@ -195,7 +190,7 @@ class TestAgentNameValidation:
             description="test",
             owner="testowner",
             model_name="claude-sonnet-4",
-            goal_template={"description": "g", "sections": [{"name": "s"}]},
+            prompt="You are a test agent.",
         )
         assert req.name == "my-cool-agent-v2"
 
@@ -208,7 +203,7 @@ class TestAgentNameValidation:
             description="test",
             owner="testowner",
             model_name="claude-sonnet-4",
-            goal_template={"description": "g", "sections": [{"name": "s"}]},
+            prompt="You are a test agent.",
         )
         assert req.name == "a-b"
 
@@ -222,7 +217,7 @@ class TestAgentNameValidation:
                 description="test",
                 owner="testowner",
                 model_name="claude-sonnet-4",
-                goal_template={"description": "g", "sections": [{"name": "s"}]},
+                prompt="You are a test agent.",
             )
 
     def test_update_schema_accepts_hyphens(self):

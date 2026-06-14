@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 from observal_cli.cmd_pull import _dict_to_toml, _write_file
-from observal_cli.cmd_scan import _parse_project_mcp_servers
+from observal_cli.shared.utils import extract_mcp_servers as _parse_project_mcp_servers
 
 
 def test_dict_to_toml():
@@ -16,12 +16,10 @@ def test_dict_to_toml():
 
 def test_parse_project_mcp_servers():
     codex_conf = {"mcp": {"servers": {"c-serv": {}}}}
-    gemini_conf = {"mcpServers": {"g-serv": {}}}
     copilot_conf = {"servers": {"cp-serv": {}}}
     opencode_conf = {"mcp": {"o-serv": {}}}
 
     assert _parse_project_mcp_servers(codex_conf, "codex") == {"c-serv": {}}
-    assert _parse_project_mcp_servers(gemini_conf, "gemini-cli") == {"g-serv": {}}
     assert _parse_project_mcp_servers(copilot_conf, "copilot") == {"cp-serv": {}}
     assert _parse_project_mcp_servers(opencode_conf, "opencode") == {"o-serv": {}}
 

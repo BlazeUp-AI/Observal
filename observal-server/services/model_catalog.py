@@ -34,13 +34,11 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
-import structlog
+from loguru import logger as optic
 
 from schemas.models import Catalog, CatalogModel, ModelDisplay
 from services.model_display import format_display
 from services.redis import get_redis
-
-logger = structlog.get_logger(__name__)
 
 # ─── Constants ────────────────────────────────────────────────
 
@@ -80,6 +78,7 @@ def format_for_ide(model_id: str, provider: str, ide: str) -> str:
     - OpenCode addresses models as ``provider/model_id``.
     - Kiro, Codex, Gemini CLI: take the raw id verbatim.
     """
+    optic.trace("looking up model {} for {}", model_id, ide)
     if ide == "claude-code":
         lid = model_id.lower()
         for kw in ("opus", "sonnet", "haiku"):
@@ -101,6 +100,7 @@ _BG_TASKS: set[asyncio.Task] = set()
 
 
 def _spawn_background_refresh(etag: str | None) -> None:
+    optic.trace("catalog etag: {}", etag)
     task = asyncio.create_task(_background_refresh(etag))
     _BG_TASKS.add(task)
     task.add_done_callback(_BG_TASKS.discard)
@@ -108,6 +108,7 @@ def _spawn_background_refresh(etag: str | None) -> None:
 
 def _inmem_get(current_etag: str | None) -> Catalog | None:
     """Return the in-memory parsed Catalog if still fresh and matching ``current_etag``."""
+    optic.trace("current catalog etag: {}", current_etag)
     if not current_etag:
         return None
     cat = _inmem_cache.get("catalog")
@@ -119,6 +120,7 @@ def _inmem_get(current_etag: str | None) -> Catalog | None:
 
 
 def _inmem_set(cat: Catalog, etag: str | None) -> None:
+    optic.trace("loading catalog (etag={})", etag)
     _inmem_cache["catalog"] = cat
     _inmem_cache["etag"] = etag
     _inmem_cache["expires_at"] = time.monotonic() + INMEM_TTL_SECONDS
@@ -128,6 +130,7 @@ def _inmem_set(cat: Catalog, etag: str | None) -> None:
 
 
 def _parse_date(value) -> date | None:
+    optic.trace("catalog value parsed")
     if not value:
         return None
     if isinstance(value, date):
@@ -136,13 +139,14 @@ def _parse_date(value) -> date | None:
         return datetime.fromisoformat(str(value)).date()
     except ValueError:
         try:
-            return datetime.strptime(str(value), "%Y-%m-%d").date()
+            return datetime.strptime(str(value), "%Y-%m-{}").date()
         except ValueError:
             return None
 
 
 def _normalize_models_dev(payload: dict) -> list[CatalogModel]:
     """Walk the models.dev shape and emit ``CatalogModel`` rows for the providers we map to IDEs."""
+    optic.trace("catalog payload prepared")
     rows: list[CatalogModel] = []
     for provider_id, provider in payload.items():
         if provider_id not in PROVIDER_IDE_MAP:
@@ -184,6 +188,7 @@ def _normalize_models_dev(payload: dict) -> list[CatalogModel]:
 
 def _attach_display_fields(models: list[CatalogModel]) -> None:
     """Mutate ``models`` to carry pre-computed display fields (parity with frontend)."""
+    optic.trace("loaded {} models from catalog", len(models) if models else 0)
     primary_counts: dict[str, int] = {}
     primaries: list[str] = []
     for m in models:
@@ -208,6 +213,7 @@ def _attach_display_fields(models: list[CatalogModel]) -> None:
 
 def _hash_etag(payload: dict) -> str:
     """Compute a stable etag from the payload (used when the upstream omits ETag)."""
+    optic.trace("catalog payload prepared")
     h = hashlib.sha256()
     h.update(json.dumps(payload, sort_keys=True).encode())
     return f'W/"{h.hexdigest()[:16]}"'
@@ -223,7 +229,7 @@ def _load_snapshot_payload() -> dict | None:
         with SNAPSHOT_PATH.open("r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        logger.warning("model_catalog_snapshot_load_failed", error=str(e), path=str(SNAPSHOT_PATH))
+        optic.warning("model_catalog_snapshot_load_failed", error=str(e), path=str(SNAPSHOT_PATH))
         return None
 
 
@@ -231,10 +237,12 @@ def _load_snapshot_payload() -> dict | None:
 
 
 def _serialize_catalog(cat: Catalog) -> str:
+    optic.trace("loaded catalog state")
     return cat.model_dump_json()
 
 
 def _deserialize_catalog(raw: str) -> Catalog:
+    optic.trace("raw catalog data loaded from source")
     return Catalog.model_validate_json(raw)
 
 
@@ -244,20 +252,21 @@ async def _redis_load() -> tuple[Catalog | None, str | None, float | None]:
         r = get_redis()
         raw, upstream_etag = await r.mget(REDIS_VALUE_KEY, REDIS_ETAG_KEY)
     except Exception as e:
-        logger.debug("model_catalog_redis_load_failed", error=str(e))
+        optic.debug("model_catalog_redis_load_failed", error=str(e))
         return None, None, None
     if not raw:
         return None, upstream_etag, None
     try:
         cat = _deserialize_catalog(raw)
     except Exception as e:
-        logger.warning("model_catalog_redis_deserialize_failed", error=str(e))
+        optic.warning("model_catalog_redis_deserialize_failed", error=str(e))
         return None, upstream_etag, None
     age = (datetime.now(UTC) - cat.fetched_at).total_seconds() if cat.fetched_at else None
     return cat, upstream_etag, age
 
 
 async def _redis_store(cat: Catalog, upstream_etag: str | None) -> None:
+    optic.trace("comparing with upstream (etag={})", upstream_etag)
     try:
         r = get_redis()
         async with r.pipeline(transaction=False) as pipe:
@@ -268,7 +277,7 @@ async def _redis_store(cat: Catalog, upstream_etag: str | None) -> None:
                 pipe.delete(REDIS_ETAG_KEY)
             await pipe.execute()
     except Exception as e:
-        logger.warning("model_catalog_redis_store_failed", error=str(e))
+        optic.warning("model_catalog_redis_store_failed", error=str(e))
 
 
 # ─── Single-flight refresh ───────────────────────────────────
@@ -300,6 +309,7 @@ async def _fetch_upstream(prev_etag: str | None) -> tuple[dict | None, str | Non
     Returns ``(payload_or_None, etag_or_None, not_modified)``. ``payload_or_None``
     is None when the request returned 304 or when the request failed.
     """
+    optic.trace("previous catalog etag: {}", prev_etag)
     headers = {"Accept": "application/json", "User-Agent": "observal/1.0"}
     if prev_etag:
         headers["If-None-Match"] = prev_etag
@@ -312,7 +322,7 @@ async def _fetch_upstream(prev_etag: str | None) -> tuple[dict | None, str | Non
             if resp.status_code == 304:
                 return None, prev_etag, True
             if resp.status_code != 200:
-                logger.warning("model_catalog_upstream_status", status=resp.status_code)
+                optic.warning("model_catalog_upstream_status", status=resp.status_code)
                 continue
             payload = resp.json()
             etag = resp.headers.get("ETag") or resp.headers.get("etag") or _hash_etag(payload)
@@ -324,7 +334,7 @@ async def _fetch_upstream(prev_etag: str | None) -> tuple[dict | None, str | Non
                 continue
             break
     if last_exc is not None:
-        logger.warning("model_catalog_upstream_failed", error=str(last_exc))
+        optic.warning("model_catalog_upstream_failed", error=str(last_exc))
     return None, prev_etag, False
 
 
@@ -342,6 +352,7 @@ async def get_catalog(force_refresh: bool = False) -> Catalog:
     4. On all upstream failures: fall back to the vendored snapshot.
     5. On every failure: return an empty Catalog with ``degraded=True``.
     """
+    optic.trace("refreshing catalog (force={})", force_refresh)
     # Step 1: Try Redis first to know the current etag.
     cat, upstream_etag, age = await _redis_load()
 
@@ -369,18 +380,20 @@ async def get_catalog(force_refresh: bool = False) -> Catalog:
 
 async def _background_refresh(prev_etag: str | None) -> None:
     """Fire-and-forget refresh used by stale-while-revalidate."""
+    optic.trace("previous catalog etag: {}", prev_etag)
     if not await _acquire_refresh_lock():
         return  # Another worker beat us to it.
     try:
         await _refresh(prev_etag=prev_etag)
     except Exception as e:
-        logger.warning("model_catalog_background_refresh_failed", error=str(e))
+        optic.warning("model_catalog_background_refresh_failed", error=str(e))
     finally:
         await _release_refresh_lock()
 
 
 async def _refresh(prev_etag: str | None) -> Catalog:
     """Always-online refresh path: fetch + normalize + persist."""
+    optic.trace("previous catalog etag: {}", prev_etag)
     async with _inmem_lock:
         # Re-check after acquiring the lock; another coroutine may have refreshed.
         cached_cat, cached_etag, cached_age = await _redis_load()
@@ -438,6 +451,7 @@ def _force_refresh_requested() -> bool:
 
 
 def _build_catalog(payload: dict, *, source: str, upstream_etag: str | None, degraded: bool = False) -> Catalog:
+    optic.trace("storing catalog from source={} (etag={})", source, upstream_etag)
     models = _normalize_models_dev(payload)
     _attach_display_fields(models)
     fetched_at = datetime.now(UTC)
@@ -455,6 +469,7 @@ def _build_catalog(payload: dict, *, source: str, upstream_etag: str | None, deg
 
 def _self_etag(fetched_at: datetime, upstream_etag: str | None) -> str:
     """Compute an etag for HTTP responses derived from fetched_at + upstream etag."""
+    optic.trace("catalog fetched (etag={})", upstream_etag)
     h = hashlib.sha256()
     h.update(fetched_at.isoformat().encode())
     h.update((upstream_etag or "").encode())
@@ -470,6 +485,7 @@ async def diff_against_current(prev: Catalog | None) -> dict:
     Used by ``POST /api/v1/admin/models/refresh`` so ops gets a one-shot sense
     of what changed when they pull a new release of models.dev.
     """
+    optic.trace("previous catalog state loaded")
     new = await get_catalog(force_refresh=True)
     if prev is None:
         return {"added": [m.model_id for m in new.models], "removed": [], "updated": [], "total": new.model_count}

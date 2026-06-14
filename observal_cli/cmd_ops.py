@@ -5,7 +5,7 @@
 # SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Review, telemetry, dashboard, feedback, eval, admin, and trace CLI commands."""
+"""Review, telemetry, dashboard, feedback, admin, and trace CLI commands."""
 
 from __future__ import annotations
 
@@ -13,10 +13,12 @@ import time
 
 import httpx
 import typer
+from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
+from observal_cli.prompts import password_input
 from observal_cli.render import (
     console,
     kv_panel,
@@ -38,9 +40,9 @@ def _require_enterprise():
         r = httpx.get(f"{server_url}/api/v1/config/public", timeout=5)
         if r.status_code == 200:
             pub = r.json()
-            if pub.get("deployment_mode") != "enterprise":
-                rprint("[yellow]This feature requires enterprise mode.[/yellow]")
-                rprint("[dim]Set DEPLOYMENT_MODE=enterprise on the server to enable.[/dim]")
+            if not pub.get("licensed"):
+                rprint("[yellow]This feature requires an enterprise license.[/yellow]")
+                rprint("[dim]Set OBSERVAL_LICENSE_KEY on the server to enable.[/dim]")
                 raise typer.Exit(1)
     except (httpx.ConnectError, httpx.TimeoutException):
         pass
@@ -51,7 +53,7 @@ def _require_enterprise():
 
 
 # ═══════════════════════════════════════════════════════════
-# ops_app — Observability / operational commands group
+# ops_app: Observability / operational commands group
 # ═══════════════════════════════════════════════════════════
 
 ops_app = typer.Typer(
@@ -72,7 +74,24 @@ def review_list(
     tab: str = typer.Option(None, "--tab", help="Filter tab (agents, components)"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """List pending submissions."""
+    """List pending submissions awaiting admin review.
+
+    Shows all components and agents that have been submitted but not yet
+    approved or rejected. Use --type to filter by component type, or --tab
+    to separate agents from components.
+
+    Row numbers from the output can be used as shorthand in other review
+    commands (show, approve, reject).
+
+    Examples:
+
+        observal admin review list
+
+        observal admin review list --type mcp
+
+        observal admin review list --tab agents --output json
+    """
+    optic.trace("type_filter={}", type_filter)
     params = {}
     if type_filter:
         params["type"] = type_filter
@@ -114,7 +133,20 @@ def review_show(
     review_id: str = typer.Argument(..., help="Name, row #, @alias, or UUID"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Show review details for a component or agent."""
+    """Show review details for a component or agent.
+
+    Displays metadata, validation results, and status for a pending
+    submission. Accepts a row number from `review list`, a name,
+    an @alias, or a UUID.
+
+    Examples:
+
+        observal admin review show 1
+
+        observal admin review show my-mcp-server
+
+        observal admin review show @my-alias --output json
+    """
     resolved = config.resolve_alias(review_id)
     with spinner():
         item = client.get(f"/api/v1/review/{resolved}")
@@ -153,7 +185,18 @@ def review_approve(
     """Approve a submission (component, agent, or bundle).
 
     After `observal admin review list`, use a row number (e.g. 1),
-    the component/agent name, or a UUID prefix.
+    the component/agent name, or a UUID prefix. Approved items become
+    visible in the public registry.
+
+    Examples:
+
+        observal admin review approve 1
+
+        observal admin review approve my-mcp-server
+
+        observal admin review approve my-agent --agent
+
+        observal admin review approve my-bundle --bundle
     """
     resolved = config.resolve_alias(review_id)
     if agent:
@@ -181,7 +224,16 @@ def review_reject(
     """Reject a submission (component, agent, or bundle).
 
     After `observal admin review list`, use a row number (e.g. 1),
-    the component/agent name, or a UUID prefix.
+    the component/agent name, or a UUID prefix. A reason is required
+    so the submitter understands why.
+
+    Examples:
+
+        observal admin review reject 2 --reason "Missing README"
+
+        observal admin review reject my-agent --agent -r "Unsafe prompt"
+
+        observal admin review reject my-bundle --bundle -r "License issue"
     """
     resolved = config.resolve_alias(review_id)
     if not reason.strip():
@@ -209,7 +261,16 @@ telemetry_app = typer.Typer(help="Telemetry commands")
 
 @telemetry_app.command(name="status")
 def telemetry_status():
-    """Check telemetry data flow status."""
+    """Check telemetry data flow status.
+
+    Shows server-side event counts (tool calls, interactions) for the
+    last hour and local buffer statistics (pending, failed, sent events).
+    Useful for verifying that the shim is forwarding telemetry correctly.
+
+    Examples:
+
+        observal ops telemetry status
+    """
     with spinner("Checking telemetry..."):
         data = client.get("/api/v1/telemetry/status")
     rprint(f"  Status:       [green]{data.get('status', 'unknown')}[/green]")
@@ -240,7 +301,15 @@ def telemetry_status():
 
 @telemetry_app.command(name="test")
 def telemetry_test():
-    """Send a test telemetry event."""
+    """Send a test telemetry event.
+
+    Submits a synthetic tool call event to the server to verify that
+    the telemetry ingestion pipeline is working end to end.
+
+    Examples:
+
+        observal ops telemetry test
+    """
     with spinner("Sending test event..."):
         result = client.post(
             "/api/v1/telemetry/events",
@@ -264,7 +333,17 @@ def telemetry_test():
 
 @ops_app.command(name="overview")
 def _overview(output: str = typer.Option("table", "--output", "-o")):
-    """Show enterprise overview stats."""
+    """Show enterprise overview stats.
+
+    Displays high-level platform totals: MCP servers, agents, users,
+    tool calls, and agent interactions.
+
+    Examples:
+
+        observal ops overview
+
+        observal ops overview --output json
+    """
     with spinner("Loading overview..."):
         data = client.get("/api/v1/overview/stats")
     if output == "json":
@@ -286,7 +365,22 @@ def _metrics(
     output: str = typer.Option("table", "--output", "-o"),
     watch: bool = typer.Option(False, "--watch", "-w", help="Refresh every 5s"),
 ):
-    """Show metrics for an MCP server or agent."""
+    """Show metrics for an MCP server or agent.
+
+    Displays downloads, call counts, error rates, and latency percentiles
+    for the specified item. Use --watch to auto-refresh every 5 seconds
+    (Ctrl+C to stop).
+
+    Examples:
+
+        observal ops metrics my-mcp
+
+        observal ops metrics my-agent --type agent
+
+        observal ops metrics @mcp-alias --watch
+
+        observal ops metrics my-mcp --output json
+    """
     _metrics_impl(item_id, item_type, output, watch)
 
 
@@ -345,7 +439,19 @@ def _top(
     item_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Show top MCP servers or agents by usage."""
+    """Show top MCP servers or agents by usage.
+
+    Lists the highest-download items in descending order. Defaults to
+    MCP servers; use --type agent to see top agents instead.
+
+    Examples:
+
+        observal ops top
+
+        observal ops top --type agent
+
+        observal ops top --output json
+    """
     _top_impl(item_type, output)
 
 
@@ -377,15 +483,28 @@ def _top_impl(item_type, output):
 def _rate(
     listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     stars: int = typer.Option(..., "--stars", "-s", min=1, max=5, help="Rating 1-5"),
-    listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp or agent"),
+    listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp, agent, skill, hook, prompt, or sandbox"),
     comment: str | None = typer.Option(None, "--comment", "-c"),
+    anonymous: bool = typer.Option(False, "--anonymous", "-a", help="Submit anonymously"),
 ):
-    """Rate an MCP server or agent."""
-    _rate_impl(listing_id, stars, listing_type, comment)
+    """Rate an MCP server, agent, or component.
+
+    Submits a 1-5 star review. Each user can only submit one review per
+    item. Use `observal ops rate-update` to change it later.
+
+    Examples:
+
+        observal ops rate my-mcp --stars 5
+
+        observal ops rate my-agent --type agent -s 4 -c "Great tool usage"
+
+        observal ops rate my-mcp --stars 5 --anonymous
+    """
+    _rate_impl(listing_id, stars, listing_type, comment, anonymous)
 
 
-def _rate_impl(listing_id, stars, listing_type, comment):
-    resolved = config.resolve_alias(listing_id)
+def _rate_impl(listing_id, stars, listing_type, comment, anonymous=False):
+    resolved = _resolve_listing_id(listing_id, listing_type)
     with spinner("Submitting rating..."):
         client.post(
             "/api/v1/feedback",
@@ -394,9 +513,88 @@ def _rate_impl(listing_id, stars, listing_type, comment):
                 "listing_type": listing_type,
                 "rating": stars,
                 "comment": comment,
+                "anonymous": anonymous,
             },
         )
-    rprint(f"[green]✓ Rated {star_rating(stars)}[/green]")
+    rprint(f"[green]\u2713 Rated {star_rating(stars)}[/green]")
+
+
+@ops_app.command(name="rate-update")
+def _rate_update(
+    listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp, agent, skill, hook, prompt, or sandbox"),
+    stars: int | None = typer.Option(None, "--stars", "-s", min=1, max=5, help="New rating 1-5"),
+    comment: str | None = typer.Option(None, "--comment", "-c", help="New comment"),
+    anonymous: bool | None = typer.Option(None, "--anonymous/--no-anonymous", help="Set or unset anonymous flag"),
+):
+    """Update your existing review for an item.
+
+    Only the fields you provide will be changed.
+
+    Examples:
+
+        observal ops rate-update my-mcp --stars 4
+
+        observal ops rate-update my-mcp --comment "Updated opinion" --anonymous
+    """
+    resolved = _resolve_listing_id(listing_id, listing_type)
+    # First, get the user's existing review
+    with spinner("Fetching your review..."):
+        review = client.get(f"/api/v1/feedback/mine/{listing_type}/{resolved}")
+    body = {}
+    if stars is not None:
+        body["rating"] = stars
+    if comment is not None:
+        body["comment"] = comment
+    if anonymous is not None:
+        body["anonymous"] = anonymous
+    if not body:
+        rprint("[yellow]Nothing to update. Provide --stars, --comment, or --anonymous.[/yellow]")
+        raise typer.Exit(1)
+    with spinner("Updating review..."):
+        client.put(f"/api/v1/feedback/{review['id']}", body)
+    rprint("[green]\u2713 Review updated[/green]")
+
+
+@ops_app.command(name="rate-delete")
+def _rate_delete(
+    listing_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
+    listing_type: str = typer.Option("mcp", "--type", "-t", help="mcp, agent, skill, hook, prompt, or sandbox"),
+):
+    """Delete your review for an item.
+
+    Permanently removes your review. You can submit a new one afterwards.
+
+    Examples:
+
+        observal ops rate-delete my-mcp
+
+        observal ops rate-delete my-agent --type agent
+    """
+    resolved = _resolve_listing_id(listing_id, listing_type)
+    with spinner("Fetching your review..."):
+        review = client.get(f"/api/v1/feedback/mine/{listing_type}/{resolved}")
+    with spinner("Deleting review..."):
+        client.delete(f"/api/v1/feedback/{review['id']}")
+    rprint("[green]\u2713 Review deleted[/green]")
+
+
+def _resolve_listing_id(listing_id: str, listing_type: str) -> str:
+    """Resolve a name/alias to UUID for feedback operations."""
+    resolved = config.resolve_alias(listing_id)
+    try:
+        import uuid as _uuid
+
+        _uuid.UUID(resolved)
+    except ValueError:
+        endpoint = "/api/v1/agents" if listing_type == "agent" else f"/api/v1/{listing_type}s"
+        try:
+            item = client.get(f"{endpoint}/{resolved}")
+            resolved = item["id"]
+        except Exception:
+            rprint(f"[red]Could not find {listing_type} named '{resolved}'[/red]")
+            raise typer.Exit(1)
+    return resolved
 
 
 @ops_app.command(name="feedback")
@@ -405,7 +603,19 @@ def _feedback(
     listing_type: str = typer.Option("mcp", "--type", "-t"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Show feedback for an MCP server or agent."""
+    """Show feedback for an MCP server or agent.
+
+    Displays the average rating, total review count, and individual
+    reviews (stars + comments) for the given item.
+
+    Examples:
+
+        observal ops feedback my-mcp
+
+        observal ops feedback my-agent --type agent
+
+        observal ops feedback my-mcp --output json
+    """
     _feedback_impl(listing_id, listing_type, output)
 
 
@@ -433,287 +643,6 @@ def _feedback_impl(listing_id, listing_type, output):
     rprint()
 
 
-# ── Eval ─────────────────────────────────────────────────
-
-eval_app = typer.Typer(help="Evaluation engine commands")
-
-
-@eval_app.command(name="run")
-def eval_run(
-    agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    trace_id: str | None = typer.Option(None, "--trace"),
-):
-    """Run evaluation on an agent's traces."""
-    resolved = config.resolve_alias(agent_id)
-    body = {"trace_id": trace_id} if trace_id else {}
-    with spinner("Running evaluation..."):
-        result = client.post(f"/api/v1/eval/agents/{resolved}", body)
-    rprint(f"\n[bold]Eval Run:[/bold] {result.get('id', 'N/A')}")
-    rprint(f"  Status: {status_badge(result.get('status', 'unknown'))}")
-    rprint(f"  Traces evaluated: {result.get('traces_evaluated', 0)}")
-    for sc in result.get("scorecards", []):
-        grade = sc.get("overall_grade", "?")
-        score = sc.get("overall_score", 0)
-        color = "green" if score >= 7 else "yellow" if score >= 4 else "red"
-        rprint(f"  [{color}]{grade}[/{color}] {score:.1f}/10: {sc['id'][:8]}…")
-
-
-@eval_app.command(name="scorecards")
-def eval_scorecards(
-    agent_id: str = typer.Argument(...),
-    version: str | None = typer.Option(None, "--version", "-v"),
-    output: str = typer.Option("table", "--output", "-o"),
-):
-    """List scorecards for an agent."""
-    resolved = config.resolve_alias(agent_id)
-    params = {"version": version} if version else {}
-    with spinner():
-        data = client.get(f"/api/v1/eval/agents/{resolved}/scorecards", params=params)
-
-    if output == "json":
-        output_json(data)
-        return
-
-    if not data:
-        rprint("[dim]No scorecards found.[/dim]")
-        return
-
-    table = Table(title=f"Scorecards ({len(data)})", show_lines=False, padding=(0, 1))
-    table.add_column("#", style="dim", width=3)
-    table.add_column("Version", style="green")
-    table.add_column("Score", justify="right")
-    table.add_column("Grade")
-    table.add_column("Bottleneck")
-    table.add_column("When")
-    table.add_column("ID", style="dim", max_width=12)
-    for i, sc in enumerate(data, 1):
-        score = sc.get("overall_score", 0)
-        color = "green" if score >= 7 else "yellow" if score >= 4 else "red"
-        table.add_row(
-            str(i),
-            sc.get("version", ""),
-            f"[{color}]{score:.1f}[/{color}]",
-            sc.get("overall_grade", ""),
-            sc.get("bottleneck", "--"),
-            relative_time(sc.get("evaluated_at")),
-            str(sc["id"])[:8] + "…",
-        )
-    console.print(table)
-
-
-@eval_app.command(name="show")
-def eval_show(
-    scorecard_id: str = typer.Argument(...),
-    output: str = typer.Option("table", "--output", "-o"),
-):
-    """Show scorecard details with dimension breakdown."""
-    with spinner():
-        sc = client.get(f"/api/v1/eval/scorecards/{scorecard_id}")
-
-    if output == "json":
-        output_json(sc)
-        return
-
-    # Use new structured scoring if available, fall back to legacy
-    grade = sc.get("grade") or sc.get("overall_grade", "?")
-    composite = sc.get("composite_score")
-    display = sc.get("display_score") or sc.get("overall_score", 0)
-    grade_colors = {"A": "green", "B": "blue", "C": "yellow", "D": "#ff8c00", "F": "red"}
-    gc = grade_colors.get(grade[0] if grade else "F", "red")
-
-    header = f"Scorecard: [{gc}]{grade}[/{gc}] ({display:.1f}/10)"
-    if composite is not None:
-        header += f" [dim](composite: {composite:.1f}/100)[/dim]"
-
-    recs = sc.get("scoring_recommendations") or []
-    rec_str = sc.get("recommendations", "N/A")
-    if recs:
-        rec_str = "\n".join(f"  - {r}" for r in recs)
-
-    console.print(
-        kv_panel(
-            header,
-            [
-                ("Bottleneck", sc.get("bottleneck", "N/A")),
-                ("Penalties", str(sc.get("penalty_count", 0))),
-                ("Recommendations", rec_str),
-                ("ID", f"[dim]{sc['id']}[/dim]"),
-            ],
-            border_style=gc,
-        )
-    )
-
-    # Show 5-dimension scores with colored bars
-    dim_scores = sc.get("dimension_scores")
-    if dim_scores:
-        rprint("\n[bold]Dimension Scores (0-100):[/bold]")
-        table = Table(show_header=True, show_lines=False, padding=(0, 1))
-        table.add_column("Dimension", style="bold", width=20)
-        table.add_column("Score", justify="right", width=6)
-        table.add_column("Bar", width=30)
-        for dim_name, dim_score in dim_scores.items():
-            ds = float(dim_score)
-            dc = (
-                "green"
-                if ds >= 85
-                else "blue"
-                if ds >= 70
-                else "yellow"
-                if ds >= 55
-                else "#ff8c00"
-                if ds >= 40
-                else "red"
-            )
-            bar_len = int(ds / 100 * 25)
-            bar = f"[{dc}]{'█' * bar_len}[/{dc}][dim]{'░' * (25 - bar_len)}[/dim]"
-            table.add_row(dim_name, f"[{dc}]{ds:.0f}[/{dc}]", bar)
-        console.print(table)
-    else:
-        # Legacy dimension display
-        dims = sc.get("dimensions", [])
-        if dims:
-            rprint("\n[bold]Dimensions:[/bold]")
-            table = Table(show_header=True, show_lines=False, padding=(0, 1))
-            table.add_column("Dimension", style="bold")
-            table.add_column("Score", justify="right", width=6)
-            table.add_column("Grade", width=5)
-            table.add_column("Notes")
-            for dim in dims:
-                ds = dim.get("score") or 0
-                dc = "green" if ds >= 7 else "yellow" if ds >= 4 else "red"
-                table.add_row(
-                    dim.get("dimension", "?"),
-                    f"[{dc}]{ds:.1f}[/{dc}]",
-                    dim.get("grade", "?"),
-                    dim.get("notes", ""),
-                )
-            console.print(table)
-
-    # Show top penalties with evidence
-    with spinner("Fetching penalties..."):
-        try:
-            penalties = client.get(f"/api/v1/eval/scorecards/{scorecard_id}/penalties")
-        except Exception:
-            penalties = []
-
-    if penalties:
-        rprint(f"\n[bold]Top Penalties ({len(penalties)} total):[/bold]")
-        for p in penalties[:3]:
-            severity_color = {"critical": "red", "moderate": "yellow", "minor": "dim"}.get(
-                p.get("severity", ""), "white"
-            )
-            rprint(
-                f"  [{severity_color}]{p.get('event_name', '?')}[/{severity_color}] "
-                f"({p.get('amount', 0)}) — {p.get('evidence', '')[:120]}"
-            )
-
-
-@eval_app.command(name="compare")
-def eval_compare(
-    agent_id: str = typer.Argument(...),
-    version_a: str = typer.Option(..., "--a"),
-    version_b: str = typer.Option(..., "--b"),
-    output: str = typer.Option("table", "--output", "-o"),
-):
-    """Compare two agent versions with dimension breakdown."""
-    resolved = config.resolve_alias(agent_id)
-    with spinner("Comparing versions..."):
-        data = client.get(
-            f"/api/v1/eval/agents/{resolved}/compare", params={"version_a": version_a, "version_b": version_b}
-        )
-
-    if output == "json":
-        output_json(data)
-        return
-
-    a = data.get("version_a", {})
-    b = data.get("version_b", {})
-    sa, sb = a.get("avg_score", 0), b.get("avg_score", 0)
-    diff = sb - sa
-    arrow = "[green]↑[/green]" if diff > 0 else "[red]↓[/red]" if diff < 0 else "→"
-
-    rprint("\n  [bold]Version Comparison[/bold]")
-    rprint(f"  {a.get('version', '?'):>8}  →  {b.get('version', '?')}")
-    rprint(f"  {sa:.1f}/10     {arrow}  {sb:.1f}/10  ({diff:+.1f})")
-    rprint(f"  ({a.get('count', 0)} scorecards)    ({b.get('count', 0)} scorecards)")
-
-    # Dimension-level comparison if available
-    a_dims = a.get("dimension_averages", {})
-    b_dims = b.get("dimension_averages", {})
-    if a_dims and b_dims:
-        rprint("\n  [bold]Dimension Breakdown:[/bold]")
-        table = Table(show_header=True, show_lines=False, padding=(0, 1))
-        table.add_column("Dimension", style="bold", width=20)
-        table.add_column(a.get("version", "A"), justify="right", width=8)
-        table.add_column(b.get("version", "B"), justify="right", width=8)
-        table.add_column("Delta", width=10)
-        for dim in sorted(set(list(a_dims.keys()) + list(b_dims.keys()))):
-            va = float(a_dims.get(dim, 0))
-            vb = float(b_dims.get(dim, 0))
-            d = vb - va
-            d_arrow = "[green]↑[/green]" if d > 0 else "[red]↓[/red]" if d < 0 else "→"
-            table.add_row(dim, f"{va:.0f}", f"{vb:.0f}", f"{d_arrow} {d:+.0f}")
-        console.print(table)
-    rprint()
-
-
-@eval_app.command(name="aggregate")
-def eval_aggregate(
-    agent_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    window: int = typer.Option(50, "--window", "-w", help="Number of recent scorecards"),
-    output: str = typer.Option("table", "--output", "-o"),
-):
-    """Show aggregate scoring stats for an agent."""
-    resolved = config.resolve_alias(agent_id)
-    with spinner("Computing aggregate..."):
-        data = client.get(f"/api/v1/eval/agents/{resolved}/aggregate", params={"window_size": window})
-
-    if output == "json":
-        output_json(data)
-        return
-
-    mean = data.get("mean", 0)
-    std = data.get("std", 0)
-    ci_low = data.get("ci_low", 0)
-    ci_high = data.get("ci_high", 0)
-    drift = data.get("drift_alert", False)
-    weakest = data.get("weakest_dimension", "N/A")
-
-    rprint("\n  [bold]Agent Aggregate Scores[/bold]")
-    rprint(f"  Mean composite:  {mean:.1f}/100")
-    rprint(f"  Std dev:         {std:.1f}")
-    rprint(f"  95% CI:          [{ci_low:.1f}, {ci_high:.1f}]")
-    rprint(f"  Weakest dim:     {weakest}")
-    drift_str = "[red]DRIFT DETECTED[/red]" if drift else "[green]Stable[/green]"
-    rprint(f"  Drift status:    {drift_str}")
-
-    dim_avgs = data.get("dimension_averages", {})
-    if dim_avgs:
-        rprint("\n  [bold]Dimension Averages:[/bold]")
-        table = Table(show_header=True, show_lines=False, padding=(0, 1))
-        table.add_column("Dimension", style="bold", width=20)
-        table.add_column("Avg Score", justify="right", width=10)
-        table.add_column("Bar", width=30)
-        for dim, avg in sorted(dim_avgs.items()):
-            ds = float(avg)
-            dc = (
-                "green"
-                if ds >= 85
-                else "blue"
-                if ds >= 70
-                else "yellow"
-                if ds >= 55
-                else "#ff8c00"
-                if ds >= 40
-                else "red"
-            )
-            bar_len = int(ds / 100 * 25)
-            bar = f"[{dc}]{'█' * bar_len}[/{dc}][dim]{'░' * (25 - bar_len)}[/dim]"
-            table.add_row(dim, f"[{dc}]{ds:.0f}[/{dc}]", bar)
-        console.print(table)
-    rprint()
-
-
 # ── Admin ────────────────────────────────────────────────
 
 admin_app = typer.Typer(help="Admin commands")
@@ -721,7 +650,16 @@ admin_app = typer.Typer(help="Admin commands")
 
 @admin_app.command(name="settings")
 def admin_settings(output: str = typer.Option("table", "--output", "-o")):
-    """List enterprise settings."""
+    """List enterprise settings.
+
+    Displays all configured key-value enterprise settings on the server.
+
+    Examples:
+
+        observal admin settings
+
+        observal admin settings --output json
+    """
     with spinner():
         data = client.get("/api/v1/admin/settings")
     if output == "json":
@@ -743,110 +681,35 @@ def admin_set(
     key: str = typer.Argument(...),
     value: str = typer.Argument(...),
 ):
-    """Set an enterprise setting."""
+    """Set an enterprise setting.
+
+    Creates or updates a key-value enterprise configuration entry
+    on the server. Requires admin privileges.
+
+    Examples:
+
+        observal admin set max_agents_per_user 10
+
+        observal admin set telemetry_retention_days 90
+    """
     with spinner():
         client.put(f"/api/v1/admin/settings/{key}", {"value": value})
     rprint(f"[green]✓ {key} = {value}[/green]")
 
 
-@admin_app.command(name="penalties")
-def admin_penalties(output: str = typer.Option("table", "--output", "-o")):
-    """List the penalty catalog."""
-    with spinner():
-        data = client.get("/api/v1/admin/penalties")
-    if output == "json":
-        output_json(data)
-        return
-    if not data:
-        rprint("[dim]No penalties configured.[/dim]")
-        return
-    table = Table(title="Penalty Catalog", show_lines=False, padding=(0, 1))
-    table.add_column("Event Name", style="bold")
-    table.add_column("Dimension")
-    table.add_column("Amount", justify="right")
-    table.add_column("Severity")
-    table.add_column("Active")
-    for p in data:
-        sev_color = {"critical": "red", "moderate": "yellow", "minor": "dim"}.get(p.get("severity", ""), "white")
-        active = "[green]Yes[/green]" if p.get("is_active") else "[red]No[/red]"
-        table.add_row(
-            p["event_name"],
-            p["dimension"],
-            f"[{sev_color}]{p['amount']}[/{sev_color}]",
-            f"[{sev_color}]{p['severity']}[/{sev_color}]",
-            active,
-        )
-    console.print(table)
-
-
-@admin_app.command(name="penalty-set")
-def admin_penalty_set(
-    penalty_name: str = typer.Argument(..., help="Penalty event_name or ID"),
-    amount: int | None = typer.Option(None, "--amount", "-a"),
-    active: bool | None = typer.Option(None, "--active"),
-):
-    """Modify a penalty definition."""
-    # Look up by event name first
-    with spinner():
-        all_penalties = client.get("/api/v1/admin/penalties")
-    match = next((p for p in all_penalties if p["event_name"] == penalty_name or p["id"] == penalty_name), None)
-    if not match:
-        rprint(f"[red]Penalty '{penalty_name}' not found.[/red]")
-        raise typer.Exit(1)
-
-    body: dict = {}
-    if amount is not None:
-        body["amount"] = amount
-    if active is not None:
-        body["is_active"] = active
-
-    if not body:
-        rprint("[yellow]No changes specified. Use --amount or --active.[/yellow]")
-        return
-
-    with spinner("Updating penalty..."):
-        result = client.put(f"/api/v1/admin/penalties/{match['id']}", body)
-    rprint(
-        f"[green]Updated {result.get('event_name', penalty_name)}: amount={result.get('amount')}, active={result.get('is_active')}[/green]"
-    )
-
-
-@admin_app.command(name="weights")
-def admin_weights(output: str = typer.Option("table", "--output", "-o")):
-    """Show global dimension weights."""
-    with spinner():
-        data = client.get("/api/v1/admin/weights")
-    if output == "json":
-        output_json(data)
-        return
-    table = Table(title="Dimension Weights", show_lines=False, padding=(0, 1))
-    table.add_column("Dimension", style="bold")
-    table.add_column("Weight", justify="right")
-    table.add_column("Custom")
-    for w in data:
-        custom = "[cyan]Custom[/cyan]" if w.get("is_custom") else "[dim]Default[/dim]"
-        table.add_row(w["dimension"], f"{w['weight']:.2f}", custom)
-    console.print(table)
-
-
-@admin_app.command(name="weight-set")
-def admin_weight_set(
-    dimension: str = typer.Argument(..., help="Dimension name (e.g. goal_completion)"),
-    weight: float = typer.Argument(..., help="New weight (0.0 - 1.0)"),
-):
-    """Set a global dimension weight."""
-    with spinner("Updating weight..."):
-        result = client.put("/api/v1/admin/weights", {dimension: weight})
-    updated = result.get("updated", {})
-    if dimension in updated:
-        rprint(f"[green]Set {dimension} = {updated[dimension]}[/green]")
-    else:
-        rprint(f"[red]Unknown dimension: {dimension}[/red]")
-
-
 @admin_app.command(name="users")
 def admin_users(output: str = typer.Option("table", "--output", "-o")):
-    """List all users."""
+    """List all users.
+
+    Displays all registered users with their email, name, role, and ID.
+    Requires admin privileges.
+
+    Examples:
+
+        observal admin users
+
+        observal admin users --output json
+    """
     with spinner():
         data = client.get("/api/v1/admin/users")
     if output == "json":
@@ -908,7 +771,7 @@ def admin_create_user(
     rprint(f"  [bold]Role:[/bold]     {data['role']}")
     rprint(f"  [bold]ID:[/bold]       {data['id']}")
     rprint(f"\n[yellow]Password:[/yellow] {data['password']}")
-    rprint("[dim]Save this — it will not be shown again.[/dim]")
+    rprint("[dim]Save this, it will not be shown again.[/dim]")
 
 
 @admin_app.command(name="reset-password")
@@ -920,6 +783,12 @@ def admin_reset_password(
 
     Provide the user's email and either enter a new password interactively
     or use --generate to create a secure random password.
+
+    Examples:
+
+        observal admin reset-password alice@example.com
+
+        observal admin reset-password alice@example.com --generate
     """
     # Look up user ID by email
     with spinner("Looking up user..."):
@@ -932,8 +801,8 @@ def admin_reset_password(
     if generate:
         body: dict = {"generate": True}
     else:
-        new_password = typer.prompt("New password", hide_input=True)
-        confirm = typer.prompt("Confirm password", hide_input=True)
+        new_password = password_input("New password")
+        confirm = password_input("Confirm password")
         if new_password != confirm:
             rprint("[red]Passwords do not match.[/red]")
             raise typer.Exit(1)
@@ -945,7 +814,7 @@ def admin_reset_password(
     rprint(f"[green]{result['message']}[/green]")
     if "generated_password" in result:
         rprint(f"\n[yellow]Generated password:[/yellow] {result['generated_password']}")
-        rprint("[dim]Save this — it will not be shown again.[/dim]")
+        rprint("[dim]Save this, it will not be shown again.[/dim]")
 
 
 @admin_app.command(name="delete-user")
@@ -956,6 +825,12 @@ def admin_delete_user(
     """Delete a user account. Requires admin privileges.
 
     This permanently removes the user and all associated data (API keys, etc.).
+
+    Examples:
+
+        observal admin delete-user alice@example.com
+
+        observal admin delete-user alice@example.com --force
     """
     # Look up user ID by email
     with spinner("Looking up user..."):
@@ -965,7 +840,7 @@ def admin_delete_user(
         rprint(f"[red]User not found:[/red] {email}")
         raise typer.Exit(1)
 
-    rprint(f"\n  [bold]{match['name']}[/bold] ({match['email']}) — {match['role']}")
+    rprint(f"\n  [bold]{match['name']}[/bold] ({match['email']}), {match['role']}")
     if not force:
         typer.confirm("\nPermanently delete this user?", abort=True)
 
@@ -975,111 +850,23 @@ def admin_delete_user(
     rprint(f"[green]Deleted user {match['email']}[/green]")
 
 
-@admin_app.command(name="canaries")
-def admin_canaries(
-    agent_id: str = typer.Argument(..., help="Agent ID to list canaries for"),
-    output: str = typer.Option("table", "--output", "-o"),
-):
-    """List canary configs for an agent."""
-    with spinner():
-        data = client.get(f"/api/v1/admin/canaries/{agent_id}")
-    if output == "json":
-        output_json(data)
-        return
-    if not data:
-        rprint(f"[dim]No canaries configured for agent {agent_id}.[/dim]")
-        return
-    table = Table(title=f"Canaries for {agent_id[:8]}...", show_lines=False, padding=(0, 1))
-    table.add_column("ID", style="dim", max_width=12)
-    table.add_column("Type", style="bold")
-    table.add_column("Injection Point")
-    table.add_column("Enabled")
-    table.add_column("Expected Behavior")
-    for c in data:
-        enabled = "[green]Yes[/green]" if c.get("enabled") else "[red]No[/red]"
-        table.add_row(
-            str(c.get("id", ""))[:8] + "...",
-            c.get("canary_type", ""),
-            c.get("injection_point", ""),
-            enabled,
-            c.get("expected_behavior", ""),
-        )
-    console.print(table)
-
-
-@admin_app.command(name="canary-add")
-def admin_canary_add(
-    agent_id: str = typer.Argument(..., help="Agent ID"),
-    canary_type: str = typer.Option("numeric", "--type", "-t", help="numeric, entity, or instruction"),
-    injection_point: str = typer.Option("tool_output", "--point", "-p", help="tool_output or context"),
-    canary_value: str = typer.Option("", "--value", "-v", help="Canary value to inject"),
-    expected: str = typer.Option("flag_anomaly", "--expected", "-e", help="Expected agent behavior"),
-):
-    """Add a canary config for an agent."""
-    body = {
-        "agent_id": agent_id,
-        "canary_type": canary_type,
-        "injection_point": injection_point,
-        "canary_value": canary_value,
-        "expected_behavior": expected,
-    }
-    with spinner("Creating canary..."):
-        result = client.post("/api/v1/admin/canaries", body)
-    rprint(f"[green]Canary created: id={result.get('id', '')[:8]}... type={result.get('canary_type')}[/green]")
-
-
-@admin_app.command(name="canary-reports")
-def admin_canary_reports(
-    agent_id: str = typer.Argument(..., help="Agent ID"),
-    output: str = typer.Option("table", "--output", "-o"),
-):
-    """Show canary detection reports for an agent."""
-    with spinner():
-        data = client.get(f"/api/v1/admin/canaries/{agent_id}/reports")
-    if output == "json":
-        output_json(data)
-        return
-    if not data:
-        rprint(f"[dim]No canary reports for agent {agent_id}.[/dim]")
-        return
-    table = Table(title=f"Canary Reports for {agent_id[:8]}...", show_lines=False, padding=(0, 1))
-    table.add_column("Trace", style="dim", max_width=12)
-    table.add_column("Type")
-    table.add_column("Behavior", style="bold")
-    table.add_column("Penalty")
-    table.add_column("Evidence", max_width=40)
-    for r in data:
-        behavior = r.get("agent_behavior", "")
-        behavior_color = {"parroted": "red", "flagged": "green", "ignored": "yellow", "corrected": "cyan"}.get(
-            behavior, "white"
-        )
-        penalty = "[red]Yes[/red]" if r.get("penalty_applied") else "[green]No[/green]"
-        table.add_row(
-            str(r.get("trace_id", ""))[:8] + "...",
-            r.get("canary_type", ""),
-            f"[{behavior_color}]{behavior}[/{behavior_color}]",
-            penalty,
-            r.get("evidence", "")[:40],
-        )
-    console.print(table)
-
-
-@admin_app.command(name="canary-delete")
-def admin_canary_delete(
-    canary_id: str = typer.Argument(..., help="Canary config ID to delete"),
-):
-    """Delete a canary config."""
-    with spinner("Deleting canary..."):
-        client.delete(f"/api/v1/admin/canaries/{canary_id}")
-    rprint(f"[green]Canary {canary_id[:8]}... deleted.[/green]")
-
-
 # ── Diagnostics ─────────────────────────────────────────
 
 
 @admin_app.command(name="diagnostics")
 def admin_diagnostics(output: str = typer.Option("table", "--output", "-o")):
-    """Show system diagnostics and health status."""
+    """Show system diagnostics and health status.
+
+    Reports overall system health, database connectivity, JWT key status,
+    and enterprise configuration issues. Useful for troubleshooting
+    deployment problems.
+
+    Examples:
+
+        observal admin diagnostics
+
+        observal admin diagnostics --output json
+    """
     with spinner():
         data = client.get("/api/v1/admin/diagnostics")
     if output == "json":
@@ -1089,7 +876,7 @@ def admin_diagnostics(output: str = typer.Option("table", "--output", "-o")):
     overall = data.get("status", "unknown")
     color = {"ok": "green", "degraded": "yellow", "unhealthy": "red"}.get(overall, "white")
     rprint(f"\n  Overall: [{color}]{overall}[/{color}]")
-    rprint(f"  Mode:    {data.get('deployment_mode', 'unknown')}")
+    rprint(f"  Licensed: {'yes' if data.get('licensed') else 'no'}")
 
     checks = data.get("checks", {})
 
@@ -1122,7 +909,17 @@ def admin_diagnostics(output: str = typer.Option("table", "--output", "-o")):
 
 @admin_app.command(name="saml-config")
 def admin_saml_config(output: str = typer.Option("table", "--output", "-o")):
-    """View current SAML SSO configuration. (Enterprise only)"""
+    """View current SAML SSO configuration. (Enterprise only)
+
+    Displays the IdP entity ID, SSO/SLO URLs, SP entity ID, and whether
+    SAML and JIT provisioning are active.
+
+    Examples:
+
+        observal admin saml-config
+
+        observal admin saml-config --output json
+    """
     _require_enterprise()
     with spinner():
         data = client.get("/api/v1/admin/saml-config")
@@ -1189,7 +986,17 @@ def admin_saml_config_set(
 def admin_saml_config_delete(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
 ):
-    """Delete SAML SSO configuration. Disables SAML SSO. (Enterprise only)"""
+    """Delete SAML SSO configuration. Disables SAML SSO. (Enterprise only)
+
+    Removes the entire SAML configuration, disabling SSO for all users.
+    Prompts for confirmation unless --force is passed.
+
+    Examples:
+
+        observal admin saml-config-delete
+
+        observal admin saml-config-delete --force
+    """
     _require_enterprise()
     if not force:
         typer.confirm("This will disable SAML SSO for all users. Continue?", abort=True)
@@ -1203,7 +1010,17 @@ def admin_saml_config_delete(
 
 @admin_app.command(name="scim-tokens")
 def admin_scim_tokens(output: str = typer.Option("table", "--output", "-o")):
-    """List SCIM provisioning tokens. (Enterprise only)"""
+    """List SCIM provisioning tokens. (Enterprise only)
+
+    Shows all SCIM bearer tokens with their prefix, description,
+    active status, and creation date.
+
+    Examples:
+
+        observal admin scim-tokens
+
+        observal admin scim-tokens --output json
+    """
     _require_enterprise()
     with spinner():
         data = client.get("/api/v1/admin/scim-tokens")
@@ -1240,6 +1057,10 @@ def admin_scim_token_create(
     """Create a new SCIM provisioning token.
 
     The token is shown once on creation. Save it securely. (Enterprise only)
+
+    Examples:
+        observal admin scim-token-create
+        observal admin scim-token-create --description "Okta SCIM sync"
     """
     _require_enterprise()
     body: dict = {}
@@ -1259,7 +1080,17 @@ def admin_scim_token_revoke(
     token_id: str = typer.Argument(..., help="Token ID to revoke"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
 ):
-    """Revoke a SCIM provisioning token. (Enterprise only)"""
+    """Revoke a SCIM provisioning token. (Enterprise only)
+
+    Permanently disables the specified SCIM token so it can no longer
+    be used for provisioning. Prompts for confirmation unless --force.
+
+    Examples:
+
+        observal admin scim-token-revoke abc12345-uuid
+
+        observal admin scim-token-revoke abc12345-uuid --force
+    """
     _require_enterprise()
     if not force:
         typer.confirm(f"Revoke SCIM token {token_id[:8]}...?", abort=True)
@@ -1279,7 +1110,21 @@ def admin_security_events(
     limit: int = typer.Option(50, "--limit", "-n"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """View security events log."""
+    """View security events log.
+
+    Lists security-relevant events (login attempts, permission changes,
+    etc.) with optional filters on type, severity, and actor.
+
+    Examples:
+
+        observal admin security-events
+
+        observal admin security-events --type auth.login --severity critical
+
+        observal admin security-events --actor alice@example.com -n 100
+
+        observal admin security-events --output json
+    """
     params: dict = {"limit": str(limit)}
     if event_type:
         params["event_type"] = event_type
@@ -1335,7 +1180,22 @@ def admin_audit_log(
     limit: int = typer.Option(50, "--limit", "-n"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Query the audit log. (Enterprise only)"""
+    """Query the audit log. (Enterprise only)
+
+    Shows timestamped entries of admin and user actions with actor,
+    resource, IP address, and detail fields. Supports filtering by
+    action, actor, and resource type.
+
+    Examples:
+
+        observal admin audit-log
+
+        observal admin audit-log --action auth.login --limit 100
+
+        observal admin audit-log --actor alice@example.com -r agent
+
+        observal admin audit-log --output json
+    """
     _require_enterprise()
     from urllib.parse import urlencode
 
@@ -1385,7 +1245,19 @@ def admin_audit_log_export(
     actor: str = typer.Option(None, "--actor", help="Filter by actor email"),
     file: str = typer.Option(None, "--file", "-f", help="Write output to file"),
 ):
-    """Export audit log as CSV. (Enterprise only)"""
+    """Export audit log as CSV. (Enterprise only)
+
+    Downloads the audit log in CSV format. Prints to stdout by default,
+    or writes to a file with --file.
+
+    Examples:
+
+        observal admin audit-log-export
+
+        observal admin audit-log-export --file audit.csv
+
+        observal admin audit-log-export --action auth.login --actor bob@example.com
+    """
     _require_enterprise()
     from urllib.parse import urlencode
 
@@ -1413,7 +1285,15 @@ def admin_audit_log_export(
 
 @admin_app.command(name="trace-privacy")
 def admin_trace_privacy():
-    """View trace privacy setting."""
+    """View trace privacy setting.
+
+    Shows whether trace privacy (sensitive data redaction) is currently
+    enabled or disabled for the organization.
+
+    Examples:
+
+        observal admin trace-privacy
+    """
     with spinner():
         data = client.get("/api/v1/admin/org/trace-privacy")
     enabled = data.get("trace_privacy", False)
@@ -1425,7 +1305,17 @@ def admin_trace_privacy():
 def admin_trace_privacy_set(
     enabled: bool = typer.Argument(..., help="true or false"),
 ):
-    """Enable or disable trace privacy (redacts sensitive trace data)."""
+    """Enable or disable trace privacy (redacts sensitive trace data).
+
+    When enabled, the server scrubs PII and secrets from stored traces.
+    When disabled, traces are stored verbatim.
+
+    Examples:
+
+        observal admin trace-privacy-set true
+
+        observal admin trace-privacy-set false
+    """
     with spinner("Updating trace privacy..."):
         result = client.put("/api/v1/admin/org/trace-privacy", {"trace_privacy": enabled})
     status = "[green]enabled[/green]" if result.get("trace_privacy") else "[red]disabled[/red]"
@@ -1437,7 +1327,15 @@ def admin_trace_privacy_set(
 
 @admin_app.command(name="cache-clear")
 def admin_cache_clear():
-    """Clear all server caches."""
+    """Clear all server caches.
+
+    Flushes all in-memory and Redis caches on the server. Useful after
+    bulk data changes or when stale data is suspected.
+
+    Examples:
+
+        observal admin cache-clear
+    """
     with spinner("Clearing caches..."):
         client.post("/api/v1/admin/cache/clear")
     rprint("[green]All caches cleared.[/green]")
@@ -1451,7 +1349,17 @@ def admin_set_role(
     email: str = typer.Argument(..., help="Email of the user"),
     role: str = typer.Argument(..., help="New role: super_admin, admin, reviewer, or user"),
 ):
-    """Change a user's role."""
+    """Change a user's role.
+
+    Updates the role for the user identified by email. Valid roles are:
+    super_admin, admin, reviewer, user. Requires admin privileges.
+
+    Examples:
+
+        observal admin set-role alice@example.com admin
+
+        observal admin set-role bob@example.com reviewer
+    """
     with spinner("Looking up user..."):
         users = client.get("/api/v1/admin/users")
     match = next((u for u in users if u["email"] == email.strip().lower()), None)
@@ -1466,88 +1374,184 @@ def admin_set_role(
 # ── Traces / Spans (on ops_app) ─────────────────────────
 
 
+def _graphql_query(query: str, variables: dict | None = None) -> dict:
+    """Execute a GraphQL query via the client module (handles auth refresh + retries)."""
+    payload = {"query": query}
+    if variables:
+        payload["variables"] = variables
+    return client.post("/api/v1/graphql", payload)
+
+
 @ops_app.command(name="traces")
 def _traces(
-    trace_type: str | None = typer.Option(None, "--type", "-t"),
-    mcp_id: str | None = typer.Option(None, "--mcp"),
-    agent_id: str | None = typer.Option(None, "--agent"),
+    platform: str | None = typer.Option(None, "--platform", "-p", help="Filter by IDE platform"),
+    days: int | None = typer.Option(None, "--days", "-d", help="Limit to last N days"),
     limit: int = typer.Option(20, "--limit", "-n"),
+    turn: bool = typer.Option(False, "--turn", help="Unfold sessions to show turns (prompts)"),
+    span: bool = typer.Option(False, "--span", help="Show full detail including tool calls"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """List recent traces."""
-    _traces_impl(trace_type, mcp_id, agent_id, limit, output)
+    """List recent traces (sessions).
+
+    By default shows sessions as a summary table (user prompts).
+    Use --turn to unfold each session and show its turns/spans.
+    Use --span for full detail including tool call inputs/outputs.
+
+    Examples:
+
+        observal ops traces
+
+        observal ops traces --turn
+
+        observal ops traces --span --limit 5
+
+        observal ops traces --platform kiro --days 7
+    """
+    _traces_impl(platform, days, limit, turn, span, output)
 
 
-def _traces_impl(trace_type, mcp_id, agent_id, limit, output):
-    variables = {"limit": limit}
-    if trace_type:
-        variables["traceType"] = trace_type
-    if mcp_id:
-        variables["mcpId"] = config.resolve_alias(mcp_id)
-    if agent_id:
-        variables["agentId"] = config.resolve_alias(agent_id)
+def _traces_impl(platform, days, limit, turn, span, output):
+    # Fetch sessions from the REST endpoint (same data the web UI shows)
+    params: dict = {"limit": limit}
+    if platform:
+        params["platform"] = platform
+    if days:
+        params["days"] = days
 
-    query = """query($traceType: String, $mcpId: String, $agentId: String, $limit: Int) {
-        traces(traceType: $traceType, mcpId: $mcpId, agentId: $agentId, limit: $limit) {
-            items {
-                traceId traceType name mcpId agentId ide startTime
-                metrics { totalSpans errorCount toolCallCount }
-            }
-        }
-    }"""
-    import httpx
-
-    cfg = config.get_or_exit()
-    with spinner("Querying traces..."):
-        try:
-            r = httpx.post(
-                f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
-                json={"query": query, "variables": variables},
-                timeout=30,
-            )
-            r.raise_for_status()
-            items = r.json().get("data", {}).get("traces", {}).get("items", [])
-        except Exception as e:
-            rprint(f"[red]Failed to query traces: {e}[/red]")
-            raise typer.Exit(1)
+    with spinner("Querying sessions..."):
+        sessions = client.get("/api/v1/sessions", params=params)
 
     if output == "json":
-        output_json(items)
+        output_json(sessions)
         return
 
-    if not items:
+    if not sessions:
         rprint("[dim]No traces found.[/dim]")
         return
 
-    table = Table(title=f"Traces ({len(items)})", show_lines=False, padding=(0, 1))
+    if span or turn:
+        _render_sessions_detail(sessions, full=span)
+    else:
+        _render_sessions_summary(sessions)
+
+
+def _render_sessions_summary(sessions: list[dict]):
+    """Default view: flat table of sessions (user prompts)."""
+    table = Table(title=f"Sessions ({len(sessions)})", show_lines=False, padding=(0, 1))
     table.add_column("#", style="dim", width=3)
-    table.add_column("Trace ID", style="dim", max_width=14)
-    table.add_column("Type")
-    table.add_column("Name", no_wrap=True)
-    table.add_column("Ref", style="dim", max_width=16)
-    table.add_column("IDE")
-    table.add_column("Spans", justify="right")
-    table.add_column("Err", justify="right")
+    table.add_column("Session", no_wrap=True, max_width=30)
+    table.add_column("User")
+    table.add_column("Platform")
+    table.add_column("Prompts", justify="right")
     table.add_column("Tools", justify="right")
+    table.add_column("Tokens", justify="right")
     table.add_column("When")
-    for i, t in enumerate(items, 1):
-        m = t.get("metrics", {})
-        ref = t.get("mcpId") or t.get("agentId") or "--"
-        errs = m.get("errorCount", 0)
-        err_style = "red" if errs > 0 else ""
+    for i, s in enumerate(sessions, 1):
+        # Build a session name from prompt count
+        prompt_count = int(s.get("prompt_count", 0))
+        name = f"{prompt_count} prompt{'s' if prompt_count != 1 else ''}"
+        tokens_in = int(s.get("total_input_tokens", 0))
+        tokens_out = int(s.get("total_output_tokens", 0))
+        tokens_display = _format_tokens(tokens_in, tokens_out)
         table.add_row(
             str(i),
-            t["traceId"][:12] + "…",
-            t.get("traceType", ""),
-            t.get("name", "") or "--",
-            ref[:16],
-            t.get("ide", "") or "--",
-            str(m.get("totalSpans", 0)),
-            f"[{err_style}]{errs}[/{err_style}]" if err_style else str(errs),
-            str(m.get("toolCallCount", 0)),
-            relative_time(t.get("startTime")),
+            name,
+            s.get("user_name", "--"),
+            s.get("platform", "--"),
+            str(prompt_count),
+            str(int(s.get("tool_result_count", 0))),
+            tokens_display,
+            relative_time(s.get("first_event_time") or s.get("last_event_time")),
         )
     console.print(table)
+
+
+def _render_sessions_detail(sessions: list[dict], full: bool = False):
+    """--turn / --span view: fetch session detail and show turns."""
+    from rich.tree import Tree
+
+    tree = Tree(f"[bold]Sessions ({len(sessions)})[/bold]")
+    for s in sessions:
+        session_id = s.get("session_id", "")
+        prompt_count = int(s.get("prompt_count", 0))
+        tool_count = int(s.get("tool_result_count", 0))
+        tokens_in = int(s.get("total_input_tokens", 0))
+        tokens_out = int(s.get("total_output_tokens", 0))
+        name = f"{prompt_count} prompt{'s' if prompt_count != 1 else ''}"
+        session_label = (
+            f"[bold]{name}[/bold] "
+            f"[dim]{session_id[:12]}…[/dim] "
+            f"[cyan]{s.get('platform', '')}[/cyan] "
+            f"[dim]{s.get('user_name', '')}[/dim] "
+            f"[dim]{relative_time(s.get('first_event_time'))}[/dim]"
+        )
+        session_node = tree.add(session_label)
+
+        # Fetch session detail for turns
+        try:
+            detail = client.get(f"/api/v1/sessions/{session_id}")
+        except Exception:
+            # Detail endpoint failed (e.g. no session parser for this IDE)
+            # Show summary info we already have
+            session_node.add(f"[dim]prompts: {prompt_count}, tools: {tool_count}[/dim]")
+            session_node.add(f"[dim]tokens: {_format_tokens(tokens_in, tokens_out)}[/dim]")
+            if s.get("model"):
+                session_node.add(f"[dim]model: {s['model']}[/dim]")
+            continue
+
+        events = detail.get("events", [])
+        if not events:
+            session_node.add(f"[dim]prompts: {prompt_count}, tools: {tool_count}[/dim]")
+            session_node.add(f"[dim]tokens: {_format_tokens(tokens_in, tokens_out)}[/dim]")
+            continue
+
+        for evt in events:
+            etype = evt.get("event_name", "")
+            body = evt.get("body", "") or ""
+            attrs = evt.get("attributes", {})
+
+            if etype in ("user_prompt", "human_turn", "hook_userpromptsubmit"):
+                prompt_text = body[:100] + ("…" if len(body) > 100 else "")
+                session_node.add(f"[bold green]▶[/bold green] {prompt_text}")
+            elif etype in ("assistant_response", "assistant_turn", "hook_assistant_response"):
+                if full:
+                    resp_text = body[:150] + ("…" if len(body) > 150 else "")
+                    session_node.add(f"  [dim]{resp_text}[/dim]")
+            elif etype in ("tool_call", "hook_pretooluse"):
+                tool_name = attrs.get("tool_name") or body[:50]
+                session_node.add(f"  [cyan]⚡ {tool_name}[/cyan]")
+            elif etype in ("tool_result", "hook_posttooluse") and full:
+                result_text = body[:100] + ("…" if len(body) > 100 else "")
+                session_node.add(f"    [dim]→ {result_text}[/dim]")
+
+        # Show subagent sessions if available
+        for sub in detail.get("subagent_sessions", []):
+            sub_events = sub.get("events", [])
+            sub_node = session_node.add(f"[yellow]↳ subagent ({len(sub_events)} events)[/yellow]")
+            if full:
+                for evt in sub_events[:10]:
+                    etype = evt.get("event_name", "")
+                    body = evt.get("body", "") or ""
+                    if etype in ("user_prompt", "human_turn"):
+                        sub_node.add(f"[green]▶[/green] {body[:80]}")
+                    elif etype == "tool_call":
+                        tool_name = evt.get("attributes", {}).get("tool_name") or body[:40]
+                        sub_node.add(f"  [cyan]⚡ {tool_name}[/cyan]")
+
+    console.print(tree)
+
+
+def _format_tokens(input_tokens: int, output_tokens: int) -> str:
+    """Format token counts compactly (e.g. '13.8k / 137')."""
+
+    def _fmt(n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        elif n >= 1_000:
+            return f"{n / 1_000:.1f}k"
+        return str(n)
+
+    return f"{_fmt(input_tokens)} / {_fmt(output_tokens)}"
 
 
 @ops_app.command(name="spans")
@@ -1555,7 +1559,18 @@ def _spans(
     trace_id: str = typer.Argument(..., help="Trace ID"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """List spans for a trace."""
+    """List spans for a trace.
+
+    Shows all spans within a trace, including type, method, latency,
+    status, and schema validation result. Use a trace ID from
+    `observal ops traces` output.
+
+    Examples:
+
+        observal ops spans abc123-trace-id
+
+        observal ops spans abc123-trace-id --output json
+    """
     _spans_impl(trace_id, output)
 
 
@@ -1569,21 +1584,10 @@ def _spans_impl(trace_id, output):
             }
         }
     }"""
-    import httpx
 
-    cfg = config.get_or_exit()
     with spinner("Querying spans..."):
-        try:
-            r = httpx.post(
-                f"{cfg['server_url'].rstrip('/')}/api/v1/graphql",
-                json={"query": query, "variables": {"traceId": trace_id}},
-                timeout=30,
-            )
-            r.raise_for_status()
-            trace_data = r.json().get("data", {}).get("trace")
-        except Exception as e:
-            rprint(f"[red]Failed to query spans: {e}[/red]")
-            raise typer.Exit(1)
+        result = _graphql_query(query, {"traceId": trace_id})
+        trace_data = result.get("data", {}).get("trace")
 
     if not trace_data:
         rprint(f"[yellow]Trace {trace_id} not found.[/yellow]")
@@ -1632,52 +1636,284 @@ def _spans_impl(trace_id, output):
 
 
 # ═══════════════════════════════════════════════════════════
-# self_app — CLI self-management commands
+# self_app: CLI self-management commands
 # ═══════════════════════════════════════════════════════════
 
 self_app = typer.Typer(
     name="self",
-    help="CLI self-management commands (upgrade, downgrade)",
+    help="CLI self-management commands (upgrade, downgrade, rollback, status)",
     no_args_is_help=True,
 )
 
 
-def _upgrade_impl():
-    """Upgrade observal CLI to the latest version."""
-    import subprocess
+def _do_install(install_info, target_version: str, direction: str) -> None:
+    """Execute the actual version change. Delegates to upgrade_executor module."""
+    # Lazy import to avoid circular dependency (upgrade_executor imports from version_check)
+    from observal_cli.upgrade_executor import execute
 
-    with spinner("Upgrading..."):
-        result = subprocess.run(
-            ["uv", "tool", "upgrade", "observal-cli"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    if result.returncode == 0:
-        rprint("[green]✓ Upgraded![/green]")
-        if result.stdout.strip():
-            rprint(f"[dim]{result.stdout.strip()}[/dim]")
-    else:
-        rprint(f"[red]Upgrade failed:[/red] {result.stderr.strip()}")
+    execute(install_info, target_version, direction, spinner)
+
+
+@self_app.command()
+def upgrade(
+    version: str | None = typer.Option(
+        None, "--version", "-v", help="Target version to upgrade to (e.g. 0.9.0). Defaults to latest stable."
+    ),
+    pre: bool = typer.Option(False, "--pre", help="Include pre-release versions when resolving latest"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip interactive confirmation prompt"),
+):
+    """Upgrade the observal CLI to the latest (or specified) version.
+
+    Downloads the new binary from GitHub releases, verifies its SHA-256
+    checksum, and atomically replaces the current binary. A backup of
+    the old version is kept for rollback.
+
+    Managed installs (Homebrew, system packages) are detected and
+    blocked with guidance to use the package manager instead.
+
+    Examples:
+        observal self upgrade
+        observal self upgrade --version 0.9.0
+        observal self upgrade --pre
+        observal self upgrade --force
+    """
+    from packaging.version import InvalidVersion, Version
+
+    from observal_cli import install_detector, version_check
+    from observal_cli.install_detector import InstallMethod
+    from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
+
+    current = version_check.get_current_version()
+    install = install_detector.detect()
+
+    # Block managed installs
+    if install.method in (InstallMethod.HOMEBREW, InstallMethod.SYSTEM_PACKAGE):
+        mgr = install.managed_by or "your package manager"
+        rprint(f"[yellow]Observal is managed by {mgr}.[/yellow]")
+        rprint(f"[dim]Upgrade with: {mgr} upgrade observal[/dim]")
         raise typer.Exit(1)
 
+    # Resolve target
+    if version:
+        try:
+            Version(version)
+        except InvalidVersion:
+            rprint(f"[red]Invalid version: {version}[/red]")
+            raise typer.Exit(1)
+        target = version
+    else:
+        with spinner("Checking for updates..."):
+            rel = version_check._fetch_from_github(include_pre=pre)
+        if not rel:
+            rprint("[red]Failed to fetch latest release from GitHub.[/red]")
+            raise typer.Exit(1)
+        target = rel["latest_version"]
 
-def _downgrade_impl():
-    """Downgrade observal CLI to a previous version."""
-    rprint("[yellow]WIP: not yet implemented.[/yellow]")
-    rprint("[dim]Track: https://github.com/BlazeUp-AI/Observal/issues/19[/dim]")
+    if target == current:
+        rprint(f"[green]Already on v{current} (latest).[/green]")
+        raise typer.Exit(0)
+
+    try:
+        if Version(target) < Version(current):
+            rprint(f"[yellow]v{target} is older than current v{current}.[/yellow]")
+            rprint(f"[dim]Use: observal self downgrade --version {target}[/dim]")
+            raise typer.Exit(1)
+    except InvalidVersion:
+        pass
+
+    # Confirm
+    if not force:
+        rprint(f"  Current: [dim]v{current}[/dim]")
+        rprint(f"  Target:  [green]v{target}[/green]")
+        rprint(f"  Method:  [dim]{install.method.value} ({install.path})[/dim]")
+        if not typer.confirm("\nProceed with upgrade?"):
+            raise typer.Abort()
+
+    # Lock + execute
+    try:
+        lock = acquire_lock("cli")
+    except UpgradeLockError as e:
+        rprint(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    try:
+        _do_install(install, target, direction="upgrade")
+    finally:
+        release_lock(lock)
 
 
 @self_app.command()
-def upgrade():
-    """Upgrade observal CLI to the latest version."""
-    _upgrade_impl()
+def downgrade(
+    version: str | None = typer.Option(None, "--version", "-v", help="Target version to downgrade to (required)"),
+    list_versions: bool = typer.Option(
+        False, "--list", "-l", help="List all available versions with compatibility status"
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation prompt"),
+):
+    """Downgrade the observal CLI to a previous version.
+
+    Downloads and installs a specific older version from GitHub releases.
+
+    Use --list to see all available versions with their publication dates
+    and compatibility status.
+
+    Examples:
+        observal self downgrade --version 0.7.0
+        observal self downgrade --list
+        observal self downgrade --version 0.7.0 --force
+    """
+    from packaging.version import InvalidVersion, Version
+
+    from observal_cli import install_detector, version_check
+    from observal_cli.install_detector import InstallMethod
+    from observal_cli.upgrade_lock import UpgradeLockError, acquire_lock, release_lock
+
+    current = version_check.get_current_version()
+
+    if list_versions:
+        releases = version_check.fetch_all_releases()
+        if not releases:
+            rprint("[red]Failed to fetch releases from GitHub.[/red]")
+            raise typer.Exit(1)
+
+        table = Table(title="Available Versions")
+        table.add_column("Version", style="bold")
+        table.add_column("Published")
+        table.add_column("Status")
+
+        for r in releases:
+            status = ""
+            if r["version"] == current:
+                status = "← current"
+            table.add_row(r["version"], r.get("published_at", "")[:10], status)
+
+        from rich.console import Console
+
+        Console().print(table)
+        raise typer.Exit(0)
+
+    if not version:
+        rprint("[red]--version is required for downgrade.[/red]")
+        rprint("[dim]Use --list to see available versions.[/dim]")
+        raise typer.Exit(1)
+
+    try:
+        target = Version(version)
+    except InvalidVersion:
+        rprint(f"[red]Invalid version: {version}[/red]")
+        raise typer.Exit(1)
+
+    # Enforce version floor - cannot go below 1.0.0
+    if target < Version(version_check.VERSION_FLOOR):
+        rprint(
+            f"[bold red]\u2716 Cannot downgrade below v{version_check.VERSION_FLOOR}.[/bold red]\n"
+            f"  Versioning is not supported on earlier releases.\n"
+            f"  Minimum allowed version: [cyan]v{version_check.VERSION_FLOOR}[/cyan]"
+        )
+        raise typer.Exit(1)
+
+    try:
+        if target >= Version(current):
+            rprint(f"[yellow]v{version} is not older than current v{current}.[/yellow]")
+            rprint("[dim]Use: observal self upgrade[/dim]")
+            raise typer.Exit(1)
+    except InvalidVersion:
+        pass
+
+    install = install_detector.detect()
+    if install.method in (InstallMethod.HOMEBREW, InstallMethod.SYSTEM_PACKAGE):
+        mgr = install.managed_by or "your package manager"
+        rprint(f"[yellow]Observal is managed by {mgr}.[/yellow]")
+        raise typer.Exit(1)
+
+    if not force:
+        rprint(f"  Current: [dim]v{current}[/dim]")
+        rprint(f"  Target:  [yellow]v{version}[/yellow]")
+        if not typer.confirm("\nProceed with downgrade?"):
+            raise typer.Abort()
+
+    try:
+        lock = acquire_lock("cli")
+    except UpgradeLockError as e:
+        rprint(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    try:
+        _do_install(install, version, direction="downgrade")
+    finally:
+        release_lock(lock)
 
 
 @self_app.command()
-def downgrade():
-    """Downgrade observal CLI to a previous version."""
-    _downgrade_impl()
+def rollback():
+    """Restore the CLI to the version before the last upgrade/downgrade.
+
+    Copies the backed-up binary (saved during the previous upgrade) back
+    over the current one. Only available for binary installs.
+
+    Examples:
+        observal self rollback
+    """
+    from observal_cli import install_detector
+    from observal_cli.install_detector import InstallMethod
+
+    install = install_detector.detect()
+    backup = config.CONFIG_DIR / "bin" / "observal.prev"
+
+    if not backup.exists():
+        rprint("[red]No backup found. Nothing to rollback to.[/red]")
+        raise typer.Exit(1)
+
+    if install.method != InstallMethod.BINARY:
+        rprint("[yellow]Rollback only supported for binary installs.[/yellow]")
+        rprint(f"[dim]For {install.managed_by}: install the previous version explicitly.[/dim]")
+        raise typer.Exit(1)
+
+    import os
+    import shutil
+
+    target_path = install.path
+    rprint(f"  Restore: {backup} → {target_path}")
+    if not typer.confirm("Proceed?"):
+        raise typer.Abort()
+
+    shutil.copy2(str(backup), str(target_path))
+    os.chmod(str(target_path), 0o755)
+    rprint("[green]✓ Rolled back to previous version.[/green]")
+
+
+@self_app.command()
+def status():
+    """Show current CLI version, install method, and update availability.
+
+    Checks GitHub for the latest release and shows whether an update is
+    available. Also displays the server's minimum CLI version requirement
+    if connected.
+
+    Examples:
+        observal self status
+    """
+    from observal_cli import version_check
+
+    current = version_check.get_current_version()
+    rprint(f"  Version:  [bold]v{current}[/bold]")
+
+    from observal_cli import install_detector
+
+    install = install_detector.detect()
+    rprint(f"  Install:  [dim]{install.method.value} ({install.path})[/dim]")
+
+    # Always check (bypass OBSERVAL_NO_UPDATE_CHECK for explicit status command)
+    with spinner("Checking for updates..."):
+        rel = version_check._fetch_from_github()
+
+    if rel:
+        latest = rel["latest_version"]
+        if version_check._is_newer(latest, current):
+            rprint(f"  Latest:   [green]v{latest}[/green] (update available)")
+            rprint("\n  Run: [bold]observal self upgrade[/bold]")
+        else:
+            rprint(f"  Latest:   [green]v{latest}[/green] (up to date)")
+    else:
+        rprint("  Latest:   [dim]could not reach GitHub[/dim]")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1687,6 +1923,5 @@ def downgrade():
 # telemetry is a subgroup of ops
 ops_app.add_typer(telemetry_app, name="telemetry")
 
-# review and eval are subgroups of admin
+# review is a subgroup of admin
 admin_app.add_typer(review_app, name="review")
-admin_app.add_typer(eval_app, name="eval")

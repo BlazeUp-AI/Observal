@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-"use client";
 
 import { useState, useCallback, useMemo } from "react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import {
 	CheckCircle2,
 	X,
-	Trash2,
 	ExternalLink,
 	GitBranch,
 	AlertCircle,
@@ -24,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DetailSkeleton, TableSkeleton } from "@/components/shared/skeleton-layouts";
 import {
 	Tooltip,
 	TooltipContent,
@@ -41,7 +39,16 @@ import {
 	useRelatedSkills,
 	useApproveWithSkills,
 } from "@/hooks/use-api";
+import yaml from "js-yaml";
 import type { ReviewItem } from "@/lib/types";
+
+function toYaml(value: unknown): string {
+	try {
+		return yaml.dump(value, { lineWidth: 120, indent: 2, noRefs: true }).trimEnd();
+	} catch {
+		return JSON.stringify(value, null, 2);
+	}
+}
 
 function reviewItemHref(item: ReviewItem): string {
 	if (item.type === "agent") return `/agents/${item.id}`;
@@ -58,7 +65,7 @@ function DetailField({ label, value }: { label: string; value: unknown }) {
 			<dd className="text-sm mt-0.5">
 				{typeof value === "object" ? (
 					<pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
-						{JSON.stringify(value, null, 2)}
+						{toYaml(value)}
 					</pre>
 				) : typeof value === "boolean" ? (
 					value ? (
@@ -122,10 +129,10 @@ function HookConfigSection({ detail }: { detail: ReviewItem }) {
 			<DetailField label="Handler Type" value={detail.handler_type} />
 			<DetailField label="Scope" value={detail.scope} />
 			<DetailField label="Tool Filter" value={detail.tool_filter} />
-			<DetailField label="File Pattern" value={detail.file_pattern} />
 			<DetailField label="Handler Config" value={detail.handler_config} />
-			<DetailField label="Input Schema" value={detail.input_schema} />
-			<DetailField label="Output Schema" value={detail.output_schema} />
+			{detail.script_filename && <DetailField label="Script" value={detail.script_filename} />}
+			{detail.source_url && <DetailField label="Source" value={`${detail.source_url}@${detail.source_ref || 'main'}`} />}
+			{detail.requirements && detail.requirements.length > 0 && <DetailField label="Requirements" value={detail.requirements.join(', ')} />}
 		</dl>
 	);
 }
@@ -143,7 +150,7 @@ function PromptConfigSection({ detail }: { detail: ReviewItem }) {
 						Template
 					</dt>
 					<dd className="mt-0.5">
-						<pre className="max-h-60 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
+						<pre className="max-h-60 overflow-auto rounded bg-muted p-2 text-[11px] font-mono leading-relaxed break-words">
 							{detail.template}
 						</pre>
 					</dd>
@@ -158,12 +165,11 @@ function SandboxConfigSection({ detail }: { detail: ReviewItem }) {
 		<dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
 			<DetailField label="Runtime Type" value={detail.runtime_type} />
 			<DetailField label="Image" value={detail.image} />
-			<DetailField label="Dockerfile URL" value={detail.dockerfile_url} />
 			<DetailField label="Network Policy" value={detail.network_policy} />
 			<DetailField label="Entrypoint" value={detail.entrypoint} />
-			<DetailField label="Allowed Mounts" value={detail.allowed_mounts} />
 			<DetailField label="Resource Limits" value={detail.resource_limits} />
-			<DetailField label="Env Vars" value={detail.env_vars} />
+			{detail.sandbox_path && <DetailField label="Sandbox Path" value={detail.sandbox_path} />}
+			{detail.source_url && <DetailField label="Source" value={detail.source_url} />}
 		</dl>
 	);
 }
@@ -180,34 +186,41 @@ function AgentConfigSection({ detail }: { detail: ReviewItem }) {
 			<DetailField label="Model Config" value={detail.model_config_json} />
 			{detail.components && detail.components.length > 0 && (
 				<div className="col-span-full">
-					<dt className="text-xs font-medium text-muted-foreground">
+					<dt className="text-xs font-medium text-muted-foreground mb-1">
 						Components ({detail.components.length})
 					</dt>
-					<dd className="mt-0.5 space-y-2">
-						{detail.components.map((c, i) => (
-							<div key={i} className="text-xs rounded bg-muted overflow-hidden">
-								<div className="flex items-center gap-2 px-2 py-1">
-									<Badge variant="outline" className="text-[10px]">
-										{c.component_type}
-									</Badge>
-									<span className="font-medium">
-										{(c as Record<string, string>).name ||
-											c.component_id.slice(0, 8)}
-									</span>
-								</div>
-								{(c as Record<string, string>).template && (
-									<pre className="px-3 pb-2 text-[11px] font-mono whitespace-pre-wrap break-words text-muted-foreground leading-relaxed">
-										{(c as Record<string, string>).template}
-									</pre>
-								)}
-								{(c as Record<string, string>).description &&
-									!(c as Record<string, string>).template && (
-										<p className="px-3 pb-2 text-[11px] text-muted-foreground">
-											{(c as Record<string, string>).description}
-										</p>
+					<dd className="space-y-2">
+						{detail.components.map((c, i) => {
+							const comp = c as Record<string, unknown>;
+							const name = (comp.name as string) || `${c.component_type} component`;
+							const description = comp.description as string | undefined;
+							const CONTENT_KEYS = ["template", "skill_md_content", "handler_config", "input_schema", "output_schema", "source_url", "git_url", "config_json"];
+							const contentEntries = Object.entries(comp).filter(([k]) => CONTENT_KEYS.includes(k) && comp[k]);
+							return (
+								<div key={i} className="rounded border border-border overflow-hidden">
+									<div className="flex items-center gap-2 px-3 py-2 bg-muted/50">
+										<Badge variant="outline" className="text-[10px] shrink-0">
+											{c.component_type as string}
+										</Badge>
+										<span className="text-xs font-medium">{name}</span>
+									</div>
+									{description && (
+										<p className="px-3 py-1.5 text-[11px] text-muted-foreground border-b border-border/50">{description}</p>
 									)}
-							</div>
-						))}
+									{contentEntries.length > 0 && (
+										<details open className="group">
+											<summary className="cursor-pointer select-none px-3 py-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
+												<span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+												Content
+											</summary>
+											<pre className="px-3 py-2 text-[11px] font-mono leading-relaxed overflow-auto max-h-80 bg-background border-t border-border/50 break-words">
+												{toYaml(Object.fromEntries(contentEntries))}
+											</pre>
+										</details>
+									)}
+								</div>
+							);
+						})}
 					</dd>
 				</div>
 			)}
@@ -215,7 +228,7 @@ function AgentConfigSection({ detail }: { detail: ReviewItem }) {
 				<div className="col-span-full">
 					<dt className="text-xs font-medium text-muted-foreground">Prompt</dt>
 					<dd className="mt-0.5">
-						<pre className="max-h-60 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
+						<pre className="max-h-60 overflow-auto rounded bg-muted p-2 text-[11px] font-mono leading-relaxed break-words">
 							{detail.prompt}
 						</pre>
 					</dd>
@@ -265,12 +278,7 @@ function RelatedSkillsSection({
 	);
 
 	if (isLoading) {
-		return (
-			<div className="space-y-2">
-				<Skeleton className="h-4 w-40" />
-				<Skeleton className="h-8 w-full" />
-			</div>
-		);
+		return <TableSkeleton rows={1} cols={2} />;
 	}
 
 	if (!skills?.length) return null;
@@ -328,9 +336,8 @@ interface ReviewDetailSheetProps {
 	item: ReviewItem | null;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onApprove: (id: string, type?: string) => void;
+	onApprove: (id: string, type?: string, category?: string) => void;
 	onReject: (id: string, reason: string, type?: string) => void;
-	onDelete: (id: string, type?: string) => void;
 }
 
 export function ReviewDetailSheet({
@@ -339,7 +346,6 @@ export function ReviewDetailSheet({
 	onOpenChange,
 	onApprove,
 	onReject,
-	onDelete,
 }: ReviewDetailSheetProps) {
 	return (
 		<Sheet open={open} onOpenChange={onOpenChange}>
@@ -352,13 +358,10 @@ export function ReviewDetailSheet({
 						onOpenChange={onOpenChange}
 						onApprove={onApprove}
 						onReject={onReject}
-						onDelete={onDelete}
 					/>
 				) : (
-					<div className="space-y-4 pt-6">
-						<Skeleton className="h-6 w-48" />
-						<Skeleton className="h-4 w-full" />
-						<Skeleton className="h-4 w-3/4" />
+					<div className="pt-6">
+						<DetailSkeleton />
 					</div>
 				)}
 			</SheetContent>
@@ -372,14 +375,12 @@ function SheetBody({
 	onOpenChange,
 	onApprove,
 	onReject,
-	onDelete,
 }: {
 	item: ReviewItem;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onApprove: (id: string, type?: string) => void;
+	onApprove: (id: string, type?: string, category?: string) => void;
 	onReject: (id: string, reason: string, type?: string) => void;
-	onDelete: (id: string, type?: string) => void;
 }) {
 	const { data: detail, isLoading } = useReviewDetail(
 		open ? item.id : undefined,
@@ -387,7 +388,6 @@ function SheetBody({
 	const approveWithSkills = useApproveWithSkills();
 	const [showRejectInput, setShowRejectInput] = useState(false);
 	const [rejectReason, setRejectReason] = useState("");
-	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const merged = useMemo<ReviewItem>(() => {
 		if (detail) return { ...item, ...detail };
@@ -414,14 +414,6 @@ function SheetBody({
 			onOpenChange(false);
 		}
 	}, [merged, onApprove, onOpenChange]);
-
-	const handleDelete = useCallback(() => {
-		if (merged) {
-			onDelete(merged.id, merged.type);
-			setConfirmDelete(false);
-			onOpenChange(false);
-		}
-	}, [merged, onDelete, onOpenChange]);
 
 	const handleApproveWithSkills = useCallback(
 		(mcpId: string, skillIds: string[]) => {
@@ -519,10 +511,7 @@ function SheetBody({
 
 			{/* Type-specific config */}
 			{isLoading ? (
-				<div className="space-y-2">
-					<Skeleton className="h-4 w-32" />
-					<Skeleton className="h-20 w-full" />
-				</div>
+				<DetailSkeleton />
 			) : (
 				<div className="space-y-3">
 					<h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -600,7 +589,7 @@ function SheetBody({
 			<div className="space-y-3 border-t border-border pt-4">
 				<div className="flex items-center justify-between">
 					<Link
-						href={reviewItemHref(merged)}
+						to={reviewItemHref(merged)}
 						className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
 					>
 						<ExternalLink className="h-3 w-3" /> View public page
@@ -634,29 +623,6 @@ function SheetBody({
 							}}
 						>
 							<X className="h-3.5 w-3.5" />
-						</Button>
-					</div>
-				)}
-
-				{confirmDelete && (
-					<div className="flex items-center gap-2 p-2 rounded bg-destructive/5 border border-destructive/15">
-						<p className="text-xs text-destructive flex-1">
-							Permanently delete this submission?
-						</p>
-						<Button
-							size="sm"
-							className="h-7 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-none"
-							onClick={handleDelete}
-						>
-							Delete
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="h-7 w-7 p-0"
-							onClick={() => setConfirmDelete(false)}
-						>
-							<X className="h-3 w-3" />
 						</Button>
 					</div>
 				)}
@@ -697,24 +663,6 @@ function SheetBody({
 					>
 						{showRejectInput ? "Confirm" : "Reject"}
 					</Button>
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<Button
-									variant="ghost"
-									size="sm"
-									className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-									onClick={() => setConfirmDelete(true)}
-									aria-label="Delete submission"
-								>
-									<Trash2 className="h-3.5 w-3.5" />
-								</Button>
-							</TooltipTrigger>
-							<TooltipContent>
-								<p>Withdraw / delete submission</p>
-							</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
 				</div>
 			</div>
 		</div>

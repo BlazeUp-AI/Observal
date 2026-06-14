@@ -31,6 +31,7 @@ CLAUDE.md
 GEMINI.md
 .opencode/
 .github/copilot-instructions.md
+.github/hooks/
 .copilot/
 .worktrees/
 
@@ -39,6 +40,7 @@ GEMINI.md
 Thumbs.db
 
 # Python
+.venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
@@ -54,13 +56,26 @@ observal-web/dist/
 docker/data/
 docker/clickhouse/users.d/default-user.xml
 
+# Terraform
+**/.terraform/
+*.tfplan
+*.tfstate
+*.tfstate.backup
+
 # Local / ephemeral
 .playwright-mcp/
 e2e-screenshots/
 migration/
 *.pem
+test-scan.json
 
 # Private packages (symlinked for local Docker builds)
 observal-insights/
 .observal/
 .pi-lens/
+node_modules
+.pi/
+.mcp.json
+*.bak
+scripts/seed_demo.py
+.playwright-cli/

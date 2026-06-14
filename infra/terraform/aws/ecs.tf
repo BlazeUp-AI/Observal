@@ -36,23 +36,29 @@ locals {
   web_image = "${var.image_repo_web}:${var.image_tag}"
 
   # Non-secret env vars passed to api/worker/init.
-  app_environment = [
-    { name = "DEPLOYMENT_MODE", value = var.deployment_mode },
-    { name = "DATA_RETENTION_DAYS", value = tostring(var.data_retention_days) },
-    { name = "CLICKHOUSE_USER", value = local.clickhouse_self_hosted ? "default" : var.clickhouse_cloud_user },
-    { name = "DOMAIN", value = var.domain_name },
+  app_environment = concat([
     { name = "NEXT_PUBLIC_API_URL", value = local.app_url },
     { name = "JWT_KEY_DIR", value = "/tmp/keys" },
-  ]
+    ], var.demo_super_admin_email != "" ? [
+    { name = "DEMO_SUPER_ADMIN_EMAIL", value = var.demo_super_admin_email },
+    { name = "DEMO_SUPER_ADMIN_PASSWORD", value = var.demo_super_admin_password },
+    { name = "DEMO_ADMIN_EMAIL", value = var.demo_admin_email },
+    { name = "DEMO_ADMIN_PASSWORD", value = var.demo_admin_password },
+    { name = "DEMO_REVIEWER_EMAIL", value = var.demo_reviewer_email },
+    { name = "DEMO_REVIEWER_PASSWORD", value = var.demo_reviewer_password },
+    { name = "DEMO_USER_EMAIL", value = var.demo_user_email },
+    { name = "DEMO_USER_PASSWORD", value = var.demo_user_password },
+  ] : [])
 
   # Secrets injected by ECS at task start. Reference SSM Parameter Store ARNs.
-  app_secrets = [
+  app_secrets = concat([
     { name = "DATABASE_URL", valueFrom = aws_ssm_parameter.urls["DATABASE_URL"].arn },
     { name = "REDIS_URL", valueFrom = aws_ssm_parameter.urls["REDIS_URL"].arn },
     { name = "CLICKHOUSE_URL", valueFrom = aws_ssm_parameter.urls["CLICKHOUSE_URL"].arn },
-    { name = "CLICKHOUSE_PASSWORD", valueFrom = aws_ssm_parameter.app["CLICKHOUSE_PASSWORD"].arn },
     { name = "SECRET_KEY", valueFrom = aws_ssm_parameter.app["SECRET_KEY"].arn },
-  ]
+    ], local.is_enterprise ? [
+    { name = "OBSERVAL_LICENSE_KEY", valueFrom = aws_ssm_parameter.license_key[0].arn },
+  ] : [])
 }
 
 # ── Task: init (one-shot, runs entrypoint.sh) ─────────────────────────────
@@ -87,6 +93,7 @@ resource "aws_ecs_task_definition" "init" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 128, mountOptions = ["rw"] }]
     }
   }])
 
@@ -99,8 +106,8 @@ resource "aws_ecs_task_definition" "api" {
   family                   = "${local.name}-api"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.api_cpu)
-  memory                   = tostring(var.api_memory)
+  cpu                      = tostring(local.effective_api_cpu)
+  memory                   = tostring(local.effective_api_memory)
 
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
@@ -112,6 +119,7 @@ resource "aws_ecs_task_definition" "api" {
     command = [
       "/app/.venv/bin/python", "-m", "uvicorn", "main:app",
       "--host", "0.0.0.0", "--port", "8000",
+      "--workers", "2",
       "--proxy-headers", "--forwarded-allow-ips", "*",
     ]
     portMappings = [{ containerPort = 8000, protocol = "tcp" }]
@@ -137,6 +145,7 @@ resource "aws_ecs_task_definition" "api" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 256, mountOptions = ["rw"] }]
     }
   }])
 
@@ -149,8 +158,8 @@ resource "aws_ecs_task_definition" "worker" {
   family                   = "${local.name}-worker"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.worker_cpu)
-  memory                   = tostring(var.worker_memory)
+  cpu                      = tostring(local.effective_worker_cpu)
+  memory                   = tostring(local.effective_worker_memory)
 
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
@@ -176,6 +185,7 @@ resource "aws_ecs_task_definition" "worker" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs              = [{ containerPath = "/tmp", size = 256, mountOptions = ["rw"] }]
     }
   }])
 
@@ -188,8 +198,8 @@ resource "aws_ecs_task_definition" "web" {
   family                   = "${local.name}-web"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.web_cpu)
-  memory                   = tostring(var.web_memory)
+  cpu                      = tostring(local.effective_web_cpu)
+  memory                   = tostring(local.effective_web_memory)
 
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
@@ -221,6 +231,11 @@ resource "aws_ecs_task_definition" "web" {
     readonlyRootFilesystem = true
     linuxParameters = {
       initProcessEnabled = true
+      tmpfs = [
+        { containerPath = "/tmp", size = 64, mountOptions = ["rw"] },
+        { containerPath = "/var/cache/nginx", size = 64, mountOptions = ["rw"] },
+        { containerPath = "/var/run", size = 8, mountOptions = ["rw"] },
+      ]
     }
   }])
 
@@ -234,15 +249,15 @@ resource "aws_ecs_service" "api" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
   launch_type     = "FARGATE"
-  desired_count   = var.api_desired_count
+  desired_count   = local.effective_api_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
   health_check_grace_period_seconds  = 60
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets          = local.private_subnet_ids
+    security_groups  = [local.ecs_sg_id]
     assign_public_ip = false
   }
 
@@ -269,15 +284,15 @@ resource "aws_ecs_service" "web" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.web.arn
   launch_type     = "FARGATE"
-  desired_count   = var.web_desired_count
+  desired_count   = local.effective_web_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
   health_check_grace_period_seconds  = 30
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets          = local.private_subnet_ids
+    security_groups  = [local.ecs_sg_id]
     assign_public_ip = false
   }
 
@@ -301,14 +316,14 @@ resource "aws_ecs_service" "worker" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.worker.arn
   launch_type     = "FARGATE"
-  desired_count   = var.worker_desired_count
+  desired_count   = local.effective_worker_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
-    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets          = local.private_subnet_ids
+    security_groups  = [local.ecs_sg_id]
     assign_public_ip = false
   }
 
@@ -340,12 +355,20 @@ resource "null_resource" "run_init" {
     interpreter = ["/bin/bash", "-c"]
     command     = <<-EOT
       set -euo pipefail
+
+      # Give the data-host EC2 instance time to bootstrap ClickHouse.
+      # user-data takes 2-4 minutes (package install + docker pull + start).
+      # The init task's entrypoint.sh also retries 15 times with backoff,
+      # so this is a best-effort head start, not a hard gate.
+      echo "Waiting 120s for data-tier bootstrap to complete..."
+      sleep 120
+
       task_arn=$(aws ecs run-task \
         --region ${var.region} \
         --cluster ${aws_ecs_cluster.main.name} \
         --launch-type FARGATE \
         --task-definition ${aws_ecs_task_definition.init.arn} \
-        --network-configuration "awsvpcConfiguration={subnets=[${join(",", aws_subnet.private[*].id)}],securityGroups=[${aws_security_group.ecs_tasks.id}],assignPublicIp=DISABLED}" \
+        --network-configuration "awsvpcConfiguration={subnets=[${join(",", local.private_subnet_ids)}],securityGroups=[${local.ecs_sg_id}],assignPublicIp=DISABLED}" \
         --query 'tasks[0].taskArn' --output text)
       echo "Init task started: $task_arn"
       aws ecs wait tasks-stopped --region ${var.region} --cluster ${aws_ecs_cluster.main.name} --tasks "$task_arn"
@@ -364,6 +387,7 @@ resource "null_resource" "run_init" {
     aws_ecs_cluster.main,
     aws_iam_role_policy_attachment.ecs_execution_managed,
     aws_iam_role_policy_attachment.ecs_execution_secrets,
+    aws_instance.data_host,
   ]
 }
 
@@ -373,8 +397,8 @@ resource "aws_appautoscaling_target" "api" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.api.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.api_autoscale_min
-  max_capacity       = var.api_autoscale_max
+  min_capacity       = local.effective_api_autoscale_min
+  max_capacity       = local.effective_api_autoscale_max
 }
 
 resource "aws_appautoscaling_policy" "api_cpu" {
@@ -398,8 +422,8 @@ resource "aws_appautoscaling_target" "web" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.web.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.web_autoscale_min
-  max_capacity       = var.web_autoscale_max
+  min_capacity       = local.effective_web_autoscale_min
+  max_capacity       = local.effective_web_autoscale_max
 }
 
 resource "aws_appautoscaling_policy" "web_cpu" {
@@ -423,8 +447,8 @@ resource "aws_appautoscaling_target" "worker" {
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.worker.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  min_capacity       = var.worker_autoscale_min
-  max_capacity       = var.worker_autoscale_max
+  min_capacity       = local.effective_worker_autoscale_min
+  max_capacity       = local.effective_worker_autoscale_max
 }
 
 resource "aws_appautoscaling_policy" "worker_cpu" {

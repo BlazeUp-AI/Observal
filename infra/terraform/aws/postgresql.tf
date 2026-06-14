@@ -3,7 +3,7 @@
 
 resource "aws_db_subnet_group" "main" {
   name       = "${local.name}-db"
-  subnet_ids = aws_subnet.private[*].id
+  subnet_ids = local.private_subnet_ids
   tags       = { Name = "${local.name}-db-subnet-group" }
 }
 
@@ -17,7 +17,7 @@ resource "aws_db_instance" "postgres" {
   identifier     = "${local.name}-pg"
   engine         = "postgres"
   engine_version = "16"
-  instance_class = var.db_instance_class
+  instance_class = local.effective_db_instance_class
 
   allocated_storage     = var.db_allocated_storage_gb
   max_allocated_storage = var.db_max_allocated_storage_gb

@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
@@ -20,8 +21,9 @@ from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.constants import VALID_SKILL_TASK_TYPES
-from observal_cli.prompts import select_one
+from observal_cli.prompts import select_one, text_input
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
+from observal_cli.shared.utils import sanitize_name as _sanitize_name
 
 skill_app = typer.Typer(help="Skill registry commands")
 
@@ -31,14 +33,6 @@ def register_skill(app: typer.Typer):
 
 
 # ── Security helpers (port of vercel-labs installer.ts) ─────────────────────
-
-
-def _sanitize_name(name: str) -> str:
-    """Normalise a skill name to a safe directory name (lowercase, hyphenated)."""
-    name = name.lower().strip()
-    name = re.sub(r"[^a-z0-9_-]", "-", name)
-    name = re.sub(r"-{2,}", "-", name).strip("-")
-    return name or "skill"
 
 
 def _is_path_safe(path: Path, base: Path) -> bool:
@@ -80,18 +74,34 @@ def skill_submit(
     skill_md: str | None = typer.Option(None, "--skill-md", help="Path to SKILL.md to paste (auto-fills fields)"),
     git_url: str | None = typer.Option(None, "--git-url", help="Git repository URL"),
     git_ref: str | None = typer.Option(None, "--git-ref", help="Branch or tag (default: main)"),
+    script: str | None = typer.Option(None, "--script", help="Path to script file (registry_direct mode)"),
+    delivery_mode: str | None = typer.Option(None, "--delivery-mode", help="Delivery: git_fetch or registry_direct"),
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (skill ID)"),
 ):
     """Submit a new skill for review.
 
-    Preferred: provide --git-url (+ optional --skill-path / --git-ref) and let the
-    server fetch SKILL.md automatically.
+    Skills are reusable SKILL.md files that provide agents with task-specific
+    instructions. Preferred: provide --git-url (with optional --git-ref) and
+    let the server fetch SKILL.md automatically.
 
     Shortcut: provide --skill-md PATH to paste the SKILL.md content directly
-    (fields are auto-filled from frontmatter; --git-url is still required for install).
+    (fields are auto-filled from frontmatter; --git-url is still required
+    for install unless using --delivery-mode registry_direct).
+
+    Registry direct: use --delivery-mode registry_direct with --skill-md and
+    optionally --script to submit a skill with inline content (no git repo
+    needed). On install, the SKILL.md and script are written directly.
 
     Only submit skills you created or are the point-of-contact for.
+
+    Examples:
+        observal registry skill submit --git-url https://github.com/org/repo
+        observal registry skill submit --from-file skill.json
+        observal registry skill submit --skill-md ./SKILL.md --git-url https://github.com/org/repo
+        observal registry skill submit --skill-md ./SKILL.md --script ./run.sh --delivery-mode registry_direct
+        observal registry skill submit --draft
+        observal registry skill submit --submit abc123
     """
     rprint("[dim]Note: Only submit components you created (private) or are the point-of-contact for (external).[/dim]")
     if draft and submit_draft:
@@ -122,6 +132,9 @@ def skill_submit(
         # --- Paste-first: parse SKILL.md locally if provided ---
         prefill: dict = {}
         skill_md_content: str | None = None
+        script_content: str | None = None
+        script_filename: str | None = None
+
         if skill_md:
             try:
                 raw = Path(skill_md).read_text(encoding="utf-8")
@@ -141,22 +154,41 @@ def skill_submit(
                     f"description={str(prefill.get('description', ''))[:60]!r}"
                 )
 
-        agents_input = typer.prompt("Target agents (comma-separated)", default="")
+        if script:
+            script_path_obj = Path(script)
+            if not script_path_obj.exists():
+                rprint(f"[red]Script file not found:[/red] {script}")
+                raise typer.Exit(code=1)
+            script_content = script_path_obj.read_text(encoding="utf-8")
+            script_filename = script_path_obj.name
+            rprint(f"[green]✓ Read script:[/green] {script_filename}")
+
+        # Auto-detect delivery mode
+        effective_delivery_mode = delivery_mode or (
+            "registry_direct" if (skill_md_content and not git_url) else "git_fetch"
+        )
+
+        agents_input = text_input("Target agents (comma-separated)", default="")
         payload = {
-            "name": typer.prompt("Skill name", default=prefill.get("name", "")),
-            "version": typer.prompt("Version", default="1.0.0"),
-            "description": typer.prompt("Description", default=prefill.get("description", "")),
-            "owner": typer.prompt("Owner", default=config.load().get("user_name", "")),
-            "git_url": git_url or typer.prompt("Git URL"),
-            "skill_path": typer.prompt("Skill path in repo", default="/"),
-            "git_ref": git_ref or typer.prompt("Git ref (branch/tag)", default="main"),
+            "name": text_input("Skill name", default=prefill.get("name", "")),
+            "version": text_input("Version", default="1.0.0"),
+            "description": text_input("Description", default=prefill.get("description", "")),
+            "owner": config.load().get("username", ""),
             "task_type": select_one("Task type", VALID_SKILL_TASK_TYPES),
             "target_agents": [a.strip() for a in agents_input.split(",") if a.strip()],
+            "delivery_mode": effective_delivery_mode,
         }
+        if effective_delivery_mode == "git_fetch":
+            payload["git_url"] = git_url or text_input("Git URL")
+            payload["skill_path"] = text_input("Skill path in repo", default="/")
+            payload["git_ref"] = git_ref or text_input("Git ref (branch/tag)", default="main")
         if prefill.get("slash_command"):
             payload["slash_command"] = prefill["slash_command"]
         if skill_md_content:
             payload["skill_md_content"] = skill_md_content
+        if script_content:
+            payload["script_content"] = script_content
+            payload["script_filename"] = script_filename
 
     endpoint = "/api/v1/skills/draft" if draft else "/api/v1/skills/submit"
     label = "draft" if draft else "skill"
@@ -177,7 +209,18 @@ def skill_list(
     search: str | None = typer.Option(None, "--search", "-s"),
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List approved skills."""
+    """List approved skills in the registry.
+
+    Shows only skills with approved status. Use --task-type, --target-agent,
+    or --search to filter results. Row numbers from the output can be used
+    as references in subsequent commands.
+
+    Examples:
+        observal registry skill list
+        observal registry skill list --task-type coding
+        observal registry skill list --target-agent claude-code --output json
+        observal registry skill list --search "refactor"
+    """
     params = {}
     if task_type:
         params["task_type"] = task_type
@@ -221,7 +264,15 @@ def skill_list(
 def skill_my(
     output: str = typer.Option("table", "--output", "-o", help="Output: table, json, plain"),
 ):
-    """List your own skills (all statuses)."""
+    """List your own skills across all statuses.
+
+    Shows drafts, pending, approved, and rejected skills you submitted.
+    Useful for tracking the review status of your submissions.
+
+    Examples:
+        observal registry skill my
+        observal registry skill my --output json
+    """
     with spinner("Fetching your skills..."):
         data = client.get("/api/v1/skills/my")
     if not data:
@@ -262,7 +313,17 @@ def skill_show(
     skill_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     output: str = typer.Option("table", "--output", "-o"),
 ):
-    """Show skill details."""
+    """Show detailed information about a skill.
+
+    Displays metadata including validation status, task type, git source,
+    slash command, target agents, and timestamps. Accepts a UUID, name,
+    row number from a previous list, or @alias.
+
+    Examples:
+        observal registry skill show my-skill
+        observal registry skill show 1
+        observal registry skill show @refactor-skill --output json
+    """
     resolved = config.resolve_alias(skill_id)
     with spinner():
         item = client.get(f"/api/v1/skills/{resolved}")
@@ -276,10 +337,12 @@ def skill_show(
                 ("Status", status_badge(item.get("status", ""))),
                 ("Validated", "✓" if item.get("validated") else "✗"),
                 ("Task Type", item.get("task_type", "N/A")),
+                ("Delivery Mode", item.get("delivery_mode", "git_fetch")),
                 ("Owner", item.get("owner", "N/A")),
                 ("Git URL", item.get("git_url", "N/A")),
                 ("Git Ref", item.get("git_ref") or "N/A"),
                 ("Skill Path", item.get("skill_path", "/")),
+                ("Script", item.get("script_filename") or "N/A"),
                 ("Slash Command", f"/{item['slash_command']}" if item.get("slash_command") else "N/A"),
                 ("Description", item.get("description", "")),
                 ("Target Agents", ", ".join(item.get("target_agents", [])) or "N/A"),
@@ -345,20 +408,33 @@ def skill_install(
     scope: str = typer.Option("user", "--scope", "-s", help="Install scope: user (global, default) or project"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
     no_write: bool = typer.Option(False, "--no-write", help="Print config without writing files"),
+    version: str | None = typer.Option(
+        None, "--version", "-V", help="Install a specific version (e.g. '1.0.0'). Defaults to latest."
+    ),
 ):
-    """Install a skill — fetches the full skill directory from git and writes it to disk.
+    """Install a skill by fetching the full skill directory from git.
+
+    Clones the skill directory (sparse checkout) from the configured git_url
+    and writes it to the appropriate IDE skill path. Falls back to cached
+    SKILL.md content if git clone fails.
 
     Scopes:
-      --scope user (default): writes to ~/.<ide>/skills/<name>/ (global, persists across projects).
-      --scope project: writes to .agents/skills/<name>/ in cwd,
-        symlinks to .<ide>/skills/<name>/ for each IDE config dir present.
+      --scope user (default): writes to ~/.<ide>/skills/<name>/ (global).
+      --scope project: writes to .agents/skills/<name>/ in cwd, then
+        symlinks into each IDE config dir found in the project.
 
-    Primary path: git sparse-clone using git_url + skill_path + git_ref.
-    Fallback: single SKILL.md from cached skill_md_content.
+    Examples:
+        observal registry skill install my-skill --ide claude-code
+        observal registry skill install @sk --ide kiro --scope project
+        observal registry skill install 2 --ide cursor --raw > config.json
+        observal registry skill install my-skill --ide opencode --no-write
     """
     resolved = config.resolve_alias(skill_id)
     with spinner(f"Generating {ide} config..."):
-        result = client.post(f"/api/v1/skills/{resolved}/install", {"ide": ide, "scope": scope})
+        install_body = {"ide": ide, "scope": scope}
+        if version:
+            install_body["version"] = version
+        result = client.post(f"/api/v1/skills/{resolved}/install", install_body)
     snippet = result.get("config_snippet", result)
 
     if raw:
@@ -368,17 +444,45 @@ def skill_install(
     skill_info = snippet.get("skill", {})
 
     if not no_write:
-        install_skill_from_git(
-            name=skill_info.get("name", "skill"),
-            git_url=skill_info.get("git_url"),
-            skill_path=skill_info.get("skill_path", "/"),
-            git_ref=skill_info.get("git_ref", "main"),
-            ide=ide,
-            scope=scope,
-            skill_md_content=skill_info.get("skill_md_content"),
-        )
+        delivery_mode = skill_info.get("delivery_mode", "git_fetch")
+        if delivery_mode == "registry_direct":
+            install_skill_registry_direct(
+                name=skill_info.get("name", "skill"),
+                skill_md_content=skill_info.get("skill_md_content"),
+                script_content=skill_info.get("script_content"),
+                script_filename=skill_info.get("script_filename"),
+                ide=ide,
+                scope=scope,
+            )
+        else:
+            install_skill_from_git(
+                name=skill_info.get("name", "skill"),
+                git_url=skill_info.get("git_url"),
+                skill_path=skill_info.get("skill_path", "/"),
+                git_ref=skill_info.get("git_ref", "main"),
+                ide=ide,
+                scope=scope,
+                skill_md_content=skill_info.get("skill_md_content"),
+            )
     else:
         rprint("[dim]Skill install skipped (--no-write)[/dim]")
+
+    # Write to lock file
+    if not no_write:
+        try:
+            from observal_cli.lockfile import upsert_standalone
+
+            upsert_standalone(
+                ide,
+                component_type="skill",
+                name=skill_info.get("name", resolved),
+                component_id=str(skill_info.get("id", resolved)),
+                version=version or skill_info.get("version") or skill_info.get("latest_version"),
+                scope=scope,
+                directory=str(Path.cwd()) if scope == "project" else None,
+            )
+        except Exception:
+            pass  # Never block install on lockfile failure
 
     rprint(f"\n[bold]Config for {ide}:[/bold]\n")
     console.print_json(_json.dumps(snippet, indent=2))
@@ -389,8 +493,6 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
     ("claude-code", ".claude"),
     ("cursor", ".cursor"),
     ("kiro", ".kiro"),
-    ("vscode", ".vscode"),
-    ("gemini-cli", ".gemini"),
     ("opencode", ".opencode"),
 ]
 
@@ -398,11 +500,10 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
 _USER_SKILL_DIRS: dict[str, str] = {
     "claude-code": "~/.claude/skills",
     "kiro": "~/.kiro/skills",
-    "gemini-cli": "~/.gemini/skills",
     "opencode": "~/.config/opencode/skills",
     "cursor": "~/.cursor/rules",
-    "vscode": "~/.vscode/skills",
     "copilot": "~/.copilot/skills",
+    "pi": "~/.pi/agent/skills",
 }
 
 
@@ -412,6 +513,61 @@ def _user_skill_dest(ide: str, skill_name: str) -> Path:
     base = _USER_SKILL_DIRS.get(ide_key, "~/.agents/skills")
     expanded = Path(base.replace("~", str(Path.home())))
     return expanded / skill_name
+
+
+def install_skill_registry_direct(
+    *,
+    name: str,
+    skill_md_content: str | None,
+    script_content: str | None = None,
+    script_filename: str | None = None,
+    ide: str = "claude-code",
+    scope: str = "user",
+    cwd: Path | None = None,
+) -> Path | None:
+    """Install a registry_direct skill: write SKILL.md and optional script.
+
+    Writes to <dest>/<name>/SKILL.md and <dest>/<name>/scripts/<script_filename>.
+    Returns the destination Path on success, None on failure.
+    """
+    skill_name = _sanitize_name(name)
+
+    if scope == "user":
+        dest = _user_skill_dest(ide, skill_name)
+    else:
+        base = (cwd or Path.cwd()) / ".agents" / "skills"
+        dest = base / skill_name
+        if not _is_path_safe(dest, base):
+            rprint(f"[red]\u2717 Unsafe skill name (path traversal detected):[/red] {skill_name!r}")
+            return None
+
+    if not skill_md_content:
+        rprint("[yellow]\u26a0 No SKILL.md content available to write.[/yellow]")
+        return None
+
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "SKILL.md").write_text(skill_md_content, encoding="utf-8")
+    rprint(f"[green]\u2713 Wrote skill file:[/green] {dest / 'SKILL.md'}")
+
+    if script_content and script_filename:
+        scripts_dir = dest / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        script_path = scripts_dir / script_filename
+        if not _is_path_safe(script_path, scripts_dir):
+            rprint(f"[red]\u2717 Unsafe script filename (path traversal):[/red] {script_filename!r}")
+        else:
+            script_path.write_text(script_content, encoding="utf-8")
+            # Make executable if it looks like a script
+            if script_filename.endswith((".sh", ".bash", ".py", ".rb")):
+                import os
+
+                os.chmod(script_path, 0o755)
+            rprint(f"[green]\u2713 Wrote script:[/green] {script_path}")
+
+    if scope == "project":
+        _symlink_for_ides(cwd or Path.cwd(), dest, skill_name)
+
+    return dest
 
 
 def install_skill_from_git(
@@ -425,7 +581,7 @@ def install_skill_from_git(
     skill_md_content: str | None = None,
     cwd: Path | None = None,
 ) -> Path | None:
-    """Core skill install logic — clone full directory from git.
+    """Core skill install logic - clone full directory from git.
 
     Used by both `observal skill install` and `observal pull` (for agent skills).
 
@@ -480,7 +636,7 @@ def _symlink_for_ides(cwd: Path, canonical: Path, skill_name: str) -> None:
             link.symlink_to(canonical.resolve())
             rprint(f"[dim]  → symlinked {link} → {canonical}[/dim]")
         except OSError:
-            pass  # Non-fatal — Windows without dev mode, etc.
+            pass  # Non-fatal - Windows without dev mode, etc.
 
 
 # ── Edit ─────────────────────────────────────────────────────────────────────
@@ -497,7 +653,18 @@ def skill_edit(
     git_url: str | None = typer.Option(None, "--git-url", help="New git URL"),
     git_ref: str | None = typer.Option(None, "--git-ref", help="New git ref"),
 ):
-    """Edit a draft, rejected, or pending skill submission."""
+    """Edit a draft, rejected, or pending skill submission.
+
+    Updates fields on a skill that has not yet been approved. You can
+    provide individual field options or load all updates from a JSON file.
+    Acquires an edit lock to prevent concurrent modifications.
+
+    Examples:
+        observal registry skill edit my-skill --description "Better desc"
+        observal registry skill edit abc123 --from-file updates.json
+        observal registry skill edit @sk --git-url https://github.com/org/new-repo
+        observal registry skill edit 2 --version 2.0.0 --task-type debugging
+    """
     resolved = config.resolve_alias(skill_id)
     if from_file:
         try:
@@ -558,7 +725,16 @@ def skill_delete(
     skill_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
 ):
-    """Delete a skill."""
+    """Delete a skill from the registry.
+
+    Permanently removes the skill. Skills you own can be deleted regardless
+    of status. Requires confirmation unless --yes is passed.
+
+    Examples:
+        observal registry skill delete my-skill
+        observal registry skill delete abc123 --yes
+        observal registry skill delete @old-skill -y
+    """
     resolved = config.resolve_alias(skill_id)
     if not yes:
         with spinner():

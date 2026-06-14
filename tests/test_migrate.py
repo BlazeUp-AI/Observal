@@ -33,6 +33,7 @@ from observal_cli.cmd_migrate import (
     _build_select,
     _coerce_value,
     _require_admin,
+    _require_pyarrow,
     _sha256_file,
 )
 from observal_cli.main import app as cli_app
@@ -51,12 +52,12 @@ def _plain(text: str) -> str:
 
 class TestCLIRegistration:
     def test_migrate_command_group_exists(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         assert "migrate" in _plain(result.output).lower()
 
     def test_migrate_help_lists_subcommands(self):
-        result = runner.invoke(cli_app, ["migrate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "export" in out
@@ -64,21 +65,49 @@ class TestCLIRegistration:
         assert "validate" in out
 
     def test_export_subcommand_help(self):
-        result = runner.invoke(cli_app, ["migrate", "export", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "export", "--help"])
         assert result.exit_code == 0
         assert "--db-url" in _plain(result.output)
 
     def test_import_subcommand_help(self):
-        result = runner.invoke(cli_app, ["migrate", "import", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "import", "--help"])
         assert result.exit_code == 0
         out = _plain(result.output)
         assert "--db-url" in out
         assert "--archive" in out
 
     def test_validate_subcommand_help(self):
-        result = runner.invoke(cli_app, ["migrate", "validate", "--help"])
+        result = runner.invoke(cli_app, ["server", "migrate", "validate", "--help"])
         assert result.exit_code == 0
         assert "--archive" in _plain(result.output)
+
+
+class TestPyarrowRequirement:
+    def test_passes_when_pyarrow_importable(self):
+        # pyarrow is installed in the dev environment, so the guard is a no-op.
+        _require_pyarrow()
+
+    def test_raises_install_hint_when_missing(self):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "pyarrow":
+                raise ImportError("simulated missing pyarrow")
+            return real_import(name, *args, **kwargs)
+
+        import typer
+
+        with (
+            patch.object(builtins, "__import__", side_effect=fake_import),
+            pytest.raises(typer.BadParameter) as excinfo,
+        ):
+            _require_pyarrow()
+
+        msg = str(excinfo.value)
+        assert "pyarrow" in msg
+        assert "observal-cli[migrate]" in msg
 
 
 # ── 2. PGEncoder Tests ───────────────────────────────────
@@ -165,7 +194,7 @@ class TestPGEncoder:
 
 class TestConstants:
     def test_insert_order_has_43_entries(self):
-        assert len(INSERT_ORDER) == 43
+        assert len(INSERT_ORDER) == 35
 
     def test_insert_order_no_duplicates(self):
         assert len(INSERT_ORDER) == len(set(INSERT_ORDER))
@@ -177,8 +206,6 @@ class TestConstants:
             "agents",
             "mcp_listings",
             "feedback",
-            "eval_runs",
-            "scorecards",
             "alert_rules",
             "alert_history",
             "component_bundles",
@@ -237,9 +264,10 @@ class TestBuildSelect:
 
 class TestRequireAdmin:
     @patch("observal_cli.cmd_migrate.client")
-    def test_admin_role_allowed(self, mock_client):
+    def test_admin_role_rejected(self, mock_client):
         mock_client.get.return_value = {"role": "admin"}
-        _require_admin()  # Should not raise
+        with pytest.raises((SystemExit, click.exceptions.Exit)):
+            _require_admin()
 
     @patch("observal_cli.cmd_migrate.client")
     def test_super_admin_role_allowed(self, mock_client):
@@ -462,7 +490,7 @@ class TestErrorPaths:
     def test_import_nonexistent_archive(self, mock_admin):
         result = runner.invoke(
             cli_app,
-            ["migrate", "import", "--db-url", "postgres://x", "--archive", "/nonexistent/archive.tar.gz"],
+            ["server", "migrate", "import", "--db-url", "postgres://x", "--archive", "/nonexistent/archive.tar.gz"],
         )
         assert result.exit_code != 0
 
@@ -470,13 +498,13 @@ class TestErrorPaths:
     def test_validate_nonexistent_archive(self, mock_admin):
         result = runner.invoke(
             cli_app,
-            ["migrate", "validate", "--archive", "/nonexistent/archive.tar.gz"],
+            ["server", "migrate", "validate", "--archive", "/nonexistent/archive.tar.gz"],
         )
         assert result.exit_code != 0
 
     def test_export_missing_db_url(self):
         """Export without --db-url should fail (required option)."""
-        result = runner.invoke(cli_app, ["migrate", "export"])
+        result = runner.invoke(cli_app, ["server", "migrate", "export"])
         assert result.exit_code != 0
 
 
@@ -492,7 +520,7 @@ class TestSecurity:
         mock_asyncio.run.side_effect = SystemExit(1)
         result = runner.invoke(
             cli_app,
-            ["migrate", "export", "--db-url", secret_url],
+            ["server", "migrate", "export", "--db-url", secret_url],
         )
         assert secret_url not in result.output
 
@@ -502,7 +530,7 @@ class TestSecurity:
         secret_url = "postgres://secret_user:secret_pass@secret-host:5432/secret_db"
         result = runner.invoke(
             cli_app,
-            ["migrate", "import", "--db-url", secret_url, "--archive", "/nonexistent.tar.gz"],
+            ["server", "migrate", "import", "--db-url", secret_url, "--archive", "/nonexistent.tar.gz"],
         )
         assert secret_url not in result.output
 
@@ -512,7 +540,7 @@ class TestSecurity:
         secret_url = "postgres://secret_user:secret_pass@secret-host:5432/secret_db"
         result = runner.invoke(
             cli_app,
-            ["migrate", "validate", "--archive", "/nonexistent.tar.gz", "--db-url", secret_url],
+            ["server", "migrate", "validate", "--archive", "/nonexistent.tar.gz", "--db-url", secret_url],
         )
         assert secret_url not in result.output
 
@@ -577,13 +605,8 @@ class TestInsertOrderDependencies:
         ("agents", "organizations"),
         ("mcp_listings", "organizations"),
         ("agent_components", "agents"),
-        ("agent_goal_templates", "agents"),
-        ("eval_runs", "agents"),
-        ("scorecards", "eval_runs"),
-        ("scorecard_dimensions", "scorecards"),
         ("feedback", "users"),
         ("alert_history", "alert_rules"),
-        ("agent_goal_sections", "agent_goal_templates"),
         ("mcp_downloads", "mcp_listings"),
         ("skill_downloads", "skill_listings"),
         ("hook_downloads", "hook_listings"),
@@ -920,22 +943,12 @@ class TestInsertOrderFKProperty:
         ("sandbox_downloads", "users"),
         ("submissions", "users"),
         ("alert_rules", "users"),
-        ("agent_goal_templates", "agents"),
         ("agent_download_records", "agents"),
         ("agent_download_records", "users"),
         ("component_download_records", "agents"),
-        ("dimension_weights", "agents"),
-        ("agent_goal_sections", "agent_goal_templates"),
         ("agent_components", "agents"),
         ("feedback", "users"),
         ("alert_history", "alert_rules"),
-        ("eval_runs", "agents"),
-        ("eval_runs", "users"),
-        ("scorecards", "agents"),
-        ("scorecards", "eval_runs"),
-        ("scorecard_dimensions", "scorecards"),
-        ("trace_penalties", "scorecards"),
-        ("trace_penalties", "penalty_definitions"),
         # Tier 12 — insight tables
         ("insight_reports", "agents"),
         ("insight_reports", "users"),
@@ -988,9 +1001,9 @@ class TestMigrationIdConsistencyProperty:
 
 
 class TestAdminRoleGateProperty:
-    """Property 10: Only admin and super_admin roles pass the gate."""
+    """Property 10: Only super_admin role passes the gate."""
 
-    ALLOWED_ROLES = {"admin", "super_admin"}
+    ALLOWED_ROLES = {"super_admin"}
 
     @given(role=st.sampled_from(["admin", "super_admin", "user", "reviewer", "", "moderator", "guest", "operator"]))
     @hsettings(max_examples=100)

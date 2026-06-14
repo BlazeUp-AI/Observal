@@ -1,4 +1,5 @@
 <!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.21@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # Share agent configs across IDEs
@@ -17,11 +18,11 @@ Every agent is a YAML file that bundles:
 * Prompts (with variables)
 * Sandboxes for code execution
 
-When someone runs `observal pull <agent>`, Observal templates that YAML into the right files for their IDE — `~/.claude/agents/*.json`, `.kiro/agents/*.json`, `.cursor/mcp.json`, and so on.
+When someone runs `observal agent pull <agent>`, Observal templates that YAML into the right files for their IDE: `~/.claude/agents/*.json`, `.kiro/agents/*.json`, `.cursor/mcp.json`, and so on.
 
 ## Publish an agent
 
-### Option A — the interactive wizard
+### Option A - the interactive wizard
 
 ```bash
 observal agent create
@@ -29,7 +30,7 @@ observal agent create
 
 Step-by-step prompts: name, description, which MCP servers, which skills, which hooks. Results in a registry entry you can share by ID.
 
-### Option B — the YAML workflow (recommended for teams)
+### Option B - the YAML workflow (recommended for teams)
 
 ```bash
 observal agent init                  # scaffold observal-agent.yaml
@@ -53,15 +54,15 @@ observal agent list --search review
 observal agent show <agent-id>
 ```
 
-Install — one command, pick the IDE:
+Install with one command, pick the IDE:
 
 ```bash
-observal pull <agent-id> --ide claude-code
-observal pull <agent-id> --ide kiro
-observal pull <agent-id> --ide cursor
-observal pull <agent-id> --ide gemini-cli
-observal pull <agent-id> --ide vscode
-observal pull <agent-id> --ide codex
+observal agent pull <agent-id> --ide claude-code
+observal agent pull <agent-id> --ide kiro
+observal agent pull <agent-id> --ide cursor
+observal agent pull <agent-id> --ide gemini-cli
+observal agent pull <agent-id> --ide vscode
+observal agent pull <agent-id> --ide codex
 ```
 
 The CLI prompts for any environment variables the MCP servers declare as required (GitHub tokens, API keys). These are stored in your IDE config, not uploaded to Observal.
@@ -70,43 +71,32 @@ The CLI prompts for any environment variables the MCP servers declare as require
 
 ```bash
 # Preview without writing anything
-observal pull <agent-id> --ide claude-code --dry-run
+observal agent pull <agent-id> --ide claude-code --dry-run
 
 # Install into a specific directory
-observal pull <agent-id> --ide claude-code --dir ./my-project
+observal agent pull <agent-id> --ide claude-code --dir ./my-project
 
 # Claude Code only: scope (project-local vs user-global)
-observal pull <agent-id> --ide claude-code --scope project
-observal pull <agent-id> --ide claude-code --scope user
+observal agent pull <agent-id> --ide claude-code --scope project
+observal agent pull <agent-id> --ide claude-code --scope user
 
 # Claude Code only: sub-agent model
-observal pull <agent-id> --ide claude-code --model sonnet
+observal agent pull <agent-id> --ide claude-code --model sonnet
 
 # Claude Code only: tool allowlist
-observal pull <agent-id> --ide claude-code --tools Read,Write,Bash
+observal agent pull <agent-id> --ide claude-code --tools Read,Write,Bash
 ```
 
 ## What portability actually means
 
-The [IDE feature matrix](../integrations/README.md) controls what each IDE supports. If an agent uses skills and the target IDE doesn't have skills, the installer:
+The IDE feature matrix (defined in `observal_cli/ide_registry.py`) controls what each IDE supports. If an agent uses skills and the target IDE doesn't have skills, the installer:
 
 * Installs the compatible parts cleanly
 * Warns about the unsupported parts
 * Exits non-zero if the agent *requires* something the IDE cannot provide
 
-Full compatibility breakdown per IDE lives in [Integrations](../integrations/README.md).
-
-## Snapshot an entire IDE config as a profile
-
-`observal use` and `observal profile` move at a level above single agents — they switch your whole IDE config to a git-hosted or local profile:
-
-```bash
-observal use https://github.com/your-org/your-profile.git
-observal profile                     # show active profile + backup info
-```
-
 Useful when onboarding a new machine or swapping between "work setup" and "personal setup."
 
 ## Next
 
-→ [Run a team-wide agent registry](team-registry.md) — once publishing is routine, you need governance.
+→ [Run a team-wide agent registry](team-registry.md): once publishing is routine, you need governance.

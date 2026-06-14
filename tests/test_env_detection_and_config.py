@@ -555,7 +555,7 @@ class TestAgentConfigDockerMcp:
         return listing
 
     def test_claude_code_passes_docker_image(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         listing = self._make_listing()
         comp_id = uuid.uuid4()
@@ -576,7 +576,7 @@ class TestAgentConfigDockerMcp:
         assert "ghcr.io/github/github-mcp-server" in args_str
 
     def test_claude_code_passes_env_vars(self):
-        from services.agent_config_generator import generate_agent_config
+        from services.ide import generate_agent_config
 
         listing = self._make_listing()
         comp_id = uuid.uuid4()

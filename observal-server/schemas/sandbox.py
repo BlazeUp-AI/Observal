@@ -23,13 +23,14 @@ class SandboxSubmitRequest(BaseModel):
     owner: str
     runtime_type: str
     image: str
-    dockerfile_url: str | None = None
     resource_limits: dict = {}
     network_policy: str = "none"
-    allowed_mounts: list[str] = []
-    env_vars: dict = {}
     entrypoint: str | None = None
     supported_ides: list[str] = []
+    # Source tracking
+    source_url: str | None = None
+    source_ref: str | None = None
+    sandbox_path: str | None = None
 
     _validate_runtime_type = field_validator("runtime_type")(
         make_option_validator("runtime_type", VALID_SANDBOX_RUNTIME_TYPES)
@@ -47,13 +48,13 @@ class SandboxDraftRequest(BaseModel):
     owner: str = ""
     runtime_type: str = "docker"
     image: str = ""
-    dockerfile_url: str | None = None
     resource_limits: dict = {}
     network_policy: str = "none"
-    allowed_mounts: list[str] = []
-    env_vars: dict = {}
     entrypoint: str | None = None
     supported_ides: list[str] = []
+    source_url: str | None = None
+    source_ref: str | None = None
+    sandbox_path: str | None = None
 
     _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
 
@@ -65,13 +66,13 @@ class SandboxUpdateRequest(BaseModel):
     owner: str | None = None
     runtime_type: str | None = None
     image: str | None = None
-    dockerfile_url: str | None = None
     resource_limits: dict | None = None
     network_policy: str | None = None
-    allowed_mounts: list[str] | None = None
-    env_vars: dict | None = None
     entrypoint: str | None = None
     supported_ides: list[str] | None = None
+    source_url: str | None = None
+    source_ref: str | None = None
+    sandbox_path: str | None = None
 
 
 class SandboxListingResponse(BaseModel):
@@ -90,6 +91,13 @@ class SandboxListingResponse(BaseModel):
     submitted_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    user_permission: str | None = None
+
+    @field_validator("user_permission", mode="before")
+    @classmethod
+    def _coerce_user_permission(cls, v):
+        return v if isinstance(v, str) else None
+
     model_config = {"from_attributes": True}
 
 
@@ -104,13 +112,3 @@ class SandboxListingSummary(BaseModel):
     status: ListingStatus
     rejection_reason: str | None = None
     model_config = {"from_attributes": True}
-
-
-class SandboxInstallRequest(BaseModel):
-    ide: str
-
-
-class SandboxInstallResponse(BaseModel):
-    listing_id: uuid.UUID
-    ide: str
-    config_snippet: dict

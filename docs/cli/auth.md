@@ -10,7 +10,6 @@ Authentication and account management.
 | Command | Description |
 | --- | --- |
 | [`auth login`](#observal-auth-login) | Log in to an Observal server (auto-creates admin on fresh server) |
-| [`auth register`](#observal-auth-register) | Self-register a new account with email + password |
 | [`auth logout`](#observal-auth-logout) | Clear saved credentials |
 | [`auth whoami`](#observal-auth-whoami) | Show the authenticated user |
 | [`auth status`](#observal-auth-status) | Check server connectivity, health, and local telemetry buffer |
@@ -42,7 +41,7 @@ observal auth login [--server URL] [--key KEY] [--email EMAIL] [--password PASSW
 
 ```bash
 observal auth login
-# Server URL [http://localhost:8000]: <Enter>
+# Server URL [http://localhost]: <Enter>
 # Method: [E]mail / [K]ey: E
 # Email: admin@demo.example
 # Password: **************
@@ -50,28 +49,6 @@ observal auth login
 ```
 
 Credentials are saved to `~/.observal/config.json` (mode `0600`).
-
----
-
-## `observal auth register`
-
-Self-register a new user account. Only available when the server is running in `DEPLOYMENT_MODE=local`. Enterprise mode uses SSO/SCIM instead.
-
-### Synopsis
-
-```bash
-observal auth register [--server URL] [--email EMAIL] [--password PASSWORD] [--name NAME]
-```
-
-### Example
-
-```bash
-observal auth register
-# Email: alice@example.com
-# Display name: Alice
-# Password: **************
-# Registered as alice@example.com (user)
-```
 
 ---
 
@@ -91,7 +68,7 @@ Print the currently authenticated user.
 
 ```bash
 observal auth whoami
-# alice@example.com (user) — https://observal.your-company.internal
+# alice@example.com (user), https://observal.your-company.internal
 ```
 
 Exits non-zero if you're not logged in.
@@ -104,7 +81,7 @@ Check server connectivity, health, and the local telemetry buffer.
 
 ```bash
 observal auth status
-# Server:   https://observal.your-company.internal — OK (200)
+# Server:   https://observal.your-company.internal: OK (200)
 # Auth:     alice@example.com (user)
 # Buffer:   0 pending events
 # Health:   API ok, Postgres ok, ClickHouse ok, Redis ok
@@ -116,7 +93,7 @@ Useful as the first step when things aren't working.
 
 ## `observal auth reset-password`
 
-Reset a forgotten password. The server logs a 6-character reset code to its console — the operator reads it and passes it to you.
+Reset a forgotten password. The server logs a 6-character reset code to its console. The operator reads it and passes it to you.
 
 ### Synopsis
 
@@ -151,5 +128,5 @@ Full list: [Environment variables](../reference/environment-variables.md).
 
 ## Related
 
-* [`observal config`](config.md) — where credentials live
-* [Self-Hosting → Authentication and SSO](../self-hosting/authentication.md) — server-side auth setup
+* [`observal config`](config.md): where credentials live
+* [Self-Hosting: Authentication and SSO](../self-hosting/authentication.md): server-side auth setup

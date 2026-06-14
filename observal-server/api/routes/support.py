@@ -6,7 +6,7 @@
 Runs collectors for versions, health, config, aggregates, errors, and
 logs data. Each collector is wrapped in ``_run_collector`` with a
 10-second ``asyncio.wait_for`` timeout. Partial failures are reported
-in the response — the endpoint always returns 200 if at least one
+in the response - the endpoint always returns 200 if at least one
 collector succeeds.
 """
 
@@ -20,14 +20,14 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-import structlog
 from fastapi import APIRouter, Depends, Request
+from loguru import logger as optic
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from api.deps import get_db, require_role
 from api.ratelimit import limiter
-from config import Settings, settings
+from config import HAS_LICENSE, Settings, settings
 from models.user import UserRole
 from services.clickhouse import CLICKHOUSE_DB, _query
 from services.redis import get_redis
@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 
     from models.user import User
 
-logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/support", tags=["support"])
 
@@ -76,6 +75,7 @@ async def _run_collector(name: str, coro) -> tuple[str, CollectorData]:
 
     Returns a (name, CollectorData) tuple regardless of success or failure.
     """
+    optic.trace("name={}, coro={}", name, coro)
     start = time.monotonic()
     try:
         data = await asyncio.wait_for(coro, timeout=COLLECTOR_TIMEOUT_SECONDS)
@@ -97,9 +97,10 @@ async def _run_collector(name: str, coro) -> tuple[str, CollectorData]:
 
 async def _collect_versions(db: AsyncSession) -> dict:
     """Collect app version, build hash, Alembic revision, ClickHouse version + tables."""
+    optic.debug("_collect_versions called")
     result: dict[str, Any] = {}
 
-    # App version — try importlib.metadata first, fall back to hardcoded
+    # App version - try importlib.metadata first, fall back to hardcoded
     try:
         from importlib.metadata import version
 
@@ -107,7 +108,7 @@ async def _collect_versions(db: AsyncSession) -> dict:
     except Exception:
         result["app_version"] = "0.1.0"
 
-    # Build hash — read from BUILD_HASH env var or fall back to unknown
+    # Build hash - read from BUILD_HASH env var or fall back to unknown
     result["build_hash"] = os.environ.get("BUILD_HASH", "unknown")
 
     # Alembic revision from PG
@@ -147,6 +148,7 @@ async def _collect_versions(db: AsyncSession) -> dict:
 
 async def _collect_health(db: AsyncSession) -> dict:
     """Run health probes against PG, CH, Redis, and OTEL collector."""
+    optic.debug("_collect_health called")
     result: dict[str, Any] = {}
 
     # PostgreSQL health
@@ -191,42 +193,52 @@ CONFIG_ALLOWLIST = frozenset(
         "DATABASE_URL",
         "CLICKHOUSE_URL",
         "REDIS_URL",
-        "REDIS_SOCKET_TIMEOUT",
-        "EVAL_MODEL_NAME",
-        "EVAL_MODEL_PROVIDER",
-        "AWS_REGION",
-        "FRONTEND_URL",
-        "JWT_ACCESS_TOKEN_EXPIRE_MINUTES",
-        "JWT_REFRESH_TOKEN_EXPIRE_DAYS",
         "JWT_SIGNING_ALGORITHM",
-        "JWT_HOOKS_TOKEN_EXPIRE_MINUTES",
-        "RATE_LIMIT_AUTH",
-        "RATE_LIMIT_AUTH_STRICT",
-        "DATA_RETENTION_DAYS",
-        "DEPLOYMENT_MODE",
     }
 )
 
+# Dynamic settings to include in support bundle
+_DYNAMIC_CONFIG_KEYS = [
+    "eval.model_name",
+    "eval.model_provider",
+    "eval.aws_region",
+    "deployment.frontend_url",
+    "jwt.access_token_expire_minutes",
+    "jwt.refresh_token_expire_days",
+    "jwt.hooks_token_expire_minutes",
+    "security.rate_limit_auth",
+    "security.rate_limit_auth_strict",
+    "data.retention_days",
+]
+
 
 async def _collect_config() -> dict:
-    """Return only allowlisted Settings fields as a dict.
+    """Return only allowlisted Settings fields plus dynamic settings.
 
     Secrets like SECRET_KEY, OAUTH_CLIENT_SECRET, etc. are never sent
-    over the wire.  The CLI applies its own allowlist filter and
-    redaction as a second layer of defence.
+    over the wire.
     """
-    return {
+    optic.debug("_collect_config called")
+    import services.dynamic_settings as ds
+
+    result = {
         field_name: getattr(settings, field_name)
         for field_name in Settings.model_fields
         if field_name in CONFIG_ALLOWLIST
     }
+    # Add dynamic settings
+    for key in _DYNAMIC_CONFIG_KEYS:
+        result[key] = await ds.get(key)
+    result["licensed"] = HAS_LICENSE
+    return result
 
 
 async def _collect_aggregates(db: AsyncSession) -> dict:
     """Collect row counts per PG and CH table.
 
-    Only counts are returned — never row contents.
+    Only counts are returned - never row contents.
     """
+    optic.debug("_collect_aggregates called")
     result: dict[str, Any] = {"pg_table_counts": {}, "ch_table_counts": {}}
 
     # PostgreSQL table counts
@@ -244,7 +256,7 @@ async def _collect_aggregates(db: AsyncSession) -> dict:
     except Exception as exc:
         result["pg_table_counts"] = {"error": type(exc).__name__}
 
-    # ClickHouse table counts (no FINAL — fast approximate counts)
+    # ClickHouse table counts (no FINAL - fast approximate counts)
     try:
         resp = await _query(
             "SELECT name FROM system.tables WHERE database = {db:String} FORMAT JSON",
@@ -279,9 +291,10 @@ async def _collect_aggregates(db: AsyncSession) -> dict:
 def _extract_stack_template(error_text: str) -> str:
     """Extract file paths and function names from a stack trace.
 
-    Returns a sanitised template with only structural information —
+    Returns a sanitised template with only structural information -
     no argument values, no exception messages.
     """
+    optic.trace("error_text={}", error_text)
     lines = error_text.splitlines()
     template_parts: list[str] = []
 
@@ -313,6 +326,7 @@ async def _collect_errors(db: AsyncSession) -> dict:
     last_seen, and stack_template (file paths + function names only).
     No argument values or exception messages are included.
     """
+    optic.debug("_collect_errors called")
     result: dict[str, Any] = {"fingerprints": []}
 
     try:
@@ -373,6 +387,7 @@ def _parse_duration(duration_str: str) -> timedelta:
     Supported formats: '1h', '30m', '2d', '1h30m', '90s'.
     Falls back to 1 hour on invalid input.
     """
+    optic.trace("duration_str={}", duration_str)
     total_seconds = 0
     pattern = re.compile(r"(\d+)\s*([dhms])", re.IGNORECASE)
     matches = pattern.findall(duration_str)
@@ -402,6 +417,7 @@ async def _collect_logs(logs_since: str = "1h") -> dict:
     as defence-in-depth.
     Returns an empty list gracefully if the buffer is empty.
     """
+    optic.trace("logs_since={}", logs_since)
     try:
         from services.log_buffer import get_log_buffer
 
@@ -474,10 +490,11 @@ async def collect_diagnostics(
     """Run server-side diagnostic collectors and return results.
 
     Each collector runs with a 10-second timeout. Partial failures
-    are reported in the response — the endpoint always returns 200
+    are reported in the response - the endpoint always returns 200
     if at least one collector succeeds.
     """
     # Determine which collectors to run
+    optic.trace("user_id={}", user.id)
     requested = list(COLLECTORS.keys()) if "all" in body.collectors else [c for c in body.collectors if c in COLLECTORS]
 
     # Run all requested collectors concurrently

@@ -3,7 +3,7 @@
 
 # observal ops
 
-Operational and observability commands — dashboards, traces, spans, metrics, feedback.
+Operational and observability commands: dashboards, traces, spans, metrics, feedback.
 
 ## Subcommands
 
@@ -24,7 +24,7 @@ Operational and observability commands — dashboards, traces, spans, metrics, f
 
 ## `observal ops overview`
 
-Summary stats across your server — total traces, active agents, error rate, top MCPs.
+Summary stats across your server: total traces, active agents, error rate, top MCPs.
 
 ```bash
 observal ops overview
@@ -64,21 +64,21 @@ observal ops top --type agent --limit 20
 
 ## `observal ops traces`
 
-List recent traces. Filter by agent, MCP, or type.
+List recent traces (sessions). By default shows a summary table. Use `--turn` to unfold sessions into a tree showing prompts and tool calls, or `--span` for full detail.
 
 ### Synopsis
 
 ```bash
-observal ops traces [--type <type>] [--agent <id>] [--mcp <id>] [--limit N] [--session <id>] [--output table|json]
+observal ops traces [--platform <ide>] [--days N] [--limit N] [--turn] [--span] [--output table|json]
 ```
 
 ### Examples
 
 ```bash
 observal ops traces --limit 20
-observal ops traces --agent code-reviewer --limit 50
-observal ops traces --mcp github-mcp
-observal ops traces --session <session-id>
+observal ops traces --turn --limit 5
+observal ops traces --span --limit 3
+observal ops traces --platform kiro --days 7
 observal ops traces --output json | jq
 ```
 
@@ -125,7 +125,7 @@ Flush the local telemetry buffer. When the Observal server is unreachable, hook 
 observal ops sync
 ```
 
-Auto-flush also happens on the next successful CLI invocation — you rarely need to run this manually.
+Auto-flush also happens on the next successful CLI invocation, so you rarely need to run this manually.
 
 ---
 
@@ -148,11 +148,10 @@ Send a test telemetry event. Useful for verifying instrumentation end-to-end.
 
 ```bash
 observal ops telemetry test
-# Test event sent — view at http://localhost:3000/traces
+# Test event sent. View at http://localhost/traces
 ```
 
 ## Related
 
 * [Use Cases → Observe MCP traffic](../use-cases/observe-mcp-traffic.md)
 * [Use Cases → Debug agent failures](../use-cases/debug-agent-failures.md)
-* [Data model](../concepts/data-model.md)

@@ -22,115 +22,70 @@
  ╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚══════╝
 </pre>
 
-**Discover, share, and monitor AI coding agents with full observability built in.**
+**A registry and insight platform for portable AI coding agents. Define context once, install it across tools, and learn what works.**
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status">
-  <a href="https://github.com/BlazeUp-AI/Observal/stargazers"><img src="https://img.shields.io/github/stars/BlazeUp-AI/Observal?style=flat-square" alt="Stars"></a>
+  <a href="https://pypi.org/project/observal-cli/"><img src="https://img.shields.io/pypi/v/observal-cli?style=flat-square&logo=pypi&logoColor=white&label=pypi" alt="PyPI version"></a>
   <a href="https://codecov.io/gh/BlazeUp-AI/Observal"><img src="https://img.shields.io/codecov/c/github/BlazeUp-AI/Observal?style=flat-square&logo=codecov" alt="Coverage"></a>
+  <a href="https://github.com/BlazeUp-AI/Observal/graphs/contributors"><img src="https://img.shields.io/github/contributors/BlazeUp-AI/Observal?style=flat-square&logo=github" alt="Contributors"></a>
+  <a href="https://discord.observal.io"><img src="https://img.shields.io/badge/discord-chat-5865f2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://github.com/orgs/BlazeUp-AI/packages?repo_name=Observal"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Haz3-jolt/b28aba6d0efebb0b430d43c8068feb91/raw/ghcr-pulls.json&style=flat-square" alt="GHCR pulls"></a>
 </p>
 
 > If you find Observal useful, please consider giving it a star. It helps others discover the project and keeps development going.
 
 ---
 
-Observal is a **self-hosted AI agent registry with built-in observability**. Think Docker Hub, but for AI coding agents.
+## What Observal is for
 
-Browse agents created by others, publish your own, and pull complete agent configurations — all defined in a portable YAML format that templates out to **Claude Code**, **Kiro CLI**, **Cursor**, **Gemini CLI**, and more. Every agent bundles its MCP servers, skills, hooks, prompts, and sandboxes into a single installable package. One command to install, zero manual config.
+Observal is for teams doing context engineering across AI coding tools. If your organization maintains Skills, AGENTS files, MCP servers, hooks, prompts, sandboxes, or subagent definitions, Observal gives you one place to package them into versioned agents, publish them to a registry, and install them into the IDE or harness your developers use.
 
-Every interaction generates traces, spans, and sessions that flow into a telemetry pipeline. The built-in eval engine scores agent sessions so you can measure performance and make your agents better over time.
+Define an agent once. Observal renders the right configuration for Claude Code, Cursor, Kiro, Pi, Copilot, Codex, OpenCode, and other supported tools. As teams use those agents, Observal turns real usage into insights about which prompts, skills, tools, and policies are helping.
 
-<table>
-<tr>
-<td width="50%">
+### Why teams use Observal
 
-**Agent Registry**
+- **Package context into reusable agents:** Bundle Skills, MCP servers, hooks, prompts, sandboxes, and policy into one versioned unit.
+- **Run a governed registry:** Review submissions, approve internal agents, inspect version diffs, and give developers one trusted place to install from.
+- **Render across coding tools:** Generate the correct config for each supported IDE instead of maintaining separate setup instructions for every harness.
+- **Learn what works:** Use real adoption and session data to find which agents, tools, prompts, and workflows are helping teams.
+- **Replay sessions when needed:** Use traces as evidence for debugging, review, audits, and deeper analysis without making observability the main workflow.
 
-![Agent Registry](docs/img/agents.png)
+---
 
-Browse, search, and install published agents
+## Supported IDEs
 
-</td>
-<td width="50%">
+| IDE |
+|-----|
+| Claude Code |
+| Kiro |
+| Cursor |
+| Pi |
+| Copilot (CLI & VS Code Extension) |
+| Codex |
+| OpenCode |
+| Antigravity CLI |
 
-**Dashboard**
+One command to install any agent into any supported IDE. The config files are generated per-IDE automatically.
 
-![Dashboard](docs/img/dashboard.png)
+---
 
-Agent scores, recent sessions, top downloads
+## Quick Start
 
-</td>
-</tr>
-<tr>
-<td width="50%">
+Observal has two parts: a **server** (API + web UI + databases) you self-host, and a **CLI** you install on each developer machine.
 
-**Trace Detail**
+### 1. Deploy the server
 
-![Trace Detail](docs/img/trace-detail.png)
-
-Every tool call: models, token counts, 16 turns
-
-</td>
-<td width="50%">
-
-**Insight Report**
-
-![Insights](docs/img/insights.png)
-
-AI-generated analysis of agent usage patterns
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**Error Log**
-
-![Errors](docs/img/errors.png)
-
-Classified errors with drill-through to sessions
-
-</td>
-<td width="50%">
-
-**Review Queue**
-
-![Review](docs/img/review-detail.png)
-
-Admin approve/reject workflow for submissions
-
-</td>
-</tr>
-</table>
-
-## Documentation
-
-**Full docs live at [docs.observal.io](https://docs.observal.io/)**
-
-| Start here                           | Go to                                                        |
-| ------------------------------------ | ------------------------------------------------------------ |
-| 5-minute install and first trace     | [Quickstart](docs/getting-started/quickstart.md)             |
-| Understand the data model            | [Core Concepts](docs/getting-started/core-concepts.md)       |
-| Instrument your existing MCP servers | [Observe MCP traffic](docs/use-cases/observe-mcp-traffic.md) |
-| Run Observal on your infrastructure  | [Self-Hosting](docs/self-hosting/README.md)                  |
-| Look up a CLI command                | [CLI Reference](docs/cli/README.md)                          |
-| Report a bug with diagnostics        | [Reporting Issues](#reporting-issues)                        |
-
-See [CHANGELOG.md](CHANGELOG.md) for recent updates.
-
-## Quick start
-
-### One-line install (recommended)
+**One-line install** (requires Docker Engine ≥ 24.0 with Compose v2):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install-server.sh | bash
 ```
 
-Downloads a lightweight config package, runs a guided setup, pulls pre-built Docker images from GHCR, and starts the full stack. No repo clone required.
+This downloads a Docker Compose package, runs guided setup (domain, secrets, ports), pulls container images from GHCR, and starts the full stack (API, web UI, PostgreSQL, ClickHouse, Redis, worker, load balancer, Prometheus, Grafana).
 
-### From source
+**From source** (for contributors):
 
 ```bash
 git clone https://github.com/BlazeUp-AI/Observal.git && cd Observal
@@ -138,44 +93,168 @@ cp .env.example .env
 make up
 ```
 
-### Connect your IDE
+### 2. Install the CLI
+
+**Standalone binary** (no Python required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
+```
+
+**Python** (3.11+):
 
 ```bash
 uv tool install observal-cli
-observal auth login
+# or: pipx install observal-cli
 ```
 
-This installs hooks in your IDE (Claude Code, Kiro, etc.) to automatically capture traces.
+### 3. Connect your IDE
 
-See [SETUP.md](SETUP.md) for the full setup guide.
+```bash
+observal auth login
+observal doctor --patch
+```
 
-## Supported IDEs
+This authenticates with your server, detects your IDE, installs telemetry hooks, starts capturing sessions automatically, and prepares it for agent installs and registry commands.
 
-| IDE         | Support                                                        |
-| ----------- | -------------------------------------------------------------- |
-| Claude Code | Full — skills, hooks, MCP, rules, OTLP telemetry               |
-| Kiro CLI    | Full — superpowers, hooks, MCP, steering files, OTLP telemetry |
-| Gemini CLI  | Tested — hooks, MCP, rules, OTLP telemetry                     |
-| Cursor      | Tested — MCP + shim telemetry, rules                           |
-| VS Code     | Limited — MCP + shim telemetry, rules                          |
-| Copilot CLI | Limited — hooks, MCP + shim telemetry, rules                   |
-| Codex CLI   | Limited — rules                                                |
-| OpenCode    | Limited — JS plugin hooks, MCP + shim telemetry, rules         |
+Once logged in, run `/observal` inside your IDE and it takes the wheel. Pull agents, submit components, browse the registry, run diagnostics:
 
-Compatibility matrix and per-IDE setup: [Integrations](docs/integrations/README.md).
+```
+/observal pull security-auditor
+/observal scan
+/observal doctor
+```
 
-## Tech stack
+Or just tell your agent what you want and it figures out the right commands.
 
-| Component   | Technology                                                |
-| ----------- | --------------------------------------------------------- |
-| Frontend    | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, Recharts |
-| Backend     | Python 3.11+, FastAPI, Strawberry GraphQL, Uvicorn        |
-| Databases   | PostgreSQL 16 (registry), ClickHouse (telemetry)          |
-| Queue       | Redis + arq                                               |
-| CLI         | Python, Typer, Rich                                       |
-| Eval engine | AWS Bedrock / OpenAI-compatible LLMs                      |
-| Telemetry   | OpenTelemetry Collector                                   |
-| Deployment  | Docker Compose (10 services)                              |
+---
+
+## How Observal works
+
+### Agents are portable context packages
+
+An agent bundles 5 component types into a single installable package: **MCP servers**, **skills**, **hooks**, **prompts**, and **sandboxes**. You define the agent once, publish it to the registry, and Observal generates the right config files for whichever supported IDE or harness the user runs.
+
+```bash
+observal pull security-auditor --ide pi
+```
+
+### The registry is the distribution layer
+
+Browse published agents, see which IDEs they support, check download counts and ratings, and install with one command. Admins review submissions before they go live. Version diffs show exactly what changed between releases, so teams can safely evolve shared context.
+
+### Insights show what is helping
+
+Observal turns real usage into reports about which agents, prompts, tools, and workflows are working or getting in the way. Use those insights to improve shared context instead of guessing from anecdotes.
+
+### Session traces provide the evidence
+
+When you need to debug, audit, or understand a result, Observal can replay the full coding session: user prompts, thinking blocks, assistant responses, and tool calls with their inputs and outputs. The traces support registry and insight workflows rather than defining the product.
+
+---
+
+## Agent Registry
+
+**Browse, search, and install agents with IDE compatibility badges:**
+
+![Agent registry with grid view](docs/img/registry.png)
+
+**Build agents visually with live config preview for every IDE:**
+
+![Agent Builder with preview panel](docs/img/builder.png)
+
+**Components library: MCPs, Skills, Hooks, Prompts, Sandboxes:**
+
+![Component registry showing MCP servers](docs/img/component_registry.png)
+
+---
+
+## Agent Insights
+
+**AI-powered insight reports** analyze usage patterns across all sessions, what's working, what's hindering, and quick wins. Powered by [LiteLLM](https://docs.litellm.ai/docs/providers), works with any provider (Anthropic, OpenAI, Bedrock, Gemini, Azure, Ollama).
+
+![Insight report with What's Working, What's Hindering, Quick Wins](docs/img/insights.png)
+
+See [Insights LLM Setup](docs/insights-setup.md) for configuration.
+
+---
+
+## Session Replay
+
+**Full session overview with token counts, models, tools, and turn-by-turn timeline:**
+
+![Session detail showing tokens, tools, models, and turns](docs/img/ses1.png)
+
+**Every turn captured: user prompt, tool calls, thinking block, assistant response:**
+
+![Turn expanded showing user prompt, thinking, and response](docs/img/complete_capture_thinking_response.png)
+
+**Drill into any span to see exact tool inputs and outputs:**
+
+![Span detail showing bash command input and full output](docs/img/span.png)
+
+---
+
+## Review and Governance
+
+**Admin review queue with full prompt inspection and approve/reject:**
+
+![Review queue with agent detail](docs/img/review.png)
+
+**Version diffs show exactly what changed between releases:**
+
+![Side-by-side diff of v1.0.0 vs v2.0.0](docs/img/review-diff.png)
+
+**Leaderboard tracks top agents and components by downloads:**
+
+![Leaderboard with rankings](docs/img/leaderboard.png)
+
+---
+
+## Enterprise Edition
+
+Source-available under a separate license. Activated with a signed JWT key. Core never imports from `ee/`, the open-source edition is fully functional without it.
+
+Enterprise adds:
+
+- **Audit trail/logs** with parameterized search and CSV export
+- **SAML SSO** and **SCIM provisioning**
+- **Executive dashboard** for org-wide agent performance
+
+**Audit log with parameterized search:**
+
+![Audit log with PHI sensitivity badges and chain hashes](docs/img/audit_logging.png)
+
+The server and CLI are the same package for all editions. Enterprise features activate at runtime when a valid license key is present:
+
+```bash
+# Pass the key during server install
+curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install-server.sh | bash -s -- --license-key YOUR_KEY
+
+# Or add it later to your .env
+echo 'OBSERVAL_LICENSE_KEY=your.key' >> .env
+make rebuild
+```
+
+---
+
+## Documentation
+
+Full docs at **[docs.observal.io](https://docs.observal.io/)**
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui |
+| Backend | Python 3.11+, FastAPI, Strawberry GraphQL |
+| Databases | PostgreSQL 16 (registry), ClickHouse (telemetry) |
+| Queue | Redis + arq |
+| CLI | Python, Typer, Rich |
+| Telemetry | Session hooks, stdio shims, push-based ingest |
+| Deployment | Docker Compose (10 services) |
 
 ## Contributing
 
@@ -189,40 +268,31 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 
 See [AGENTS.md](AGENTS.md) for internal codebase context.
 
-## Running tests
-
-```bash
-make test      # quick
-make test-v    # verbose
-```
-
-All tests mock external services. No Docker needed.
-
 ## Community
 
-Have a question, idea, or want to share what you've built? Head to [GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions). Please use Discussions for questions; open Issues for confirmed bugs and concrete feature requests.
+[GitHub Discussions](https://github.com/BlazeUp-AI/Observal/discussions) for questions and ideas. [Discord](https://discord.observal.io) for chat. Open Issues for confirmed bugs.
 
-Join the [Observal Discord](https://discord.observal.io) to chat directly with the maintainers and other community members.
-
-## Reporting issues
-
-When filing a bug report, please attach a support bundle so maintainers can diagnose the problem quickly:
+## Reporting Issues
 
 ```bash
 observal support bundle
 ```
 
-This produces a `.tar.gz` archive containing version info, sanitized configuration, health probes, aggregate table counts, and optional system metrics. All values pass through a redaction layer — no customer data, row contents, or credentials are included. Review the bundle before sharing:
+Produces a redacted diagnostic archive. Review before sharing: `observal support inspect observal-support-*.tar.gz`
+
+For live debugging, Observal uses loguru-based dev logging (internally called "optic"). Stream logs with:
 
 ```bash
-observal support inspect observal-support-*.tar.gz
+observal logs
 ```
+
+Logs are written to `~/.observal/logs/dev.log` and include structured context for every request, background job, and telemetry event.
 
 ## Security
 
-To report a vulnerability, please use [GitHub Private Vulnerability Reporting](https://github.com/BlazeUp-AI/Observal/security/advisories) or email contact@blazeup.app. **Do not open a public issue.** See [SECURITY.md](SECURITY.md).
+Report vulnerabilities via [GitHub Private Vulnerability Reporting](https://github.com/BlazeUp-AI/Observal/security/advisories) or email contact@blazeup.app. Do not open a public issue. See [SECURITY.md](SECURITY.md).
 
-## Star history
+## Star History
 
 <a href="https://www.star-history.com/?repos=BlazeUp-AI%2FObserval&type=date&legend=top-left">
  <picture>

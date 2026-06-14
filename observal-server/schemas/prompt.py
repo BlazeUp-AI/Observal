@@ -71,6 +71,14 @@ class PromptListingResponse(BaseModel):
     submitted_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    download_count: int = 0
+    user_permission: str | None = None
+
+    @field_validator("user_permission", mode="before")
+    @classmethod
+    def _coerce_user_permission(cls, v):
+        return v if isinstance(v, str) else None
+
     model_config = {"from_attributes": True}
 
 

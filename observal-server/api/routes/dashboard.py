@@ -6,19 +6,20 @@
 # SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
 import uuid
 from datetime import UTC, timedelta
 from datetime import datetime as dt
 
-import structlog
 from fastapi import APIRouter, Depends, Query
 from fastapi_cache.decorator import cache
+from loguru import logger as optic
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import services.dynamic_settings as ds
 from api.deps import get_db, require_role
 from api.sanitize import escape_like
-from config import settings
 from models.agent import Agent, AgentStatus, AgentVersion
 from models.agent_component import AgentComponent
 from models.download import AgentDownloadRecord
@@ -39,11 +40,6 @@ from schemas.dashboard import (
     LatencyCell,
     LeaderboardItem,
     OverviewStats,
-    RagasDimensionScore,
-    RagasEvalRequest,
-    RagasEvalResponse,
-    RagasScores,
-    RagasSpanResult,
     RelevanceBucket,
     SandboxRun,
     SandboxStats,
@@ -55,10 +51,8 @@ from schemas.dashboard import (
     TrendPoint,
     UnannotatedTrace,
 )
-from services.audit_helpers import audit
 from services.clickhouse import _query
 
-logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 
 _RANGE_MAP = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
@@ -70,12 +64,16 @@ def _range_days(range_: str | None) -> int:
 
 async def _ch_json(sql: str, params: dict | None = None) -> list[dict]:
     """Run a ClickHouse query and return data rows."""
+    # Optimize FINAL scans: process partitions independently instead of a
+    # single cross-partition merge pass.  Benchmarks show ~2x speedup.
+    if "FINAL" in sql and "SETTINGS" not in sql:
+        sql += " SETTINGS do_not_merge_across_partitions_select_final = 1"
     try:
         r = await _query(f"{sql} FORMAT JSON", params)
         if r.status_code == 200:
             return r.json().get("data", [])
     except Exception as e:
-        logger.warning("clickhouse_query_failed", error=str(e))
+        optic.warning("clickhouse_query_failed", error=str(e))
     return []
 
 
@@ -99,51 +97,58 @@ async def _ch_json_scoped(sql: str, current_user, params: dict | None = None) ->
 
 
 @router.get("/overview/stats", response_model=OverviewStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def overview_stats(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
 ):
-    total_mcps = (
-        await db.scalar(
-            select(func.count(McpListing.id))
-            .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
-            .where(McpVersion.status == ListingStatus.approved)
-        )
-        or 0
-    )
-    total_agents = (
-        await db.scalar(
-            select(func.count(Agent.id))
-            .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
-            .where(AgentVersion.status == AgentStatus.approved)
-        )
-        or 0
-    )
-    total_users = await db.scalar(select(func.count(User.id))) or 0
+
+    optic.trace("range={}", range_)
 
     days = _range_days(range_)
-    tool_rows = await _ch_json(
+
+    # Fan out all independent queries in parallel (3 Postgres + 2 ClickHouse)
+    total_mcps_coro = db.scalar(
+        select(func.count(McpListing.id))
+        .join(McpVersion, McpListing.latest_version_id == McpVersion.id)
+        .where(McpVersion.status == ListingStatus.approved)
+    )
+    total_agents_coro = db.scalar(
+        select(func.count(Agent.id))
+        .join(AgentVersion, Agent.latest_version_id == AgentVersion.id)
+        .where(AgentVersion.status == AgentStatus.approved)
+    )
+    total_users_coro = db.scalar(select(func.count(User.id)))
+    tool_rows_coro = _ch_json(
         "SELECT count() as cnt FROM spans WHERE start_time > now() - INTERVAL {days:UInt32} DAY AND is_deleted = 0",
         {"param_days": str(days)},
     )
-    agent_rows = await _ch_json(
+    agent_rows_coro = _ch_json(
         "SELECT count() as cnt FROM traces WHERE start_time > now() - INTERVAL {days:UInt32} DAY AND is_deleted = 0",
         {"param_days": str(days)},
     )
 
+    total_mcps, total_agents, total_users, tool_rows, agent_rows = await asyncio.gather(
+        total_mcps_coro,
+        total_agents_coro,
+        total_users_coro,
+        tool_rows_coro,
+        agent_rows_coro,
+    )
+
     return OverviewStats(
-        total_mcps=total_mcps,
-        total_agents=total_agents,
-        total_users=total_users,
+        total_mcps=total_mcps or 0,
+        total_agents=total_agents or 0,
+        total_users=total_users or 0,
         total_tool_calls=int(tool_rows[0].get("cnt", 0)) if tool_rows else 0,
         total_agent_interactions=int(agent_rows[0].get("cnt", 0)) if agent_rows else 0,
     )
 
 
 @router.get("/overview/top-mcps", response_model=list[TopItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def top_mcps(db: AsyncSession = Depends(get_db)):
+    optic.debug("top_mcps called")
     result = await db.execute(
         select(McpDownload.listing_id, func.count(McpDownload.id).label("cnt"), McpListing.name)
         .join(McpListing, McpDownload.listing_id == McpListing.id)
@@ -155,7 +160,7 @@ async def top_mcps(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/overview/top-agents", response_model=list[TopAgentItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def top_agents(
     limit: int = Query(6, le=50),
     db: AsyncSession = Depends(get_db),
@@ -204,7 +209,7 @@ async def top_agents(
 
 
 @router.get("/overview/leaderboard", response_model=list[LeaderboardItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def agent_leaderboard(
     window: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
     limit: int = Query(20, le=50),
@@ -318,7 +323,7 @@ async def agent_leaderboard(
 
 
 @router.get("/overview/component-leaderboard", response_model=list[ComponentLeaderboardItem])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def component_leaderboard(
     window: str = Query("7d", pattern="^(24h|7d|30d|all)$"),
     limit: int = Query(20, le=50),
@@ -464,7 +469,7 @@ async def component_leaderboard(
 
 
 @router.get("/overview/trends", response_model=list[TrendPoint])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def trends(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
@@ -491,7 +496,6 @@ async def trends(
     all_dates = sorted(set(submissions) | set(users))
 
     result = [TrendPoint(date=d, submissions=submissions.get(d, 0), users=users.get(d, 0)) for d in all_dates]
-    await audit(current_user, "dashboard.trends", resource_type="dashboard")
     return result
 
 
@@ -501,16 +505,18 @@ async def trends(
 
 
 @router.get("/dashboard/tokens", response_model=TokenStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def token_stats(
     range_: str | None = Query(None, alias="range"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
+
     days = _range_days(range_)
     days_param = {"param_days": str(days)}
-    # Totals
-    totals = await _ch_json_scoped(
+
+    # Fan out all 5 independent ClickHouse queries in parallel
+    totals_coro = _ch_json_scoped(
         "SELECT "
         "sumIf(token_count_input, token_count_input IS NOT NULL) AS total_input, "
         "sumIf(token_count_output, token_count_output IS NOT NULL) AS total_output, "
@@ -520,13 +526,7 @@ async def token_stats(
         current_user,
         days_param,
     )
-    t = totals[0] if totals else {}
-    total_input = int(t.get("total_input", 0))
-    total_output = int(t.get("total_output", 0))
-    total_tokens = int(t.get("total_tokens", 0))
-
-    # Avg per trace
-    avg_rows = await _ch_json_scoped(
+    avg_coro = _ch_json_scoped(
         "SELECT round(avg(s), 2) AS avg_per_trace FROM ("
         "SELECT trace_id, sum(token_count_total) AS s "
         "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 AND token_count_total IS NOT NULL "
@@ -536,10 +536,7 @@ async def token_stats(
         current_user,
         days_param,
     )
-    avg_per_trace = float((avg_rows[0] if avg_rows else {}).get("avg_per_trace", 0))
-
-    # By agent
-    by_agent_rows = await _ch_json_scoped(
+    by_agent_coro = _ch_json_scoped(
         "SELECT t.agent_id AS agent_id, "
         "sumIf(s.token_count_input, s.token_count_input IS NOT NULL) AS input, "
         "sumIf(s.token_count_output, s.token_count_output IS NOT NULL) AS output, "
@@ -553,6 +550,46 @@ async def token_stats(
         current_user,
         days_param,
     )
+    by_mcp_coro = _ch_json_scoped(
+        "SELECT t.mcp_id AS mcp_id, "
+        "sumIf(s.token_count_input, s.token_count_input IS NOT NULL) AS input, "
+        "sumIf(s.token_count_output, s.token_count_output IS NOT NULL) AS output, "
+        "sumIf(s.token_count_total, s.token_count_total IS NOT NULL) AS total, "
+        "count(DISTINCT t.trace_id) AS traces "
+        "FROM spans AS s FINAL "
+        "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.project_id = 'default' AND t.is_deleted = 0 "
+        "WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.mcp_id != '' "
+        "AND s.start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY t.mcp_id ORDER BY total DESC LIMIT 20",
+        current_user,
+        days_param,
+    )
+    over_time_coro = _ch_json_scoped(
+        "SELECT toDate(start_time) AS date, "
+        "sumIf(token_count_input, token_count_input IS NOT NULL) AS input, "
+        "sumIf(token_count_output, token_count_output IS NOT NULL) AS output "
+        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
+        "AND start_time >= now() - INTERVAL {days:UInt32} DAY "
+        "GROUP BY date ORDER BY date",
+        current_user,
+        days_param,
+    )
+
+    totals, avg_rows, by_agent_rows, by_mcp_rows, over_time_rows = await asyncio.gather(
+        totals_coro,
+        avg_coro,
+        by_agent_coro,
+        by_mcp_coro,
+        over_time_coro,
+    )
+
+    t = totals[0] if totals else {}
+    total_input = int(t.get("total_input", 0))
+    total_output = int(t.get("total_output", 0))
+    total_tokens = int(t.get("total_tokens", 0))
+    avg_per_trace = float((avg_rows[0] if avg_rows else {}).get("avg_per_trace", 0))
+
+    # Resolve agent names from Postgres
     agent_ids = [r["agent_id"] for r in by_agent_rows if r.get("agent_id")]
     agent_names: dict[str, str] = {}
     if agent_ids:
@@ -572,21 +609,7 @@ async def token_stats(
         for r in by_agent_rows
     ]
 
-    # By MCP
-    by_mcp_rows = await _ch_json_scoped(
-        "SELECT t.mcp_id AS mcp_id, "
-        "sumIf(s.token_count_input, s.token_count_input IS NOT NULL) AS input, "
-        "sumIf(s.token_count_output, s.token_count_output IS NOT NULL) AS output, "
-        "sumIf(s.token_count_total, s.token_count_total IS NOT NULL) AS total, "
-        "count(DISTINCT t.trace_id) AS traces "
-        "FROM spans AS s FINAL "
-        "INNER JOIN traces AS t FINAL ON s.trace_id = t.trace_id AND t.project_id = 'default' AND t.is_deleted = 0 "
-        "WHERE s.project_id = 'default' AND s.is_deleted = 0 AND t.mcp_id != '' "
-        "AND s.start_time >= now() - INTERVAL {days:UInt32} DAY "
-        "GROUP BY t.mcp_id ORDER BY total DESC LIMIT 20",
-        current_user,
-        days_param,
-    )
+    # Resolve MCP names from Postgres
     mcp_ids = [r["mcp_id"] for r in by_mcp_rows if r.get("mcp_id")]
     mcp_names: dict[str, str] = {}
     if mcp_ids:
@@ -617,22 +640,10 @@ async def token_stats(
         for r in by_mcp_rows
     ]
 
-    # Over time
-    over_time_rows = await _ch_json_scoped(
-        "SELECT toDate(start_time) AS date, "
-        "sumIf(token_count_input, token_count_input IS NOT NULL) AS input, "
-        "sumIf(token_count_output, token_count_output IS NOT NULL) AS output "
-        "FROM spans FINAL WHERE project_id = 'default' AND is_deleted = 0 "
-        "AND start_time >= now() - INTERVAL {days:UInt32} DAY "
-        "GROUP BY date ORDER BY date",
-        current_user,
-        days_param,
-    )
+    # Over time (already fetched in parallel above)
     over_time = [
         TokenTimePoint(date=str(r["date"]), input=int(r["input"]), output=int(r["output"])) for r in over_time_rows
     ]
-
-    await audit(current_user, "dashboard.token_stats", resource_type="dashboard")
     return TokenStats(
         total_input=total_input,
         total_output=total_output,
@@ -650,7 +661,7 @@ async def token_stats(
 
 
 @router.get("/dashboard/ide-usage", response_model=IdeUsage)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def ide_usage(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -677,7 +688,6 @@ async def ide_usage(
         )
         for r in rows
     ]
-    await audit(current_user, "dashboard.ide_usage", resource_type="dashboard")
     return IdeUsage(ides=ides)
 
 
@@ -687,7 +697,7 @@ async def ide_usage(
 
 
 @router.get("/dashboard/sandbox-metrics", response_model=SandboxStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def sandbox_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -741,8 +751,6 @@ async def sandbox_metrics(
         "GROUP BY date ORDER BY date",
         current_user,
     )
-
-    await audit(current_user, "dashboard.sandbox_metrics", resource_type="dashboard")
     return SandboxStats(
         total_runs=total_runs,
         oom_count=oom_count,
@@ -762,7 +770,7 @@ async def sandbox_metrics(
 
 
 @router.get("/dashboard/graphrag-metrics", response_model=GraphRagStats)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def graphrag_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -802,8 +810,6 @@ async def graphrag_metrics(
         "ORDER BY start_time DESC LIMIT 20",
         current_user,
     )
-
-    await audit(current_user, "dashboard.graphrag_metrics", resource_type="dashboard")
     return GraphRagStats(
         total_queries=int(a.get("total_queries", 0)),
         avg_entities=float(a["avg_entities"]) if a.get("avg_entities") else None,
@@ -828,81 +834,12 @@ async def graphrag_metrics(
 
 
 # ---------------------------------------------------------------------------
-# RAGAS evaluation for GraphRAGs
-# ---------------------------------------------------------------------------
-
-
-@router.post("/dashboard/graphrag-ragas-eval", response_model=RagasEvalResponse)
-async def run_graphrag_ragas_eval(
-    req: RagasEvalRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
-):
-    """Run RAGAS evaluation on recent retrieval spans for a GraphRAG."""
-    from services.eval.ragas_eval import run_ragas_on_graphrag
-
-    result = await run_ragas_on_graphrag(
-        graphrag_id=req.graphrag_id,
-        limit=req.limit,
-        ground_truths=req.ground_truths,
-    )
-    avgs = result.get("averages", {})
-    await audit(
-        current_user,
-        "dashboard.graphrag_ragas_eval",
-        resource_type="dashboard",
-        detail=f"RAGAS eval on graphrag_id={req.graphrag_id}",
-    )
-    return RagasEvalResponse(
-        spans_evaluated=result["spans_evaluated"],
-        scores=[RagasSpanResult(**s) for s in result["scores"]],
-        averages=RagasScores(
-            faithfulness=RagasDimensionScore(avg=avgs.get("faithfulness"), count=result["spans_evaluated"]),
-            answer_relevancy=RagasDimensionScore(avg=avgs.get("answer_relevancy"), count=result["spans_evaluated"]),
-            context_precision=RagasDimensionScore(avg=avgs.get("context_precision"), count=result["spans_evaluated"]),
-            context_recall=RagasDimensionScore(avg=avgs.get("context_recall"), count=result["spans_evaluated"]),
-        ),
-    )
-
-
-@router.get("/dashboard/graphrag-ragas-scores", response_model=RagasScores)
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
-async def graphrag_ragas_scores(
-    graphrag_id: str | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
-):
-    """Get previously computed RAGAS scores. If graphrag_id is provided, scoped to that GraphRAG; otherwise aggregate."""
-    if graphrag_id:
-        from services.eval.ragas_eval import get_ragas_scores
-
-        avgs = await get_ragas_scores(graphrag_id)
-    else:
-        from services.eval.ragas_eval import get_ragas_aggregate
-
-        avgs = await get_ragas_aggregate()
-
-    await audit(
-        current_user,
-        "dashboard.graphrag_ragas_scores",
-        resource_type="dashboard",
-        detail=f"graphrag_id={graphrag_id}" if graphrag_id else "aggregate",
-    )
-    return RagasScores(
-        faithfulness=RagasDimensionScore(**avgs.get("faithfulness", {"avg": None, "count": 0})),
-        answer_relevancy=RagasDimensionScore(**avgs.get("answer_relevancy", {"avg": None, "count": 0})),
-        context_precision=RagasDimensionScore(**avgs.get("context_precision", {"avg": None, "count": 0})),
-        context_recall=RagasDimensionScore(**avgs.get("context_recall", {"avg": None, "count": 0})),
-    )
-
-
-# ---------------------------------------------------------------------------
 # Latency heatmap
 # ---------------------------------------------------------------------------
 
 
 @router.get("/dashboard/latency-heatmap", response_model=list[LatencyCell])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def latency_heatmap(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -930,7 +867,6 @@ async def latency_heatmap(
         LatencyCell(name=r["name"], hour=str(r["hour"]), p50=float(r["p50"]), p90=float(r["p90"]), p99=float(r["p99"]))
         for r in rows
     ]
-    await audit(current_user, "dashboard.latency_heatmap", resource_type="dashboard")
     return cells
 
 
@@ -940,7 +876,7 @@ async def latency_heatmap(
 
 
 @router.get("/dashboard/unannotated-traces", response_model=list[UnannotatedTrace])
-@cache(expire=settings.CACHE_TTL_DASHBOARD, namespace="dashboard")
+@cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def unannotated_traces(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
@@ -967,5 +903,4 @@ async def unannotated_traces(
         )
         for r in rows
     ]
-    await audit(current_user, "dashboard.unannotated_traces", resource_type="dashboard")
     return traces

@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hemalatha Madeswaran <hemalathamadeswaran@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
@@ -6,24 +7,27 @@
 
 from datetime import UTC, datetime, timedelta
 
-import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from loguru import logger as optic
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db, require_role, resolve_prefix_id
-from models.agent import Agent
+from api.deps import get_db, get_effective_agent_permission, require_role
+from api.routes.agent.helpers import _load_agent
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.insight_meta_cache import InsightMetaCache
 from models.insight_report import InsightReport, InsightReportStatus
 from models.insight_session_facets import InsightSessionFacets
 from models.user import User, UserRole
-from schemas.insights import GenerateInsightRequest, InsightReportListItem, InsightReportResponse
-from services.audit_helpers import audit
+from schemas.insights import (
+    ApplySuggestionsRequest,
+    GenerateInsightRequest,
+    InsightReportListItem,
+    InsightReportResponse,
+)
 from services.insights import INSIGHTS_AVAILABLE, render_report_html
 from services.redis import _get_arq_pool
-
-logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/insights", tags=["insights"])
 
@@ -37,29 +41,268 @@ def _require_insights():
         )
 
 
+def _require_agent_edit_access(agent: Agent, user: User) -> None:
+    """Raise 403 unless user is admin or has owner/edit permission on the agent."""
+    perm = get_effective_agent_permission(agent, user)
+    if perm not in ("owner", "edit"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions for this agent")
+
+
+async def _resolve_insights_agent(agent_id: str, db: AsyncSession, current_user: User) -> Agent:
+    """Resolve an insights agent by UUID, ID prefix, or name."""
+    agent = await _load_agent(
+        db,
+        agent_id,
+        prefer_user_id=current_user.id,
+        org_id=current_user.org_id,
+        include_all_statuses=True,
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _require_agent_edit_access(agent, current_user)
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    return agent
+
+
+async def _resolve_insight_agent_version(
+    agent: Agent,
+    db: AsyncSession,
+    requested_version: str | None = None,
+) -> AgentVersion:
+    """Resolve the requested version or the latest approved version for a report."""
+    stmt = select(AgentVersion).where(
+        AgentVersion.agent_id == agent.id,
+        AgentVersion.status == AgentStatus.approved,
+    )
+    if requested_version:
+        stmt = stmt.where(AgentVersion.version == requested_version)
+    else:
+        stmt = stmt.order_by(AgentVersion.released_at.desc(), AgentVersion.created_at.desc()).limit(1)
+
+    result = await db.execute(stmt)
+    version = result.scalar_one_or_none()
+    if not version:
+        detail = (
+            f"Approved version {requested_version!r} not found"
+            if requested_version
+            else "No approved agent version found"
+        )
+        raise HTTPException(status_code=404, detail=detail)
+    return version
+
+
+async def _previous_approved_version(
+    agent: Agent, db: AsyncSession, current_version: AgentVersion
+) -> AgentVersion | None:
+    """Return a bounded default comparison target: the previous approved version."""
+    from services.versioning import parse_semver
+
+    current_parsed = parse_semver(current_version.version) or (0, 0, 0)
+    stmt = select(AgentVersion).where(
+        AgentVersion.agent_id == agent.id,
+        AgentVersion.status == AgentStatus.approved,
+        AgentVersion.id != current_version.id,
+    )
+    result = await db.execute(stmt)
+    candidates = list(result.scalars().all())
+    older: list[tuple[tuple[int, int, int], AgentVersion]] = []
+    for candidate in candidates:
+        parsed = parse_semver(candidate.version) or (0, 0, 0)
+        if parsed < current_parsed:
+            older.append((parsed, candidate))
+    if not older:
+        return None
+    older.sort(key=lambda item: item[0], reverse=True)
+    return older[0][1]
+
+
+async def _count_insight_sessions(
+    *,
+    agent: Agent,
+    period_start: datetime,
+    period_end: datetime,
+    agent_version: str | None = None,
+) -> int:
+    """Count sessions for an agent, optionally scoped to telemetry agent_version."""
+    from services.clickhouse import _query
+
+    base_where = (
+        "WHERE (agent_id = {agent_id:String} OR agent_id = {agent_name:String}) "
+        "AND last_event_time >= {t_start:String} "
+        "AND last_event_time <= {t_end:String} "
+    )
+    params = {
+        "param_agent_id": str(agent.id),
+        "param_agent_name": agent.name,
+        "param_t_start": period_start.strftime("%Y-%m-%d %H:%M:%S"),
+        "param_t_end": period_end.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if agent_version:
+        base_where += "AND agent_version = {agent_version:String} "
+        params["param_agent_version"] = agent_version
+
+    count_sql = "SELECT count() AS cnt FROM session_stats_agg FINAL " + base_where + "FORMAT JSON"
+    try:
+        r = await _query(count_sql, params)
+        count_data = r.json().get("data", []) if r.status_code == 200 else []
+        return int(count_data[0]["cnt"]) if count_data else 0
+    except Exception as e:
+        optic.warning("insight_session_count_agg_failed", agent=str(agent.id), version=agent_version, error=str(e))
+
+    # Safe fallback for older ClickHouse aggregates that do not yet expose agent_version.
+    fallback_where = (
+        "WHERE (agent_id = {agent_id:String} OR agent_id = {agent_name:String}) "
+        "AND timestamp >= {t_start:String} "
+        "AND timestamp <= {t_end:String} "
+    )
+    if agent_version:
+        fallback_where += "AND agent_version = {agent_version:String} "
+    fallback_sql = (
+        "SELECT count(DISTINCT session_id) AS cnt FROM session_events FINAL " + fallback_where + "FORMAT JSON"
+    )
+    try:
+        r = await _query(fallback_sql, params)
+        count_data = r.json().get("data", []) if r.status_code == 200 else []
+        return int(count_data[0]["cnt"]) if count_data else 0
+    except Exception as e:
+        optic.warning("insight_session_count_fallback_failed", agent=str(agent.id), version=agent_version, error=str(e))
+        return 0
+
+
+@router.get("/status")
+async def insights_status(current_user: User = Depends(require_role(UserRole.user))):
+    """Return whether insights is available and properly configured."""
+    import services.dynamic_settings as ds
+
+    if not INSIGHTS_AVAILABLE:
+        return {"available": False, "reason": "Insights requires an enterprise license."}
+
+    model = await ds.get("insights.model_sections")
+    if not model:
+        return {"available": False, "reason": "No model configured. Set insights.model_sections in admin settings."}
+
+    # If a direct API key is configured, skip AWS credential checks
+    api_key = await ds.get("insights.api_key")
+
+    # Check if AWS credentials are set and valid (for Bedrock models)
+    if "anthropic" in model and not api_key:
+        aws_key = await ds.get("insights.aws_access_key_id")
+        aws_secret = await ds.get("insights.aws_secret_access_key")
+        if not aws_key:
+            return {
+                "available": False,
+                "reason": "AWS access key not configured. Set insights.aws_access_key_id in admin settings.",
+            }
+        if not aws_secret:
+            return {
+                "available": False,
+                "reason": "AWS secret key not configured. Set insights.aws_secret_access_key in admin settings.",
+            }
+
+        # Validate credentials with a lightweight STS call
+        try:
+            import boto3
+
+            region = await ds.get("insights.aws_region") or "us-east-1"
+            sts = boto3.client(
+                "sts",
+                region_name=region,
+                aws_access_key_id=aws_key,
+                aws_secret_access_key=aws_secret,
+            )
+            sts.get_caller_identity()
+        except Exception as e:
+            error_str = str(e)
+            if "InvalidClientTokenId" in error_str or "security token" in error_str:
+                return {
+                    "available": False,
+                    "reason": "AWS access key is invalid. Update insights.aws_access_key_id in admin settings.",
+                }
+            if "SignatureDoesNotMatch" in error_str:
+                return {
+                    "available": False,
+                    "reason": "AWS secret key is invalid. Update insights.aws_secret_access_key in admin settings.",
+                }
+            if "ExpiredToken" in error_str:
+                return {
+                    "available": False,
+                    "reason": "AWS credentials have expired. Update credentials in admin settings.",
+                }
+            return {
+                "available": False,
+                "reason": "AWS credential check failed. Verify your access key and secret in admin settings.",
+            }
+
+    return {"available": True, "reason": None}
+
+
+@router.get("/agents/{agent_id}/session-count")
+async def agent_session_count(
+    agent_id: str,
+    agent_version: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.user)),
+):
+    """Return the number of sessions available for insight generation."""
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
+    version = await _resolve_insight_agent_version(agent, db, agent_version)
+    now = datetime.now(UTC)
+    period_start = now - timedelta(days=14)
+    count = await _count_insight_sessions(
+        agent=agent,
+        period_start=period_start,
+        period_end=now,
+        agent_version=version.version,
+    )
+
+    return {"session_count": count, "agent_version": version.version, "agent_version_id": str(version.id)}
+
+
 @router.post("/agents/{agent_id}/generate", response_model=InsightReportListItem)
 async def generate_insight(
     agent_id: str,
     req: GenerateInsightRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Trigger generation of an insight report for an agent."""
+    optic.trace("agent_id={}, req={}", agent_id, req)
     _require_insights()
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
 
     period_days = req.period_days if req else 14
+    requested_version = req.agent_version if req else None
+    version_scope = (req.version_scope if req else None) or "canonical_and_dirty"
+    agent_version = await _resolve_insight_agent_version(agent, db, requested_version)
+    comparison_version = (
+        await _resolve_insight_agent_version(agent, db, req.comparison_agent_version)
+        if req and req.comparison_agent_version
+        else await _previous_approved_version(agent, db, agent_version)
+    )
     now = datetime.now(UTC)
     period_start = now - timedelta(days=period_days)
+
+    # Check if there are any sessions for this agent/version in the period.
+    session_count = await _count_insight_sessions(
+        agent=agent,
+        period_start=period_start,
+        period_end=now,
+        agent_version=agent_version.version,
+    )
+
+    if session_count == 0:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No sessions found for this agent version ({agent_version.version}) in the last {period_days} days. Cannot generate a report.",
+        )
 
     # Find previous completed report for regression linking
     prev_stmt = (
         select(InsightReport)
         .where(
             InsightReport.agent_id == agent.id,
+            InsightReport.agent_version == agent_version.version,
             InsightReport.status == InsightReportStatus.completed,
         )
         .order_by(InsightReport.created_at.desc())
@@ -76,6 +319,14 @@ async def generate_insight(
         period_end=now,
         started_at=now,
         previous_report_id=prev_report.id if prev_report else None,
+        agent_version_id=agent_version.id,
+        agent_version=agent_version.version,
+        version_scope=version_scope,
+        comparison_agent_version_id=comparison_version.id if comparison_version else None,
+        comparison_agent_version=comparison_version.version if comparison_version else None,
+        progress_phase="queued",
+        progress_message="Queued for generation",
+        progress_updated_at=now,
     )
     db.add(report)
     await db.flush()
@@ -83,8 +334,6 @@ async def generate_insight(
     # Enqueue background job
     pool = await _get_arq_pool()
     await pool.enqueue_job("generate_insight_report", str(report.id))
-
-    await audit(current_user, "insights.generate", resource_type="insight_report", resource_id=str(report.id))
     await db.commit()
 
     return InsightReportListItem.model_validate(report)
@@ -94,14 +343,12 @@ async def generate_insight(
 async def list_reports(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """List insight reports for an agent, newest first."""
+    optic.trace("agent_id={}", agent_id)
     _require_insights()
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
 
     stmt = (
         select(InsightReport)
@@ -118,9 +365,10 @@ async def list_reports(
 async def get_report(
     report_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Get a single insight report by ID."""
+    optic.trace("report_id={}", report_id)
     _require_insights()
     stmt = select(InsightReport).where(InsightReport.id == report_id)
     result = await db.execute(stmt)
@@ -133,7 +381,10 @@ async def get_report(
     agent_stmt = select(Agent).where(Agent.id == report.agent_id)
     agent_result = await db.execute(agent_stmt)
     agent = agent_result.scalar_one_or_none()
-    if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+    if not agent:
+        raise HTTPException(status_code=404, detail="Report not found")
+    _require_agent_edit_access(agent, current_user)
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     return InsightReportResponse.model_validate(report)
@@ -143,9 +394,10 @@ async def get_report(
 async def export_report_html(
     report_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.admin)),
+    current_user: User = Depends(require_role(UserRole.user)),
 ):
     """Export an insight report as a self-contained HTML document."""
+    optic.trace("report_id={}", report_id)
     _require_insights()
     stmt = select(InsightReport).where(InsightReport.id == report_id)
     result = await db.execute(stmt)
@@ -161,13 +413,18 @@ async def export_report_html(
     agent_stmt = select(Agent).where(Agent.id == report.agent_id)
     agent_result = await db.execute(agent_stmt)
     agent = agent_result.scalar_one_or_none()
-    if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+    if not agent:
+        raise HTTPException(status_code=404, detail="Report not found")
+    _require_agent_edit_access(agent, current_user)
+    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     # Build report dict for the renderer
     report_data = {
         "id": str(report.id),
         "agent_id": str(report.agent_id),
+        "agent_version": report.agent_version,
+        "comparison_agent_version": report.comparison_agent_version,
         "status": report.status.value if hasattr(report.status, "value") else str(report.status),
         "period_start": report.period_start,
         "period_end": report.period_end,
@@ -193,11 +450,9 @@ async def clear_agent_reports(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Delete all insight reports and cached data for an agent."""
+    optic.trace("agent_id={}", agent_id)
     _require_insights()
-    agent = await resolve_prefix_id(Agent, agent_id, db)
-
-    if current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
-        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+    agent = await _resolve_insights_agent(agent_id, db, current_user)
 
     # Delete reports
     report_result = await db.execute(delete(InsightReport).where(InsightReport.agent_id == agent.id))
@@ -207,8 +462,6 @@ async def clear_agent_reports(
 
     # Delete meta cache
     cache_result = await db.execute(delete(InsightMetaCache).where(InsightMetaCache.agent_id == agent.id))
-
-    await audit(current_user, "insights.clear", resource_type="agent", resource_id=str(agent.id))
     await db.commit()
 
     return {
@@ -225,6 +478,7 @@ async def delete_report(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Delete a single insight report."""
+    optic.trace("report_id={}", report_id)
     _require_insights()
     stmt = select(InsightReport).where(InsightReport.id == report_id)
     result = await db.execute(stmt)
@@ -241,7 +495,74 @@ async def delete_report(
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
     await db.delete(report)
-    await audit(current_user, "insights.delete_report", resource_type="insight_report", resource_id=str(report.id))
     await db.commit()
 
     return {"deleted": True, "report_id": report_id}
+
+
+@router.post("/reports/{report_id}/apply")
+async def apply_report_suggestions(
+    report_id: str,
+    body: ApplySuggestionsRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Apply selected insight suggestions as pending registry items.
+
+    Pass index arrays to select specific suggestions. Omit or pass null
+    to skip a category entirely. Pass an empty body to apply all.
+    """
+    optic.trace("report_id={}", report_id)
+    _require_insights()
+
+    # Check feature toggle
+    import services.dynamic_settings as ds
+
+    enabled = await ds.get_bool("insights.self_learn_enabled", default=True)
+    if not enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Self-learning is disabled. Enable via settings: insights.self_learn_enabled",
+        )
+
+    # Org-scope check
+    stmt = select(InsightReport).where(InsightReport.id == report_id)
+    result = await db.execute(stmt)
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    agent_stmt = select(Agent).where(Agent.id == report.agent_id)
+    agent_result = await db.execute(agent_stmt)
+    agent = agent_result.scalar_one_or_none()
+    if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
+
+    # Run the self-learn pipeline
+    from services.insights.self_learn import apply_insight_suggestions
+
+    selection = None
+    if body and (
+        body.config_indices is not None or body.feature_indices is not None or body.pattern_indices is not None
+    ):
+        selection = {
+            "config_indices": body.config_indices,
+            "feature_indices": body.feature_indices,
+            "pattern_indices": body.pattern_indices,
+        }
+
+    try:
+        applied = await apply_insight_suggestions(
+            report_id=report_id,
+            db=db,
+            triggered_by=current_user.id,
+            selection=selection,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "applied": True,
+        "report_id": report_id,
+        "items": applied,
+    }

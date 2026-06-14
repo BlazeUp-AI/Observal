@@ -13,17 +13,14 @@ The catalog itself lives in ``services.model_catalog``. This route layer adds:
 
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends, Header, Request, Response, status
+from loguru import logger as optic
 
 from api.deps import get_current_user, require_role
 from api.ratelimit import limiter
 from models.user import User, UserRole
 from schemas.models import Catalog
 from services.model_catalog import diff_against_current, get_catalog
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["models"])
 
@@ -42,6 +39,7 @@ async def list_models(
     catalog hasn't changed, we respond ``304 Not Modified`` with the same
     ``ETag`` so the client keeps its cached copy.
     """
+    optic.debug("registry_models list")
     catalog = await get_catalog()
 
     response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=3600"
@@ -74,6 +72,7 @@ async def refresh_models(
 
     Heavy, rate-limited (4/min/IP) so it can't be used to hammer the upstream.
     """
+    optic.trace("user_id={}", current_user.id)
     prev = await get_catalog()
     diff = await diff_against_current(prev)
     new = await get_catalog()

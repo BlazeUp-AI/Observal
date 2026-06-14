@@ -1,28 +1,25 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-import json
-import logging
 
 from fastapi import APIRouter, Depends
+from loguru import logger as optic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.deps import get_db, require_role
-from models.agent import Agent, AgentGoalSection, AgentGoalTemplate, AgentStatus, AgentVersion, AgentVisibility
+from models.agent import Agent, AgentStatus, AgentVersion
 from models.agent_component import AgentComponent
 from models.user import User, UserRole
 from schemas.bulk import BulkAgentItem, BulkAgentRequest, BulkResult, BulkResultItem
-from services.audit_helpers import audit
 from services.registry_telemetry import emit_registry_event
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/bulk", tags=["bulk"])
 
 
 async def _agent_name_exists(name: str, user_id, db: AsyncSession) -> bool:
     """Check whether the authenticated user already owns an agent with the given name."""
+    optic.trace("name={}, user_id={}", name, user_id)
     result = await db.execute(select(Agent.id).where(Agent.name == name, Agent.created_by == user_id))
     return result.scalar_one_or_none() is not None
 
@@ -33,12 +30,12 @@ async def _create_single_agent(
     db: AsyncSession,
 ) -> Agent:
     """Create a single Agent + AgentVersion row (with components and goal template)."""
+    optic.trace("name={}, user_id={}", item.name, user.id)
     agent = Agent(
         name=item.name,
         owner=item.owner or user.email,
         created_by=user.id,
         owner_org_id=user.org_id,
-        visibility=AgentVisibility.public,
     )
     db.add(agent)
     await db.flush()
@@ -74,26 +71,6 @@ async def _create_single_agent(
             )
         )
 
-    # Attach goal template when provided
-    if item.goal_template:
-        goal = AgentGoalTemplate(
-            agent_version_id=version.id,
-            description=item.goal_template.get("description", ""),
-        )
-        db.add(goal)
-        await db.flush()
-
-        for j, sec in enumerate(item.goal_template.get("sections", [])):
-            db.add(
-                AgentGoalSection(
-                    goal_template_id=goal.id,
-                    name=sec.get("name", f"section-{j}"),
-                    description=sec.get("description"),
-                    grounding_required=sec.get("grounding_required", False),
-                    order=j,
-                )
-            )
-
     return agent
 
 
@@ -106,9 +83,10 @@ async def bulk_create_agents(
     """Create multiple agents in a single request.
 
     Duplicate names (agents already owned by the caller) are skipped.
-    When ``dry_run=True`` no agents are persisted — the response previews
+    When ``dry_run=True`` no agents are persisted - the response previews
     what *would* happen.
     """
+    optic.debug("bulk create agents")
     results: list[BulkResultItem] = []
     created = 0
     skipped = 0
@@ -133,7 +111,7 @@ async def bulk_create_agents(
             results.append(BulkResultItem(name=item.name, status="created", agent_id=agent.id))
             created += 1
         except Exception as exc:
-            logger.warning("bulk create failed for agent '%s': %s", item.name, exc)
+            optic.warning("bulk create failed for agent '{}': {}", item.name, exc)
             results.append(BulkResultItem(name=item.name, status="error", error=str(exc)))
             errors += 1
 
@@ -146,13 +124,6 @@ async def bulk_create_agents(
             user_email=current_user.email,
             user_role=current_user.role.value,
             metadata={"total": str(len(request.agents)), "created": str(created), "skipped": str(skipped)},
-        )
-
-        await audit(
-            current_user,
-            "agent.bulk_create",
-            resource_type="agent",
-            detail=json.dumps({"count": created, "skipped": skipped, "errors": errors}),
         )
 
     return BulkResult(

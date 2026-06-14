@@ -21,6 +21,7 @@ import uuid
 from datetime import UTC, datetime
 
 import httpx
+from loguru import logger as optic
 
 from observal_cli.config import load as load_config
 
@@ -397,6 +398,7 @@ async def _emit_error_notification_async(message: str, ide_stdout) -> None:
 
 async def run_shim(mcp_id: str, command: list[str]):
     """Main shim entry point: spawn MCP process and relay stdio."""
+    optic.debug("shim started: mcp_id={}, command={}", mcp_id, command)
     # On Windows, asyncio.create_subprocess_exec cannot find .cmd/.bat
     # scripts (like npx.cmd) by PATH alone. Resolve the executable first.
     if sys.platform == "win32" and command:
@@ -465,7 +467,7 @@ async def run_shim(mcp_id: str, command: list[str]):
     if sys.platform == "win32":
         # On Windows, write directly to stdout buffer instead of using
         # connect_write_pipe which fails on the Proactor event loop.
-        ide_stdout = None  # sentinel — _relay_mcp_to_ide will write to sys.stdout
+        ide_stdout = None  # sentinel - _relay_mcp_to_ide will write to sys.stdout
     else:
         ide_writer_transport, ide_writer_protocol = await asyncio.get_event_loop().connect_write_pipe(
             asyncio.streams.FlowControlMixin, sys.stdout

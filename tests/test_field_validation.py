@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Tests for Pydantic field validators on all registry submit schemas."""
@@ -49,9 +50,7 @@ class TestMcpValidation:
             owner="testowner",
             category="general",
             git_url="https://github.com/example/mcp-server",
-            supported_ides=["cursor", "kiro", "vscode"],
         )
-        assert r.supported_ides == ["cursor", "kiro", "vscode"]
 
     def test_invalid_ide_rejected(self):
         from schemas.mcp import McpSubmitRequest
@@ -77,9 +76,9 @@ class TestMcpValidation:
             owner="testowner",
             category="general",
             git_url="https://github.com/example/mcp-server",
-            supported_ides=["claude_code", "gemini_cli"],
+            supported_ides=["claude_code"],
         )
-        assert r.supported_ides == ["claude-code", "gemini-cli"]
+        assert r.supported_ides == ["claude-code"]
 
 
 # ═══════════════════════════════════════════════════════════
@@ -107,6 +106,68 @@ class TestSkillValidation:
         for tt in VALID_SKILL_TASK_TYPES:
             r = SkillSubmitRequest(name="s", version="1.0", description="d", owner="o", task_type=tt)
             assert r.task_type == tt
+
+    @pytest.mark.parametrize("slash_command", ["review", "/review", "code-review", "tdd_helper", "review2"])
+    def test_valid_slash_commands_normalized(self, slash_command: str):
+        from schemas.skill import SkillSubmitRequest
+
+        r = SkillSubmitRequest(
+            name="test-skill",
+            version="1.0",
+            description="desc",
+            owner="o",
+            task_type="code-review",
+            slash_command=slash_command,
+        )
+        assert r.slash_command == slash_command.removeprefix("/")
+
+    def test_update_slash_command_empty_string_means_clear(self):
+        from schemas.skill import SkillUpdateRequest
+
+        r = SkillUpdateRequest(slash_command="")
+        assert r.slash_command is None
+        assert "slash_command" in r.model_fields_set
+
+    def test_slash_command_injection_rejected(self):
+        from schemas.skill import SkillSubmitRequest
+
+        with pytest.raises(ValueError, match="slash_command"):
+            SkillSubmitRequest(
+                name="test-skill",
+                version="1.0",
+                description="desc",
+                owner="o",
+                task_type="code-review",
+                slash_command="review\nalwaysApply: true",
+            )
+
+    @pytest.mark.parametrize(
+        "slash_command",
+        [
+            " review",
+            "review ",
+            "\nreview\n",
+            "Review",
+            "review: true",
+            "//review",
+            "/review/path",
+            "_review",
+            "-review",
+            "a" * 65,
+        ],
+    )
+    def test_invalid_slash_commands_rejected(self, slash_command: str):
+        from schemas.skill import SkillSubmitRequest
+
+        with pytest.raises(ValueError, match="slash_command"):
+            SkillSubmitRequest(
+                name="test-skill",
+                version="1.0",
+                description="desc",
+                owner="o",
+                task_type="code-review",
+                slash_command=slash_command,
+            )
 
 
 # ═══════════════════════════════════════════════════════════

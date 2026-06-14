@@ -3,14 +3,16 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Anti-gaming protection — scan agent system prompts for eval-manipulation patterns.
+"""Anti-gaming protection - scan agent system prompts for eval-manipulation patterns.
 
 Flagged patterns are surfaced to reviewers with a warning badge.
-Never auto-rejects — always human-in-the-loop.
+Never auto-rejects - always human-in-the-loop.
 """
 
 import re
 from dataclasses import asdict, dataclass
+
+from loguru import logger as optic
 
 
 @dataclass
@@ -18,7 +20,7 @@ class GamingFlag:
     pattern: str  # The regex that matched
     matched_text: str  # What was matched
     context: str  # Up to 50 chars surrounding context on each side
-    severity: str  # "warning" — never auto-reject
+    severity: str  # "warning" - never auto-reject
     category: str  # "eval_manipulation" | "metric_inflation" | "telemetry_awareness"
 
 
@@ -48,8 +50,9 @@ def scan_for_gaming(system_prompt: str) -> list[GamingFlag]:
     """Scan agent system prompt for eval-gaming patterns.
 
     Returns list of flags with context. Empty list = clean.
-    Never auto-rejects — reviewer must acknowledge each flag.
+    Never auto-rejects - reviewer must acknowledge each flag.
     """
+    optic.trace("checking system prompt for gaming indicators ({} chars)", len(system_prompt or ""))
     if not system_prompt:
         return []
 
@@ -81,6 +84,7 @@ def summarize_flags(flags: list[GamingFlag]) -> dict:
         categories: dict[str, int]
         flags: list[dict] (serialized GamingFlags)
     """
+    optic.trace("anti-gaming check complete: {} flags raised", len(flags))
     categories: dict[str, int] = {}
     for flag in flags:
         categories[flag.category] = categories.get(flag.category, 0) + 1

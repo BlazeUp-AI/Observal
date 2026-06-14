@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Lightweight SKILL.md validator.
 
 Fetches SKILL.md from a raw GitHub URL (or generic raw URL), parses YAML
 frontmatter, validates required fields, and extracts slash_command.  Only a
-single HTTP request is made — no git clone at submit time.
+single HTTP request is made - no git clone at submit time.
 
 Port of vercel-labs/agent-skills parseFrontmatter logic to Python.
 """
@@ -16,9 +17,12 @@ import re
 
 import httpx
 import yaml
-from pydantic import BaseModel
+from loguru import logger as optic
+from pydantic import BaseModel, Field
 
-_FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---", re.DOTALL)
+from schemas.skill_commands import normalize_slash_command
+
+_FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---(?:\r?\n|$)", re.DOTALL)
 
 # GitHub raw URL pattern.
 # Input git_url examples:
@@ -40,13 +44,21 @@ class SkillAnalysis(BaseModel):
     discovered_path: str | None = None  # Set when server auto-discovered the skill_path
 
 
+class SkillFrontmatterAnalysis(BaseModel):
+    """Strict validation result for stored SKILL.md content."""
+
+    has_frontmatter: bool = False
+    frontmatter: dict = Field(default_factory=dict)
+    slash_command: str | None = None
+
+
 class SkillValidationError(Exception):
     """Raised when SKILL.md cannot be fetched or validated."""
 
 
 # Installed/IDE copy prefixes to exclude during discovery (mirrors client-side logic)
 _INSTALLED_PREFIX = re.compile(
-    r"^(\.agents|\.(?:claude|kiro|cursor|gemini|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)/"
+    r"^(\.agents|\.(?:claude|kiro|cursor|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)/"
 )
 
 
@@ -56,6 +68,7 @@ async def _discover_skill_path(client: httpx.AsyncClient, git_url: str, git_ref:
     Returns the skill_path (directory containing SKILL.md) or None if not found.
     Only works for GitHub repos. Filters out IDE config copies.
     """
+    optic.trace("discovering skill path in repo {}", git_url)
     m = _GITHUB_RE.match(git_url.rstrip("/"))
     if not m:
         return None
@@ -91,6 +104,7 @@ def _build_raw_url(git_url: str, skill_path: str, git_ref: str) -> str:
     Supports GitHub repos (converts to raw.githubusercontent.com).
     Falls back to appending /raw/<ref>/<path> for other hosts (e.g. GitLab).
     """
+    optic.trace("building raw URL for skill at {}", skill_path)
     skill_path = skill_path.strip("/")
     skill_md = f"{skill_path}/SKILL.md" if skill_path else "SKILL.md"
 
@@ -107,12 +121,13 @@ def _build_raw_url(git_url: str, skill_path: str, git_ref: str) -> str:
     return f"{base}/raw/{git_ref}/{skill_md}"
 
 
-def _parse_frontmatter(content: str) -> dict:
+def parse_skill_frontmatter(content: str) -> dict:
     """Extract and parse YAML frontmatter block from markdown content.
 
     Mirrors vercel-labs parseFrontmatter: regex extraction + yaml.safe_load.
     Never calls eval.  Returns empty dict if no frontmatter found.
     """
+    optic.trace("parsing skill frontmatter ({} chars)", len(content) if content else 0)
     m = _FRONTMATTER_RE.match(content)
     if not m:
         return {}
@@ -122,6 +137,68 @@ def _parse_frontmatter(content: str) -> dict:
         return result if isinstance(result, dict) else {}
     except yaml.YAMLError:
         return {}
+
+
+def _parse_frontmatter(content: str) -> dict:
+    return parse_skill_frontmatter(content)
+
+
+def validate_skill_md_content_frontmatter(
+    content: str | None,
+    *,
+    slash_command: str | None = None,
+) -> SkillFrontmatterAnalysis:
+    """Validate stored/verbatim SKILL.md frontmatter without rewriting content.
+
+    No frontmatter is accepted. If a frontmatter block is present, it must be
+    valid YAML mapping data. A present ``command`` key must normalize to the
+    same slash command supplied by the request, when one is supplied.
+    """
+    normalized_request_command: str | None = None
+    if slash_command is not None:
+        try:
+            normalized_request_command = normalize_slash_command(slash_command)
+        except ValueError as exc:
+            raise SkillValidationError(f"Invalid slash command: {exc}") from exc
+
+    if not content:
+        return SkillFrontmatterAnalysis(slash_command=normalized_request_command)
+
+    if not re.match(r"^---\r?\n", content):
+        return SkillFrontmatterAnalysis(slash_command=normalized_request_command)
+
+    match = _FRONTMATTER_RE.match(content)
+    if not match:
+        raise SkillValidationError("Malformed SKILL.md frontmatter")
+
+    try:
+        parsed = yaml.safe_load(match.group(1))
+    except yaml.YAMLError as exc:
+        raise SkillValidationError("Malformed SKILL.md frontmatter") from exc
+
+    if parsed is None:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        raise SkillValidationError("SKILL.md frontmatter must be a YAML mapping")
+
+    frontmatter_command: str | None = None
+    if "command" in parsed:
+        raw_command = parsed["command"]
+        if not isinstance(raw_command, str) or raw_command == "":
+            raise SkillValidationError("Invalid slash command: command must match ^[a-z0-9][a-z0-9_-]{0,63}$")
+        try:
+            frontmatter_command = normalize_slash_command(raw_command)
+        except ValueError as exc:
+            raise SkillValidationError(f"Invalid slash command: {exc}") from exc
+
+    if normalized_request_command and frontmatter_command and normalized_request_command != frontmatter_command:
+        raise SkillValidationError("slash_command does not match SKILL.md frontmatter command")
+
+    return SkillFrontmatterAnalysis(
+        has_frontmatter=True,
+        frontmatter=parsed,
+        slash_command=frontmatter_command or normalized_request_command,
+    )
 
 
 async def validate_skill_md(
@@ -142,6 +219,7 @@ async def validate_skill_md(
     Raises:
         SkillValidationError: if SKILL.md cannot be fetched or is invalid.
     """
+    optic.trace("building raw URL for skill at {}", skill_path)
     raw_url = _build_raw_url(git_url, skill_path, git_ref)
 
     try:
@@ -167,7 +245,8 @@ async def validate_skill_md(
         raise SkillValidationError(f"Failed to fetch SKILL.md (HTTP {resp.status_code}): {raw_url!r}")
 
     content = resp.text
-    fm = _parse_frontmatter(content)
+    stored_analysis = validate_skill_md_content_frontmatter(content)
+    fm = stored_analysis.frontmatter
 
     name = fm.get("name", "")
     description = fm.get("description", "")
@@ -177,16 +256,10 @@ async def validate_skill_md(
     if not isinstance(description, str) or not description.strip():
         raise SkillValidationError("SKILL.md frontmatter missing required field: 'description'")
 
-    # command: /slash-name  →  extract "slash-name"
-    slash_command: str | None = None
-    raw_command = fm.get("command", "")
-    if isinstance(raw_command, str) and raw_command.strip():
-        slash_command = raw_command.strip().lstrip("/")
-
     return SkillAnalysis(
         name=name.strip(),
         description=description.strip(),
-        slash_command=slash_command or None,
+        slash_command=stored_analysis.slash_command or None,
         raw_content=content,
         discovered_path=skill_path if skill_path.strip("/") else None,
     )
