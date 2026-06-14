@@ -46,6 +46,33 @@ def render_report_html(*args, **kwargs):
     return _render(*args, **kwargs)
 
 
+async def run_candidate_pipeline(report_id: str) -> dict | None:
+    """Self-learning loop: write -> verify -> promote a candidate from a report.
+
+    This is the sole core-facing entry point for the candidate pipeline; it is
+    the boundary that crosses into ee/ (core code must not import ee/ directly).
+    Returns a summary dict, or None when there is no mappable candidate.
+    Promotion is always human-gated — never auto-merged to an active version.
+    """
+    if not INSIGHTS_AVAILABLE:
+        return None
+
+    from ee.observal_insights.candidate_writer import write_candidate
+    from ee.observal_insights.promoter import promote_candidate
+    from ee.observal_insights.verifier import verify_candidate
+
+    candidate = await write_candidate(report_id)
+    if candidate is None:
+        return None
+    result = await verify_candidate(str(candidate.id))
+    outcome = await promote_candidate(str(candidate.id), result)
+    return {
+        "candidate_id": str(candidate.id),
+        "recommendation": result.recommendation,
+        "outcome": outcome,
+    }
+
+
 def configure_insights():
     """Wire up dependencies from the host app into the insights package.
 

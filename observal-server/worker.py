@@ -148,6 +148,49 @@ async def generate_insight_report(ctx: dict, report_id: str):
         await run_single_report(report_id)
     except Exception as e:
         logger.exception("insight_report_job_failed", report_id=report_id, error=str(e))
+        return
+
+    # Self-learning loop: if the completed report produced suggestions, kick off
+    # the candidate pipeline (write -> verify -> promote). Best-effort: a failure
+    # here must not affect the report itself.
+    try:
+        from sqlalchemy import select
+
+        from database import async_session
+        from models.insight_report import InsightReport
+
+        async with async_session() as db:
+            rep = (
+                await db.execute(select(InsightReport).where(InsightReport.id == report_id))
+            ).scalar_one_or_none()
+        suggestions = ((rep.narrative or {}).get("suggestions") or {}).get("items") if rep else None
+        if suggestions:
+            await ctx["redis"].enqueue_job("run_candidate_pipeline", report_id)
+            logger.info("candidate_pipeline_enqueued", report_id=report_id)
+    except Exception as e:
+        logger.warning("candidate_pipeline_enqueue_failed", report_id=report_id, error=str(e))
+
+
+async def run_candidate_pipeline(ctx: dict, report_id: str):
+    """Self-learning loop: write -> verify -> promote a candidate from a report.
+
+    Each step is human-safe: promotion never auto-merges to an active version.
+    A failure in any step is logged and does not raise (the cron must survive).
+    """
+    from services.insights import INSIGHTS_AVAILABLE
+    from services.insights import run_candidate_pipeline as _pipeline
+
+    if not INSIGHTS_AVAILABLE:
+        return
+
+    try:
+        result = await _pipeline(report_id)
+        if result is None:
+            logger.info("candidate_pipeline_no_mappable_suggestions", report_id=report_id)
+        else:
+            logger.info("candidate_pipeline_completed", report_id=report_id, **result)
+    except Exception as e:
+        logger.exception("candidate_pipeline_failed", report_id=report_id, error=str(e))
 
 
 async def batch_generate_insights(ctx: dict):
@@ -204,6 +247,7 @@ class WorkerSettings:
         maintain_clickhouse,
         generate_insight_report,
         batch_generate_insights,
+        run_candidate_pipeline,
         refresh_model_catalog,
     ]
     cron_jobs = [
