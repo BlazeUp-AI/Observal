@@ -44,4 +44,7 @@ class InsightReportResponse(BaseModel):
     previous_report_id: uuid.UUID | None = None
     aggregated_data: dict | None = None
     report_version: int = 3
+    # Self-learning loop: candidate artifacts derived from this report (read-only;
+    # populated from the candidate_artifacts table, never from report generation).
+    pending_candidates: list[dict] = []
     model_config = {"from_attributes": True}

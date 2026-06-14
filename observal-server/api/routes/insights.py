@@ -136,7 +136,103 @@ async def get_report(
     if agent and current_user.org_id is not None and agent.owner_org_id != current_user.org_id:
         raise HTTPException(status_code=403, detail="Agent does not belong to your organization")
 
-    return InsightReportResponse.model_validate(report)
+    resp = InsightReportResponse.model_validate(report)
+    # Self-learning loop: surface candidate artifacts derived from this report
+    # (read-only; frontend renders them, promotion stays human-gated).
+    from models.candidate_artifact import CandidateArtifact
+
+    cand_rows = (
+        await db.execute(
+            select(CandidateArtifact)
+            .where(CandidateArtifact.source_report_id == report.id)
+            .order_by(CandidateArtifact.created_at.desc())
+        )
+    ).scalars().all()
+    resp.pending_candidates = [
+        {
+            "id": str(c.id),
+            "artifact_type": c.artifact_type,
+            "status": c.status,
+            "source_suggestions": c.source_suggestions,
+            "motivating_session_ids": c.motivating_session_ids,
+            "promoted_version_id": str(c.promoted_version_id) if c.promoted_version_id else None,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+        }
+        for c in cand_rows
+    ]
+    return resp
+
+
+@router.post("/candidates/{candidate_id}/approve")
+async def approve_candidate(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Human-gate a self-learning candidate: approve its agent version.
+
+    The candidate's promoted version (status pending_review /
+    verification_inconclusive) is set to approved — the only path by which an
+    auto-generated change becomes active.
+    """
+    _require_insights()
+    from models.agent import AgentStatus, AgentVersion
+    from models.candidate_artifact import CandidateArtifact
+
+    cand = (
+        await db.execute(select(CandidateArtifact).where(CandidateArtifact.id == candidate_id))
+    ).scalar_one_or_none()
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    if not cand.promoted_version_id:
+        raise HTTPException(status_code=400, detail="Candidate has no promoted version to approve")
+
+    ver = (
+        await db.execute(select(AgentVersion).where(AgentVersion.id == cand.promoted_version_id))
+    ).scalar_one_or_none()
+    if not ver:
+        raise HTTPException(status_code=404, detail="Promoted version not found")
+
+    ver.status = AgentStatus.approved
+    ver.rejection_reason = None
+    ver.reviewed_by = current_user.id
+    ver.reviewed_at = datetime.now(UTC)
+    cand.status = "approved"
+    await db.commit()
+    await audit(current_user, "insights.candidate.approve", resource_type="candidate_artifact", resource_id=str(cand.id))
+    return {"candidate_id": str(cand.id), "version_id": str(ver.id), "status": "approved"}
+
+
+@router.post("/candidates/{candidate_id}/reject")
+async def reject_candidate(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Human-gate a self-learning candidate: reject its agent version."""
+    _require_insights()
+    from models.agent import AgentStatus, AgentVersion
+    from models.candidate_artifact import CandidateArtifact
+
+    cand = (
+        await db.execute(select(CandidateArtifact).where(CandidateArtifact.id == candidate_id))
+    ).scalar_one_or_none()
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    if cand.promoted_version_id:
+        ver = (
+            await db.execute(select(AgentVersion).where(AgentVersion.id == cand.promoted_version_id))
+        ).scalar_one_or_none()
+        if ver:
+            ver.status = AgentStatus.rejected
+            ver.rejection_reason = "Rejected from self-learning candidate review"
+            ver.reviewed_by = current_user.id
+            ver.reviewed_at = datetime.now(UTC)
+    cand.status = "rejected"
+    await db.commit()
+    await audit(current_user, "insights.candidate.reject", resource_type="candidate_artifact", resource_id=str(cand.id))
+    return {"candidate_id": str(cand.id), "status": "rejected"}
 
 
 @router.get("/reports/{report_id}/export/html", response_class=HTMLResponse)

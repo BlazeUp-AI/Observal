@@ -31,6 +31,15 @@ from services.editing_lock import is_actively_editing
 
 router = APIRouter(prefix="/api/v1/review", tags=["review"])
 
+# Versions that appear in the review queue and can be approved/rejected. Includes
+# the self-learning candidate statuses so auto-generated candidate versions are
+# human-gated through the same Review flow.
+_REVIEWABLE_STATUSES = [
+    AgentStatus.pending,
+    AgentStatus.pending_review,
+    AgentStatus.verification_inconclusive,
+]
+
 LISTING_MODELS = {
     "mcp": McpListing,
     "skill": SkillListing,
@@ -119,7 +128,9 @@ async def _query_pending_agents(db: AsyncSession) -> list[dict]:
     # This ensures version updates appear in the review queue after the first
     # version is approved.
     pending_versions_stmt = (
-        select(AgentVersion).where(AgentVersion.status == AgentStatus.pending).order_by(AgentVersion.created_at.desc())
+        select(AgentVersion)
+        .where(AgentVersion.status.in_(_REVIEWABLE_STATUSES))
+        .order_by(AgentVersion.created_at.desc())
     )
     pending_versions = (await db.execute(pending_versions_stmt)).scalars().all()
 
@@ -657,7 +668,7 @@ async def approve_agent(
         (
             await db.execute(
                 select(AgentVersion)
-                .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+                .where(AgentVersion.agent_id == agent.id, AgentVersion.status.in_(_REVIEWABLE_STATUSES))
                 .order_by(AgentVersion.created_at.desc())
             )
         )
@@ -730,7 +741,7 @@ async def reject_agent(
         (
             await db.execute(
                 select(AgentVersion)
-                .where(AgentVersion.agent_id == agent.id, AgentVersion.status == AgentStatus.pending)
+                .where(AgentVersion.agent_id == agent.id, AgentVersion.status.in_(_REVIEWABLE_STATUSES))
                 .order_by(AgentVersion.created_at.desc())
             )
         )
