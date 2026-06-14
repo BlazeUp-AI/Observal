@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 resource "google_service_account" "cloud_run" {
@@ -115,6 +116,31 @@ resource "google_cloud_run_v2_service" "api" {
             version = "latest"
           }
         }
+      }
+
+      env {
+        name = "GOOGLE_OAUTH_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.app["GOOGLE_OAUTH_CLIENT_ID"].secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "GOOGLE_OAUTH_CLIENT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.app["GOOGLE_OAUTH_CLIENT_SECRET"].secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name  = "GOOGLE_OAUTH_ALLOWED_DOMAINS"
+        value = var.google_oauth_allowed_domains
       }
 
       startup_probe {

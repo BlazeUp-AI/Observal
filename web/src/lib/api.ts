@@ -9,6 +9,7 @@
 // SPDX-FileCopyrightText: 2026 SrihariLegend <sriharilegend23@gmail.com>
 // SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 // SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+// SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type {
@@ -764,6 +765,7 @@ export type RetentionWarnings = {
 export type PublicConfig = {
 	licensed: boolean;
 	sso_enabled: boolean;
+	google_sso_enabled: boolean;
 	sso_only: boolean;
 	saml_enabled: boolean;
 	exec_dashboard_available: boolean;

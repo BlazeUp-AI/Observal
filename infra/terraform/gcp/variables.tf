@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 variable "project_id" {
@@ -246,6 +247,26 @@ variable "edition" {
     condition     = contains(["auto", "community", "enterprise"], var.edition)
     error_message = "edition must be 'auto', 'community', or 'enterprise'."
   }
+}
+
+variable "google_oauth_client_id" {
+  description = "Google OAuth 2.0 client ID from the GCP console. Leave empty to disable Google sign-in."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "google_oauth_client_secret" {
+  description = "Google OAuth 2.0 client secret. Required if google_oauth_client_id is set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "google_oauth_allowed_domains" {
+  description = "Comma-separated email-domain allowlist for Google sign-in (e.g. 'acme.com,acme.io'). Leave empty to allow any Google account."
+  type        = string
+  default     = ""
 }
 
 # ── Backups ───────────────────────────────────────────────────────────────

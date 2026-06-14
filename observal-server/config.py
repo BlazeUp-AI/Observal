@@ -7,6 +7,7 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shreem Seth <shreemseth26@gmail.com>
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Boot-time configuration: env vars required to start the server.
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
     OAUTH_CLIENT_SECRET: str | None = None
     OAUTH_SERVER_METADATA_URL: str | None = None
 
+    GOOGLE_OAUTH_CLIENT_ID: str | None = None
+    GOOGLE_OAUTH_CLIENT_SECRET: str | None = None
+    GOOGLE_OAUTH_ALLOWED_DOMAINS: str | None = None
+
     # Connection pool sizing (boot-time, pool created once at startup)
     DB_POOL_SIZE: int = 30
     DB_MAX_OVERFLOW: int = 50
@@ -73,6 +78,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+GOOGLE_SSO_ENABLED: bool = bool(
+    (settings.GOOGLE_OAUTH_CLIENT_ID or "").strip() and (settings.GOOGLE_OAUTH_CLIENT_SECRET or "").strip()
+)
 
 # Derived: True when an enterprise license key is configured.
 # Used as the replacement for the removed DEPLOYMENT_MODE env var.

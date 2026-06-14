@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 // SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+// SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
@@ -13,13 +14,14 @@ import { toast } from "sonner";
 import { auth, setTokens, clearSession, setUserRole, getUserRole, setUserName, setUserEmail, setUserUsername, setUserAvatar } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
+import { GoogleGIcon } from "@/components/ui/google-g-icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearch({ from: "/(auth)/login" });
-  const { ssoEnabled, ssoOnly, samlEnabled, brandingAppName, brandingLogo, brandingWordmark } = useDeploymentConfig();
+  const { ssoEnabled, googleSsoEnabled, ssoOnly, samlEnabled, brandingAppName, brandingLogo, brandingWordmark } = useDeploymentConfig();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -176,14 +178,16 @@ function LoginContent() {
     }
   }
 
-  function handleSsoLogin() {
+  function redirectToOauth(path: string) {
     setSsoLoading(true);
     const nextParam = searchParams.next;
-    const url = nextParam && nextParam.startsWith("/")
-      ? `/api/v1/auth/oauth/login?next=${encodeURIComponent(nextParam)}`
-      : "/api/v1/auth/oauth/login";
-    window.location.href = url;
+    window.location.href = nextParam && nextParam.startsWith("/")
+      ? `${path}?next=${encodeURIComponent(nextParam)}`
+      : path;
   }
+
+  const handleSsoLogin = () => redirectToOauth("/api/v1/auth/oauth/login");
+  const handleGoogleLogin = () => redirectToOauth("/api/v1/auth/oauth/google/login");
 
   if (mustChangePassword) {
     return (
@@ -365,7 +369,7 @@ function LoginContent() {
                   </Button>
                 )}
 
-                {!ssoOnly && (ssoEnabled || samlEnabled) && (
+                {!ssoOnly && (ssoEnabled || googleSsoEnabled || samlEnabled) && (
                   <div className="relative py-2">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -374,6 +378,23 @@ function LoginContent() {
                       <span className="bg-card px-2 text-muted-foreground">Or</span>
                     </div>
                   </div>
+                )}
+
+                {googleSsoEnabled && (
+                  <Button
+                    type="button"
+                    variant={ssoOnly ? "default" : "outline"}
+                    className="w-full"
+                    onClick={handleGoogleLogin}
+                    disabled={loading || ssoLoading}
+                  >
+                    {ssoLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <GoogleGIcon className="mr-2 h-4 w-4" />
+                    )}
+                    Sign in with Google
+                  </Button>
                 )}
 
                 {(ssoOnly || ssoEnabled) && (

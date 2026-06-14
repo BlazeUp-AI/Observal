@@ -1,4 +1,5 @@
 <!-- SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
 # Observal on AWS EC2 — Single Instance
@@ -84,6 +85,20 @@ route53_zone_id = "Z1234567890ABC"
 ```
 
 The deploy script automatically obtains a Let's Encrypt TLS certificate and configures HTTPS.
+
+### Enabling Google OAuth (and other env overrides)
+
+Any value in `.env.example` can be overridden via the `env_overrides` map. To turn on Google sign-in:
+
+```hcl
+env_overrides = {
+  GOOGLE_OAUTH_CLIENT_ID       = "1234567890-abc...apps.googleusercontent.com"
+  GOOGLE_OAUTH_CLIENT_SECRET   = "GOCSPX-..."
+  GOOGLE_OAUTH_ALLOWED_DOMAINS = "acme.com,acme.io"  # optional
+}
+```
+
+After `terraform apply` re-runs the user-data and the API container restarts, the login page shows a "Sign in with Google" button. The same mechanism configures the generic OIDC slot (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_SERVER_METADATA_URL`). See [Authentication and SSO](../../../docs/self-hosting/authentication.md) for the full setup walkthrough.
 
 ### Instance sizes
 

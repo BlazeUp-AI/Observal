@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 // SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+// SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
@@ -18,6 +19,7 @@ export function useDeploymentConfig() {
 	return {
 		licensed: data?.licensed ?? false,
 		ssoEnabled: data?.sso_enabled ?? false,
+		googleSsoEnabled: data?.google_sso_enabled ?? false,
 		ssoOnly: data?.sso_only ?? false,
 		samlEnabled: data?.saml_enabled ?? false,
 		licensedFeatures: data?.licensed_features ?? [],

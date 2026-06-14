@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-FileCopyrightText: 2026 Kaushik Kumar <kaushikrjpm10@gmail.com>
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 from urllib.parse import urlparse
@@ -10,7 +11,7 @@ from loguru import logger as optic
 from sqlalchemy import select
 
 from api.deps import get_db
-from config import HAS_LICENSE, settings
+from config import GOOGLE_SSO_ENABLED, HAS_LICENSE, settings
 from models.enterprise_config import EnterpriseConfig
 from schemas.ide_registry import IDE_REGISTRY
 from version import get_server_version
@@ -127,6 +128,7 @@ async def get_public_config(db=Depends(get_db)):
     return {
         "licensed": licensed,
         "sso_enabled": bool(settings.OAUTH_CLIENT_ID),
+        "google_sso_enabled": GOOGLE_SSO_ENABLED,
         "sso_only": sso_only,
         "saml_enabled": saml_enabled,
         "exec_dashboard_available": exec_dashboard_available,
