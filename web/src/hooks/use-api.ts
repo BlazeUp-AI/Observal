@@ -201,6 +201,26 @@ export function useReviewAction() {
   });
 }
 
+// ── Self-learning candidates ────────────────────────────────────────
+
+export function useCandidateAction(reportId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { candidateId: string; action: "approve" | "reject" }) =>
+      vars.action === "approve"
+        ? insights.candidateApprove(vars.candidateId)
+        : insights.candidateReject(vars.candidateId),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["insights", "report", reportId] });
+      qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success(vars.action === "approve" ? "Candidate approved" : "Candidate rejected");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Candidate action failed");
+    },
+  });
+}
+
 // ── Eval ────────────────────────────────────────────────────────────
 
 export function useEvalRun() {

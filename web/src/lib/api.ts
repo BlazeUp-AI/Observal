@@ -598,6 +598,16 @@ export const insights = {
     get<InsightReportListItem[]>(`/insights/agents/${agentId}/reports`),
   getReport: (reportId: string) =>
     get<InsightReport>(`/insights/reports/${reportId}`),
+  candidateApprove: (candidateId: string) =>
+    post<{ candidate_id: string; version_id: string; status: string }>(
+      `/insights/candidates/${candidateId}/approve`,
+      {},
+    ),
+  candidateReject: (candidateId: string) =>
+    post<{ candidate_id: string; status: string }>(
+      `/insights/candidates/${candidateId}/reject`,
+      {},
+    ),
   exportHtml: async (reportId: string): Promise<void> => {
     const token = getAccessToken();
     const res = await fetch(`${API}/insights/reports/${reportId}/export/html`, {

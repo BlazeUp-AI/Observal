@@ -712,6 +712,17 @@ export interface InsightReport {
 	started_at: string;
 	completed_at: string | null;
 	created_at: string;
+	pending_candidates?: PendingCandidate[];
+}
+
+export interface PendingCandidate {
+	id: string;
+	artifact_type: string;
+	status: string;
+	source_suggestions: string[];
+	motivating_session_ids: string[];
+	promoted_version_id: string | null;
+	created_at: string | null;
 }
 
 // ── Telemetry ───────────────────────────────────────────────────────

@@ -30,12 +30,12 @@ import {
 	Shield,
 	Download,
 } from "lucide-react";
-import { useInsightReport } from "@/hooks/use-api";
+import { useInsightReport, useCandidateAction } from "@/hooks/use-api";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layouts/page-header";
 import { ErrorState } from "@/components/shared/error-state";
 import { insights } from "@/lib/api";
-import type { InsightReport } from "@/lib/types";
+import type { InsightReport, PendingCandidate } from "@/lib/types";
 
 // ── Status Indicator ──────────────────────────────────────────────────────
 
@@ -1108,6 +1108,101 @@ function formatItem(item: unknown): string {
 	return String(item);
 }
 
+// ── Self-learning Candidates ────────────────────────────────────────────
+
+const CANDIDATE_TYPE_LABELS: Record<string, string> = {
+	cursor_rule: "Cursor rule",
+	prompt_edit: "Prompt edit",
+	tool_config_change: "Tool config change",
+};
+
+const CANDIDATE_STATUS_STYLES: Record<string, string> = {
+	pending: "bg-light-blue text-dark-blue",
+	verification_inconclusive: "bg-light-yellow text-dark-yellow",
+	pending_review: "bg-light-yellow text-dark-yellow",
+	approved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+	rejected: "bg-light-red text-dark-red",
+	verification_failed: "bg-light-red text-dark-red",
+	promoted: "bg-light-yellow text-dark-yellow",
+};
+
+function CandidatesSection({
+	candidates,
+	reportId,
+}: {
+	candidates?: PendingCandidate[];
+	reportId: string;
+}) {
+	const action = useCandidateAction(reportId);
+	if (!candidates || candidates.length === 0) return null;
+
+	return (
+		<div className="rounded-lg border border-border bg-card p-5 space-y-4">
+			<div className="flex items-center gap-2">
+				<Sparkles className="h-4 w-4 text-foreground/60" />
+				<h3 className="text-sm font-semibold">Self-learning candidates</h3>
+				<span className="text-xs text-muted-foreground">
+					auto-generated from this report — human-gated
+				</span>
+			</div>
+			<div className="space-y-3">
+				{candidates.map((c) => {
+					const decided = c.status === "approved" || c.status === "rejected";
+					const actionable = !decided && !!c.promoted_version_id;
+					return (
+						<div
+							key={c.id}
+							className="flex flex-wrap items-center gap-3 rounded-md border border-border/60 p-3"
+						>
+							<span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+								{CANDIDATE_TYPE_LABELS[c.artifact_type] ?? c.artifact_type}
+							</span>
+							<span
+								className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+									CANDIDATE_STATUS_STYLES[c.status] ?? "bg-muted text-foreground"
+								}`}
+							>
+								{c.status.replace(/_/g, " ")}
+							</span>
+							<span className="text-xs text-muted-foreground">
+								{c.motivating_session_ids.length} motivating session
+								{c.motivating_session_ids.length === 1 ? "" : "s"}
+							</span>
+							{c.promoted_version_id && (
+								<span className="font-mono text-xs text-muted-foreground">
+									v:{c.promoted_version_id.slice(0, 8)}
+								</span>
+							)}
+							<div className="ml-auto flex gap-2">
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={!actionable || action.isPending}
+									onClick={() =>
+										action.mutate({ candidateId: c.id, action: "approve" })
+									}
+								>
+									<CheckCircle2 className="h-3.5 w-3.5" /> Approve
+								</Button>
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={!actionable || action.isPending}
+									onClick={() =>
+										action.mutate({ candidateId: c.id, action: "reject" })
+									}
+								>
+									<XCircle className="h-3.5 w-3.5" /> Reject
+								</Button>
+							</div>
+						</div>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 // ── Main Report Content ─────────────────────────────────────────────────
 
 function ReportContent({ report }: { report: InsightReport }) {
@@ -1165,6 +1260,12 @@ function ReportContent({ report }: { report: InsightReport }) {
 
 			{/* Suggestions */}
 			<SuggestionsSection data={narrative?.suggestions} />
+
+			{/* Self-learning candidates derived from this report */}
+			<CandidatesSection
+				candidates={report.pending_candidates}
+				reportId={report.id}
+			/>
 
 			{/* Cost & Tokens */}
 			<TokenSection data={narrative?.token_optimization} metrics={metrics} />
