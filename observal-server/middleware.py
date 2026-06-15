@@ -1,0 +1,209 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from loguru import logger as optic
+from redis.exceptions import RedisError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.requests import Request
+
+import services.dynamic_settings as ds
+from api.middleware.audit import AuditMiddleware
+from api.middleware.content_type import ContentTypeMiddleware
+from api.middleware.request_id import RequestIDMiddleware
+from api.middleware.trusted_proxy import TrustedProxyMiddleware
+from api.ratelimit import limiter
+from config import settings
+from services.audit import AUDIT_LICENSED
+
+DEFAULT_CORS_ALLOWED_ORIGINS = "http://localhost:3000"
+DEFAULT_MAX_REQUEST_SIZE_MB = "10"
+
+
+class RequestSizeLimitMiddleware:
+    """Reject requests whose Content-Length exceeds the configured limit."""
+
+    def __init__(self, app, max_request_size_bytes: int):
+        self.app = app
+        self.max_request_size_bytes = max_request_size_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers", []))
+        content_length = headers.get(b"content-length")
+        if content_length and int(content_length) > self.max_request_size_bytes:
+            response = JSONResponse(status_code=413, content={"detail": "Request body too large"})
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+class SecurityHeadersMiddleware:
+    """Attach common security headers to every HTTP response."""
+
+    def __init__(self, app, security_headers: list[tuple[bytes, bytes]]):
+        self.app = app
+        self.security_headers = security_headers
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.extend(self.security_headers)
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
+class CacheControlMiddleware:
+    """Set Cache-Control headers on responses served from cache."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_cache_control(message):
+            if message["type"] == "http.response.start":
+                headers = dict(message.get("headers", []))
+                cache_header = headers.get(b"x-fastapi-cache", b"").decode()
+                if cache_header == "HIT" or (scope["method"] == "GET" and cache_header == "MISS"):
+                    extra = [
+                        (b"cache-control", f"public, max-age={ds.get_sync_int('data.cache_ttl_default', 30)}".encode())
+                    ]
+                    msg_headers = list(message.get("headers", []))
+                    msg_headers.extend(extra)
+                    message = {**message, "headers": msg_headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cache_control)
+
+
+def get_cors_allowed_origins() -> list[str]:
+    cors_env = os.environ.get("CORS_ALLOWED_ORIGINS", DEFAULT_CORS_ALLOWED_ORIGINS)
+    return [origin.strip() for origin in cors_env.split(",") if origin.strip()]
+
+
+def get_max_request_size_bytes() -> int:
+    return int(os.environ.get("MAX_REQUEST_SIZE_MB", DEFAULT_MAX_REQUEST_SIZE_MB)) * 1024 * 1024
+
+
+def build_security_headers(cors_allowed_origins: list[str]) -> list[tuple[bytes, bytes]]:
+    is_localhost = any(
+        origin.startswith("http://localhost") or origin.startswith("http://127.0.0.1")
+        for origin in cors_allowed_origins
+    )
+    security_headers = [
+        (b"x-content-type-options", b"nosniff"),
+        (b"x-frame-options", b"DENY"),
+        (b"x-xss-protection", b"1; mode=block"),
+        (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+        (
+            b"content-security-policy",
+            (
+                b"default-src 'self'; "
+                b"script-src 'self'; "
+                b"style-src 'self' 'unsafe-inline'; "
+                b"img-src 'self' data: https:; "
+                b"font-src 'self'; "
+                b"connect-src 'self' https:; "
+                b"frame-ancestors 'none'; "
+                b"base-uri 'self'; "
+                b"form-action 'self'"
+            ),
+        ),
+        (b"x-permitted-cross-domain-policies", b"none"),
+    ]
+    if not is_localhost:
+        security_headers.append((b"strict-transport-security", b"max-age=31536000; includeSubDomains"))
+    return security_headers
+
+
+async def redis_error_handler(request: Request, exc: RedisError):
+    optic.error("redis_error method={} path={} error={}", request.method, request.url.path, str(exc))
+    return JSONResponse(status_code=503, content={"detail": "Service temporarily unavailable"})
+
+
+def configure_rate_limit_handlers(app: FastAPI) -> None:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    async def set_rate_limit_defaults(request: Request, call_next):
+        request.state.view_rate_limit = None
+        return await call_next(request)
+
+    app.middleware("http")(set_rate_limit_defaults)
+
+
+def configure_version_middleware(app: FastAPI) -> None:
+    async def version_middleware(request: Request, call_next):
+        from version import get_server_version
+
+        server_ver = get_server_version()
+        cli_ver_str = request.headers.get("x-observal-cli-version")
+        effective = server_ver
+
+        if cli_ver_str:
+            try:
+                from packaging.version import Version
+
+                client_ver = Version(cli_ver_str)
+                sv = Version(server_ver)
+                effective = str(min(client_ver, sv))
+            except Exception:
+                pass
+
+        request.state.effective_version = effective
+        response = await call_next(request)
+        response.headers["X-Observal-Server"] = server_ver
+        response.headers["X-Observal-Effective"] = effective
+        return response
+
+    app.middleware("http")(version_middleware)
+
+
+def configure_middleware(app: FastAPI) -> None:
+    configure_rate_limit_handlers(app)
+    configure_version_middleware(app)
+    app.add_exception_handler(RedisError, redis_error_handler)
+
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.SECRET_KEY,
+        max_age=3600,
+    )
+
+    cors_allowed_origins = get_cors_allowed_origins()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+    )
+
+    app.add_middleware(RequestSizeLimitMiddleware, max_request_size_bytes=get_max_request_size_bytes())
+    app.add_middleware(SecurityHeadersMiddleware, security_headers=build_security_headers(cors_allowed_origins))
+    app.add_middleware(ContentTypeMiddleware)
+    app.add_middleware(RequestIDMiddleware)
+    if AUDIT_LICENSED:
+        app.add_middleware(AuditMiddleware)
+    app.add_middleware(TrustedProxyMiddleware)
+    app.add_middleware(CacheControlMiddleware)
