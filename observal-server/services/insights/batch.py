@@ -308,7 +308,7 @@ async def _count_agent_sessions(agent_id: str, agent_name: str, since: str, agen
         FROM session_stats_agg FINAL
         WHERE (agent_id = {agent_id:String} OR agent_id = {aname:String})
           AND last_event_time >= {t_start:String}
-          AND ({agent_version:String} = '' OR agent_version = {agent_version:String})
+          AND ({agent_version:String} = '' OR agent_version = {agent_version:String} OR agent_version = '')
         FORMAT JSON
     """
     params = {
@@ -330,7 +330,7 @@ async def _count_agent_sessions(agent_id: str, agent_name: str, since: str, agen
         FROM session_events FINAL
         WHERE (agent_id = {agent_id:String} OR agent_id = {aname:String})
           AND timestamp >= {t_start:String}
-          AND ({agent_version:String} = '' OR agent_version = {agent_version:String})
+          AND ({agent_version:String} = '' OR agent_version = {agent_version:String} OR agent_version IS NULL OR agent_version = '')
         FORMAT JSON
     """
     try:

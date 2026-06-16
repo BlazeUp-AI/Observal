@@ -139,7 +139,9 @@ async def _count_insight_sessions(
         "param_t_end": period_end.strftime("%Y-%m-%d %H:%M:%S"),
     }
     if agent_version:
-        base_where += "AND agent_version = {agent_version:String} "
+        # Include sessions with matching version OR untagged sessions (agent_version = '')
+        # because most sessions are ingested without explicit version tagging.
+        base_where += "AND (agent_version = {agent_version:String} OR agent_version = '') "
         params["param_agent_version"] = agent_version
 
     count_sql = "SELECT count() AS cnt FROM session_stats_agg FINAL " + base_where + "FORMAT JSON"
@@ -157,7 +159,7 @@ async def _count_insight_sessions(
         "AND timestamp <= {t_end:String} "
     )
     if agent_version:
-        fallback_where += "AND agent_version = {agent_version:String} "
+        fallback_where += "AND (agent_version = {agent_version:String} OR agent_version IS NULL OR agent_version = '') "
     fallback_sql = (
         "SELECT count(DISTINCT session_id) AS cnt FROM session_events FINAL " + fallback_where + "FORMAT JSON"
     )
