@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""Tests for _resolve_agent version attribution from lockfile."""
+
+import json
+from unittest.mock import patch
+
+from observal_cli.sessions.base import _resolve_agent
+
+
+def _make_lockfile_entry(
+    name: str = "my-agent",
+    agent_id: str = "uuid-123",
+    version: str = "1.2.0",
+    directory: str = "/projects/app",
+    scope: str = "project",
+) -> dict:
+    """Build a lockfile agent entry matching the real format from upsert_agent."""
+    return {
+        "name": name,
+        "id": agent_id,
+        "version": version,
+        "pulled_at": "2026-06-17T00:00:00+00:00",
+        "scope": scope,
+        "directory": directory,
+        "components": [
+            {"type": "skill", "name": "pr-review", "id": "comp-1", "version": "1.0.0"},
+        ],
+    }
+
+
+class TestResolveAgentVersionFromLockfile:
+    """Verify that _resolve_agent enriches agent name with version from lockfile."""
+
+    def test_env_var_gets_version_from_lockfile(self, tmp_path):
+        """When OBSERVAL_AGENT_NAME is set, version should come from lockfile."""
+        entry = _make_lockfile_entry(name="my-agent", agent_id="uuid-123", version="1.2.0", directory=str(tmp_path))
+
+        with (
+            patch.dict("os.environ", {"OBSERVAL_AGENT_NAME": "my-agent"}),
+            patch("observal_cli.sessions.base._lookup_lockfile_agent", return_value=entry),
+        ):
+            agent_id, agent_version = _resolve_agent(str(tmp_path), [], None)
+
+        assert agent_id == "uuid-123"
+        assert agent_version == "1.2.0"
+
+    def test_env_var_without_lockfile_returns_none_version(self):
+        """When lockfile is missing, version should be None (graceful degradation)."""
+        with (
+            patch.dict("os.environ", {"OBSERVAL_AGENT_NAME": "my-agent"}),
+            patch("observal_cli.sessions.base._lookup_lockfile_agent", return_value=None),
+        ):
+            agent_id, agent_version = _resolve_agent("/some/dir", [], None)
+
+        assert agent_id == "my-agent"
+        assert agent_version is None
+
+    def test_jsonl_agent_setting_gets_version_from_lockfile(self, tmp_path):
+        """When agent is resolved from JSONL, version should come from lockfile."""
+        lines = [json.dumps({"type": "agent-setting", "agentSetting": "cc-agent"})]
+        entry = _make_lockfile_entry(name="cc-agent", agent_id="uuid-456", version="2.0.1", directory=str(tmp_path))
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("observal_cli.sessions.base._lookup_lockfile_agent", return_value=entry),
+        ):
+            import os
+
+            os.environ.pop("OBSERVAL_AGENT_NAME", None)
+            agent_id, agent_version = _resolve_agent(str(tmp_path), lines, None)
+
+        assert agent_id == "uuid-456"
+        assert agent_version == "2.0.1"
+
+    def test_lockfile_fallback_when_no_env_or_jsonl(self, tmp_path):
+        """When neither env var nor JSONL match, lockfile provides both name and version."""
+        entry = _make_lockfile_entry(
+            name="fallback-agent", agent_id="uuid-789", version="3.0.0", directory=str(tmp_path)
+        )
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("observal_cli.sessions.base._lookup_lockfile_agent", return_value=entry),
+        ):
+            import os
+
+            os.environ.pop("OBSERVAL_AGENT_NAME", None)
+            agent_id, agent_version = _resolve_agent(str(tmp_path), [], None)
+
+        assert agent_id == "uuid-789"
+        assert agent_version == "3.0.0"
+
+    def test_no_sources_returns_none(self):
+        """When nothing matches, returns (None, None)."""
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch("observal_cli.sessions.base._lookup_lockfile_agent", return_value=None),
+        ):
+            import os
+
+            os.environ.pop("OBSERVAL_AGENT_NAME", None)
+            agent_id, agent_version = _resolve_agent("/empty/dir", [], None)
+
+        assert agent_id is None
+        assert agent_version is None
+
+    def test_env_var_name_mismatch_returns_none_version(self, tmp_path):
+        """When env agent name differs from lockfile name, version is None.
+
+        We only attribute a version when the lockfile confirms the agent.
+        """
+        entry = _make_lockfile_entry(
+            name="other-agent", agent_id="uuid-other", version="1.0.0", directory=str(tmp_path)
+        )
+
+        with (
+            patch.dict("os.environ", {"OBSERVAL_AGENT_NAME": "my-agent"}),
+            patch("observal_cli.sessions.base._lookup_lockfile_agent", return_value=entry),
+        ):
+            agent_id, agent_version = _resolve_agent(str(tmp_path), [], None)
+
+        # Name comes from env var (not lockfile) since they don't match
+        assert agent_id == "my-agent"
+        # Version is None because lockfile entry doesn't match this agent
+        assert agent_version is None
+
+    def test_empty_cwd_skips_lockfile(self):
+        """When cwd is empty, lockfile lookup is skipped."""
+        with patch.dict("os.environ", {"OBSERVAL_AGENT_NAME": "my-agent"}):
+            agent_id, agent_version = _resolve_agent("", [], None)
+
+        assert agent_id == "my-agent"
+        assert agent_version is None

@@ -447,38 +447,70 @@ def _maybe_upload_layer_snapshot(
 
 
 def _resolve_agent(cwd: str, lines: list[str], session_jsonl: Path | None) -> tuple[str | None, str | None]:
-    """Resolve agent identity from multiple sources (priority order).
+    """Resolve agent identity from multiple sources.
 
-    1. OBSERVAL_AGENT_NAME env var (Kiro per-agent hook commands)
-    2. agent-setting line in JSONL (Claude Code embeds active agent)
-    3. Lock file lookup by cwd + IDE
+    Name resolution (first match wins):
+      1. OBSERVAL_AGENT_NAME env var (Kiro per-agent hook commands)
+      2. agent-setting line in JSONL (Claude Code embeds active agent)
+      3. Lock file lookup by cwd + IDE
+
+    Version resolution always comes from the lockfile. Steps 1 and 2 only
+    provide the agent name; the lockfile is the authoritative source for
+    the installed version.
     """
     import os
+
+    # Resolve agent name from env var or JSONL
+    agent_name: str | None = None
 
     # 1. Env var (Kiro per-agent hooks embed this)
     env_agent = os.environ.get("OBSERVAL_AGENT_NAME", "")
     if env_agent:
-        return env_agent, None
+        agent_name = env_agent
 
     # 2. Parse agent-setting from JSONL lines (Claude Code)
-    agent_from_jsonl = _parse_agent_from_lines(lines)
-    if agent_from_jsonl:
-        return agent_from_jsonl, None
+    if not agent_name:
+        agent_name = _parse_agent_from_lines(lines)
 
-    # 3. Lock file lookup
-    if cwd:
-        try:
-            from observal_cli.lockfile import get_agent_for_directory
+    # Look up version from lockfile (authoritative source for version attribution)
+    lockfile_entry = _lookup_lockfile_agent(cwd) if cwd else None
 
-            # Try common IDEs (the caller may override ide later)
-            for ide in ("claude-code", "cursor", "kiro", "pi"):
-                agent = get_agent_for_directory(ide, cwd)
-                if agent:
-                    return agent.get("id") or agent.get("name"), agent.get("version")
-        except Exception:
-            pass
+    if agent_name:
+        # Only use lockfile version when the entry matches this agent
+        agent_id = agent_name
+        version = None
+        if lockfile_entry:
+            lf_name = lockfile_entry.get("name", "")
+            lf_id = lockfile_entry.get("id", "")
+            if lf_name == agent_name or lf_id == agent_name:
+                agent_id = lf_id or lf_name or agent_name
+                version = lockfile_entry.get("version")
+        return agent_id, version
+
+    # 3. No name from env/JSONL; fall back to lockfile entirely
+    if lockfile_entry:
+        return lockfile_entry.get("id") or lockfile_entry.get("name"), lockfile_entry.get("version")
 
     return None, None
+
+
+def _lookup_lockfile_agent(cwd: str) -> dict | None:
+    """Find the agent entry in the lockfile for the given directory.
+
+    Checks all IDEs since the calling hook may not know which IDE wrote
+    the lockfile entry.
+    """
+    try:
+        from observal_cli.ide_registry import get_valid_ides
+        from observal_cli.lockfile import get_agent_for_directory
+
+        for ide in get_valid_ides():
+            agent = get_agent_for_directory(ide, cwd)
+            if agent:
+                return agent
+    except Exception:
+        pass
+    return None
 
 
 def _parse_agent_from_lines(lines: list[str]) -> str | None:

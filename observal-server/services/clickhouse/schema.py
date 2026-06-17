@@ -421,6 +421,7 @@ INIT_SQL = [
         project_id,
         session_id,
         coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
+        coalesce(anyIf(agent_version, agent_version IS NOT NULL AND agent_version != ''), '') AS agent_version,
         coalesce(anyIf(user_id, user_id != ''), '')                             AS user_id,
         coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
         coalesce(anyIf(ide, ide != ''), '')                                     AS ide,
