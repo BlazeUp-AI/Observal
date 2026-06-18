@@ -42,17 +42,21 @@ function OidcConfigSection() {
   const [result, setResult] = useState<ValidateResult | null>(null);
 
   const handleValidate = useCallback(async () => {
+    console.debug("[sso] validate-oidc start");
     setValidating(true);
     setResult(null);
     try {
       const res = await admin.validateOidc();
       setResult(res);
       if (res.success) {
+        console.info("[sso] validate-oidc ok", { latency_ms: res.latency_ms, issuer: res.issuer });
         toast.success("OIDC configuration is valid");
       } else {
+        console.warn("[sso] validate-oidc fail", { error: res.error, hint: res.hint });
         toast.error(res.error || "OIDC validation failed");
       }
     } catch (e) {
+      console.error("[sso] validate-oidc request failed", e);
       setResult({ success: false, error: e instanceof Error ? e.message : "Validation request failed" });
       toast.error("Failed to validate OIDC");
     } finally {
@@ -157,17 +161,21 @@ function SamlConfigSection() {
   }, [queryClient]);
 
   const handleValidateSaml = useCallback(async () => {
+    console.debug("[sso] validate-saml start");
     setValidating(true);
     setValidateResult(null);
     try {
       const res = await admin.validateSaml();
       setValidateResult(res);
       if (res.success) {
+        console.info("[sso] validate-saml ok", { latency_ms: res.latency_ms, idp_entity_id: res.idp_entity_id });
         toast.success("SAML configuration is valid");
       } else {
+        console.warn("[sso] validate-saml fail", { error: res.error, hint: res.hint });
         toast.error(res.error || "SAML validation failed");
       }
     } catch (e) {
+      console.error("[sso] validate-saml request failed", e);
       setValidateResult({ success: false, error: e instanceof Error ? e.message : "Validation request failed" });
       toast.error("Failed to validate SAML");
     } finally {

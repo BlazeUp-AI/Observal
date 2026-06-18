@@ -197,8 +197,6 @@ jobs:
       - uses: pnpm/action-setup@v6
         if: needs.changes.outputs.web == 'true'
         with:
-          # Skip the npm-registry install-then-downgrade dance (it hit a
-          # registry timeout); pull the standalone binary from GitHub releases.
           standalone: true
 
       - uses: actions/setup-node@v6
