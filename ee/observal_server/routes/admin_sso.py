@@ -9,8 +9,8 @@ import secrets
 import time
 import uuid
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger as optic
 from sqlalchemy import select
@@ -22,14 +22,8 @@ if TYPE_CHECKING:
 import services.dynamic_settings as ds
 from api.deps import get_db, get_or_create_default_org, require_role
 from config import settings
+from ee.observal_server.routes.sso_saml import _get_saml_config, _run_saml_check_suite
 from ee.observal_server.services.saml import (
-    build_saml_settings,
-    check_cert_expiry,
-    check_idp_cert_against_metadata,
-    check_idp_sso_url_reachable,
-    check_nameid_format,
-    check_sp_cert_key_match,
-    check_sp_host_consistency,
     decrypt_private_key,
     encrypt_private_key,
     generate_sp_key_pair,
@@ -46,6 +40,8 @@ from services.security_events import (
     Severity,
     emit_security_event,
 )
+
+_SAML_HEALTH_TIMEOUT = 10.0
 
 
 def _get_frontend_url() -> str:
@@ -289,88 +285,29 @@ async def validate_oidc(
     }
 
 
-async def _run_saml_checks(config, sp_key: str, frontend_url: str) -> list[dict]:
-    """Assemble every SAML check; run-all semantics so the operator sees every issue."""
-    from onelogin.saml2.auth import OneLogin_Saml2_Auth
-
-    checks: list[dict] = []
-
-    field_check = make_check("required_fields", "Required SAML fields populated", "pass")
-    missing = []
-    for attr, pretty in (
-        ("idp_entity_id", "IdP Entity ID"),
-        ("idp_sso_url", "IdP SSO URL"),
-        ("idp_x509_cert", "IdP X.509 certificate"),
-        ("sp_entity_id", "SP Entity ID"),
-        ("sp_acs_url", "SP ACS URL"),
-        ("sp_private_key_enc", "SP private key"),
-    ):
-        if not getattr(config, attr, None):
-            missing.append(pretty)
-    if missing:
-        field_check = make_check(
-            "required_fields",
-            "Required SAML fields populated",
-            "fail",
-            f"Missing: {'; '.join(missing)}.",
-            "Complete the SAML configuration with all required fields.",
+def _required_field_check(config) -> dict | None:
+    """Return a failing check dict if any required SAML field is empty, else None."""
+    missing = [
+        pretty
+        for attr, pretty in (
+            ("idp_entity_id", "IdP Entity ID"),
+            ("idp_sso_url", "IdP SSO URL"),
+            ("idp_x509_cert", "IdP X.509 certificate"),
+            ("sp_entity_id", "SP Entity ID"),
+            ("sp_acs_url", "SP ACS URL"),
+            ("sp_private_key_enc", "SP private key"),
         )
-    checks.append(field_check)
-    if missing:
-        return checks
-
-    parsed = urlparse(frontend_url)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    request_data = {
-        "https": "on" if parsed.scheme == "https" else "off",
-        "http_host": f"{parsed.hostname}:{port}" if port not in (80, 443) else parsed.hostname,
-        "server_port": str(port),
-        "script_name": "/api/v1/sso/saml/login",
-        "get_data": {},
-        "post_data": {},
-    }
-    sp_slo_url = f"{frontend_url}/api/v1/sso/saml/sls" if getattr(config, "idp_slo_url", "") else ""
-
-    try:
-        saml_settings = build_saml_settings(
-            idp_entity_id=config.idp_entity_id,
-            idp_sso_url=config.idp_sso_url,
-            idp_x509_cert=config.idp_x509_cert,
-            sp_entity_id=config.sp_entity_id,
-            sp_acs_url=config.sp_acs_url,
-            sp_private_key=sp_key,
-            sp_x509_cert=config.sp_x509_cert,
-            idp_slo_url=getattr(config, "idp_slo_url", "") or "",
-            sp_slo_url=sp_slo_url,
-        )
-        auth_obj = OneLogin_Saml2_Auth(request_data, old_settings=saml_settings)
-        auth_obj.login(return_to="/")
-        checks.append(make_check("onelogin_build", "OneLogin SAML settings load", "pass"))
-        checks.append(make_check("authn_request", "AuthnRequest builds", "pass"))
-    except Exception as e:
-        msg_lower = str(e).lower()
-        optic.exception("admin._run_saml_checks OneLogin build failed")
-        if "idp_cert" in msg_lower:
-            msg, hint = ("IdP X.509 certificate is missing or malformed.", "Re-import the IdP signing certificate.")
-        elif "sp" in msg_lower and "key" in msg_lower:
-            msg, hint = ("SP private key or certificate is invalid.", "Regenerate the SP key pair.")
-        else:
-            msg, hint = ("SAML settings validation failed.", "Check the configuration values; details in server logs.")
-        checks.append(make_check("onelogin_build", "OneLogin SAML settings load", "fail", msg, hint))
-        return checks
-
-    for opt in (
-        await check_idp_cert_against_metadata(config.idp_x509_cert),
-        check_cert_expiry(config.idp_x509_cert, "IdP"),
-        check_cert_expiry(config.sp_x509_cert, "SP"),
-        check_sp_host_consistency(config.sp_acs_url, frontend_url),
-        check_sp_cert_key_match(config.sp_x509_cert, sp_key),
-        await check_idp_sso_url_reachable(config.idp_sso_url),
-        await check_nameid_format("emailAddress"),
-    ):
-        if opt is not None:
-            checks.append(opt)
-    return checks
+        if not getattr(config, attr, None)
+    ]
+    if not missing:
+        return None
+    return make_check(
+        "required_fields",
+        "Required SAML fields populated",
+        "fail",
+        f"Missing: {'; '.join(missing)}.",
+        "Complete the SAML configuration with all required fields.",
+    )
 
 
 @router.post("/sso/validate-saml")
@@ -381,14 +318,11 @@ async def validate_saml(
     """Validate SAML configuration end-to-end and return per-check diagnostics.
 
     Note: server-side validation cannot replay a signed assertion, so a green
-    result still depends on a real user login from your IdP. Some signals (e.g.
-    NameIDFormat, signing cert rotation) are only visible if ``saml.idp_metadata_url``
-    is configured.
+    result still depends on a real user login. NameIDFormat and signing-cert
+    rotation are only visible if ``saml.idp_metadata_url`` is configured.
     """
     optic.info("admin.validate_saml start")
     start = time.monotonic()
-
-    from ee.observal_server.routes.sso_saml import _get_saml_config
 
     config = await _get_saml_config(db)
     if not config:
@@ -397,6 +331,16 @@ async def validate_saml(
             "error": "SAML is not configured",
             "hint": "Configure SAML via environment variables or the admin API.",
             "checks": [],
+        }
+
+    field_failure = _required_field_check(config)
+    if field_failure is not None:
+        return {
+            "success": False,
+            "error": field_failure["message"],
+            "hint": field_failure["hint"],
+            "checks": [field_failure],
+            "latency_ms": round((time.monotonic() - start) * 1000),
         }
 
     try:
@@ -423,7 +367,9 @@ async def validate_saml(
         }
 
     frontend_url = _get_frontend_url()
-    checks = await _run_saml_checks(config, sp_key, frontend_url)
+    async with httpx.AsyncClient(timeout=_SAML_HEALTH_TIMEOUT, follow_redirects=False) as client:
+        checks = await _run_saml_check_suite(config, sp_key, frontend_url, client)
+    checks.insert(0, make_check("sp_key_decrypt", "SP private key decrypts", "pass"))
     success = all_pass(checks)
     err_msg, err_hint = (None, None) if success else _first_failure(checks)
     latency_ms = round((time.monotonic() - start) * 1000)

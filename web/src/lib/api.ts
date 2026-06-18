@@ -696,22 +696,8 @@ export const admin = {
 	updateSamlConfig: (body: Record<string, unknown>) =>
 		put<Record<string, unknown>>("/admin/saml-config", body),
 	deleteSamlConfig: () => del("/admin/saml-config"),
-	validateOidc: () =>
-		post<{
-			success: boolean;
-			issuer?: string;
-			latency_ms?: number;
-			error?: string;
-			hint?: string;
-		}>("/admin/sso/validate-oidc", {}),
-	validateSaml: () =>
-		post<{
-			success: boolean;
-			idp_entity_id?: string;
-			latency_ms?: number;
-			error?: string;
-			hint?: string;
-		}>("/admin/sso/validate-saml", {}),
+	validateOidc: () => post<ValidateResult>("/admin/sso/validate-oidc", {}),
+	validateSaml: () => post<ValidateResult>("/admin/sso/validate-saml", {}),
 	scimTokens: () =>
 		get<
 			{
@@ -816,9 +802,34 @@ interface IdesResponse {
 	default_ide?: string | null;
 }
 
+export type HealthCheck = {
+	name: string;
+	label: string;
+	status: "pass" | "fail" | "skip";
+	message?: string;
+	hint?: string;
+};
+
+export type SsoProbeResult = {
+	ok: boolean;
+	latency_ms?: number;
+	error?: string;
+	checks?: HealthCheck[];
+};
+
 export type SsoHealthResult = {
-	oidc: { ok: boolean; latency_ms?: number; error?: string } | null;
-	saml: { ok: boolean; latency_ms?: number; error?: string } | null;
+	oidc: SsoProbeResult | null;
+	saml: SsoProbeResult | null;
+};
+
+export type ValidateResult = {
+	success: boolean;
+	issuer?: string;
+	idp_entity_id?: string;
+	latency_ms?: number;
+	error?: string;
+	hint?: string;
+	checks?: HealthCheck[];
 };
 
 export const config = {

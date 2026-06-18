@@ -6,13 +6,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import secrets
+import time
 import uuid
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from loguru import logger as optic
@@ -38,6 +41,7 @@ from ee.observal_server.services.saml import (
     extract_name_id_and_attrs,
     generate_sp_key_pair,
     get_display_name,
+    get_idp_metadata_xml,
 )
 from models.saml_config import SamlConfig
 from models.user import User, UserRole
@@ -70,19 +74,29 @@ def _safe_redirect_path(value: str | None) -> str:
 router = APIRouter(prefix="/api/v1/sso/saml", tags=["enterprise-sso"])
 
 _env_saml_config_cache: object | None = None
+_env_saml_config_lock = asyncio.Lock()
 
 
 async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
+    """Return the active SAML config or build one from env settings.
+
+    The env-fallback path generates an SP key pair on first use; serialize via
+    a lock so two concurrent cold-start requests can't each generate a key
+    and have one overwrite the other (silent assertion-signature breakage).
+    """
     global _env_saml_config_cache
 
     result = await db.execute(select(SamlConfig).where(SamlConfig.active.is_(True)).limit(1))
     config = result.scalar_one_or_none()
     if config:
         return config
-    if ds.get_sync("saml.idp_entity_id") and ds.get_sync("saml.idp_sso_url"):
+    if not (ds.get_sync("saml.idp_entity_id") and ds.get_sync("saml.idp_sso_url")):
+        return None
+    if _env_saml_config_cache is not None:
+        return _env_saml_config_cache
+    async with _env_saml_config_lock:
         if _env_saml_config_cache is not None:
             return _env_saml_config_cache
-
         sp_entity_id = ds.get_sync("saml.sp_entity_id") or f"{_get_frontend_url()}/api/v1/sso/saml/metadata"
         sp_acs_url = ds.get_sync("saml.sp_acs_url") or f"{_get_frontend_url()}/api/v1/sso/saml/acs"
         enc_password = ds.get_sync("saml.sp_key_encryption_password")
@@ -113,7 +127,6 @@ async def _get_saml_config(db: AsyncSession) -> SamlConfig | None:
         )()
         _env_saml_config_cache = env_config
         return env_config
-    return None
 
 
 def _decrypt_sp_key(config) -> str:
@@ -169,6 +182,84 @@ async def _issue_tokens(user: User) -> tuple[str, str, int]:
     return access_token, refresh_token, expires_in
 
 
+_SAML_HEALTH_TIMEOUT = 10.0
+
+
+async def _run_saml_check_suite(
+    config,
+    sp_key: str,
+    frontend_url: str,
+    client: httpx.AsyncClient,
+) -> list[dict]:
+    """Run all SAML checks against a config. One HTTP client; one metadata fetch."""
+    checks: list[dict] = []
+    parsed = urlparse(frontend_url)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    request_data = {
+        "https": "on" if parsed.scheme == "https" else "off",
+        "http_host": f"{parsed.hostname}:{port}" if port not in (80, 443) else parsed.hostname,
+        "server_port": str(port),
+        "script_name": "/api/v1/sso/saml/login",
+        "get_data": {},
+        "post_data": {},
+    }
+    try:
+        auth = _build_auth(config, sp_key, request_data)
+        auth.login(return_to="/")
+        checks.append(make_check("onelogin_build", "OneLogin SAML settings load", "pass"))
+        checks.append(make_check("authn_request", "AuthnRequest builds", "pass"))
+    except Exception as e:
+        msg_lower = str(e).lower()
+        optic.exception("saml._run_saml_check_suite build/login failed")
+        if "idp_cert" in msg_lower:
+            msg = "IdP certificate missing or malformed."
+        elif "sp_cert" in msg_lower or ("sp" in msg_lower and "key" in msg_lower):
+            msg = "SP key or certificate invalid."
+        elif "idp_sso_url" in msg_lower:
+            msg = "IdP SSO URL missing or invalid."
+        else:
+            msg = "SAML configuration error."
+        checks.append(
+            make_check(
+                "onelogin_build",
+                "OneLogin SAML settings load",
+                "fail",
+                msg,
+                "Open the admin SAML page for full diagnostics.",
+            )
+        )
+        return checks
+
+    metadata_xml, sso_check = await asyncio.gather(
+        get_idp_metadata_xml(client),
+        check_idp_sso_url_reachable(client, config.idp_sso_url),
+    )
+    metadata_url_set = bool(ds.get_sync("saml.idp_metadata_url", ""))
+    if metadata_url_set and metadata_xml is None:
+        checks.append(
+            make_check(
+                "idp_metadata_reachable",
+                "IdP metadata URL reachable",
+                "fail",
+                "IdP metadata URL is configured but unreachable or oversized.",
+                "Verify saml.idp_metadata_url is correct and reachable from this server.",
+            )
+        )
+
+    for opt in (
+        check_idp_cert_against_metadata(config.idp_x509_cert, metadata_xml),
+        check_cert_expiry(config.idp_x509_cert, "IdP"),
+        check_cert_expiry(config.sp_x509_cert, "SP"),
+        check_sp_host_consistency(config.sp_acs_url, frontend_url),
+        check_sp_cert_key_match(config.sp_x509_cert, sp_key),
+        sso_check,
+        check_nameid_format(metadata_xml, "emailAddress"),
+    ):
+        if opt is not None:
+            checks.append(opt)
+    return checks
+
+
 async def saml_health_probe(db: AsyncSession) -> dict | None:
     """Public SAML health probe — exercises the saml_login code path.
 
@@ -177,8 +268,6 @@ async def saml_health_probe(db: AsyncSession) -> dict | None:
     when SAML is not configured. Server-side validation cannot replay a signed
     assertion, so a green result still depends on a real user login round-trip.
     """
-    import time
-
     config = await _get_saml_config(db)
     if not config:
         return None
@@ -204,55 +293,9 @@ async def saml_health_probe(db: AsyncSession) -> dict | None:
         return {"ok": False, "checks": checks, "latency_ms": round((time.monotonic() - start) * 1000)}
 
     frontend_url = _get_frontend_url()
-    parsed = urlparse(frontend_url)
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    request_data = {
-        "https": "on" if parsed.scheme == "https" else "off",
-        "http_host": f"{parsed.hostname}:{port}" if port not in (80, 443) else parsed.hostname,
-        "server_port": str(port),
-        "script_name": "/api/v1/sso/saml/login",
-        "get_data": {},
-        "post_data": {},
-    }
-
-    try:
-        auth = _build_auth(config, sp_key, request_data)
-        auth.login(return_to="/")
-        checks.append(make_check("onelogin_build", "OneLogin SAML settings load", "pass"))
-        checks.append(make_check("authn_request", "AuthnRequest builds", "pass"))
-    except Exception as e:
-        msg_lower = str(e).lower()
-        optic.exception("saml_health_probe build/login failed")
-        if "idp_cert" in msg_lower:
-            msg = "IdP certificate missing or malformed."
-        elif "sp_cert" in msg_lower or ("sp" in msg_lower and "key" in msg_lower):
-            msg = "SP key or certificate invalid."
-        elif "idp_sso_url" in msg_lower:
-            msg = "IdP SSO URL missing or invalid."
-        else:
-            msg = "SAML configuration error."
-        checks.append(
-            make_check(
-                "onelogin_build",
-                "OneLogin SAML settings load",
-                "fail",
-                msg,
-                "Open the admin SAML page for full diagnostics.",
-            )
-        )
-        return {"ok": False, "checks": checks, "latency_ms": round((time.monotonic() - start) * 1000)}
-
-    for opt in (
-        await check_idp_cert_against_metadata(config.idp_x509_cert),
-        check_cert_expiry(config.idp_x509_cert, "IdP"),
-        check_cert_expiry(config.sp_x509_cert, "SP"),
-        check_sp_host_consistency(config.sp_acs_url, frontend_url),
-        check_sp_cert_key_match(config.sp_x509_cert, sp_key),
-        await check_idp_sso_url_reachable(config.idp_sso_url),
-        await check_nameid_format("emailAddress"),
-    ):
-        if opt is not None:
-            checks.append(opt)
+    async with httpx.AsyncClient(timeout=_SAML_HEALTH_TIMEOUT, follow_redirects=False) as client:
+        suite = await _run_saml_check_suite(config, sp_key, frontend_url, client)
+    checks.extend(suite)
 
     ok = all_pass(checks)
     latency_ms = round((time.monotonic() - start) * 1000)

@@ -9,10 +9,9 @@ import base64
 import os
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-import httpx
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -25,11 +24,15 @@ from lxml import etree
 import services.dynamic_settings as ds
 from schemas.sso_health import make_check
 
+if TYPE_CHECKING:
+    import httpx
+
 _ENCRYPTION_PREFIX = "enc:aesgcm:v2:"
 _PBKDF2_ITERATIONS = 600_000
 _PEM_ARMOR_RE = re.compile(r"-----[A-Z0-9 ]+-----")
 _WHITESPACE_RE = re.compile(r"\s+")
 _HTTP_TIMEOUT = 10.0
+_MAX_METADATA_BYTES = 2 * 1024 * 1024  # 2 MiB cap on IdP metadata XML
 _SAML_NS = {"md": "urn:oasis:names:tc:SAML:2.0:metadata", "ds": "http://www.w3.org/2000/09/xmldsig#"}
 
 
@@ -240,15 +243,24 @@ def check_sp_host_consistency(sp_acs_url: str, frontend_url: str) -> dict[str, A
     return make_check(name, label, "pass")
 
 
-async def _fetch_idp_metadata(metadata_url: str) -> str | None:
+async def fetch_idp_metadata_xml(client: httpx.AsyncClient, metadata_url: str) -> str | None:
+    """Fetch IdP metadata with a hard body-size cap and shared client."""
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(metadata_url)
+        async with client.stream("GET", metadata_url) as resp:
             resp.raise_for_status()
-            optic.debug("saml._fetch_idp_metadata ok url={} bytes={}", metadata_url, len(resp.text))
-            return resp.text
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes():
+                total += len(chunk)
+                if total > _MAX_METADATA_BYTES:
+                    optic.warning("saml.fetch_idp_metadata_xml size cap exceeded url={}", metadata_url)
+                    return None
+                chunks.append(chunk)
+            xml = b"".join(chunks).decode("utf-8", errors="replace")
+            optic.debug("saml.fetch_idp_metadata_xml ok url={} bytes={}", metadata_url, total)
+            return xml
     except Exception:
-        optic.warning("saml._fetch_idp_metadata failed url={}", metadata_url)
+        optic.warning("saml.fetch_idp_metadata_xml failed url={}", metadata_url)
         return None
 
 
@@ -271,21 +283,21 @@ def _extract_metadata_nameid_formats(xml: str) -> list[str] | None:
     return [n.text or "" for n in nodes if (n.text or "").strip()]
 
 
-async def check_idp_cert_against_metadata(configured_cert: str) -> dict[str, Any] | None:
+def _nameid_last_segment(value: str) -> str:
+    """``urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress`` → ``emailaddress``."""
+    return value.strip().split(":")[-1].lower()
+
+
+def check_idp_cert_against_metadata(configured_cert: str, metadata_xml: str | None) -> dict[str, Any] | None:
+    """Compare configured IdP cert against signing certs in the IdP metadata.
+
+    Caller is responsible for fetching ``metadata_xml`` (pass ``None`` to skip).
+    Returning ``None`` means the check did not run — never an implicit pass.
+    """
     name, label = "idp_cert_matches_metadata", "IdP cert matches metadata"
-    metadata_url = ds.get_sync("saml.idp_metadata_url", "")
-    if not metadata_url:
+    if metadata_xml is None:
         return None
-    xml = await _fetch_idp_metadata(metadata_url)
-    if xml is None:
-        return make_check(
-            name,
-            label,
-            "fail",
-            "IdP metadata URL is configured but unreachable.",
-            "Verify saml.idp_metadata_url is correct and reachable from this server.",
-        )
-    certs = _extract_metadata_certs(xml)
+    certs = _extract_metadata_certs(metadata_xml)
     if certs is None:
         return make_check(
             name,
@@ -316,6 +328,10 @@ async def check_idp_cert_against_metadata(configured_cert: str) -> dict[str, Any
 
 
 def check_sp_cert_key_match(sp_cert_pem: str, sp_private_key_pem: str) -> dict[str, Any] | None:
+    """Confirm cert and key form a valid pair (algorithm-agnostic).
+
+    Compares SubjectPublicKeyInfo bytes so RSA, ECDSA, and EdDSA all work.
+    """
     name, label = "sp_cert_key_match", "SP cert/key form a valid pair"
     if not sp_cert_pem or not sp_private_key_pem:
         return None
@@ -334,13 +350,15 @@ def check_sp_cert_key_match(sp_cert_pem: str, sp_private_key_pem: str) -> dict[s
             "SP certificate or private key could not be parsed.",
             "Regenerate the SP key pair from the admin SAML page.",
         )
-    try:
-        cert_pub = cert.public_key().public_numbers()  # type: ignore[attr-defined]
-        key_pub = key.public_key().public_numbers()  # type: ignore[attr-defined]
-    except AttributeError:
-        optic.trace("saml.check_sp_cert_key_match non-RSA key, skipping")
-        return None
-    if cert_pub != key_pub:
+    cert_pub_bytes = cert.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    key_pub_bytes = key.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    if cert_pub_bytes != key_pub_bytes:
         optic.warning("saml.check_sp_cert_key_match mismatch — cert and key do not pair")
         return make_check(
             name,
@@ -352,13 +370,21 @@ def check_sp_cert_key_match(sp_cert_pem: str, sp_private_key_pem: str) -> dict[s
     return make_check(name, label, "pass")
 
 
-async def check_idp_sso_url_reachable(idp_sso_url: str) -> dict[str, Any] | None:
+async def check_idp_sso_url_reachable(client: httpx.AsyncClient, idp_sso_url: str) -> dict[str, Any] | None:
+    """Confirm the IdP SSO endpoint is reachable.
+
+    Tries HEAD first (some IdPs answer 405 to HEAD; we fall back to GET in that
+    case). Anything that isn't a network error or 5xx counts as reachable — we
+    don't try to interpret 4xx because POST-only endpoints commonly return 405
+    on GET and that is not a failure of this check.
+    """
     name, label = "idp_sso_reachable", "IdP SSO URL reachable"
     if not idp_sso_url:
         return None
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, follow_redirects=False) as client:
-            resp = await client.get(idp_sso_url)
+        resp = await client.head(idp_sso_url, follow_redirects=False)
+        if resp.status_code == 405:
+            resp = await client.get(idp_sso_url, follow_redirects=False)
     except Exception:
         optic.warning("saml.check_idp_sso_url_reachable network error url={}", idp_sso_url)
         return make_check(
@@ -380,19 +406,22 @@ async def check_idp_sso_url_reachable(idp_sso_url: str) -> dict[str, Any] | None
     return make_check(name, label, "pass")
 
 
-async def check_nameid_format(configured_format: str = "emailAddress") -> dict[str, Any] | None:
+def check_nameid_format(metadata_xml: str | None, configured_format: str = "emailAddress") -> dict[str, Any] | None:
+    """Check that the IdP metadata advertises the NameIDFormat we expect.
+
+    Compares the *last URN segment* (e.g. ``emailAddress``) rather than doing
+    a substring match so unrelated tokens that happen to contain the word
+    cannot false-pass.
+    """
     name, label = "nameid_format", "IdP advertises emailAddress NameIDFormat"
-    metadata_url = ds.get_sync("saml.idp_metadata_url", "")
-    if not metadata_url:
+    if metadata_xml is None:
         return None
-    xml = await _fetch_idp_metadata(metadata_url)
-    if xml is None:
-        return None
-    formats = _extract_metadata_nameid_formats(xml)
+    formats = _extract_metadata_nameid_formats(metadata_xml)
     if not formats:
         return None
-    joined = " ".join(formats).lower()
-    if configured_format.lower() not in joined:
+    wanted = configured_format.strip().lower()
+    advertised = {_nameid_last_segment(f) for f in formats}
+    if wanted not in advertised:
         optic.warning("saml.check_nameid_format mismatch want={} got={}", configured_format, formats)
         return make_check(
             name,
@@ -405,6 +434,18 @@ async def check_nameid_format(configured_format: str = "emailAddress") -> dict[s
             f"Configure the IdP application to send NameID in '{configured_format}' format.",
         )
     return make_check(name, label, "pass")
+
+
+async def get_idp_metadata_xml(client: httpx.AsyncClient) -> str | None:
+    """Return the IdP metadata XML if ``saml.idp_metadata_url`` is configured.
+
+    Returns ``None`` when the setting is unset *or* the fetch fails. Probes
+    that depend on the metadata should treat ``None`` as a skip.
+    """
+    metadata_url = ds.get_sync("saml.idp_metadata_url", "")
+    if not metadata_url:
+        return None
+    return await fetch_idp_metadata_xml(client, metadata_url)
 
 
 def _strip_pem_headers(pem: str) -> str:

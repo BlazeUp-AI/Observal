@@ -7,10 +7,15 @@ Each probe returns a check dict ``{name, label, status, message?, hint?}`` so
 the admin validator and the public sso-health endpoint can assemble a full
 diagnostic report instead of bailing on the first failure. Returning ``None``
 means the check did not run (skip).
+
+All helpers take an already-built ``httpx.AsyncClient`` so we avoid
+re-instantiating one (and its TLS context) per check.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -22,23 +27,42 @@ from loguru import logger as optic
 from schemas.sso_health import make_check
 
 _HTTP_TIMEOUT = 10.0
-_HEALTH_PROBE_TIMEOUT = 8.0
+_MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MiB cap on any single response body
+_CLOCK_SKEW_THRESHOLD = 120  # seconds — OIDC nonce/iat tolerance is typically 60-120s
+# Observal sends the client secret via HTTP Basic (authlib default). If the
+# IdP does not advertise this method, login fails at the token exchange.
+_OBSERVAL_TOKEN_AUTH_METHOD = "client_secret_basic"
 
 
-async def fetch_discovery(metadata_url: str) -> tuple[dict | None, str | None, dict[str, Any]]:
+async def _bounded_get(client: httpx.AsyncClient, url: str) -> tuple[httpx.Response, bytes]:
+    """GET with a hard ceiling on body size (defends against huge responses)."""
+    async with client.stream("GET", url) as resp:
+        resp.raise_for_status()
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in resp.aiter_bytes():
+            total += len(chunk)
+            if total > _MAX_BODY_BYTES:
+                raise httpx.ReadError(f"Response exceeded {_MAX_BODY_BYTES} bytes")
+            chunks.append(chunk)
+        return resp, b"".join(chunks)
+
+
+async def fetch_discovery(
+    client: httpx.AsyncClient,
+    metadata_url: str,
+) -> tuple[dict | None, str | None, dict[str, Any]]:
     """Return ``(metadata, server_date_header, discovery_check)``.
 
-    ``server_date_header`` is the response ``Date`` header so the caller can run
-    a clock-skew check without re-fetching.
+    ``server_date_header`` is the response ``Date`` header so the caller can
+    run a clock-skew check without re-fetching.
     """
     name, label = "discovery_doc", "OIDC discovery document"
     optic.debug("oidc.fetch_discovery url={}", metadata_url)
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(metadata_url)
-            resp.raise_for_status()
-            metadata = resp.json()
-            server_date = resp.headers.get("date")
+        resp, body = await _bounded_get(client, metadata_url)
+        metadata = json.loads(body)
+        server_date = resp.headers.get("date")
     except httpx.TimeoutException:
         optic.warning("oidc.fetch_discovery timeout url={}", metadata_url)
         return (
@@ -78,11 +102,25 @@ async def fetch_discovery(metadata_url: str) -> tuple[dict | None, str | None, d
                 "Verify OAUTH_SERVER_METADATA_URL is a reachable URL.",
             ),
         )
+    if not isinstance(metadata, dict):
+        optic.warning("oidc.fetch_discovery non-object response type={}", type(metadata).__name__)
+        return (
+            None,
+            server_date,
+            make_check(
+                name,
+                label,
+                "fail",
+                "OIDC metadata endpoint did not return a JSON object.",
+                "The IdP returned an unexpected payload — confirm the URL points at the discovery document.",
+            ),
+        )
     optic.info("oidc.fetch_discovery ok issuer={}", metadata.get("issuer"))
     return metadata, server_date, make_check(name, label, "pass")
 
 
 async def probe_authorization_endpoint(
+    client: httpx.AsyncClient,
     authz_endpoint: str,
     client_id: str,
     redirect_uri: str,
@@ -94,19 +132,26 @@ async def probe_authorization_endpoint(
     everything else as rejected.
     """
     name, label = "authorization_endpoint", "Authorization endpoint accepts our params"
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile groups",
+        "state": "observal_validate_probe",
+        "nonce": "observal_validate_nonce",
+    }
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, follow_redirects=False) as client:
-            resp = await client.get(
-                authz_endpoint,
-                params={
-                    "client_id": client_id,
-                    "redirect_uri": redirect_uri,
-                    "response_type": "code",
-                    "scope": "openid email profile groups",
-                    "state": "observal_validate_probe",
-                    "nonce": "observal_validate_nonce",
-                },
-            )
+        async with client.stream("GET", authz_endpoint, params=params) as resp:
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes():
+                total += len(chunk)
+                if total > _MAX_BODY_BYTES:
+                    break
+                chunks.append(chunk)
+            body = b"".join(chunks)
+            status_code = resp.status_code
+            location = resp.headers.get("location", "")
     except httpx.TimeoutException:
         optic.warning("oidc.probe_authorization_endpoint timeout endpoint={}", authz_endpoint)
         return make_check(
@@ -125,9 +170,9 @@ async def probe_authorization_endpoint(
             "Failed to reach the authorization endpoint.",
             "Check that the IdP is reachable from this server.",
         )
-    optic.debug("oidc.probe_authorization_endpoint status={} endpoint={}", resp.status_code, authz_endpoint)
-    if resp.status_code in (301, 302, 303, 307, 308):
-        if "error=" in resp.headers.get("location", ""):
+    optic.debug("oidc.probe_authorization_endpoint status={} endpoint={}", status_code, authz_endpoint)
+    if status_code in (301, 302, 303, 307, 308):
+        if "error=" in location:
             return make_check(
                 name,
                 label,
@@ -136,21 +181,22 @@ async def probe_authorization_endpoint(
                 f"Ensure '{redirect_uri}' is registered as a redirect URI in your IdP application.",
             )
         return make_check(name, label, "pass")
-    if resp.status_code == 200:
+    if status_code == 200:
         return make_check(name, label, "pass")
-    body = resp.text.lower()
-    msg = f"IdP authorization endpoint returned HTTP {resp.status_code}."
+    text = body.decode("utf-8", errors="ignore").lower()
+    msg = f"IdP authorization endpoint returned HTTP {status_code}."
     hint = f"Ensure '{redirect_uri}' is registered and the client is enabled."
-    if "redirect_uri" in body or "redirect uri" in body:
+    if "redirect_uri" in text or "redirect uri" in text:
         msg = "IdP rejected the redirect_uri — it is not registered in the application."
-    elif "invalid_client" in body:
+    elif "invalid_client" in text:
         msg = "IdP does not recognize this client_id."
-    elif "unauthorized_client" in body:
+    elif "unauthorized_client" in text:
         msg = "Client is not authorized for this grant type."
     return make_check(name, label, "fail", msg, hint)
 
 
 async def probe_client_secret(
+    client: httpx.AsyncClient,
     token_endpoint: str,
     client_id: str,
     client_secret: str,
@@ -165,17 +211,16 @@ async def probe_client_secret(
     if not client_secret:
         return None
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.post(
-                token_endpoint,
-                data={
-                    "grant_type": "authorization_code",
-                    "code": "observal_validate_invalid_code",
-                    "redirect_uri": redirect_uri,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
-            )
+        resp = await client.post(
+            token_endpoint,
+            data={
+                "grant_type": "authorization_code",
+                "code": "observal_validate_invalid_code",
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+        )
     except Exception:
         optic.warning("oidc.probe_client_secret network error endpoint={}", token_endpoint)
         return None
@@ -196,7 +241,7 @@ async def probe_client_secret(
     return make_check(name, label, "pass")
 
 
-async def probe_jwks(metadata: dict) -> dict[str, Any]:
+async def probe_jwks(client: httpx.AsyncClient, metadata: dict) -> dict[str, Any]:
     name, label = "jwks_reachable", "JWKS signing keys"
     jwks_uri = metadata.get("jwks_uri")
     if not jwks_uri:
@@ -208,10 +253,8 @@ async def probe_jwks(metadata: dict) -> dict[str, Any]:
             "Configure the jwks_uri claim in the IdP's discovery document.",
         )
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(jwks_uri)
-            resp.raise_for_status()
-            data = resp.json()
+        _, body = await _bounded_get(client, jwks_uri)
+        data = json.loads(body)
     except Exception:
         optic.warning("oidc.probe_jwks unreachable url={}", jwks_uri)
         return make_check(
@@ -254,19 +297,26 @@ def check_issuer_consistency(metadata: dict, metadata_url: str) -> dict[str, Any
 
 
 def check_token_endpoint_auth_methods(metadata: dict) -> dict[str, Any] | None:
-    name, label = "token_auth_method_supported", "Token endpoint auth method"
+    """Verify the IdP supports the auth method Observal *actually uses*.
+
+    Observal sends the client secret via HTTP Basic. When the discovery
+    document advertises an explicit list and Basic isn't in it, the token
+    exchange will fail with ``invalid_client`` even though the secret is
+    correct.
+    """
+    name, label = "token_auth_method_supported", "Token endpoint advertises client_secret_basic"
     methods = [m.lower() for m in (metadata.get("token_endpoint_auth_methods_supported") or [])]
     if not methods:
+        # Spec default per RFC 8414 is client_secret_basic — nothing to validate.
         return None
-    supported = {"client_secret_basic", "client_secret_post"}
-    if not (supported & set(methods)):
-        optic.warning("oidc.check_token_endpoint_auth_methods unsupported={}", methods)
+    if _OBSERVAL_TOKEN_AUTH_METHOD not in methods:
+        optic.warning("oidc.check_token_endpoint_auth_methods missing basic methods={}", methods)
         return make_check(
             name,
             label,
             "fail",
-            f"IdP only advertises {methods} — Observal needs client_secret_basic or client_secret_post.",
-            "Enable client_secret_basic or client_secret_post for this application in the IdP.",
+            f"IdP advertises {methods} but Observal uses '{_OBSERVAL_TOKEN_AUTH_METHOD}'.",
+            f"Enable {_OBSERVAL_TOKEN_AUTH_METHOD} for this application in the IdP.",
         )
     return make_check(name, label, "pass")
 
@@ -283,13 +333,13 @@ def check_clock_skew(server_date_header: str | None) -> dict[str, Any] | None:
         return None
     skew = abs((datetime.now(UTC) - idp_time).total_seconds())
     optic.debug("oidc.check_clock_skew seconds={}", int(skew))
-    if skew > 300:
+    if skew > _CLOCK_SKEW_THRESHOLD:
         return make_check(
             name,
             label,
             "fail",
-            f"Clock differs from the IdP by {int(skew)}s (>5min) — token nonce/exp checks will fail.",
-            "Sync this server's clock with NTP.",
+            f"Clock differs from the IdP by {int(skew)}s — token nonce/exp checks will fail.",
+            "Sync this server's clock with NTP (target drift <60s).",
         )
     return make_check(name, label, "pass")
 
@@ -317,48 +367,52 @@ async def run_oidc_checks(
 ) -> tuple[list[dict[str, Any]], dict | None]:
     """Run every OIDC check and return ``(checks, metadata)``.
 
-    Dependent checks short-circuit only when the data they need is unavailable —
-    every other check runs so the operator sees every issue at once.
+    Independent post-discovery checks run concurrently. A single
+    ``AsyncClient`` is shared across all calls so we set up TLS once.
     """
     optic.info("oidc.run_oidc_checks start metadata_url={}", metadata_url)
     checks: list[dict[str, Any]] = []
-    metadata, server_date, discovery_check = await fetch_discovery(metadata_url)
-    checks.append(discovery_check)
-    if metadata is None:
-        return checks, None
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, follow_redirects=False) as client:
+        metadata, server_date, discovery_check = await fetch_discovery(client, metadata_url)
+        checks.append(discovery_check)
+        if metadata is None:
+            return checks, None
 
-    authz_endpoint = metadata.get("authorization_endpoint")
-    token_endpoint = metadata.get("token_endpoint")
-    if authz_endpoint:
-        checks.append(await probe_authorization_endpoint(authz_endpoint, client_id, redirect_uri))
-    else:
-        checks.append(
-            make_check(
-                "authorization_endpoint",
-                "Authorization endpoint accepts our params",
-                "fail",
-                "Discovery document is missing authorization_endpoint.",
-                "Verify the IdP configuration exposes a valid discovery document.",
-            )
-        )
+        authz_endpoint = metadata.get("authorization_endpoint")
+        token_endpoint = metadata.get("token_endpoint")
 
-    if token_endpoint:
-        secret_check = await probe_client_secret(token_endpoint, client_id, client_secret, redirect_uri)
+        async def _authz() -> dict[str, Any]:
+            if not authz_endpoint:
+                return make_check(
+                    "authorization_endpoint",
+                    "Authorization endpoint accepts our params",
+                    "fail",
+                    "Discovery document is missing authorization_endpoint.",
+                    "Verify the IdP configuration exposes a valid discovery document.",
+                )
+            return await probe_authorization_endpoint(client, authz_endpoint, client_id, redirect_uri)
+
+        async def _secret() -> dict[str, Any] | None:
+            if not token_endpoint:
+                return make_check(
+                    "client_secret",
+                    "Token endpoint accepts client_secret",
+                    "fail",
+                    "Discovery document is missing token_endpoint.",
+                    "Verify the IdP configuration exposes a valid discovery document.",
+                )
+            return await probe_client_secret(client, token_endpoint, client_id, client_secret, redirect_uri)
+
+        async def _jwks() -> dict[str, Any]:
+            return await probe_jwks(client, metadata)
+
+        authz_check, secret_check, jwks_check = await asyncio.gather(_authz(), _secret(), _jwks())
+        checks.append(authz_check)
         if secret_check is not None:
             checks.append(secret_check)
-    else:
-        checks.append(
-            make_check(
-                "client_secret",
-                "Token endpoint accepts client_secret",
-                "fail",
-                "Discovery document is missing token_endpoint.",
-                "Verify the IdP configuration exposes a valid discovery document.",
-            )
-        )
+        checks.append(jwks_check)
 
     checks.append(check_email_scope(metadata))
-    checks.append(await probe_jwks(metadata))
     for opt in (
         check_issuer_consistency(metadata, metadata_url),
         check_token_endpoint_auth_methods(metadata),

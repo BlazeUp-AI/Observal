@@ -3,19 +3,29 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
+import time
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from loguru import logger as optic
 from sqlalchemy import select
 
+import services.dynamic_settings as ds_mod
 from api.deps import get_db
+from api.ratelimit import limiter
 from config import HAS_LICENSE, settings
 from models.enterprise_config import EnterpriseConfig
 from schemas.ide_registry import IDE_REGISTRY
+from schemas.sso_health import all_pass
+from services.oidc_health import run_oidc_checks
+from services.saml_health import run_saml_health_probe
 from version import get_server_version
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
+
+_SSO_HEALTH_WALL_TIMEOUT = 15.0  # outer budget: every probe + saml metadata + DB combined
 
 
 @router.get("/version")
@@ -137,56 +147,60 @@ async def get_public_config(db=Depends(get_db)):
     }
 
 
+async def _oidc_health_probe() -> dict | None:
+    if not (settings.OAUTH_CLIENT_ID and settings.OAUTH_SERVER_METADATA_URL):
+        return None
+    start = time.monotonic()
+    redirect_uri = (
+        ds_mod.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + "/api/v1/auth/oauth/callback"
+    )
+    try:
+        checks, _metadata = await run_oidc_checks(
+            settings.OAUTH_SERVER_METADATA_URL,
+            settings.OAUTH_CLIENT_ID,
+            settings.OAUTH_CLIENT_SECRET or "",
+            redirect_uri,
+        )
+    except Exception:
+        optic.exception("sso_health.oidc_probe unexpected failure")
+        return {"ok": False, "checks": [], "error": "OIDC health probe failed"}
+    latency_ms = round((time.monotonic() - start) * 1000)
+    return {"ok": all_pass(checks), "checks": checks, "latency_ms": latency_ms}
+
+
 @router.get("/sso-health")
-async def sso_health(db=Depends(get_db)):
+@limiter.limit(ds_mod.get_sync("security.rate_limit_sso_health", "10/minute"))
+async def sso_health(request: Request, db=Depends(get_db)):
     """Public (unauthenticated) SSO health check for the login page.
 
-    Runs OIDC and SAML probes concurrently. Each returns per-check diagnostics.
-    100 percent validation is not possible: assertion replay, per-user policies,
-    and IdP-only state are not visible server-side, so a green result still
-    depends on a real user login round-trip.
+    Runs OIDC and SAML probes concurrently with an outer wall-clock budget so
+    a slow IdP cannot tie up the worker indefinitely. 100% validation is not
+    possible: assertion replay, per-user policy, and IdP-only state are not
+    visible server-side, so a green result still depends on a real user login
+    round-trip.
     """
-    import asyncio
-    import time
-
-    from fastapi.responses import JSONResponse
-
-    import services.dynamic_settings as ds_mod
-    from schemas.sso_health import all_pass
-    from services.oidc_health import run_oidc_checks
-    from services.saml_health import run_saml_health_probe
-
-    async def oidc_probe() -> dict | None:
-        if not (settings.OAUTH_CLIENT_ID and settings.OAUTH_SERVER_METADATA_URL):
-            return None
-        start = time.monotonic()
-        redirect_uri = (
-            ds_mod.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/")
-            + "/api/v1/auth/oauth/callback"
-        )
-        try:
-            checks, _metadata = await run_oidc_checks(
-                settings.OAUTH_SERVER_METADATA_URL,
-                settings.OAUTH_CLIENT_ID,
-                settings.OAUTH_CLIENT_SECRET or "",
-                redirect_uri,
-            )
-        except Exception:
-            optic.exception("sso_health.oidc_probe unexpected failure")
-            return {"ok": False, "checks": [], "error": "OIDC health probe failed"}
-        latency_ms = round((time.monotonic() - start) * 1000)
-        return {"ok": all_pass(checks), "checks": checks, "latency_ms": latency_ms}
-
     optic.debug("sso_health start")
-    oidc_result, saml_result = await asyncio.gather(
-        oidc_probe(),
-        run_saml_health_probe(db),
-        return_exceptions=False,
-    )
+    timed_out = False
+    try:
+        oidc_result, saml_result = await asyncio.wait_for(
+            asyncio.gather(
+                _oidc_health_probe(),
+                run_saml_health_probe(db),
+                return_exceptions=False,
+            ),
+            timeout=_SSO_HEALTH_WALL_TIMEOUT,
+        )
+    except TimeoutError:
+        optic.warning("sso_health wall-clock timeout exceeded ({}s)", _SSO_HEALTH_WALL_TIMEOUT)
+        oidc_result = {"ok": False, "checks": [], "error": "OIDC probe exceeded wall-clock budget"}
+        saml_result = {"ok": False, "checks": [], "error": "SAML probe exceeded wall-clock budget"}
+        timed_out = True
+
     optic.info(
-        "sso_health done oidc_ok={} saml_ok={}",
+        "sso_health done oidc_ok={} saml_ok={} timed_out={}",
         (oidc_result or {}).get("ok"),
         (saml_result or {}).get("ok"),
+        timed_out,
     )
     return JSONResponse(
         content={"oidc": oidc_result, "saml": saml_result},

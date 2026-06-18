@@ -9,15 +9,18 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  MinusCircle,
   RefreshCw,
   Fingerprint,
   HelpCircle,
   Globe,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHelp } from "@/components/wiki/help-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { admin } from "@/lib/api";
+import { admin, type HealthCheck, type ValidateResult } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { useRoleGuard } from "@/hooks/use-role-guard";
 import { Button } from "@/components/ui/button";
@@ -27,14 +30,52 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { PageHeader } from "@/components/layouts/page-header";
 import { ErrorState } from "@/components/shared/error-state";
 
-type ValidateResult = {
-  success: boolean;
-  error?: string;
-  hint?: string;
-  latency_ms?: number;
-  issuer?: string;
-  idp_entity_id?: string;
-};
+function CheckIcon({ status }: { status: HealthCheck["status"] }) {
+  if (status === "pass") return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />;
+  if (status === "fail") return <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />;
+  return <MinusCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
+}
+
+function ChecksList({ checks }: { checks: HealthCheck[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!checks?.length) return null;
+  const passes = checks.filter((c) => c.status === "pass").length;
+  const fails = checks.filter((c) => c.status === "fail").length;
+  const skips = checks.filter((c) => c.status === "skip").length;
+  return (
+    <div className="mt-2 border border-border rounded-md text-xs">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/40"
+      >
+        <span className="inline-flex items-center gap-1">
+          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          {passes}/{checks.length} passed
+          {fails > 0 && <span className="text-destructive ml-1">· {fails} failed</span>}
+          {skips > 0 && <span className="text-muted-foreground ml-1">· {skips} skipped</span>}
+        </span>
+        <span className="text-muted-foreground">{expanded ? "Hide" : "Show"} details</span>
+      </button>
+      {expanded && (
+        <ul className="divide-y divide-border">
+          {checks.map((c) => (
+            <li key={c.name} className="px-3 py-2">
+              <div className="flex items-start gap-2">
+                <CheckIcon status={c.status} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium">{c.label}</div>
+                  {c.message && <div className="text-muted-foreground mt-0.5">{c.message}</div>}
+                  {c.hint && <div className="text-muted-foreground italic mt-0.5">Hint: {c.hint}</div>}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function OidcConfigSection() {
   const { ssoEnabled } = useDeploymentConfig();
@@ -116,7 +157,7 @@ function OidcConfigSection() {
                   {result.success ? (
                     <div className="space-y-1">
                       <p>Issuer: {result.issuer}</p>
-                      <p className="text-muted-foreground">Server-side config verified (discovery, redirect URI, client secret, email scope). Does not test a full user login.</p>
+                      <p className="text-muted-foreground">Server-side config verified. 100% validation is not possible — the final assertion exchange and per-user authorization are not visible server-side.</p>
                     </div>
                   ) : (
                     <div className="space-y-1">
@@ -129,6 +170,7 @@ function OidcConfigSection() {
             </TooltipProvider>
           )}
         </div>
+        {result?.checks && <ChecksList checks={result.checks} />}
       </CardContent>
     </Card>
   );
@@ -299,7 +341,7 @@ function SamlConfigSection() {
                       {validateResult.success ? (
                         <div className="space-y-1">
                           <p>IdP: {validateResult.idp_entity_id}</p>
-                          <p className="text-muted-foreground">Server-side config verified (settings build, AuthnRequest, IdP cert match). Does not test a full user login.</p>
+                          <p className="text-muted-foreground">Server-side config verified. 100% validation is not possible — a signed assertion cannot be replayed and per-user policies are not visible here.</p>
                         </div>
                       ) : (
                         <div className="space-y-1">
@@ -324,6 +366,7 @@ function SamlConfigSection() {
                 </Button>
               )}
             </div>
+            {validateResult?.checks && <ChecksList checks={validateResult.checks} />}
             {source === "env" && (
               <p className="text-xs text-muted-foreground pt-2">
                 Configured via environment variables. Use the admin API to override with database-stored config.
