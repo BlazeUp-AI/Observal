@@ -5,13 +5,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 FROM node:24-alpine AS base
+ARG PNPM_VERSION=10.34.1
+RUN apk add --no-cache wget && \
+    wget -q "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linuxstatic-x64" -O /usr/local/bin/pnpm && \
+    chmod +x /usr/local/bin/pnpm
 
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/
 RUN mkdir -p tests/e2e && echo '{"name":"@observal/e2e","version":"0.0.0","private":true,"devDependencies":{"@playwright/test":"^1.59.1"}}' > tests/e2e/package.json
-RUN corepack enable pnpm && pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
@@ -20,7 +24,7 @@ COPY --from=deps /app/web/node_modules ./web/node_modules
 COPY web/ ./web/
 COPY docs/ ./docs/
 WORKDIR /app/web
-RUN corepack enable pnpm && pnpm run build
+RUN pnpm run build
 
 FROM nginx:alpine AS runner
 COPY --from=builder /app/web/dist /usr/share/nginx/html
