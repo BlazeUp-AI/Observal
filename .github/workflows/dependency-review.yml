@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5.0.0
         with:
           fail-on-severity: high
           deny-licenses: SSPL-1.0, BUSL-1.1, Elastic-2.0
