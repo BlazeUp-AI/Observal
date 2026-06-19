@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 # SPDX-License-Identifier: LicenseRef-Observal-Enterprise
 
 """SAML 2.0 Service Provider helpers."""
@@ -402,6 +403,46 @@ async def check_idp_sso_url_reachable(client: httpx.AsyncClient, idp_sso_url: st
             "fail",
             f"IdP SSO URL returned HTTP {resp.status_code}.",
             "Check the identity provider's status — its SSO endpoint is erroring.",
+        )
+    return make_check(name, label, "pass")
+
+
+async def check_idp_slo_url_reachable(client: httpx.AsyncClient, idp_slo_url: str | None) -> dict[str, Any] | None:
+    """Reachability probe for the IdP SLO endpoint. Skipped when not configured.
+
+    Logging out at the SP without a working SLO endpoint silently leaves the
+    IdP session alive -- if the user immediately re-clicks "Sign in", they're
+    bounced back without re-auth, which is surprising. The check is 'skip'
+    (not 'fail') because not configuring SLO is a valid choice.
+    """
+    name, label = "idp_slo_reachable", "IdP Single Logout URL reachable"
+    if not idp_slo_url:
+        return make_check(
+            name,
+            label,
+            "skip",
+            "No idp_slo_url configured -- logging out at Observal will not log the user out at the IdP.",
+            "Configure saml.idp_slo_url if you want SP-initiated SLO.",
+        )
+    try:
+        resp = await client.head(idp_slo_url, follow_redirects=False)
+        if resp.status_code == 405:
+            resp = await client.get(idp_slo_url, follow_redirects=False)
+    except Exception:
+        return make_check(
+            name,
+            label,
+            "fail",
+            "IdP SLO URL is unreachable from this server.",
+            "Verify the URL is correct and reachable (DNS, firewall, TLS).",
+        )
+    if resp.status_code >= 500:
+        return make_check(
+            name,
+            label,
+            "fail",
+            f"IdP SLO URL returned HTTP {resp.status_code}.",
+            "Check the identity provider's status -- its SLO endpoint is erroring.",
         )
     return make_check(name, label, "pass")
 

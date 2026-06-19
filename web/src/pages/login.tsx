@@ -11,7 +11,7 @@ import { useRouter, useSearch } from "@tanstack/react-router";
 import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { auth, config as configApi, setTokens, clearSession, setUserRole, getUserRole, setUserName, setUserEmail, setUserUsername, setUserAvatar } from "@/lib/api";
-import type { SsoHealthResult } from "@/lib/api";
+import type { SsoHealthResult, E2eStatusResult, HealthCheck } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,6 +34,36 @@ function LoginContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [ssoHealth, setSsoHealth] = useState<SsoHealthResult | null>(null);
   const [ssoHealthLoading, setSsoHealthLoading] = useState(false);
+  const [ssoErrorDiag, setSsoErrorDiag] = useState<E2eStatusResult | null>(null);
+  const [ssoErrorDiagExpanded, setSsoErrorDiagExpanded] = useState(true);
+
+  useEffect(() => {
+    const corrId = searchParams.sso_error;
+    if (!corrId) return;
+    // Real-login failure: backend already redirected here with a 10-min TTL
+    // diagnostics record. Fetch and render it so the user sees exactly which
+    // step broke instead of a generic "SSO Authentication Failed".
+    console.debug("[sso] fetching error diagnostics", corrId);
+    auth.ssoErrorDiagnostics(corrId)
+      .then((diag) => {
+        console.info("[sso] error diagnostics", { ok: diag.ok, checks: diag.checks?.length });
+        setSsoErrorDiag(diag);
+        const firstFail = diag.checks?.find((c) => c.status === "fail");
+        if (firstFail) {
+          setError(`SSO login failed at: ${firstFail.label}`);
+        } else {
+          setError(diag.summary || "SSO login failed");
+        }
+      })
+      .catch((e) => {
+        console.warn("[sso] error diagnostics fetch failed", e);
+        setError("SSO login failed (diagnostics expired)");
+      })
+      .finally(() => {
+        // Strip the query param so a page refresh doesn't re-fetch.
+        window.history.replaceState({}, "", "/login");
+      });
+  }, [searchParams.sso_error]);
 
   useEffect(() => {
     if (!ssoEnabled && !samlEnabled) return;
@@ -365,6 +395,49 @@ function LoginContent() {
                   <span>{error}</span>
                 </div>
               )}
+
+              {ssoErrorDiag?.checks?.length ? (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs animate-in">
+                  <button
+                    type="button"
+                    onClick={() => setSsoErrorDiagExpanded((v) => !v)}
+                    className="w-full flex items-center justify-between"
+                  >
+                    <span className="font-medium text-destructive">
+                      SSO sign-in failed at "{ssoErrorDiag.checks.find((c) => c.status === "fail")?.label || ssoErrorDiag.summary || "unknown step"}"
+                    </span>
+                    <span className="text-muted-foreground ml-2">
+                      {ssoErrorDiagExpanded ? "Hide steps" : "Show steps"}
+                    </span>
+                  </button>
+                  {ssoErrorDiagExpanded && (
+                    <ul className="mt-2 divide-y divide-border">
+                      {ssoErrorDiag.checks.map((c: HealthCheck) => (
+                        <li key={c.name} className="py-1.5 flex items-start gap-2">
+                          {c.status === "pass" ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 text-emerald-500 shrink-0" />
+                          ) : c.status === "fail" ? (
+                            <XCircle className="h-3.5 w-3.5 mt-0.5 text-destructive shrink-0" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-foreground">{c.label}</div>
+                            {c.message && (
+                              <div className="text-muted-foreground mt-0.5">{c.message}</div>
+                            )}
+                            {c.hint && (
+                              <div className="text-muted-foreground italic mt-0.5">
+                                Hint: {c.hint}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
 
               <div className="animate-in stagger-2 space-y-3">
                 {!ssoOnly && (

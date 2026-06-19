@@ -373,6 +373,10 @@ export const auth = {
 	uploadAvatar: (body: { avatar_url: string }) =>
 		put<{ avatar_url: string | null }>("/auth/profile/avatar", body),
 	deleteAvatar: () => del<{ avatar_url: null }>("/auth/profile/avatar"),
+	ssoErrorDiagnostics: (corrId: string) =>
+		get<E2eStatusResult>(
+			`/auth/sso/diagnostics/${encodeURIComponent(corrId)}`,
+		),
 };
 
 // ── Registry (all 8 types) ─────────────────────────────────────────
@@ -698,6 +702,12 @@ export const admin = {
 	deleteSamlConfig: () => del("/admin/saml-config"),
 	validateOidc: () => post<ValidateResult>("/admin/sso/validate-oidc", {}),
 	validateSaml: () => post<ValidateResult>("/admin/sso/validate-saml", {}),
+	e2eOidcStart: () =>
+		post<E2eStartResult>("/admin/sso/e2e/oidc/start", {}),
+	e2eSamlStart: () =>
+		post<E2eStartResult>("/admin/sso/e2e/saml/start", {}),
+	e2eStatus: (sessionId: string) =>
+		get<E2eStatusResult>(`/admin/sso/e2e/status/${encodeURIComponent(sessionId)}`),
 	scimTokens: () =>
 		get<
 			{
@@ -830,6 +840,31 @@ export type ValidateResult = {
 	error?: string;
 	hint?: string;
 	checks?: HealthCheck[];
+};
+
+export type E2eStartResult = {
+	success: boolean;
+	session_id?: string;
+	login_url?: string;
+	issuer?: string;
+	idp_entity_id?: string;
+	redirect_uri?: string;
+	instructions?: string;
+	error?: string;
+	hint?: string;
+	checks?: HealthCheck[];
+};
+
+export type E2eStatusResult = {
+	session_id: string;
+	provider: "oidc" | "saml";
+	mode: "real" | "e2e";
+	ok: boolean | null;
+	checks: HealthCheck[];
+	actor_email: string | null;
+	summary: string | null;
+	started_at: number | null;
+	finished_at: number | null;
 };
 
 export const config = {
