@@ -344,6 +344,109 @@ def check_clock_skew(server_date_header: str | None) -> dict[str, Any] | None:
     return make_check(name, label, "pass")
 
 
+_SUPPORTED_ID_TOKEN_ALGS: frozenset[str] = frozenset(
+    {
+        "RS256",
+        "RS384",
+        "RS512",
+        "ES256",
+        "ES384",
+        "ES512",
+        "PS256",
+        "PS384",
+        "PS512",
+        "EdDSA",
+    }
+)
+
+
+def check_id_token_signing_alg(metadata: dict) -> dict[str, Any] | None:
+    """Verify the IdP advertises at least one alg we can verify.
+
+    If the IdP only supports ``none`` (unsigned) or an obscure alg like
+    ``HS512``, every id_token verification will fail at the token endpoint.
+    """
+    name, label = "id_token_alg", "ID token signing algorithm supported"
+    advertised = [a for a in (metadata.get("id_token_signing_alg_values_supported") or []) if isinstance(a, str)]
+    if not advertised:
+        return None
+    if "none" in {a.lower() for a in advertised} and len(advertised) == 1:
+        return make_check(
+            name,
+            label,
+            "fail",
+            "IdP only advertises 'none' for ID token signing -- Observal rejects unsigned tokens.",
+            "Enable an asymmetric signing algorithm (RS256/ES256) at the IdP.",
+        )
+    overlap = set(advertised) & _SUPPORTED_ID_TOKEN_ALGS
+    if not overlap:
+        return make_check(
+            name,
+            label,
+            "fail",
+            f"IdP advertises {advertised} but Observal can verify {sorted(_SUPPORTED_ID_TOKEN_ALGS)}.",
+            "Enable an asymmetric alg (RS256 recommended) at the IdP.",
+        )
+    return make_check(name, label, "pass")
+
+
+def check_refresh_token_grant(metadata: dict) -> dict[str, Any] | None:
+    """Surface a soft warning when the IdP doesn't advertise refresh_token grant.
+
+    Without refresh_token support, sessions die when the access token expires
+    and the user must re-login. The probe stays as 'skip' rather than 'fail'
+    because the auth flow still works -- this is a UX warning.
+    """
+    name, label = "refresh_token_grant", "Refresh tokens supported"
+    grants = [g.lower() for g in (metadata.get("grant_types_supported") or []) if isinstance(g, str)]
+    if not grants:
+        return None
+    if "refresh_token" not in grants:
+        return make_check(
+            name,
+            label,
+            "skip",
+            "IdP does not advertise the refresh_token grant. Sessions will end when the access token expires.",
+            "Enable refresh tokens (or 'offline_access' scope) on the OIDC client.",
+        )
+    return make_check(name, label, "pass")
+
+
+def check_end_session_endpoint(metadata: dict) -> dict[str, Any] | None:
+    """Warn if the IdP doesn't expose end_session_endpoint (no SLO from SP)."""
+    name, label = "end_session_endpoint", "Single Logout endpoint advertised"
+    if metadata.get("end_session_endpoint"):
+        return make_check(name, label, "pass")
+    return make_check(
+        name,
+        label,
+        "skip",
+        "IdP discovery doc has no end_session_endpoint -- logging out at the SP will not log the user out at the IdP.",
+        "Configure the IdP to expose RP-initiated logout if available.",
+    )
+
+
+def check_pkce_methods(metadata: dict) -> dict[str, Any] | None:
+    """If the IdP advertises a PKCE method list, ensure S256 is there.
+
+    Some IdPs require PKCE even for confidential clients. Observal does not
+    currently send a code_challenge; this surfaces as an info-level skip when
+    the IdP signals it expects PKCE.
+    """
+    name, label = "pkce_supported", "PKCE not required by IdP"
+    methods = [m.lower() for m in (metadata.get("code_challenge_methods_supported") or []) if isinstance(m, str)]
+    if not methods:
+        return make_check(name, label, "pass")
+    # IdP advertising PKCE methods doesn't mean it's required, but is worth surfacing.
+    return make_check(
+        name,
+        label,
+        "skip",
+        f"IdP advertises PKCE methods {methods}. If the client is configured 'Require PKCE', mobile/SPA logins may fail.",
+        "Either disable 'Require PKCE' on the OIDC client, or expect PKCE-related errors.",
+    )
+
+
 def check_email_scope(metadata: dict) -> dict[str, Any]:
     name, label = "email_scope", "Email scope/claim"
     scopes = [s.lower() for s in (metadata.get("scopes_supported") or [])]
@@ -416,6 +519,10 @@ async def run_oidc_checks(
     for opt in (
         check_issuer_consistency(metadata, metadata_url),
         check_token_endpoint_auth_methods(metadata),
+        check_id_token_signing_alg(metadata),
+        check_refresh_token_grant(metadata),
+        check_end_session_endpoint(metadata),
+        check_pkce_methods(metadata),
         check_clock_skew(server_date),
     ):
         if opt is not None:

@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Tests for SAML service layer."""
@@ -215,7 +216,11 @@ class TestSamlEndpoints:
             assert r.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_acs_returns_404_when_not_configured(self, saml_app):
+    async def test_acs_redirects_with_sso_error_when_not_configured(self, saml_app):
+        # The ACS handler now records per-step diagnostics and redirects to
+        # /login?sso_error=<id> instead of returning a bare 404. The user sees
+        # which check failed ("SAML SSO is configured on server") rather than a
+        # generic HTTP error.
         with patch(
             "ee.observal_server.routes.sso_saml._get_saml_config",
             new_callable=AsyncMock,
@@ -226,7 +231,8 @@ class TestSamlEndpoints:
                 base_url="http://test",
             ) as ac:
                 r = await ac.post("/api/v1/sso/saml/acs")
-            assert r.status_code == 404
+            assert r.status_code == 302
+            assert "sso_error=" in r.headers.get("location", "")
 
     @pytest.mark.asyncio
     async def test_acs_replay_protection_stores_assertion_id(self, saml_app):
@@ -373,9 +379,12 @@ class TestSamlEndpoints:
                         "/api/v1/sso/saml/acs",
                         data={"SAMLResponse": "dummybase64"},
                     )
-                assert r.status_code == 400
-                assert "already been processed" in r.json()["detail"]
-                # Verify security event was emitted for the replay
+                # Replay now redirects to /login?sso_error so the user sees
+                # which step failed in the ChecksList instead of a raw 400.
+                # The security event still fires -- replay detection isn't
+                # softened, only the UX response.
+                assert r.status_code == 302
+                assert "sso_error=" in r.headers.get("location", "")
                 mock_emit.assert_called()
                 event_arg = mock_emit.call_args[0][0]
                 assert "replay" in event_arg.detail.lower()

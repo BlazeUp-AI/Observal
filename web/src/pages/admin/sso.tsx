@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Shield,
   Trash2,
@@ -16,11 +17,17 @@ import {
   Globe,
   ChevronDown,
   ChevronRight,
+  PlayCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHelp } from "@/components/wiki/help-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { admin, type HealthCheck, type ValidateResult } from "@/lib/api";
+import {
+  admin,
+  type HealthCheck,
+  type ValidateResult,
+  type E2eStatusResult,
+} from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { useRoleGuard } from "@/hooks/use-role-guard";
 import { Button } from "@/components/ui/button";
@@ -34,6 +41,310 @@ function CheckIcon({ status }: { status: HealthCheck["status"] }) {
   if (status === "pass") return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />;
   if (status === "fail") return <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />;
   return <MinusCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
+}
+
+// ── End-to-end test runner ─────────────────────────────────────────────
+//
+// Drives an interactive SSO test:
+//   1. POST /admin/sso/e2e/<provider>/start -> returns {session_id, login_url}
+//   2. window.open(login_url) so the admin authenticates at the real IdP
+//   3. Poll /admin/sso/e2e/status/{session_id} every 2s until ok != null
+//   4. Render checks via ChecksList
+//
+// Polling stops automatically when the session finishes, when the user clicks
+// "Reset", or when the component unmounts. We also stop after 10 minutes (TTL
+// of the server-side record) so a closed tab doesn't poll forever.
+
+type E2eState =
+  | { phase: "idle" }
+  | { phase: "starting" }
+  | {
+      phase: "waiting";
+      sessionId: string;
+      loginUrl: string;
+      elapsedSec: number;
+    }
+  | { phase: "done"; result: E2eStatusResult }
+  | {
+      phase: "error";
+      message: string;
+      hint?: string;
+      checks?: HealthCheck[];
+    };
+
+// How long to wait before nudging the operator to check the IdP tab. Most
+// real logins complete in <60s; if we're still waiting at 90s it's almost
+// always because Okta showed an error and never redirected back.
+const E2E_NUDGE_AFTER_SEC = 90;
+const E2E_HARD_TIMEOUT_SEC = 5 * 60;
+
+function useE2eRunner(
+  provider: "oidc" | "saml",
+  startFn: () => Promise<{
+    success: boolean;
+    session_id?: string;
+    login_url?: string;
+    error?: string;
+    hint?: string;
+    checks?: HealthCheck[];
+  }>,
+) {
+  const [state, setState] = useState<E2eState>({ phase: "idle" });
+  const pollTimer = useRef<number | null>(null);
+  const idpWindow = useRef<Window | null>(null);
+  const stopPolling = useCallback(() => {
+    if (pollTimer.current != null) {
+      window.clearInterval(pollTimer.current);
+      pollTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopPolling, [stopPolling]);
+
+  const start = useCallback(async () => {
+    console.debug(`[sso] e2e-${provider} start`);
+    setState({ phase: "starting" });
+    try {
+      const res = await startFn();
+      if (!res.success || !res.session_id || !res.login_url) {
+        // Pre-flight failure: the backend ran all validators and one (or
+        // more) failed BEFORE we ever sent the operator to the IdP. Show
+        // them every check so they can fix all the misconfig at once.
+        const msg = res.error || `Failed to start ${provider.toUpperCase()} test`;
+        console.warn(`[sso] e2e-${provider} preflight failed`, res);
+        toast.error(msg);
+        setState({
+          phase: "error",
+          message: msg,
+          hint: res.hint,
+          checks: res.checks,
+        });
+        return;
+      }
+      const sessionId = res.session_id;
+      const loginUrl = res.login_url;
+      // Drop `noopener` so we can watch `win.closed` -- if the operator
+      // closes the IdP tab without us seeing a callback, that's almost
+      // always because the IdP showed an error page.
+      const win = window.open(loginUrl, "_blank");
+      idpWindow.current = win;
+      if (!win) {
+        toast.warning(
+          "Popup blocked. Allow popups for this site, then click 'Open Login Tab' below.",
+        );
+      }
+      setState({ phase: "waiting", sessionId, loginUrl, elapsedSec: 0 });
+
+      const startedAt = Date.now();
+      pollTimer.current = window.setInterval(async () => {
+        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+
+        // Tab close detection: if the IdP tab was closed (e.g. the operator
+        // saw an error page and gave up), bail immediately rather than
+        // pretending the test is still in flight.
+        const closed = idpWindow.current ? idpWindow.current.closed : false;
+        if (closed && elapsedSec > 3) {
+          stopPolling();
+          // The callback may still be in flight; do one last status check
+          // before declaring an error.
+          try {
+            const status = await admin.e2eStatus(sessionId);
+            if (status.finished_at != null && status.ok != null) {
+              setState({ phase: "done", result: status });
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+          setState({
+            phase: "error",
+            message: "IdP login tab was closed before the test completed.",
+            hint: "The IdP probably showed an error page. Re-open the tab or start a new test to see what it said.",
+          });
+          return;
+        }
+
+        // Hard timeout: bail with a clear message instead of polling forever
+        // when the IdP showed an error and the user left that tab open.
+        if (elapsedSec > E2E_HARD_TIMEOUT_SEC) {
+          stopPolling();
+          setState({
+            phase: "error",
+            message: `Test session timed out after ${E2E_HARD_TIMEOUT_SEC / 60} minutes with no IdP redirect back.`,
+            hint: "Check the IdP login tab -- the most common cause is the IdP rejecting the test user (no client access, MFA loop, or invalid scopes).",
+          });
+          return;
+        }
+
+        // Keep elapsed counter live so the nudge UI updates.
+        setState((prev) =>
+          prev.phase === "waiting" ? { ...prev, elapsedSec } : prev,
+        );
+
+        try {
+          const status = await admin.e2eStatus(sessionId);
+          if (status.finished_at != null && status.ok != null) {
+            stopPolling();
+            console.info(`[sso] e2e-${provider} done`, {
+              ok: status.ok,
+              actor_email: status.actor_email,
+            });
+            setState({ phase: "done", result: status });
+            if (status.ok) toast.success(`${provider.toUpperCase()} end-to-end test passed`);
+            else {
+              const firstFail = status.checks?.find((c) => c.status === "fail");
+              toast.error(
+                firstFail
+                  ? `${provider.toUpperCase()} test failed at: ${firstFail.label}`
+                  : `${provider.toUpperCase()} end-to-end test failed`,
+              );
+            }
+          }
+        } catch (e) {
+          // 404 → server-side record is gone (TTL expired or never created).
+          // Anything else → likely transient; keep polling and the hard
+          // timeout above will eventually catch a real outage.
+          const status = (e as { status?: number })?.status;
+          if (status === 404) {
+            stopPolling();
+            setState({
+              phase: "error",
+              message: "Test session expired before completing.",
+              hint: "The IdP probably showed an error and never redirected back. Check the IdP tab.",
+            });
+          } else {
+            console.debug(`[sso] e2e-${provider} poll error`, e);
+          }
+        }
+      }, 2000);
+    } catch (e) {
+      console.error(`[sso] e2e-${provider} start crashed`, e);
+      const msg = e instanceof Error ? e.message : "Failed to start test";
+      toast.error(msg);
+      setState({ phase: "error", message: msg });
+    }
+  }, [provider, startFn, stopPolling]);
+
+  const reset = useCallback(() => {
+    stopPolling();
+    setState({ phase: "idle" });
+  }, [stopPolling]);
+
+  return { state, start, reset };
+}
+
+function E2eTestRow({
+  provider,
+  start,
+  disabled,
+}: {
+  provider: "oidc" | "saml";
+  start: () => Promise<{
+    success: boolean;
+    session_id?: string;
+    login_url?: string;
+    error?: string;
+    hint?: string;
+  }>;
+  disabled?: boolean;
+}) {
+  const { state, start: run, reset } = useE2eRunner(provider, start);
+  const running = state.phase === "starting" || state.phase === "waiting";
+
+  return (
+    <div className="mt-3 border-t border-border pt-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={run}
+          disabled={running || disabled}
+        >
+          {running ? (
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          ) : (
+            <PlayCircle className="h-3 w-3 mr-1" />
+          )}
+          End to End Test
+        </Button>
+        {state.phase === "waiting" && (
+          <>
+            <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Waiting for IdP login… <span className="font-mono">{state.elapsedSec}s</span>
+            </span>
+            <a
+              href={state.loginUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary underline"
+            >
+              Open Login Tab
+            </a>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={reset}>
+              Cancel
+            </Button>
+          </>
+        )}
+        {state.phase === "waiting" && state.elapsedSec >= E2E_NUDGE_AFTER_SEC && (
+          <div className="w-full mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            Still waiting after {state.elapsedSec}s. Check the IdP tab — if it shows an
+            error (invalid client, redirect_uri, scope), click Cancel and try again
+            after fixing the IdP config. The test page should redirect back
+            automatically once login completes.
+          </div>
+        )}
+        {state.phase === "done" && (
+          <>
+            <span className="inline-flex items-center gap-1 text-xs">
+              {state.result.ok ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              ) : (
+                <XCircle className="h-4 w-4 text-destructive" />
+              )}
+              {state.result.ok ? "End-to-end passed" : "End-to-end failed"}
+              {state.result.actor_email && (
+                <span className="text-muted-foreground ml-1">
+                  · as {state.result.actor_email}
+                </span>
+              )}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={reset}>
+              Run Again
+            </Button>
+          </>
+        )}
+        {state.phase === "error" && (
+          <div className="w-full rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs space-y-2">
+            <div className="flex items-start gap-2">
+              <XCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-destructive">{state.message}</div>
+                {state.hint && (
+                  <div className="mt-1 text-muted-foreground italic">{state.hint}</div>
+                )}
+              </div>
+              <Button variant="ghost" size="sm" className="h-6 text-xs shrink-0" onClick={reset}>
+                Reset
+              </Button>
+            </div>
+            {state.checks && state.checks.length > 0 && (
+              <ChecksList checks={state.checks} />
+            )}
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-snug">
+        Runs the real login flow against your IdP using a real test user. We
+        validate every step (token exchange, signature, claims) but never issue
+        a session -- safe to run repeatedly.
+      </p>
+      {state.phase === "done" && state.result.checks?.length > 0 && (
+        <ChecksList checks={state.result.checks} />
+      )}
+    </div>
+  );
 }
 
 function ChecksList({ checks }: { checks: HealthCheck[] }) {
@@ -171,6 +482,9 @@ function OidcConfigSection() {
           )}
         </div>
         {result?.checks && <ChecksList checks={result.checks} />}
+        {ssoEnabled && (
+          <E2eTestRow provider="oidc" start={() => admin.e2eOidcStart()} />
+        )}
       </CardContent>
     </Card>
   );
@@ -367,6 +681,11 @@ function SamlConfigSection() {
               )}
             </div>
             {validateResult?.checks && <ChecksList checks={validateResult.checks} />}
+            <E2eTestRow
+              provider="saml"
+              start={() => admin.e2eSamlStart()}
+              disabled={!configured}
+            />
             {source === "env" && (
               <p className="text-xs text-muted-foreground pt-2">
                 Configured via environment variables. Use the admin API to override with database-stored config.

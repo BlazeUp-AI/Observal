@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+// SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createFileRoute } from "@tanstack/react-router";
@@ -14,6 +15,7 @@ export type LoginSearch = {
   saml_code?: string;
   error?: string;
   reason?: string;
+  sso_error?: string;
 };
 
 function LoginRoute() {
@@ -36,5 +38,6 @@ export const Route = createFileRoute("/(auth)/login")({
     saml_code: (search.saml_code as string) || undefined,
     error: (search.error as string) || undefined,
     reason: (search.reason as string) || undefined,
+    sso_error: (search.sso_error as string) || undefined,
   }),
 });

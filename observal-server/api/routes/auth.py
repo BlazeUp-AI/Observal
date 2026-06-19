@@ -7,6 +7,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
 import base64
 import json
 import re
@@ -14,10 +15,12 @@ import secrets
 from datetime import UTC, datetime
 from urllib.parse import quote
 
+import httpx
 import jwt as pyjwt
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
+from jwt import PyJWKClient
 from loguru import logger as optic
 from redis.exceptions import RedisError
 from sqlalchemy import func, or_, select
@@ -43,6 +46,8 @@ from schemas.auth import (
     UsernameUpdateRequest,
     UserResponse,
 )
+from schemas.sso_health import make_check
+from services import sso_diagnostics
 from services.jwt_service import create_access_token, create_refresh_token, decode_access_token, decode_refresh_token
 from services.redis import get_redis
 from services.security_events import (
@@ -287,17 +292,86 @@ async def oauth_login(request: Request, next: str | None = None):
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
+# ── OAuth / OIDC callback ───────────────────────────────────────────────
+#
+# Each step appends a check to ``diag``. On the happy path, ``diag`` is dropped
+# in memory and the user is redirected to /login?code=X. On any failure, the
+# checks are persisted in Redis (TTL 10 min) and the user is redirected to
+# /login?sso_error=<corr_id>; the frontend fetches the diagnostics via the
+# public endpoint below. This means real logins also surface per-step failure
+# detail in the UI -- not just generic "OAuth authorization failed".
+
+
+async def _persist_oidc_failure(diag: list[dict], summary: str, actor_email: str | None) -> str:
+    """Persist the failure diagnostics and return a correlation id for the URL."""
+    corr_id = sso_diagnostics.new_session_id()
+    try:
+        await sso_diagnostics.finalize(corr_id, checks=diag, summary=summary, actor_email=actor_email)
+    except Exception as e:
+        optic.warning("oidc callback: failed to persist diagnostics: {}", e)
+    return corr_id
+
+
+def _oidc_error_redirect(frontend_base: str, corr_id: str) -> RedirectResponse:
+    return RedirectResponse(url=f"{frontend_base.rstrip('/')}/login?sso_error={corr_id}")
+
+
 @router.get("/oauth/callback")
 async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handles the OAuth SSO callback, authenticates, and redirects to frontend with credentials"""
+    """Handle the OAuth SSO callback with per-step diagnostics on failure.
+
+    Dual-mode: a normal IdP redirect goes through authlib's state machine and
+    issues a real session. An end-to-end test request is identifiable by a
+    ``state=__e2e:<session_id>`` parameter -- in that case we bypass authlib
+    (its state is keyed in a separate session cookie that the admin doesn't
+    have here) and do a raw token exchange, recording each step but never
+    issuing tokens. Routing both modes through the *same* registered redirect
+    URI means admins don't have to whitelist a second URL at their IdP.
+    """
     optic.debug("oauth_callback called")
+    frontend_base = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
+
+    # Detect e2e mode before any other work so we can short-circuit into the
+    # raw-OAuth branch without authlib running first and failing on state.
+    state_param = request.query_params.get("state", "")
+    if state_param.startswith(sso_diagnostics.E2E_SENTINEL_PREFIX):
+        return await _handle_oidc_e2e_callback(request, db, frontend_base, state_param)
+
     if not oauth.oidc:
-        raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
+        # Server isn't configured for OIDC at all -- not a per-step failure;
+        # surface as a plain error redirect with a synthetic diagnostics entry.
+        corr_id = await _persist_oidc_failure(
+            [
+                make_check(
+                    "oidc_configured",
+                    "OIDC client configured on server",
+                    "fail",
+                    "OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET / OAUTH_SERVER_METADATA_URL not set.",
+                    "Configure OIDC in environment and restart the API.",
+                )
+            ],
+            summary="OIDC not configured",
+            actor_email=None,
+        )
+        return _oidc_error_redirect(frontend_base, corr_id)
 
     source_ip, user_agent = _extract_request_info(request)
+    diag: list[dict] = [make_check("callback_received", "Callback hit from IdP", "pass")]
+
+    # Step 1: exchange the authorization code for tokens.
     try:
         token = await oauth.oidc.authorize_access_token(request)
+        diag.append(make_check("token_exchange", "Authorization code exchanged for tokens", "pass"))
     except Exception as e:
+        msg = str(e) or e.__class__.__name__
+        hint = "Verify the redirect URI registered at the IdP matches deployment.frontend_url + /api/v1/auth/oauth/callback exactly."
+        if "state" in msg.lower():
+            hint = "The 'state' parameter didn't round-trip. Check that cookies/session survive the IdP redirect (SameSite, domain, browser extensions)."
+        elif "invalid_client" in msg.lower():
+            hint = "IdP rejected the client credentials. Verify OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET."
+        elif "invalid_grant" in msg.lower():
+            hint = "Authorization code already used, expired, or for a different client. Try logging in again."
+        diag.append(make_check("token_exchange", "Authorization code exchanged for tokens", "fail", msg, hint))
         await emit_security_event(
             SecurityEvent(
                 event_type=EventType.SSO_FAILURE,
@@ -308,48 +382,161 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
                 detail=f"OAuth authorization failed: {e}",
             )
         )
-        raise HTTPException(status_code=400, detail=f"OAuth authorization failed: {e}")
+        corr_id = await _persist_oidc_failure(diag, summary=f"Token exchange failed: {msg}", actor_email=None)
+        return _oidc_error_redirect(frontend_base, corr_id)
 
-    userinfo = token.get("userinfo")
-    if not userinfo:
-        raise HTTPException(status_code=400, detail="Missing userinfo in token")
-
-    email = userinfo.get("email")
-    name = userinfo.get("name") or userinfo.get("preferred_username") or "SSO User"
-    groups = userinfo.get("groups", [])
-
-    if not email:
-        raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
-
-    email = email.strip().lower()
-
-    # Check if user exists
-    result = await db.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-
-    if not user:
-        # Auto-create new user via SSO
-        default_org = await get_or_create_default_org(db)
-        user = User(
-            email=email,
-            username=await generate_unique_username(email, db),
-            name=name,
-            role=UserRole.user,
-            org_id=default_org.id,
+    # Step 2: extract userinfo (merged ID-token + /userinfo claims by authlib).
+    userinfo = token.get("userinfo") if isinstance(token, dict) else None
+    if not isinstance(userinfo, dict):
+        diag.append(
+            make_check(
+                "userinfo_present",
+                "ID token contains userinfo claims",
+                "fail",
+                "IdP returned no 'userinfo' alongside the token.",
+                "Confirm the IdP issues an ID token with the 'openid' scope. If using a userinfo endpoint, ensure it returns JSON.",
+            )
         )
-        db.add(user)
+        corr_id = await _persist_oidc_failure(diag, summary="No userinfo in IdP token", actor_email=None)
+        return _oidc_error_redirect(frontend_base, corr_id)
+    diag.append(make_check("userinfo_present", "ID token contains userinfo claims", "pass"))
 
+    # Step 3: required email claim.
+    email = userinfo.get("email")
+    if not email or not isinstance(email, str):
+        present_claims = ", ".join(sorted(k for k in userinfo if not k.startswith("_"))) or "(none)"
+        diag.append(
+            make_check(
+                "email_claim",
+                "Email claim present in ID token",
+                "fail",
+                f"IdP returned no 'email' claim. Claims received: {present_claims}",
+                "Request the 'email' scope at the IdP, or map an alternative attribute (e.g. preferred_username) to the email claim.",
+            )
+        )
+        corr_id = await _persist_oidc_failure(diag, summary="email claim missing", actor_email=None)
+        return _oidc_error_redirect(frontend_base, corr_id)
+    email = email.strip().lower()
+    diag.append(make_check("email_claim", "Email claim present in ID token", "pass"))
+
+    # Step 4: name + groups (non-fatal absences are 'skip').
+    name_raw = userinfo.get("name") or userinfo.get("preferred_username")
+    name = name_raw if isinstance(name_raw, str) and name_raw else "SSO User"
+    if name_raw:
+        diag.append(make_check("name_claim", "Display-name claim present", "pass"))
+    else:
+        diag.append(
+            make_check(
+                "name_claim",
+                "Display-name claim present",
+                "skip",
+                "No 'name' or 'preferred_username' claim; using fallback 'SSO User'.",
+                "Add 'profile' scope at the IdP if you want a real display name.",
+            )
+        )
+
+    groups_raw = userinfo.get("groups", [])
+    groups: list[str] = []
+    if isinstance(groups_raw, list) and all(isinstance(g, str) for g in groups_raw):
+        groups = groups_raw
+        if groups:
+            diag.append(make_check("groups_claim", f"Groups claim present ({len(groups)})", "pass"))
+        else:
+            diag.append(
+                make_check("groups_claim", "Groups claim present", "skip", "IdP returned an empty 'groups' array.")
+            )
+    elif groups_raw:
+        diag.append(
+            make_check(
+                "groups_claim",
+                "Groups claim present",
+                "skip",
+                "IdP returned 'groups' in an unexpected format (expected list of strings).",
+                "Map your IdP roles claim to 'groups' as an array of strings.",
+            )
+        )
+    else:
+        diag.append(
+            make_check(
+                "groups_claim",
+                "Groups claim present",
+                "skip",
+                "No 'groups' claim returned. RBAC will fall back to default role.",
+            )
+        )
+
+    # Step 5: user lookup / JIT.
+    try:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+    except Exception as e:
+        optic.exception("oauth_callback: user lookup failed")
+        diag.append(
+            make_check(
+                "user_lookup",
+                "Look up existing user by email",
+                "fail",
+                str(e),
+                "Check database connectivity from the API container.",
+            )
+        )
+        corr_id = await _persist_oidc_failure(diag, summary="DB lookup failed", actor_email=email)
+        return _oidc_error_redirect(frontend_base, corr_id)
+
+    if user is None:
         try:
+            default_org = await get_or_create_default_org(db)
+            user = User(
+                email=email,
+                username=await generate_unique_username(email, db),
+                name=name,
+                role=UserRole.user,
+                org_id=default_org.id,
+            )
+            db.add(user)
             await db.flush()
+            diag.append(make_check("jit_provisioning", "JIT-create new user", "pass"))
         except IntegrityError:
             await db.rollback()
-            # Race condition: user was created between our check and commit
             result = await db.execute(select(User).where(User.email == email))
             user = result.scalar_one_or_none()
             if not user:
-                raise HTTPException(status_code=500, detail="Failed to create or find user")
+                diag.append(
+                    make_check(
+                        "jit_provisioning",
+                        "JIT-create new user",
+                        "fail",
+                        "Race condition: user could not be created or found after retry.",
+                        "Inspect the users table for constraint violations.",
+                    )
+                )
+                corr_id = await _persist_oidc_failure(diag, summary="JIT user-create race", actor_email=email)
+                return _oidc_error_redirect(frontend_base, corr_id)
+            diag.append(
+                make_check(
+                    "jit_provisioning",
+                    "JIT-create new user",
+                    "pass",
+                    "Created concurrently by another request; using existing record.",
+                )
+            )
+        except Exception as e:
+            optic.exception("oauth_callback: JIT user create failed")
+            diag.append(
+                make_check(
+                    "jit_provisioning",
+                    "JIT-create new user",
+                    "fail",
+                    str(e),
+                    "Check the users table schema (email uniqueness, sso_subject_id column).",
+                )
+            )
+            corr_id = await _persist_oidc_failure(diag, summary="JIT user create failed", actor_email=email)
+            return _oidc_error_redirect(frontend_base, corr_id)
+    else:
+        diag.append(make_check("user_lookup", "Look up existing user by email", "pass"))
 
-    # Persist SSO groups for exec dashboard department mapping
+    # Step 6: persist SSO groups (best-effort, never blocks login).
     if groups:
         try:
             from sqlalchemy import delete as sa_delete
@@ -361,12 +548,20 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         except Exception as e:
             optic.warning("Failed to persist SSO groups: {}", e)
 
-    # Issue JWT tokens for the OAuth login
-    access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
-    await db.commit()
+    # Step 7: issue tokens + commit.
+    try:
+        access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
+        await db.commit()
+        diag.append(make_check("issue_tokens", "Issue JWT access + refresh tokens", "pass"))
+    except HTTPException:
+        raise  # _issue_tokens already raised the right thing
+    except Exception as e:
+        optic.exception("oauth_callback: token issue failed")
+        diag.append(make_check("issue_tokens", "Issue JWT access + refresh tokens", "fail", str(e)))
+        corr_id = await _persist_oidc_failure(diag, summary="Token issuance failed", actor_email=email)
+        return _oidc_error_redirect(frontend_base, corr_id)
 
-    # Generate a short-lived opaque code instead of exposing tokens in the URL.
-    # The frontend will exchange this code for credentials via a POST request.
+    # Step 8: hand off via short-lived code in Redis.
     code = secrets.token_urlsafe(32)
     try:
         redis = get_redis()
@@ -385,7 +580,17 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
         )
     except RedisError as e:
         optic.warning("Redis unavailable during OAuth callback: {}", e)
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+        diag.append(
+            make_check(
+                "session_handoff",
+                "Stash one-shot code for frontend exchange",
+                "fail",
+                "Redis unavailable.",
+                "Check Redis health from the API container.",
+            )
+        )
+        corr_id = await _persist_oidc_failure(diag, summary="Redis unavailable", actor_email=email)
+        return _oidc_error_redirect(frontend_base, corr_id)
 
     await emit_security_event(
         SecurityEvent(
@@ -399,13 +604,437 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             user_agent=user_agent,
         )
     )
-    # Restore the post-login redirect target that was saved before the OAuth round-trip.
     oauth_next = request.session.pop("oauth_next", None)
-    frontend_base = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
     frontend_redirect = f"{frontend_base}/login?code={code}"
     if oauth_next and oauth_next.startswith("/") and not oauth_next.startswith("//") and "\\" not in oauth_next:
         frontend_redirect += f"&next={quote(oauth_next, safe='')}"
     return RedirectResponse(url=frontend_redirect)
+
+
+# ── OIDC end-to-end test callback ───────────────────────────────────────
+#
+# Called by the IdP after the admin clicks "End to End Test" in the SSO admin
+# page and authenticates with a real (test) user. We exchange the code,
+# validate the ID token (signature + iss/aud/exp/nonce), and record per-step
+# checks under the diagnostics session id passed via state. Crucially we
+# never issue JWTs or set cookies -- the admin SSO page polls for the result.
+
+
+_E2E_TOKEN_TIMEOUT = 15.0
+
+
+def _decode_id_token_with_jwks(id_token: str, jwks_uri: str, client_id: str, issuer: str | None) -> dict:
+    """Verify signature + iss/aud/exp/nonce. Blocking; call via to_thread."""
+    jwks_client = PyJWKClient(jwks_uri, timeout=10)
+    signing_key = jwks_client.get_signing_key_from_jwt(id_token)
+    return pyjwt.decode(
+        id_token,
+        signing_key.key,
+        algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "EdDSA", "PS256"],
+        audience=client_id,
+        issuer=issuer,
+        options={
+            "verify_signature": True,
+            "verify_aud": True,
+            "verify_exp": True,
+            "verify_iat": True,
+            "verify_iss": bool(issuer),
+        },
+    )
+
+
+async def _handle_oidc_e2e_callback(
+    request: Request,
+    db: AsyncSession,
+    frontend_base: str,
+    state_param: str,
+) -> Response:
+    """Process an end-to-end test callback. Called from ``oauth_callback`` when
+    ``state`` starts with the e2e sentinel. We bypass authlib entirely and do
+    a raw token exchange so the admin doesn't need to whitelist a second
+    redirect URI at the IdP.
+    """
+    params = request.query_params
+    err = params.get("error")
+    code = params.get("code")
+    # state is "__e2e:<session_id>". Extract just the session id.
+    session_id_from_state = state_param[len(sso_diagnostics.E2E_SENTINEL_PREFIX) :]
+
+    admin_sso_url = f"{frontend_base.rstrip('/')}/sso"
+
+    if (
+        not session_id_from_state
+        or not re.fullmatch(r"[A-Za-z0-9_\-]+", session_id_from_state)
+        or len(session_id_from_state) > 64
+    ):
+        return Response(
+            content=sso_diagnostics.render_error_page(
+                "Malformed test session",
+                "The state parameter returned by the IdP was not in the expected format. "
+                "Start a fresh end-to-end test from the admin SSO page.",
+                admin_sso_url,
+            ),
+            media_type="text/html",
+            status_code=400,
+        )
+    session = await sso_diagnostics.get_session(session_id_from_state)
+    if session is None or session.get("provider") != "oidc" or session.get("mode") != "e2e":
+        return Response(
+            content=sso_diagnostics.render_error_page(
+                "Test session expired",
+                "This test session is no longer available (10-minute TTL elapsed, "
+                "or the session was never created). Start a fresh end-to-end test.",
+                admin_sso_url,
+            ),
+            media_type="text/html",
+            status_code=404,
+        )
+    session_id = session["session_id"]
+
+    diag: list[dict] = list(session.get("checks", []))
+    actor_email: str | None = None
+
+    async def _done(ok: bool, summary: str) -> Response:
+        await sso_diagnostics.finalize(session_id, checks=diag, summary=summary, actor_email=actor_email)
+        return Response(
+            content=sso_diagnostics.render_result_page(
+                session_id=session_id,
+                provider="oidc",
+                ok=ok,
+                checks=diag,
+                actor_email=actor_email,
+                summary=summary,
+                admin_url=admin_sso_url,
+            ),
+            media_type="text/html",
+            status_code=200,
+        )
+
+    # Step A: IdP returned an explicit error.
+    if err:
+        err_desc = params.get("error_description", "")
+        diag.append(
+            make_check(
+                "idp_authorization",
+                "IdP authorized the user",
+                "fail",
+                f"IdP returned error={err}; {err_desc}".strip("; "),
+                "Verify the client_id, redirect_uri, and that the test user has access to this client.",
+            )
+        )
+        return await _done(ok=False, summary=f"IdP error: {err}")
+
+    if not code:
+        diag.append(
+            make_check(
+                "idp_authorization",
+                "IdP returned an authorization code",
+                "fail",
+                "Callback hit without a 'code' parameter.",
+                "Verify the OIDC client is configured for response_type=code.",
+            )
+        )
+        return await _done(ok=False, summary="No code in callback")
+    diag.append(make_check("idp_authorization", "IdP returned an authorization code", "pass"))
+
+    # State binding is implicit: we located the session by the state value,
+    # so a tampered state would have failed the lookup above.
+    diag.append(make_check("state_match", "State parameter echoed unchanged", "pass"))
+
+    if not settings.OAUTH_CLIENT_ID or not settings.OAUTH_CLIENT_SECRET:
+        diag.append(make_check("oidc_configured", "OIDC client credentials configured", "fail"))
+        return await _done(ok=False, summary="OIDC creds missing")
+
+    token_endpoint = session.get("token_endpoint")
+    if not token_endpoint:
+        diag.append(
+            make_check(
+                "token_endpoint_known",
+                "Token endpoint resolved from discovery",
+                "fail",
+                "Discovery doc had no token_endpoint when we started.",
+            )
+        )
+        return await _done(ok=False, summary="No token endpoint")
+    diag.append(make_check("token_endpoint_known", "Token endpoint resolved from discovery", "pass"))
+
+    # Step B: exchange code for tokens (raw, so we control diagnostics).
+    # We reuse the *production* callback URL so the IdP only ever sees one
+    # redirect URI -- the same one whitelisted for normal logins.
+    redirect_uri = frontend_base.rstrip("/") + "/api/v1/auth/oauth/callback"
+    try:
+        async with httpx.AsyncClient(timeout=_E2E_TOKEN_TIMEOUT, follow_redirects=False) as client:
+            resp = await client.post(
+                token_endpoint,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                },
+                auth=(settings.OAUTH_CLIENT_ID, settings.OAUTH_CLIENT_SECRET),
+                headers={"Accept": "application/json"},
+            )
+    except httpx.TimeoutException:
+        diag.append(
+            make_check(
+                "token_exchange",
+                "Token endpoint responds",
+                "fail",
+                "Timed out talking to the IdP token endpoint.",
+                "Check egress to the IdP from the API container.",
+            )
+        )
+        return await _done(ok=False, summary="Token endpoint timeout")
+    except Exception as e:
+        diag.append(make_check("token_exchange", "Token endpoint responds", "fail", str(e)))
+        return await _done(ok=False, summary="Token endpoint network error")
+
+    if resp.status_code != 200:
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {"raw": resp.text[:400]}
+        err_name = body.get("error") if isinstance(body, dict) else None
+        err_desc = body.get("error_description") if isinstance(body, dict) else None
+        hint = "IdP rejected the token exchange."
+        if err_name == "invalid_client":
+            hint = "OAUTH_CLIENT_SECRET is wrong, or this IdP requires a different auth method."
+        elif err_name == "invalid_grant":
+            hint = "Authorization code expired or already used. Try the test again."
+        elif err_name == "redirect_uri_mismatch":
+            hint = f"IdP didn't accept redirect_uri={redirect_uri}. Whitelist this URL at the IdP."
+        diag.append(
+            make_check(
+                "token_exchange",
+                "Token endpoint accepted the code",
+                "fail",
+                f"HTTP {resp.status_code}: {err_name or 'error'}{f' -- {err_desc}' if err_desc else ''}",
+                hint,
+            )
+        )
+        return await _done(ok=False, summary=f"Token exchange HTTP {resp.status_code}")
+    diag.append(make_check("token_exchange", "Token endpoint accepted the code", "pass"))
+
+    try:
+        token_data = resp.json()
+    except ValueError:
+        diag.append(
+            make_check(
+                "token_response_json",
+                "Token response is JSON",
+                "fail",
+                "IdP returned a 200 but the body isn't JSON.",
+                "Check the Content-Type the IdP sets on /token.",
+            )
+        )
+        return await _done(ok=False, summary="Non-JSON token response")
+
+    if "refresh_token" in token_data:
+        diag.append(make_check("refresh_token_issued", "Refresh token issued", "pass"))
+    else:
+        diag.append(
+            make_check(
+                "refresh_token_issued",
+                "Refresh token issued",
+                "skip",
+                "IdP didn't issue a refresh_token. Sessions will expire when the access token does.",
+                "Request the 'offline_access' scope or enable refresh tokens on the OIDC client.",
+            )
+        )
+
+    id_token = token_data.get("id_token")
+    if not id_token or not isinstance(id_token, str):
+        diag.append(
+            make_check(
+                "id_token_present",
+                "ID token returned",
+                "fail",
+                "Token response contains no id_token.",
+                "Confirm the 'openid' scope was granted by the IdP.",
+            )
+        )
+        return await _done(ok=False, summary="No id_token")
+    diag.append(make_check("id_token_present", "ID token returned", "pass"))
+
+    # Step C: verify signature + iss/aud/exp/nonce.
+    jwks_uri = session.get("jwks_uri")
+    if not jwks_uri:
+        diag.append(
+            make_check(
+                "id_token_signature",
+                "ID token signature verified",
+                "skip",
+                "Discovery doc had no jwks_uri; cannot verify signature.",
+                "Configure jwks_uri on the IdP discovery doc.",
+            )
+        )
+        claims = None
+    else:
+        try:
+            claims = await asyncio.to_thread(
+                _decode_id_token_with_jwks,
+                id_token,
+                jwks_uri,
+                settings.OAUTH_CLIENT_ID,
+                session.get("issuer"),
+            )
+            diag.append(make_check("id_token_signature", "ID token signature & audience verified", "pass"))
+        except pyjwt.InvalidAudienceError:
+            diag.append(
+                make_check(
+                    "id_token_signature",
+                    "ID token audience matches client_id",
+                    "fail",
+                    f"id_token 'aud' is not {settings.OAUTH_CLIENT_ID}.",
+                    "Configure the OIDC client at the IdP so the issued ID token's aud is exactly our client_id.",
+                )
+            )
+            return await _done(ok=False, summary="Audience mismatch")
+        except pyjwt.ExpiredSignatureError:
+            diag.append(
+                make_check(
+                    "id_token_signature",
+                    "ID token not expired",
+                    "fail",
+                    "id_token 'exp' is in the past.",
+                    "Clock skew between IdP and SP -- check NTP.",
+                )
+            )
+            return await _done(ok=False, summary="ID token expired")
+        except pyjwt.InvalidIssuerError:
+            diag.append(
+                make_check(
+                    "id_token_signature",
+                    "ID token issuer matches",
+                    "fail",
+                    f"id_token 'iss' does not match {session.get('issuer')}.",
+                )
+            )
+            return await _done(ok=False, summary="Issuer mismatch")
+        except pyjwt.InvalidTokenError as e:
+            diag.append(
+                make_check(
+                    "id_token_signature",
+                    "ID token signature verified",
+                    "fail",
+                    str(e),
+                    "Check JWKS reachability and key rotation policy on the IdP.",
+                )
+            )
+            return await _done(ok=False, summary="ID token invalid")
+        except Exception as e:
+            optic.exception("oidc e2e: id_token validation crashed")
+            diag.append(make_check("id_token_signature", "ID token signature verified", "fail", str(e)))
+            return await _done(ok=False, summary="ID token validation error")
+
+    if claims is None:
+        # We couldn't verify signature but can still inspect the payload for diagnostics.
+        try:
+            claims = pyjwt.decode(id_token, options={"verify_signature": False})
+        except pyjwt.InvalidTokenError:
+            return await _done(ok=False, summary="Unverifiable id_token")
+
+    # Nonce echo (defends against token replay across sessions).
+    expected_nonce = session.get("nonce")
+    if expected_nonce and claims.get("nonce") != expected_nonce:
+        diag.append(
+            make_check(
+                "nonce_match",
+                "Nonce echoed in ID token matches",
+                "fail",
+                "Nonce in id_token does not match the value we sent on /start.",
+                "Verify the IdP supports and forwards the OIDC 'nonce' parameter.",
+            )
+        )
+        return await _done(ok=False, summary="Nonce mismatch")
+    diag.append(make_check("nonce_match", "Nonce echoed in ID token matches", "pass"))
+
+    # Step D: claim extraction.
+    email = claims.get("email")
+    if isinstance(email, str) and email:
+        actor_email = email.strip().lower()
+        diag.append(make_check("email_claim", "Email claim present", "pass"))
+    else:
+        present = ", ".join(sorted(k for k in claims if not k.startswith("_"))) or "(none)"
+        diag.append(
+            make_check(
+                "email_claim",
+                "Email claim present",
+                "fail",
+                f"id_token has no 'email' claim. Claims received: {present}",
+                "Request the 'email' scope at the IdP, or map an alternative attribute.",
+            )
+        )
+        return await _done(ok=False, summary="No email claim")
+
+    name_raw = claims.get("name") or claims.get("preferred_username")
+    if isinstance(name_raw, str) and name_raw:
+        diag.append(make_check("name_claim", "Display-name claim present", "pass"))
+    else:
+        diag.append(
+            make_check(
+                "name_claim",
+                "Display-name claim present",
+                "skip",
+                "No name/preferred_username. UI would fall back to 'SSO User'.",
+            )
+        )
+
+    groups = claims.get("groups", [])
+    if isinstance(groups, list) and groups:
+        diag.append(make_check("groups_claim", f"Groups claim present ({len(groups)})", "pass"))
+    elif groups:
+        diag.append(
+            make_check("groups_claim", "Groups claim present", "skip", "IdP returned 'groups' in an unexpected format.")
+        )
+    else:
+        diag.append(
+            make_check(
+                "groups_claim",
+                "Groups claim present",
+                "skip",
+                "No 'groups' claim. RBAC would fall back to default role.",
+            )
+        )
+
+    # Step E: would the production flow find/create the user?
+    # Read-only -- the e2e flow never writes to the users table.
+    try:
+        result = await db.execute(select(User).where(User.email == actor_email))
+        existing = result.scalar_one_or_none()
+        if existing:
+            diag.append(make_check("user_lookup", "User already exists in DB", "pass"))
+        else:
+            diag.append(
+                make_check(
+                    "user_lookup",
+                    "User would be JIT-created",
+                    "skip",
+                    "User does not yet exist; production login would JIT-create.",
+                )
+            )
+    except Exception as e:
+        diag.append(make_check("user_lookup", "Look up user by email", "skip", f"Could not check DB ({e})."))
+
+    diag.append(make_check("e2e_complete", "End-to-end test finished without issuing a session", "pass"))
+    return await _done(ok=True, summary="OIDC end-to-end test completed")
+
+
+@router.get("/sso/diagnostics/{corr_id}")
+async def get_sso_diagnostics(corr_id: str):
+    """Public lookup of a short-lived SSO failure diagnostics record.
+
+    Used by the /login page to render a ChecksList when the user lands there
+    with ``?sso_error=<corr_id>``. Returns 404 once the record expires (10
+    minutes). The contents are intentionally sanitized -- check labels and
+    hints only, no tokens or raw assertions.
+    """
+    if not corr_id or len(corr_id) > 64 or not re.fullmatch(r"[A-Za-z0-9_\-]+", corr_id):
+        raise HTTPException(status_code=400, detail="Invalid diagnostics id")
+    session = await sso_diagnostics.get_session(corr_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Diagnostics not found or expired")
+    return sso_diagnostics.public_view(session)
 
 
 @router.post("/exchange", response_model=InitResponse)
