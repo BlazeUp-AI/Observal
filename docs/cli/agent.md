@@ -5,7 +5,7 @@
 
 # observal agent
 
-Create, author, and publish agents. An agent bundles registry components (MCPs, skills, hooks, prompts, sandboxes) into one installable YAML.
+Create, author, and publish agents. An agent bundles registry components (MCPs, skills, hooks, prompts, sandboxes) into one installable YAML. Agent names are globally unique.
 
 ## Subcommands
 
@@ -19,6 +19,7 @@ Create, author, and publish agents. An agent bundles registry components (MCPs, 
 | [`agent install`](#observal-agent-install) | Get install config for an agent |
 | [`agent pull`](#observal-agent-pull) | Write agent config to IDE files |
 | [`agent delete`](#observal-agent-delete) | Delete an agent |
+| [`agent transfer-owner`](#observal-agent-transfer-owner) | Transfer ownership to another user |
 | [`agent unarchive`](#observal-agent-unarchive) | Restore an archived agent |
 | [`agent init`](#observal-agent-init) | Scaffold `observal-agent.yaml` in the current directory |
 | [`agent add`](#observal-agent-add) | Add a component to the local `observal-agent.yaml` |
@@ -152,6 +153,20 @@ Archive an agent (soft delete). The agent will no longer appear in public listin
 observal agent delete my-agent
 observal agent delete my-agent --yes
 observal agent delete @myalias
+```
+
+| Option | Description |
+| --- | --- |
+| `--yes`, `-y` | Skip confirmation |
+
+---
+
+## `observal agent transfer-owner`
+
+Transfer ownership to another username. You stop being the owner immediately.
+
+```bash
+observal agent transfer-owner my-agent @alice -y
 ```
 
 | Option | Description |

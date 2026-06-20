@@ -17,6 +17,7 @@ from api.deps import (
     ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
+    commit_or_name_conflict,
     get_db,
     get_effective_component_permission,
     optional_current_user,
@@ -47,11 +48,9 @@ async def submit_sandbox(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     optic.debug("sandbox submit: name={}", req.name)
-    existing = await db.execute(
-        select(SandboxListing).where(SandboxListing.name == req.name, SandboxListing.submitted_by == current_user.id)
-    )
+    existing = await db.execute(select(SandboxListing).where(SandboxListing.name == req.name))
     if existing.scalars().first():
-        raise HTTPException(status_code=409, detail=f"You already have a sandbox named '{req.name}'")
+        raise HTTPException(status_code=409, detail=f"A sandbox named '{req.name}' already exists")
 
     listing = SandboxListing(
         name=req.name,
@@ -83,7 +82,7 @@ async def submit_sandbox(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     await db.refresh(listing)
     return SandboxListingResponse.model_validate(listing)
 
@@ -196,7 +195,7 @@ async def save_sandbox_draft(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     await db.refresh(listing)
     return SandboxListingResponse.model_validate(listing)
 
@@ -252,7 +251,7 @@ async def update_sandbox_draft(
         if val is not None:
             setattr(listing, field, val)
 
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     await db.refresh(listing)
     return SandboxListingResponse.model_validate(listing)
 
@@ -277,7 +276,7 @@ async def start_edit_sandbox(
     # Re-fetch with row-level lock to prevent TOCTOU race
     ver = (await db.execute(select(SandboxVersion).where(SandboxVersion.id == ver.id).with_for_update())).scalar_one()
     acquire_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     return {"status": "locked"}
 
 
@@ -297,7 +296,7 @@ async def cancel_edit_sandbox(
     if not ver:
         raise HTTPException(status_code=400, detail="Listing has no version")
     release_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     return {"status": "unlocked"}
 
 
@@ -322,7 +321,7 @@ async def submit_sandbox_draft(
         raise HTTPException(status_code=400, detail="Image is required before submitting")
 
     listing.status = ListingStatus.pending
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     await db.refresh(listing)
     return SandboxListingResponse.model_validate(listing)
 
@@ -357,7 +356,7 @@ async def delete_sandbox(
         await db.delete(ver)
     await db.flush()
     await db.delete(listing)
-    await db.commit()
+    await commit_or_name_conflict(db, "sandbox")
     return {"deleted": str(listing_id)}
 
 

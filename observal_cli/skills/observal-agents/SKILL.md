@@ -114,6 +114,7 @@ observal agent bulk-create --from-file agents.json --yes
 
 ```bash
 observal agent delete AGENT_NAME --yes
+observal agent transfer-owner AGENT_NAME @username -y
 observal agent unarchive AGENT_NAME --yes
 ```
 

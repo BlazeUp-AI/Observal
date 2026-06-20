@@ -94,11 +94,11 @@ async def create_agent(
     # Pre-check uniqueness before insert for a clean 409 (the DB constraint
     # remains the source of truth, but checking first avoids triggering an
     # IntegrityError mid-flush which would corrupt the savepoint state).
-    existing = await db.execute(select(Agent.id).where(Agent.name == req.name, Agent.created_by == current_user.id))
+    existing = await db.execute(select(Agent.id).where(Agent.name == req.name))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"You already have an agent named '{req.name}'. Pick a different name or delete the existing one.",
+            detail=f"An agent named '{req.name}' already exists. Pick a different name.",
         )
 
     agent = Agent(
@@ -189,10 +189,10 @@ async def create_agent(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        if "uq_agents_name_created_by" in str(exc.orig):
+        if "uq_agents_name" in str(exc.orig) or "uq_agents_name_created_by" in str(exc.orig):
             raise HTTPException(
                 status_code=409,
-                detail=f"You already have an agent named '{req.name}'. Pick a different name or delete the existing one.",
+                detail=f"An agent named '{req.name}' already exists. Pick a different name.",
             )
         raise
 

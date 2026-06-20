@@ -18,6 +18,7 @@ from api.deps import (
     ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
+    commit_or_name_conflict,
     get_db,
     get_effective_component_permission,
     optional_current_user,
@@ -100,7 +101,7 @@ async def _store_client_analysis(listing: McpListing, analysis: ClientAnalysis, 
             )
         )
 
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
 
 
 async def _run_validation_background(listing_id: str) -> None:
@@ -124,26 +125,16 @@ async def submit_mcp(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    # Prevent duplicate names for the same user.
-    # Pending/rejected listings are replaced automatically so the user isn't
-    # blocked when re-submitting after a mistake.  Approved listings are
-    # protected - use the update flow instead.
+    # Names are global. The original submitter can replace a draft, but nobody
+    # can take another user's name.
     optic.debug("mcp submit: name={}", req.name)
-    existing = (
-        (
-            await db.execute(
-                select(McpListing).where(McpListing.name == req.name, McpListing.submitted_by == current_user.id)
-            )
-        )
-        .scalars()
-        .first()
-    )
+    existing = (await db.execute(select(McpListing).where(McpListing.name == req.name))).scalars().first()
     if existing:
-        if existing.status == ListingStatus.approved:
-            raise HTTPException(status_code=409, detail=f"You already have an approved listing named '{req.name}'")
-        # Replace the old pending/rejected listing
-        await db.delete(existing)
-        await db.flush()
+        if existing.submitted_by == current_user.id and existing.status != ListingStatus.approved:
+            await db.delete(existing)
+            await db.flush()
+        else:
+            raise HTTPException(status_code=409, detail=f"An approved listing named '{req.name}' already exists")
 
     listing = McpListing(
         name=req.name,
@@ -180,7 +171,7 @@ async def submit_mcp(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     await db.refresh(listing)
 
     if req.client_analysis:
@@ -279,7 +270,7 @@ async def install_mcp(
     latest_version = getattr(listing, "latest_version", None)
     if latest_version:
         latest_version.download_count += 1
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
 
     from api.routes.config import derive_endpoints
 
@@ -336,7 +327,7 @@ async def save_mcp_draft(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     await db.refresh(listing)
     return McpListingResponse.model_validate(listing)
 
@@ -400,7 +391,7 @@ async def update_mcp_draft(
         if val is not None:
             setattr(listing, field, val)
 
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     await db.refresh(listing)
     return McpListingResponse.model_validate(listing)
 
@@ -425,7 +416,7 @@ async def start_edit_mcp(
     # Re-fetch with row-level lock to prevent TOCTOU race
     ver = (await db.execute(select(McpVersion).where(McpVersion.id == ver.id).with_for_update())).scalar_one()
     acquire_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     return {"status": "locked"}
 
 
@@ -445,7 +436,7 @@ async def cancel_edit_mcp(
     if not ver:
         raise HTTPException(status_code=400, detail="Listing has no version")
     release_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     return {"status": "unlocked"}
 
 
@@ -470,7 +461,7 @@ async def submit_mcp_draft(
         raise HTTPException(status_code=400, detail="At least one of git_url, command, or url is required")
 
     listing.status = ListingStatus.pending
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     await db.refresh(listing)
     return McpListingResponse.model_validate(listing)
 
@@ -511,7 +502,7 @@ async def delete_mcp(
         await db.delete(ver)
     await db.flush()
     await db.delete(listing)
-    await db.commit()
+    await commit_or_name_conflict(db, "listing")
     return {"deleted": str(listing_id)}
 
 

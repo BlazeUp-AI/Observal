@@ -172,6 +172,7 @@ from observal_cli.cmd_sandbox import sandbox_app
 from observal_cli.cmd_scan import register_scan
 from observal_cli.cmd_skill import skill_app
 from observal_cli.cmd_support import support_app
+from observal_cli.cmd_transfer import add_transfer_owner_command
 from observal_cli.cmd_uninstall import register_uninstall
 
 # ═══════════════════════════════════════════════════════════
@@ -192,13 +193,19 @@ registry_app.add_typer(sandbox_app, name="sandbox")
 registry_app.add_typer(models_app, name="models")
 registry_app.add_typer(version_app, name="version")
 
-# ── Co-authors sub-typers ────────────────────────────────
+# ── Co-authors and ownership sub-commands ─────────────────
 mcp_app.add_typer(make_co_authors_typer("mcps"), name="co-authors")
 skill_app.add_typer(make_co_authors_typer("skills"), name="co-authors")
 hook_app.add_typer(make_co_authors_typer("hooks"), name="co-authors")
 prompt_app.add_typer(make_co_authors_typer("prompts"), name="co-authors")
 sandbox_app.add_typer(make_co_authors_typer("sandboxes"), name="co-authors")
 agent_app.add_typer(make_co_authors_typer("agents"), name="co-authors")
+add_transfer_owner_command(mcp_app, "mcps")
+add_transfer_owner_command(skill_app, "skills")
+add_transfer_owner_command(hook_app, "hooks")
+add_transfer_owner_command(prompt_app, "prompts")
+add_transfer_owner_command(sandbox_app, "sandboxes")
+add_transfer_owner_command(agent_app, "agents")
 
 # ── Auth subgroup ────────────────────────────────────────
 app.add_typer(auth_app, name="auth")

@@ -60,6 +60,7 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal agent pull`: Fetch agent config and write IDE files to disk.
   - `observal agent release`: Bump version and push a versioned release to the registry.
   - `observal agent show`: Show full agent details.
+  - `observal agent transfer-owner`: Transfer ownership to another username.
   - `observal agent unarchive`: Restore an archived agent back to active status.
   - `observal agent versions`: List all versions for an agent.
 
@@ -125,6 +126,7 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry hook list`: List approved hooks from the registry.
   - `observal registry hook show`: Show detailed information for a single hook.
   - `observal registry hook submit`: Submit a new hook for review.
+  - `observal registry hook transfer-owner`: Transfer ownership to another username.
 - `observal registry mcp`: MCP server registry commands
 - `observal registry mcp co-authors`: Manage co-authors for mcps
   - `observal registry mcp co-authors add`: Add a co-author.
@@ -137,6 +139,7 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry mcp edit`: Edit an MCP server submission.
   - `observal registry mcp list`: List approved MCP servers in the registry.
   - `observal registry mcp my`: List your own MCP servers across all statuses.
+  - `observal registry mcp transfer-owner`: Transfer ownership to another username.
 - `observal registry models`: Inspect the model catalog (live from models.dev with offline fallback).
   - `observal registry models list`: Show models from the registry.
 - `observal registry prompt`: Prompt registry commands
@@ -151,6 +154,7 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry prompt render`: Render a prompt template with variable substitution.
   - `observal registry prompt show`: Show detailed information about a prompt.
   - `observal registry prompt submit`: Submit a new prompt template for review.
+  - `observal registry prompt transfer-owner`: Transfer ownership to another username.
 - `observal registry sandbox`: Sandbox registry commands
 - `observal registry sandbox co-authors`: Manage co-authors for sandboxes
   - `observal registry sandbox co-authors add`: Add a co-author.
@@ -161,6 +165,7 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry sandbox list`: List approved sandboxes in the registry.
   - `observal registry sandbox show`: Show detailed information about a sandbox.
   - `observal registry sandbox submit`: Submit a new sandbox environment for review.
+  - `observal registry sandbox transfer-owner`: Transfer ownership to another username.
 - `observal registry skill`: Skill registry commands
 - `observal registry skill co-authors`: Manage co-authors for skills
   - `observal registry skill co-authors add`: Add a co-author.
@@ -173,6 +178,7 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry skill my`: List your own skills across all statuses.
   - `observal registry skill show`: Show detailed information about a skill.
   - `observal registry skill submit`: Submit a new skill for review.
+  - `observal registry skill transfer-owner`: Transfer ownership to another username.
 - `observal registry version`: Manage component versions
   - `observal registry version list`: List version history for a registry component.
   - `observal registry version publish`: Publish a new version for a registry component.

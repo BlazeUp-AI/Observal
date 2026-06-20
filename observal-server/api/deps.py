@@ -17,6 +17,7 @@ from fastapi import Depends, Header, HTTPException
 from loguru import logger as optic
 from redis.exceptions import RedisError
 from sqlalchemy import String, cast, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -250,6 +251,17 @@ def get_effective_component_permission(listing, user: User | None) -> str:
 
 # Convenience shorthand for super_admin-only endpoints
 require_super_admin = require_role(UserRole.super_admin)
+
+
+async def commit_or_name_conflict(db: AsyncSession, item_type: str) -> None:
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        detail = str(exc.orig).lower()
+        if "name" in detail and ("unique" in detail or "duplicate" in detail):
+            raise HTTPException(status_code=409, detail=f"A {item_type} with this name already exists")
+        raise
 
 
 async def get_current_org_id(

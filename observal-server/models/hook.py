@@ -17,7 +17,10 @@ from models.mcp import ListingStatus
 
 class HookListing(Base):
     __tablename__ = "hook_listings"
-    __table_args__ = (Index("ix_hook_listings_submitted_by", "submitted_by"),)
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_hook_listings_name"),
+        Index("ix_hook_listings_submitted_by", "submitted_by"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

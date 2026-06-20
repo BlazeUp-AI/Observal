@@ -169,6 +169,8 @@ observal registry skill delete NAME --yes
 observal registry hook delete NAME --yes
 observal registry prompt delete NAME --yes
 observal registry sandbox delete NAME --yes
+observal registry mcp transfer-owner NAME @username -y
+observal registry skill transfer-owner NAME @username -y
 ```
 
 ---

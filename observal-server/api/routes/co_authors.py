@@ -23,6 +23,7 @@ from models.prompt import PromptListing, PromptVersion
 from models.sandbox import SandboxListing, SandboxVersion
 from models.skill import SkillListing, SkillVersion
 from models.user import User
+from services.ownership import transfer_entity_owner
 
 router = APIRouter(prefix="/api/v1", tags=["co-authors"])
 
@@ -52,11 +53,23 @@ class AddCoAuthorRequest(BaseModel):
     username: str | None = None
 
 
+class TransferOwnershipRequest(BaseModel):
+    username: str
+
+
 class CoAuthorResponse(BaseModel):
     id: str
     email: str
     username: str | None = None
     is_active: bool = True
+
+
+class TransferOwnershipResponse(BaseModel):
+    id: str
+    owner: str
+    owner_id: str
+    previous_owner: str
+    previous_owner_id: str
 
 
 async def _get_entity_and_check_permission(
@@ -84,6 +97,62 @@ async def _get_entity_and_check_permission(
         raise HTTPException(status_code=403, detail="You don't have permission to manage co-authors")
 
     return entity
+
+
+async def _get_entity_for_transfer(entity_type: str, entity_id: str, current_user: User, db: AsyncSession):
+    model = ENTITY_MODELS.get(entity_type)
+    if not model:
+        raise HTTPException(status_code=400, detail=f"Invalid entity type: {entity_type}")
+
+    try:
+        parsed_id = _uuid.UUID(entity_id)
+    except ValueError:
+        result = await db.execute(select(model).where(model.name == entity_id))
+        entity = result.scalar_one_or_none()
+    else:
+        entity = await db.get(model, parsed_id)
+
+    if not entity:
+        raise HTTPException(status_code=404, detail=f"{entity_type[:-1].title()} not found")
+
+    owner_id = entity.created_by if entity_type == "agents" else entity.submitted_by
+    if owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the current owner can transfer ownership")
+    return entity
+
+
+@router.post("/{entity_type}/{entity_id}/transfer-ownership", response_model=TransferOwnershipResponse)
+async def transfer_ownership(
+    entity_type: str,
+    entity_id: str,
+    req: TransferOwnershipRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    username = req.username.strip().lstrip("@")
+    if not username:
+        raise HTTPException(status_code=422, detail="Provide a username")
+
+    entity = await _get_entity_for_transfer(entity_type, entity_id, current_user, db)
+    result = await db.execute(select(User).where(User.username == username))
+    target_user = result.scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user.auth_provider == "deactivated":
+        raise HTTPException(status_code=422, detail="Cannot transfer ownership to a deactivated user")
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=422, detail="You already own this item")
+
+    previous_owner, previous_owner_id = transfer_entity_owner(entity, entity_type, current_user, target_user)
+    await db.commit()
+    await db.refresh(entity)
+    return TransferOwnershipResponse(
+        id=str(entity.id),
+        owner=entity.owner,
+        owner_id=str(target_user.id),
+        previous_owner=previous_owner,
+        previous_owner_id=str(previous_owner_id),
+    )
 
 
 @router.get("/{entity_type}/{entity_id}/co-authors", response_model=list[CoAuthorResponse])

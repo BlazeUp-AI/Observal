@@ -25,6 +25,7 @@ Every type supports these actions:
 | `install` | Generate an IDE config snippet |
 | `edit` | Edit a draft, pending, or rejected submission |
 | `delete` | Delete a component |
+| `transfer-owner` | Transfer ownership to another username |
 
 Notes:
 - `my` is available for `mcp`, `skill`, and `prompt`. Hooks and sandboxes do not have a `my` subcommand.
@@ -249,6 +250,14 @@ observal registry mcp delete <id-or-name> [--yes]
 observal registry mcp delete my-server
 observal registry mcp delete abc123 --yes
 observal registry mcp delete 3 -y
+```
+
+### `observal registry mcp transfer-owner`
+
+Transfer ownership to another username. You stop being the owner immediately.
+
+```bash
+observal registry mcp transfer-owner my-server @alice -y
 ```
 
 ---
@@ -855,7 +864,9 @@ observal registry sandbox delete @old-env -y
 
 ## Shared behavior
 
-### ID resolution
+### Names and ID resolution
+
+Component names are globally unique within each component type. Concurrent submissions with the same name are rejected by the database uniqueness constraint.
 
 All commands that take `<id-or-name>` accept four forms:
 

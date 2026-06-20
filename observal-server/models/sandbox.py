@@ -17,7 +17,10 @@ from models.mcp import ListingStatus
 
 class SandboxListing(Base):
     __tablename__ = "sandbox_listings"
-    __table_args__ = (Index("ix_sandbox_listings_submitted_by", "submitted_by"),)
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_sandbox_listings_name"),
+        Index("ix_sandbox_listings_submitted_by", "submitted_by"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

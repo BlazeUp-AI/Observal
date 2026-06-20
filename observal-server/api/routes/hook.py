@@ -18,6 +18,7 @@ from api.deps import (
     ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
+    commit_or_name_conflict,
     get_db,
     get_effective_component_permission,
     optional_current_user,
@@ -51,11 +52,9 @@ async def submit_hook(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     optic.debug("hook submit: name={}", req.name)
-    existing = await db.execute(
-        select(HookListing).where(HookListing.name == req.name, HookListing.submitted_by == current_user.id)
-    )
+    existing = await db.execute(select(HookListing).where(HookListing.name == req.name))
     if existing.scalars().first():
-        raise HTTPException(status_code=409, detail=f"You already have a hook named '{req.name}'")
+        raise HTTPException(status_code=409, detail=f"A hook named '{req.name}' already exists")
 
     listing = HookListing(
         name=req.name,
@@ -92,7 +91,7 @@ async def submit_hook(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     await db.refresh(listing)
     return HookListingResponse.model_validate(listing)
 
@@ -188,7 +187,7 @@ async def install_hook(
     latest_version = getattr(listing, "latest_version", None)
     if latest_version:
         latest_version.download_count += 1
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
 
     from services.hook_install_generator import generate_hook_install_config
 
@@ -247,7 +246,7 @@ async def save_hook_draft(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     await db.refresh(listing)
     return HookListingResponse.model_validate(listing)
 
@@ -308,7 +307,7 @@ async def update_hook_draft(
         if val is not None:
             setattr(listing, field, val)
 
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     await db.refresh(listing)
     return HookListingResponse.model_validate(listing)
 
@@ -333,7 +332,7 @@ async def start_edit_hook(
     # Re-fetch with row-level lock to prevent TOCTOU race
     ver = (await db.execute(select(HookVersion).where(HookVersion.id == ver.id).with_for_update())).scalar_one()
     acquire_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     return {"status": "locked"}
 
 
@@ -353,7 +352,7 @@ async def cancel_edit_hook(
     if not ver:
         raise HTTPException(status_code=400, detail="Listing has no version")
     release_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     return {"status": "unlocked"}
 
 
@@ -376,7 +375,7 @@ async def submit_hook_draft(
         raise HTTPException(status_code=400, detail="Description is required before submitting")
 
     listing.status = ListingStatus.pending
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     await db.refresh(listing)
     return HookListingResponse.model_validate(listing)
 
@@ -409,7 +408,7 @@ async def delete_hook(
         await db.delete(ver)
     await db.flush()
     await db.delete(listing)
-    await db.commit()
+    await commit_or_name_conflict(db, "hook")
     return {"deleted": str(listing_id)}
 
 

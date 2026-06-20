@@ -80,7 +80,7 @@ class AgentVersion(Base):
 
 class Agent(Base):
     __tablename__ = "agents"
-    __table_args__ = (UniqueConstraint("name", "created_by", name="uq_agents_name_created_by"),)
+    __table_args__ = (UniqueConstraint("name", name="uq_agents_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

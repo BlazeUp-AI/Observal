@@ -19,6 +19,7 @@ from api.deps import (
     ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
+    commit_or_name_conflict,
     get_db,
     get_effective_component_permission,
     optional_current_user,
@@ -60,11 +61,9 @@ async def submit_skill(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     optic.debug("submitting skill: {}", req.name)
-    existing = await db.execute(
-        select(SkillListing).where(SkillListing.name == req.name, SkillListing.submitted_by == current_user.id)
-    )
+    existing = await db.execute(select(SkillListing).where(SkillListing.name == req.name))
     if existing.scalars().first():
-        raise HTTPException(status_code=409, detail=f"You already have a skill named '{req.name}'")
+        raise HTTPException(status_code=409, detail=f"A skill named '{req.name}' already exists")
 
     # Resolve name/description/slash_command - frontmatter wins when caller omits them.
     skill_md_content = req.skill_md_content
@@ -132,11 +131,9 @@ async def submit_skill(
 
     # Re-check uniqueness with resolved name (may differ from req.name when auto-filled).
     if name != req.name:
-        dup = await db.execute(
-            select(SkillListing).where(SkillListing.name == name, SkillListing.submitted_by == current_user.id)
-        )
+        dup = await db.execute(select(SkillListing).where(SkillListing.name == name))
         if dup.scalars().first():
-            raise HTTPException(status_code=409, detail=f"You already have a skill named '{name}'")
+            raise HTTPException(status_code=409, detail=f"A skill named '{name}' already exists")
 
     listing = SkillListing(
         name=name,
@@ -171,7 +168,7 @@ async def submit_skill(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     await db.refresh(listing)
     return SkillListingResponse.model_validate(listing)
 
@@ -287,7 +284,7 @@ async def install_skill(
     latest_version = getattr(listing, "latest_version", None)
     if latest_version:
         latest_version.download_count += 1
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
 
     from api.routes.config import derive_endpoints
     from services.skill_config_generator import generate_skill_config
@@ -345,7 +342,7 @@ async def save_skill_draft(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     await db.refresh(listing)
     return SkillListingResponse.model_validate(listing)
 
@@ -418,7 +415,7 @@ async def update_skill_draft(
         if val is not None:
             setattr(listing, field, val)
 
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     await db.refresh(listing)
     return SkillListingResponse.model_validate(listing)
 
@@ -443,7 +440,7 @@ async def start_edit_skill(
     # Re-fetch with row-level lock to prevent TOCTOU race
     ver = (await db.execute(select(SkillVersion).where(SkillVersion.id == ver.id).with_for_update())).scalar_one()
     acquire_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     return {"status": "locked"}
 
 
@@ -463,7 +460,7 @@ async def cancel_edit_skill(
     if not ver:
         raise HTTPException(status_code=400, detail="Listing has no version")
     release_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     return {"status": "unlocked"}
 
 
@@ -493,7 +490,7 @@ async def submit_skill_draft(
         raise HTTPException(status_code=400, detail="Description is required before submitting")
 
     listing.status = ListingStatus.pending
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     await db.refresh(listing)
     return SkillListingResponse.model_validate(listing)
 
@@ -526,7 +523,7 @@ async def delete_skill(
         await db.delete(ver)
     await db.flush()
     await db.delete(listing)
-    await db.commit()
+    await commit_or_name_conflict(db, "skill")
     return {"deleted": str(listing_id)}
 
 

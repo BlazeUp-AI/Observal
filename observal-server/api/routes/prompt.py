@@ -19,6 +19,7 @@ from api.deps import (
     ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
+    commit_or_name_conflict,
     get_db,
     get_effective_component_permission,
     optional_current_user,
@@ -51,11 +52,9 @@ async def submit_prompt(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     optic.debug("prompt submit: name={}", req.name)
-    existing = await db.execute(
-        select(PromptListing).where(PromptListing.name == req.name, PromptListing.submitted_by == current_user.id)
-    )
+    existing = await db.execute(select(PromptListing).where(PromptListing.name == req.name))
     if existing.scalars().first():
-        raise HTTPException(status_code=409, detail=f"You already have a prompt named '{req.name}'")
+        raise HTTPException(status_code=409, detail=f"A prompt named '{req.name}' already exists")
 
     listing = PromptListing(
         name=req.name,
@@ -84,7 +83,7 @@ async def submit_prompt(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     await db.refresh(listing)
     return PromptListingResponse.model_validate(listing)
 
@@ -241,7 +240,7 @@ async def save_prompt_draft(
     await db.flush()
 
     listing.latest_version_id = version.id
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     await db.refresh(listing)
     return PromptListingResponse.model_validate(listing)
 
@@ -294,7 +293,7 @@ async def update_prompt_draft(
         if val is not None:
             setattr(listing, field, val)
 
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     await db.refresh(listing)
     return PromptListingResponse.model_validate(listing)
 
@@ -319,7 +318,7 @@ async def start_edit_prompt(
     # Re-fetch with row-level lock to prevent TOCTOU race
     ver = (await db.execute(select(PromptVersion).where(PromptVersion.id == ver.id).with_for_update())).scalar_one()
     acquire_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     return {"status": "locked"}
 
 
@@ -339,7 +338,7 @@ async def cancel_edit_prompt(
     if not ver:
         raise HTTPException(status_code=400, detail="Listing has no version")
     release_edit_lock(ver, current_user.id)
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     return {"status": "unlocked"}
 
 
@@ -364,7 +363,7 @@ async def submit_prompt_draft(
         raise HTTPException(status_code=400, detail="Template is required before submitting")
 
     listing.status = ListingStatus.pending
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     await db.refresh(listing)
     return PromptListingResponse.model_validate(listing)
 
@@ -397,7 +396,7 @@ async def delete_prompt(
         await db.delete(ver)
     await db.flush()
     await db.delete(listing)
-    await db.commit()
+    await commit_or_name_conflict(db, "prompt")
     return {"deleted": str(listing_id)}
 
 
