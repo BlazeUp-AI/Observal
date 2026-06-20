@@ -4,7 +4,7 @@
 
 set -eo pipefail
 
-# Bootstrap the data tier host: Postgres + Redis + ClickHouse + Grafana + Prometheus via Docker Compose.
+# Bootstrap the data tier host: Postgres, Redis, ClickHouse, and optional observability via Docker Compose.
 
 exec > >(tee /var/log/observal-bootstrap.log | logger -t observal-bootstrap -s 2>/dev/console) 2>&1
 echo "Observal data-host bootstrap starting at $(date -u)"
@@ -36,12 +36,22 @@ mkdir -p /data
 UUID=$(blkid -s UUID -o value "$DEVICE")
 grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /data ext4 defaults,nofail 0 2" >> /etc/fstab
 mount -a
-mkdir -p /data/postgres /data/redis /data/clickhouse /data/grafana /data/prometheus
+mkdir -p /data/postgres /data/redis /data/clickhouse
+%{ if observability_grafana_enabled }
+mkdir -p /data/grafana
+%{ endif }
+%{ if observability_prometheus_enabled }
+mkdir -p /data/prometheus
+%{ endif }
 chown -R 999:999 /data/postgres      || true   # postgres user
 chown -R 999:1000 /data/redis        || true   # redis user
 chown -R 101:101 /data/clickhouse    || true   # clickhouse user
+%{ if observability_grafana_enabled }
 chown -R 472:472 /data/grafana       || true   # grafana user
+%{ endif }
+%{ if observability_prometheus_enabled }
 chown -R 65534:65534 /data/prometheus || true   # nobody
+%{ endif }
 
 # ── Pull secrets from SSM ────────────────────────────────────────
 set +x
@@ -87,6 +97,7 @@ cat > "$INSTALL_DIR/clickhouse/users.d/default-user.xml" <<CHUSER
 </clickhouse>
 CHUSER
 
+%{ if observability_prometheus_enabled }
 # Prometheus config
 cat > "$INSTALL_DIR/prometheus.yml" <<'PROM'
 global:
@@ -100,6 +111,7 @@ scrape_configs:
       - targets: ['localhost:9187']
 PROM
 
+%{ endif }
 cat > "$INSTALL_DIR/docker-compose.yml" <<COMPOSE
 services:
   postgres:
@@ -156,6 +168,7 @@ services:
       timeout: 5s
       retries: 5
 
+%{ if observability_grafana_enabled }
   grafana:
     image: grafana/grafana-oss:11.6.5
     container_name: observal-grafana
@@ -173,7 +186,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-
+%{ endif }
+%{ if observability_prometheus_enabled }
   prometheus:
     image: prom/prometheus:v3.11.3
     container_name: observal-prometheus
@@ -187,6 +201,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
+%{ endif }
 COMPOSE
 
 # ── Start ────────────────────────────────────────────────────────

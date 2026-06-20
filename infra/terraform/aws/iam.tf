@@ -80,7 +80,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_backups" {
   policy_arn = aws_iam_policy.ecs_task_backups.arn
 }
 
-# ── EC2 instance role for the data tier host (CH + Grafana + Prometheus) ──
+# ── EC2 instance role for the data tier host ──────────────────────────────
 
 data "aws_iam_policy_document" "ec2_assume" {
   statement {

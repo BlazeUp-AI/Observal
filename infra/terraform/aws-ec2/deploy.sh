@@ -20,6 +20,7 @@ IMAGE_TAG=$(terraform output -raw image_tag)
 OBSERVAL_REF=$(terraform output -raw observal_ref)
 OBSERVAL_REPO=$(terraform output -raw observal_repo)
 ENV_OVERRIDES=$(terraform output -json env_overrides 2>/dev/null || echo "{}")
+OBSERVABILITY_STACK=$(terraform output -raw observability_stack 2>/dev/null || echo "none")
 
 echo "=== Observal EC2 Deploy ==="
 echo "  Instance:  $INSTANCE_ID"
@@ -27,6 +28,7 @@ echo "  IP:        $PUBLIC_IP"
 echo "  Region:    $REGION"
 echo "  Domain:    ${DOMAIN:-"(none — HTTP only)"}"
 echo "  Image:     ghcr.io/blazeup-ai/observal-api:$IMAGE_TAG"
+echo "  Observability: $OBSERVABILITY_STACK"
 echo ""
 
 # ── Helper: run command on instance via SSM ──────────────────────────────────
@@ -126,12 +128,17 @@ echo "Configuring environment..."
 SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null || openssl rand -base64 32)
 POSTGRES_PW=$(python3 -c "import secrets; print(secrets.token_urlsafe(18))" 2>/dev/null || openssl rand -base64 18)
 CLICKHOUSE_PW=$(python3 -c "import secrets; print(secrets.token_urlsafe(18))" 2>/dev/null || openssl rand -base64 18)
+GRAFANA_PW=$(python3 -c "import secrets; print(secrets.token_urlsafe(18))" 2>/dev/null || openssl rand -base64 18)
 
 FRONTEND_URL="${DOMAIN:+https://$DOMAIN}"
 FRONTEND_URL="${FRONTEND_URL:-http://$PUBLIC_IP}"
 
 # Generate .env from template
 run_remote "cd /opt/observal && cp env.template .env && sed -i 's|__SECRET_KEY__|$SECRET_KEY|g' .env && sed -i 's|__POSTGRES_PASSWORD__|$POSTGRES_PW|g' .env && sed -i 's|__CLICKHOUSE_PASSWORD__|$CLICKHOUSE_PW|g' .env && sed -i 's|__FRONTEND_URL__|$FRONTEND_URL|g' .env && echo 'OBSERVAL_VERSION=$IMAGE_TAG' >> .env && chmod 600 .env"
+
+if [ "$OBSERVABILITY_STACK" = "grafana" ]; then
+  run_remote "cd /opt/observal && echo 'GRAFANA_ADMIN_USER=admin' >> .env && echo 'GRAFANA_ADMIN_PASSWORD=$GRAFANA_PW' >> .env"
+fi
 
 # Apply env overrides (skip empty values)
 while IFS='=' read -r key value; do
@@ -149,11 +156,20 @@ fi
 
 # ── Pull and start (pre-built images — fast) ────────────────────────────────
 
+COMPOSE_FILES="-f docker-compose.yml"
+COMPOSE_PROFILE_ARGS=""
+if [ "$OBSERVABILITY_STACK" != "none" ]; then
+  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml"
+fi
+if [ "$OBSERVABILITY_STACK" = "grafana" ]; then
+  COMPOSE_PROFILE_ARGS="--profile grafana"
+fi
+
 echo "Pulling pre-built images from GHCR..."
-run_remote "cd /opt/observal && docker compose pull" 300
+run_remote "cd /opt/observal && docker compose $COMPOSE_PROFILE_ARGS $COMPOSE_FILES pull" 300
 
 echo "Starting services..."
-run_remote "cd /opt/observal && docker compose --env-file .env up -d"
+run_remote "cd /opt/observal && docker compose $COMPOSE_PROFILE_ARGS $COMPOSE_FILES --env-file .env up -d"
 
 # ── Health check ─────────────────────────────────────────────────────────────
 

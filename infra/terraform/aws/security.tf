@@ -73,19 +73,22 @@ resource "aws_security_group" "ecs_tasks" {
   tags = { Name = "${local.name}-ecs-tasks-sg" }
 }
 
-# ── Data tier EC2 (ClickHouse + Grafana + Prometheus) ──────────────────────
+# ── Data tier EC2 (ClickHouse plus optional observability) ─────────────────
 resource "aws_security_group" "data_host" {
   count       = local.clickhouse_self_hosted ? 1 : 0
   name        = "${local.name}-data-host"
-  description = "ClickHouse + Grafana + Prometheus EC2. Inbound from ALB (Grafana) and ECS tasks (ClickHouse)."
+  description = "ClickHouse EC2 with optional observability. Inbound from ALB and ECS tasks."
   vpc_id      = local.vpc_id
 
-  ingress {
-    description     = "Grafana UI from ALB"
-    from_port       = 3001
-    to_port         = 3001
-    protocol        = "tcp"
-    security_groups = [local.alb_sg_id]
+  dynamic "ingress" {
+    for_each = local.bundled_grafana_available ? [1] : []
+    content {
+      description     = "Grafana UI from ALB"
+      from_port       = 3001
+      to_port         = 3001
+      protocol        = "tcp"
+      security_groups = [local.alb_sg_id]
+    }
   }
 
   ingress {

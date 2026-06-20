@@ -4,7 +4,7 @@
 resource "google_service_account" "data_host" {
   count        = local.clickhouse_self_hosted ? 1 : 0
   account_id   = "${var.name_prefix}-data"
-  display_name = "Observal data host (ClickHouse + Grafana + Prometheus)"
+  display_name = "Observal data host"
 }
 
 resource "google_project_iam_member" "data_host_log_writer" {
@@ -70,12 +70,14 @@ resource "google_compute_instance" "data_host" {
   }
 
   metadata_startup_script = templatefile("${path.module}/user-data.sh.tftpl", {
-    clickhouse_password = random_password.clickhouse.result
-    clickhouse_db       = "observal"
-    data_retention_days = var.data_retention_days
-    backups_bucket      = google_storage_bucket.backups.name
-    grafana_admin_user  = "admin"
-    grafana_root_url    = local.enable_custom_domain ? "https://${var.domain_name}" : ""
+    clickhouse_password              = random_password.clickhouse.result
+    clickhouse_db                    = "observal"
+    data_retention_days              = var.data_retention_days
+    backups_bucket                   = google_storage_bucket.backups.name
+    grafana_admin_user               = "admin"
+    grafana_root_url                 = local.enable_custom_domain ? "https://${var.domain_name}" : ""
+    observability_prometheus_enabled = local.observability_prometheus_enabled
+    observability_grafana_enabled    = local.observability_grafana_enabled
   })
 
   allow_stopping_for_update = true

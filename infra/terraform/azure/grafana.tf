@@ -3,7 +3,7 @@
 
 # Azure Monitor Workspace (required for Managed Grafana integration)
 resource "azurerm_monitor_workspace" "main" {
-  count               = var.grafana_enabled ? 1 : 0
+  count               = local.observability_grafana_enabled ? 1 : 0
   name                = "${local.name}-monitor"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
@@ -13,7 +13,7 @@ resource "azurerm_monitor_workspace" "main" {
 
 # Azure Managed Grafana - enterprise-ready observability dashboard.
 resource "azurerm_dashboard_grafana" "main" {
-  count               = var.grafana_enabled ? 1 : 0
+  count               = local.observability_grafana_enabled ? 1 : 0
   name                = "${var.name_prefix}-${var.environment}-gf"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
@@ -34,7 +34,7 @@ resource "azurerm_dashboard_grafana" "main" {
 
 # Grant the current user Grafana Admin role
 resource "azurerm_role_assignment" "grafana_admin" {
-  count                = var.grafana_enabled ? 1 : 0
+  count                = local.observability_grafana_enabled ? 1 : 0
   scope                = azurerm_dashboard_grafana.main[0].id
   role_definition_name = "Grafana Admin"
   principal_id         = data.azurerm_client_config.current.object_id

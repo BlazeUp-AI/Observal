@@ -60,8 +60,9 @@ resource "azurerm_linux_virtual_machine" "clickhouse" {
   }
 
   custom_data = base64encode(templatefile("${path.module}/cloud-init.yaml.tftpl", {
-    clickhouse_password = random_password.clickhouse.result
-    clickhouse_db       = "observal"
+    clickhouse_password              = random_password.clickhouse.result
+    clickhouse_db                    = "observal"
+    observability_prometheus_enabled = local.observability_prometheus_enabled
   }))
 
   identity {

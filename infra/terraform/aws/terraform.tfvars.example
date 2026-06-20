@@ -24,10 +24,11 @@ image_tag = "latest"
 # web_desired_count    = 2
 # worker_desired_count = 1
 
-# ── Data tier (ClickHouse + Grafana + Prometheus on one EC2) ──────────
-# clickhouse_mode      = "self_hosted"     # or "cloud" — see below
+# ── Data tier (ClickHouse on one EC2) ────────────────────────────────
+# clickhouse_mode      = "self_hosted"     # or "cloud", see below
 # data_instance_type   = "t3.large"
 # data_volume_size_gb  = 100
+# observability_stack  = "none"            # one of: none, prometheus, grafana
 
 # ── ClickHouse Cloud (uncomment if clickhouse_mode = "cloud") ─────────
 # clickhouse_mode           = "cloud"

@@ -33,7 +33,7 @@ Everything the parent module provisions. See [`../../README.md`](../../README.md
 - ECS Fargate: 2× api, 2× web, 1× worker
 - RDS Postgres 16 (Multi-AZ on `prod`)
 - ElastiCache Redis 7 (2-node failover on `prod`)
-- One EC2 (t3.large) hosting ClickHouse + Grafana + Prometheus, 100 GB EBS
+- One EC2 (t3.large) hosting ClickHouse, 100 GB EBS. Set `observability_stack = "grafana"` for bundled dashboards.
 - S3 backups bucket with lifecycle to Glacier
 - CloudWatch log groups per service
 

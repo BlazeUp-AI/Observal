@@ -13,7 +13,13 @@ mkdir -p "$${DATA_DIR}"
 mount -o discard,defaults "$${DATA_DEVICE}" "$${DATA_DIR}"
 echo "UUID=$(blkid -s UUID -o value $${DATA_DEVICE}) $${DATA_DIR} ext4 discard,defaults,nofail 0 2" >> /etc/fstab
 
-mkdir -p "$${DATA_DIR}/clickhouse" "$${DATA_DIR}/grafana" "$${DATA_DIR}/prometheus"
+mkdir -p "$${DATA_DIR}/clickhouse"
+%{ if observability_grafana_enabled }
+mkdir -p "$${DATA_DIR}/grafana"
+%{ endif }
+%{ if observability_prometheus_enabled }
+mkdir -p "$${DATA_DIR}/prometheus"
+%{ endif }
 
 # Install Docker (COS has Docker pre-installed, but ensure compose plugin)
 DOCKER_COMPOSE_VERSION="v2.36.0"
@@ -43,6 +49,7 @@ services:
       timeout: 5s
       retries: 5
 
+%{ if observability_grafana_enabled }
   grafana:
     image: grafana/grafana-oss:11.6.5
     restart: unless-stopped
@@ -59,7 +66,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-
+%{ endif }
+%{ if observability_prometheus_enabled }
   prometheus:
     image: prom/prometheus:v3.11.3
     restart: unless-stopped
@@ -68,8 +76,10 @@ services:
     volumes:
       - /data/prometheus:/prometheus
       - /data/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+%{ endif }
 COMPOSE
 
+%{ if observability_prometheus_enabled }
 # Write prometheus config
 cat > "$${DATA_DIR}/prometheus.yml" <<'PROM'
 global:
@@ -82,6 +92,7 @@ scrape_configs:
       - targets: ["clickhouse:8123"]
 PROM
 
+%{ endif }
 # Start the data stack
 cd "$${DATA_DIR}"
 docker compose up -d

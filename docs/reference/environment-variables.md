@@ -92,7 +92,7 @@ These environment variables are **not required** if you use Bedrock API keys (re
 
 ### Docker host ports
 
-Used only by `docker/docker-compose.yml`. Remap if a default is already in use.
+Used only by Docker Compose. Prometheus and Grafana ports apply only when `docker-compose.observability.yml` is included. Remap if a default is already in use.
 
 | Variable               | Default | Service                |
 | ---------------------- | ------- | ---------------------- |
@@ -101,9 +101,12 @@ Used only by `docker/docker-compose.yml`. Remap if a default is already in use.
 | `POSTGRES_HOST_PORT`   | `5432`  | Postgres               |
 | `CLICKHOUSE_HOST_PORT` | `8123`  | ClickHouse             |
 | `REDIS_HOST_PORT`      | `6379`  | Redis                  |
-| `GRAFANA_HOST_PORT`    | `3001`  | Grafana                |
+| `PROMETHEUS_HOST_PORT` | `9090`  | Prometheus, optional   |
+| `GRAFANA_HOST_PORT`    | `3001`  | Grafana, optional      |
 
 ### Grafana
+
+Only used when the optional Grafana overlay or Terraform `observability_stack = "grafana"` is enabled.
 
 | Variable                 | Default | Description            |
 | ------------------------ | ------- | ---------------------- |

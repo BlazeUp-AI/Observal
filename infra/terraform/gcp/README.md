@@ -15,7 +15,7 @@ Deploy a production-ready Observal instance on Google Cloud Platform.
 | Web frontend | Cloud Run (v2) |
 | PostgreSQL | Cloud SQL |
 | Redis | Memorystore |
-| ClickHouse + Grafana + Prometheus | GCE instance (Docker Compose) |
+| ClickHouse, optional Prometheus and Grafana | GCE instance (Docker Compose) |
 | Load balancer / TLS | Global HTTPS LB + Managed SSL Certificate |
 | DNS | Cloud DNS |
 | Secrets | Secret Manager |

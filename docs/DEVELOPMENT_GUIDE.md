@@ -210,8 +210,8 @@ docker compose -f docker/docker-compose.yml ps
 | --------------- | ----------------------- |
 | LB (all traffic)| `http://localhost`      |
 | Web UI (direct) | `http://localhost:3000` |
-| Grafana         | `http://localhost:3001` |
-| Prometheus      | `http://localhost:9090` |
+| Prometheus, optional | `http://localhost:9090` |
+| Grafana, optional | `http://localhost:3001` |
 | ClickHouse HTTP | `http://localhost:8123` |
 
 ### Install the CLI
@@ -281,7 +281,7 @@ scripts/            Dev tooling scripts
 
 They are not interchangeable. Never write telemetry to Postgres or relational data to ClickHouse.
 
-**Supporting services:** Redis (pub/sub + arq job queue), arq worker, nginx reverse proxy, Prometheus, Grafana.
+**Supporting services:** Redis (pub/sub + arq job queue), arq worker, nginx reverse proxy. Prometheus and Grafana are optional.
 
 See [AGENTS.md](../../AGENTS.md) for a complete map of every important file and service.
 

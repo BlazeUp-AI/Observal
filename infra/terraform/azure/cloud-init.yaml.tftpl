@@ -42,6 +42,7 @@ write_files:
             resources:
               limits:
                 memory: 768M
+%{ if observability_prometheus_enabled }
 
         prometheus:
           image: prom/prometheus:v3.12.0
@@ -55,7 +56,9 @@ write_files:
             resources:
               limits:
                 memory: 512M
+%{ endif }
 
+%{ if observability_prometheus_enabled }
   - path: /opt/observal/prometheus.yml
     content: |
       global:
@@ -65,6 +68,7 @@ write_files:
           metrics_path: /metrics
           static_configs:
             - targets: []
+%{ endif }
 
 runcmd:
   # Format and mount data disk
@@ -75,7 +79,11 @@ runcmd:
     mkdir -p /data
     mount /dev/sdc /data
     echo '/dev/sdc /data ext4 defaults,nofail 0 2' >> /etc/fstab
+%{ if observability_prometheus_enabled }
   - mkdir -p /data/clickhouse /data/prometheus /data/redis
+%{ else }
+  - mkdir -p /data/clickhouse /data/redis
+%{ endif }
   - systemctl enable docker
   - systemctl start docker
   - cd /opt/observal && docker compose up -d

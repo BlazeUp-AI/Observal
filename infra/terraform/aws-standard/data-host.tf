@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 BlazeUp AI
 # SPDX-License-Identifier: AGPL-3.0-only
 
-# Data tier: a single EC2 host running Postgres + Redis + ClickHouse + Grafana + Prometheus.
+# Data tier: a single EC2 host running Postgres, Redis, ClickHouse, and optional observability.
 # All services run via Docker Compose, bootstrapped from user-data.
 
 data "aws_ami" "al2023" {
@@ -37,13 +37,15 @@ resource "aws_ebs_volume" "data" {
 
 locals {
   data_host_user_data = templatefile("${path.module}/data-user-data.sh.tftpl", {
-    region              = var.region
-    ssm_prefix          = local.ssm_prefix
-    db_password         = random_password.db.result
-    clickhouse_password = random_password.clickhouse.result
-    data_volume_size_gb = local.effective_data_volume_size_gb
-    log_group           = aws_cloudwatch_log_group.data_host.name
-    grafana_root_url    = local.app_url
+    region                           = var.region
+    ssm_prefix                       = local.ssm_prefix
+    db_password                      = random_password.db.result
+    clickhouse_password              = random_password.clickhouse.result
+    data_volume_size_gb              = local.effective_data_volume_size_gb
+    log_group                        = aws_cloudwatch_log_group.data_host.name
+    grafana_root_url                 = local.app_url
+    observability_prometheus_enabled = local.observability_prometheus_enabled
+    observability_grafana_enabled    = local.observability_grafana_enabled
   })
 }
 
@@ -113,6 +115,7 @@ resource "aws_route53_record" "clickhouse_internal" {
 }
 
 resource "aws_route53_record" "grafana_internal" {
+  count   = local.observability_grafana_enabled ? 1 : 0
   zone_id = aws_route53_zone.internal.zone_id
   name    = "grafana.${var.internal_dns_zone}"
   type    = "A"

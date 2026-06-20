@@ -10,10 +10,10 @@ Production-shaped self-hosted Observal in your own AWS account. One `terraform a
 - **ECS Fargate cluster** - `api`, `web`, `worker` as separate services with target-tracking CPU autoscaling. `init` runs as a one-shot `RunTask` on every image bump
 - **RDS Postgres 16** - Multi-AZ on `prod`, encrypted, automated backups, Performance Insights, Enhanced Monitoring, log exports
 - **ElastiCache Redis 7** - 2-node replication group with automatic failover on `prod`, slow-log to CloudWatch
-- **Data tier EC2**: single host running ClickHouse + Grafana + Prometheus on EBS gp3, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
+- **Data tier EC2**: single host running ClickHouse on EBS gp3, optional Prometheus and Grafana, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
 - **S3 backups bucket**: versioned, AES256, lifecycle to STANDARD_IA → GLACIER_IR → expire, TLS-only access
 - **CloudWatch log groups**: per-service for ECS tasks, data host, RDS, Redis, VPC flow logs
-- **SSM Parameter Store**: generated DB / ClickHouse / SECRET_KEY / Grafana passwords, plus pre-built connection URLs injected into ECS tasks
+- **SSM Parameter Store**: generated DB / ClickHouse / SECRET_KEY / optional Grafana passwords, plus pre-built connection URLs injected into ECS tasks
 - **SSM Session Manager**: shell access to the data host, no SSH
 
 ## Architecture
@@ -22,14 +22,14 @@ Production-shaped self-hosted Observal in your own AWS account. One `terraform a
                       ┌──────────────────────────┐
                 Internet → │   ALB (443)   │
                       └──┬─────┬─────┬──────────┘
-              path /api/*│     │/grafana/*
+              path /api/*│     │/grafana/* optional
                          ▼     ▼     ▼ default
               ┌──────────────┐  ┌────────────────┐  ┌──────────┐
               │ ECS Fargate  │  │  EC2 data host │  │   ECS    │
               │ api service  │  │  (single AZ)   │  │   web    │
               │  2..10×      │  │  ClickHouse    │  │ 2..6×    │
-              └─────┬────────┘  │  Grafana 3001  │  └──────────┘
-                    │           │  Prometheus    │
+              └─────┬────────┘  │  optional      │  └──────────┘
+                    │           │  observability │
               ┌─────┴────────┐  └────────┬───────┘
               │ ECS Fargate  │           │
               │   worker     │           │
@@ -43,7 +43,7 @@ Production-shaped self-hosted Observal in your own AWS account. One `terraform a
          └──────────────────────────────┘
 ```
 
-The stateless app tier (api/web/worker) lives on Fargate across both AZs with autoscaling and rolling deploys. The stateful data tier (ClickHouse + Grafana + Prometheus) lives on a single EC2 with EBS so ClickHouse keeps its disk across instance replacements. Real ClickHouse HA is out of scope; set `clickhouse_mode = "cloud"` and point at ClickHouse Cloud when you need it.
+The stateless app tier (api/web/worker) lives on Fargate across both AZs with autoscaling and rolling deploys. The stateful data tier lives on a single EC2 with EBS so ClickHouse keeps its disk across instance replacements. Prometheus and Grafana are enabled with `observability_stack`. Real ClickHouse HA is out of scope; set `clickhouse_mode = "cloud"` and point at ClickHouse Cloud when you need it.
 
 ## Prerequisites
 
@@ -304,14 +304,14 @@ iam.tf                     # ECS execution + task roles, EC2 data-host role
 secrets.tf                 # random_password + SSM Parameter Store (raw + URLs)
 postgresql.tf              # RDS Postgres + Enhanced Monitoring role
 redis.tf                   # ElastiCache replication group
-clickhouse.tf              # data-tier EC2 (CH + Grafana + Prometheus), private DNS
+clickhouse.tf              # data-tier EC2 (CH plus optional observability), private DNS
 ecs.tf                     # Fargate cluster, task defs, services, autoscaling, init
 alb.tf                     # ALB, target groups, listeners, listener rules, ACM
 s3.tf                      # backups bucket with lifecycle and TLS-only policy
 logs.tf                    # CloudWatch log groups
 dns.tf                     # public Route 53 record (alias to ALB)
 outputs.tf                 # app_url, ecs cluster/services, log groups, ...
-user-data.sh.tftpl         # cloud-init for the data host (CH + Grafana + Prometheus)
+user-data.sh.tftpl         # cloud-init for the data host
 terraform.tfvars.example
 examples/minimal/          # ready-to-apply module-call example
 ```

@@ -43,7 +43,7 @@ output "redis_endpoint" {
 }
 
 output "data_host_instance_id" {
-  description = "EC2 instance id for the ClickHouse + Grafana + Prometheus host. Empty when clickhouse_mode = 'cloud'."
+  description = "EC2 instance id for the ClickHouse data host. Empty when clickhouse_mode = 'cloud'."
   value       = local.clickhouse_self_hosted ? aws_instance.data_host[0].id : ""
 }
 

@@ -5,7 +5,7 @@
 
 # Docker Compose setup
 
-Step-by-step bring-up of the Observal stack. End state: ten healthy services, API responding at `http://localhost/health`, web UI at `http://localhost`.
+Step-by-step bring-up of the Observal stack. End state: the core services are healthy, API responding at `http://localhost/health`, web UI at `http://localhost`. Prometheus and Grafana are optional.
 
 ## 1. Clone and configure
 
@@ -22,8 +22,22 @@ The `.env.example` ships with working defaults for every setting, including demo
 
 ## 2. Start the stack
 
+Core stack only:
+
 ```bash
 docker compose -f docker/docker-compose.yml up --build -d
+```
+
+With Prometheus only:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up --build -d
+```
+
+With Prometheus and Grafana:
+
+```bash
+COMPOSE_PROFILES=grafana docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up --build -d
 ```
 
 First build takes a few minutes (pulls images, builds `observal-api` and `observal-web`). Subsequent starts are fast.
@@ -96,11 +110,11 @@ observal registry mcp list         # empty list - you haven't added anything yet
 ## 7. Stop, restart, rebuild
 
 ```bash
-# Stop
-docker compose -f docker/docker-compose.yml down
+# Stop core and any optional monitoring containers
+make down
 
-# Stop + DELETE all data (wipes volumes - be careful)
-docker compose -f docker/docker-compose.yml down -v
+# Stop and delete all data, including optional monitoring volumes
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml --profile grafana down -v
 
 # Restart one service
 docker compose -f docker/docker-compose.yml restart observal-api
@@ -112,8 +126,12 @@ docker compose -f docker/docker-compose.yml up --build -d observal-api
 Makefile shortcuts from the repo root:
 
 ```bash
-make logs       # tail all service logs
-make rebuild    # rebuild and restart everything
+make logs                  # tail core service logs
+make rebuild               # rebuild and restart core services
+make up-prometheus         # start core services with Prometheus
+make up-observability      # start core services with Prometheus and Grafana
+make rebuild-prometheus    # rebuild core services with Prometheus
+make rebuild-observability # rebuild core services with Prometheus and Grafana
 ```
 
 ## 8. Logs

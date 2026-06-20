@@ -48,6 +48,17 @@ variable "env_overrides" {
   default     = {}
 }
 
+variable "observability_stack" {
+  description = "Bundled observability stack to deploy: none, prometheus, or grafana. grafana includes prometheus."
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["none", "prometheus", "grafana"], var.observability_stack)
+    error_message = "observability_stack must be one of: none, prometheus, grafana."
+  }
+}
+
 variable "image_tag" {
   description = "Observal image tag to deploy from GHCR (e.g. 'latest', 'v1.5.0')"
   type        = string

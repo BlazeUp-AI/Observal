@@ -217,7 +217,7 @@ variable "run_init_on_apply" {
   default     = true
 }
 
-# ── Data tier (ClickHouse + Grafana + Prometheus on EC2) ───────────────────
+# ── Data tier (ClickHouse plus optional observability on EC2) ───────────────
 
 variable "clickhouse_mode" {
   description = "Where ClickHouse lives. 'self_hosted' = EC2 + EBS managed by this module. 'cloud' = ClickHouse Cloud, supply clickhouse_cloud_url + clickhouse_cloud_password."
@@ -244,7 +244,7 @@ variable "clickhouse_cloud_password" {
 }
 
 variable "data_instance_type" {
-  description = "EC2 instance type for the ClickHouse + Grafana + Prometheus host. 8 GB RAM is the floor for light use."
+  description = "EC2 instance type for the ClickHouse data host. 8 GB RAM is the floor for light use."
   type        = string
   default     = "t3.large"
 }
@@ -290,6 +290,17 @@ variable "alb_ingress_cidrs" {
 }
 
 # ── Application config ─────────────────────────────────────────────────────
+
+variable "observability_stack" {
+  description = "Bundled observability stack to deploy: none, prometheus, or grafana. grafana includes prometheus."
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["none", "prometheus", "grafana"], var.observability_stack)
+    error_message = "observability_stack must be one of: none, prometheus, grafana."
+  }
+}
 
 variable "log_retention_days" {
   description = "CloudWatch log retention for application + infrastructure log groups."

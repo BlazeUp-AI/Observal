@@ -42,6 +42,11 @@ output "env_overrides" {
   sensitive   = true
 }
 
+output "observability_stack" {
+  description = "Bundled observability stack"
+  value       = var.observability_stack
+}
+
 output "observal_repo" {
   description = "Git repository URL"
   value       = var.observal_repo

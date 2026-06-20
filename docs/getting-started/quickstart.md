@@ -38,7 +38,7 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-That's it. The `.env.example` ships with working defaults. Ten services come up:
+That's it. The `.env.example` ships with working defaults. The core services come up:
 
 | Service               | URL                     | Purpose                        |
 | --------------------- | ----------------------- | ------------------------------ |
@@ -50,8 +50,8 @@ That's it. The `.env.example` ships with working defaults. Ten services come up:
 | `observal-db`         | `localhost:5432`        | PostgreSQL 16                  |
 | `observal-clickhouse` | `localhost:8123`        | ClickHouse                     |
 | `observal-redis`      | `localhost:6379`        | Redis                          |
-| `observal-prometheus` | `http://localhost:9090` | Prometheus                     |
-| `observal-grafana`    | `http://localhost:3001` | Grafana                        |
+
+Optional monitoring can be enabled with `make up-prometheus` or `make up-observability`. Prometheus listens on `http://localhost:9090`; Grafana listens on `http://localhost:3001` when the Grafana profile is enabled.
 
 The API waits for Postgres, ClickHouse, and Redis to pass health checks before starting. Expect 15–30 seconds. Confirm it is up:
 

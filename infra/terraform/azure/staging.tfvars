@@ -27,8 +27,8 @@ worker_max_replicas = 2
 clickhouse_vm_size      = "Standard_D2ads_v7"
 clickhouse_disk_size_gb = 50
 
-# Managed Grafana
-grafana_enabled = true
+# Bundled observability
+observability_stack = "grafana"
 
 # Minimum allowed by Azure is 30
 log_retention_days = 30

@@ -15,7 +15,8 @@ Every exposed port and persistent volume, at a glance.
 | Postgres | 5432 | `POSTGRES_HOST_PORT` | TCP |
 | ClickHouse | 8123 | `CLICKHOUSE_HOST_PORT` | HTTP |
 | Redis | 6379 | `REDIS_HOST_PORT` | TCP |
-| Grafana | 3001 | `GRAFANA_HOST_PORT` | HTTP |
+| Prometheus, optional | 9090 | `PROMETHEUS_HOST_PORT` | HTTP |
+| Grafana, optional | 3001 | `GRAFANA_HOST_PORT` | HTTP |
 
 The worker has no exposed port; it talks to Redis and ClickHouse internally only.
 
@@ -46,7 +47,7 @@ All volumes are named and managed by Docker. They survive `docker compose down` 
 | `pgdata` | `/var/lib/postgresql/data` | Postgres data (users, registry, RBAC) | Catastrophic - all accounts, agents, MCPs lost |
 | `chdata` | `/var/lib/clickhouse` | ClickHouse data (traces, spans, scores) | High - all telemetry lost; accounts and registry survive |
 | `redisdata` | `/data` | Redis persistence | Low - job queue lost; pending jobs need to be re-kicked |
-| `grafanadata` | `/var/lib/grafana` | Grafana dashboards and config | Medium - custom dashboards lost; defaults are re-provisioned |
+| `grafanadata`, optional | `/var/lib/grafana` | Grafana dashboards and config | Medium - custom dashboards lost; defaults are re-provisioned |
 | `apidata` | `/data` (API container) | **JWT signing keys** | Catastrophic - every session invalidated, users must re-login; backup/restore required |
 
 **Back up `apidata` and `pgdata` before any upgrade.** See [Backup and restore](backup-and-restore.md).

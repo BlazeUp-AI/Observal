@@ -5,7 +5,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-enterprise rebuild-local release-major release-feature release-patch sync-skill
+.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-prometheus rebuild-observability rebuild-enterprise rebuild-local reset-prometheus reset-observability up-prometheus up-observability down-prometheus down-observability logs-prometheus logs-observability release-major release-feature release-patch sync-skill
 
 # ── Linting ──────────────────────────────────────────────
 
@@ -55,12 +55,25 @@ ifneq (,$(wildcard ee/observal_insights/__init__.py))
   COMPOSE_FILES += -f docker-compose.enterprise.yml
   $(info [enterprise mode] ee/observal_insights/ detected)
 endif
+OBSERVABILITY_COMPOSE_FILES := $(COMPOSE_FILES) -f docker-compose.observability.yml
 
 up:  ## Start Docker stack
 	cd docker && docker compose $(COMPOSE_FILES) up -d
 
-down:  ## Stop Docker stack
-	cd docker && docker compose $(COMPOSE_FILES) down
+up-prometheus:  ## Start Docker stack with Prometheus
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) up -d
+
+up-observability:  ## Start Docker stack with Prometheus and Grafana
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) up -d
+
+down:  ## Stop Docker stack, including optional Prometheus and Grafana
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down
+
+down-prometheus:  ## Stop Docker stack with Prometheus
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down
+
+down-observability:  ## Stop Docker stack with Prometheus and Grafana
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down
 
 migrate:  ## Run database migrations
 	cd docker && docker compose $(COMPOSE_FILES) exec observal-api /app/.venv/bin/python -m alembic upgrade head
@@ -79,6 +92,20 @@ rebuild:  ## Rebuild and restart Docker stack (runs migrations automatically)
 	cd docker && docker compose $(COMPOSE_FILES) restart observal-lb
 	@echo "API is healthy."
 
+rebuild-prometheus:  ## Rebuild and restart Docker stack with Prometheus
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) up --build -d
+	@echo "Waiting for API to be healthy..."
+	@cd docker && until docker compose $(OBSERVABILITY_COMPOSE_FILES) exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) restart observal-lb
+	@echo "API is healthy."
+
+rebuild-observability:  ## Rebuild and restart Docker stack with Prometheus and Grafana
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) up --build -d
+	@echo "Waiting for API to be healthy..."
+	@cd docker && until COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) restart observal-lb
+	@echo "API is healthy."
+
 rebuild-enterprise:  ## Rebuild in enterprise mode (insights enabled)
 	cd docker && docker compose -f docker-compose.yml -f docker-compose.enterprise.yml up --build -d
 	@echo "Waiting for API to be healthy..."
@@ -93,16 +120,32 @@ rebuild-local:  ## Rebuild in local mode (no enterprise features)
 	cd docker && docker compose -f docker-compose.yml restart observal-lb
 	@echo "✓ Running in local mode (DEPLOYMENT_MODE=local)"
 
-reset:  ## Nuke all Docker volumes and rebuild from scratch (fresh app, no file changes)
-	cd docker && docker compose $(COMPOSE_FILES) down -v
+reset:  ## Nuke all Docker volumes, including optional observability, and rebuild core
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down -v
 	cd docker && docker compose $(COMPOSE_FILES) up --build -d
 	@echo "Waiting for API to be healthy..."
 	@cd docker && until docker compose $(COMPOSE_FILES) exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
 	cd docker && docker compose $(COMPOSE_FILES) restart observal-lb
 	@echo "API is healthy — all data has been reset."
 
+reset-prometheus:  ## Nuke all Docker volumes and rebuild with Prometheus
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) down -v
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) up --build -d
+	@echo "Waiting for API to be healthy..."
+	@cd docker && until docker compose $(OBSERVABILITY_COMPOSE_FILES) exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) restart observal-lb
+	@echo "API is healthy: all data has been reset."
+
+reset-observability:  ## Nuke all Docker volumes and rebuild with Prometheus and Grafana
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down -v
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) up --build -d
+	@echo "Waiting for API to be healthy..."
+	@cd docker && until COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) restart observal-lb
+	@echo "API is healthy: all data has been reset."
+
 rebuild-clean:  ## Rebuild from scratch (no Docker cache), remove volumes, and restart
-	cd docker && docker compose $(COMPOSE_FILES) down -v && docker compose $(COMPOSE_FILES) build --no-cache && docker compose $(COMPOSE_FILES) up -d
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down -v && docker compose $(COMPOSE_FILES) build --no-cache && docker compose $(COMPOSE_FILES) up -d
 	@echo "Waiting for API to be healthy..."
 	@cd docker && until docker compose $(COMPOSE_FILES) exec observal-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" >/dev/null 2>&1; do sleep 1; done
 	cd docker && docker compose $(COMPOSE_FILES) restart observal-lb
@@ -110,6 +153,12 @@ rebuild-clean:  ## Rebuild from scratch (no Docker cache), remove volumes, and r
 
 logs:  ## Tail Docker logs
 	cd docker && docker compose logs -f --tail=50
+
+logs-prometheus:  ## Tail Docker logs with Prometheus
+	cd docker && docker compose $(OBSERVABILITY_COMPOSE_FILES) logs -f --tail=50
+
+logs-observability:  ## Tail Docker logs with Prometheus and Grafana
+	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) logs -f --tail=50
 
 # ── Cleanup ──────────────────────────────────────────────
 

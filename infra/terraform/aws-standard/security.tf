@@ -67,7 +67,7 @@ resource "aws_security_group" "ecs_instances" {
   tags = { Name = "${local.name}-ecs-instances-sg" }
 }
 
-# ── Data host (Postgres + Redis + ClickHouse + Grafana + Prometheus) ──────
+# ── Data host (Postgres, Redis, ClickHouse, optional observability) ───────
 resource "aws_security_group" "data_host" {
   name        = "${local.name}-data-host"
   description = "Data tier EC2: Postgres, Redis, ClickHouse, Grafana, Prometheus."
@@ -105,12 +105,15 @@ resource "aws_security_group" "data_host" {
     security_groups = [aws_security_group.ecs_instances.id]
   }
 
-  ingress {
-    description     = "Grafana UI from ALB"
-    from_port       = 3001
-    to_port         = 3001
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+  dynamic "ingress" {
+    for_each = local.observability_grafana_enabled ? [1] : []
+    content {
+      description     = "Grafana UI from ALB"
+      from_port       = 3001
+      to_port         = 3001
+      protocol        = "tcp"
+      security_groups = [aws_security_group.alb.id]
+    }
   }
 
   egress {

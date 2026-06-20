@@ -80,28 +80,34 @@ resource "azurerm_network_security_group" "vm" {
     destination_address_prefix = "*"
   }
 
-  security_rule {
-    name                       = "AllowGrafanaFromVNet"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "3001"
-    source_address_prefix      = var.vnet_cidr
-    destination_address_prefix = "*"
+  dynamic "security_rule" {
+    for_each = local.observability_grafana_enabled ? [1] : []
+    content {
+      name                       = "AllowGrafanaFromVNet"
+      priority                   = 110
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "3001"
+      source_address_prefix      = var.vnet_cidr
+      destination_address_prefix = "*"
+    }
   }
 
-  security_rule {
-    name                       = "AllowPrometheusFromVNet"
-    priority                   = 120
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "9090"
-    source_address_prefix      = var.vnet_cidr
-    destination_address_prefix = "*"
+  dynamic "security_rule" {
+    for_each = local.observability_prometheus_enabled ? [1] : []
+    content {
+      name                       = "AllowPrometheusFromVNet"
+      priority                   = 120
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "9090"
+      source_address_prefix      = var.vnet_cidr
+      destination_address_prefix = "*"
+    }
   }
 
   security_rule {

@@ -28,8 +28,8 @@ worker_max_replicas = 5
 clickhouse_vm_size      = "Standard_D4ads_v7"
 clickhouse_disk_size_gb = 200
 
-# Managed Grafana
-grafana_enabled = true
+# Bundled observability
+observability_stack = "grafana"
 
 # 30-day log retention
 log_retention_days = 30

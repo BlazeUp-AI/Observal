@@ -13,7 +13,7 @@ output "web_url" {
 
 output "grafana_url" {
   description = "URL of the Azure Managed Grafana instance."
-  value       = var.grafana_enabled ? azurerm_dashboard_grafana.main[0].endpoint : "disabled"
+  value       = local.observability_grafana_enabled ? azurerm_dashboard_grafana.main[0].endpoint : "disabled"
 }
 
 output "postgresql_fqdn" {

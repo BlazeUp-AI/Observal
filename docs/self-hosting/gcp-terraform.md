@@ -16,7 +16,7 @@ A single `terraform apply` creates:
 - **Cloud Run v2 job**: `init` (one-shot migrations + seeds)
 - **Cloud SQL Postgres** (Enterprise edition): optional HA, encrypted, automated backups
 - **Memorystore Redis**: BASIC or STANDARD_HA tier
-- **GCE instance** (data host): ClickHouse + Grafana + Prometheus on a persistent disk, accessible via IAP SSH tunnel
+- **GCE instance** (data host): ClickHouse on a persistent disk, with optional Prometheus and Grafana, accessible via IAP SSH tunnel
 - **Global HTTPS Load Balancer** with managed SSL certificate (when domain is supplied)
 - **Cloud DNS** A record pointing to the load balancer
 - **Secret Manager**: generated DB / ClickHouse / SECRET_KEY passwords, plus connection URLs injected into Cloud Run services

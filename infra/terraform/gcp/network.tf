@@ -81,7 +81,11 @@ resource "google_compute_firewall" "allow_health_check" {
 
   allow {
     protocol = "tcp"
-    ports    = ["8123", "3000", "9090"]
+    ports = compact(concat(
+      ["8123"],
+      local.observability_grafana_enabled ? ["3000"] : [],
+      local.observability_prometheus_enabled ? ["9090"] : []
+    ))
   }
 
   source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]

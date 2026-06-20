@@ -4,7 +4,7 @@
 
 set -eo pipefail
 
-# Bootstrap the data tier host: ClickHouse + Grafana + Prometheus via docker compose.
+# Bootstrap the data tier host: ClickHouse plus optional observability via docker compose.
 # api/web/worker run on ECS Fargate — they are NOT started here.
 
 exec > >(tee /var/log/observal-bootstrap.log | logger -t observal-bootstrap -s 2>/dev/console) 2>&1
@@ -37,10 +37,20 @@ mkdir -p /data
 UUID=$(blkid -s UUID -o value "$DEVICE")
 grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /data ext4 defaults,nofail 0 2" >> /etc/fstab
 mount -a
-mkdir -p /data/clickhouse /data/grafana /data/prometheus
+mkdir -p /data/clickhouse
+%{ if observability_grafana_enabled }
+mkdir -p /data/grafana
+%{ endif }
+%{ if observability_prometheus_enabled }
+mkdir -p /data/prometheus
+%{ endif }
 chown -R 101:101 /data/clickhouse  || true   # clickhouse user inside the official image
+%{ if observability_grafana_enabled }
 chown -R 472:472 /data/grafana     || true   # grafana user
+%{ endif }
+%{ if observability_prometheus_enabled }
 chown -R 65534:65534 /data/prometheus || true # nobody
+%{ endif }
 
 # ── Pull secrets from SSM ────────────────────────────────────────
 # Disable xtrace here so secrets are not echoed to CloudWatch logs (SEC-020).
@@ -48,7 +58,9 @@ set +x
 fetch() { aws ssm get-parameter --with-decryption --name "$1" --region "${region}" --query Parameter.Value --output text; }
 
 CLICKHOUSE_PASSWORD=$(fetch "${ssm_prefix}/CLICKHOUSE_PASSWORD")
+%{ if observability_grafana_enabled }
 GRAFANA_ADMIN_PASSWORD=$(fetch "${ssm_prefix}/GRAFANA_ADMIN_PASSWORD")
+%{ endif }
 set -x  # re-enable tracing for non-sensitive operations
 
 # ── CloudWatch agent (ship docker logs + system logs) ────────────
@@ -186,7 +198,7 @@ cat > "$INSTALL_DIR/docker/clickhouse/users.d/memory.xml" <<'CHPROF'
 </clickhouse>
 CHPROF
 
-# ── Render the data-tier compose file (CH + Grafana + Prometheus only) ──
+# ── Render the data-tier compose file ──
 cat > "$INSTALL_DIR/docker-compose.data.yml" <<'COMPOSE'
 services:
   clickhouse:
@@ -211,6 +223,7 @@ services:
       timeout: 5s
       retries: 5
 
+%{ if observability_grafana_enabled }
   grafana:
     image: grafana/grafana-oss:11.6.5
     container_name: observal-grafana
@@ -231,7 +244,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-
+%{ endif }
+%{ if observability_prometheus_enabled }
   prometheus:
     image: prom/prometheus:v3.11.3
     container_name: observal-prometheus
@@ -245,16 +259,19 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
+%{ endif }
 COMPOSE
 
 # Render the .env consumed by docker-compose
 cat > "$INSTALL_DIR/.env" <<EOF
 CLICKHOUSE_DB=${clickhouse_db}
 CLICKHOUSE_PASSWORD=$${CLICKHOUSE_PASSWORD}
+%{ if observability_grafana_enabled }
 GRAFANA_ADMIN_USER=${grafana_admin_user}
 GRAFANA_ADMIN_PASSWORD=$${GRAFANA_ADMIN_PASSWORD}
 GRAFANA_ROOT_URL=${grafana_root_url}
 GRAFANA_SUBPATH_PREFIX=${grafana_subpath_prefix}
+%{ endif }
 EOF
 chmod 600 "$INSTALL_DIR/.env"
 
@@ -264,7 +281,8 @@ cd "$INSTALL_DIR"
 # Clear stale preprocessed configs from previous ClickHouse versions
 rm -rf /data/clickhouse/preprocessed_configs
 
-# Create prometheus.yml (compose bind-mounts it; without it Docker creates a directory)
+%{ if observability_prometheus_enabled }
+# Create prometheus.yml because compose bind-mounts it.
 cat > "$INSTALL_DIR/prometheus.yml" <<'PROM'
 global:
   scrape_interval: 30s
@@ -274,6 +292,7 @@ scrape_configs:
       - targets: ['localhost:9363']
 PROM
 
+%{ endif }
 docker compose --env-file "$INSTALL_DIR/.env" -f docker-compose.data.yml pull
 docker compose --env-file "$INSTALL_DIR/.env" -f docker-compose.data.yml up -d
 

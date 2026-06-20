@@ -58,7 +58,7 @@ resource "aws_lb_target_group" "api" {
 }
 
 resource "aws_lb_target_group" "grafana" {
-  count       = local.clickhouse_self_hosted ? 1 : 0
+  count       = local.bundled_grafana_available ? 1 : 0
   name        = "${local.name}-grafana-tg"
   port        = 3001
   protocol    = "HTTP"
@@ -80,7 +80,7 @@ resource "aws_lb_target_group" "grafana" {
 }
 
 resource "aws_lb_target_group_attachment" "grafana" {
-  count            = local.clickhouse_self_hosted ? 1 : 0
+  count            = local.bundled_grafana_available ? 1 : 0
   target_group_arn = aws_lb_target_group.grafana[0].arn
   target_id        = aws_network_interface.data_host[0].private_ip
   port             = 3001
@@ -171,7 +171,7 @@ resource "aws_lb_listener_rule" "http_api_docs" {
 }
 
 resource "aws_lb_listener_rule" "http_grafana" {
-  count        = (local.enable_tls ? 0 : 1) * (local.clickhouse_self_hosted ? 1 : 0)
+  count        = (local.enable_tls ? 0 : 1) * (local.bundled_grafana_available ? 1 : 0)
   listener_arn = aws_lb_listener.http.arn
   priority     = 200
 
@@ -294,7 +294,7 @@ resource "aws_lb_listener_rule" "https_api_docs" {
 }
 
 resource "aws_lb_listener_rule" "https_grafana" {
-  count        = (local.enable_tls ? 1 : 0) * (local.clickhouse_self_hosted ? 1 : 0)
+  count        = (local.enable_tls ? 1 : 0) * (local.bundled_grafana_available ? 1 : 0)
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 200
 

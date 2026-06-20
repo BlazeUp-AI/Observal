@@ -34,9 +34,10 @@ image_tag = "latest"
 # worker_memory        = 1024
 # worker_desired_count = 1
 
-# ── Data tier EC2 (Postgres + Redis + ClickHouse + Grafana + Prometheus) ──
+# ── Data tier EC2 (Postgres, Redis, ClickHouse) ───────────────────────
 # data_instance_type   = "t3.medium"
 # data_volume_size_gb  = 100
+# observability_stack  = "none"            # one of: none, prometheus, grafana
 
 # ── Access ────────────────────────────────────────────────────────────
 # Restrict ALB ingress for private installs (e.g. office VPN, corporate egress).

@@ -57,6 +57,7 @@ resource "aws_lb_target_group" "web" {
 }
 
 resource "aws_lb_target_group" "grafana" {
+  count       = local.observability_grafana_enabled ? 1 : 0
   name        = "${local.name}-grafana-tg"
   port        = 3001
   protocol    = "HTTP"
@@ -78,7 +79,8 @@ resource "aws_lb_target_group" "grafana" {
 }
 
 resource "aws_lb_target_group_attachment" "grafana" {
-  target_group_arn = aws_lb_target_group.grafana.arn
+  count            = local.observability_grafana_enabled ? 1 : 0
+  target_group_arn = aws_lb_target_group.grafana[0].arn
   target_id        = aws_network_interface.data_host.private_ip
   port             = 3001
 }
@@ -126,13 +128,13 @@ resource "aws_lb_listener_rule" "http_api" {
 }
 
 resource "aws_lb_listener_rule" "http_grafana" {
-  count        = local.enable_tls ? 0 : 1
+  count        = (local.enable_tls ? 0 : 1) * (local.observability_grafana_enabled ? 1 : 0)
   listener_arn = aws_lb_listener.http.arn
   priority     = 200
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.grafana.arn
+    target_group_arn = aws_lb_target_group.grafana[0].arn
   }
 
   condition {
@@ -211,13 +213,13 @@ resource "aws_lb_listener_rule" "https_api" {
 }
 
 resource "aws_lb_listener_rule" "https_grafana" {
-  count        = local.enable_tls ? 1 : 0
+  count        = (local.enable_tls ? 1 : 0) * (local.observability_grafana_enabled ? 1 : 0)
   listener_arn = aws_lb_listener.https[0].arn
   priority     = 200
 
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.grafana.arn
+    target_group_arn = aws_lb_target_group.grafana[0].arn
   }
 
   condition {

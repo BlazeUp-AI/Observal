@@ -170,7 +170,7 @@ variable "clickhouse_cloud_url" {
 }
 
 variable "data_machine_type" {
-  description = "Machine type for the ClickHouse + Grafana + Prometheus GCE instance."
+  description = "Machine type for the ClickHouse data host."
   type        = string
   default     = "e2-standard-2"
 }
@@ -224,6 +224,17 @@ variable "redis_tier" {
 }
 
 # ── Application config ────────────────────────────────────────────────────
+
+variable "observability_stack" {
+  description = "Bundled observability stack to deploy: none, prometheus, or grafana. grafana includes prometheus."
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["none", "prometheus", "grafana"], var.observability_stack)
+    error_message = "observability_stack must be one of: none, prometheus, grafana."
+  }
+}
 
 variable "data_retention_days" {
   description = "ClickHouse data retention in days."

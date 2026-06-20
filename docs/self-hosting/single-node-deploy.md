@@ -328,7 +328,19 @@ observal server upgrade --version 1.5.0
 
 ## Monitoring
 
-The stack includes Prometheus and Grafana. Access Grafana at `http://your-server:3001` (default admin/admin).
+Prometheus and Grafana are optional. Start the core stack with Prometheus only:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up -d
+```
+
+Start Prometheus and Grafana:
+
+```bash
+COMPOSE_PROFILES=grafana docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up -d
+```
+
+Access Grafana at `http://your-server:3001` when the Grafana profile is enabled.
 
 For basic alerting without Grafana, add a health check cron:
 

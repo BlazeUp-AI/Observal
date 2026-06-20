@@ -226,10 +226,15 @@ variable "redis_enterprise_sku" {
 
 # -- Observability -----------------------------------------------------------
 
-variable "grafana_enabled" {
-  description = "Deploy Azure Managed Grafana instance."
-  type        = bool
-  default     = true
+variable "observability_stack" {
+  description = "Bundled observability stack to deploy: none, prometheus, or grafana. grafana includes prometheus."
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["none", "prometheus", "grafana"], var.observability_stack)
+    error_message = "observability_stack must be one of: none, prometheus, grafana."
+  }
 }
 
 # -- Application config ------------------------------------------------------

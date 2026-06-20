@@ -3,7 +3,7 @@
 
 # AWS deployment with Terraform
 
-End state: an Observal install running in your own AWS account, fronted by an Application Load Balancer with HTTPS, with managed Postgres + Redis, ECS Fargate for the stateless app tier, and a single EC2 host for ClickHouse + Grafana + Prometheus.
+End state: an Observal install running in your own AWS account, fronted by an Application Load Balancer with HTTPS, with managed Postgres + Redis, ECS Fargate for the stateless app tier, and a single EC2 host for ClickHouse. Prometheus and Grafana are optional through `observability_stack`.
 
 This is the recommended path for enterprise self-hosting on AWS. If you only want to evaluate Observal, use [Docker Compose setup](docker-compose.md) instead.
 
@@ -12,7 +12,7 @@ This is the recommended path for enterprise self-hosting on AWS. If you only wan
 A single `terraform apply` creates:
 
 - **VPC** with public + private subnets across two availability zones, NAT gateway, VPC flow logs
-- **Application Load Balancer** with HTTPS (ACM certificate, DNS-validated) when you supply a domain; HTTP-only otherwise. Path-based rules: `/api/*` → api service, `/grafana/*` → Grafana, default → web
+- **Application Load Balancer** with HTTPS (ACM certificate, DNS-validated) when you supply a domain; HTTP-only otherwise. Path-based rules: `/api/*` → api service, optional `/grafana/*` → Grafana, default → web
 - **ECS Fargate cluster** running:
     - `api` (FastAPI): 2 tasks by default, autoscales 2–10 on CPU
     - `web` (Next.js): 2 tasks by default, autoscales 2–6 on CPU
@@ -20,10 +20,10 @@ A single `terraform apply` creates:
     - `init` (one-shot migrations + seeds): runs as a Fargate `RunTask` whenever `image_tag` changes
 - **RDS Postgres 16**: Multi-AZ on `prod`, encrypted, automated daily backups, Performance Insights, Enhanced Monitoring, log exports
 - **ElastiCache Redis 7**: 2-node replication group with automatic failover on `prod`, slow-log to CloudWatch
-- **Data tier EC2** (Amazon Linux 2023): single host running ClickHouse + Grafana + Prometheus on EBS gp3, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
+- **Data tier EC2** (Amazon Linux 2023): single host running ClickHouse on EBS gp3, optional Prometheus and Grafana, ENI with static private IP, internal Route 53 zone for DNS, daily ClickHouse → S3 snapshot via systemd timer
 - **S3 backups bucket**: versioned, AES256, lifecycle to STANDARD_IA → GLACIER_IR → expire, TLS-only
 - **CloudWatch log groups**: per ECS service, data host, RDS, Redis slow log, VPC flow logs
-- **SSM Parameter Store**: generated DB / ClickHouse / SECRET_KEY / Grafana passwords, plus pre-built connection URLs injected into ECS tasks
+- **SSM Parameter Store**: generated DB / ClickHouse / SECRET_KEY / optional Grafana passwords, plus pre-built connection URLs injected into ECS tasks
 - **SSM Session Manager**: shell access to the data host, no SSH
 
 ClickHouse runs on EC2 because AWS does not offer a managed ClickHouse service. The data volume keeps it durable across instance replacements. For real ClickHouse HA, set `clickhouse_mode = "cloud"` and point at ClickHouse Cloud.
@@ -138,9 +138,10 @@ api_autoscale_max    = 10
 web_desired_count    = 2
 worker_desired_count = 1
 
-# Data tier (ClickHouse + Grafana + Prometheus)
+# Data tier (ClickHouse)
 data_instance_type   = "t3.large"   # 8 GB - minimum viable for ClickHouse
 data_volume_size_gb  = 100
+observability_stack  = "none"       # none | prometheus | grafana
 
 db_instance_class    = "db.t4g.small"
 redis_node_type      = "cache.t4g.micro"
@@ -157,7 +158,7 @@ clickhouse_cloud_user     = "default"
 clickhouse_cloud_password = "..."
 ```
 
-The EC2 data host, EBS volume, internal DNS records, Grafana, and Prometheus are all skipped. You become responsible for Grafana hosting yourself (typically AWS Managed Grafana).
+The EC2 data host, EBS volume, internal DNS records, and bundled observability are all skipped. You become responsible for monitoring and dashboards yourself, typically AWS Managed Grafana or Grafana Cloud.
 
 ### Application options
 

@@ -143,7 +143,6 @@ services:
     command: ["/app/.venv/bin/python", "-c", "import asyncio; asyncio.set_event_loop(asyncio.new_event_loop()); from arq import run_worker; from worker import WorkerSettings; run_worker(WorkerSettings)"]
     env_file:
       - ./.env
-    environment:
     depends_on:
       observal-init:
         condition: service_completed_successfully
@@ -200,54 +199,11 @@ services:
     networks:
       - observal-net
 
-  observal-prometheus:
-    image: prom/prometheus:v3.12.0
-    ports:
-      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      observal-api:
-        condition: service_healthy
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-    networks:
-      - observal-net
-
-  observal-grafana:
-    image: grafana/grafana-oss:11.6.5
-    ports:
-      - "${GRAFANA_HOST_PORT:-3001}:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-clickhouse}
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafanadata:/var/lib/grafana
-    depends_on:
-      observal-clickhouse:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    networks:
-      - observal-net
 
 volumes:
   pgdata:
   chdata:
   redisdata:
-  grafanadata:
   apidata:
 
 networks:
