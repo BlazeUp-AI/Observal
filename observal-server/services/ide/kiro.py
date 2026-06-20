@@ -106,6 +106,23 @@ class KiroAdapter:
             "scope": kiro_scope,
         }
 
+        # Generate Steering file for Kiro's native instruction system
+        steering_path = f".kiro/steering/{safe_name}.md"
+        if kiro_scope == "user":
+            steering_path = f"~/.kiro/steering/{safe_name}.md"
+
+        agent_desc = getattr(ctx.agent, "description", "") or ""
+        steering_frontmatter = ["---", "inclusion: always", f"name: {safe_name}"]
+        if agent_desc:
+            steering_frontmatter.append(f"description: {agent_desc}")
+        steering_frontmatter.append("---")
+
+        steering_content = "\n".join(steering_frontmatter) + "\n\n" + ctx.rules_content
+        result["steering_file"] = {
+            "path": steering_path,
+            "content": steering_content,
+        }
+
         if skill_configs:
             result["skill_components"] = skill_configs
 
