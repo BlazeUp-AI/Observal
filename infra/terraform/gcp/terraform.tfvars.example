@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 project_id  = "my-gcp-project"
@@ -33,3 +34,8 @@ data_retention_days = 90
 
 # License (leave empty for community edition)
 # observal_license_key = ""
+
+# Google OAuth (leave empty to disable Google sign-in)
+# google_oauth_client_id        = ""
+# google_oauth_client_secret    = ""
+# google_oauth_allowed_domains  = "acme.com,acme.io"

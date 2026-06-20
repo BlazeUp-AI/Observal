@@ -14,6 +14,7 @@ import { auth, config as configApi, setTokens, clearSession, setUserRole, getUse
 import type { SsoHealthResult, E2eStatusResult, HealthCheck } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
+import { GoogleGIcon } from "@/components/ui/google-g-icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ function LoginContent() {
   const searchParams = useSearch({ from: "/(auth)/login" });
   const {
     ssoEnabled,
+    googleSsoEnabled,
     ssoOnly,
     selfRegistrationEnabled,
     samlEnabled,
@@ -236,6 +238,15 @@ function LoginContent() {
     const url = nextParam && nextParam.startsWith("/")
       ? `/api/v1/auth/oauth/login?next=${encodeURIComponent(nextParam)}`
       : "/api/v1/auth/oauth/login";
+    window.location.href = url;
+  }
+
+  function handleGoogleLogin() {
+    setSsoLoading(true);
+    const nextParam = searchParams.next;
+    const url = nextParam && nextParam.startsWith("/")
+      ? `/api/v1/auth/oauth/google/login?next=${encodeURIComponent(nextParam)}`
+      : "/api/v1/auth/oauth/google/login";
     window.location.href = url;
   }
 
@@ -491,7 +502,7 @@ function LoginContent() {
                   </Button>
                 )}
 
-                {!ssoOnly && (ssoEnabled || samlEnabled) && (
+                {!ssoOnly && (ssoEnabled || googleSsoEnabled || samlEnabled) && (
                   <div className="relative py-2">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -500,6 +511,23 @@ function LoginContent() {
                       <span className="bg-card px-2 text-muted-foreground">Or</span>
                     </div>
                   </div>
+                )}
+
+                {googleSsoEnabled && (
+                  <Button
+                    type="button"
+                    variant={ssoOnly ? "default" : "outline"}
+                    className="w-full"
+                    onClick={handleGoogleLogin}
+                    disabled={loading || ssoLoading}
+                  >
+                    {ssoLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <GoogleGIcon className="mr-2 h-4 w-4" />
+                    )}
+                    Sign in with Google
+                  </Button>
                 )}
 
                 {(ssoOnly || ssoEnabled) && (

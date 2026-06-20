@@ -150,6 +150,9 @@ SSO_ENV_IMPORTS: dict[str, str] = {
     "OAUTH_CLIENT_ID": "oauth.client_id",
     "OAUTH_CLIENT_SECRET": "oauth.client_secret",
     "OAUTH_SERVER_METADATA_URL": "oauth.server_metadata_url",
+    "GOOGLE_OAUTH_CLIENT_ID": "google.client_id",
+    "GOOGLE_OAUTH_CLIENT_SECRET": "google.client_secret",
+    "GOOGLE_OAUTH_ALLOWED_DOMAINS": "google.allowed_domains",
     "SSO_ONLY": "deployment.sso_only",
     "SAML_IDP_ENTITY_ID": "saml.idp_entity_id",
     "SAML_IDP_SSO_URL": "saml.idp_sso_url",
@@ -230,6 +233,9 @@ DEFAULTS: dict[str, str] = {
     "oauth.client_id": "",
     "oauth.client_secret": "",
     "oauth.server_metadata_url": "",
+    "google.client_id": "",
+    "google.client_secret": "",
+    "google.allowed_domains": "",
     # Deployment
     "deployment.sso_only": "false",
     "deployment.frontend_url": "http://localhost",
@@ -290,6 +296,7 @@ DEFAULTS: dict[str, str] = {
 SENSITIVE_KEYS: set[str] = {
     "insights.api_key",
     "oauth.client_secret",
+    "google.client_secret",
     "saml.idp_x509_cert",
     "saml.sp_key_encryption_password",
 }
@@ -300,6 +307,9 @@ RESTART_REQUIRED_KEYS: set[str] = {
     "oauth.client_id",
     "oauth.client_secret",
     "oauth.server_metadata_url",
+    "google.client_id",
+    "google.client_secret",
+    "google.allowed_domains",
 }
 
 
@@ -395,6 +405,9 @@ SECTIONS: list[dict[str, Any]] = [
             "oauth.client_id",
             "oauth.client_secret",
             "oauth.server_metadata_url",
+            "google.client_id",
+            "google.client_secret",
+            "google.allowed_domains",
             *[k for k in DEFAULTS if k.startswith("saml.")],
         ],
     },

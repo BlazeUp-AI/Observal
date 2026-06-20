@@ -23,6 +23,7 @@ from fastapi.responses import RedirectResponse, Response
 from jwt import PyJWKClient
 from loguru import logger as optic
 from redis.exceptions import RedisError
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,7 @@ import services.dynamic_settings as ds
 from api.deps import get_current_user, get_db, get_or_create_default_org, require_local_mode, require_password_auth
 from api.ratelimit import limiter
 from models.user import User, UserRole
+from models.user_group import UserGroup
 from schemas.auth import (
     ChangePasswordRequest,
     CodeExchangeRequest,
@@ -104,8 +106,11 @@ def _validate_password_strength(password: str) -> None:
 oauth = OAuth()
 
 
+GOOGLE_OAUTH_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+
+
 def configure_oauth_client() -> None:
-    """Build the OIDC client from dynamic settings at API startup."""
+    """Build OAuth clients from dynamic settings at API startup."""
     global oauth
     oauth = OAuth()
     client_id = ds.get_sync("oauth.client_id")
@@ -122,9 +127,53 @@ def configure_oauth_client() -> None:
             },
         )
 
+    google_client_id = ds.get_sync("google.client_id")
+    google_client_secret = ds.get_sync("google.client_secret")
+    if google_client_id and google_client_secret:
+        oauth.register(
+            name="google",
+            client_id=google_client_id,
+            client_secret=google_client_secret,
+            server_metadata_url=GOOGLE_OAUTH_DISCOVERY_URL,
+            client_kwargs={
+                "scope": "openid email profile",
+            },
+        )
+
 
 def is_oidc_configured() -> bool:
     return bool(getattr(oauth, "oidc", None))
+
+
+def is_google_oauth_configured() -> bool:
+    return bool(getattr(oauth, "google", None))
+
+
+def _parse_allowed_domains(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    return {d.strip().lower() for d in raw.split(",") if d.strip()}
+
+
+def _google_allowed_domains() -> set[str]:
+    return _parse_allowed_domains(ds.get_sync("google.allowed_domains"))
+
+
+def _is_safe_next(next_path: str | None) -> bool:
+    return bool(next_path and next_path.startswith("/") and not next_path.startswith("//") and "\\" not in next_path)
+
+
+async def _start_oauth_flow(
+    request: Request,
+    client,
+    *,
+    callback_path: str,
+    next_path: str | None,
+) -> RedirectResponse:
+    if _is_safe_next(next_path):
+        request.session["oauth_next"] = next_path
+    redirect_uri = ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + callback_path
+    return await client.authorize_redirect(request, redirect_uri)
 
 
 async def _issue_tokens(user: User, groups: list[str] | None = None) -> tuple[str, str, int]:
@@ -332,25 +381,115 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
     }
 
 
+async def _provision_sso_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    name: str,
+    groups: list[str] | None,
+    provider: str,
+    subject_id: str | None,
+) -> User:
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        default_org = await get_or_create_default_org(db)
+        user = User(
+            email=email,
+            username=await generate_unique_username(email, db),
+            name=name,
+            role=UserRole.user,
+            org_id=default_org.id,
+            auth_provider=provider,
+            sso_subject_id=subject_id,
+        )
+        db.add(user)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one_or_none()
+            if user is None:
+                raise HTTPException(status_code=500, detail="Failed to create or find user")
+    elif user.auth_provider == "local" and not user.sso_subject_id:
+        user.auth_provider = provider
+        user.sso_subject_id = subject_id
+
+    if groups:
+        try:
+            await db.execute(sa_delete(UserGroup).where(UserGroup.user_id == user.id))
+            db.add_all([UserGroup(user_id=user.id, group_name=g) for g in groups])
+        except Exception as e:
+            optic.warning("Failed to persist SSO groups: {}", e)
+
+    return user
+
+
+async def _complete_sso_login(
+    request: Request,
+    db: AsyncSession,
+    user: User,
+    groups: list[str] | None,
+) -> RedirectResponse:
+    access_token, refresh_token, expires_in = await _issue_tokens(user, groups=groups)
+    await db.commit()
+
+    code = secrets.token_urlsafe(32)
+    try:
+        redis = get_redis()
+        await redis.setex(
+            f"oauth_code:{code}",
+            30,
+            json.dumps(
+                {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "expires_in": expires_in,
+                    "user_id": str(user.id),
+                    "role": user.role.value,
+                }
+            ),
+        )
+    except RedisError as e:
+        optic.warning("Redis unavailable during OAuth callback: {}", e)
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable")
+
+    source_ip, user_agent = _extract_request_info(request)
+    await emit_security_event(
+        SecurityEvent(
+            event_type=EventType.SSO_SUCCESS,
+            severity=Severity.INFO,
+            outcome="success",
+            actor_id=str(user.id),
+            actor_email=user.email,
+            actor_role=user.role.value,
+            source_ip=source_ip,
+            user_agent=user_agent,
+        )
+    )
+
+    oauth_next = request.session.pop("oauth_next", None)
+    frontend_base = ds.get_sync("deployment.frontend_url", "http://localhost:3000")
+    frontend_redirect = f"{frontend_base}/login?code={code}"
+    if _is_safe_next(oauth_next):
+        frontend_redirect += f"&next={quote(oauth_next, safe='')}"
+    return RedirectResponse(url=frontend_redirect)
+
+
 @router.get("/oauth/login")
 async def oauth_login(request: Request, next: str | None = None):
     """Initiates the OAuth SSO flow"""
     optic.debug("oauth_login called")
     if not oauth.oidc:
         raise HTTPException(status_code=500, detail="OAuth is not configured on the server")
-
-    # Preserve the post-login redirect target (e.g. /device?code=XXXX) across the
-    # OAuth round-trip so the user lands on the correct page after SSO completes.
-    if next and next.startswith("/") and not next.startswith("//") and "\\" not in next:
-        request.session["oauth_next"] = next
-
-    # Use FRONTEND_URL as the base so the redirect works through the Next.js proxy.
-    # This avoids Docker-internal hostnames (e.g. observal-api:8000) leaking into
-    # the redirect URI, which would fail Azure AD's redirect URI validation.
-    redirect_uri = (
-        ds.get_sync("deployment.frontend_url", "http://localhost:3000").rstrip("/") + "/api/v1/auth/oauth/callback"
+    return await _start_oauth_flow(
+        request,
+        oauth.oidc,
+        callback_path="/api/v1/auth/oauth/callback",
+        next_path=next,
     )
-    return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
 # ── OAuth / OIDC callback ───────────────────────────────────────────────
@@ -506,6 +645,9 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             )
         )
 
+    subject_raw = userinfo.get("sub")
+    subject_id = subject_raw if isinstance(subject_raw, str) else None
+
     groups_raw = userinfo.get("groups", [])
     groups: list[str] = []
     if isinstance(groups_raw, list) and all(isinstance(g, str) for g in groups_raw):
@@ -563,6 +705,8 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
                 name=name,
                 role=UserRole.user,
                 org_id=default_org.id,
+                auth_provider="oidc",
+                sso_subject_id=subject_id,
             )
             db.add(user)
             await db.flush()
@@ -606,14 +750,13 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
             return _oidc_error_redirect(frontend_base, corr_id)
     else:
         diag.append(make_check("user_lookup", "Look up existing user by email", "pass"))
+        if user.auth_provider == "local" and not user.sso_subject_id:
+            user.auth_provider = "oidc"
+            user.sso_subject_id = subject_id
 
     # Step 6: persist SSO groups (best-effort, never blocks login).
     if groups:
         try:
-            from sqlalchemy import delete as sa_delete
-
-            from models.user_group import UserGroup
-
             await db.execute(sa_delete(UserGroup).where(UserGroup.user_id == user.id))
             db.add_all([UserGroup(user_id=user.id, group_name=g) for g in groups])
         except Exception as e:
@@ -680,6 +823,82 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     if oauth_next and oauth_next.startswith("/") and not oauth_next.startswith("//") and "\\" not in oauth_next:
         frontend_redirect += f"&next={quote(oauth_next, safe='')}"
     return RedirectResponse(url=frontend_redirect)
+
+
+@router.get("/oauth/google/login")
+async def google_oauth_login(request: Request, next: str | None = None):
+    """Initiates the Google OAuth flow."""
+    optic.debug("google_oauth_login called")
+    google_client = getattr(oauth, "google", None)
+    if not google_client:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server")
+    return await _start_oauth_flow(
+        request,
+        google_client,
+        callback_path="/api/v1/auth/oauth/google/callback",
+        next_path=next,
+    )
+
+
+@router.get("/oauth/google/callback")
+async def google_oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    """Handles the Google OAuth callback."""
+    optic.debug("google_oauth_callback called")
+    google_client = getattr(oauth, "google", None)
+    if not google_client:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server")
+
+    source_ip, user_agent = _extract_request_info(request)
+    try:
+        token = await google_client.authorize_access_token(request)
+    except Exception as e:
+        await emit_security_event(
+            SecurityEvent(
+                event_type=EventType.SSO_FAILURE,
+                severity=Severity.WARNING,
+                outcome="failure",
+                source_ip=source_ip,
+                user_agent=user_agent,
+                detail=f"Google OAuth authorization failed: {e}",
+            )
+        )
+        raise HTTPException(status_code=400, detail=f"Google OAuth authorization failed: {e}")
+
+    userinfo = token.get("userinfo") if isinstance(token, dict) else None
+    if not isinstance(userinfo, dict):
+        raise HTTPException(status_code=400, detail="Missing userinfo in token")
+
+    email = userinfo.get("email")
+    if not email or not isinstance(email, str):
+        raise HTTPException(status_code=400, detail="Email claim is missing from ID token")
+    if not userinfo.get("email_verified", False):
+        raise HTTPException(status_code=400, detail="Google account email is not verified")
+
+    email = email.strip().lower()
+    allowed_domains = _google_allowed_domains()
+    if allowed_domains:
+        domain = email.rsplit("@", 1)[-1]
+        if domain not in allowed_domains:
+            await emit_security_event(
+                SecurityEvent(
+                    event_type=EventType.SSO_FAILURE,
+                    severity=Severity.WARNING,
+                    outcome="failure",
+                    actor_email=email,
+                    source_ip=source_ip,
+                    user_agent=user_agent,
+                    detail=f"Email domain '{domain}' not in Google OAuth allowlist",
+                )
+            )
+            raise HTTPException(status_code=403, detail="Your email domain is not allowed to sign in")
+
+    name_raw = userinfo.get("name") or userinfo.get("given_name")
+    name = name_raw if isinstance(name_raw, str) and name_raw else "Google User"
+    subject = userinfo.get("sub")
+    subject_id = subject if isinstance(subject, str) else None
+
+    user = await _provision_sso_user(db, email=email, name=name, groups=None, provider="google", subject_id=subject_id)
+    return await _complete_sso_login(request, db, user, None)
 
 
 # ── OIDC end-to-end test callback ───────────────────────────────────────
