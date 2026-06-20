@@ -238,7 +238,7 @@ DEFAULTS: dict[str, str] = {
     "google.allowed_domains": "",
     # Deployment
     "deployment.sso_only": "false",
-    "deployment.frontend_url": "http://localhost",
+    "deployment.frontend_url": "http://localhost:3000",
     "deployment.public_url": "",
     "deployment.cors_origins": "http://localhost:3000",
     # Danger-zone actions (rendered as buttons; value is informational only)

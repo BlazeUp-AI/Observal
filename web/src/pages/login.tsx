@@ -530,7 +530,7 @@ function LoginContent() {
                   </Button>
                 )}
 
-                {(ssoOnly || ssoEnabled) && (
+                {ssoEnabled && (
                   <div className="flex items-center">
                     <Button
                       type="button"

@@ -592,6 +592,7 @@ async def oauth_callback(request: Request, db: AsyncSession = Depends(get_db)):
                 detail=f"OAuth authorization failed: {e}",
             )
         )
+        optic.warning("OIDC authorize_access_token failed: {}", e)
         corr_id = await _persist_oidc_failure(diag, summary=f"Token exchange failed: {msg}", actor_email=None)
         return _oidc_error_redirect(frontend_base, corr_id)
 
@@ -862,7 +863,8 @@ async def google_oauth_callback(request: Request, db: AsyncSession = Depends(get
                 detail=f"Google OAuth authorization failed: {e}",
             )
         )
-        raise HTTPException(status_code=400, detail=f"Google OAuth authorization failed: {e}")
+        optic.warning("Google authorize_access_token failed: {}", e)
+        raise HTTPException(status_code=400, detail="Google OAuth authorization failed")
 
     userinfo = token.get("userinfo") if isinstance(token, dict) else None
     if not isinstance(userinfo, dict):
