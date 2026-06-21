@@ -47,7 +47,6 @@ import type {
   ValidationResult,
 } from "@/lib/types";
 import type { RegistryType } from "@/lib/api";
-import { useIdes } from "@/hooks/use-ides";
 import { ModelPicker } from "@/components/builder/model-picker";
 import { SortableComponentList } from "@/components/builder/sortable-component-list";
 import { ValidationPanel } from "@/components/builder/validation-panel";
@@ -66,6 +65,7 @@ interface AgentDetail {
   description?: string;
   prompt?: string;
   model_name?: string;
+  models_by_ide?: Record<string, string>;
   component_links?: ComponentLink[];
   mcp_links?: ComponentLink[];
   supported_ides?: string[];
@@ -104,13 +104,13 @@ export function AgentEditForm({
   const vd = versionDetail;
   const initialDescription = vd?.description ?? agent.description ?? "";
   const initialModelName = vd?.model_name ?? agent.model_name ?? "";
+  const initialModelsByIde = (vd?.models_by_ide ?? agent.models_by_ide ?? {}) as Record<string, string>;
   const initialPrompt = vd?.prompt ?? agent.prompt ?? "";
-  const initialSupportedIdes = vd?.supported_ides ?? agent.supported_ides ?? [];
 
   // ── Form state ───────────────────────────────────────────────
   const [description, setDescription] = useState(initialDescription);
   const [modelName, setModelName] = useState(initialModelName);
-  const [supportedIdes, setSupportedIdes] = useState<string[]>(initialSupportedIdes);
+  const [modelsByIde, setModelsByIde] = useState<Record<string, string>>(initialModelsByIde);
   const [activeTab, setActiveTab] = useState<RegistryType>("mcps");
   const [selectedComponents, setSelectedComponents] = useState<
     Record<string, RegistryItem[]>
@@ -127,7 +127,7 @@ export function AgentEditForm({
   const initialStateRef = useRef({
     description: initialDescription,
     modelName: initialModelName,
-    supportedIdes: initialSupportedIdes,
+    modelsByIde: initialModelsByIde,
     prompt: initialPrompt,
     selectedComponents: {} as Record<string, RegistryItem[]>,
   });
@@ -142,7 +142,6 @@ export function AgentEditForm({
   const createVersion = useCreateAgentVersion();
   const updateAgent = useUpdateAgent();
   const { data: versionSuggestions } = useVersionSuggestions(agentId);
-  const { data: ideList } = useIdes();
 
   // ── Initialize form from agent data ──────────────────────────
   const fingerprint = useMemo(
@@ -152,9 +151,8 @@ export function AgentEditForm({
         currentVersion,
         versionDetail?.description,
         versionDetail?.model_name,
+        versionDetail?.models_by_ide,
         versionDetail?.prompt,
-        versionDetail?.supported_ides,
-        agent.supported_ides,
         versionDetail?.components,
       ]),
     [agent.name, currentVersion, versionDetail],
@@ -164,7 +162,7 @@ export function AgentEditForm({
     // Reset description / modelName from latest props
     setDescription(initialDescription);
     setModelName(initialModelName);
-    setSupportedIdes(initialSupportedIdes);
+    setModelsByIde(initialModelsByIde);
 
     const links: ComponentLink[] = versionDetail?.components
       ? versionDetail.components.map((component) => ({
@@ -197,7 +195,7 @@ export function AgentEditForm({
     initialStateRef.current = {
       description: initialDescription,
       modelName: initialModelName,
-      supportedIdes: initialSupportedIdes,
+      modelsByIde: initialModelsByIde,
       prompt: initialPrompt,
       selectedComponents: grouped,
     };
@@ -211,11 +209,11 @@ export function AgentEditForm({
     const dirty =
       description !== init.description ||
       modelName !== init.modelName ||
-      JSON.stringify(supportedIdes) !== JSON.stringify(init.supportedIdes) ||
+      JSON.stringify(modelsByIde) !== JSON.stringify(init.modelsByIde) ||
       prompt !== init.prompt ||
       JSON.stringify(selectedComponents) !== JSON.stringify(init.selectedComponents);
     setIsDirty(dirty);
-  }, [description, modelName, supportedIdes, prompt, selectedComponents]);
+  }, [description, modelName, modelsByIde, prompt, selectedComponents]);
 
   // ── Debounced validation ──────────────────────────────────────
   useEffect(() => {
@@ -284,12 +282,6 @@ export function AgentEditForm({
     }));
   }, []);
 
-  function toggleTargetIde(ide: string) {
-    setSupportedIdes((prev) =>
-      prev.includes(ide) ? prev.filter((i) => i !== ide) : [...prev, ide],
-    );
-  }
-
   const handleReorder = useCallback(
     (type: string) => (items: { id: string; name: string }[]) => {
       setSelectedComponents((prev) => {
@@ -323,9 +315,9 @@ export function AgentEditForm({
       prompt: prompt.trim(),
       model_name: modelName,
       model_config_json: {},
-      models_by_ide: {},
+      models_by_ide: modelsByIde,
       external_mcps: [],
-      supported_ides: supportedIdes,
+      supported_ides: agent.supported_ides ?? [],
       components: components.length > 0 ? components : [],
       yaml_snapshot: null,
       is_prerelease: false,
@@ -342,7 +334,7 @@ export function AgentEditForm({
       initialStateRef.current = {
         description,
         modelName,
-        supportedIdes,
+        modelsByIde,
         prompt,
         selectedComponents,
       };
@@ -364,7 +356,7 @@ export function AgentEditForm({
       initialStateRef.current = {
         description,
         modelName,
-        supportedIdes,
+        modelsByIde,
         prompt,
         selectedComponents,
       };
@@ -387,7 +379,7 @@ export function AgentEditForm({
     const init = initialStateRef.current;
     setDescription(init.description);
     setModelName(init.modelName);
-    setSupportedIdes(init.supportedIdes);
+    setModelsByIde(init.modelsByIde);
     setPrompt(init.prompt ?? "");
     setSelectedComponents(
       Object.keys(init.selectedComponents).length > 0
@@ -432,35 +424,13 @@ export function AgentEditForm({
           />
         </div>
 
-        <div className="max-w-lg">
+        <div className="max-w-2xl">
           <ModelPicker
             modelName={modelName}
             onModelNameChange={setModelName}
+            modelsByIde={modelsByIde}
+            onModelsByIdeChange={setModelsByIde}
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Target IDEs</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {(ideList ?? []).map((ide) => (
-              <button
-                key={ide.name}
-                type="button"
-                onClick={() => toggleTargetIde(ide.name)}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-                  supportedIdes.includes(ide.name)
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {ide.display_name}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Leave empty for portable agents. Pick one or more when this agent is
-            meant for specific harnesses.
-          </p>
         </div>
       </section>
 

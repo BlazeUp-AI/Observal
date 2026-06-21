@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { CheckCircle2, XCircle, Loader2, Maximize2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -26,7 +26,6 @@ interface PreviewPanelProps {
 	modelName?: string;
 	selectedComponents: Record<string, { id: string; name: string }[]>;
 	prompt?: string;
-	targetIdes?: string[];
 	pendingComponentBodies?: Record<string, Record<string, unknown>>; // tempId -> body
 	validationResult: ValidationResult | null;
 }
@@ -92,15 +91,10 @@ export function PreviewPanel({
 	modelName,
 	selectedComponents,
 	prompt,
-	targetIdes = [],
 	pendingComponentBodies,
 	validationResult,
 }: PreviewPanelProps) {
 	const { data: ideList } = useIdes();
-	const visibleIdes = useMemo(
-		() => (ideList ?? []).filter((opt) => targetIdes.length === 0 || targetIdes.includes(opt.name)),
-		[ideList, targetIdes],
-	);
 	const [ide, setIde] = useState("claude-code");
 	const [modalOpen, setModalOpen] = useState(false);
 	const [modalIde, setModalIde] = useState("claude-code");
@@ -113,10 +107,10 @@ export function PreviewPanel({
 	const modalScrollRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		if (visibleIdes.length === 0) return;
-		if (!visibleIdes.some((opt) => opt.name === ide)) setIde(visibleIdes[0].name);
-		if (!visibleIdes.some((opt) => opt.name === modalIde)) setModalIde(visibleIdes[0].name);
-	}, [visibleIdes, ide, modalIde]);
+		if (!ideList || ideList.length === 0) return;
+		if (!ideList.some((opt) => opt.name === ide)) setIde(ideList[0].name);
+		if (!ideList.some((opt) => opt.name === modalIde)) setModalIde(ideList[0].name);
+	}, [ideList, ide, modalIde]);
 
 	const body = buildMarkdownBody(
 		description,
@@ -161,7 +155,6 @@ export function PreviewPanel({
 				prompt: body,
 				model_name: modelName ?? "",
 				components,
-				target_ides: targetIdes,
 			});
 			setFullConfigs(res.configs);
 		} catch (e) {
@@ -171,7 +164,7 @@ export function PreviewPanel({
 		} finally {
 			setFullLoading(false);
 		}
-	}, [name, description, body, modelName, selectedComponents, targetIdes]);
+	}, [name, description, body, modelName, selectedComponents]);
 
 	useEffect(() => {
 		const timer = window.setTimeout(() => {
@@ -237,7 +230,7 @@ export function PreviewPanel({
 
 			{/* IDE selector */}
 			<div className="flex flex-wrap gap-1">
-				{visibleIdes.map((opt) => (
+				{(ideList ?? []).map((opt) => (
 					<button
 						key={opt.name}
 						type="button"
@@ -310,7 +303,7 @@ export function PreviewPanel({
 
 					{/* IDE tabs inside modal */}
 					<div className="flex flex-wrap gap-1 px-6 pt-3">
-						{visibleIdes.map((opt) => (
+						{(ideList ?? []).map((opt) => (
 							<button
 								key={opt.name}
 								type="button"
