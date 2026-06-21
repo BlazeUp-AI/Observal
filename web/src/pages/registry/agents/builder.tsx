@@ -609,7 +609,7 @@ function AgentBuilderInner() {
                   <p className="text-sm text-destructive">{nameError}</p>
                 )}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 max-w-3xl">
                 <Label
                   htmlFor="agent-description"
                   className="text-sm font-medium"
@@ -623,11 +623,11 @@ function AgentBuilderInner() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={3}
-                  className="max-w-lg resize-y"
+                  className="resize-y"
                 />
               </div>
-              <div className="flex gap-4">
-                <div className="space-y-2 flex-1 max-w-[200px]">
+              <div className="grid gap-4 max-w-3xl sm:grid-cols-2">
+                <div className="space-y-2">
                   <Label htmlFor="agent-version" className="text-sm font-medium">
                     Version
                   </Label>
@@ -638,7 +638,7 @@ function AgentBuilderInner() {
                     onChange={(e) => setVersion(e.target.value)}
                   />
                 </div>
-                <div className="space-y-2 flex-1 max-w-[200px]">
+                <div className="space-y-2">
                   <Label htmlFor="agent-category" className="text-sm font-medium">
                     Category
                   </Label>
@@ -669,14 +669,14 @@ function AgentBuilderInner() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex-1">
-                  <ModelPicker
-                    modelName={modelName}
-                    onModelNameChange={setModelName}
-                    modelsByIde={modelsByIde}
-                    onModelsByIdeChange={setModelsByIde}
-                  />
-                </div>
+              </div>
+              <div className="max-w-3xl">
+                <ModelPicker
+                  modelName={modelName}
+                  onModelNameChange={setModelName}
+                  modelsByIde={modelsByIde}
+                  onModelsByIdeChange={setModelsByIde}
+                />
               </div>
             </section>
 
