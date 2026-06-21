@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
-
 import { useState, useCallback } from "react";
 import { X, Plus, Loader2, ArrowRightLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -58,39 +57,49 @@ export function CoAuthorInput({
 	onTransferOwnership,
 }: CoAuthorInputProps) {
 	const [input, setInput] = useState("");
+	const [transferTarget, setTransferTarget] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [transferTarget, setTransferTarget] = useState("");
-
-	// Confirmation dialog state
-	const [confirmAdd, setConfirmAdd] = useState<string | null>(null);
+	const [addOpen, setAddOpen] = useState(false);
+	const [transferOpen, setTransferOpen] = useState(false);
 	const [confirmRemove, setConfirmRemove] = useState<CoAuthor | null>(null);
-	const [confirmTransfer, setConfirmTransfer] = useState<string | null>(null);
 
-	const executeAdd = useCallback(async (value: string) => {
+	const headers = useCallback(() => {
+		const h: Record<string, string> = { "Content-Type": "application/json" };
+		const token = getAccessToken();
+		if (token) h.Authorization = `Bearer ${token}`;
+		return h;
+	}, []);
+
+	const resetAdd = () => {
+		setAddOpen(false);
+		setInput("");
+		setError(null);
+	};
+
+	const resetTransfer = () => {
+		setTransferOpen(false);
+		setTransferTarget("");
+		setError(null);
+	};
+
+	const executeAdd = useCallback(async () => {
+		const value = input.trim();
+		if (!value) return;
 		setLoading(true);
 		setError(null);
 
 		try {
-			const headers: Record<string, string> = {
-				"Content-Type": "application/json",
-			};
-			const token = getAccessToken();
-			if (token) headers["Authorization"] = `Bearer ${token}`;
-
 			const isEmail = value.includes("@") && !value.startsWith("@") && value.indexOf("@") < value.length - 1;
 			const body = isEmail
 				? { email: value.toLowerCase() }
 				: { username: value.replace(/^@/, "") };
 
-			const res = await fetch(
-				`${API}/${entityType}/${entityId}/co-authors`,
-				{
-					method: "POST",
-					headers,
-					body: JSON.stringify(body),
-				},
-			);
+			const res = await fetch(`${API}/${entityType}/${entityId}/co-authors`, {
+				method: "POST",
+				headers: headers(),
+				body: JSON.stringify(body),
+			});
 
 			if (!res.ok) {
 				const data = await res.json().catch(() => ({}));
@@ -100,14 +109,13 @@ export function CoAuthorInput({
 
 			const added: CoAuthor = await res.json();
 			onChange([...coAuthors, added]);
-			setInput("");
+			resetAdd();
 		} catch {
 			setError("Network error");
 		} finally {
 			setLoading(false);
-			setConfirmAdd(null);
 		}
-	}, [entityType, entityId, coAuthors, onChange]);
+	}, [entityType, entityId, coAuthors, onChange, headers, input]);
 
 	const executeRemove = useCallback(
 		async (userId: string) => {
@@ -115,113 +123,80 @@ export function CoAuthorInput({
 			setError(null);
 
 			try {
-				const headers: Record<string, string> = {};
-				const token = getAccessToken();
-				if (token) headers["Authorization"] = `Bearer ${token}`;
-
-				const res = await fetch(
-					`${API}/${entityType}/${entityId}/co-authors/${userId}`,
-					{
-						method: "DELETE",
-						headers,
-					},
-				);
-
-				if (!res.ok) {
-					const data = await res.json().catch(() => ({}));
-					setError(
-						data.detail || `Failed to remove co-author (${res.status})`,
-					);
-					return;
-				}
-
-				onChange(coAuthors.filter((c) => c.id !== userId));
-			} catch {
-				setError("Network error");
-			} finally {
-				setLoading(false);
-				setConfirmRemove(null);
-			}
-		},
-		[entityType, entityId, coAuthors, onChange],
-	);
-
-	const executeTransfer = useCallback(
-		async (target: string) => {
-			setLoading(true);
-			setError(null);
-
-			try {
-				const headers: Record<string, string> = {
-					"Content-Type": "application/json",
-				};
-				const token = getAccessToken();
-				if (token) headers["Authorization"] = `Bearer ${token}`;
-
-				const res = await fetch(`${API}/${entityType}/${entityId}/transfer-ownership`, {
-					method: "POST",
-					headers,
-					body: JSON.stringify({ username: target.replace(/^@/, "") }),
+				const h = headers();
+				delete h["Content-Type"];
+				const res = await fetch(`${API}/${entityType}/${entityId}/co-authors/${userId}`, {
+					method: "DELETE",
+					headers: h,
 				});
 
 				if (!res.ok) {
 					const data = await res.json().catch(() => ({}));
-					setError(data.detail || `Failed to transfer ownership (${res.status})`);
+					setError(data.detail || `Failed to remove co-author (${res.status})`);
 					return;
 				}
 
-				setTransferTarget("");
-				onTransferOwnership?.();
+				onChange(coAuthors.filter((c) => c.id !== userId));
+				setConfirmRemove(null);
 			} catch {
 				setError("Network error");
 			} finally {
 				setLoading(false);
-				setConfirmTransfer(null);
 			}
 		},
-		[entityType, entityId, onTransferOwnership],
+		[entityType, entityId, coAuthors, onChange, headers],
 	);
 
-	const handleAdd = () => {
-		const value = input.trim();
-		if (!value) return;
-		setConfirmAdd(value);
-	};
+	const executeTransfer = useCallback(async () => {
+		const target = transferTarget.trim().replace(/^@/, "");
+		if (!target) return;
+		setLoading(true);
+		setError(null);
 
-	const handleTransfer = () => {
-		const value = transferTarget.trim();
-		if (!value) return;
-		setConfirmTransfer(value);
-	};
+		try {
+			const res = await fetch(`${API}/${entityType}/${entityId}/transfer-ownership`, {
+				method: "POST",
+				headers: headers(),
+				body: JSON.stringify({ username: target }),
+			});
 
-	const handleKeyDown = (e: React.KeyboardEvent) => {
-		if (e.key === "Enter") {
-			e.preventDefault();
-			handleAdd();
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				setError(data.detail || `Failed to transfer ownership (${res.status})`);
+				return;
+			}
+
+			resetTransfer();
+			onTransferOwnership?.();
+		} catch {
+			setError("Network error");
+		} finally {
+			setLoading(false);
 		}
-	};
+	}, [entityType, entityId, headers, onTransferOwnership, transferTarget]);
 
 	return (
-		<div className="space-y-2">
-			<Label>Co-Authors</Label>
+		<div className="space-y-3">
+			<div className="flex items-center justify-between gap-3">
+				<Label>Co-Authors</Label>
+				{canManage && (
+					<Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setAddOpen(true)}>
+						<Plus className="h-3.5 w-3.5" />
+						Add
+					</Button>
+				)}
+			</div>
 
-			{/* Current co-authors */}
-			{coAuthors.length > 0 && (
+			{coAuthors.length > 0 ? (
 				<div className="flex flex-wrap gap-2">
 					{coAuthors.map((author) => (
-						<Badge
-							key={author.id}
-							variant="secondary"
-							className="flex items-center gap-1 py-1 px-2"
-						>
-							<span className="text-xs">
-								{author.username || author.email}
-							</span>
+						<Badge key={author.id} variant="secondary" className="flex items-center gap-1 px-2 py-1">
+							<span className="text-xs">{author.username || author.email}</span>
 							{canManage && (
 								<button
 									type="button"
 									onClick={() => setConfirmRemove(author)}
-									className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
+									className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
 									disabled={loading}
 								>
 									<X className="h-3 w-3" />
@@ -230,96 +205,65 @@ export function CoAuthorInput({
 						</Badge>
 					))}
 				</div>
-			)}
-
-			{coAuthors.length === 0 && !canManage && (
+			) : (
 				<p className="text-xs text-muted-foreground">No co-authors</p>
 			)}
 
-			{/* Add input */}
-			{canManage && (
-				<div className="flex gap-2">
-					<Input
-						placeholder="Email or username"
-						value={input}
-						onChange={(e) => {
-							setInput(e.target.value);
-							setError(null);
-						}}
-						onKeyDown={handleKeyDown}
-						disabled={loading}
-						className="flex-1"
-					/>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={handleAdd}
-						disabled={loading || !input.trim()}
-					>
-						{loading ? (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						) : (
-							<Plus className="h-4 w-4" />
-						)}
-					</Button>
-				</div>
-			)}
-
 			{canTransferOwnership && (
-				<div className="space-y-2 rounded-md border border-border p-3">
-					<div className="space-y-0.5">
-						<Label className="text-xs">Transfer owner</Label>
-						<p className="text-xs text-muted-foreground">Move ownership to another username.</p>
-					</div>
-					<div className="flex gap-2">
-						<Input
-							placeholder="@username"
-							value={transferTarget}
-							onChange={(e) => {
-								setTransferTarget(e.target.value);
-								setError(null);
-							}}
-							disabled={loading}
-							className="flex-1"
-						/>
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onClick={handleTransfer}
-							disabled={loading || !transferTarget.trim()}
-						>
-							{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
+				<div className="border-t border-border pt-3">
+					<div className="flex items-center justify-between gap-3">
+						<div className="space-y-0.5">
+							<p className="text-sm font-medium">Transfer owner</p>
+							<p className="text-xs text-muted-foreground">Move ownership to another username.</p>
+						</div>
+						<Button type="button" variant="outline" size="sm" className="h-8" onClick={() => setTransferOpen(true)}>
+							<ArrowRightLeft className="h-3.5 w-3.5" />
+							Transfer
 						</Button>
 					</div>
 				</div>
 			)}
 
-			{error && <p className="text-xs text-destructive">{error}</p>}
+			{error && !addOpen && !transferOpen && <p className="text-xs text-destructive">{error}</p>}
 
-			{/* Add confirmation dialog */}
-			<Dialog open={!!confirmAdd} onOpenChange={(open) => { if (!open) setConfirmAdd(null); }}>
+			<Dialog open={addOpen} onOpenChange={(open) => { if (!open) resetAdd(); else setAddOpen(true); }}>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Add co-author</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to add <span className="font-medium text-foreground">{confirmAdd}</span> as a co-author? They will have full edit and publish access.
+							Co-authors can edit, publish, and manage this item with owner-level access.
 						</DialogDescription>
 					</DialogHeader>
+					<div className="space-y-2">
+						<Label htmlFor="co-author-user">Email or username</Label>
+						<Input
+							id="co-author-user"
+							placeholder="Email or @username"
+							value={input}
+							onChange={(e) => {
+								setInput(e.target.value);
+								setError(null);
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") {
+									e.preventDefault();
+									executeAdd();
+								}
+							}}
+							disabled={loading}
+						/>
+						{error && <p className="text-xs text-destructive">{error}</p>}
+					</div>
 					<DialogFooter>
-						<Button variant="outline" onClick={() => setConfirmAdd(null)} disabled={loading}>
-							Cancel
-						</Button>
-						<Button onClick={() => confirmAdd && executeAdd(confirmAdd)} disabled={loading}>
+						<Button variant="outline" onClick={resetAdd} disabled={loading}>Cancel</Button>
+						<Button onClick={executeAdd} disabled={loading || !input.trim()}>
 							{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-							Confirm
+							Add co-author
 						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
 
-			{/* Remove confirmation dialog */}
 			<Dialog open={!!confirmRemove} onOpenChange={(open) => { if (!open) setConfirmRemove(null); }}>
 				<DialogContent>
 					<DialogHeader>
@@ -329,9 +273,7 @@ export function CoAuthorInput({
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="outline" onClick={() => setConfirmRemove(null)} disabled={loading}>
-							Cancel
-						</Button>
+						<Button variant="outline" onClick={() => setConfirmRemove(null)} disabled={loading}>Cancel</Button>
 						<Button variant="destructive" onClick={() => confirmRemove && executeRemove(confirmRemove.id)} disabled={loading}>
 							{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
 							Remove
@@ -340,22 +282,39 @@ export function CoAuthorInput({
 				</DialogContent>
 			</Dialog>
 
-			{/* Transfer confirmation dialog */}
-			<Dialog open={!!confirmTransfer} onOpenChange={(open) => { if (!open) setConfirmTransfer(null); }}>
+			<Dialog open={transferOpen} onOpenChange={(open) => { if (!open) resetTransfer(); else setTransferOpen(true); }}>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Transfer ownership</DialogTitle>
 						<DialogDescription>
-							Transfer ownership to <span className="font-medium text-foreground">{confirmTransfer}</span>? You will lose owner-only controls immediately.
+							Transfer ownership to another user. You will lose owner-only controls immediately.
 						</DialogDescription>
 					</DialogHeader>
+					<div className="space-y-2">
+						<Label htmlFor="transfer-owner-user">New owner username</Label>
+						<Input
+							id="transfer-owner-user"
+							placeholder="@username"
+							value={transferTarget}
+							onChange={(e) => {
+								setTransferTarget(e.target.value);
+								setError(null);
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") {
+									e.preventDefault();
+									executeTransfer();
+								}
+							}}
+							disabled={loading}
+						/>
+						{error && <p className="text-xs text-destructive">{error}</p>}
+					</div>
 					<DialogFooter>
-						<Button variant="outline" onClick={() => setConfirmTransfer(null)} disabled={loading}>
-							Cancel
-						</Button>
-						<Button onClick={() => confirmTransfer && executeTransfer(confirmTransfer)} disabled={loading}>
+						<Button variant="outline" onClick={resetTransfer} disabled={loading}>Cancel</Button>
+						<Button onClick={executeTransfer} disabled={loading || !transferTarget.trim()}>
 							{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-							Transfer
+							Transfer owner
 						</Button>
 					</DialogFooter>
 				</DialogContent>
