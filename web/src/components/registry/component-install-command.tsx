@@ -21,19 +21,19 @@ interface ComponentInstallCommandProps {
 }
 
 export function ComponentInstallCommand({ componentType, componentName }: ComponentInstallCommandProps) {
-  const { data: ides } = useHarnesses();
-  const [ide, setIde] = useState("");
+  const { data: harnesses } = useHarnesses();
+  const [harness, setHarness] = useState("");
   useEffect(() => {
-    if (!ides || ides.length === 0) return;
-    const hasCurrent = ides.some((i) => i.name === ide);
-    if (!ide || !hasCurrent) {
-      setIde(ides[0].name);
+    if (!harnesses || harnesses.length === 0) return;
+    const hasCurrent = harnesses.some((i) => i.name === harness);
+    if (!harness || !hasCurrent) {
+      setHarness(harnesses[0].name);
     }
-  }, [ides, ide]);
+  }, [harnesses, harness]);
   const [copied, setCopied] = useState(false);
 
-  const effectiveIde = ide || ides?.[0]?.name || "cursor";
-  const command = `observal registry ${componentType} install ${componentName} --harness ${effectiveIde}`;
+  const effectiveHarness = harness || harnesses?.[0]?.name || "cursor";
+  const command = `observal registry ${componentType} install ${componentName} --harness ${effectiveHarness}`;
 
   const handleCopy = useCallback(async () => {
     try {
@@ -52,12 +52,12 @@ export function ComponentInstallCommand({ componentType, componentName }: Compon
         <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">Install</span>
         <div className="ml-auto">
-          <Select value={effectiveIde} onValueChange={setIde}>
+          <Select value={effectiveHarness} onValueChange={setHarness}>
             <SelectTrigger className="h-7 w-[130px] text-xs border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(ides ?? []).map((i) => (
+              {(harnesses ?? []).map((i) => (
                 <SelectItem key={i.name} value={i.name}>
                   {i.display_name}
                 </SelectItem>

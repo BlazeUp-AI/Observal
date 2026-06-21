@@ -70,7 +70,9 @@ def version_publish(
     version: str | None = typer.Option(None, "--version", "-v", help="Version to publish (e.g. 1.2.0)"),
     description: str = typer.Option(..., "--description", "-d", help="Short description of this version"),
     changelog: str | None = typer.Option(None, "--changelog", help="Changelog notes"),
-    supported_harnesses: list[str] | None = typer.Option(None, "--harness", help="Supported harnesses (repeat for multiple)"),
+    supported_harnesses: list[str] | None = typer.Option(
+        None, "--harness", help="Supported harnesses (repeat for multiple)"
+    ),
     extra: str | None = typer.Option(None, "--extra", help="Extra JSON for type-specific fields"),
 ):
     """Publish a new version for a registry component.

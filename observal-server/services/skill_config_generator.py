@@ -43,7 +43,7 @@ def _short_description(desc: str, max_len: int = 200) -> str:
     return sentence.strip()
 
 
-def _generate_skill(skill_source, ide: str, scope: str = "project") -> dict | None:
+def _generate_skill(skill_source, harness: str, scope: str = "project") -> dict | None:
     """Generate an harness-specific skill file dict with path and content.
 
     skill_source can be a SkillListing or SkillVersion (both have skill_md_content).
@@ -56,8 +56,8 @@ def _generate_skill(skill_source, ide: str, scope: str = "project") -> dict | No
         name_attr = getattr(skill_source.listing, "name", "skill")
     if not name_attr:
         name_attr = "skill"
-    optic.debug("generating skill config for {} (ide={}, scope={})", name_attr, ide, scope)
-    ide_key = ide.replace("_", "-")
+    optic.debug("generating skill config for {} (ide={}, scope={})", name_attr, harness, scope)
+    ide_key = harness.replace("_", "-")
     spec = HARNESS_REGISTRY.get(ide_key, {})
     skill_paths = spec.get("skills")
     if not skill_paths:
@@ -93,7 +93,7 @@ def _generate_skill(skill_source, ide: str, scope: str = "project") -> dict | No
 
 def generate_skill_config(
     skill_listing,
-    ide: str,
+    harness: str,
     server_url: str = "http://localhost:8000",
     scope: str = "project",
     version_override=None,
@@ -103,7 +103,7 @@ def generate_skill_config(
     If version_override is provided, uses content from that specific version
     instead of the listing's latest content.
     """
-    optic.trace("generating skill frontmatter for {} on {}", skill_listing.name, ide)
+    optic.trace("generating skill frontmatter for {} on {}", skill_listing.name, harness)
     skill_id = str(skill_listing.id)
     skill_name = str(skill_listing.name)
 
@@ -116,7 +116,7 @@ def generate_skill_config(
         },
         "timeout": 10,
     }
-    if ide == "claude-code":
+    if harness == "claude-code":
         hook_entry["allowedEnvVars"] = ["OBSERVAL_ACCESS_TOKEN"]
 
     config = {
@@ -125,7 +125,7 @@ def generate_skill_config(
             "SessionEnd": [{"matcher": "*", "hooks": [hook_entry]}],
         },
         "skill": {"name": skill_name, "id": skill_id},
-        "ide": ide,
+        "ide": harness,
         "listing_id": skill_id,
     }
 
@@ -167,7 +167,7 @@ def generate_skill_config(
         config["skill"]["latest_version"] = getattr(skill_listing, "version", None)
 
     # Generate harness-specific skill file
-    skill = _generate_skill(source, ide, scope)
+    skill = _generate_skill(source, harness, scope)
     if skill:
         config["skills"] = skill
 

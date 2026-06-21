@@ -43,7 +43,7 @@ def _warn_component_conflicts(harness: str, agent_name: str, components: list[di
         from observal_cli.lockfile import read_lockfile
 
         data = read_lockfile()
-        harness_section = data.get("harnesses", {}).get(ide, {})
+        harness_section = data.get("harnesses", {}).get(harness, {})
         other_agents = harness_section.get("agents", [])
 
         # Build map of component name → (version, owning agent) from other agents
@@ -112,11 +112,11 @@ def _resolve_hook_paths(content: str) -> str:
 
 
 def _collect_mcp_env_vars(
-    agent_detail: dict, *, no_prompt: bool = False, env_overrharnesses: dict[str, str] | None = None
+    agent_detail: dict, *, no_prompt: bool = False, env_overrides: dict[str, str] | None = None
 ) -> dict[str, dict[str, str]]:
     """Discover MCP env vars from agent components and prompt the user for values.
 
-    When *no_prompt* is True, uses values from *env_overrharnesses* for known vars
+    When *no_prompt* is True, uses values from *env_overrides* for known vars
     and skips prompting entirely. Missing vars are omitted (server handles
     placeholders).
 
@@ -124,7 +124,7 @@ def _collect_mcp_env_vars(
     """
     optic.trace("agent_detail={}", agent_detail)
     env_values: dict[str, dict[str, str]] = {}
-    _overrharnesses = env_overrharnesses or {}
+    _overrides = env_overrides or {}
 
     # Collect MCP component IDs from both mcp_links and component_links
     mcp_ids: list[tuple[str, str]] = []  # (listing_id, display_name)
@@ -159,14 +159,14 @@ def _collect_mcp_env_vars(
         if no_prompt:
             # Non-interactive: use --env flag values for matching vars
             for ev in required + optional:
-                if ev["name"] in _overrharnesses:
-                    mcp_env[ev["name"]] = _overrharnesses[ev["name"]]
+                if ev["name"] in _overrides:
+                    mcp_env[ev["name"]] = _overrides[ev["name"]]
         else:
             if required:
                 rprint(f"\n[bold]{mcp_name}[/bold] requires {len(required)} environment variable(s):")
                 for ev in required:
-                    if ev["name"] in _overrharnesses:
-                        mcp_env[ev["name"]] = _overrharnesses[ev["name"]]
+                    if ev["name"] in _overrides:
+                        mcp_env[ev["name"]] = _overrides[ev["name"]]
                         rprint(f"  [green]\u2713[/green] {ev['name']} [dim](from --env)[/dim]")
                     else:
                         desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
@@ -176,8 +176,8 @@ def _collect_mcp_env_vars(
             if optional:
                 rprint(f"\n[dim]{mcp_name}: {len(optional)} optional env var(s):[/dim]")
                 for ev in optional:
-                    if ev["name"] in _overrharnesses:
-                        mcp_env[ev["name"]] = _overrharnesses[ev["name"]]
+                    if ev["name"] in _overrides:
+                        mcp_env[ev["name"]] = _overrides[ev["name"]]
                         rprint(f"  [green]\u2713[/green] {ev['name']} [dim](from --env)[/dim]")
                     else:
                         desc = f" [dim]({ev['description']})[/dim]" if ev.get("description") else ""
@@ -313,7 +313,7 @@ def _resolve_path(raw_path: str, target_dir: Path, *, allow_home: bool = False) 
 _SCOPE_AWARE_HARNESSES = get_scope_aware_harnesses()
 
 
-def _parse_model_overrharnesses(values: list[str]) -> tuple[str | None, dict[str, str]]:
+def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str]]:
     """Parse one or more ``--model`` flags.
 
     Two grammars are accepted:
@@ -322,21 +322,21 @@ def _parse_model_overrharnesses(values: list[str]) -> tuple[str | None, dict[str
     * ``--model <ide>=<value>`` - explicit per-harness override (advanced; lets
       a single command target a specific harness without ambiguity).
 
-    Returns ``(default_value, per_ide_overrharnesses)``.
+    Returns ``(default_value, per_harness_overrides)``.
     """
     optic.trace("values={}", values)
     default: str | None = None
-    overrharnesses: dict[str, str] = {}
+    overrides: dict[str, str] = {}
     for raw in values or []:
         if "=" in raw:
-            ide_key, _, val = raw.partition("=")
-            ide_key = ide_key.strip()
+            harness_key, _, val = raw.partition("=")
+            harness_key = harness_key.strip()
             val = val.strip()
-            if ide_key and val:
-                overrharnesses[ide_key] = val
+            if harness_key and val:
+                overrides[harness_key] = val
         elif raw.strip():
             default = raw.strip()
-    return default, overrharnesses
+    return default, overrides
 
 
 def _agent_saved_model(agent_detail: dict | None, harness: str) -> str | None:
@@ -347,16 +347,15 @@ def _agent_saved_model(agent_detail: dict | None, harness: str) -> str | None:
     server resolver rules so the CLI never re-prompts when the author has
     already chosen a model.
     """
-    ide = harness
-    optic.trace("agent_detail={}, harness={}", agent_detail, ide)
+    optic.trace("agent_detail={}, harness={}", agent_detail, harness)
     if not agent_detail:
         return None
     raw = agent_detail.get("models_by_harness") if isinstance(agent_detail, dict) else None
     if isinstance(raw, dict):
-        candidate = raw.get(ide)
+        candidate = raw.get(harness)
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()
-    if ide in ("claude-code", "claude_code"):
+    if harness == "claude-code":
         legacy = agent_detail.get("model_name") if isinstance(agent_detail, dict) else None
         if isinstance(legacy, str) and legacy.strip():
             return legacy.strip()
@@ -368,7 +367,7 @@ def _collect_install_options(
     *,
     scope: str | None,
     model_default: str | None,
-    model_overrharnesses: dict[str, str],
+    model_overrides: dict[str, str],
     tools: str | None,
     no_prompt: bool,
     refresh_models: bool = False,
@@ -385,29 +384,30 @@ def _collect_install_options(
     silently - the picker is skipped so authoring decisions aren't undone
     by a stray Enter at the prompt.
     """
-    ide = harness
-    optic.trace("harness={}", ide)
+    optic.trace("harness={}", harness)
     import sys
 
-    from observal_cli.harness_registry import has_model_selection
+    from observal_cli.harness_registry import get_default_scope, has_model_selection
     from observal_cli.render import format_model as _format_model
 
     opts: dict = {}
     interactive = sys.stdin.isatty() and not no_prompt
 
-    if ide in _SCOPE_AWARE_HARNESSES:
+    if harness in _SCOPE_AWARE_HARNESSES:
+        default_scope = get_default_scope(harness)
         if scope:
             opts["scope"] = scope
         elif interactive:
-            project_label, user_label = _SCOPE_AWARE_HARNESSES[ide]
-            choice = select_one("  Scope", [user_label, project_label], default=user_label)
+            project_label, user_label = _SCOPE_AWARE_HARNESSES[harness]
+            labels = {"project": project_label, "user": user_label}
+            choice = select_one("  Scope", [user_label, project_label], default=labels.get(default_scope, user_label))
             opts["scope"] = "user" if choice.startswith("user") else "project"
         else:
-            opts["scope"] = "user"
+            opts["scope"] = default_scope
 
-    if has_model_selection(ide):
-        explicit = model_overrharnesses.get(ide) or model_default
-        saved = _agent_saved_model(agent_detail, ide)
+    if has_model_selection(harness):
+        explicit = model_overrides.get(harness) or model_default
+        saved = _agent_saved_model(agent_detail, harness)
         if explicit:
             opts["model"] = explicit
         elif saved:
@@ -429,7 +429,7 @@ def _collect_install_options(
                 catalog = _catalog.fetch_catalog(refresh=refresh_models)
             except Exception:
                 catalog = {"models": []}
-            choices = _catalog.model_choices_for_picker(catalog, ide)
+            choices = _catalog.model_choices_for_picker(catalog, harness)
             choice_labels = [c[0] for c in choices] if choices else []
             choice_labels = ["auto (let the harness decide)", *choice_labels]
             picked = select_one("  Model", choice_labels, default="auto (let the harness decide)")
@@ -441,7 +441,7 @@ def _collect_install_options(
                         opts["model"] = model_id
                         break
 
-    if ide in ("claude-code", "claude_code") and tools:
+    if harness == "claude-code" and tools:
         opts["tools"] = tools
 
     return opts
@@ -455,12 +455,12 @@ def register_pull(app: typer.Typer):
             ...,
             "--harness",
             "-i",
-            help="Target harness (cursor, vscode, claude-code, kiro, codex, copilot, copilot-cli, opencode)",
+            help="Target harness (cursor, kiro, claude-code, codex, copilot, copilot-cli, opencode, antigravity, pi)",
         ),
         directory: str = typer.Option(".", "--dir", "-d", help="Target directory for written files"),
         dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Preview files without writing"),
         scope: str | None = typer.Option(
-            None, "--scope", help="Install scope: 'project' or 'user' (Claude Code/Kiro/Gemini only)"
+            None, "--scope", help="Install scope: 'project' or 'user' for harnesses that support both"
         ),
         model: list[str] | None = typer.Option(
             None,
@@ -499,34 +499,33 @@ def register_pull(app: typer.Typer):
           observal agent pull my-agent --harness cursor --no-prompt --dry-run
           observal agent pull my-agent --harness kiro --no-prompt --env API_KEY=sk-123 --env SECRET=abc
         """
-        ide = harness
         resolved = config.resolve_alias(agent_id)
         target_dir = Path(directory).resolve()
 
-        # Parse --env flags into overrharnesses dict
-        env_overrharnesses: dict[str, str] = {}
+        # Parse --env flags into overrides dict
+        env_overrides: dict[str, str] = {}
         for item in env or []:
             k, _, v = item.partition("=")
             if k:
-                env_overrharnesses[k.strip()] = v
+                env_overrides[k.strip()] = v
 
         # Fetch agent details to discover MCP env vars
         with spinner("Fetching agent details..."):
             agent_detail = client.get(f"/api/v1/agents/{resolved}")
 
-        env_values = _collect_mcp_env_vars(agent_detail, no_prompt=no_prompt, env_overrharnesses=env_overrharnesses or None)
+        env_values = _collect_mcp_env_vars(agent_detail, no_prompt=no_prompt, env_overrides=env_overrides or None)
 
-        rprint(f"\n[bold]Install options for [cyan]{ide}[/cyan]:[/bold]")
+        rprint(f"\n[bold]Install options for [cyan]{harness}[/cyan]:[/bold]")
         if refresh_models:
             from observal_cli import model_catalog as _catalog
 
             _catalog.invalidate_cache()
-        model_default, model_overrharnesses = _parse_model_overrharnesses(model or [])
+        model_default, model_overrides = _parse_model_overrides(model or [])
         options = _collect_install_options(
-            ide,
+            harness,
             scope=scope,
             model_default=model_default,
-            model_overrharnesses=model_overrharnesses,
+            model_overrides=model_overrides,
             tools=tools,
             no_prompt=no_prompt,
             refresh_models=refresh_models,
@@ -536,8 +535,13 @@ def register_pull(app: typer.Typer):
         if is_user_scope:
             rprint("  [dim]Files will be written to your home directory (user scope).[/dim]")
 
-        with spinner(f"Pulling {ide} config for agent {resolved[:8]}..."):
-            install_body: dict = {"harness": ide, "env_values": env_values, "options": options, "platform": sys.platform}
+        with spinner(f"Pulling {harness} config for agent {resolved[:8]}..."):
+            install_body: dict = {
+                "harness": harness,
+                "env_values": env_values,
+                "options": options,
+                "platform": sys.platform,
+            }
             if version:
                 install_body["version"] = version
             result = client.post(
@@ -598,7 +602,7 @@ def register_pull(app: typer.Typer):
                 agent_profile["content"] = _resolve_hook_paths(agent_profile["content"])
             # Cursor only reads .cursor/agents/ from the project directory,
             # never from ~/.cursor/agents/, so always resolve to project scope.
-            agent_profile_allow_home = is_user_scope and ide != "cursor"
+            agent_profile_allow_home = is_user_scope and harness != "cursor"
             p = _resolve_path(agent_profile["path"], target_dir, allow_home=agent_profile_allow_home)
             if dry_run:
                 written.append((str(p), "would write"))
@@ -665,7 +669,7 @@ def register_pull(app: typer.Typer):
                     git_url=git_url,
                     skill_path=sc.get("skill_path", "/"),
                     git_ref=sc.get("git_ref", "main"),
-                    ide=ide,
+                    ide=harness,
                     scope=scope_str,
                     skill_md_content=sc.get("skill_md_content"),
                     cwd=target_dir,
@@ -682,7 +686,7 @@ def register_pull(app: typer.Typer):
                     skill_md_content=sc.get("skill_md_content"),
                     script_content=sc.get("script_content"),
                     script_filename=sc.get("script_filename"),
-                    ide=ide,
+                    ide=harness,
                     scope=scope_str,
                     cwd=target_dir,
                 )
@@ -723,13 +727,13 @@ def register_pull(app: typer.Typer):
 
                 # Detect version conflicts with already-installed agents
                 _warn_component_conflicts(
-                    ide,
+                    harness,
                     agent_name=agent_detail.get("name", resolved),
                     components=lock_components,
                 )
 
                 upsert_agent(
-                    ide,
+                    harness,
                     name=agent_detail.get("name", resolved),
                     agent_id=str(agent_uuid),
                     version=agent_version,
@@ -750,7 +754,7 @@ def register_pull(app: typer.Typer):
 
             # For harnesses without a project-scoped cwd (e.g. pi), write the binding
             # into the global config so the telemetry extension can attribute sessions.
-            if ide == "pi":
+            if harness == "pi":
                 from observal_cli.config import load, save
 
                 cfg = load()
@@ -768,7 +772,7 @@ def register_pull(app: typer.Typer):
                 resource_type="agent",
                 resource_id=str(agent_uuid),
                 resource_name=agent_detail.get("name", resolved),
-                detail=f"ide={ide}",
+                detail=f"harness={harness}",
                 sensitivity="high",
             )
 
@@ -781,7 +785,7 @@ def register_pull(app: typer.Typer):
             rprint("\n[bold yellow]Dry run[/bold yellow] - no files written:\n")
         else:
             rprint(
-                f"\n[bold green]Pulled {ide} config[/bold green] ({len(written)} file{'s' if len(written) != 1 else ''}):\n"
+                f"\n[bold green]Pulled {harness} config[/bold green] ({len(written)} file{'s' if len(written) != 1 else ''}):\n"
             )
 
         for path, status in written:

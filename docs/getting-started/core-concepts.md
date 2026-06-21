@@ -10,7 +10,7 @@ The vocabulary you need to be productive with Observal. Read once; every other p
 
 ```mermaid
 flowchart TB
-    ide["AI coding agent - Claude Code, Kiro, Cursor, Pi"]
+    harness["AI coding harness: Claude Code, Kiro, Cursor, Pi"]
     sessions["Local session store - JSONL transcripts / SQLite buffers"]
     hooks["harness hooks - session + lifecycle events"]
     shim["observal-shim / proxy - MCP request + response capture"]
@@ -20,9 +20,9 @@ flowchart TB
     pg["PostgreSQL - registry + users + review state"]
     ch["ClickHouse - traces + spans + session events"]
 
-    ide --> sessions
-    ide --> hooks
-    ide <--> shim
+    harness --> sessions
+    harness --> hooks
+    harness <--> shim
     shim <--> mcp
     hooks --> api
     shim --> api

@@ -36,7 +36,7 @@ When a user runs `observal scan`, Observal reads those same locations to discove
 | 9 | `observal_cli/sessions/<ide_name>.py` | Session parser (if harness writes JSONL sessions) |
 | 10 | `observal_cli/hooks/<ide_name>_session_push.py` | Session push hook script |
 | 11 | `observal_cli/cmd_doctor.py` | Doctor diagnose/patch/cleanup coverage for the new harness |
-| 12 | `observal_cli/layer.py` | Layer scanning globs (`harness_LAYER_CONFIGS`) and active harness detection |
+| 12 | `observal_cli/layer.py` | Layer scanning globs (`HARNESS_LAYER_CONFIGS`) and active harness detection |
 | 13 | `tests/test_cli_ide_adapters.py` | Adapter unit tests |
 | 14 | `/api/v1/config/harnesses` consumers | Frontend uses server harness metadata through `useIdes()` |
 
@@ -134,7 +134,7 @@ Before moving on, always wire the new harness into these shared paths:
   - Add `_patch_<harness>()` support in `doctor patch`
   - Add `_cleanup_<harness>()` support in `doctor cleanup`
 - `observal_cli/layer.py`:
-  - Add user/project file globs under `harness_LAYER_CONFIGS`
+  - Add user/project file globs under `HARNESS_LAYER_CONFIGS`
 - `observal_cli/harness/<ide_name>.py`:
   - Add `home_markers` for active harness detection when the harness has a reliable home config marker. Glob patterns are supported.
   - Add `managed_agent_profiles`, `managed_skills`, and `managed_mcp_files` patterns for layer source attribution
@@ -466,7 +466,7 @@ custom session push script (most can reuse `session_push.py`).
    from services.harness import my_ide as _my_ide  # noqa: F401
    ```
 
-4. `observal_cli/cmd_scan.py`: add to `_harness_HOME_DIRS`:
+4. `observal_cli/cmd_scan.py`: add to `_HARNESS_HOME_DIRS`:
    ```python
    "my-harness": "~/.my-harness",
    ```

@@ -451,7 +451,7 @@ class TestShimStatus:
 
 
 class TestFeatureGating:
-    """Test that IDE_Registry feature flags gate method access."""
+    """Test that harness registry capabilities gate method access."""
 
     def test_codex_has_hooks_allows_get_hook_spec(self):
         adapter = get_adapter("codex")

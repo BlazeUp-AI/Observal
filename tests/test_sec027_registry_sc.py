@@ -119,7 +119,7 @@ def _empty_result():
 
 
 def _install_body() -> dict:
-    return {"ide": "cursor", "env_values": {}, "options": {}, "platform": ""}
+    return {"harness": "cursor", "env_values": {}, "options": {}, "platform": ""}
 
 
 # ═══════════════════════════════════════════════════════════

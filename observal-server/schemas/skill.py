@@ -10,7 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 from models.mcp import ListingStatus
-from schemas.constants import VALID_SKILL_TASK_TYPES, make_ide_list_validator, make_option_validator
+from schemas.constants import VALID_SKILL_TASK_TYPES, make_harness_list_validator, make_option_validator
 from schemas.skill_commands import normalize_slash_command
 
 
@@ -32,7 +32,7 @@ class SkillSubmitRequest(BaseModel):
     supported_harnesses: list[str] = []
 
     _validate_task_type = field_validator("task_type")(make_option_validator("task_type", VALID_SKILL_TASK_TYPES))
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
     @field_validator("slash_command")
     @classmethod
@@ -57,7 +57,7 @@ class SkillDraftRequest(BaseModel):
     slash_command: str | None = None
     supported_harnesses: list[str] = []
 
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
     @field_validator("slash_command")
     @classmethod

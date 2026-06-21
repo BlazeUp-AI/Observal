@@ -17,7 +17,7 @@ from schemas.harness_registry import HARNESS_REGISTRY
 
 def generate_hook_install_config(
     hook_listing,
-    ide: str,
+    harness: str,
     server_url: str = "http://localhost:8000",
 ) -> dict:
     """Generate a complete install response for a registry hook.
@@ -30,8 +30,8 @@ def generate_hook_install_config(
       - source_fetch: git fetch info for multi-file hooks
       - notes: human-readable notes
     """
-    optic.debug("generating hook install config: hook={}, ide={}", hook_listing.name, ide)
-    ide_info = HARNESS_REGISTRY.get(ide)
+    optic.debug("generating hook install config: hook={}, ide={}", hook_listing.name, harness)
+    ide_info = HARNESS_REGISTRY.get(harness)
     if not ide_info:
         return {
             "config_snippet": {},
@@ -39,7 +39,7 @@ def generate_hook_install_config(
             "files": [],
             "requirements": [],
             "source_fetch": None,
-            "notes": [f"harness '{ide}' is not recognized. Supported: {', '.join(HARNESS_REGISTRY.keys())}"],
+            "notes": [f"harness '{harness}' is not recognized. Supported: {', '.join(HARNESS_REGISTRY.keys())}"],
         }
 
     hook_type = ide_info.get("hook_type")
@@ -111,7 +111,7 @@ def generate_hook_install_config(
         actual_command = f"{hook_scripts_dir}/{hook_listing.name}/{command}"
 
     # Generate config snippet based on harness format
-    config_snippet = _build_config_snippet(ide, ide_info, ide_event, handler_type, actual_command, timeout)
+    config_snippet = _build_config_snippet(harness, ide_info, ide_event, handler_type, actual_command, timeout)
 
     # Determine config path
     config_path_val = ""
@@ -122,7 +122,7 @@ def generate_hook_install_config(
 
     # Notes
     notes: list[str] = []
-    if ide == "claude-code":
+    if harness == "claude-code":
         notes.append("Also works in Cursor via Third Party Hooks (enable in Cursor Settings → Features).")
 
     return {
@@ -136,7 +136,7 @@ def generate_hook_install_config(
 
 
 def _build_config_snippet(
-    ide: str,
+    harness: str,
     ide_info: dict,
     ide_event: str,
     handler_type: str,
@@ -145,26 +145,26 @@ def _build_config_snippet(
 ) -> dict:
     """Build the harness-specific config snippet."""
 
-    optic.trace("ide={}, ide_info={}", ide, ide_info)
-    if ide == "claude-code":
+    optic.trace("ide={}, ide_info={}", harness, ide_info)
+    if harness == "claude-code":
         hook_entry: dict = {"type": handler_type, "command": command}
         if timeout:
             hook_entry["timeout"] = timeout
         return {"hooks": {ide_event: [{"matcher": "*", "hooks": [hook_entry]}]}}
 
-    if ide == "cursor":
+    if harness == "cursor":
         hook_entry = {"command": command}
         return {"version": 1, "hooks": {ide_event: [hook_entry]}}
 
-    if ide in ("kiro", "kiro-cli"):
+    if harness in ("kiro", "kiro-cli"):
         hook_entry = {"command": command}
         return {"hooks": {ide_event: [hook_entry]}}
 
-    if ide in ("copilot", "copilot-cli"):
+    if harness in ("copilot", "copilot-cli"):
         hook_entry = {"command": command}
         return {"hooks": {ide_event: [hook_entry]}}
 
-    if ide == "codex":
+    if harness == "codex":
         # TOML format represented as dict
         return {
             "hooks": {ide_event: {"command": command}},

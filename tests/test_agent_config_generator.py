@@ -17,13 +17,14 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock
 
+import pytest
 import yaml
 
 from services.agent_builder import (
     AgentManifest,
     ManifestComponent,
     ManifestComponents,
-    generate_ide_agent_profiles,
+    generate_harness_agent_profiles,
 )
 from services.harness import generate_agent_config
 from services.harness.helpers import (
@@ -259,10 +260,10 @@ class TestGenerateClaudeCode:
         assert "otlp_env" not in cfg
         assert "claude_settings_snippet" not in cfg
 
-    def test_claude_code_underscore_alias(self):
+    def test_claude_code_underscore_alias_removed(self):
         agent = _make_agent()
-        cfg = generate_agent_config(agent, "claude_code")
-        assert ".claude/agents/" in cfg["agent_profile"]["path"]
+        with pytest.raises(ValueError):
+            generate_agent_config(agent, "claude_code")
 
     def test_model_fallback_from_agent_when_no_option(self):
         agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
@@ -330,7 +331,6 @@ class TestGenerateCursorVscode:
         cfg = generate_agent_config(agent, "cursor")
         assert cfg["agent_profile"]["path"] == ".cursor/agents/test-agent.md"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
-        assert "agent_profile" not in cfg
 
     def test_agent_content_not_empty(self):
         agent = _make_agent()
@@ -380,32 +380,27 @@ class TestGenerateKiro:
     def test_agent_profile_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        assert cfg["agent_profile"]["path"] == "~/.kiro/agents/test-agent.json"
+        assert cfg["agent_profile"]["path"] == "~/.kiro/agents/test-agent.md"
 
     def test_agent_content_structure(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
         content = cfg["agent_profile"]["content"]
-        assert content["name"] == "test-agent"
-        assert "You are helpful." in content["prompt"]
-        assert "Agent Specialization" in content["prompt"]
-        assert content["model"] is None  # Kiro uses auto model selection
-        assert "mcpServers" in content
-        assert "hooks" in content
+        assert "name: test-agent" in content
+        assert "You are helpful." in content
+        assert "Agent Specialization" in content
+        assert "hooks_config" in cfg
 
     def test_hooks_contain_required_events(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        hooks = cfg["agent_profile"]["content"]["hooks"]
-        # Only 2 events needed — JSONL session push reads incrementally
+        hooks = cfg["hooks_config"]["content"]
         for event in ("userPromptSubmit", "stop"):
             assert event in hooks
-        # Legacy bloat events should NOT be present
         for event in ("agentSpawn", "preToolUse", "postToolUse"):
             assert event not in hooks
 
     def test_no_steering_file_generated(self):
-        """Prompt lives in agent JSON only — no redundant steering file."""
         agent = _make_agent(prompt="Do the thing")
         cfg = generate_agent_config(agent, "kiro")
         assert "steering_file" not in cfg
@@ -413,23 +408,7 @@ class TestGenerateKiro:
     def test_kiro_agent_profile_has_no_description(self):
         agent = _make_agent(description="x" * 300)
         cfg = generate_agent_config(agent, "kiro")
-        assert "description" not in cfg["agent_profile"]["content"]
-
-    def test_tools_include_wildcard(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "kiro")
-        tools = cfg["agent_profile"]["content"]["tools"]
-        assert "*" in tools
-
-    def test_kiro_native_schema_fields(self):
-        agent = _make_agent()
-        cfg = generate_agent_config(agent, "kiro")
-        content = cfg["agent_profile"]["content"]
-        assert content["toolAliases"] == {}
-        assert content["allowedTools"] == []
-        assert content["toolsSettings"] == {}
-        assert isinstance(content["resources"], list)
-        assert any("AGENTS.md" in r for r in content["resources"])
+        assert "description:" not in cfg["agent_profile"]["content"]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -446,20 +425,19 @@ class TestGenerateCodex:
     def test_agent_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["agent_profile"]["path"] == "~/.codex/agents/test-agent.toml"
-        assert "agent_profile" not in cfg
+        assert cfg["agent_profile"]["path"] == ".codex/agents/test-agent.toml"
 
     def test_mcp_config_present(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
         assert "mcp_config" in cfg
-        assert cfg["mcp_config"]["path"] == "~/.codex/config.toml"
-        assert "mcp.servers" in cfg["mcp_config"]["content"]
+        assert cfg["mcp_config"]["path"] == ".codex/config.toml"
+        assert "mcp_servers" in cfg["mcp_config"]["content"]
 
     def test_mcp_config_empty_servers(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["mcp_config"]["content"]["mcp.servers"] == {}
+        assert cfg["mcp_config"]["content"]["mcp_servers"] == {}
 
     def test_content_not_empty(self):
         agent = _make_agent()
@@ -637,20 +615,20 @@ class TestNameSanitizationInOutput:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 13. Agent Builder — generate_ide_agent_profiles (manifest-based)
+# 13. Agent Builder — generate_harness_agent_profiles (manifest-based)
 # ═══════════════════════════════════════════════════════════════════
 
 
 class TestBuilderClaudeCode:
     def test_path_under_agents(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "claude-code")
+        result = generate_harness_agent_profiles(manifest, "claude-code")
         paths = [f.path for f in result.files]
         assert any(".claude/agents/" in p for p in paths)
 
     def test_yaml_frontmatter_present(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "claude-code")
+        result = generate_harness_agent_profiles(manifest, "claude-code")
         md_file = next(f for f in result.files if f.format == "markdown")
         content = md_file.content
         assert content.startswith("---\n")
@@ -662,7 +640,7 @@ class TestBuilderClaudeCode:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://example.com")]
         )
-        result = generate_ide_agent_profiles(manifest, "claude-code")
+        result = generate_harness_agent_profiles(manifest, "claude-code")
         md_file = next(f for f in result.files if f.format == "markdown")
         parts = md_file.content.split("---", 2)
         fm = yaml.safe_load(parts[1])
@@ -673,7 +651,7 @@ class TestBuilderClaudeCode:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://example.com")]
         )
-        result = generate_ide_agent_profiles(manifest, "claude-code")
+        result = generate_harness_agent_profiles(manifest, "claude-code")
         assert len(result.setup_commands) == 1
         assert result.setup_commands[0][:4] == ["claude", "mcp", "add", "my-srv"]
 
@@ -681,7 +659,7 @@ class TestBuilderClaudeCode:
 class TestBuilderCursor:
     def test_files_include_subagent_and_mcp_json(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "cursor")
+        result = generate_harness_agent_profiles(manifest, "cursor")
         paths = [f.path for f in result.files]
         assert any(".cursor/agents/" in p for p in paths)
         assert not any(".cursor/rules/" in p for p in paths)
@@ -689,40 +667,33 @@ class TestBuilderCursor:
 
 
 class TestBuilderKiro:
-    def test_json_agent_profile(self):
+    def test_markdown_agent_profile(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "kiro")
-        json_file = next(f for f in result.files if f.format == "json")
-        assert "~/.kiro/agents/" in json_file.path
-        assert json_file.content["name"] == "test-agent"
-
-    def test_tools_include_wildcard(self):
-        manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "kiro")
-        json_file = next(f for f in result.files if f.format == "json")
-        tools = json_file.content["tools"]
-        assert "*" in tools
+        result = generate_harness_agent_profiles(manifest, "kiro")
+        md_file = next(f for f in result.files if f.format == "markdown")
+        assert "~/.kiro/agents/" in md_file.path
+        assert "name: test-agent" in md_file.content
 
 
 class TestBuilderCodex:
     def test_agent_path(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "codex")
+        result = generate_harness_agent_profiles(manifest, "codex")
         paths = [f.path for f in result.files]
-        assert "~/.codex/agents/test-agent.toml" in paths
+        assert ".codex/agents/test-agent.toml" in paths
 
     def test_codex_only_agent_without_otlp_url(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "codex")
+        result = generate_harness_agent_profiles(manifest, "codex")
         paths = [f.path for f in result.files]
-        assert "~/.codex/agents/test-agent.toml" in paths
+        assert ".codex/agents/test-agent.toml" in paths
         assert len(paths) == 1
 
 
 class TestBuilderCopilot:
     def test_rules_path(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "copilot")
+        result = generate_harness_agent_profiles(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".github/agents/test-agent.agent.md" in paths
 
@@ -730,7 +701,7 @@ class TestBuilderCopilot:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
         )
-        result = generate_ide_agent_profiles(manifest, "copilot")
+        result = generate_harness_agent_profiles(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".vscode/mcp.json" in paths
 
@@ -738,7 +709,7 @@ class TestBuilderCopilot:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
         )
-        result = generate_ide_agent_profiles(manifest, "copilot")
+        result = generate_harness_agent_profiles(manifest, "copilot")
         mcp_file = next(f for f in result.files if f.path == ".vscode/mcp.json")
         content = mcp_file.content
         assert "servers" in content
@@ -748,7 +719,7 @@ class TestBuilderCopilot:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
         )
-        result = generate_ide_agent_profiles(manifest, "copilot")
+        result = generate_harness_agent_profiles(manifest, "copilot")
         mcp_file = next(f for f in result.files if f.path == ".vscode/mcp.json")
         entry = mcp_file.content["servers"]["my-srv"]
         assert entry["type"] == "stdio"
@@ -756,24 +727,24 @@ class TestBuilderCopilot:
 
     def test_no_mcp_file_when_no_mcp_components(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, "copilot")
+        result = generate_harness_agent_profiles(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".vscode/mcp.json" not in paths
 
 
 class TestBuilderUnsupportedIde:
-    def test_raises_for_unknown_ide(self):
+    def test_raises_for_unknown_harness(self):
         import pytest
 
         manifest = _make_manifest()
         with pytest.raises(ValueError, match="Unsupported harness"):
-            generate_ide_agent_profiles(manifest, "notepad")
+            generate_harness_agent_profiles(manifest, "notepad")
 
 
 class TestBuilderRulesMarkdown:
     def test_prompt_included_in_rules(self):
         manifest = _make_manifest(prompt="Be concise and helpful.")
-        result = generate_ide_agent_profiles(manifest, "cursor")
+        result = generate_harness_agent_profiles(manifest, "cursor")
         md_file = next(f for f in result.files if f.format == "markdown")
         assert "Be concise and helpful." in md_file.content
 
@@ -782,7 +753,7 @@ class TestBuilderRulesMarkdown:
             mcps=[ManifestComponent(name="srv-a", version="1.0.0", git_url="https://a.com", description="Server A")],
             skills=[ManifestComponent(name="skill-b", version="2.0.0", git_url="https://b.com", slash_command="doit")],
         )
-        result = generate_ide_agent_profiles(manifest, "cursor")
+        result = generate_harness_agent_profiles(manifest, "cursor")
         md_file = next(f for f in result.files if f.format == "markdown")
         assert "## MCP Servers" in md_file.content
         assert "**srv-a**" in md_file.content
@@ -802,7 +773,7 @@ class TestGenerateKiroWin32:
 
     def _all_hook_commands(self, cfg: dict) -> list[str]:
         """Extract all hook command strings from a Kiro agent config."""
-        hooks = cfg["agent_profile"]["content"]["hooks"]
+        hooks = cfg["hooks_config"]["content"]
         cmds = []
         for _event, entries in hooks.items():
             for entry in entries:
@@ -845,7 +816,7 @@ class TestGenerateKiroWin32:
     def test_win32_has_session_push_events_only(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="win32")
-        hooks = cfg["agent_profile"]["content"]["hooks"]
+        hooks = cfg["hooks_config"]["content"]
         for event in ("userPromptSubmit", "stop"):
             assert event in hooks
         for event in ("agentSpawn", "preToolUse", "postToolUse"):
@@ -854,7 +825,7 @@ class TestGenerateKiroWin32:
     def test_win32_agent_profile_path_unchanged(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="win32")
-        assert cfg["agent_profile"]["path"] == "~/.kiro/agents/test-agent.json"
+        assert cfg["agent_profile"]["path"] == "~/.kiro/agents/test-agent.md"
 
 
 class TestGenerateKiroPreservation:
@@ -881,19 +852,19 @@ class TestGenerateKiroPreservation:
     def test_unix_hooks_use_kiro_session_push(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="linux")
-        hooks = cfg["agent_profile"]["content"]["hooks"]
+        hooks = cfg["hooks_config"]["content"]
         cmd = hooks["userPromptSubmit"][0]["command"]
         assert "python3 -m observal_cli.hooks.kiro_session_push" in cmd
         assert "cat |" not in cmd
         assert "sed " not in cmd
         assert "curl" not in cmd
 
-    def test_non_kiro_cursor_ides_unaffected_by_platform(self):
+    def test_non_kiro_cursor_harnesses_unaffected_by_platform(self):
         agent = _make_agent()
-        for ide in ["claude-code", "codex", "copilot", "opencode"]:
-            cfg_default = generate_agent_config(agent, ide)
-            cfg_win32 = generate_agent_config(agent, ide, platform="win32")
-            assert cfg_default == cfg_win32, f"{ide} config changed with platform=win32"
+        for harness in ["claude-code", "codex", "copilot", "opencode"]:
+            cfg_default = generate_agent_config(agent, harness)
+            cfg_win32 = generate_agent_config(agent, harness, platform="win32")
+            assert cfg_default == cfg_win32, f"{harness} config changed with platform=win32"
 
 
 class TestHookConfigGeneratorWin32:
@@ -939,7 +910,7 @@ class TestHookConfigGeneratorWin32:
         cfg_linux = generate_hook_telemetry_config(listing, "kiro", platform="linux")
         assert cfg_default == cfg_linux
 
-    def test_non_kiro_ides_unaffected(self):
+    def test_non_kiro_harnesses_unaffected(self):
         from services.hook_config_generator import generate_hook_telemetry_config
 
         listing = MagicMock()

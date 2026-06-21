@@ -87,7 +87,11 @@ class KiroAdapter:
         content = "---\n" + "\n".join(frontmatter) + "\n---\n\n" + _wrap_kiro_prompt(ctx.agent.prompt, safe_name)
         result: dict = {
             "agent_profile": {"path": agent_path, "content": content},
-            "hooks_config": {"path": kiro_spec["hooks"][kiro_scope].format(name=safe_name), "content": hooks, "merge": True},
+            "hooks_config": {
+                "path": kiro_spec["hooks"][kiro_scope].format(name=safe_name),
+                "content": hooks,
+                "merge": True,
+            },
             "scope": kiro_scope,
         }
         if mcp_configs:

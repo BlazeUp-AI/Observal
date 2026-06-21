@@ -27,10 +27,19 @@ def supported_model_ids(harness: str) -> list[str]:
 
         return _ids(harness)
     except ModuleNotFoundError:
-        path = Path(__file__).resolve().parents[2] / "packages/observal-shared/observal_shared/harness_models" / f"{harness}.json"
+        path = (
+            Path(__file__).resolve().parents[2]
+            / "packages/observal-shared/observal_shared/harness_models"
+            / f"{harness}.json"
+        )
         if not path.exists():
-            path = Path(__file__).resolve().parents[2].parent / "packages/observal-shared/observal_shared/harness_models" / f"{harness}.json"
+            path = (
+                Path(__file__).resolve().parents[2].parent
+                / "packages/observal-shared/observal_shared/harness_models"
+                / f"{harness}.json"
+            )
         return [row["id"] for row in json.loads(path.read_text()).get("models", [])]
+
 
 HARNESS_REGISTRY: dict[str, dict] = {
     "cursor": {
@@ -154,24 +163,28 @@ HARNESS_REGISTRY: dict[str, dict] = {
         "display_name": "Codex",
         "capabilities": {"mcp_servers", "hooks", "skills"},
         "session_parser": "codex",
-        "scopes": ["user"],
-        "default_scope": "user",
-        "scope_labels": None,
+        "scopes": ["project", "user"],
+        "default_scope": "project",
+        "scope_labels": ("project (.codex/agents/)", "user (~/.codex/agents/)"),
         "agent_profile": {
+            "project": ".codex/agents/{name}.toml",
             "user": "~/.codex/agents/{name}.toml",
         },
         "agent_profile_format": "toml",
         "mcp_config": {
+            "project": ".codex/config.toml",
             "user": "~/.codex/config.toml",
         },
         "mcp_servers_key": "mcp_servers",
         "skills": {
+            "project": ".agents/skills/{name}/SKILL.md",
             "user": "~/.agents/skills/{name}/SKILL.md",
         },
         "skill_format": "yaml_frontmatter",
         "home_mcp_config": "~/.codex/config.toml",
         "hook_type": "command",
         "hooks": {
+            "project": ".codex/hooks.json",
             "user": "~/.codex/hooks.json",
         },
         "hook_scripts_dir": ".codex/hooks",
@@ -370,8 +383,19 @@ _GUIDANCE_FILES = {
     "kiro": [".kiro/steering/*.md", "~/.kiro/steering/*.md", "AGENTS.md"],
     "claude-code": ["CLAUDE.md", ".claude/CLAUDE.md", "~/.claude/CLAUDE.md", "CLAUDE.local.md"],
     "codex": ["AGENTS.md", "AGENTS.override.md", "~/.codex/AGENTS.md"],
-    "copilot": [".github/copilot-instructions.md", ".github/instructions/*.instructions.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"],
-    "copilot-cli": [".github/copilot-instructions.md", ".github/instructions/**/*.instructions.md", "AGENTS.md", "~/.copilot/copilot-instructions.md"],
+    "copilot": [
+        ".github/copilot-instructions.md",
+        ".github/instructions/*.instructions.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+    ],
+    "copilot-cli": [
+        ".github/copilot-instructions.md",
+        ".github/instructions/**/*.instructions.md",
+        "AGENTS.md",
+        "~/.copilot/copilot-instructions.md",
+    ],
     "opencode": ["opencode.json", "~/.config/opencode/opencode.json"],
     "antigravity": ["AGENTS.md", "GEMINI.md"],
     "pi": ["AGENTS.md", "~/.pi/agent/AGENTS.md", ".pi/SYSTEM.md", ".pi/APPEND_SYSTEM.md"],

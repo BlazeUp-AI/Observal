@@ -686,9 +686,9 @@ async def test_review_version_not_found_404():
 
 
 @pytest.mark.asyncio
-async def test_get_ide_config_from_cache():
-    """get_agent_ide_config returns harness_configs[ide] when pre-generated."""
-    from api.routes.agent_versions import _get_agent_ide_config
+async def test_get_harness_config_from_cache():
+    """get_agent_harness_config returns cached harness configs when pre-generated."""
+    from api.routes.agent_versions import _get_agent_harness_config
 
     agent = _make_agent()
     ver = _make_version(agent.id)
@@ -696,10 +696,10 @@ async def test_get_ide_config_from_cache():
     db = _db_returning_one(ver)
 
     with patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=agent)):
-        result = await _get_agent_ide_config(
+        result = await _get_agent_harness_config(
             agent_id=str(agent.id),
             version=SEMVER_VALID,
-            ide="claude-code",
+            harness="claude-code",
             db=db,
             current_user=_make_user(),
         )
@@ -708,11 +708,11 @@ async def test_get_ide_config_from_cache():
 
 
 @pytest.mark.asyncio
-async def test_get_ide_config_404_when_not_cached():
-    """get_agent_ide_config raises 404 when harness config is not pre-generated."""
+async def test_get_harness_config_404_when_not_cached():
+    """get_agent_harness_config raises 404 when harness config is not pre-generated."""
     from fastapi import HTTPException
 
-    from api.routes.agent_versions import _get_agent_ide_config
+    from api.routes.agent_versions import _get_agent_harness_config
 
     agent = _make_agent()
     ver = _make_version(agent.id)
@@ -723,10 +723,10 @@ async def test_get_ide_config_404_when_not_cached():
         patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=agent)),
         pytest.raises(HTTPException) as exc,
     ):
-        await _get_agent_ide_config(
+        await _get_agent_harness_config(
             agent_id=str(agent.id),
             version=SEMVER_VALID,
-            ide="claude-code",
+            harness="claude-code",
             db=db,
             current_user=_make_user(),
         )

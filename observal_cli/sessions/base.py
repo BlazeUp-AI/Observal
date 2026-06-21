@@ -244,7 +244,7 @@ def post_lines_chunked(
     cwd: str = "",
     parent_session_id: str | None = None,
     session_jsonl: Path | None = None,
-    ide: str = "claude-code",
+    harness: str = "claude-code",
     config: dict | None = None,
     extra_fields: dict | None = None,
 ) -> bool:
@@ -274,7 +274,7 @@ def post_lines_chunked(
             parent_session_id=parent_session_id,
             session_jsonl=session_jsonl,
         )
-        payload["ide"] = ide
+        payload["ide"] = harness
         # Only mark final on the last chunk if the hook_event warrants it
         if not is_last:
             payload.pop("final", None)
@@ -298,7 +298,7 @@ def post_lines_chunked(
                 server_url=server_url,
                 access_token=access_token,
                 layer_hash=payload["layer_hash"],
-                ide=ide,
+                harness=harness,
                 cwd=cwd,
                 config=config,
             )
@@ -324,7 +324,7 @@ def build_payload(
 ) -> dict:
     """Construct the JSON body for the ingest endpoint.
 
-    Defaults ide to ``claude-code``; callers override with ``payload["ide"] = ...``
+    Defaults harness telemetry to ``claude-code``; callers override ``payload["ide"]``
     for other harnesses.
     """
     agent_id, agent_version = _resolve_agent(cwd, lines, session_jsonl)
@@ -364,7 +364,7 @@ def _evict_layer_hash_cache(session_id: str) -> None:
     _layer_hash_cache.pop(session_id, None)
 
 
-def _compute_layer_hash_safe(cwd: str, ide: str) -> str | None:
+def _compute_layer_hash_safe(cwd: str, harness: str) -> str | None:
     """Compute layer_hash without ever blocking the session push.
 
     Computes across ALL detected harnesses (not just the session's harness).
@@ -373,7 +373,7 @@ def _compute_layer_hash_safe(cwd: str, ide: str) -> str | None:
     try:
         from observal_cli.layer import compute_layer_hash
 
-        return compute_layer_hash(ide=None, project_dir=cwd or None)
+        return compute_layer_hash(harness=None, project_dir=cwd or None)
     except Exception:
         return None
 
@@ -403,7 +403,7 @@ def _maybe_upload_layer_snapshot(
     server_url: str,
     access_token: str,
     layer_hash: str,
-    ide: str,
+    harness: str,
     cwd: str,
     config: dict | None = None,
 ) -> None:
@@ -423,7 +423,7 @@ def _maybe_upload_layer_snapshot(
             return
 
         # Build the full manifest with content
-        payload = build_upload_payload(ide, project_dir=cwd or None)
+        payload = build_upload_payload(harness, project_dir=cwd or None)
 
         # POST to server
         import httpx
@@ -504,8 +504,8 @@ def _lookup_lockfile_agent(cwd: str) -> dict | None:
         from observal_cli.harness_registry import get_valid_harnesses
         from observal_cli.lockfile import get_agent_for_directory
 
-        for ide in get_valid_harnesses():
-            agent = get_agent_for_directory(ide, cwd)
+        for harness in get_valid_harnesses():
+            agent = get_agent_for_directory(harness, cwd)
             if agent:
                 return agent
     except Exception:

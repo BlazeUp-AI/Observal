@@ -323,7 +323,9 @@ async def _create_agent_version(
                 options={"_resolved_model": resolved_model, "_model_warnings": model_warnings},
             )
         except Exception:
-            optic.error("harness config generation failed for agent={} version={} harness={}", agent.name, req.version, harness)
+            optic.error(
+                "harness config generation failed for agent={} version={} harness={}", agent.name, req.version, harness
+            )
             failed_harnesses.append(harness)
     ver.harness_configs = harness_configs or {}
 
@@ -411,10 +413,10 @@ async def _review_agent_version(
     }
 
 
-async def _get_agent_ide_config(
+async def _get_agent_harness_config(
     agent_id: str,
     version: str,
-    ide: str,
+    harness: str,
     db: AsyncSession,
     current_user: User,
 ) -> dict:
@@ -435,14 +437,14 @@ async def _get_agent_ide_config(
     if not ver:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    # Serve pre-generated config only - no generation at request time (spec requirement #8)
-    if not ver.harness_configs or ide not in ver.harness_configs:
+    # Serve pre-generated config only, no generation at request time.
+    if not ver.harness_configs or harness not in ver.harness_configs:
         raise HTTPException(
             status_code=404,
-            detail=f"harness '{ide}' not supported by this agent version. Available: {list(ver.harness_configs or {})}",
+            detail=f"harness '{harness}' not supported by this agent version. Available: {list(ver.harness_configs or {})}",
         )
 
-    return ver.harness_configs[ide]
+    return ver.harness_configs[harness]
 
 
 async def _get_version_diff(
@@ -612,19 +614,19 @@ async def review_agent_version(
     )
 
 
-@agent_version_router.get("/{agent_id}/versions/{version}/ide/{ide}")
-async def get_agent_ide_config(
+@agent_version_router.get("/{agent_id}/versions/{version}/harness/{harness}")
+async def get_agent_harness_config(
     agent_id: str,
     version: str,
-    ide: str,
+    harness: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     optic.trace("agent_id={}, version={}", agent_id, version)
-    return await _get_agent_ide_config(
+    return await _get_agent_harness_config(
         agent_id=agent_id,
         version=version,
-        ide=ide,
+        harness=harness,
         db=db,
         current_user=current_user,
     )

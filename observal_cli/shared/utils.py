@@ -137,7 +137,7 @@ def resolve_antigravity_config_dir(home: Path | None = None) -> Path | None:
     return None
 
 
-def extract_mcp_servers(config: dict, ide: str = "") -> dict:
+def extract_mcp_servers(config: dict, harness: str = "") -> dict:
     """Extract the MCP server map from an harness config dict.
 
     Resolves harness-specific key paths:
@@ -155,13 +155,13 @@ def extract_mcp_servers(config: dict, ide: str = "") -> dict:
         raise TypeError(f"extract_mcp_servers expects dict, got {type(config).__name__!r}")
 
     # Codex: nested mcp.servers
-    if ide == "codex":
+    if harness == "codex":
         mcp_block = config.get("mcp", {})
         if isinstance(mcp_block, dict) and "servers" in mcp_block:
             return mcp_block["servers"]
 
     # harness-specific top-level key
-    ide_key = _MCP_KEY_BY_harness.get(ide)
+    ide_key = _MCP_KEY_BY_harness.get(harness)
     if ide_key and ide_key in config:
         return config[ide_key]
 

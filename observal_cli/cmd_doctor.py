@@ -179,9 +179,9 @@ def _check_observal_skill_missing() -> list[str]:
     _extra_user_paths: dict[str, str] = {"kiro": "~/.kiro/skills/{name}/SKILL.md"}
     missing: list[str] = []
 
-    for ide, spec in HARNESS_REGISTRY.items():
+    for harness, spec in HARNESS_REGISTRY.items():
         skill_spec = spec.get("skills") or {}
-        user_path = skill_spec.get("user") or _extra_user_paths.get(ide)
+        user_path = skill_spec.get("user") or _extra_user_paths.get(harness)
         if not user_path:
             continue
 
@@ -553,7 +553,7 @@ def _check_antigravity(issues: list, warnings: list):
 
 @doctor_app.command(name="cleanup")
 def doctor_cleanup(
-    ide: str = typer.Option(
+    harness: str = typer.Option(
         None,
         "--harness",
         "-i",
@@ -581,9 +581,9 @@ def doctor_cleanup(
       observal doctor cleanup --harness kiro               # Kiro only
       observal doctor cleanup --harness claude-code --dry-run  # Preview without changes
     """
-    optic.trace("ide={}, exclude={}, dry_run={}", ide, exclude, dry_run)
+    optic.trace("ide={}, exclude={}, dry_run={}", harness, exclude, dry_run)
     all_harnesses = ["claude-code", "kiro", "cursor", "codex", "copilot", "copilot-cli", "opencode"]
-    targets = [ide] if ide else all_harnesses
+    targets = [harness] if harness else all_harnesses
     targets = [t for t in targets if t not in exclude]
     any_changes = False
 
@@ -926,27 +926,27 @@ def _backup_config(config_path: Path) -> Path:
     return backup
 
 
-def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
+def _parse_mcp_servers(config_data: dict, harness: str) -> dict[str, dict]:
     """Extract MCP servers dict from harness config using registry-defined key."""
-    optic.trace("config_data={}, ide={}", config_data, ide)
-    key = get_mcp_servers_key(ide)
+    optic.trace("config_data={}, ide={}", config_data, harness)
+    key = get_mcp_servers_key(harness)
     if key == "mcp.servers":
         return config_data.get("mcp", {}).get("servers", {})
     if key == "mcp":
         return config_data.get("mcp", {})
     if key == "servers":
         return config_data.get("servers", config_data.get("mcpServers", {}))
-    if ide == "copilot-cli":
+    if harness == "copilot-cli":
         return config_data.get("mcpServers", {})
     return config_data.get(key, config_data.get("servers", {}))
 
 
-def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
+def _shim_config_file(config_path: Path, harness: str, dry_run: bool) -> int:
     """Wrap un-shimmed MCP servers in a config file with observal-shim.
 
     Returns count of newly shimmed entries.
     """
-    optic.trace("config_path={}, ide={}", config_path, ide)
+    optic.trace("config_path={}, ide={}", config_path, harness)
     if not config_path.exists():
         return 0
     try:
@@ -954,7 +954,7 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
     except Exception:
         return 0
 
-    servers = _parse_mcp_servers(data, ide)
+    servers = _parse_mcp_servers(data, harness)
     shimmed = 0
     for name, entry in servers.items():
         if not _is_already_shimmed(entry) and not entry.get("url"):
@@ -969,7 +969,9 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
     return shimmed
 
 
-_SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items() if path}
+_SHIM_TARGETS: dict[str, Path] = {
+    harness: Path(path).expanduser() for harness, path in get_home_mcp_configs().items() if path
+}
 _VALID_HARNESSES = get_valid_harnesses()
 
 
@@ -982,7 +984,7 @@ def doctor_patch(
     shim: bool = typer.Option(False, "--shim", help="Wrap MCP servers with observal-shim"),
     all_: bool = typer.Option(False, "--all", help="Hooks + shims"),
     all_harnesses: bool = typer.Option(False, "--all-harnesses", help="Target every detected harness"),
-    ide: list[str] = typer.Option([], "--harness", "-i", help="Target specific harness (repeatable)"),
+    harness: list[str] = typer.Option([], "--harness", "-i", help="Target specific harness (repeatable)"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without writing"),
 ):
     """Instrument harnesses with Observal telemetry hooks and shims.
@@ -1006,7 +1008,7 @@ def doctor_patch(
         rprint("[red]Specify at least one of --hook, --shim, or --all[/red]")
         raise typer.Exit(1)
 
-    if not all_harnesses and not ide:
+    if not all_harnesses and not harness:
         rprint("[red]Specify --all-harnesses or --harness <name>[/red]")
         raise typer.Exit(1)
 
@@ -1016,7 +1018,7 @@ def doctor_patch(
         rprint("[red]Not configured. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    targets = list(ide) if ide else _VALID_HARNESSES if all_harnesses else []
+    targets = list(harness) if harness else _VALID_HARNESSES if all_harnesses else []
     for t in targets:
         if t not in _VALID_HARNESSES:
             rprint(f"[red]Unknown harness: {t}. Valid: {', '.join(_VALID_HARNESSES)}[/red]")

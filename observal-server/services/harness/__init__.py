@@ -15,7 +15,7 @@ class ConfigContext:
 
     agent: Any  # Agent model instance
     safe_name: str
-    ide: str
+    harness: str
     observal_url: str
     mcp_configs: dict = field(default_factory=dict)
     rules_content: str = ""
@@ -70,7 +70,7 @@ def get_all_adapters() -> dict[str, HarnessAdapter]:
 
 def generate_agent_config(
     agent: Any,
-    ide: str,
+    harness: str,
     observal_url: str = "http://localhost:8000",
     mcp_listings: dict | None = None,
     component_names: dict | None = None,
@@ -94,15 +94,15 @@ def generate_agent_config(
         _build_rules_content,
         _build_sandbox_mcp_entry,
         _build_skill_configs,
-        _check_ide_compatibility,
+        _check_harness_compatibility,
         _sanitize_name,
     )
 
     safe_name = _sanitize_name(agent.name)
-    mcp_configs = _build_mcp_configs(agent, ide, observal_url, mcp_listings=mcp_listings, env_values=env_values)
+    mcp_configs = _build_mcp_configs(agent, harness, observal_url, mcp_listings=mcp_listings, env_values=env_values)
 
     if sandbox_listings:
-        sandbox_mcp = _build_sandbox_mcp_entry(sandbox_listings, ide)
+        sandbox_mcp = _build_sandbox_mcp_entry(sandbox_listings, harness)
         if sandbox_mcp:
             mcp_configs.update(sandbox_mcp)
 
@@ -110,16 +110,16 @@ def generate_agent_config(
     skill_configs = _build_skill_configs(agent, skill_listings)
     hook_configs = _build_hook_configs(agent, hook_listings)
     options = options or {}
-    compatibility_warnings = _check_ide_compatibility(agent, ide)
+    compatibility_warnings = _check_harness_compatibility(agent, harness)
 
-    adapter = get_adapter(ide)
+    adapter = get_adapter(harness)
     if adapter is None:
-        raise ValueError(f"No adapter registered for harness: {ide!r}")
+        raise ValueError(f"No adapter registered for harness: {harness!r}")
 
     ctx = ConfigContext(
         agent=agent,
         safe_name=safe_name,
-        ide=ide,
+        harness=harness,
         observal_url=observal_url,
         mcp_configs=mcp_configs,
         rules_content=rules_content,
@@ -152,15 +152,15 @@ async def generate_all_harness_configs(
 
     from schemas.harness_registry import HARNESS_REGISTRY
 
-    ides = target_harnesses or agent_version.supported_harnesses or list(HARNESS_REGISTRY.keys())
+    harnesses = target_harnesses or agent_version.supported_harnesses or list(HARNESS_REGISTRY.keys())
     result = {}
 
-    for ide in ides:
-        if ide not in HARNESS_REGISTRY:
+    for harness in harnesses:
+        if harness not in HARNESS_REGISTRY:
             continue
         config = generate_agent_config(
             agent=agent,
-            ide=ide,
+            harness=harness,
             observal_url=observal_url,
             mcp_listings=mcp_listings,
             skill_listings=skill_listings,
@@ -184,6 +184,6 @@ async def generate_all_harness_configs(
                 files[sf["path"]] = sf["content"]
 
         if files:
-            result[ide] = {"files": files}
+            result[harness] = {"files": files}
 
     return result

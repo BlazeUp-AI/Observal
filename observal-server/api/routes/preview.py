@@ -93,7 +93,7 @@ async def preview_config(
     current_user: User = Depends(get_current_user),
 ):
     optic.debug("preview config")
-    target_harnesses = [ide for ide in req.target_harnesses if ide in _VALID_HARNESSES]
+    target_harnesses = [harness for harness in req.target_harnesses if harness in _VALID_HARNESSES]
     if not target_harnesses:
         target_harnesses = list(HARNESS_REGISTRY)
 
@@ -179,11 +179,11 @@ async def preview_config(
     configs: dict[str, dict[str, str]] = {}
     placeholder_url = "https://observal.example"
 
-    for ide in target_harnesses:
+    for harness in target_harnesses:
         try:
             config = generate_agent_config(
                 agent=agent,
-                ide=ide,
+                harness=harness,
                 observal_url=placeholder_url,
                 mcp_listings=mcp_map,
                 component_names=name_map,
@@ -217,6 +217,6 @@ async def preview_config(
                 files[sf["path"]] = sf["content"]
 
         if files:
-            configs[ide] = files
+            configs[harness] = files
 
     return PreviewConfigResponse(configs=configs)

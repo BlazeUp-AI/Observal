@@ -99,13 +99,13 @@ def _build_server_env(listing: McpListing, env_values: dict[str, str] | None = N
 
 def generate_config(
     listing: McpListing,
-    ide: str,
+    harness: str,
     proxy_port: int | None = None,
     observal_url: str = "",
     env_values: dict[str, str] | None = None,
     header_values: dict[str, str] | None = None,
 ) -> dict:
-    optic.debug("generating MCP config for ide={}", ide)
+    optic.debug("generating MCP config for ide={}", harness)
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
     server_env = _build_server_env(listing, env_values)
@@ -122,53 +122,52 @@ def generate_config(
             config["autoApprove"] = listing.auto_approve
         config["disabled"] = False
 
-        if ide == "claude-code":
+        if harness == "claude-code":
             return {
                 "command": ["claude", "mcp", "add", name, "--url", listing.url],
                 "type": "shell_command",
                 "claude_settings_snippet": {"env": server_env} if server_env else {},
                 "mcpServers": {name: config},
             }
-        if ide == "copilot":
+        if harness == "copilot":
             return {"mcpServers": {name: {**config, "type": transport_type}}}
-        if ide == "copilot-cli":
+        if harness == "copilot-cli":
             return {"mcpServers": {name: {**config, "type": transport_type, "tools": ["*"]}}}
-        if ide == "opencode":
+        if harness == "opencode":
             opencode_config: dict = {"type": "remote", "url": listing.url}
             if header_values:
                 opencode_config["headers"] = header_values
             if server_env:
                 opencode_config["env"] = server_env
             return {"mcp": {name: opencode_config}}
-        if ide == "codex":
-            # Codex uses mcp.servers TOML format
+        if harness == "codex":
             codex_entry: dict = {"url": listing.url}
             if header_values:
                 codex_entry["headers"] = header_values
             if server_env:
                 codex_entry["env"] = server_env
             return {
-                "mcp.servers": {name: codex_entry},
+                "mcp_servers": {name: codex_entry},
             }
         return {"mcpServers": {name: config}}
 
     # HTTP proxy transport (existing): point harness at the proxy URL
     if proxy_port is not None:
         proxy_url = f"http://localhost:{proxy_port}"
-        if ide == "claude-code":
+        if harness == "claude-code":
             return {
                 "command": ["claude", "mcp", "add", name, "--url", proxy_url],
                 "type": "shell_command",
             }
-        if ide == "codex":
+        if harness == "codex":
             return {
-                "mcp.servers": {name: {"url": proxy_url, "env": server_env}},
+                "mcp_servers": {name: {"url": proxy_url, "env": server_env}},
             }
-        if ide == "copilot":
+        if harness == "copilot":
             return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env}}}
-        if ide == "copilot-cli":
+        if harness == "copilot-cli":
             return {"mcpServers": {name: {"type": "sse", "url": proxy_url, "env": server_env, "tools": ["*"]}}}
-        if ide == "opencode":
+        if harness == "opencode":
             return {"mcp": {name: {"type": "remote", "url": proxy_url, "env": server_env}}}
         return {"mcpServers": {name: {"url": proxy_url, "env": server_env}}}
 
@@ -187,19 +186,19 @@ def generate_config(
     if listing.auto_approve:
         auto_approve_fields = {"autoApprove": listing.auto_approve, "disabled": False}
 
-    if ide == "claude-code":
+    if harness == "claude-code":
         return {
             "command": ["claude", "mcp", "add", name, "--", "observal-shim", *shim_args],
             "type": "shell_command",
         }
-    if ide == "codex":
+    if harness == "codex":
         return {
-            "mcp.servers": {
+            "mcp_servers": {
                 name: {"command": "observal-shim", "args": shim_args, "env": server_env, **auto_approve_fields}
             },
         }
 
-    if ide == "copilot":
+    if harness == "copilot":
         return {
             "mcpServers": {
                 name: {
@@ -212,7 +211,7 @@ def generate_config(
             },
         }
 
-    if ide == "copilot-cli":
+    if harness == "copilot-cli":
         return {
             "mcpServers": {
                 name: {
@@ -226,7 +225,7 @@ def generate_config(
             },
         }
 
-    if ide == "opencode":
+    if harness == "opencode":
         flat_cmd = ["observal-shim", *shim_args]
         entry: dict = {"type": "local", "command": flat_cmd}
         if server_env:

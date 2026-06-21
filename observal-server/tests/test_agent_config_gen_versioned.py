@@ -281,7 +281,7 @@ class TestBuildRulesContentPromptInjection:
 
         result = generate_agent_config(
             agent,
-            ide="claude-code",
+            harness="claude-code",
             prompt_listings={comp_id: listing},
             component_names=names,
         )

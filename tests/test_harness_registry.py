@@ -70,7 +70,9 @@ def test_scope_labels_consistency(harness):
         assert isinstance(spec["scope_labels"], tuple), (
             f"harness {harness!r}: scope_labels should be a tuple, got {type(spec['scope_labels'])}"
         )
-        assert len(spec["scope_labels"]) == 2, f"harness {harness!r}: scope_labels should have 2 entries (project, user)"
+        assert len(spec["scope_labels"]) == 2, (
+            f"harness {harness!r}: scope_labels should have 2 entries (project, user)"
+        )
 
 
 @pytest.mark.parametrize("harness", list(HARNESS_REGISTRY.keys()))

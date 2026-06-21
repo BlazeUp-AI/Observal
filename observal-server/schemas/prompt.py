@@ -8,7 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 from models.mcp import ListingStatus
-from schemas.constants import VALID_PROMPT_CATEGORIES, make_ide_list_validator, make_option_validator
+from schemas.constants import VALID_PROMPT_CATEGORIES, make_harness_list_validator, make_option_validator
 
 
 class PromptSubmitRequest(BaseModel):
@@ -24,7 +24,7 @@ class PromptSubmitRequest(BaseModel):
     supported_harnesses: list[str] = []
 
     _validate_category = field_validator("category")(make_option_validator("category", VALID_PROMPT_CATEGORIES))
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class PromptDraftRequest(BaseModel):
@@ -39,7 +39,7 @@ class PromptDraftRequest(BaseModel):
     tags: list[str] = []
     supported_harnesses: list[str] = []
 
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class PromptUpdateRequest(BaseModel):

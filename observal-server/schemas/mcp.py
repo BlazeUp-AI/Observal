@@ -9,7 +9,12 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models.mcp import ListingStatus
-from schemas.constants import VALID_MCP_CATEGORIES, VALID_MCP_FRAMEWORKS, make_ide_list_validator, make_option_validator
+from schemas.constants import (
+    VALID_MCP_CATEGORIES,
+    VALID_MCP_FRAMEWORKS,
+    make_harness_list_validator,
+    make_option_validator,
+)
 
 
 class McpEnvVar(BaseModel):
@@ -72,7 +77,7 @@ class McpSubmitRequest(BaseModel):
             raise ValueError(f"Invalid framework '{v}'. Valid options: {', '.join(VALID_MCP_FRAMEWORKS)}")
         return v
 
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
     @model_validator(mode="after")
     def _require_source(self):
@@ -102,7 +107,7 @@ class McpDraftRequest(BaseModel):
     changelog: str | None = None
     client_analysis: ClientAnalysis | None = None
 
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class McpUpdateRequest(BaseModel):

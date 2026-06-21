@@ -280,7 +280,7 @@ class TestDownloadModels:
         from models.download import AgentDownloadRecord
 
         cols = {c.name for c in AgentDownloadRecord.__table__.columns}
-        required = {"id", "agent_id", "user_id", "fingerprint", "source", "ide", "installed_at"}
+        required = {"id", "agent_id", "user_id", "fingerprint", "source", "harness", "installed_at"}
         assert required.issubset(cols)
 
     def test_agent_download_user_id_nullable(self):

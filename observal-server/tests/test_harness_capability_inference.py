@@ -54,10 +54,10 @@ def test_infer_required_features_ignores_unknown_skill_listings():
     assert infer_required_features(_agent(_component("skill"))) == []
 
 
-@pytest.mark.parametrize("ide", list(HARNESS_REGISTRY))
-def test_compute_supported_harnesses_includes_each_ide_for_its_features(ide):
-    required_features = sorted(HARNESS_REGISTRY[ide]["capabilities"])
-    assert ide in compute_supported_harnesses(required_features)
+@pytest.mark.parametrize("harness", list(HARNESS_REGISTRY))
+def test_compute_supported_harnesses_includes_each_ide_for_its_features(harness):
+    required_features = sorted(HARNESS_REGISTRY[harness]["capabilities"])
+    assert harness in compute_supported_harnesses(required_features)
 
 
 def test_compute_supported_harnesses_requires_every_feature():

@@ -3,7 +3,7 @@
 
 """Baseline regression test for harness config generation.
 
-Captures the output of generate_agent_config and generate_ide_agent_profiles
+Captures the output of generate_agent_config and generate_harness_agent_profiles
 for all supported harnesses. This test must pass identically before and after
 the adapter refactoring (Phases 2-3).
 """
@@ -20,11 +20,11 @@ from services.agent_builder import (
     AgentManifest,
     ManifestComponent,
     ManifestComponents,
-    generate_ide_agent_profiles,
+    generate_harness_agent_profiles,
 )
 from services.harness import generate_agent_config
 
-ALL_IDES = [
+ALL_HARNESSES = [
     "claude-code",
     "cursor",
     "kiro",
@@ -169,69 +169,63 @@ class TestGenerateAgentConfigBaseline:
     def agent(self):
         return _make_agent()
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_minimal_agent(self, agent, ide):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_minimal_agent(self, agent, harness):
         """Minimal agent (no components) generates valid config for each harness."""
-        result = generate_agent_config(agent, ide)
+        result = generate_agent_config(agent, harness)
         assert isinstance(result, dict)
         # All harnesses should produce at least one of these keys
         assert any(k in result for k in ("agent_profile", "agent_profile", "mcp_config", "config_file")), (
-            f"harness {ide} produced empty config: {list(result.keys())}"
+            f"harness {harness} produced empty config: {list(result.keys())}"
         )
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_agent_with_mcp(self, ide):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_agent_with_mcp(self, harness):
         """Agent with MCP component generates MCP config entries."""
         mcp_comp = _make_component("mcp", MCP_ID)
         agent = _make_agent(components=[mcp_comp])
         mcp_listing = _make_mcp_listing()
         result = generate_agent_config(
             agent,
-            ide,
+            harness,
             mcp_listings={MCP_ID: mcp_listing},
             component_names={str(MCP_ID): "test-mcp-server"},
         )
         assert isinstance(result, dict)
-        # MCP config should be present somewhere in the output
         mcp_config = result.get("mcp_config", {})
-        if ide not in ("opencode", "kiro"):
-            # Most harnesses have separate mcp_config; Kiro embeds in agent_profile
-            assert mcp_config or "mcp_servers" in str(result), f"No MCP config for {ide}"
-        elif ide == "kiro":
-            # Kiro embeds MCP in agent_profile content
-            agent_content = result.get("agent_profile", {}).get("content", {})
-            assert "mcpServers" in agent_content or "includeMcpJson" in agent_content
+        if harness != "opencode":
+            assert mcp_config or "mcp_servers" in str(result), f"No MCP config for {harness}"
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_agent_with_hooks(self, ide):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_agent_with_hooks(self, harness):
         """Agent with hook component generates hook config entries."""
         hook_comp = _make_component("hook", HOOK_ID)
         agent = _make_agent(components=[hook_comp])
         hook_listing = _make_hook_listing()
         result = generate_agent_config(
             agent,
-            ide,
+            harness,
             hook_listings={HOOK_ID: hook_listing},
             component_names={str(HOOK_ID): "test-hook"},
         )
         assert isinstance(result, dict)
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_agent_with_sandbox(self, ide):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_agent_with_sandbox(self, harness):
         """Agent with sandbox component injects sandbox MCP server."""
         sandbox_comp = _make_component("sandbox", SANDBOX_ID)
         agent = _make_agent(components=[sandbox_comp])
         sandbox_listing = _make_sandbox_listing()
         result = generate_agent_config(
             agent,
-            ide,
+            harness,
             sandbox_listings={SANDBOX_ID: sandbox_listing},
             component_names={str(SANDBOX_ID): "python-sandbox"},
         )
         assert isinstance(result, dict)
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_full_agent(self, ide):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_full_agent(self, harness):
         """Agent with all component types generates complete config."""
         components = [
             _make_component("mcp", MCP_ID),
@@ -241,7 +235,7 @@ class TestGenerateAgentConfigBaseline:
         agent = _make_agent(components=components)
         result = generate_agent_config(
             agent,
-            ide,
+            harness,
             mcp_listings={MCP_ID: _make_mcp_listing()},
             hook_listings={HOOK_ID: _make_hook_listing()},
             sandbox_listings={SANDBOX_ID: _make_sandbox_listing()},
@@ -255,28 +249,28 @@ class TestGenerateAgentConfigBaseline:
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Test: generate_ide_agent_profiles (manifest-based builder) baseline
+# Test: generate_harness_agent_profiles (manifest-based builder) baseline
 # ═══════════════════════════════════════════════════════════════════
 
 
 # agent_builder supports these harnesses (copilot-cli is not separate)
-BUILDER_IDES = [ide for ide in ALL_IDES if ide != "copilot-cli"]
+BUILDER_HARNESSES = [harness for harness in ALL_HARNESSES if harness != "copilot-cli"]
 
 
 class TestGenerateIdeAgentFilesBaseline:
-    """Test generate_ide_agent_profiles for each harness with manifests."""
+    """Test generate_harness_agent_profiles for each harness with manifests."""
 
-    @pytest.mark.parametrize("ide", BUILDER_IDES)
-    def test_minimal_manifest(self, ide):
+    @pytest.mark.parametrize("harness", BUILDER_HARNESSES)
+    def test_minimal_manifest(self, harness):
         """Minimal manifest produces valid harness config."""
         manifest = _make_manifest()
-        result = generate_ide_agent_profiles(manifest, ide)
+        result = generate_harness_agent_profiles(manifest, harness)
         assert result is not None
         # HarnessAgentConfig has agent_profiles and mcp_servers
         assert hasattr(result, "agent_profiles") or hasattr(result, "mcp_servers")
 
-    @pytest.mark.parametrize("ide", BUILDER_IDES)
-    def test_manifest_with_mcps(self, ide):
+    @pytest.mark.parametrize("harness", BUILDER_HARNESSES)
+    def test_manifest_with_mcps(self, harness):
         """Manifest with MCP components."""
         mcp = ManifestComponent(
             name="test-mcp",
@@ -284,11 +278,11 @@ class TestGenerateIdeAgentFilesBaseline:
             config_override={"command": "npx", "args": ["-y", "@test/server"]},
         )
         manifest = _make_manifest(mcps=[mcp])
-        result = generate_ide_agent_profiles(manifest, ide)
+        result = generate_harness_agent_profiles(manifest, harness)
         assert result is not None
 
-    @pytest.mark.parametrize("ide", BUILDER_IDES)
-    def test_manifest_with_hooks(self, ide):
+    @pytest.mark.parametrize("harness", BUILDER_HARNESSES)
+    def test_manifest_with_hooks(self, harness):
         """Manifest with hook components."""
         hook = ManifestComponent(
             name="test-hook",
@@ -299,7 +293,7 @@ class TestGenerateIdeAgentFilesBaseline:
             config_override={},
         )
         manifest = _make_manifest(hooks=[hook])
-        result = generate_ide_agent_profiles(manifest, ide)
+        result = generate_harness_agent_profiles(manifest, harness)
         assert result is not None
 
 
@@ -311,20 +305,20 @@ class TestGenerateIdeAgentFilesBaseline:
 class TestConfigSnapshot:
     """Generate deterministic configs and snapshot them for regression detection."""
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_snapshot_minimal(self, ide, tmp_path):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_snapshot_minimal(self, harness, tmp_path):
         """Write config to file for manual diff if needed."""
         agent = _make_agent()
-        result = generate_agent_config(agent, ide)
+        result = generate_agent_config(agent, harness)
         # Serialize to JSON for comparison
-        out = tmp_path / f"{ide}-minimal.json"
+        out = tmp_path / f"{harness}-minimal.json"
         out.write_text(json.dumps(result, indent=2, default=str))
         # Verify it's valid JSON and non-empty
         loaded = json.loads(out.read_text())
         assert loaded
 
-    @pytest.mark.parametrize("ide", ALL_IDES)
-    def test_snapshot_full(self, ide, tmp_path):
+    @pytest.mark.parametrize("harness", ALL_HARNESSES)
+    def test_snapshot_full(self, harness, tmp_path):
         """Full agent config snapshot."""
         components = [
             _make_component("mcp", MCP_ID),
@@ -334,7 +328,7 @@ class TestConfigSnapshot:
         agent = _make_agent(components=components)
         result = generate_agent_config(
             agent,
-            ide,
+            harness,
             mcp_listings={MCP_ID: _make_mcp_listing()},
             hook_listings={HOOK_ID: _make_hook_listing()},
             sandbox_listings={SANDBOX_ID: _make_sandbox_listing()},
@@ -344,7 +338,7 @@ class TestConfigSnapshot:
                 str(SANDBOX_ID): "python-sandbox",
             },
         )
-        out = tmp_path / f"{ide}-full.json"
+        out = tmp_path / f"{harness}-full.json"
         out.write_text(json.dumps(result, indent=2, default=str))
         loaded = json.loads(out.read_text())
         assert loaded

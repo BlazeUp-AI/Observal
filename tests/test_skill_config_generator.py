@@ -99,7 +99,7 @@ class TestGenerateSkillFile:
         listing = _make_skill_listing()
         result = _generate_skill(listing, "codex")
         assert result is not None
-        assert result["path"] == "~/.codex/skills/code-review/SKILL.md"
+        assert result["path"] == ".agents/skills/code-review/SKILL.md"
 
     def test_no_slash_command(self):
         listing = _make_skill_listing(slash_command=None)
@@ -167,7 +167,7 @@ class TestGenerateSkillConfig:
         listing = _make_skill_listing()
         config = generate_skill_config(listing, "codex")
         assert "skills" in config
-        assert config["skills"]["path"] == "~/.codex/skills/code-review/SKILL.md"
+        assert config["skills"]["path"] == ".agents/skills/code-review/SKILL.md"
 
     def test_scope_user(self):
         listing = _make_skill_listing()

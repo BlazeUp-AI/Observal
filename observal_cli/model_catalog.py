@@ -1,26 +1,38 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
+
 """Registry-backed harness model catalog for the CLI."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent / "packages/observal-shared/observal_shared/harness_models"
+def _catalogs() -> dict[str, dict]:
+    from observal_shared.harness_models import all_harness_models
+
+    return all_harness_models()
 
 
-def _load(harness: str) -> dict:
-    return json.loads((ROOT / f"{harness}.json").read_text())
+def valid_harnesses() -> list[str]:
+    return sorted(_catalogs())
 
 
 def fetch_catalog(*, refresh: bool = False, harness: str | None = None, ttl: int = 0) -> dict:
     del refresh, ttl
-    files = [ROOT / f"{harness}.json"] if harness else sorted(ROOT.glob("*.json"))
+    catalogs = _catalogs()
+    selected = [harness] if harness else valid_harnesses()
+    unknown = [name for name in selected if name not in catalogs]
+    if unknown:
+        raise ValueError(f"Unknown harness '{unknown[0]}'. Valid harnesses: {', '.join(valid_harnesses())}")
+
     rows = []
-    for path in files:
-        data = json.loads(path.read_text())
+    for name in selected:
+        data = catalogs[name]
         for row in data.get("models", []):
-            rows.append({**row, "harness": data["harness"], "model_id": row["id"], "display_name": row.get("label", row["id"])})
+            rows.append(
+                {**row, "harness": data["harness"], "model_id": row["id"], "display_name": row.get("label", row["id"])}
+            )
     return {"models": rows, "source": "harness-registry", "degraded": False}
 
 

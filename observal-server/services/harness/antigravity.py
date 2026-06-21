@@ -34,7 +34,10 @@ class AntigravityAdapter:
         for skill in ctx.skill_configs:
             skill_name = skill.get("name", "unnamed")
             skill_path = skill_path_template.replace("{name}", skill_name)
-            content = skill.get("skill_md_content") or f"---\nname: {skill_name}\ndescription: {skill.get('description', '')}\n---\n"
+            content = (
+                skill.get("skill_md_content")
+                or f"---\nname: {skill_name}\ndescription: {skill.get('description', '')}\n---\n"
+            )
             skills.append({"path": skill_path, "content": content})
         if skills:
             result["skills"] = skills

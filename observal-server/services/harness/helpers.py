@@ -401,16 +401,16 @@ _FEATURE_LABELS: dict[str, str] = {
 }
 
 
-def _check_ide_compatibility(agent: Agent, ide: str) -> list[str]:
+def _check_harness_compatibility(agent: Agent, harness: str) -> list[str]:
     """Return warning strings when *ide* lacks features the agent requires."""
     required = getattr(agent, "required_capabilities", None) or []
-    ide_caps = HARNESS_CAPABILITIES.get(ide, set())
+    ide_caps = HARNESS_CAPABILITIES.get(harness, set())
     warnings: list[str] = []
     for feature in required:
         if feature not in ide_caps:
             label = _FEATURE_LABELS.get(feature, feature)
             warnings.append(
-                f"This agent requires '{label}' but {ide} does not support it. Some functionality may not work."
+                f"This agent requires '{label}' but {harness} does not support it. Some functionality may not work."
             )
     return warnings
 
@@ -441,7 +441,7 @@ def _inject_agent_id(mcp_config: dict, agent_id: str):
             cfg["env"]["OBSERVAL_AGENT_ID"] = agent_id
 
 
-def _build_sandbox_mcp_entry(sandbox_listings: dict, ide: str) -> dict:
+def _build_sandbox_mcp_entry(sandbox_listings: dict, harness: str) -> dict:
     """Build an MCP server entry for sandbox components.
 
     Returns a dict like {"observal-sandbox": {"command": ..., "args": [...]}}
@@ -478,7 +478,7 @@ def _build_sandbox_mcp_entry(sandbox_listings: dict, ide: str) -> dict:
 
 def _build_mcp_configs(
     agent: Agent,
-    ide: str,
+    harness: str,
     observal_url: str,
     mcp_listings: dict | None = None,
     env_values: dict | None = None,
@@ -499,7 +499,7 @@ def _build_mcp_configs(
     optic.debug(
         "building MCP configs for agent '{}' (ide={}, {} components)",
         agent.name,
-        ide,
+        harness,
         sum(1 for c in agent.components if c.component_type == "mcp"),
     )
 
@@ -510,13 +510,13 @@ def _build_mcp_configs(
         if not listing:
             continue
         mcp_env = env_values.get(str(listing.id), {})
-        cfg = generate_config(listing, ide, observal_url=observal_url, env_values=mcp_env)
+        cfg = generate_config(listing, harness, observal_url=observal_url, env_values=mcp_env)
         if "mcpServers" in cfg:
             mcp_configs.update(cfg["mcpServers"])
         elif "mcp" in cfg:
             # OpenCode returns {"mcp": {name: entry}} — merge directly
             mcp_configs.update(cfg["mcp"])
-        elif ide in ("claude-code", "claude_code"):
+        elif harness in ("claude-code", "claude_code"):
             # generate_config returns shell commands for Claude Code, not
             # an mcpServers dict. Build the shim entry directly so the
             # agent file gets proper mcpServers frontmatter.
@@ -596,7 +596,7 @@ def _build_skill_configs(
     return skills
 
 
-def _generate_skill(skill: dict, ide: str, scope: str = "project") -> dict:
+def _generate_skill(skill: dict, harness: str, scope: str = "project") -> dict:
     """Generate an harness-specific skill file entry.
 
     Returns a dict with 'path' and 'content' keys, or None for
@@ -604,7 +604,7 @@ def _generate_skill(skill: dict, ide: str, scope: str = "project") -> dict:
     """
     from services.config.skill_builder import generate_skill
 
-    return generate_skill(skill, ide, scope)
+    return generate_skill(skill, harness, scope)
 
 
 def _build_hook_configs(
@@ -638,14 +638,14 @@ def _build_hook_configs(
     return hooks
 
 
-def _get_hook_events_map(ide: str) -> dict[str, str]:
+def _get_hook_events_map(harness: str) -> dict[str, str]:
     """Get canonical event → harness event mapping from the harness registry."""
-    return HARNESS_REGISTRY.get(ide, {}).get("hook_events_map", {})
+    return HARNESS_REGISTRY.get(harness, {}).get("hook_events_map", {})
 
 
-def _get_hook_scripts_dir(ide: str) -> str:
+def _get_hook_scripts_dir(harness: str) -> str:
     """Get the hook scripts directory for an harness from the registry."""
-    return HARNESS_REGISTRY.get(ide, {}).get("hook_scripts_dir", "")
+    return HARNESS_REGISTRY.get(harness, {}).get("hook_scripts_dir", "")
 
 
 _HOOK_SCRIPTS_DIR: dict[str, str] = {
@@ -659,10 +659,10 @@ _HOOK_SCRIPTS_DIR: dict[str, str] = {
 }
 
 
-def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[dict], ide: str) -> None:
+def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[dict], harness: str) -> None:
     """Merge user-submitted hook components into the harness hooks config dict (in-place)."""
-    events_map = _get_hook_events_map(ide)
-    scripts_dir = _HOOK_SCRIPTS_DIR.get(ide, "")
+    events_map = _get_hook_events_map(harness)
+    scripts_dir = _HOOK_SCRIPTS_DIR.get(harness, "")
     hooks_dict = hooks_content.setdefault("hooks", {})
 
     for hc in hook_configs:
@@ -680,17 +680,17 @@ def _merge_hook_components_into_config(hooks_content: dict, hook_configs: list[d
         elif script_filename and scripts_dir:
             command = f"{scripts_dir}/{script_filename}"
 
-        if ide == "cursor":
+        if harness == "cursor":
             hooks_dict.setdefault(ide_event, []).append({"command": command})
-        elif ide in ("copilot", "copilot-cli"):
+        elif harness in ("copilot", "copilot-cli"):
             hooks_dict.setdefault(ide_event, []).append({"type": "command", "command": command})
         else:
             hooks_dict.setdefault(ide_event, []).append({"command": command})
 
 
-def _collect_hook_script_files(hook_configs: list[dict], hook_listings: dict | None, ide: str) -> list[dict]:
+def _collect_hook_script_files(hook_configs: list[dict], hook_listings: dict | None, harness: str) -> list[dict]:
     """Collect script files from hook components that need to be written on install."""
-    scripts_dir = _HOOK_SCRIPTS_DIR.get(ide, "")
+    scripts_dir = _HOOK_SCRIPTS_DIR.get(harness, "")
     if not scripts_dir:
         return []
 

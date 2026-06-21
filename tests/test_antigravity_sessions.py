@@ -212,12 +212,12 @@ class TestAntigravityServerAdapter:
         from services.harness.antigravity import AntigravityAdapter
 
         adapter = AntigravityAdapter()
-        assert adapter.ide_name == "antigravity"
+        assert adapter.harness_name == "antigravity"
 
         ctx = ConfigContext(
             agent=None,
             safe_name="test-agent",
-            ide="antigravity",
+            harness="antigravity",
             observal_url="http://localhost:8000",
             mcp_configs={"my-mcp": {"command": "node", "args": ["server.js"]}},
             rules_content="# Test rules",
@@ -228,7 +228,7 @@ class TestAntigravityServerAdapter:
         assert result["scope"] == "project"
         assert "mcp_config" in result
         assert result["mcp_config"]["content"]["mcpServers"]["my-mcp"]["command"] == "node"
-        assert result["agent_profile"]["content"]["system_prompt"] == "# Test rules"
+        assert "agent_profile" not in result
         assert len(result["skills"]) == 1
 
     def test_format_config_user_scope(self):
@@ -242,13 +242,12 @@ class TestAntigravityServerAdapter:
         ctx = ConfigContext(
             agent=None,
             safe_name="test-agent",
-            ide="antigravity",
+            harness="antigravity",
             observal_url="http://localhost:8000",
             options={"scope": "user"},
         )
         result = adapter.format_config(ctx)
-        assert result["scope"] == "user"
-        assert result["agent_profile"]["path"] == "~/.gemini/antigravity-cli/agents/test-agent/agent.json"
+        assert result == {"scope": "user"}
 
     def test_format_config_with_model(self):
         import sys
@@ -261,7 +260,7 @@ class TestAntigravityServerAdapter:
         ctx = ConfigContext(
             agent=None,
             safe_name="test-agent",
-            ide="antigravity",
+            harness="antigravity",
             observal_url="http://localhost:8000",
             mcp_configs={},
             options={"_resolved_model": "gemini-2.5-pro"},
@@ -280,7 +279,7 @@ class TestAntigravityServerAdapter:
         ctx = ConfigContext(
             agent=None,
             safe_name="test-agent",
-            ide="antigravity",
+            harness="antigravity",
             observal_url="http://localhost:8000",
             mcp_configs={},
             compatibility_warnings=["Some warning"],

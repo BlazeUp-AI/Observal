@@ -57,13 +57,13 @@ class CodexAdapter:
         rules_content = ctx.rules_content
 
         codex_spec = HARNESS_REGISTRY["codex"]
-        codex_scope = codex_spec["default_scope"]
+        codex_scope = options.get("scope") or codex_spec["default_scope"]
         codex_content: dict = {codex_spec.get("mcp_servers_key", "mcp_servers"): mcp_configs}
         codex_model = options.get("_resolved_model")
 
         result: dict = {
             "agent_profile": {
-                "path": f"~/.codex/agents/{ctx.safe_name}.toml",
+                "path": codex_spec["agent_profile"][codex_scope].format(name=ctx.safe_name),
                 "content": _codex_agent_toml(
                     ctx.safe_name,
                     (ctx.agent.description or ctx.safe_name).replace("\n", " ").strip()[:200],
@@ -73,7 +73,7 @@ class CodexAdapter:
             },
             "mcp_config": {"path": codex_spec["mcp_config"][codex_scope], "content": codex_content},
             "hooks_config": {
-                "path": "~/.codex/hooks.json",
+                "path": codex_spec["hooks"][codex_scope],
                 "content": _codex_hooks_config(agent_name=ctx.safe_name),
             },
             "scope": codex_scope,

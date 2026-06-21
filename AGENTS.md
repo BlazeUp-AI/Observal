@@ -11,7 +11,7 @@ Internal context for contributors and AI coding agents. Use `README.md` for the 
 
 Observal is an agent-centric registry and observability platform for AI coding agents. Users interact with it three ways:
 
-1. **CLI** (`observal`): pull agents, scan harnesses, submit components, manage the server
+1. **CLI** (`observal`): pull agents, sca harnesses, submit components, manage the server
 2. **Web UI** (`web/`): browse the registry, view traces, manage users, admin dashboard
 3. **Observal skill** (bundled, auto-installed on login): lets the LLM inside any harness drive Observal commands directly (e.g. "create an agent that uses the github MCP")
 
@@ -28,13 +28,13 @@ Agents are the primary entity. Each agent bundles 5 component types: MCP servers
 **Functional** (config gen and scanning work, but no session parser or hook spec):
 - Gemini CLI, Codex CLI, Copilot, Copilot CLI, OpenCode
 
-See `docs/adding-a-harness.md` for the complete guide to adding or promoting an harness.
+See `docs/adding-a-harness.md` for the complete guide to adding or promoting a harness.
 
 ## Architecture at a glance
 
 ```
 observal_cli/          Python CLI (Typer)
-  ide/                 CLI-side harness adapters (protocol.py, base.py, 9 adapters)
+  harness/             CLI-side harness adapters (protocol.py, base.py, 9 adapters)
   harness_specs/           Hook specs (claude_code, kiro, pi only)
   skills/              Bundled skills installed on login (observal, observal-admin, etc.)
 
@@ -45,7 +45,7 @@ observal-server/       FastAPI server
   schemas/             Pydantic request/response schemas
   services/            Business logic
     clickhouse/        ClickHouse subpackage (client, schema, insert, query)
-    ide/               Server-side harness adapters (config generation)
+    harness/           Server-side harness adapters (config generation)
     session_parsers/   Per-harness JSONL parsers (claude_code, kiro, cursor, pi)
     audit/             Compliance audit system (loguru-based)
     config/            Config generation helpers (mcp_builder, skill_builder)

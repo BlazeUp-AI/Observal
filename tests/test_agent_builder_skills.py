@@ -12,7 +12,7 @@ from services.agent_builder import (
     ManifestComponent,
     ManifestComponents,
     _build_skills,
-    generate_ide_agent_profiles,
+    generate_harness_agent_profiles,
 )
 
 
@@ -93,36 +93,36 @@ class TestBuildSkillFilesFallbackPath:
     def test_all_harnesses_produce_skills(self):
         """All harnesses have skill entries and produce output."""
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        for ide in ("codex", "copilot", "cursor", "claude-code", "kiro"):
-            assert _build_skills(manifest, ide) != [], f"{ide} should produce skill files"
+        for harness in ("codex", "copilot", "cursor", "claude-code", "kiro"):
+            assert _build_skills(manifest, harness) != [], f"{harness} should produce skill files"
 
 
 class TestSkillFilePaths:
     @pytest.mark.parametrize(
-        "ide,expected_prefix",
+        "harness,expected_prefix",
         [
             ("claude-code", ".claude/skills/"),
             ("kiro", ".kiro/skills/"),
             ("cursor", ".cursor/skills/"),
         ],
     )
-    def test_skill_path(self, ide: str, expected_prefix: str):
+    def test_skill_path(self, harness: str, expected_prefix: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        files = _build_skills(manifest, ide)
+        files = _build_skills(manifest, harness)
         assert len(files) == 1
         assert files[0].path.startswith(expected_prefix) or files[0].path.startswith(
             "~/" + expected_prefix.lstrip("./")
         )
 
 
-class TestGenerateIdeAgentFilesWithSkills:
+class TestGenerateHarnessAgentFilesWithSkills:
     @pytest.mark.parametrize(
-        "ide",
+        "harness",
         ["claude-code", "cursor", "kiro", "opencode", "codex", "copilot"],
     )
-    def test_skill_in_ide_output(self, ide: str):
+    def test_skill_in_harness_output(self, harness: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        config = generate_ide_agent_profiles(manifest, ide)
+        config = generate_harness_agent_profiles(manifest, harness)
         # The verbatim content uniquely identifies the skill file regardless of path.
         skills = [f for f in config.files if f.content == VERBATIM_MD]
         assert len(skills) == 1

@@ -27,7 +27,7 @@ from observal_cli.cmd_pull import _dict_to_toml, _write_file
 from observal_cli.constants import HARNESS_CAPABILITIES, VALID_HARNESSES
 from observal_cli.main import app as cli_app
 from services.harness import generate_agent_config
-from services.harness.helpers import _check_ide_compatibility
+from services.harness.helpers import _check_harness_compatibility
 
 # ═══════════════════════════════════════════════════════════════════
 # Helpers
@@ -139,26 +139,25 @@ class TestGenerateCodexConfig:
     def test_agent_path_is_codex_agent_toml(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["agent_profile"]["path"] == "~/.codex/agents/test-agent.toml"
-        assert "agent_profile" not in cfg
+        assert cfg["agent_profile"]["path"] == ".codex/agents/test-agent.toml"
 
     def test_mcp_config(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["mcp_config"]["path"] == "~/.codex/config.toml"
+        assert cfg["mcp_config"]["path"] == ".codex/config.toml"
 
     def test_mcp_config_root_key(self):
         ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
         agent = _make_agent(external_mcps=ext)
         cfg = generate_agent_config(agent, "codex")
-        assert "mcp.servers" in cfg["mcp_config"]["content"]
-        assert "my-server" in cfg["mcp_config"]["content"]["mcp.servers"]
+        assert "mcp_servers" in cfg["mcp_config"]["content"]
+        assert "my-server" in cfg["mcp_config"]["content"]["mcp_servers"]
 
     def test_mcp_config_entry_has_command_and_args(self):
         ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
         agent = _make_agent(external_mcps=ext)
         cfg = generate_agent_config(agent, "codex")
-        servers = cfg["mcp_config"]["content"]["mcp.servers"]
+        servers = cfg["mcp_config"]["content"]["mcp_servers"]
         assert servers["my-server"]["command"] == "observal-shim"
         assert "--mcp-id" in servers["my-server"]["args"]
 
@@ -166,13 +165,13 @@ class TestGenerateCodexConfig:
         ext = [{"name": "srv", "command": "npx", "args": ["-y", "srv"]}]
         agent = _make_agent(external_mcps=ext)
         cfg = generate_agent_config(agent, "codex")
-        servers = cfg["mcp_config"]["content"]["mcp.servers"]
+        servers = cfg["mcp_config"]["content"]["mcp_servers"]
         assert servers["srv"]["env"]["OBSERVAL_AGENT_ID"] == str(agent.id)
 
-    def test_scope_is_user(self):
+    def test_scope_is_project(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["scope"] == "user"
+        assert cfg["scope"] == "project"
 
     def test_agent_content_not_empty(self):
         agent = _make_agent()
@@ -183,8 +182,8 @@ class TestGenerateCodexConfig:
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
         assert "mcp_config" in cfg
-        assert "mcp.servers" in cfg["mcp_config"]["content"]
-        assert cfg["mcp_config"]["content"]["mcp.servers"] == {}
+        assert "mcp_servers" in cfg["mcp_config"]["content"]
+        assert cfg["mcp_config"]["content"]["mcp_servers"] == {}
 
     def test_agent_content_uses_agent_prompt(self):
         agent = _make_agent(prompt="Always use Python.")
@@ -264,7 +263,7 @@ class TestGenerateCopilotCliConfig:
     def test_mcp_config(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot-cli")
-        assert cfg["mcp_config"]["path"] == ".mcp.json"
+        assert cfg["mcp_config"]["path"] == "~/.copilot/mcp-config.json"
 
     def test_mcp_config_root_key_is_mcp_servers(self):
         ext = [{"name": "my-server", "command": "npx", "args": ["-y", "my-server"]}]
@@ -423,53 +422,53 @@ class TestIdeCompatibilityWarnings:
     def test_codex_no_longer_warns_on_mcp_requirement(self):
         agent = _make_agent()
         agent.required_capabilities = ["mcp_servers"]
-        warnings = _check_ide_compatibility(agent, "codex")
+        warnings = _check_harness_compatibility(agent, "codex")
         assert len(warnings) == 0
 
     def test_copilot_no_longer_warns_on_mcp_requirement(self):
         agent = _make_agent()
         agent.required_capabilities = ["mcp_servers"]
-        warnings = _check_ide_compatibility(agent, "copilot")
+        warnings = _check_harness_compatibility(agent, "copilot")
         assert len(warnings) == 0
 
     def test_opencode_warns_on_unsupported_features(self):
         agent = _make_agent()
         agent.required_capabilities = ["skills", "hooks"]
-        warnings = _check_ide_compatibility(agent, "opencode")
+        warnings = _check_harness_compatibility(agent, "opencode")
         # opencode now supports both hooks and skills
         assert len(warnings) == 0
 
     def test_no_warnings_for_supported_features(self):
         agent = _make_agent()
         agent.required_capabilities = []
-        for ide in ("codex", "copilot", "opencode"):
-            if ide in HARNESS_CAPABILITIES:
-                warnings = _check_ide_compatibility(agent, ide)
-                assert len(warnings) == 0, f"Unexpected warnings for {ide}: {warnings}"
+        for harness in ("codex", "copilot", "opencode"):
+            if harness in HARNESS_CAPABILITIES:
+                warnings = _check_harness_compatibility(agent, harness)
+                assert len(warnings) == 0, f"Unexpected warnings for {harness}: {warnings}"
 
     def test_copilot_supports_mcp_servers(self):
         agent = _make_agent()
         agent.required_capabilities = ["mcp_servers"]
-        warnings = _check_ide_compatibility(agent, "copilot")
+        warnings = _check_harness_compatibility(agent, "copilot")
         assert len(warnings) == 0
 
     def test_copilot_cli_supports_hooks(self):
         agent = _make_agent()
         agent.required_capabilities = ["mcp_servers", "hooks"]
-        warnings = _check_ide_compatibility(agent, "copilot-cli")
+        warnings = _check_harness_compatibility(agent, "copilot-cli")
         assert len(warnings) == 0
 
     def test_codex_warns_on_unsupported_features(self):
         agent = _make_agent()
         agent.required_capabilities = ["skills", "hooks"]
-        warnings = _check_ide_compatibility(agent, "codex")
+        warnings = _check_harness_compatibility(agent, "codex")
         # Codex now supports hooks and skills
         assert len(warnings) == 0
 
     def test_codex_warns_on_skills_requirement(self):
         agent = _make_agent()
         agent.required_capabilities = ["skills"]
-        warnings = _check_ide_compatibility(agent, "codex")
+        warnings = _check_harness_compatibility(agent, "codex")
         # Codex now supports skills
         assert len(warnings) == 0
 
@@ -481,35 +480,35 @@ class TestIdeCompatibilityWarnings:
 
 class TestDictToToml:
     def test_basic_section(self):
-        d = {"mcp.servers": {"my-srv": {"command": "npx", "args": ["-y", "my-srv"]}}}
+        d = {"mcp_servers": {"my-srv": {"command": "npx", "args": ["-y", "my-srv"]}}}
         toml = _dict_to_toml(d)
-        assert "[mcp.servers.my-srv]" in toml
+        assert "[mcp_servers.my-srv]" in toml
         assert 'command = "npx"' in toml
         assert 'args = ["-y", "my-srv"]' in toml
 
     def test_env_vars(self):
-        d = {"mcp.servers": {"my-srv": {"command": "npx", "env": {"K": "V"}}}}
+        d = {"mcp_servers": {"my-srv": {"command": "npx", "env": {"K": "V"}}}}
         toml = _dict_to_toml(d)
         assert "env.K" in toml or "env" in toml
 
     def test_multiple_servers(self):
-        d = {"mcp.servers": {"srv-a": {"command": "echo"}, "srv-b": {"command": "cat"}}}
+        d = {"mcp_servers": {"srv-a": {"command": "echo"}, "srv-b": {"command": "cat"}}}
         toml = _dict_to_toml(d)
-        assert "[mcp.servers.srv-a]" in toml
-        assert "[mcp.servers.srv-b]" in toml
+        assert "[mcp_servers.srv-a]" in toml
+        assert "[mcp_servers.srv-b]" in toml
 
     def test_empty_servers(self):
-        d = {"mcp.servers": {}}
+        d = {"mcp_servers": {}}
         toml = _dict_to_toml(d)
         assert toml.strip() == ""
 
     def test_boolean_values(self):
-        d = {"mcp.servers": {"my-srv": {"command": "npx", "autoApprove": True}}}
+        d = {"mcp_servers": {"my-srv": {"command": "npx", "autoApprove": True}}}
         toml = _dict_to_toml(d)
         assert "autoApprove = true" in toml
 
     def test_string_values_with_quotes(self):
-        d = {"mcp.servers": {"my-srv": {"command": 'echo "hello"'}}}
+        d = {"mcp_servers": {"my-srv": {"command": 'echo "hello"'}}}
         toml = _dict_to_toml(d)
         assert "my-srv" in toml
 
@@ -530,10 +529,10 @@ class TestWriteFile:
 
     def test_creates_toml_file(self, tmp_path):
         p = tmp_path / "config.toml"
-        content = {"mcp.servers": {"srv": {"command": "npx"}}}
+        content = {"mcp_servers": {"srv": {"command": "npx"}}}
         status = _write_file(p, content)
         assert status == "created"
-        assert "[mcp.servers.srv]" in p.read_text()
+        assert "[mcp_servers.srv]" in p.read_text()
 
     def test_updates_existing_json(self, tmp_path):
         p = tmp_path / "mcp.json"
@@ -547,17 +546,17 @@ class TestWriteFile:
 
     def test_merges_toml(self, tmp_path):
         p = tmp_path / "config.toml"
-        p.write_text("[mcp.servers.old]\ncommand = 'echo'\n")
-        content = {"mcp.servers": {"new": {"command": "observal-shim"}}}
+        p.write_text("[mcp_servers.old]\ncommand = 'echo'\n")
+        content = {"mcp_servers": {"new": {"command": "observal-shim"}}}
         status = _write_file(p, content, merge_mcp=True)
         assert status == "merged"
         merged = p.read_text()
-        assert "[mcp.servers.old]" in merged
+        assert "[mcp_servers.old]" in merged
         assert "observal-shim" in merged
 
     def test_creates_parent_directories(self, tmp_path):
         p = tmp_path / ".codex" / "config.toml"
-        content = {"mcp.servers": {"srv": {"command": "npx"}}}
+        content = {"mcp_servers": {"srv": {"command": "npx"}}}
         _write_file(p, content)
         assert p.exists()
 
@@ -619,9 +618,9 @@ class TestPullCodex:
                     "content": 'name = "test-agent"\ndeveloper_instructions = "Be precise."\n',
                 },
                 "mcp_config": {
-                    "path": "~/.codex/config.toml",
+                    "path": ".codex/config.toml",
                     "content": {
-                        "mcp.servers": {
+                        "mcp_servers": {
                             "my-server": {
                                 "command": "observal-shim",
                                 "args": ["--mcp-id", "test", "--", "npx", "-y", "my-server"],
@@ -629,7 +628,7 @@ class TestPullCodex:
                         }
                     },
                 },
-                "scope": "user",
+                "scope": "project",
             }
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
@@ -643,7 +642,7 @@ class TestPullCodex:
         config = tmp_path / ".codex" / "config.toml"
         assert config.exists()
         content = config.read_text()
-        assert "mcp.servers" in content
+        assert "mcp_servers" in content
         assert "observal-shim" in content
 
     def test_writes_only_agent_when_no_mcp(self, tmp_path):
@@ -778,15 +777,15 @@ class TestPullOpenCode:
 
 
 class TestPullDryRunAllIdes:
-    @pytest.mark.parametrize("ide", ["codex", "copilot", "opencode"])
-    def test_dry_run_does_not_write_files(self, tmp_path, ide):
+    @pytest.mark.parametrize("harness", ["codex", "copilot", "opencode"])
+    def test_dry_run_does_not_write_files(self, tmp_path, harness):
         path_map = {
             "codex": ".codex/agents/test-agent.toml",
             "copilot": ".github/copilot-instructions.md",
             "opencode": ".opencode/agents/test-agent.md",
         }
-        rules_path = path_map[ide]
-        file_key = "agent_profile" if ide == "codex" else "agent_profile"
+        rules_path = path_map[harness]
+        file_key = "agent_profile"
         snippet = {
             "config_snippet": {
                 file_key: {
@@ -797,7 +796,8 @@ class TestPullDryRunAllIdes:
         }
         with _patch_config(), _patch_get_agent(), _patch_post(snippet):
             result = runner.invoke(
-                cli_app, ["agent", "pull", "abc123", "--harness", ide, "--dir", str(tmp_path), "--dry-run", "--no-prompt"]
+                cli_app,
+                ["agent", "pull", "abc123", "--harness", harness, "--dir", str(tmp_path), "--dry-run", "--no-prompt"],
             )
 
         assert result.exit_code == 0, result.output
@@ -819,15 +819,15 @@ class TestCodexTomlFormat:
                 "env": {"OBSERVAL_AGENT_ID": "agent-123"},
             }
         }
-        toml = _dict_to_toml({"mcp.servers": mcp_configs})
-        assert "[mcp.servers.my-server]" in toml
+        toml = _dict_to_toml({"mcp_servers": mcp_configs})
+        assert "[mcp_servers.my-server]" in toml
         assert 'command = "observal-shim"' in toml
         assert "OBSERVAL_AGENT_ID" in toml
 
     def test_toml_entry_with_no_env(self):
         mcp_configs = {"bare-srv": {"command": "echo", "args": []}}
-        toml = _dict_to_toml({"mcp.servers": mcp_configs})
-        assert "[mcp.servers.bare-srv]" in toml
+        toml = _dict_to_toml({"mcp_servers": mcp_configs})
+        assert "[mcp_servers.bare-srv]" in toml
         assert 'command = "echo"' in toml
 
 
@@ -1104,15 +1104,15 @@ class TestConfigGeneratorOpenCode:
 
 
 class TestPullOpenCodeScope:
-    def test_opencode_in_scope_aware_ides(self):
-        from observal_cli.cmd_pull import _SCOPE_AWARE_IDES
+    def test_opencode_in_scope_aware_harnesses(self):
+        from observal_cli.cmd_pull import _SCOPE_AWARE_HARNESSES
 
-        assert "opencode" in _SCOPE_AWARE_IDES
+        assert "opencode" in _SCOPE_AWARE_HARNESSES
 
     def test_opencode_scope_labels(self):
-        from observal_cli.cmd_pull import _SCOPE_AWARE_IDES
+        from observal_cli.cmd_pull import _SCOPE_AWARE_HARNESSES
 
-        project_label, user_label = _SCOPE_AWARE_IDES["opencode"]
+        project_label, user_label = _SCOPE_AWARE_HARNESSES["opencode"]
         assert "project" in project_label
         assert "user" in user_label
         assert "opencode" in user_label
@@ -1132,7 +1132,7 @@ class TestPullOpenCodeScope:
 
 
 class TestConfigGeneratorCodexFormat:
-    """Bug #4: config_generator should return mcp.servers (not mcpServers) for Codex."""
+    """Bug #4: config_generator should return mcp_servers for Codex."""
 
     def _make_listing(self, name="my-mcp", framework="typescript", url=None, command=None, args=None):
         import uuid
@@ -1157,8 +1157,8 @@ class TestConfigGeneratorCodexFormat:
 
         listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
         cfg = generate_config(listing, "codex")
-        # Must use "mcp.servers" not "mcpServers"
-        assert "mcp.servers" in cfg
+        # Must use "mcp_servers" not "mcpServers"
+        assert "mcp_servers" in cfg
         assert "mcpServers" not in cfg
 
     def test_stdio_codex_has_observal_shim(self):
@@ -1166,7 +1166,7 @@ class TestConfigGeneratorCodexFormat:
 
         listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
         cfg = generate_config(listing, "codex")
-        servers = cfg["mcp.servers"]
+        servers = cfg["mcp_servers"]
         assert len(servers) == 1
         entry = next(iter(servers.values()))
         assert entry["command"] == "observal-shim"
@@ -1176,7 +1176,7 @@ class TestConfigGeneratorCodexFormat:
 
         listing = self._make_listing(command="npx", args=["-y", "my-mcp"])
         cfg = generate_config(listing, "codex", proxy_port=9000)
-        assert "mcp.servers" in cfg
+        assert "mcp_servers" in cfg
         assert "mcpServers" not in cfg
 
     def test_sse_codex_uses_mcp_servers_key(self):
@@ -1185,7 +1185,7 @@ class TestConfigGeneratorCodexFormat:
         listing = self._make_listing(url="https://example.com/mcp")
         listing.transport = "sse"
         cfg = generate_config(listing, "codex")
-        assert "mcp.servers" in cfg
+        assert "mcp_servers" in cfg
         assert "mcpServers" not in cfg
 
     def test_sse_codex_entry_has_url(self):
@@ -1194,29 +1194,29 @@ class TestConfigGeneratorCodexFormat:
         listing = self._make_listing(url="https://example.com/mcp")
         listing.transport = "sse"
         cfg = generate_config(listing, "codex")
-        entry = next(iter(cfg["mcp.servers"].values()))
+        entry = next(iter(cfg["mcp_servers"].values()))
         assert entry["url"] == "https://example.com/mcp"
 
     def test_mcp_servers_toml_renders_correctly(self):
-        """The mcp.servers dict should produce valid [mcp.servers.<name>] TOML."""
+        """The mcp_servers dict should produce valid Codex TOML."""
         from observal_cli.cmd_pull import _dict_to_toml
 
-        servers = {"mcp.servers": {"my-server": {"command": "observal-shim", "args": ["--mcp-id", "abc", "--", "npx"]}}}
+        servers = {"mcp_servers": {"my-server": {"command": "observal-shim", "args": ["--mcp-id", "abc", "--", "npx"]}}}
         toml = _dict_to_toml(servers)
-        assert "[mcp.servers.my-server]" in toml
+        assert "[mcp_servers.my-server]" in toml
         assert 'command = "observal-shim"' in toml
 
 
 class TestCodexInstallCliPathHint:
     """Bug #6: install command should show the correct path hint for Codex."""
 
-    def test_ide_config_paths_includes_codex(self):
+    def test_harness_config_paths_includes_codex(self):
         """The MCP install command's path hint dict must include codex."""
         import inspect
 
-        # Read the cmd_mcp.py file and verify codex is in ide_config_paths
+        # Read the cmd_mcp.py file and verify codex is in harness_config_paths
         import observal_cli.cmd_mcp as cmd_mcp_module
 
-        # Find the ide_config_paths dict in the install function's source
+        # Find the harness_config_paths dict in the install function's source
         source = inspect.getsource(cmd_mcp_module)
         assert '"codex": "~/.codex/config.toml"' in source or "'codex': '~/.codex/config.toml'" in source

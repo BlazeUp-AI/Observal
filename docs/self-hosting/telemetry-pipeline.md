@@ -11,7 +11,7 @@ How agent session data becomes traces, turns, spans, and insight-ready session a
 
 ```mermaid
 flowchart TB
-    ide["AI coding agent"]
+    harness["AI coding harness"]
     sessionFiles["Local session files - JSONL transcripts / SQLite buffers"]
     reconcile["observal reconcile - session parser"]
     hooks["harness hooks - session lifecycle events"]
@@ -20,12 +20,12 @@ flowchart TB
     ch["ClickHouse - traces, turns, spans, events"]
     sessionStore["Session JSONL artifacts - used for insights"]
 
-    ide --> sessionFiles
+    harness --> sessionFiles
     sessionFiles --> reconcile
     reconcile --> api
-    ide --> hooks
+    harness --> hooks
     hooks --> api
-    ide --> shim
+    harness --> shim
     shim --> api
     api --> ch
     api --> sessionStore

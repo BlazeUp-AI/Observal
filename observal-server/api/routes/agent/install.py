@@ -226,7 +226,9 @@ async def install_agent(
     )
 
     warnings = archived_warnings + snippet.pop("_warnings", [])
-    return AgentInstallResponse(agent_id=resolved_agent_id, harness=req.harness, config_snippet=snippet, warnings=warnings)
+    return AgentInstallResponse(
+        agent_id=resolved_agent_id, harness=req.harness, config_snippet=snippet, warnings=warnings
+    )
 
 
 @router.get("/{agent_id}/downloads")

@@ -67,4 +67,3 @@ def test_harness_registry_match():
             assert server_spec[key] == cli_spec[key], (
                 f"HARNESS_REGISTRY[{harness!r}][{key!r}] mismatch: server={server_spec[key]!r}, cli={cli_spec[key]!r}"
             )
-

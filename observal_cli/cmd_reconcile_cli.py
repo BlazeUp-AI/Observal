@@ -29,7 +29,7 @@ reconcile_app = typer.Typer(name="reconcile", help="Push local session transcrip
 
 @reconcile_app.callback(invoke_without_command=True)
 def reconcile(
-    ide: str = typer.Option("", "--harness", "-i", help="Target specific harness (e.g. antigravity)"),
+    harness: str = typer.Option("", "--harness", "-i", help="Target specific harness (e.g. antigravity)"),
     since_hours: int = typer.Option(168, "--since", help="Only process sessions modified within N hours"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be pushed without sending"),
 ):
@@ -43,14 +43,14 @@ def reconcile(
         observal reconcile --since 24
         observal reconcile --dry-run
     """
-    optic.debug("reconcile: ide={}, since_hours={}", ide, since_hours)
+    optic.debug("reconcile: ide={}, since_hours={}", harness, since_hours)
 
     cfg = load_config()
     if cfg is None:
         rprint("[red]Not configured. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    targets = [ide] if ide else ["antigravity"]
+    targets = [harness] if harness else ["antigravity"]
     total_pushed = 0
 
     for target in targets:

@@ -1,4 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
+
 """``observal registry models`` - list registry-backed harness models."""
 
 from __future__ import annotations
@@ -15,13 +19,16 @@ models_app = typer.Typer(name="models", help="Inspect registry-backed harness mo
 
 
 def _emit(harness: str | None, output: str) -> None:
-    rows = model_catalog.fetch_catalog(harness=harness).get("models") or []
+    try:
+        rows = model_catalog.fetch_catalog(harness=harness).get("models") or []
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="harness") from exc
     if output == "json":
         rprint(json.dumps(rows, indent=2))
         return
     if output == "plain":
         for row in rows:
-            rprint(f"{row['harness']}\t{row['model_id']}\t{row.get('kind','exact')}\t{row.get('display_name','')}")
+            rprint(f"{row['harness']}\t{row['model_id']}\t{row.get('kind', 'exact')}\t{row.get('display_name', '')}")
         return
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("harness")
@@ -41,6 +48,9 @@ def models(
     output: str = typer.Option("table", "--output", "-o", help="Output format: table | json | plain"),
 ):
     if ctx.invoked_subcommand is None:
+        if harness == "--help":
+            rprint(ctx.get_help())
+            raise typer.Exit()
         _emit(harness, output)
 
 

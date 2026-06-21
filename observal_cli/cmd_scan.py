@@ -32,7 +32,7 @@ from observal_cli.shared.utils import is_already_shimmed as _is_already_shimmed
 
 # ── harness home directory paths (for status display) ────────────────
 
-_harness_HOME_DIRS: dict[str, str] = {
+_HARNESS_HOME_DIRS: dict[str, str] = {
     "claude-code": "~/.claude",
     "kiro": "~/.kiro",
     "codex": "~/.codex",
@@ -71,7 +71,7 @@ def _mcp_shim_status(mcps: list[DiscoveredMcp]) -> str:
 def register_scan(app: typer.Typer):
     @app.command(name="scan")
     def scan(
-        ide: str | None = typer.Option(None, "--harness", "-i", help="Filter to a specific harness"),
+        harness: str | None = typer.Option(None, "--harness", "-i", help="Filter to a specific harness"),
     ):
         """Show a read-only inventory of your local harness setup.
 
@@ -90,19 +90,19 @@ def register_scan(app: typer.Typer):
             observal scan --harness kiro
         """
         ensure_loaded()
-        optic.trace("ide={}", ide)
+        optic.trace("ide={}", harness)
 
         # Validate harness filter
-        if ide:
+        if harness:
             try:
-                get_adapter(ide)
+                get_adapter(harness)
             except KeyError:
                 valid = sorted(get_all_adapters().keys())
-                rprint(f"[red]Unknown harness: {ide}[/red]")
+                rprint(f"[red]Unknown harness: {harness}[/red]")
                 rprint(f"Valid harnesses: {', '.join(valid)}")
                 raise typer.Exit(1)
 
-        adapters = {ide: get_adapter(ide)} if ide else get_all_adapters()
+        adapters = {harness: get_adapter(harness)} if harness else get_all_adapters()
         home = Path.home()
         project_dir = Path(".").resolve()
 
@@ -114,7 +114,7 @@ def register_scan(app: typer.Typer):
         ide_status: list[tuple[str, str, str]] = []  # (name, hooks, shims)
 
         for ide_name, adapter in adapters.items():
-            home_label = _harness_HOME_DIRS.get(ide_name, "")
+            home_label = _HARNESS_HOME_DIRS.get(ide_name, "")
             home_dir = Path(home_label.replace("~", str(home))) if home_label else None
 
             # Skip if home dir doesn't exist
@@ -322,7 +322,9 @@ def register_scan(app: typer.Typer):
         if missing_hooks and missing_shims:
             suggestions.append("Run [bold]observal doctor patch --all --all-harnesses[/bold] to instrument everything")
         elif missing_hooks:
-            suggestions.append("Run [bold]observal doctor patch --hook --all-harnesses[/bold] to install telemetry hooks")
+            suggestions.append(
+                "Run [bold]observal doctor patch --hook --all-harnesses[/bold] to install telemetry hooks"
+            )
         elif missing_shims:
             suggestions.append("Run [bold]observal doctor patch --shim --all-harnesses[/bold] to wrap MCP servers")
 

@@ -28,9 +28,9 @@ from services.agent_builder_types import (
     AgentFile,
     AgentManifest,
     CompositionSummary,
+    HarnessAgentConfig,
     HookConfigEntry,
     HookInstallEntry,
-    HarnessAgentConfig,
     ManifestComponent,
     ManifestComponents,
     ManifestError,
@@ -41,7 +41,7 @@ from services.model_resolver import resolve_saved_value
 from services.shared.utils import sanitize_name as _sanitize_name
 
 
-def _saved_model_for(manifest: "AgentManifest", ide: str) -> str | None:
+def _saved_model_for(manifest: "AgentManifest", harness: str) -> str | None:
     """Compute the harness-formatted saved model from a manifest.
 
     Manifest builders are synchronous and do not consult the live catalog.
@@ -50,7 +50,7 @@ def _saved_model_for(manifest: "AgentManifest", ide: str) -> str | None:
     happens in the install path via ``resolve_model_for_harness``.
     """
     return resolve_saved_value(
-        ide,
+        harness,
         model_name=manifest.model_name or "",
         models_by_harness=manifest.models_by_harness or {},
     )
@@ -195,11 +195,11 @@ def _build_mcp_entries(manifest: AgentManifest) -> dict:
     return build_mcp_entries(manifest)
 
 
-def _build_skills(manifest: AgentManifest, ide: str) -> list[AgentFile]:
+def _build_skills(manifest: AgentManifest, harness: str) -> list[AgentFile]:
     """Generate harness-specific skill files from manifest skills."""
     from services.config.skill_builder import build_skills
 
-    return build_skills(manifest, ide)
+    return build_skills(manifest, harness)
 
 
 def _build_rules_markdown(manifest: AgentManifest) -> str:
@@ -241,7 +241,7 @@ def _build_rules_markdown(manifest: AgentManifest) -> str:
 
 
 def _materialize_hook_components(
-    manifest: AgentManifest, ide: str
+    manifest: AgentManifest, harness: str
 ) -> tuple[list[HookInstallEntry], list[HookConfigEntry]]:
     """Generate hook files + configs for all hook components in an agent manifest.
 
@@ -253,7 +253,7 @@ def _materialize_hook_components(
     if not manifest.components.hooks:
         return [], []
 
-    ide_info = HARNESS_REGISTRY.get(ide, {})
+    ide_info = HARNESS_REGISTRY.get(harness, {})
     events_map = ide_info.get("hook_events_map", {})
     hook_scripts_dir = ide_info.get("hook_scripts_dir", "")
     hooks_dict = ide_info.get("hooks", {})
@@ -300,12 +300,12 @@ def _materialize_hook_components(
             actual_command = script_path
 
         # Build harness-specific hook entry
-        if ide == "claude-code":
+        if harness == "claude-code":
             hook_entry: dict = {"type": handler_type, "command": actual_command}
             if timeout:
                 hook_entry["timeout"] = timeout
             all_hook_entries.setdefault(ide_event, []).append({"matcher": "*", "hooks": [hook_entry]})
-        elif ide == "cursor":
+        elif harness == "cursor":
             all_hook_entries.setdefault(ide_event, []).append({"command": actual_command})
         else:
             all_hook_entries.setdefault(ide_event, []).append({"command": actual_command})
@@ -313,7 +313,7 @@ def _materialize_hook_components(
     # Build the merged config snippet
     hook_configs: list[HookConfigEntry] = []
     if all_hook_entries and config_path:
-        snippet = {"version": 1, "hooks": all_hook_entries} if ide == "cursor" else {"hooks": all_hook_entries}
+        snippet = {"version": 1, "hooks": all_hook_entries} if harness == "cursor" else {"hooks": all_hook_entries}
         hook_configs.append(
             HookConfigEntry(
                 config_path=config_path,
@@ -358,7 +358,7 @@ def _generate_claude_code(manifest: AgentManifest) -> HarnessAgentConfig:
     env: dict[str, str] = {}
 
     return HarnessAgentConfig(
-        ide="claude-code",
+        harness="claude-code",
         files=[
             AgentFile(
                 path=f".claude/agents/{safe_name}.md",
@@ -385,7 +385,7 @@ def _generate_cursor(manifest: AgentManifest) -> HarnessAgentConfig:
     skills = _build_skills(manifest, "cursor")
 
     return HarnessAgentConfig(
-        ide="cursor",
+        harness="cursor",
         files=[
             AgentFile(
                 path=f".cursor/agents/{safe_name}.md",
@@ -446,44 +446,27 @@ def _materialize_kiro_hook_components(hooks_dict: dict, manifest: AgentManifest)
 
 
 def _generate_kiro(manifest: AgentManifest) -> HarnessAgentConfig:
-    """Generate Kiro agent config (~/.kiro/agents/<name>.json)."""
+    """Generate Kiro agent config."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
     observal_url = getattr(manifest, "_observal_url", "") or ""
     platform = getattr(manifest, "_platform", "") or ""
-
-    kiro_agent = {
-        "name": safe_name,
-        "description": manifest.description[:200] if manifest.description else "",
-        "prompt": _wrap_kiro_prompt(manifest.prompt, safe_name),
-        "mcpServers": mcp_entries,
-        "tools": ["*"],
-        "toolAliases": {},
-        "allowedTools": [],
-        "resources": [
-            "file://AGENTS.md",
-            "file://README.md",
-            "skill://.kiro/skills/*/SKILL.md",
-            "skill://~/.kiro/skills/*/SKILL.md",
-        ],
-        "hooks": _build_kiro_hooks(safe_name, observal_url, platform),
-        "toolsSettings": {},
-        "includeMcpJson": True,
-        # null = Kiro auto model selection.
-        "model": _saved_model_for(manifest, "kiro"),
-    }
-
-    # Materialize hook components from the agent manifest into the hooks dict
-    _materialize_kiro_hook_components(kiro_agent["hooks"], manifest)
-
+    hooks = _build_kiro_hooks(safe_name, observal_url, platform)
+    _materialize_kiro_hook_components(hooks, manifest)
+    content = f"---\nname: {safe_name}\n---\n\n{_wrap_kiro_prompt(manifest.prompt, safe_name)}"
     skills = _build_skills(manifest, "kiro")
 
     return HarnessAgentConfig(
-        ide="kiro",
+        harness="kiro",
         files=[
             AgentFile(
-                path=f"~/.kiro/agents/{safe_name}.json",
-                content=kiro_agent,
+                path=f"~/.kiro/agents/{safe_name}.md",
+                content=content,
+                format="markdown",
+            ),
+            AgentFile(
+                path=f"~/.kiro/hooks/{safe_name}.json",
+                content=hooks,
                 format="json",
             ),
             *skills,
@@ -508,7 +491,7 @@ def _generate_codex(manifest: AgentManifest) -> HarnessAgentConfig:
 
     files = [
         AgentFile(
-            path=f"~/.codex/agents/{safe_name}.toml",
+            path=f".codex/agents/{safe_name}.toml",
             content="\n".join(agent_lines) + "\n",
             format="toml",
         ),
@@ -518,7 +501,7 @@ def _generate_codex(manifest: AgentManifest) -> HarnessAgentConfig:
     files.extend(skills)
 
     return HarnessAgentConfig(
-        ide="codex",
+        harness="codex",
         files=files,
     )
 
@@ -559,7 +542,7 @@ def _generate_copilot(manifest: AgentManifest) -> HarnessAgentConfig:
         )
 
     return HarnessAgentConfig(
-        ide="copilot",
+        harness="copilot",
         files=files,
         mcp_servers=mcp_entries,
     )
@@ -603,7 +586,7 @@ def _generate_opencode(manifest: AgentManifest) -> HarnessAgentConfig:
         )
 
     return HarnessAgentConfig(
-        ide="opencode",
+        harness="opencode",
         files=[*files, *_build_skills(manifest, "opencode")],
         mcp_servers=mcp_entries,
     )
@@ -619,12 +602,16 @@ _HARNESS_GENERATORS = {
     "opencode": _generate_opencode,
 }
 
-SUPPORTED_HARNESSES = [ide for ide in get_valid_harnesses() if ide in _HARNESS_GENERATORS or ide.replace("-", "_") in _HARNESS_GENERATORS]
+SUPPORTED_HARNESSES = [
+    harness
+    for harness in get_valid_harnesses()
+    if harness in _HARNESS_GENERATORS or harness.replace("-", "_") in _HARNESS_GENERATORS
+]
 
 
 def generate_harness_agent_profiles(
     manifest: AgentManifest,
-    ide: str,
+    harness: str,
     observal_url: str = "",
     platform: str = "",
 ) -> HarnessAgentConfig:
@@ -633,10 +620,10 @@ def generate_harness_agent_profiles(
     This is the universal entry point - takes a Pydantic AgentManifest
     and produces the correct file layout for any supported harness.
     """
-    optic.trace("generating {} config for agent {}", ide, manifest.name)
-    generator = _HARNESS_GENERATORS.get(ide)
+    optic.trace("generating {} config for agent {}", harness, manifest.name)
+    generator = _HARNESS_GENERATORS.get(harness)
     if generator is None:
-        raise ValueError(f"Unsupported harness: {ide!r}. Supported: {', '.join(SUPPORTED_HARNESSES)}")
+        raise ValueError(f"Unsupported harness: {harness!r}. Supported: {', '.join(SUPPORTED_HARNESSES)}")
     if observal_url:
         manifest._observal_url = observal_url  # type: ignore[attr-defined]
     if platform:
@@ -644,8 +631,8 @@ def generate_harness_agent_profiles(
     config = generator(manifest)
 
     # Materialize hook components for all harnesses (except Kiro which does it inline)
-    if ide != "kiro" and manifest.components.hooks:
-        hook_files, hook_configs = _materialize_hook_components(manifest, ide)
+    if harness != "kiro" and manifest.components.hooks:
+        hook_files, hook_configs = _materialize_hook_components(manifest, harness)
         config.hook_files = hook_files
         config.hook_configs = hook_configs
 

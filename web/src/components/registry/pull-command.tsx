@@ -23,21 +23,21 @@ interface PullCommandProps {
 }
 
 export function PullCommand({ agentName, currentVersion, latestVersion }: PullCommandProps) {
-  const { data: ides, defaultHarness } = useHarnesses();
-  const [ide, setIde] = useState("");
+  const { data: harnesses, defaultHarness } = useHarnesses();
+  const [harness, setHarness] = useState("");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!ides || ides.length === 0) return;
-    const defaultAllowed = defaultHarness && ides.some((i) => i.name === defaultHarness) ? defaultHarness : ides[0].name;
-    if (!ide || !ides.some((i) => i.name === ide)) {
-      setIde(defaultAllowed);
+    if (!harnesses || harnesses.length === 0) return;
+    const defaultAllowed = defaultHarness && harnesses.some((i) => i.name === defaultHarness) ? defaultHarness : harnesses[0].name;
+    if (!harness || !harnesses.some((i) => i.name === harness)) {
+      setHarness(defaultAllowed);
     }
-  }, [ides, defaultHarness, ide]);
+  }, [harnesses, defaultHarness, harness]);
 
-  const effectiveIde = ide || (defaultHarness && ides?.some((i) => i.name === defaultHarness) ? defaultHarness : ides?.[0]?.name) || "cursor";
+  const effectiveHarness = harness || (defaultHarness && harnesses?.some((i) => i.name === defaultHarness) ? defaultHarness : harnesses?.[0]?.name) || "cursor";
   const versionFlag = currentVersion && latestVersion && currentVersion !== latestVersion ? ` --version ${currentVersion}` : "";
-  const command = `observal agent pull ${agentName} --harness ${effectiveIde}${versionFlag}`;
+  const command = `observal agent pull ${agentName} --harness ${effectiveHarness}${versionFlag}`;
 
   async function handleCopy() {
     try {
@@ -56,12 +56,12 @@ export function PullCommand({ agentName, currentVersion, latestVersion }: PullCo
         <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">Install</span>
         <div className="ml-auto flex items-center gap-2">
-          <Select value={effectiveIde} onValueChange={setIde}>
+          <Select value={effectiveHarness} onValueChange={setHarness}>
             <SelectTrigger className="h-7 w-[130px] text-xs border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {(ides ?? []).map((i) => (
+              {(harnesses ?? []).map((i) => (
                 <SelectItem key={i.name} value={i.name}>
                   {i.display_name}
                 </SelectItem>

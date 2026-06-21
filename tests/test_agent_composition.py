@@ -1059,11 +1059,11 @@ class TestPydanticValidation:
         assert compact["components"]["mcps"][0]["name"] == "a"
         assert "skills" not in compact["components"]
 
-    def test_ide_agent_config_model(self):
+    def test_harness_agent_config_model(self):
         from services.agent_builder import AgentFile, HarnessAgentConfig
 
         config = HarnessAgentConfig(
-            ide="claude-code",
+            harness="claude-code",
             files=[
                 AgentFile(path=".claude/rules/test.md", content="# Rules", format="markdown"),
                 AgentFile(path=".mcp.json", content={"mcpServers": {}}, format="json"),
@@ -1167,7 +1167,7 @@ class TestGenerateIdeAgentFiles:
 
         manifest = self._make_manifest()
         config = generate_harness_agent_profiles(manifest, "claude-code")
-        assert config.ide == "claude-code"
+        assert config.harness == "claude-code"
         agent_profile = next(f for f in config.files if f.path == ".claude/agents/test-agent.md")
         assert agent_profile.format == "markdown"
         assert "You are a helpful coding assistant." in agent_profile.content
@@ -1186,7 +1186,7 @@ class TestGenerateIdeAgentFiles:
 
         manifest = self._make_manifest()
         config = generate_harness_agent_profiles(manifest, "claude_code")
-        assert config.ide == "claude-code"
+        assert config.harness == "claude-code"
 
     # ── Cursor ─────────────────────────────────────────────────
 
@@ -1195,7 +1195,7 @@ class TestGenerateIdeAgentFiles:
 
         manifest = self._make_manifest()
         config = generate_harness_agent_profiles(manifest, "cursor")
-        assert config.ide == "cursor"
+        assert config.harness == "cursor"
         agent = next(f for f in config.files if f.path == ".cursor/agents/test-agent.md")
         mcp_json = next(f for f in config.files if f.format == "json")
         assert agent.format == "markdown"
@@ -1209,22 +1209,17 @@ class TestGenerateIdeAgentFiles:
 
     # ── Kiro ───────────────────────────────────────────────────
 
-    def test_kiro_generates_agent_json(self):
+    def test_kiro_generates_agent_markdown(self):
         from services.agent_builder import generate_harness_agent_profiles
 
         manifest = self._make_manifest()
         config = generate_harness_agent_profiles(manifest, "kiro")
-        assert config.ide == "kiro"
-        agent_profile = next(f for f in config.files if f.path == "~/.kiro/agents/test-agent.json")
-        assert agent_profile.format == "json"
-        content = agent_profile.content
-        assert content["name"] == "test-agent"
-        assert "You are a helpful coding assistant." in content["prompt"]
-        assert "Agent Specialization" in content["prompt"]
-        assert "mcpServers" in content
-        assert "github-mcp" in content["mcpServers"]
-        assert "*" in content["tools"]
-        assert content["model"] is None  # Kiro uses auto model selection
+        assert config.harness == "kiro"
+        agent_profile = next(f for f in config.files if f.path == "~/.kiro/agents/test-agent.md")
+        assert agent_profile.format == "markdown"
+        assert "name: test-agent" in agent_profile.content
+        assert "You are a helpful coding assistant." in agent_profile.content
+        assert "Agent Specialization" in agent_profile.content
 
     # ── Codex ──────────────────────────────────────────────────
 
@@ -1233,9 +1228,9 @@ class TestGenerateIdeAgentFiles:
 
         manifest = self._make_manifest()
         config = generate_harness_agent_profiles(manifest, "codex")
-        assert config.ide == "codex"
+        assert config.harness == "codex"
         assert len(config.files) >= 1
-        agent_profile = next(f for f in config.files if f.path == "~/.codex/agents/test-agent.toml")
+        agent_profile = next(f for f in config.files if f.path == ".codex/agents/test-agent.toml")
         assert agent_profile.format == "toml"
 
     # ── GitHub Copilot ─────────────────────────────────────────
@@ -1245,7 +1240,7 @@ class TestGenerateIdeAgentFiles:
 
         manifest = self._make_manifest()
         config = generate_harness_agent_profiles(manifest, "copilot")
-        assert config.ide == "copilot"
+        assert config.harness == "copilot"
         paths = [f.path for f in config.files]
         assert ".github/agents/test-agent.agent.md" in paths
         md = next(f for f in config.files if f.path == ".github/agents/test-agent.agent.md")
@@ -1346,7 +1341,7 @@ class TestGenerateIdeAgentFiles:
 
     # ── Unsupported harness ────────────────────────────────────────
 
-    def test_unsupported_ide_raises_value_error(self):
+    def test_unsupported_harness_raises_value_error(self):
         import pytest
 
         from services.agent_builder import generate_harness_agent_profiles
@@ -1393,9 +1388,9 @@ class TestGenerateIdeAgentFiles:
         from services.agent_builder import SUPPORTED_HARNESSES, generate_harness_agent_profiles
 
         manifest = self._make_manifest()
-        for ide in SUPPORTED_HARNESSES:
-            config = generate_harness_agent_profiles(manifest, ide)
-            assert config.ide is not None
+        for harness in SUPPORTED_HARNESSES:
+            config = generate_harness_agent_profiles(manifest, harness)
+            assert config.harness is not None
             assert len(config.files) > 0
 
     # ── Manifest with prompt/description round-trips ───────────

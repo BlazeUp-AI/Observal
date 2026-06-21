@@ -42,7 +42,7 @@ MAX_FILE_SIZE = 512 * 1024  # 512KB
 
 # Maps harness name → dict of scope → list of (base_dir, glob_patterns)
 # base_dir is relative to home (~) for user scope, or project root for project scope
-harness_LAYER_CONFIGS: dict[str, dict[str, list[tuple[str, list[str]]]]] = {
+HARNESS_LAYER_CONFIGS: dict[str, dict[str, list[tuple[str, list[str]]]]] = {
     "claude-code": {
         "user": [
             (
@@ -304,13 +304,13 @@ def _resolve_base_dir(base_dir: str) -> Path:
     return Path(base_dir)
 
 
-def _discover_files(ide: str, project_dir: str | None = None) -> list[tuple[Path, str]]:
+def _discover_files(harness: str, project_dir: str | None = None) -> list[tuple[Path, str]]:
     """Discover all harness config files for a given harness.
 
     Returns list of (absolute_path, relative_display_path) tuples.
     Scans both user and project scopes.
     """
-    config = harness_LAYER_CONFIGS.get(ide, {})
+    config = HARNESS_LAYER_CONFIGS.get(harness, {})
     found: list[tuple[Path, str]] = []
     seen: set[str] = set()
 
@@ -354,7 +354,7 @@ def _discover_files(ide: str, project_dir: str | None = None) -> list[tuple[Path
 
 
 def build_layer_manifest(
-    ide: str,
+    harness: str,
     project_dir: str | None = None,
     include_content: bool = False,
 ) -> list[dict[str, Any]]:
@@ -369,7 +369,7 @@ def build_layer_manifest(
         Sorted list of manifest entries: [{path, hash, size, source, content?}]
     """
     cache = _load_hash_cache()
-    files = _discover_files(ide, project_dir)
+    files = _discover_files(harness, project_dir)
 
     # Safety cap: max 200 files per manifest. If an harness config dir
     # has more than this, something is wrong (e.g. node_modules matched).
@@ -383,7 +383,7 @@ def build_layer_manifest(
     from observal_cli.lockfile import read_lockfile
 
     lockfile_data = read_lockfile()
-    observal_files = _get_observal_managed_files(lockfile_data, ide, project_dir)
+    observal_files = _get_observal_managed_files(lockfile_data, harness, project_dir)
 
     for abs_path, display_path in files:
         file_hash, size = _hash_file(abs_path, cache)
@@ -414,13 +414,13 @@ def build_layer_manifest(
     return manifest
 
 
-def _get_observal_managed_files(lockfile_data: dict, ide: str, project_dir: str | None) -> set[str]:
+def _get_observal_managed_files(lockfile_data: dict, harness: str, project_dir: str | None) -> set[str]:
     """Determine which display paths are managed by Observal from the lock file."""
     from observal_cli.harness import ensure_loaded, get_adapter
 
     ensure_loaded()
     try:
-        adapter = get_adapter(ide)
+        adapter = get_adapter(harness)
     except KeyError:
         return set()
     return adapter.get_observal_managed_files(lockfile_data, project_dir)
@@ -441,26 +441,26 @@ def _detect_active_ides() -> list[str]:
     ensure_loaded()
     home = Path.home()
     active: list[str] = []
-    for ide in HARNESS_REGISTRY:
+    for harness in HARNESS_REGISTRY:
         try:
-            adapter = get_adapter(ide)
+            adapter = get_adapter(harness)
         except KeyError:
             continue
         if adapter.is_installed(home):
-            active.append(ide)
+            active.append(harness)
     return active
 
 
-def compute_layer_hash(ide: str | None = None, project_dir: str | None = None) -> str:
+def compute_layer_hash(harness: str | None = None, project_dir: str | None = None) -> str:
     """Compute the layer_hash for one or all harnesses.
 
-    If ide is None, computes across ALL detected harnesses (combined hash).
-    If ide is specified, computes for that harness only.
+    If harness is None, computes across ALL detected harnesses (combined hash).
+    If harness is specified, computes for that harness only.
 
-    The hash is based on the sorted (ide:path, file_hash) pairs.
+    The hash is based on the sorted (harness:path, file_hash) pairs.
     Returns a 16-char hex string.
     """
-    ides_to_scan = [ide] if ide else _detect_active_ides()
+    ides_to_scan = [harness] if harness else _detect_active_ides()
 
     all_entries: list[tuple[str, str]] = []
     for scan_ide in ides_to_scan:
@@ -527,13 +527,13 @@ def set_last_uploaded_hash(layer_hash: str) -> None:
     pass
 
 
-def ensure_local_snapshot(ide: str | None = None, project_dir: str | None = None) -> str:
+def ensure_local_snapshot(harness: str | None = None, project_dir: str | None = None) -> str:
     """Generate the local snapshot if it doesn't exist or state changed. Returns the layer_hash.
 
     Scans ALL detected harnesses (not just one). Called after login, pull, or scan.
     Does NOT upload to server (that happens on session push).
     """
-    current_hash = compute_layer_hash(ide=None, project_dir=project_dir)
+    current_hash = compute_layer_hash(harness=None, project_dir=project_dir)
 
     if not _LOCAL_SNAPSHOT_PATH.exists():
         payload = build_upload_payload(project_dir=project_dir)
@@ -552,7 +552,7 @@ def needs_upload(current_hash: str) -> bool:
     return current_hash != get_last_uploaded_hash()
 
 
-def diff_local(ide: str | None = None, project_dir: str | None = None) -> dict | None:
+def diff_local(harness: str | None = None, project_dir: str | None = None) -> dict | None:
     """Diff current layer state against the local snapshot.
 
     Returns None if no local snapshot exists or nothing changed.
@@ -563,7 +563,7 @@ def diff_local(ide: str | None = None, project_dir: str | None = None) -> dict |
         return None
 
     # Build current state across all first-class harnesses
-    ides_to_scan = [ide] if ide else _detect_active_ides()
+    ides_to_scan = [harness] if harness else _detect_active_ides()
 
     current_files: dict[str, dict] = {}
     for scan_ide in ides_to_scan:
@@ -608,13 +608,13 @@ def diff_local(ide: str | None = None, project_dir: str | None = None) -> dict |
     return {"added": added, "removed": removed, "modified": modified}
 
 
-def build_upload_payload(ide: str | None = None, project_dir: str | None = None) -> dict:
+def build_upload_payload(harness: str | None = None, project_dir: str | None = None) -> dict:
     """Build the full layer snapshot payload for upload to the server.
 
     Scans all detected first-class harnesses. Structured by harness.
     Includes file contents for server-side diffing and insight analysis.
     """
-    ides_to_scan = [ide] if ide else _detect_active_ides()
+    ides_to_scan = [harness] if harness else _detect_active_ides()
 
     all_hash_entries: list[tuple[str, str]] = []
     ides_section: dict[str, list[dict[str, Any]]] = {}
@@ -734,7 +734,7 @@ def _compute_drift(lockfile_data: dict, ides_section: dict[str, list[dict]]) -> 
     }
 
 
-def _integrity_check_paths(ide: str, comp_type: str, comp_name: str) -> list[str]:
+def _integrity_check_paths(harness: str, comp_type: str, comp_name: str) -> list[str]:
     """Map a component type+name to expected file paths for integrity checking."""
     paths: list[str] = []
     if comp_type == "skill":

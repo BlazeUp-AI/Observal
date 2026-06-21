@@ -23,7 +23,7 @@ outdated_app = typer.Typer(
 def register_outdated(app: typer.Typer):
     @app.command("outdated")
     def outdated(
-        ide: str | None = typer.Option(None, "--harness", "-i", help="Filter by harness"),
+        harness: str | None = typer.Option(None, "--harness", "-i", help="Filter by harness"),
         output: str = typer.Option("table", "--output", "-o", help="Output format: table or json"),
     ):
         """Show installed components that have newer versions available.
@@ -38,7 +38,7 @@ def register_outdated(app: typer.Typer):
         """
         from observal_cli.lockfile import get_all_entries
 
-        entries = get_all_entries(ide=ide)
+        entries = get_all_entries(harness=harness)
         if not entries:
             rprint("[dim]No installed agents or components found in lock file.[/dim]")
             rprint("[dim]Run `observal agent pull` or `observal registry mcp install` first.[/dim]")

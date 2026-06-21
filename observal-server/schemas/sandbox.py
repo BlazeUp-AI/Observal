@@ -11,7 +11,7 @@ from models.mcp import ListingStatus
 from schemas.constants import (
     VALID_SANDBOX_NETWORK_POLICIES,
     VALID_SANDBOX_RUNTIME_TYPES,
-    make_ide_list_validator,
+    make_harness_list_validator,
     make_option_validator,
 )
 
@@ -38,7 +38,7 @@ class SandboxSubmitRequest(BaseModel):
     _validate_network_policy = field_validator("network_policy")(
         make_option_validator("network_policy", VALID_SANDBOX_NETWORK_POLICIES)
     )
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class SandboxDraftRequest(BaseModel):
@@ -56,7 +56,7 @@ class SandboxDraftRequest(BaseModel):
     source_ref: str | None = None
     sandbox_path: str | None = None
 
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class SandboxUpdateRequest(BaseModel):

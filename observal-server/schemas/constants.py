@@ -156,7 +156,7 @@ VALID_SANDBOX_NETWORK_POLICIES: list[str] = [
 # ── Pydantic validator helpers ──────────────────────────────
 
 
-def _normalize_ide(value: str) -> str:
+def _normalize_harness(value: str) -> str:
     """Normalize underscore harness names to hyphens (e.g. claude_code -> claude-code)."""
     return value.replace("_", "-")
 
@@ -190,12 +190,12 @@ def make_name_validator(field_name: str = "name", max_length: int = 64):
     return classmethod(_check)
 
 
-def make_ide_list_validator():
+def make_harness_list_validator():
     """Return a classmethod that validates and normalizes each harness in a list."""
 
     def _check(cls, v: list[str]) -> list[str]:
-        normalized = [_normalize_ide(ide) for ide in v]
-        invalid = [ide for ide in normalized if ide not in VALID_HARNESSES]
+        normalized = [_normalize_harness(harness) for harness in v]
+        invalid = [harness for harness in normalized if harness not in VALID_HARNESSES]
         if invalid:
             raise ValueError(f"Invalid harness(s): {', '.join(invalid)}. Valid options: {', '.join(VALID_HARNESSES)}")
         return normalized

@@ -109,7 +109,9 @@ def agent_create(
     prompt: str | None = typer.Option(None, "--prompt", "-p", help="System prompt text"),
     prompt_file: str | None = typer.Option(None, "--prompt-file", help="Read system prompt from a file"),
     model_name: str | None = typer.Option(None, "--model", "-m", help="Model name (e.g. claude-sonnet-4)"),
-    supported_harnesses: list[str] | None = typer.Option(None, "--harness", help="Supported harnesses (repeat for multiple)"),
+    supported_harnesses: list[str] | None = typer.Option(
+        None, "--harness", help="Supported harnesses (repeat for multiple)"
+    ),
 ):
     """Create a new agent (interactive wizard, from file, or via flags).
 
@@ -648,15 +650,15 @@ def agent_install(
       observal agent install @myalias --harness opencode
     """
     resolved = config.resolve_alias(agent_id)
-    with spinner(f"Generating {ide} config..."):
-        result = client.post(f"/api/v1/agents/{resolved}/install", {"harness": ide})
+    with spinner(f"Generating {harness} config..."):
+        result = client.post(f"/api/v1/agents/{resolved}/install", {"harness": harness})
 
     snippet = result.get("config_snippet", {})
     if raw:
         print(_json.dumps(snippet, indent=2))
         return
 
-    rprint(f"\n[bold]Config for {ide}:[/bold]\n")
+    rprint(f"\n[bold]Config for {harness}:[/bold]\n")
 
     # Kiro agent file: single JSON to drop in
     agent_profile = snippet.get("agent_profile")
@@ -665,7 +667,7 @@ def agent_install(
         rprint()
         console.print_json(_json.dumps(agent_profile["content"], indent=2))
         rprint(
-            f"\n[dim]Or pipe:[/dim] observal agent install {agent_id} --harness {ide} --raw | jq .agent_profile.content > {agent_profile['path']}"
+            f"\n[dim]Or pipe:[/dim] observal agent install {agent_id} --harness {harness} --raw | jq .agent_profile.content > {agent_profile['path']}"
         )
         return
 

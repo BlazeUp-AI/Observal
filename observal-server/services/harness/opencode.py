@@ -62,9 +62,7 @@ class OpenCodeAdapter:
                 opencode_mcp[k] = entry
 
         rules_path = opencode_spec["agent_profile"][opencode_scope].format(name=safe_name)
-        mcp_path = opencode_spec["mcp_config"].get(
-            opencode_scope, next(iter(opencode_spec["mcp_config"].values()))
-        )
+        mcp_path = opencode_spec["mcp_config"].get(opencode_scope, next(iter(opencode_spec["mcp_config"].values())))
 
         opencode_content: dict = {opencode_spec["mcp_servers_key"]: opencode_mcp}
         opencode_model = options.get("_resolved_model")

@@ -184,14 +184,14 @@ This drops agent files, skills, hooks, and MCP configs into the right places for
 
 ```mermaid
 flowchart LR
-    ide[Your harness]
+    harness[Your harness]
     shim[observal-shim]
     mcp[MCP server]
     api[Observal API]
     ch[(ClickHouse)]
     ui[Web UI]
 
-    ide <--> shim
+    harness <--> shim
     shim <--> mcp
     shim -->|fire and forget| api
     api --> ch

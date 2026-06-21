@@ -240,7 +240,17 @@ class TestPullClaudeCode:
         with _patch_config(), _patch_get_agent(), _patch_post(_claude_code_snippet()):
             result = runner.invoke(
                 cli_app,
-                ["agent", "pull", "abc123", "--harness", "claude-code", "--dir", str(tmp_path), "--dry-run", "--no-prompt"],
+                [
+                    "agent",
+                    "pull",
+                    "abc123",
+                    "--harness",
+                    "claude-code",
+                    "--dir",
+                    str(tmp_path),
+                    "--dry-run",
+                    "--no-prompt",
+                ],
             )
 
         assert "Would run these setup commands" in result.output

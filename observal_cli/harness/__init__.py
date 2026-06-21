@@ -16,8 +16,8 @@ from observal_cli.harness.protocol import (
     DiscoveredHook,
     DiscoveredMcp,
     DiscoveredSkill,
-    HookSpec,
     HarnessAdapter,
+    HookSpec,
     NotSupportedError,
     ScanResult,
 )
@@ -29,8 +29,8 @@ __all__ = [
     "DiscoveredHook",
     "DiscoveredMcp",
     "DiscoveredSkill",
-    "HookSpec",
     "HarnessAdapter",
+    "HookSpec",
     "NotSupportedError",
     "ScanResult",
     "ensure_loaded",
@@ -43,6 +43,7 @@ __all__ = [
 # ── Adapter Registry ──────────────────────────────────────────────
 
 _ADAPTER_REGISTRY: dict[str, HarnessAdapter] = {}
+
 
 def register_adapter(adapter: HarnessAdapter) -> None:
     """Register an harness adapter instance.

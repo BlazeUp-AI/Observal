@@ -32,6 +32,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
+
 try:
     from loguru import logger as optic
 except ModuleNotFoundError:

@@ -27,7 +27,7 @@ The web UI is one of three ways to interact with Observal (alongside the CLI and
 | API proxy | Next.js rewrites (`/api/v1/*` → backend) | Single origin, no CORS in prod |
 | Fonts | Local files only | No Google Fonts CDN calls |
 | Design tokens | OKLCH in `globals.css` | Perceptually uniform, 5 themes |
-| IDE list | Server-fetched (`/api/v1/config/harnesses`) | Never hardcoded in frontend |
+| Harness list | Server-fetched (`/api/v1/config/harnesses`) | Never hardcoded in frontend |
 
 ## Design system
 
@@ -82,7 +82,7 @@ src/components/
 ├── nav/           # RegistrySidebar, CommandMenu (Cmd+K), NavUser, GitHubStarBanner
 ├── registry/      # AgentCard, AgentEditForm, ComponentCard, ComponentEditForm, PullCommand,
 │                  # InstallDialog, StatusBadge, SubmitComponentDialog, RegistryTable,
-│                  # RegistryDetail, ReviewForm, FeedbackList, IdeBadges, VersionBumpDialog,
+│                  # RegistryDetail, ReviewForm, FeedbackList, HarnessBadges, VersionBumpDialog,
 │                  # VersionDropdown
 ├── review/        # ReviewDetailSheet, ValidationBadges
 ├── shared/        # SkeletonLayouts, ErrorState, EmptyState
@@ -95,12 +95,12 @@ src/components/
 - `src/lib/api.ts` : Typed fetch wrapper, auth via sessionStorage
 - `src/lib/types.ts` : ALL shared TypeScript interfaces for API responses
 - `src/lib/graphql-ws.ts` : GraphQL WebSocket subscription client
-- `src/lib/ide-features.ts` : IDE capability detection
+- `src/lib/harness-capabilities.ts` : Harness capability detection
 - `src/lib/query-client.ts` : TanStack Query client config
 - `src/hooks/use-api.ts` : TanStack Query hooks for every endpoint
 - `src/hooks/use-auth.ts` : Auth guard (checks sessionStorage)
 - `src/hooks/use-deployment-config.ts` : Feature flags and license status
-- `src/hooks/use-ides.ts` : IDE list from server
+- `src/hooks/use-harnesses.ts` : Harness list from server
 
 ## Coding patterns
 
@@ -110,7 +110,7 @@ src/components/
 
 **Feature gating:** Enterprise features are gated server-side. The API returns 403 for unlicensed features. The frontend reads `useDeploymentConfig()` for display decisions (show/hide sections, upgrade prompts) but never trusts the client to enforce access.
 
-**IDE list:** Fetched from `/api/v1/config/harnesses` via `useIdes()`. Never hardcode IDE names or capabilities in the frontend. The server is the single source of truth.
+**Harness list:** Fetched from `/api/v1/config/harnesses` via `useHarnesses()`. Never hardcode harness names or capabilities in the frontend. The server is the single source of truth.
 
 **Auth state:** Stored in sessionStorage (not localStorage). `useAuth()` hook checks for presence. Three guard components: `AuthGuard` (any logged-in user), `AdminGuard` (admin role), `RoleGuard` (configurable role check).
 

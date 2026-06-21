@@ -90,16 +90,16 @@ def _empty_lockfile() -> dict:
     }
 
 
-def _ensure_ide(data: dict, ide: str) -> dict:
+def _ensure_harness(data: dict, harness: str) -> dict:
     """Ensure the harness section exists in the lock file data."""
     harnesses = data.setdefault("harnesses", {})
-    if ide not in harnesses:
-        harnesses[ide] = {"agents": [], "standalone": []}
+    if harness not in harnesses:
+        harnesses[harness] = {"agents": [], "standalone": []}
     else:
         # Ensure both keys exist
-        harnesses[ide].setdefault("agents", [])
-        harnesses[ide].setdefault("standalone", [])
-    return harnesses[ide]
+        harnesses[harness].setdefault("agents", [])
+        harnesses[harness].setdefault("standalone", [])
+    return harnesses[harness]
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ def _ensure_ide(data: dict, ide: str) -> dict:
 
 
 def upsert_agent(
-    ide: str,
+    harness: str,
     *,
     name: str,
     agent_id: str,
@@ -122,9 +122,9 @@ def upsert_agent(
     Matches on (ide, agent_id, directory) for project-scoped or
     (ide, agent_id) for user-scoped.
     """
-    optic.debug("upsert_agent: ide={}, name={}, version={}", ide, name, version)
+    optic.debug("upsert_agent: ide={}, name={}, version={}", harness, name, version)
     data = read_lockfile()
-    harness_section = _ensure_ide(data, ide)
+    harness_section = _ensure_harness(data, harness)
     agents = harness_section["agents"]
 
     entry = {
@@ -149,10 +149,10 @@ def upsert_agent(
     write_lockfile(data)
 
 
-def remove_agent(ide: str, agent_id: str, directory: str | None = None) -> bool:
+def remove_agent(harness: str, agent_id: str, directory: str | None = None) -> bool:
     """Remove an agent entry. Returns True if found and removed."""
     data = read_lockfile()
-    harness_section = _ensure_ide(data, ide)
+    harness_section = _ensure_harness(data, harness)
     agents = harness_section["agents"]
 
     for i, agent in enumerate(agents):
@@ -185,7 +185,7 @@ def _find_agent_idx(agents: list[dict], agent_id: str, scope: str, directory: st
 
 
 def upsert_standalone(
-    ide: str,
+    harness: str,
     *,
     component_type: str,
     name: str,
@@ -196,9 +196,9 @@ def upsert_standalone(
     integrity: str | None = None,
 ) -> None:
     """Add or update a standalone component (MCP, skill, hook, etc.) in the lock file."""
-    optic.debug("upsert_standalone: ide={}, type={}, name={}", ide, component_type, name)
+    optic.debug("upsert_standalone: ide={}, type={}, name={}", harness, component_type, name)
     data = read_lockfile()
-    harness_section = _ensure_ide(data, ide)
+    harness_section = _ensure_harness(data, harness)
     standalone = harness_section["standalone"]
 
     entry: dict[str, Any] = {
@@ -224,10 +224,10 @@ def upsert_standalone(
     write_lockfile(data)
 
 
-def remove_standalone(ide: str, component_type: str, component_id: str, directory: str | None = None) -> bool:
+def remove_standalone(harness: str, component_type: str, component_id: str, directory: str | None = None) -> bool:
     """Remove a standalone component entry. Returns True if found and removed."""
     data = read_lockfile()
-    harness_section = _ensure_ide(data, ide)
+    harness_section = _ensure_harness(data, harness)
     standalone = harness_section["standalone"]
 
     for i, item in enumerate(standalone):
@@ -264,20 +264,20 @@ def _find_standalone_idx(
 # ---------------------------------------------------------------------------
 
 
-def get_agent_for_directory(ide: str, directory: str) -> dict | None:
+def get_agent_for_directory(harness: str, directory: str) -> dict | None:
     """Find the agent installed for a given harness + project directory.
 
     Used by session push to attribute sessions to agents.
     """
     data = read_lockfile()
-    harness_section = data.get("harnesses", {}).get(ide, {})
+    harness_section = data.get("harnesses", {}).get(harness, {})
     for agent in harness_section.get("agents", []):
         if agent.get("directory") == directory:
             return agent
     return None
 
 
-def get_all_entries(ide: str | None = None) -> list[dict]:
+def get_all_entries(harness: str | None = None) -> list[dict]:
     """Get all lock file entries, optionally filtered by harness.
 
     Returns a flat list of entries with 'harness' and 'entry_type' fields added.
@@ -287,7 +287,7 @@ def get_all_entries(ide: str | None = None) -> list[dict]:
     entries: list[dict] = []
 
     for harness_name, harness_section in data.get("harnesses", {}).items():
-        if ide and harness_name != ide:
+        if harness and harness_name != harness:
             continue
         for agent in harness_section.get("agents", []):
             entries.append({**agent, "harness": harness_name, "entry_type": "agent"})
@@ -406,8 +406,8 @@ def migrate_agent_markers() -> int:
 
         # We don't know which harness was used, default to claude-code
         # (the marker was primarily written by claude-code hooks)
-        ide = "claude-code"
-        harness_section = _ensure_ide(data, ide)
+        harness = "claude-code"
+        harness_section = _ensure_harness(data, harness)
 
         harness_section["agents"].append(
             {

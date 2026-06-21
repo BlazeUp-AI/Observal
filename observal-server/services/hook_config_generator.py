@@ -9,10 +9,10 @@ from loguru import logger as optic
 
 
 def generate_hook_telemetry_config(
-    hook_listing, ide: str, server_url: str = "http://localhost:8000", platform: str = ""
+    hook_listing, harness: str, server_url: str = "http://localhost:8000", platform: str = ""
 ) -> dict:
-    optic.debug("generating hook config for {} (event={})", ide, hook_listing.event)
-    if ide in ("kiro", "kiro-cli"):
+    optic.debug("generating hook config for {} (event={})", harness, hook_listing.event)
+    if harness in ("kiro", "kiro-cli"):
         event = str(hook_listing.event)
         # Map Claude Code PascalCase events to Kiro camelCase
         kiro_event_map = {
@@ -54,10 +54,10 @@ def generate_hook_telemetry_config(
         "timeout": 10,
     }
 
-    if ide == "claude-code":
+    if harness == "claude-code":
         hook_entry["allowedEnvVars"] = ["OBSERVAL_API_KEY"]
-    elif ide != "cursor":
-        return {"comment": f"harness '{ide}' requires manual hook setup. See Observal docs for configuration."}
+    elif harness != "cursor":
+        return {"comment": f"harness '{harness}' requires manual hook setup. See Observal docs for configuration."}
 
     event = str(hook_listing.event)
     return {"hooks": {event: [{"matcher": "*", "hooks": [hook_entry]}]}}

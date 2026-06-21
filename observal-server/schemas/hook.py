@@ -14,7 +14,7 @@ from schemas.constants import (
     VALID_HOOK_EXECUTION_MODES,
     VALID_HOOK_HANDLER_TYPES,
     VALID_HOOK_SCOPES,
-    make_ide_list_validator,
+    make_harness_list_validator,
     make_option_validator,
 )
 
@@ -50,7 +50,7 @@ class HookSubmitRequest(BaseModel):
         make_option_validator("execution_mode", VALID_HOOK_EXECUTION_MODES)
     )
     _validate_scope = field_validator("scope")(make_option_validator("scope", VALID_HOOK_SCOPES))
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class HookDraftRequest(BaseModel):
@@ -73,7 +73,7 @@ class HookDraftRequest(BaseModel):
     source_path: str | None = None
     requirements: list[str] | None = None
 
-    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_harness_list_validator())
 
 
 class HookUpdateRequest(BaseModel):

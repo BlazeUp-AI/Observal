@@ -140,7 +140,7 @@ When submitting a hook to the registry (`observal registry hook submit`):
   "command": "echo \"$TOOL_NAME $(date)\" >> ~/.observal/tool-log.txt",
   "execution_mode": "async",
   "scope": "agent",
-  "ide": ["claude-code", "kiro"]
+  "harness": ["claude-code", "kiro"]
 }
 ```
 

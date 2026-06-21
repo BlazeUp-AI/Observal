@@ -122,7 +122,7 @@ class ShimState:
         self.trace_id = os.environ.get("OBSERVAL_TRACE_ID") or str(uuid.uuid4())
         self.parent_trace_id = os.environ.get("OBSERVAL_TRACE_ID")  # if set, we're a child
         self.session_id = os.environ.get("OBSERVAL_SESSION_ID", "")
-        self.ide = os.environ.get("OBSERVAL_harness", "")
+        self.ide = os.environ.get("OBSERVAL_HARNESS", "")
         self.environment = os.environ.get("OBSERVAL_ENVIRONMENT", "default")
         self.trace_start = datetime.now(UTC)
 

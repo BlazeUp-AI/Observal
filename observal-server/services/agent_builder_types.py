@@ -152,7 +152,7 @@ class HookConfigEntry(BaseModel):
 class HarnessAgentConfig(BaseModel):
     """Complete harness-specific agent configuration output."""
 
-    ide: str
+    harness: str
     files: list[AgentFile] = Field(default_factory=list)
     mcp_servers: dict = Field(default_factory=dict)
     env: dict[str, str] = Field(default_factory=dict)

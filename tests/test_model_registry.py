@@ -1,4 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Aryan Iyappan <aryaniyappan2006@gmail.com>
+# SPDX-FileCopyrightText: 2026 Dhanpraja <dhanpraja231@users.noreply.github.com>
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-FileCopyrightText: 2026 shreyansh-web <shreyansh487@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
+
 """Registry-backed harness model tests."""
 
 from __future__ import annotations
@@ -7,8 +12,9 @@ import pytest
 
 
 def test_every_harness_has_model_catalog():
-    from schemas.harness_registry import HARNESS_REGISTRY
     from observal_shared.harness_models import supported_model_ids
+
+    from schemas.harness_registry import HARNESS_REGISTRY
 
     for harness, spec in HARNESS_REGISTRY.items():
         assert spec["model_catalog_file"] == f"harness_models/{harness}.json"
@@ -33,6 +39,13 @@ def test_cli_catalog_filters_by_harness():
     assert any(row["model_id"] == "sonnet" for row in rows)
 
 
+def test_cli_catalog_rejects_unknown_harness():
+    from observal_cli import model_catalog
+
+    with pytest.raises(ValueError, match="Unknown harness 'claude'"):
+        model_catalog.fetch_catalog(harness="claude")
+
+
 @pytest.mark.asyncio
 async def test_resolver_validates_against_harness_registry():
     from services.model_resolver import resolve_model_for_harness
@@ -50,6 +63,8 @@ async def test_resolver_validates_against_harness_registry():
 async def test_resolver_allows_provider_source_patterns():
     from services.model_resolver import resolve_model_for_harness
 
-    emitted, warnings = await resolve_model_for_harness("opencode", models_by_harness={"opencode": "anthropic/claude-sonnet-4-6"})
+    emitted, warnings = await resolve_model_for_harness(
+        "opencode", models_by_harness={"opencode": "anthropic/claude-sonnet-4-6"}
+    )
     assert emitted == "anthropic/claude-sonnet-4-6"
     assert warnings == []

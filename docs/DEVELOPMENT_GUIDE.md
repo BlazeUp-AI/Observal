@@ -54,7 +54,7 @@
 - [Working on the CLI](#working-on-the-cli)
     - [Reinstalling after changes](#reinstalling-after-changes)
     - [Testing the shim](#testing-the-shim)
-- [harness Recommendations](#ide-recommendations)
+- [Harness Recommendations](#harness-recommendations)
     - [VS Code](#vs-code)
     - [PyCharm / IntelliJ](#pycharm--intellij)
 - [Pre-commit Hooks](#pre-commit-hooks)
@@ -588,7 +588,7 @@ Telemetry will be buffered to `~/.observal/telemetry_buffer.db` if the server is
 
 ---
 
-## harness Recommendations
+## Harness Recommendations
 
 ### VS Code
 
