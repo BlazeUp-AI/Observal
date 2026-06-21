@@ -19,6 +19,7 @@ import {
   useComponentVersionDetail,
   useComponentArchive,
   useComponentUnarchive,
+  useWhoami,
 } from "@/hooks/use-api";
 import type { RegistryType } from "@/lib/api";
 import type { FeedbackItem, RegistryItem, ComponentVersionSummary } from "@/lib/types";
@@ -87,6 +88,7 @@ export default function ComponentDetailPage() {
   const { data: versionsData, isLoading: versionsLoading } = useComponentVersions(type, id);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const { data: versionDetail } = useComponentVersionDetail(type, id, selectedVersion);
+  const { data: whoami } = useWhoami();
 
   const storeSub = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);
@@ -98,6 +100,7 @@ export default function ComponentDetailPage() {
     () => false,
   );
   const canEdit = isAuthenticated && (item?.user_permission === "owner");
+  const canTransferOwnership = !!(whoami?.id && item?.submitted_by && whoami.id === String(item.submitted_by));
 
   // Co-authors
   const [coAuthors, setCoAuthors] = useState<CoAuthor[]>([]);
@@ -444,6 +447,8 @@ export default function ComponentDetailPage() {
                     coAuthors={coAuthors}
                     onChange={setCoAuthors}
                     canManage={true}
+                    canTransferOwnership={canTransferOwnership}
+                    onTransferOwnership={() => refetch()}
                   />
                 </div>
               )}

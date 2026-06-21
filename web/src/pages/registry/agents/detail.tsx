@@ -624,6 +624,7 @@ export default function AgentDetailPage() {
   const versionRequiredFeatures = vd?.required_ide_features ?? (selectedVersion ? undefined : a?.required_ide_features);
   const versionInferredIdes = vd?.inferred_supported_ides ?? (selectedVersion ? undefined : a?.inferred_supported_ides);
   const isOwner = !!(whoami?.id && a?.created_by && whoami.id === String(a.created_by));
+  const canTransferOwnership = isOwner;
   const canManageLifecycle = isAdmin || isOwner;
   const agentStatus = a?.status as string | undefined;
   const canEdit = (isAdmin || a?.user_permission === "owner" || a?.user_permission === "edit") && ["approved", "pending", "draft", "rejected"].includes(agentStatus ?? "");
@@ -990,6 +991,8 @@ export default function AgentDetailPage() {
                     coAuthors={coAuthors}
                     onChange={setCoAuthors}
                     canManage={true}
+                    canTransferOwnership={canTransferOwnership}
+                    onTransferOwnership={() => refetch()}
                   />
                 </div>
               )}

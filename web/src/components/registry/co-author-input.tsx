@@ -3,7 +3,7 @@
 
 
 import { useState, useCallback } from "react";
-import { X, Plus, Loader2 } from "lucide-react";
+import { X, Plus, Loader2, ArrowRightLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,10 @@ interface CoAuthorInputProps {
 	onChange: (coAuthors: CoAuthor[]) => void;
 	/** Whether the current user can manage co-authors */
 	canManage?: boolean;
+	/** Whether the current user can transfer ownership */
+	canTransferOwnership?: boolean;
+	/** Callback after ownership changes */
+	onTransferOwnership?: () => void;
 }
 
 export function CoAuthorInput({
@@ -50,14 +54,18 @@ export function CoAuthorInput({
 	coAuthors,
 	onChange,
 	canManage = true,
+	canTransferOwnership = false,
+	onTransferOwnership,
 }: CoAuthorInputProps) {
 	const [input, setInput] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [transferTarget, setTransferTarget] = useState("");
 
 	// Confirmation dialog state
 	const [confirmAdd, setConfirmAdd] = useState<string | null>(null);
 	const [confirmRemove, setConfirmRemove] = useState<CoAuthor | null>(null);
+	const [confirmTransfer, setConfirmTransfer] = useState<string | null>(null);
 
 	const executeAdd = useCallback(async (value: string) => {
 		setLoading(true);
@@ -138,10 +146,52 @@ export function CoAuthorInput({
 		[entityType, entityId, coAuthors, onChange],
 	);
 
+	const executeTransfer = useCallback(
+		async (target: string) => {
+			setLoading(true);
+			setError(null);
+
+			try {
+				const headers: Record<string, string> = {
+					"Content-Type": "application/json",
+				};
+				const token = getAccessToken();
+				if (token) headers["Authorization"] = `Bearer ${token}`;
+
+				const res = await fetch(`${API}/${entityType}/${entityId}/transfer-ownership`, {
+					method: "POST",
+					headers,
+					body: JSON.stringify({ username: target.replace(/^@/, "") }),
+				});
+
+				if (!res.ok) {
+					const data = await res.json().catch(() => ({}));
+					setError(data.detail || `Failed to transfer ownership (${res.status})`);
+					return;
+				}
+
+				setTransferTarget("");
+				onTransferOwnership?.();
+			} catch {
+				setError("Network error");
+			} finally {
+				setLoading(false);
+				setConfirmTransfer(null);
+			}
+		},
+		[entityType, entityId, onTransferOwnership],
+	);
+
 	const handleAdd = () => {
 		const value = input.trim();
 		if (!value) return;
 		setConfirmAdd(value);
+	};
+
+	const handleTransfer = () => {
+		const value = transferTarget.trim();
+		if (!value) return;
+		setConfirmTransfer(value);
 	};
 
 	const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -216,6 +266,36 @@ export function CoAuthorInput({
 				</div>
 			)}
 
+			{canTransferOwnership && (
+				<div className="space-y-2 rounded-md border border-border p-3">
+					<div className="space-y-0.5">
+						<Label className="text-xs">Transfer owner</Label>
+						<p className="text-xs text-muted-foreground">Move ownership to another username.</p>
+					</div>
+					<div className="flex gap-2">
+						<Input
+							placeholder="@username"
+							value={transferTarget}
+							onChange={(e) => {
+								setTransferTarget(e.target.value);
+								setError(null);
+							}}
+							disabled={loading}
+							className="flex-1"
+						/>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={handleTransfer}
+							disabled={loading || !transferTarget.trim()}
+						>
+							{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
+						</Button>
+					</div>
+				</div>
+			)}
+
 			{error && <p className="text-xs text-destructive">{error}</p>}
 
 			{/* Add confirmation dialog */}
@@ -255,6 +335,27 @@ export function CoAuthorInput({
 						<Button variant="destructive" onClick={() => confirmRemove && executeRemove(confirmRemove.id)} disabled={loading}>
 							{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
 							Remove
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Transfer confirmation dialog */}
+			<Dialog open={!!confirmTransfer} onOpenChange={(open) => { if (!open) setConfirmTransfer(null); }}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Transfer ownership</DialogTitle>
+						<DialogDescription>
+							Transfer ownership to <span className="font-medium text-foreground">{confirmTransfer}</span>? You will lose owner-only controls immediately.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setConfirmTransfer(null)} disabled={loading}>
+							Cancel
+						</Button>
+						<Button onClick={() => confirmTransfer && executeTransfer(confirmTransfer)} disabled={loading}>
+							{loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+							Transfer
 						</Button>
 					</DialogFooter>
 				</DialogContent>
