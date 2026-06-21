@@ -12,7 +12,7 @@ import re
 import yaml
 from loguru import logger as optic
 
-from schemas.ide_registry import IDE_REGISTRY
+from schemas.harness_registry import HARNESS_REGISTRY
 from schemas.skill_commands import normalize_slash_command
 from services.shared.utils import sanitize_name as _sanitize_name
 from services.skill_validator import validate_skill_md_content_frontmatter
@@ -43,11 +43,11 @@ def _short_description(desc: str, max_len: int = 200) -> str:
     return sentence.strip()
 
 
-def _generate_skill_file(skill_source, ide: str, scope: str = "project") -> dict | None:
-    """Generate an IDE-specific skill file dict with path and content.
+def _generate_skill(skill_source, ide: str, scope: str = "project") -> dict | None:
+    """Generate an harness-specific skill file dict with path and content.
 
     skill_source can be a SkillListing or SkillVersion (both have skill_md_content).
-    Returns None for monolithic IDEs (gemini, codex, copilot) that inline
+    Returns None for monolithic harnesses (gemini, codex, copilot) that inline
     skills into their rules markdown.
     """
     name_attr = getattr(skill_source, "name", None)
@@ -58,8 +58,8 @@ def _generate_skill_file(skill_source, ide: str, scope: str = "project") -> dict
         name_attr = "skill"
     optic.debug("generating skill config for {} (ide={}, scope={})", name_attr, ide, scope)
     ide_key = ide.replace("_", "-")
-    spec = IDE_REGISTRY.get(ide_key, {})
-    skill_paths = spec.get("skill_file")
+    spec = HARNESS_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skills")
     if not skill_paths:
         return None
 
@@ -166,9 +166,9 @@ def generate_skill_config(
         config["skill"]["version"] = getattr(version_override, "version", None)
         config["skill"]["latest_version"] = getattr(skill_listing, "version", None)
 
-    # Generate IDE-specific skill file
-    skill_file = _generate_skill_file(source, ide, scope)
-    if skill_file:
-        config["skill_file"] = skill_file
+    # Generate harness-specific skill file
+    skill = _generate_skill(source, ide, scope)
+    if skill:
+        config["skills"] = skill
 
     return config

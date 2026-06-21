@@ -56,7 +56,7 @@ class SkillValidationError(Exception):
     """Raised when SKILL.md cannot be fetched or validated."""
 
 
-# Installed/IDE copy prefixes to exclude during discovery (mirrors client-side logic)
+# Installed/harness copy prefixes to exclude during discovery (mirrors client-side logic)
 _INSTALLED_PREFIX = re.compile(
     r"^(\.agents|\.(?:claude|kiro|cursor|vscode|github|opencode|pi|trae|trae-cn|rovodev|qoder|copilot)|plugin)/"
 )
@@ -66,7 +66,7 @@ async def _discover_skill_path(client: httpx.AsyncClient, git_url: str, git_ref:
     """Try to find SKILL.md in a GitHub repo using the Trees API.
 
     Returns the skill_path (directory containing SKILL.md) or None if not found.
-    Only works for GitHub repos. Filters out IDE config copies.
+    Only works for GitHub repos. Filters out harness config copies.
     """
     optic.trace("discovering skill path in repo {}", git_url)
     m = _GITHUB_RE.match(git_url.rstrip("/"))

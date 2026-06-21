@@ -5,10 +5,10 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for agent_config_generator and agent_builder IDE generation.
+"""Tests for agent_config_generator and agent_builder harness generation.
 
 Covers the server-side code that converts an Agent model into
-IDE-specific config files (rules, frontmatter, MCP configs) and
+harness-specific config files (rules, frontmatter, MCP configs) and
 the manifest-based builder that does the same from AgentManifest.
 """
 
@@ -23,10 +23,10 @@ from services.agent_builder import (
     AgentManifest,
     ManifestComponent,
     ManifestComponents,
-    generate_ide_agent_files,
+    generate_ide_agent_profiles,
 )
-from services.ide import generate_agent_config
-from services.ide.helpers import (
+from services.harness import generate_agent_config
+from services.harness.helpers import (
     _build_rules_content,
     _inject_agent_id,
     _model_name_to_frontmatter,
@@ -204,14 +204,14 @@ class TestGenerateClaudeCode:
     def test_path_is_under_agents_not_rules(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude-code")
-        path = cfg["rules_file"]["path"]
+        path = cfg["agent_profile"]["path"]
         assert ".claude/agents/" in path
         assert ".claude/rules/" not in path
 
     def test_content_starts_with_yaml_frontmatter(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         assert content.startswith("---\n")
         # Extract frontmatter
         parts = content.split("---", 2)
@@ -224,7 +224,7 @@ class TestGenerateClaudeCode:
         ext_mcps = [{"name": "my-ext", "command": "npx", "args": ["-y", "ext"]}]
         agent = _make_agent(external_mcps=ext_mcps)
         cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert "mcpServers" in fm
@@ -233,7 +233,7 @@ class TestGenerateClaudeCode:
     def test_frontmatter_omits_mcpservers_when_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert "mcpServers" not in fm or fm.get("mcpServers") is None
@@ -241,7 +241,7 @@ class TestGenerateClaudeCode:
     def test_body_contains_rules_content(self):
         agent = _make_agent(prompt="Be very helpful.")
         cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         assert "Be very helpful." in content
 
     def test_setup_commands_generated_for_external_mcps(self):
@@ -262,12 +262,12 @@ class TestGenerateClaudeCode:
     def test_claude_code_underscore_alias(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "claude_code")
-        assert ".claude/agents/" in cfg["rules_file"]["path"]
+        assert ".claude/agents/" in cfg["agent_profile"]["path"]
 
     def test_model_fallback_from_agent_when_no_option(self):
         agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
         cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert fm["model"] == "sonnet"
@@ -275,7 +275,7 @@ class TestGenerateClaudeCode:
     def test_model_fallback_from_agent_when_inherit(self):
         agent = _make_agent(model_name="claude-opus-4-6-20250725")
         cfg = generate_agent_config(agent, "claude-code", options={"model": "inherit"})
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert fm["model"] == "opus"
@@ -283,7 +283,7 @@ class TestGenerateClaudeCode:
     def test_explicit_model_option_overrides_agent(self):
         agent = _make_agent(model_name="claude-sonnet-4-6-20250725")
         cfg = generate_agent_config(agent, "claude-code", options={"model": "haiku"})
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert fm["model"] == "haiku"
@@ -291,7 +291,7 @@ class TestGenerateClaudeCode:
     def test_no_model_when_agent_has_empty_model_name(self):
         agent = _make_agent(model_name="")
         cfg = generate_agent_config(agent, "claude-code")
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert "model" not in fm
@@ -328,14 +328,14 @@ class TestGenerateCursorVscode:
     def test_cursor_paths(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
-        assert cfg["agent_file"]["path"] == ".cursor/agents/test-agent.md"
+        assert cfg["agent_profile"]["path"] == ".cursor/agents/test-agent.md"
         assert cfg["mcp_config"]["path"] == ".cursor/mcp.json"
-        assert "rules_file" not in cfg
+        assert "agent_profile" not in cfg
 
     def test_agent_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "cursor")
-        assert len(cfg["agent_file"]["content"]) > 0
+        assert len(cfg["agent_profile"]["content"]) > 0
 
     def test_mcp_config_has_mcpservers_key(self):
         agent = _make_agent()
@@ -377,15 +377,15 @@ class TestGenerateCursorVscode:
 
 
 class TestGenerateKiro:
-    def test_agent_file_path(self):
+    def test_agent_profile_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        assert cfg["agent_file"]["path"] == "~/.kiro/agents/test-agent.json"
+        assert cfg["agent_profile"]["path"] == "~/.kiro/agents/test-agent.json"
 
     def test_agent_content_structure(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        content = cfg["agent_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         assert content["name"] == "test-agent"
         assert "You are helpful." in content["prompt"]
         assert "Agent Specialization" in content["prompt"]
@@ -396,7 +396,7 @@ class TestGenerateKiro:
     def test_hooks_contain_required_events(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        hooks = cfg["agent_file"]["content"]["hooks"]
+        hooks = cfg["agent_profile"]["content"]["hooks"]
         # Only 2 events needed — JSONL session push reads incrementally
         for event in ("userPromptSubmit", "stop"):
             assert event in hooks
@@ -410,21 +410,21 @@ class TestGenerateKiro:
         cfg = generate_agent_config(agent, "kiro")
         assert "steering_file" not in cfg
 
-    def test_kiro_agent_file_has_no_description(self):
+    def test_kiro_agent_profile_has_no_description(self):
         agent = _make_agent(description="x" * 300)
         cfg = generate_agent_config(agent, "kiro")
-        assert "description" not in cfg["agent_file"]["content"]
+        assert "description" not in cfg["agent_profile"]["content"]
 
     def test_tools_include_wildcard(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        tools = cfg["agent_file"]["content"]["tools"]
+        tools = cfg["agent_profile"]["content"]["tools"]
         assert "*" in tools
 
     def test_kiro_native_schema_fields(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro")
-        content = cfg["agent_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         assert content["toolAliases"] == {}
         assert content["allowedTools"] == []
         assert content["toolsSettings"] == {}
@@ -446,8 +446,8 @@ class TestGenerateCodex:
     def test_agent_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["agent_file"]["path"] == "~/.codex/agents/test-agent.toml"
-        assert "rules_file" not in cfg
+        assert cfg["agent_profile"]["path"] == "~/.codex/agents/test-agent.toml"
+        assert "agent_profile" not in cfg
 
     def test_mcp_config_present(self):
         agent = _make_agent()
@@ -464,7 +464,7 @@ class TestGenerateCodex:
     def test_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert len(cfg["agent_file"]["content"]) > 0
+        assert len(cfg["agent_profile"]["content"]) > 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -476,7 +476,7 @@ class TestGenerateCopilot:
     def test_rules_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert cfg["rules_file"]["path"] == ".github/agents/test-agent.agent.md"
+        assert cfg["agent_profile"]["path"] == ".github/agents/test-agent.agent.md"
 
     def test_mcp_config_present(self):
         agent = _make_agent()
@@ -492,7 +492,7 @@ class TestGenerateCopilot:
     def test_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "copilot")
-        assert len(cfg["rules_file"]["content"]) > 0
+        assert len(cfg["agent_profile"]["content"]) > 0
 
     def test_external_mcps_get_type_stdio(self):
         ext = [{"name": "my-srv", "command": "npx", "args": ["-y", "my-srv"]}]
@@ -599,7 +599,7 @@ class TestMcpListingClaudeCodeFallback:
         from unittest.mock import patch
 
         with patch(
-            "services.ide.helpers.generate_config",
+            "services.harness.helpers.generate_config",
             return_value={"command": "observal-shim", "args": ["--mcp-id", str(comp_id)]},
         ):
             cfg = generate_agent_config(
@@ -608,7 +608,7 @@ class TestMcpListingClaudeCodeFallback:
                 mcp_listings={comp_id: listing},
             )
 
-        content = cfg["rules_file"]["content"]
+        content = cfg["agent_profile"]["content"]
         parts = content.split("---", 2)
         fm = yaml.safe_load(parts[1])
         assert "mcpServers" in fm
@@ -625,32 +625,32 @@ class TestNameSanitizationInOutput:
     def test_special_chars_sanitized_in_claude_code_path(self):
         agent = _make_agent(name="my agent v2!")
         cfg = generate_agent_config(agent, "claude-code")
-        path = cfg["rules_file"]["path"]
+        path = cfg["agent_profile"]["path"]
         assert " " not in path
         assert "!" not in path
 
     def test_special_chars_sanitized_in_kiro_path(self):
         agent = _make_agent(name="my agent v2!")
         cfg = generate_agent_config(agent, "kiro")
-        path = cfg["agent_file"]["path"]
+        path = cfg["agent_profile"]["path"]
         assert " " not in path
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 13. Agent Builder — generate_ide_agent_files (manifest-based)
+# 13. Agent Builder — generate_ide_agent_profiles (manifest-based)
 # ═══════════════════════════════════════════════════════════════════
 
 
 class TestBuilderClaudeCode:
     def test_path_under_agents(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "claude-code")
+        result = generate_ide_agent_profiles(manifest, "claude-code")
         paths = [f.path for f in result.files]
         assert any(".claude/agents/" in p for p in paths)
 
     def test_yaml_frontmatter_present(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "claude-code")
+        result = generate_ide_agent_profiles(manifest, "claude-code")
         md_file = next(f for f in result.files if f.format == "markdown")
         content = md_file.content
         assert content.startswith("---\n")
@@ -662,7 +662,7 @@ class TestBuilderClaudeCode:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://example.com")]
         )
-        result = generate_ide_agent_files(manifest, "claude-code")
+        result = generate_ide_agent_profiles(manifest, "claude-code")
         md_file = next(f for f in result.files if f.format == "markdown")
         parts = md_file.content.split("---", 2)
         fm = yaml.safe_load(parts[1])
@@ -673,7 +673,7 @@ class TestBuilderClaudeCode:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://example.com")]
         )
-        result = generate_ide_agent_files(manifest, "claude-code")
+        result = generate_ide_agent_profiles(manifest, "claude-code")
         assert len(result.setup_commands) == 1
         assert result.setup_commands[0][:4] == ["claude", "mcp", "add", "my-srv"]
 
@@ -681,7 +681,7 @@ class TestBuilderClaudeCode:
 class TestBuilderCursor:
     def test_files_include_subagent_and_mcp_json(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "cursor")
+        result = generate_ide_agent_profiles(manifest, "cursor")
         paths = [f.path for f in result.files]
         assert any(".cursor/agents/" in p for p in paths)
         assert not any(".cursor/rules/" in p for p in paths)
@@ -689,16 +689,16 @@ class TestBuilderCursor:
 
 
 class TestBuilderKiro:
-    def test_json_agent_file(self):
+    def test_json_agent_profile(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "kiro")
+        result = generate_ide_agent_profiles(manifest, "kiro")
         json_file = next(f for f in result.files if f.format == "json")
         assert "~/.kiro/agents/" in json_file.path
         assert json_file.content["name"] == "test-agent"
 
     def test_tools_include_wildcard(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "kiro")
+        result = generate_ide_agent_profiles(manifest, "kiro")
         json_file = next(f for f in result.files if f.format == "json")
         tools = json_file.content["tools"]
         assert "*" in tools
@@ -707,13 +707,13 @@ class TestBuilderKiro:
 class TestBuilderCodex:
     def test_agent_path(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "codex")
+        result = generate_ide_agent_profiles(manifest, "codex")
         paths = [f.path for f in result.files]
         assert "~/.codex/agents/test-agent.toml" in paths
 
     def test_codex_only_agent_without_otlp_url(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "codex")
+        result = generate_ide_agent_profiles(manifest, "codex")
         paths = [f.path for f in result.files]
         assert "~/.codex/agents/test-agent.toml" in paths
         assert len(paths) == 1
@@ -722,7 +722,7 @@ class TestBuilderCodex:
 class TestBuilderCopilot:
     def test_rules_path(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "copilot")
+        result = generate_ide_agent_profiles(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".github/agents/test-agent.agent.md" in paths
 
@@ -730,7 +730,7 @@ class TestBuilderCopilot:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
         )
-        result = generate_ide_agent_files(manifest, "copilot")
+        result = generate_ide_agent_profiles(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".vscode/mcp.json" in paths
 
@@ -738,7 +738,7 @@ class TestBuilderCopilot:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
         )
-        result = generate_ide_agent_files(manifest, "copilot")
+        result = generate_ide_agent_profiles(manifest, "copilot")
         mcp_file = next(f for f in result.files if f.path == ".vscode/mcp.json")
         content = mcp_file.content
         assert "servers" in content
@@ -748,7 +748,7 @@ class TestBuilderCopilot:
         manifest = _make_manifest(
             mcps=[ManifestComponent(name="my-srv", version="1.0.0", git_url="https://a.com")],
         )
-        result = generate_ide_agent_files(manifest, "copilot")
+        result = generate_ide_agent_profiles(manifest, "copilot")
         mcp_file = next(f for f in result.files if f.path == ".vscode/mcp.json")
         entry = mcp_file.content["servers"]["my-srv"]
         assert entry["type"] == "stdio"
@@ -756,7 +756,7 @@ class TestBuilderCopilot:
 
     def test_no_mcp_file_when_no_mcp_components(self):
         manifest = _make_manifest()
-        result = generate_ide_agent_files(manifest, "copilot")
+        result = generate_ide_agent_profiles(manifest, "copilot")
         paths = [f.path for f in result.files]
         assert ".vscode/mcp.json" not in paths
 
@@ -766,14 +766,14 @@ class TestBuilderUnsupportedIde:
         import pytest
 
         manifest = _make_manifest()
-        with pytest.raises(ValueError, match="Unsupported IDE"):
-            generate_ide_agent_files(manifest, "notepad")
+        with pytest.raises(ValueError, match="Unsupported harness"):
+            generate_ide_agent_profiles(manifest, "notepad")
 
 
 class TestBuilderRulesMarkdown:
     def test_prompt_included_in_rules(self):
         manifest = _make_manifest(prompt="Be concise and helpful.")
-        result = generate_ide_agent_files(manifest, "cursor")
+        result = generate_ide_agent_profiles(manifest, "cursor")
         md_file = next(f for f in result.files if f.format == "markdown")
         assert "Be concise and helpful." in md_file.content
 
@@ -782,7 +782,7 @@ class TestBuilderRulesMarkdown:
             mcps=[ManifestComponent(name="srv-a", version="1.0.0", git_url="https://a.com", description="Server A")],
             skills=[ManifestComponent(name="skill-b", version="2.0.0", git_url="https://b.com", slash_command="doit")],
         )
-        result = generate_ide_agent_files(manifest, "cursor")
+        result = generate_ide_agent_profiles(manifest, "cursor")
         md_file = next(f for f in result.files if f.format == "markdown")
         assert "## MCP Servers" in md_file.content
         assert "**srv-a**" in md_file.content
@@ -802,7 +802,7 @@ class TestGenerateKiroWin32:
 
     def _all_hook_commands(self, cfg: dict) -> list[str]:
         """Extract all hook command strings from a Kiro agent config."""
-        hooks = cfg["agent_file"]["content"]["hooks"]
+        hooks = cfg["agent_profile"]["content"]["hooks"]
         cmds = []
         for _event, entries in hooks.items():
             for entry in entries:
@@ -845,16 +845,16 @@ class TestGenerateKiroWin32:
     def test_win32_has_session_push_events_only(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="win32")
-        hooks = cfg["agent_file"]["content"]["hooks"]
+        hooks = cfg["agent_profile"]["content"]["hooks"]
         for event in ("userPromptSubmit", "stop"):
             assert event in hooks
         for event in ("agentSpawn", "preToolUse", "postToolUse"):
             assert event not in hooks
 
-    def test_win32_agent_file_path_unchanged(self):
+    def test_win32_agent_profile_path_unchanged(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="win32")
-        assert cfg["agent_file"]["path"] == "~/.kiro/agents/test-agent.json"
+        assert cfg["agent_profile"]["path"] == "~/.kiro/agents/test-agent.json"
 
 
 class TestGenerateKiroPreservation:
@@ -881,7 +881,7 @@ class TestGenerateKiroPreservation:
     def test_unix_hooks_use_kiro_session_push(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "kiro", platform="linux")
-        hooks = cfg["agent_file"]["content"]["hooks"]
+        hooks = cfg["agent_profile"]["content"]["hooks"]
         cmd = hooks["userPromptSubmit"][0]["command"]
         assert "python3 -m observal_cli.hooks.kiro_session_push" in cmd
         assert "cat |" not in cmd

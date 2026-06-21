@@ -94,9 +94,9 @@ def kv_panel(title: str, fields: list[tuple[str, str]], border_style: str = "blu
     return Panel("\n".join(lines), title=f"[bold]{title}[/bold]", border_style=border_style, expand=False)
 
 
-# ── IDE tag rendering ────────────────────────────────────
+# ── harness tag rendering ────────────────────────────────────
 
-_IDE_COLORS = {
+_harness_COLORS = {
     "cursor": "cyan",
     "kiro": "magenta",
     "claude_code": "yellow",
@@ -109,7 +109,7 @@ _IDE_COLORS = {
 def ide_tags(ides: list[str]) -> str:
     parts = []
     for ide in ides:
-        color = _IDE_COLORS.get(ide, "white")
+        color = _harness_COLORS.get(ide, "white")
         parts.append(f"[{color}]{ide}[/{color}]")
     return " ".join(parts) if parts else "[dim]none[/dim]"
 

@@ -219,7 +219,7 @@ async def seed_postgres(pg_url: str, org_id: str | None, clean: bool) -> dict:
             agent_map[agent_name] = agent_id
 
             await conn.execute(
-                "INSERT INTO agent_versions (id, agent_id, version, description, prompt, model_name, model_config_json, models_by_ide, external_mcps, supported_ides, required_ide_features, inferred_supported_ides, status, is_prerelease, download_count, released_by, released_at, created_at, is_editing) "
+                "INSERT INTO agent_versions (id, agent_id, version, description, prompt, model_name, model_config_json, models_by_harness, external_mcps, supported_harnesses, required_harness_capabilitys, inferred_supported_harnesses, status, is_prerelease, download_count, released_by, released_at, created_at, is_editing) "
                 "VALUES ($1, $2, '1.0.0', $3, '', '', '{}', '{}', '[]', '[]', '[]', '[]', $4, false, 0, $5, NOW(), NOW(), false) ON CONFLICT DO NOTHING",
                 version_id,
                 agent_id,

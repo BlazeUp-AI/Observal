@@ -9,8 +9,8 @@ This package contains:
 - Re-exports of hook spec helpers for convenience
 """
 
-from observal_cli.ide_specs.claude_code_hooks_spec import (  # noqa: F401
+from observal_cli.harness_specs.claude_code_hooks_spec import (  # noqa: F401
     MANAGED_ENV_KEYS,
     get_desired_hooks,
 )
-from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks  # noqa: F401
+from observal_cli.harness_specs.kiro_hooks_spec import build_kiro_hooks  # noqa: F401

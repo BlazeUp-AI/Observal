@@ -72,7 +72,7 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
     m.model_name = extra.get("model_name", "claude-sonnet-4")
     m.model_config_json = {}
     m.external_mcps = []
-    m.supported_ides = []
+    m.supported_harnesses = []
     m.status = status
     m.rejection_reason = None
     m.download_count = 0
@@ -101,7 +101,7 @@ def _agent_mock(status=AgentStatus.draft, created_by=None, **extra):
         "model_name",
         "model_config_json",
         "external_mcps",
-        "supported_ides",
+        "supported_harnesses",
         "owner_org_id",
         "status",
         "rejection_reason",

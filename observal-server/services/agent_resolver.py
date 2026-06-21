@@ -68,7 +68,7 @@ class ResolvedAgent(BaseModel):
     agent_prompt: str = ""
     agent_description: str = ""
     model_name: str = ""
-    models_by_ide: dict[str, str] = Field(default_factory=dict)
+    models_by_harness: dict[str, str] = Field(default_factory=dict)
     components: list[ResolvedComponent] = Field(default_factory=list)
     errors: list[ResolutionError] = Field(default_factory=list)
 
@@ -224,8 +224,8 @@ async def resolve_agent(
             )
         )
 
-    raw_models_by_ide = getattr(agent, "models_by_ide", None)
-    models_by_ide = raw_models_by_ide if isinstance(raw_models_by_ide, dict) else {}
+    raw_models_by_harness = getattr(agent, "models_by_harness", None)
+    models_by_harness = raw_models_by_harness if isinstance(raw_models_by_harness, dict) else {}
     return ResolvedAgent(
         agent_id=agent.id,
         agent_name=agent.name,
@@ -233,7 +233,7 @@ async def resolve_agent(
         agent_prompt=agent.prompt or "",
         agent_description=agent.description or "",
         model_name=agent.model_name or "",
-        models_by_ide=models_by_ide,
+        models_by_harness=models_by_harness,
         components=components,
         errors=errors,
     )

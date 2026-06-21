@@ -4,7 +4,7 @@
 
 """observal-proxy: transparent HTTP reverse proxy for MCP servers.
 
-Sits between IDE and an HTTP-transport MCP server, forwards all requests
+Sits between harness and an HTTP-transport MCP server, forwards all requests
 untouched, and async fire-and-forgets copies to the Observal server.
 """
 

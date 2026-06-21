@@ -75,7 +75,7 @@ async def submit_prompt(
         variables=req.variables,
         model_hints=req.model_hints,
         tags=req.tags,
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         status=ListingStatus.pending,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -232,7 +232,7 @@ async def save_prompt_draft(
         variables=req.variables,
         model_hints=req.model_hints,
         tags=req.tags,
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         status=ListingStatus.draft,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -274,7 +274,7 @@ async def update_prompt_draft(
         "variables",
         "model_hints",
         "tags",
-        "supported_ides",
+        "supported_harnesses",
     ):
         val = getattr(req, field)
         if val is not None:

@@ -23,7 +23,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from observal_cli import client, config
-from observal_cli.constants import AGENT_NAME_REGEX, VALID_IDES
+from observal_cli.constants import AGENT_NAME_REGEX, VALID_HARNESSES
 from observal_cli.prompts import fuzzy_select, select_many, select_one, text_input
 from observal_cli.render import (
     console,
@@ -109,7 +109,7 @@ def agent_create(
     prompt: str | None = typer.Option(None, "--prompt", "-p", help="System prompt text"),
     prompt_file: str | None = typer.Option(None, "--prompt-file", help="Read system prompt from a file"),
     model_name: str | None = typer.Option(None, "--model", "-m", help="Model name (e.g. claude-sonnet-4)"),
-    supported_ides: list[str] | None = typer.Option(None, "--ide", help="Supported IDEs (repeat for multiple)"),
+    supported_harnesses: list[str] | None = typer.Option(None, "--harness", help="Supported harnesses (repeat for multiple)"),
 ):
     """Create a new agent (interactive wizard, from file, or via flags).
 
@@ -121,7 +121,7 @@ def agent_create(
     Examples:
       observal agent create --from-file agent.json
       observal agent create --name my-agent --prompt "You are..." --model claude-sonnet-4
-      observal agent create --name my-agent --prompt-file ./PROMPT.md --model claude-sonnet-4 --ide kiro --ide claude-code
+      observal agent create --name my-agent --prompt-file ./PROMPT.md --model claude-sonnet-4 --harness kiro --harness claude-code
     """
     optic.trace("from_file={}", from_file)
     # ── Path A: From JSON file ───────────────────────────────
@@ -180,7 +180,7 @@ def agent_create(
             "owner": _owner,
             "prompt": _prompt,
             "model_name": _model,
-            "supported_ides": supported_ides or [],
+            "supported_harnesses": supported_harnesses or [],
             "components": [],
         }
 
@@ -237,9 +237,9 @@ def agent_create(
             if match:
                 components.append({"component_type": ctype, "component_id": str(match["id"])})
 
-    # ── Phase 3: IDEs ────────────────────────────────────────
-    rprint("\n[bold]3. Supported IDEs[/bold]")
-    supported_ides = select_many("  IDEs", list(VALID_IDES), defaults=list(VALID_IDES))
+    # ── Phase 3: harnesses ────────────────────────────────────────
+    rprint("\n[bold]3. Supported harnesses[/bold]")
+    supported_harnesses = select_many("  harnesses", list(VALID_HARNESSES), defaults=list(VALID_HARNESSES))
 
     # ── Phase 4: Goal Template ───────────────────────────────
     rprint("\n[bold]4. Goal Template[/bold]")
@@ -284,7 +284,7 @@ def agent_create(
     review = (
         f"[bold]{name}[/bold] v{version}  |  Model: [cyan]{model_name}[/cyan]\n"
         f"Components: {component_summary}\n"
-        f"IDEs: {', '.join(supported_ides)}\n"
+        f"harnesses: {', '.join(supported_harnesses)}\n"
         f"Goal: {len(sections)} section(s)"
     )
     console.print(Panel(review, title="Review", border_style="green"))
@@ -304,7 +304,7 @@ def agent_create(
                 "prompt": prompt_text,
                 "model_name": model_name,
                 "model_config_json": model_cfg,
-                "supported_ides": supported_ides,
+                "supported_harnesses": supported_harnesses,
                 "components": components,
             },
         )
@@ -586,7 +586,7 @@ def agent_show(
     """Show full agent details.
 
     Displays the complete agent profile: name, version, model, owner,
-    description, supported IDEs, linked MCP servers, and metadata.
+    description, supported harnesses, linked MCP servers, and metadata.
     Accepts a UUID, agent name, numeric row number from the last list,
     or an @alias.
 
@@ -613,7 +613,7 @@ def agent_show(
                 ("Owner", item.get("owner", "N/A")),
                 ("Created By", item.get("created_by_username") or item.get("created_by_email", "")),
                 ("Description", item.get("description", "")),
-                ("IDEs", ide_tags(item.get("supported_ides", []))),
+                ("harnesses", ide_tags(item.get("supported_harnesses", []))),
                 ("Created", relative_time(item.get("created_at"))),
                 ("ID", f"[dim]{item['id']}[/dim]"),
             ],
@@ -631,25 +631,25 @@ def agent_show(
 @agent_app.command(name="install")
 def agent_install(
     agent_id: str = typer.Argument(..., help="Agent ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
+    harness: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
 ):
     """Get install config for an agent.
 
-    Generates the IDE-specific configuration needed to use the agent.
+    Generates the harness-specific configuration needed to use the agent.
     Output includes rules files, MCP configs, skill files, and agent
-    files depending on the target IDE. Use --raw to pipe JSON directly
+    files depending on the target harness. Use --raw to pipe JSON directly
     to a file.
 
     Examples:
-      observal agent install my-agent --ide claude-code
-      observal agent install my-agent --ide kiro
-      observal agent install my-agent --ide cursor --raw > config.json
-      observal agent install @myalias --ide opencode
+      observal agent install my-agent --harness claude-code
+      observal agent install my-agent --harness kiro
+      observal agent install my-agent --harness cursor --raw > config.json
+      observal agent install @myalias --harness opencode
     """
     resolved = config.resolve_alias(agent_id)
     with spinner(f"Generating {ide} config..."):
-        result = client.post(f"/api/v1/agents/{resolved}/install", {"ide": ide})
+        result = client.post(f"/api/v1/agents/{resolved}/install", {"harness": ide})
 
     snippet = result.get("config_snippet", {})
     if raw:
@@ -659,28 +659,28 @@ def agent_install(
     rprint(f"\n[bold]Config for {ide}:[/bold]\n")
 
     # Kiro agent file: single JSON to drop in
-    agent_file = snippet.get("agent_file")
-    if agent_file:
-        rprint(f"[bold]Save to:[/bold] {agent_file['path']}")
+    agent_profile = snippet.get("agent_profile")
+    if agent_profile:
+        rprint(f"[bold]Save to:[/bold] {agent_profile['path']}")
         rprint()
-        console.print_json(_json.dumps(agent_file["content"], indent=2))
+        console.print_json(_json.dumps(agent_profile["content"], indent=2))
         rprint(
-            f"\n[dim]Or pipe:[/dim] observal agent install {agent_id} --ide {ide} --raw | jq .agent_file.content > {agent_file['path']}"
+            f"\n[dim]Or pipe:[/dim] observal agent install {agent_id} --harness {ide} --raw | jq .agent_profile.content > {agent_profile['path']}"
         )
         return
 
     # Rules file
-    rules = snippet.get("rules_file")
+    rules = snippet.get("agent_profile")
     if rules:
         rprint(f"[bold]Rules file:[/bold] {rules.get('path', '')}")
         content = rules.get("content", "")
         rprint(f"[dim]{content[:200]}{'...' if len(content) > 200 else ''}[/dim]\n")
 
     # Skill files
-    skill_files = snippet.get("skill_files", [])
-    if skill_files:
-        rprint(f"[bold]Skill files ({len(skill_files)}):[/bold]")
-        for sf in skill_files:
+    skills = snippet.get("skills", [])
+    if skills:
+        rprint(f"[bold]Skill files ({len(skills)}):[/bold]")
+        for sf in skills:
             rprint(f"  [green]{sf['path']}[/green]")
         rprint()
 
@@ -812,11 +812,11 @@ def agent_init(
         "description": description,
         "owner": owner,
         "model_name": model_name,
-        # Optional per-IDE model overrides, e.g. {"kiro": "claude-haiku-4-5"}.
+        # Optional per-harness model overrides, e.g. {"kiro": "claude-haiku-4-5"}.
         # Leave empty to use model_name everywhere that accepts a model choice.
-        "models_by_ide": {},
+        "models_by_harness": {},
         "prompt": prompt_text,
-        "supported_ides": list(VALID_IDES),
+        "supported_harnesses": list(VALID_HARNESSES),
         "components": [],
     }
 
@@ -961,9 +961,9 @@ def agent_publish(
         "description": data.get("description", ""),
         "owner": data.get("owner", ""),
         "model_name": data.get("model_name", "claude-sonnet-4"),
-        "models_by_ide": data.get("models_by_ide", {}) or {},
+        "models_by_harness": data.get("models_by_harness", {}) or {},
         "prompt": data.get("prompt", ""),
-        "supported_ides": data.get("supported_ides", []),
+        "supported_harnesses": data.get("supported_harnesses", []),
         "components": data.get("components", []),
     }
 
@@ -1072,9 +1072,9 @@ def agent_release(
         "prompt": data.get("prompt", ""),
         "model_name": data.get("model_name", "claude-sonnet-4"),
         "model_config_json": data.get("model_config_json") or {},
-        "models_by_ide": data.get("models_by_ide", {}) or {},
+        "models_by_harness": data.get("models_by_harness", {}) or {},
         "external_mcps": data.get("external_mcps") or [],
-        "supported_ides": data.get("supported_ides", []),
+        "supported_harnesses": data.get("supported_harnesses", []),
         "components": data.get("components", []),
         "yaml_snapshot": raw_yaml,
     }

@@ -226,11 +226,11 @@ class TestConstants:
 
 class TestBuildSelect:
     def test_table_with_jsonb_columns(self):
-        columns = ["id", "name", "model_config_json", "external_mcps", "supported_ides", "created_at"]
+        columns = ["id", "name", "model_config_json", "external_mcps", "supported_harnesses", "created_at"]
         sql = _build_select("agents", columns)
         assert '"model_config_json"::text AS "model_config_json"' in sql
         assert '"external_mcps"::text AS "external_mcps"' in sql
-        assert '"supported_ides"::text AS "supported_ides"' in sql
+        assert '"supported_harnesses"::text AS "supported_harnesses"' in sql
         # Non-JSONB columns should not have ::text
         assert "id::text" not in sql
         assert "name::text" not in sql
@@ -420,12 +420,12 @@ class TestBuildInsert:
         assert 'INSERT INTO "users" ("id", "name", "email")' in sql
 
     def test_multiple_jsonb_columns(self):
-        columns = ["id", "tools_schema", "environment_variables", "supported_ides"]
+        columns = ["id", "tools_schema", "environment_variables", "supported_harnesses"]
         col_types = {
             "id": "uuid",
             "tools_schema": "jsonb",
             "environment_variables": "jsonb",
-            "supported_ides": "jsonb",
+            "supported_harnesses": "jsonb",
         }
         sql = _build_insert("mcp_listings", columns, col_types)
         assert "$2::jsonb" in sql

@@ -9,7 +9,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""observal scan: read-only inventory of local IDE setup."""
+"""observal scan: read-only inventory of local harness setup."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from loguru import logger as optic
 from rich import print as rprint
 from rich.table import Table
 
-from observal_cli.ide import (
+from observal_cli.harness import (
     DiscoveredMcp,
     NotSupportedError,
     ensure_loaded,
@@ -30,9 +30,9 @@ from observal_cli.ide import (
 from observal_cli.render import console, spinner
 from observal_cli.shared.utils import is_already_shimmed as _is_already_shimmed
 
-# ── IDE home directory paths (for status display) ────────────────
+# ── harness home directory paths (for status display) ────────────────
 
-_IDE_HOME_DIRS: dict[str, str] = {
+_harness_HOME_DIRS: dict[str, str] = {
     "claude-code": "~/.claude",
     "kiro": "~/.kiro",
     "codex": "~/.codex",
@@ -71,35 +71,35 @@ def _mcp_shim_status(mcps: list[DiscoveredMcp]) -> str:
 def register_scan(app: typer.Typer):
     @app.command(name="scan")
     def scan(
-        ide: str | None = typer.Option(None, "--ide", "-i", help="Filter to a specific IDE"),
+        ide: str | None = typer.Option(None, "--harness", "-i", help="Filter to a specific harness"),
     ):
-        """Show a read-only inventory of your local IDE setup.
+        """Show a read-only inventory of your local harness setup.
 
-        Scans all IDE home directories and the current project directory to
+        Scans all harness home directories and the current project directory to
         discover agents, MCP servers, skills, and hooks. Shows what's
         instrumented (hooks/shims) and what's missing.
 
-        Use --ide to filter to a specific IDE (e.g. --ide kiro).
+        Use --harness to filter to a specific harness (e.g. --harness kiro).
 
         This command never modifies files. To instrument, run:
-          observal doctor patch --all --all-ides
+          observal doctor patch --all --all-harnesses
 
         Examples:
             observal scan
-            observal scan --ide claude-code
-            observal scan --ide kiro
+            observal scan --harness claude-code
+            observal scan --harness kiro
         """
         ensure_loaded()
         optic.trace("ide={}", ide)
 
-        # Validate IDE filter
+        # Validate harness filter
         if ide:
             try:
                 get_adapter(ide)
             except KeyError:
                 valid = sorted(get_all_adapters().keys())
-                rprint(f"[red]Unknown IDE: {ide}[/red]")
-                rprint(f"Valid IDEs: {', '.join(valid)}")
+                rprint(f"[red]Unknown harness: {ide}[/red]")
+                rprint(f"Valid harnesses: {', '.join(valid)}")
                 raise typer.Exit(1)
 
         adapters = {ide: get_adapter(ide)} if ide else get_all_adapters()
@@ -114,7 +114,7 @@ def register_scan(app: typer.Typer):
         ide_status: list[tuple[str, str, str]] = []  # (name, hooks, shims)
 
         for ide_name, adapter in adapters.items():
-            home_label = _IDE_HOME_DIRS.get(ide_name, "")
+            home_label = _harness_HOME_DIRS.get(ide_name, "")
             home_dir = Path(home_label.replace("~", str(home))) if home_label else None
 
             # Skip if home dir doesn't exist
@@ -141,7 +141,7 @@ def register_scan(app: typer.Typer):
             all_hooks.extend(home_result.hooks + proj_result.hooks)
             all_agents.extend(home_result.agents + proj_result.agents)
 
-            # Determine status for this IDE
+            # Determine status for this harness
             try:
                 config_dir = home_dir or (home / ".config" / ide_name)
                 hook_status = adapter.detect_hooks(config_dir)
@@ -165,15 +165,15 @@ def register_scan(app: typer.Typer):
         total = len(all_mcps) + len(all_skills) + len(all_hooks) + len(all_agents)
 
         if total == 0 and not ide_status:
-            rprint("[yellow]No IDE configurations found.[/yellow]")
+            rprint("[yellow]No harness configurations found.[/yellow]")
             raise typer.Exit(1)
 
         rprint(f"\n[bold]Observal Scan[/bold] - {total} components discovered\n")
 
-        # ── IDEs Detected table ──
+        # ── harnesses Detected table ──
         if ide_status:
-            tbl = Table(title="IDEs Detected", show_lines=False, padding=(0, 1))
-            tbl.add_column("IDE", style="bold")
+            tbl = Table(title="harnesses Detected", show_lines=False, padding=(0, 1))
+            tbl.add_column("harness", style="bold")
             tbl.add_column("Hooks", style="cyan")
             tbl.add_column("Shims", style="cyan")
             for name, hooks_s, shims_s in ide_status:
@@ -320,11 +320,11 @@ def register_scan(app: typer.Typer):
 
         suggestions = []
         if missing_hooks and missing_shims:
-            suggestions.append("Run [bold]observal doctor patch --all --all-ides[/bold] to instrument everything")
+            suggestions.append("Run [bold]observal doctor patch --all --all-harnesses[/bold] to instrument everything")
         elif missing_hooks:
-            suggestions.append("Run [bold]observal doctor patch --hook --all-ides[/bold] to install telemetry hooks")
+            suggestions.append("Run [bold]observal doctor patch --hook --all-harnesses[/bold] to install telemetry hooks")
         elif missing_shims:
-            suggestions.append("Run [bold]observal doctor patch --shim --all-ides[/bold] to wrap MCP servers")
+            suggestions.append("Run [bold]observal doctor patch --shim --all-harnesses[/bold] to wrap MCP servers")
 
         suggestions.append("Use [bold]observal registry <type> submit[/bold] to publish components to the registry")
 

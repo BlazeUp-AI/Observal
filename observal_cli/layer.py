@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""IDE layer scanning and hash computation.
+"""harness layer scanning and hash computation.
 
-Scans IDE configuration directories to build a manifest of all files
+Scans harness configuration directories to build a manifest of all files
 that shape AI behavior (rules, agents, skills, MCP configs, hooks).
 Computes a deterministic layer_hash from the manifest and manages
 caching to avoid redundant file reads.
@@ -19,7 +19,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from loguru import logger as optic
+try:
+    from loguru import logger as optic
+except ModuleNotFoundError:
+    import logging
+
+    optic = logging.getLogger(__name__)
 
 from observal_cli.config import CONFIG_DIR
 
@@ -32,12 +37,12 @@ MAX_FILE_SIZE = 512 * 1024  # 512KB
 
 
 # ---------------------------------------------------------------------------
-# Per-IDE file discovery configuration
+# Per-harness file discovery configuration
 # ---------------------------------------------------------------------------
 
-# Maps IDE name → dict of scope → list of (base_dir, glob_patterns)
+# Maps harness name → dict of scope → list of (base_dir, glob_patterns)
 # base_dir is relative to home (~) for user scope, or project root for project scope
-IDE_LAYER_CONFIGS: dict[str, dict[str, list[tuple[str, list[str]]]]] = {
+harness_LAYER_CONFIGS: dict[str, dict[str, list[tuple[str, list[str]]]]] = {
     "claude-code": {
         "user": [
             (
@@ -300,12 +305,12 @@ def _resolve_base_dir(base_dir: str) -> Path:
 
 
 def _discover_files(ide: str, project_dir: str | None = None) -> list[tuple[Path, str]]:
-    """Discover all IDE config files for a given IDE.
+    """Discover all harness config files for a given harness.
 
     Returns list of (absolute_path, relative_display_path) tuples.
     Scans both user and project scopes.
     """
-    config = IDE_LAYER_CONFIGS.get(ide, {})
+    config = harness_LAYER_CONFIGS.get(ide, {})
     found: list[tuple[Path, str]] = []
     seen: set[str] = set()
 
@@ -353,10 +358,10 @@ def build_layer_manifest(
     project_dir: str | None = None,
     include_content: bool = False,
 ) -> list[dict[str, Any]]:
-    """Build the layer manifest for a given IDE.
+    """Build the layer manifest for a given harness.
 
     Args:
-        ide: IDE identifier (e.g. 'claude-code', 'cursor')
+        ide: harness identifier (e.g. 'claude-code', 'cursor')
         project_dir: Optional project directory for project-scope scanning
         include_content: If True, include full file content in manifest entries
 
@@ -366,7 +371,7 @@ def build_layer_manifest(
     cache = _load_hash_cache()
     files = _discover_files(ide, project_dir)
 
-    # Safety cap: max 200 files per manifest. If an IDE config dir
+    # Safety cap: max 200 files per manifest. If an harness config dir
     # has more than this, something is wrong (e.g. node_modules matched).
     if len(files) > 200:
         optic.warning("layer scan found {} files, capping at 200", len(files))
@@ -411,7 +416,7 @@ def build_layer_manifest(
 
 def _get_observal_managed_files(lockfile_data: dict, ide: str, project_dir: str | None) -> set[str]:
     """Determine which display paths are managed by Observal from the lock file."""
-    from observal_cli.ide import ensure_loaded, get_adapter
+    from observal_cli.harness import ensure_loaded, get_adapter
 
     ensure_loaded()
     try:
@@ -422,21 +427,21 @@ def _get_observal_managed_files(lockfile_data: dict, ide: str, project_dir: str 
 
 
 # ---------------------------------------------------------------------------
-# Multi-IDE layer hash computation
+# Multi-harness layer hash computation
 # ---------------------------------------------------------------------------
 
 
 def _detect_active_ides() -> list[str]:
-    """Detect installed IDEs by asking CLI adapters for their home markers."""
+    """Detect installed harnesses by asking CLI adapters for their home markers."""
     from pathlib import Path
 
-    from observal_cli.ide import ensure_loaded, get_adapter
-    from observal_cli.ide_registry import IDE_REGISTRY
+    from observal_cli.harness import ensure_loaded, get_adapter
+    from observal_cli.harness_registry import HARNESS_REGISTRY
 
     ensure_loaded()
     home = Path.home()
     active: list[str] = []
-    for ide in IDE_REGISTRY:
+    for ide in HARNESS_REGISTRY:
         try:
             adapter = get_adapter(ide)
         except KeyError:
@@ -447,10 +452,10 @@ def _detect_active_ides() -> list[str]:
 
 
 def compute_layer_hash(ide: str | None = None, project_dir: str | None = None) -> str:
-    """Compute the layer_hash for one or all IDEs.
+    """Compute the layer_hash for one or all harnesses.
 
-    If ide is None, computes across ALL detected IDEs (combined hash).
-    If ide is specified, computes for that IDE only.
+    If ide is None, computes across ALL detected harnesses (combined hash).
+    If ide is specified, computes for that harness only.
 
     The hash is based on the sorted (ide:path, file_hash) pairs.
     Returns a 16-char hex string.
@@ -461,7 +466,7 @@ def compute_layer_hash(ide: str | None = None, project_dir: str | None = None) -
     for scan_ide in ides_to_scan:
         manifest = build_layer_manifest(scan_ide, project_dir, include_content=False)
         for entry in manifest:
-            # Prefix with IDE name for uniqueness across IDEs
+            # Prefix with harness name for uniqueness across harnesses
             all_entries.append((f"{scan_ide}/{entry['path']}", entry["hash"]))
 
     if not all_entries:
@@ -525,7 +530,7 @@ def set_last_uploaded_hash(layer_hash: str) -> None:
 def ensure_local_snapshot(ide: str | None = None, project_dir: str | None = None) -> str:
     """Generate the local snapshot if it doesn't exist or state changed. Returns the layer_hash.
 
-    Scans ALL detected IDEs (not just one). Called after login, pull, or scan.
+    Scans ALL detected harnesses (not just one). Called after login, pull, or scan.
     Does NOT upload to server (that happens on session push).
     """
     current_hash = compute_layer_hash(ide=None, project_dir=project_dir)
@@ -557,7 +562,7 @@ def diff_local(ide: str | None = None, project_dir: str | None = None) -> dict |
     if not local:
         return None
 
-    # Build current state across all first-class IDEs
+    # Build current state across all first-class harnesses
     ides_to_scan = [ide] if ide else _detect_active_ides()
 
     current_files: dict[str, dict] = {}
@@ -567,7 +572,7 @@ def diff_local(ide: str | None = None, project_dir: str | None = None) -> dict |
             key = f"{scan_ide}/{entry['path']}"
             current_files[key] = entry
 
-    # Flatten local snapshot (structured by IDE)
+    # Flatten local snapshot (structured by harness)
     local_files: dict[str, dict] = {}
     local_ides = local.get("ides", {})
     if isinstance(local_ides, dict):
@@ -606,7 +611,7 @@ def diff_local(ide: str | None = None, project_dir: str | None = None) -> dict |
 def build_upload_payload(ide: str | None = None, project_dir: str | None = None) -> dict:
     """Build the full layer snapshot payload for upload to the server.
 
-    Scans all detected first-class IDEs. Structured by IDE.
+    Scans all detected first-class harnesses. Structured by harness.
     Includes file contents for server-side diffing and insight analysis.
     """
     ides_to_scan = [ide] if ide else _detect_active_ides()
@@ -693,7 +698,7 @@ def _compute_drift(lockfile_data: dict, ides_section: dict[str, list[dict]]) -> 
     drifted: list[dict] = []
 
     for ide_name, ide_section in lockfile_data.get("ides", {}).items():
-        # Build lookup of actual file hashes for this IDE
+        # Build lookup of actual file hashes for this harness
         actual_hashes: dict[str, str] = {}
         for f in ides_section.get(ide_name, []):
             actual_hashes[f["path"]] = f["hash"]

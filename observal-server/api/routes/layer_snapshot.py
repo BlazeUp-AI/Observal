@@ -3,7 +3,7 @@
 
 """Layer snapshot upload and retrieval endpoint.
 
-Stores full IDE layer manifests (with file contents) keyed by hash.
+Stores full harness layer manifests (with file contents) keyed by hash.
 Used for version-aware insights: enables diffing between two layer states.
 """
 
@@ -79,7 +79,7 @@ async def upload_layer_snapshot(
     request: Request,
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    """Upload a layer snapshot (full IDE config state).
+    """Upload a layer snapshot (full harness config state).
 
     Called by the CLI when layer_hash changes. Idempotent: uploading
     the same hash again is a no-op.

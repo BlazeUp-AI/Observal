@@ -19,6 +19,10 @@ if sys.platform == "win32" and not os.environ.get("PYTHONIOENCODING"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+_shared = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "packages", "observal-shared"))
+if os.path.isdir(_shared) and _shared not in sys.path:
+    sys.path.insert(0, _shared)
+
 import typer
 
 from observal_cli.cmd_auth import version_callback

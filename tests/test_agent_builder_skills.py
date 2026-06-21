@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for agent_builder._build_skill_files() — verbatim vs stub paths."""
+"""Tests for agent_builder._build_skills() — verbatim vs stub paths."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from services.agent_builder import (
     AgentManifest,
     ManifestComponent,
     ManifestComponents,
-    _build_skill_files,
-    generate_ide_agent_files,
+    _build_skills,
+    generate_ide_agent_profiles,
 )
 
 
@@ -58,19 +58,19 @@ Actually review the code properly.
 class TestBuildSkillFilesVerbatimPath:
     def test_claude_code_uses_verbatim(self):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        files = _build_skill_files(manifest, "claude-code")
+        files = _build_skills(manifest, "claude-code")
         assert len(files) == 1
         assert files[0].content == VERBATIM_MD
 
     def test_kiro_uses_verbatim(self):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        files = _build_skill_files(manifest, "kiro")
+        files = _build_skills(manifest, "kiro")
         assert len(files) == 1
         assert files[0].content == VERBATIM_MD
 
     def test_cursor_uses_verbatim(self):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        files = _build_skill_files(manifest, "cursor")
+        files = _build_skills(manifest, "cursor")
         assert len(files) == 1
         assert files[0].content == VERBATIM_MD
 
@@ -78,7 +78,7 @@ class TestBuildSkillFilesVerbatimPath:
 class TestBuildSkillFilesFallbackPath:
     def test_claude_code_fallback_has_frontmatter(self):
         manifest = _skill_manifest()  # no skill_md_content
-        files = _build_skill_files(manifest, "claude-code")
+        files = _build_skills(manifest, "claude-code")
         assert len(files) == 1
         content = files[0].content
         assert "name: code-review" in content
@@ -86,15 +86,15 @@ class TestBuildSkillFilesFallbackPath:
 
     def test_cursor_fallback_has_yaml_frontmatter(self):
         manifest = _skill_manifest()
-        files = _build_skill_files(manifest, "cursor")
+        files = _build_skills(manifest, "cursor")
         assert len(files) == 1
         assert "name: code-review" in files[0].content
 
-    def test_all_ides_produce_skill_files(self):
-        """All IDEs have skill_file entries and produce output."""
+    def test_all_harnesses_produce_skills(self):
+        """All harnesses have skill entries and produce output."""
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
         for ide in ("codex", "copilot", "cursor", "claude-code", "kiro"):
-            assert _build_skill_files(manifest, ide) != [], f"{ide} should produce skill files"
+            assert _build_skills(manifest, ide) != [], f"{ide} should produce skill files"
 
 
 class TestSkillFilePaths:
@@ -106,9 +106,9 @@ class TestSkillFilePaths:
             ("cursor", ".cursor/skills/"),
         ],
     )
-    def test_skill_file_path(self, ide: str, expected_prefix: str):
+    def test_skill_path(self, ide: str, expected_prefix: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        files = _build_skill_files(manifest, ide)
+        files = _build_skills(manifest, ide)
         assert len(files) == 1
         assert files[0].path.startswith(expected_prefix) or files[0].path.startswith(
             "~/" + expected_prefix.lstrip("./")
@@ -120,9 +120,9 @@ class TestGenerateIdeAgentFilesWithSkills:
         "ide",
         ["claude-code", "cursor", "kiro", "opencode", "codex", "copilot"],
     )
-    def test_skill_file_in_ide_output(self, ide: str):
+    def test_skill_in_ide_output(self, ide: str):
         manifest = _skill_manifest(skill_md_content=VERBATIM_MD)
-        config = generate_ide_agent_files(manifest, ide)
+        config = generate_ide_agent_profiles(manifest, ide)
         # The verbatim content uniquely identifies the skill file regardless of path.
-        skill_files = [f for f in config.files if f.content == VERBATIM_MD]
-        assert len(skill_files) == 1
+        skills = [f for f in config.files if f.content == VERBATIM_MD]
+        assert len(skills) == 1

@@ -3,7 +3,7 @@
 
 """Tests for the agent YAML snapshot builder + the matching CLI behaviours.
 
-Covers the bug where per-IDE model overrides set in the web builder never
+Covers the bug where per-harness model overrides set in the web builder never
 made it into the snapshot the reviewer reads, and where ``observal pull``
 re-prompted for a model that the agent author had already chosen.
 """
@@ -44,7 +44,7 @@ def _mock_session_for_snapshot(components: list, goal: object | None = None, sec
     return db
 
 
-def _mock_version(*, models_by_ide: dict | None = None, supported_ides: list | None = None):
+def _mock_version(*, models_by_harness: dict | None = None, supported_harnesses: list | None = None):
     ver = MagicMock()
     ver.id = uuid.uuid4()
     ver.version = "1.2.3"
@@ -52,25 +52,25 @@ def _mock_version(*, models_by_ide: dict | None = None, supported_ides: list | N
     ver.prompt = "be nice"
     ver.model_name = "claude-sonnet-4-5"
     ver.model_config_json = {}
-    ver.models_by_ide = models_by_ide if models_by_ide is not None else {}
-    ver.supported_ides = supported_ides or ["claude-code", "kiro"]
+    ver.models_by_harness = models_by_harness if models_by_harness is not None else {}
+    ver.supported_harnesses = supported_harnesses or ["claude-code", "kiro"]
     ver.external_mcps = []
     return ver
 
 
 @pytest.mark.asyncio
-async def test_snapshot_includes_models_by_ide():
-    """Per-IDE overrides should always appear in the rendered snapshot."""
+async def test_snapshot_includes_models_by_harness():
+    """Per-harness overrides should always appear in the rendered snapshot."""
     from services.agent_snapshot import build_yaml_snapshot
 
-    ver = _mock_version(models_by_ide={"kiro": "claude-haiku-4-5", "codex": "gpt-5"})
+    ver = _mock_version(models_by_harness={"kiro": "claude-haiku-4-5", "codex": "gpt-5"})
     db = _mock_session_for_snapshot(components=[], goal=None)
 
     text = await build_yaml_snapshot(ver, db)
 
-    assert "models_by_ide" in text
+    assert "models_by_harness" in text
     parsed = yaml.safe_load(text)
-    assert parsed["models_by_ide"] == {
+    assert parsed["models_by_harness"] == {
         "kiro": "claude-haiku-4-5",
         "codex": "gpt-5",
     }
@@ -80,18 +80,18 @@ async def test_snapshot_includes_models_by_ide():
 
 @pytest.mark.asyncio
 async def test_snapshot_emits_empty_dict_when_no_overrides():
-    """An empty ``models_by_ide`` should be present (not omitted) so reviewers
+    """An empty ``models_by_harness`` should be present (not omitted) so reviewers
     can tell "no overrides" apart from "data missing"."""
     from services.agent_snapshot import build_yaml_snapshot
 
-    ver = _mock_version(models_by_ide={})
+    ver = _mock_version(models_by_harness={})
     db = _mock_session_for_snapshot(components=[], goal=None)
 
     text = await build_yaml_snapshot(ver, db)
 
     parsed = yaml.safe_load(text)
-    assert "models_by_ide" in parsed
-    assert parsed["models_by_ide"] == {}
+    assert "models_by_harness" in parsed
+    assert parsed["models_by_harness"] == {}
 
 
 @pytest.mark.asyncio
@@ -99,26 +99,26 @@ async def test_snapshot_drops_blank_overrides():
     """Empty/None override values should be filtered out."""
     from services.agent_snapshot import build_yaml_snapshot
 
-    ver = _mock_version(models_by_ide={"kiro": "", "codex": "gpt-5"})
+    ver = _mock_version(models_by_harness={"kiro": "", "codex": "gpt-5"})
     db = _mock_session_for_snapshot(components=[], goal=None)
 
     text = await build_yaml_snapshot(ver, db)
     parsed = yaml.safe_load(text)
-    assert parsed["models_by_ide"] == {"codex": "gpt-5"}
+    assert parsed["models_by_harness"] == {"codex": "gpt-5"}
 
 
 @pytest.mark.asyncio
-async def test_snapshot_handles_non_dict_models_by_ide():
-    """A non-dict ``models_by_ide`` (legacy data) should not crash."""
+async def test_snapshot_handles_non_dict_models_by_harness():
+    """A non-dict ``models_by_harness`` (legacy data) should not crash."""
     from services.agent_snapshot import build_yaml_snapshot
 
     ver = _mock_version()
-    ver.models_by_ide = "garbage-value"  # simulates broken legacy data
+    ver.models_by_harness = "garbage-value"  # simulates broken legacy data
     db = _mock_session_for_snapshot(components=[], goal=None)
 
     text = await build_yaml_snapshot(ver, db)
     parsed = yaml.safe_load(text)
-    assert parsed["models_by_ide"] == {}
+    assert parsed["models_by_harness"] == {}
 
 
 # ───────────────── CLI: agent saved model + skip prompt ─────────────────
@@ -129,7 +129,7 @@ def test_agent_saved_model_prefers_per_ide_override():
 
     detail = {
         "model_name": "claude-sonnet-4-5",
-        "models_by_ide": {"kiro": "claude-haiku-4-5", "codex": "gpt-5"},
+        "models_by_harness": {"kiro": "claude-haiku-4-5", "codex": "gpt-5"},
     }
     assert _agent_saved_model(detail, "kiro") == "claude-haiku-4-5"
     assert _agent_saved_model(detail, "codex") == "gpt-5"
@@ -140,10 +140,10 @@ def test_agent_saved_model_falls_back_to_model_name_only_for_claude_code():
 
     detail = {
         "model_name": "claude-sonnet-4-5",
-        "models_by_ide": {},
+        "models_by_harness": {},
     }
     assert _agent_saved_model(detail, "claude-code") == "claude-sonnet-4-5"
-    # Other IDEs should NOT inherit model_name — they emit auto sentinel.
+    # Other harnesses should NOT inherit model_name — they emit auto sentinel.
     assert _agent_saved_model(detail, "kiro") is None
     assert _agent_saved_model(detail, "codex") is None
 
@@ -153,16 +153,16 @@ def test_agent_saved_model_returns_none_when_missing():
 
     assert _agent_saved_model(None, "kiro") is None
     assert _agent_saved_model({}, "kiro") is None
-    assert _agent_saved_model({"models_by_ide": {"kiro": "  "}}, "kiro") is None
+    assert _agent_saved_model({"models_by_harness": {"kiro": "  "}}, "kiro") is None
 
 
 def test_collect_install_options_skips_picker_when_agent_has_saved_model():
-    """The whole point of the bug fix: per-IDE overrides should bypass the prompt."""
+    """The whole point of the bug fix: per-harness overrides should bypass the prompt."""
     from observal_cli.cmd_pull import _collect_install_options
 
     agent_detail = {
         "model_name": "claude-sonnet-4-5",
-        "models_by_ide": {"kiro": "claude-haiku-4-5"},
+        "models_by_harness": {"kiro": "claude-haiku-4-5"},
     }
 
     with (
@@ -191,7 +191,7 @@ def test_collect_install_options_explicit_override_wins_over_saved():
 
     agent_detail = {
         "model_name": "claude-sonnet-4-5",
-        "models_by_ide": {"kiro": "claude-haiku-4-5"},
+        "models_by_harness": {"kiro": "claude-haiku-4-5"},
     }
 
     with patch("sys.stdin.isatty", return_value=True):

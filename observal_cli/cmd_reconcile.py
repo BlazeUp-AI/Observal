@@ -104,7 +104,7 @@ def _find_session_file(
     session_id: str,
     home: Path | None = None,
 ) -> Path | None:
-    """Return the Path for *session_id*.jsonl across all supported IDEs.
+    """Return the Path for *session_id*.jsonl across all supported harnesses.
 
     Search order:
     1. Claude Code top-level: ~/.claude/projects/<project>/<session_id>.jsonl

@@ -46,9 +46,9 @@ def _make_version(version="1.0.0", prompt="You are a helpful assistant.", status
     ver.prompt = prompt
     ver.model_name = "claude-sonnet-4-20250514"
     ver.model_config_json = {}
-    ver.models_by_ide = {}
+    ver.models_by_harness = {}
     ver.external_mcps = []
-    ver.supported_ides = ["claude-code"]
+    ver.supported_harnesses = ["claude-code"]
     ver.is_prerelease = False
     ver.components = []
     ver.status = MagicMock(value=status)

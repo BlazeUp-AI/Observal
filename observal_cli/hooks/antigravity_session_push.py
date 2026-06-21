@@ -35,7 +35,7 @@ from observal_cli.sessions.base import (
 
 
 def main(home: Path | None = None) -> None:
-    """Main entry point. Never raises, hooks must not break the IDE.
+    """Main entry point. Never raises, hooks must not break the harness.
 
     Always writes a valid JSON response to stdout so agy does not hang.
     """

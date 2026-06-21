@@ -27,7 +27,7 @@ class AgentDownloadRecord(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    ide: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    harness: Mapped[str | None] = mapped_column(String(50), nullable=True)
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 

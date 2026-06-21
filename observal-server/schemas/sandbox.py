@@ -26,7 +26,7 @@ class SandboxSubmitRequest(BaseModel):
     resource_limits: dict = {}
     network_policy: str = "none"
     entrypoint: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     # Source tracking
     source_url: str | None = None
     source_ref: str | None = None
@@ -38,7 +38,7 @@ class SandboxSubmitRequest(BaseModel):
     _validate_network_policy = field_validator("network_policy")(
         make_option_validator("network_policy", VALID_SANDBOX_NETWORK_POLICIES)
     )
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class SandboxDraftRequest(BaseModel):
@@ -51,12 +51,12 @@ class SandboxDraftRequest(BaseModel):
     resource_limits: dict = {}
     network_policy: str = "none"
     entrypoint: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     source_url: str | None = None
     source_ref: str | None = None
     sandbox_path: str | None = None
 
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class SandboxUpdateRequest(BaseModel):
@@ -69,7 +69,7 @@ class SandboxUpdateRequest(BaseModel):
     resource_limits: dict | None = None
     network_policy: str | None = None
     entrypoint: str | None = None
-    supported_ides: list[str] | None = None
+    supported_harnesses: list[str] | None = None
     source_url: str | None = None
     source_ref: str | None = None
     sandbox_path: str | None = None
@@ -85,7 +85,7 @@ class SandboxListingResponse(BaseModel):
     image: str
     resource_limits: dict
     network_policy: str
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     status: ListingStatus
     rejection_reason: str | None = None
     submitted_by: uuid.UUID
@@ -108,7 +108,7 @@ class SandboxListingSummary(BaseModel):
     description: str
     runtime_type: str
     owner: str
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     status: ListingStatus
     rejection_reason: str | None = None
     model_config = {"from_attributes": True}

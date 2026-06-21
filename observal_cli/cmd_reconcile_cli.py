@@ -3,7 +3,7 @@
 
 """observal reconcile: push local session transcripts to the Observal server.
 
-Scans IDE session directories for transcripts not yet pushed and uploads them.
+Scans harness session directories for transcripts not yet pushed and uploads them.
 Currently supports Antigravity CLI (brain/<id>/.system_generated/logs/transcript.jsonl).
 """
 
@@ -29,7 +29,7 @@ reconcile_app = typer.Typer(name="reconcile", help="Push local session transcrip
 
 @reconcile_app.callback(invoke_without_command=True)
 def reconcile(
-    ide: str = typer.Option("", "--ide", "-i", help="Target specific IDE (e.g. antigravity)"),
+    ide: str = typer.Option("", "--harness", "-i", help="Target specific harness (e.g. antigravity)"),
     since_hours: int = typer.Option(168, "--since", help="Only process sessions modified within N hours"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be pushed without sending"),
 ):
@@ -39,7 +39,7 @@ def reconcile(
     uploads them. Useful when hooks can't fire (e.g. agy on WSL).
 
     Examples:
-        observal reconcile --ide antigravity
+        observal reconcile --harness antigravity
         observal reconcile --since 24
         observal reconcile --dry-run
     """

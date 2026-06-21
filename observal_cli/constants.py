@@ -9,34 +9,34 @@
 Mirror of ``observal-server/schemas/constants.py``.
 A sync test (``tests/test_constants_sync.py``) ensures these stay in lockstep.
 
-IDE-specific data is defined in ``observal_cli/ide_registry.py``
-(mirror of ``observal-server/schemas/ide_registry.py``).
+harness-specific data is defined in ``observal_cli/harness_registry.py``
+(mirror of ``observal-server/schemas/harness_registry.py``).
 """
 
 from __future__ import annotations
 
 import re
 
-from observal_cli.ide_registry import get_ide_feature_matrix, get_valid_ides
+from observal_cli.harness_registry import get_harness_capability_matrix, get_valid_harnesses
 
 # ── Name validation ───────────────────────────────────────────
 AGENT_NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
-# ── IDE / client names (hyphen-canonical) ───────────────────
-# Derived from IDE_REGISTRY key order.
-VALID_IDES: list[str] = get_valid_ides()
+# ── harness / client names (hyphen-canonical) ───────────────────
+# Derived from HARNESS_REGISTRY key order.
+VALID_HARNESSES: list[str] = get_valid_harnesses()
 
-# ── IDE feature capabilities ──────────────────────────────────
-# IDE_FEATURES defines the vocabulary of possible features.
-# IDE_FEATURE_MATRIX is derived from the registry.
+# ── harness feature capabilities ──────────────────────────────────
+# HARNESS_CAPABILITY_NAMES defines the vocabulary of possible features.
+# HARNESS_CAPABILITIES is derived from the registry.
 
-IDE_FEATURES: list[str] = [
+HARNESS_CAPABILITY_NAMES: list[str] = [
     "skills",
     "hooks",
     "mcp_servers",
 ]
 
-IDE_FEATURE_MATRIX: dict[str, set[str]] = get_ide_feature_matrix()
+HARNESS_CAPABILITIES: dict[str, set[str]] = get_harness_capability_matrix()
 
 # ── MCP servers ─────────────────────────────────────────────
 VALID_MCP_CATEGORIES: list[str] = [

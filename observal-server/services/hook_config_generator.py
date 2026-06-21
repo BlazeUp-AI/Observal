@@ -57,7 +57,7 @@ def generate_hook_telemetry_config(
     if ide == "claude-code":
         hook_entry["allowedEnvVars"] = ["OBSERVAL_API_KEY"]
     elif ide != "cursor":
-        return {"comment": f"IDE '{ide}' requires manual hook setup. See Observal docs for configuration."}
+        return {"comment": f"harness '{ide}' requires manual hook setup. See Observal docs for configuration."}
 
     event = str(hook_listing.event)
     return {"hooks": {event: [{"matcher": "*", "hooks": [hook_entry]}]}}

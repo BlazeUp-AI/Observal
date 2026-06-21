@@ -43,16 +43,16 @@ class AgentVersion(Base):
     prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     model_config_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    # Per-IDE model overrides: {"claude-code": "claude-sonnet-4-5", "kiro": "claude-opus-4-5", ...}
-    # Empty dict means "use model_name as the default for every IDE that accepts a model choice".
-    # Missing key for an IDE that accepts a choice means "emit auto sentinel".
-    models_by_ide: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Per-harness model overrides: {"claude-code": "claude-sonnet-4-5", "kiro": "claude-opus-4-5", ...}
+    # Empty dict means "use model_name as the default for every harness that accepts a model choice".
+    # Missing key for an harness that accepts a choice means "emit auto sentinel".
+    models_by_harness: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     external_mcps: Mapped[list] = mapped_column(JSON, default=list)
-    supported_ides: Mapped[list] = mapped_column(JSON, default=list)
-    required_ide_features: Mapped[list] = mapped_column(JSON, default=list)
-    inferred_supported_ides: Mapped[list] = mapped_column(JSON, default=list)
+    supported_harnesses: Mapped[list] = mapped_column(JSON, default=list)
+    required_capabilities: Mapped[list] = mapped_column(JSON, default=list)
+    inferred_supported_harnesses: Mapped[list] = mapped_column(JSON, default=list)
     yaml_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ide_configs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    harness_configs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     lock_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[AgentStatus] = mapped_column(Enum(AgentStatus), default=AgentStatus.pending)
     is_prerelease: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -179,14 +179,14 @@ class Agent(Base):
         self.latest_version.model_config_json = value
 
     @property
-    def models_by_ide(self) -> dict:
-        return self.latest_version.models_by_ide if self.latest_version else {}
+    def models_by_harness(self) -> dict:
+        return self.latest_version.models_by_harness if self.latest_version else {}
 
-    @models_by_ide.setter
-    def models_by_ide(self, value: dict) -> None:
+    @models_by_harness.setter
+    def models_by_harness(self, value: dict) -> None:
         if not self.latest_version:
-            raise RuntimeError("Agent has no latest_version; cannot set models_by_ide")
-        self.latest_version.models_by_ide = value
+            raise RuntimeError("Agent has no latest_version; cannot set models_by_harness")
+        self.latest_version.models_by_harness = value
 
     @property
     def external_mcps(self) -> list:
@@ -199,34 +199,34 @@ class Agent(Base):
         self.latest_version.external_mcps = value
 
     @property
-    def supported_ides(self) -> list:
-        return self.latest_version.supported_ides if self.latest_version else []
+    def supported_harnesses(self) -> list:
+        return self.latest_version.supported_harnesses if self.latest_version else []
 
-    @supported_ides.setter
-    def supported_ides(self, value: list) -> None:
+    @supported_harnesses.setter
+    def supported_harnesses(self, value: list) -> None:
         if not self.latest_version:
-            raise RuntimeError("Agent has no latest_version; cannot set supported_ides")
-        self.latest_version.supported_ides = value
+            raise RuntimeError("Agent has no latest_version; cannot set supported_harnesses")
+        self.latest_version.supported_harnesses = value
 
     @property
-    def required_ide_features(self) -> list:
-        return self.latest_version.required_ide_features if self.latest_version else []
+    def required_capabilities(self) -> list:
+        return self.latest_version.required_capabilities if self.latest_version else []
 
-    @required_ide_features.setter
-    def required_ide_features(self, value: list) -> None:
+    @required_capabilities.setter
+    def required_capabilities(self, value: list) -> None:
         if not self.latest_version:
-            raise RuntimeError("Agent has no latest_version; cannot set required_ide_features")
-        self.latest_version.required_ide_features = value
+            raise RuntimeError("Agent has no latest_version; cannot set required_capabilities")
+        self.latest_version.required_capabilities = value
 
     @property
-    def inferred_supported_ides(self) -> list:
-        return self.latest_version.inferred_supported_ides if self.latest_version else []
+    def inferred_supported_harnesses(self) -> list:
+        return self.latest_version.inferred_supported_harnesses if self.latest_version else []
 
-    @inferred_supported_ides.setter
-    def inferred_supported_ides(self, value: list) -> None:
+    @inferred_supported_harnesses.setter
+    def inferred_supported_harnesses(self, value: list) -> None:
         if not self.latest_version:
-            raise RuntimeError("Agent has no latest_version; cannot set inferred_supported_ides")
-        self.latest_version.inferred_supported_ides = value
+            raise RuntimeError("Agent has no latest_version; cannot set inferred_supported_harnesses")
+        self.latest_version.inferred_supported_harnesses = value
 
     @property
     def status(self) -> "AgentStatus":

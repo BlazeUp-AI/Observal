@@ -239,7 +239,7 @@ INIT_SQL = [
     ) ENGINE = MergeTree()
     PARTITION BY toYYYYMM(timestamp)
     ORDER BY (alert_rule_id, timestamp)""",
-    # Session events: stores parsed JSONL transcript lines from IDE sessions.
+    # Session events: stores parsed JSONL transcript lines from harness sessions.
     # Replaces hook-based telemetry with direct session file ingestion.
     """CREATE TABLE IF NOT EXISTS session_events (
         session_id      String,
@@ -473,7 +473,7 @@ INIT_SQL = [
         anyLastIf(model, model != '')         AS model
     FROM session_events
     GROUP BY project_id, session_id""",
-    # Layer snapshots: stores full IDE config manifests for version-aware insights.
+    # Layer snapshots: stores full harness config manifests for version-aware insights.
     # Keyed by (project_id, user_id, hash). ReplacingMergeTree deduplicates.
     """CREATE TABLE IF NOT EXISTS layer_snapshots (
         hash            String,

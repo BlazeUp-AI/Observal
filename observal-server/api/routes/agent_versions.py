@@ -36,8 +36,8 @@ from schemas.agent import (  # noqa: TC001
     AgentVersionReviewRequest,
 )
 from services.agent_resolver import validate_component_ids
-from services.ide import generate_agent_config
-from services.ide_feature_inference import compute_supported_ides, infer_required_features
+from services.harness import generate_agent_config
+from services.harness_capability_inference import compute_supported_harnesses, infer_required_features
 from services.versioning import parse_semver, validate_semver
 
 agent_version_router = APIRouter()
@@ -58,7 +58,7 @@ def _version_to_summary(ver: AgentVersion) -> dict:
         "status": ver.status.value if hasattr(ver.status, "value") else ver.status,
         "is_prerelease": ver.is_prerelease,
         "download_count": ver.download_count,
-        "supported_ides": ver.supported_ides,
+        "supported_harnesses": ver.supported_harnesses,
         "released_by": str(ver.released_by),
         "released_at": ver.released_at,
         "created_at": ver.created_at,
@@ -76,12 +76,12 @@ def _version_to_detail(ver: AgentVersion) -> dict:
             "prompt": ver.prompt,
             "model_name": ver.model_name,
             "model_config_json": ver.model_config_json,
-            "models_by_ide": ver.models_by_ide or {},
+            "models_by_harness": ver.models_by_harness or {},
             "external_mcps": ver.external_mcps,
             "yaml_snapshot": ver.yaml_snapshot,
-            "ide_configs": ver.ide_configs,
-            "required_ide_features": ver.required_ide_features,
-            "inferred_supported_ides": ver.inferred_supported_ides,
+            "harness_configs": ver.harness_configs,
+            "required_capabilities": ver.required_capabilities,
+            "inferred_supported_harnesses": ver.inferred_supported_harnesses,
         }
     )
     d["components"] = [
@@ -241,9 +241,9 @@ async def _create_agent_version(
         prompt=req.prompt,
         model_name=req.model_name,
         model_config_json=req.model_config_json,
-        models_by_ide=req.models_by_ide,
+        models_by_harness=req.models_by_harness,
         external_mcps=[m.model_dump() for m in req.external_mcps] if req.external_mcps else [],
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         yaml_snapshot=req.yaml_snapshot,
         is_prerelease=req.is_prerelease,
         status=initial_status,
@@ -269,7 +269,7 @@ async def _create_agent_version(
             )
         )
 
-    # Infer IDE features from components
+    # Infer harness features from components
     skill_comp_ids = [c.component_id for c in req.components if c.component_type == "skill"]
     skill_listings_map: dict = {}
     if skill_comp_ids:
@@ -280,8 +280,8 @@ async def _create_agent_version(
         components = req.components
         external_mcps = ver.external_mcps
 
-    ver.required_ide_features = infer_required_features(_VersionProxy(), skill_listings=skill_listings_map)
-    ver.inferred_supported_ides = compute_supported_ides(ver.required_ide_features)
+    ver.required_capabilities = infer_required_features(_VersionProxy(), skill_listings=skill_listings_map)
+    ver.inferred_supported_harnesses = compute_supported_harnesses(ver.required_capabilities)
 
     # Backfill yaml_snapshot when the client didn't supply one (web builder
     # path). Without this the reviewer's diff view is blank for everything
@@ -294,38 +294,38 @@ async def _create_agent_version(
 
         ver.yaml_snapshot = await build_yaml_snapshot(ver, db)
 
-    # Pre-generate IDE configs at release time (spec: no generation at request time)
+    # Pre-generate harness configs at release time (spec: no generation at request time)
     mcp_comp_ids = [c.component_id for c in req.components if c.component_type == "mcp"]
     mcp_listings_map: dict = {}
     if mcp_comp_ids:
         rows = (await db.execute(select(McpListing).where(McpListing.id.in_(mcp_comp_ids)))).scalars().all()
         mcp_listings_map = {row.id: row for row in rows}
 
-    # Pre-generate IDE configs for supported_ides (the user-declared list).
-    # inferred_supported_ides is a compatibility analysis result used for display/filtering,
-    # but supported_ides is authoritative for which configs to generate.
-    ide_configs: dict = {}
-    failed_ides: list[str] = []
-    from services.model_resolver import resolve_model_for_ide
+    # Pre-generate harness configs for supported_harnesses (the user-declared list).
+    # inferred_supported_harnesses is a compatibility analysis result used for display/filtering,
+    # but supported_harnesses is authoritative for which configs to generate.
+    harness_configs: dict = {}
+    failed_harnesses: list[str] = []
+    from services.model_resolver import resolve_model_for_harness
 
-    for ide in ver.supported_ides or []:
+    for harness in ver.supported_harnesses or []:
         try:
-            resolved_model, model_warnings = await resolve_model_for_ide(
-                ide,
+            resolved_model, model_warnings = await resolve_model_for_harness(
+                harness,
                 model_name=ver.model_name or "",
-                models_by_ide=ver.models_by_ide or {},
+                models_by_harness=ver.models_by_harness or {},
                 override=None,
             )
-            ide_configs[ide] = generate_agent_config(
+            harness_configs[harness] = generate_agent_config(
                 ver,
-                ide,
+                harness,
                 mcp_listings=mcp_listings_map,
                 options={"_resolved_model": resolved_model, "_model_warnings": model_warnings},
             )
         except Exception:
-            optic.error("IDE config generation failed for agent={} version={} ide={}", agent.name, req.version, ide)
-            failed_ides.append(ide)
-    ver.ide_configs = ide_configs or {}
+            optic.error("harness config generation failed for agent={} version={} harness={}", agent.name, req.version, harness)
+            failed_harnesses.append(harness)
+    ver.harness_configs = harness_configs or {}
 
     # Do NOT update latest_version_id - that happens on approval
     await db.commit()
@@ -333,9 +333,9 @@ async def _create_agent_version(
     warnings: list[str] = []
     if pending_count > 0:
         warnings.append(f"This agent already has {pending_count} pending version(s)")
-    if failed_ides:
+    if failed_harnesses:
         warnings.append(
-            f"IDE config generation failed for: {', '.join(failed_ides)}. These will 404 until regenerated."
+            f"harness config generation failed for: {', '.join(failed_harnesses)}. These will 404 until regenerated."
         )
 
     result = {
@@ -345,7 +345,7 @@ async def _create_agent_version(
         "status": ver.status.value,
         "description": ver.description,
         "model_name": ver.model_name,
-        "supported_ides": ver.supported_ides,
+        "supported_harnesses": ver.supported_harnesses,
         "released_by": str(ver.released_by),
         "released_at": ver.released_at,
         "created_at": ver.created_at,
@@ -436,13 +436,13 @@ async def _get_agent_ide_config(
         raise HTTPException(status_code=404, detail="Version not found")
 
     # Serve pre-generated config only - no generation at request time (spec requirement #8)
-    if not ver.ide_configs or ide not in ver.ide_configs:
+    if not ver.harness_configs or ide not in ver.harness_configs:
         raise HTTPException(
             status_code=404,
-            detail=f"IDE '{ide}' not supported by this agent version. Available: {list(ver.ide_configs or {})}",
+            detail=f"harness '{ide}' not supported by this agent version. Available: {list(ver.harness_configs or {})}",
         )
 
-    return ver.ide_configs[ide]
+    return ver.harness_configs[ide]
 
 
 async def _get_version_diff(

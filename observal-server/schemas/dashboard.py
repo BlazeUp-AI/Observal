@@ -92,7 +92,7 @@ class TokenStats(BaseModel):
     over_time: list[TokenTimePoint]
 
 
-# --- IDE usage ---
+# --- harness usage ---
 
 
 class IdeBreakdown(BaseModel):

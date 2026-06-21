@@ -197,7 +197,7 @@ class TestParseServerJsonManifest:
 
 
 class TestUnwrapMcpConfig:
-    """Tests for the IDE config unwrapper."""
+    """Tests for the harness config unwrapper."""
 
     def test_mcp_servers_wrapper(self):
         """Unwraps {mcpServers: {name: config}} format."""

@@ -128,7 +128,7 @@ def _run(home: Path | None = None) -> None:
         cwd=cwd,
         session_jsonl=jsonl_path,
     )
-    # Detect IDE: if hook_event_name or hookEventName is in stdin, this is VS Code Copilot
+    # Detect harness: if hook_event_name or hookEventName is in stdin, this is VS Code Copilot
     if event.get("hookEventName") or event.get("hook_event_name"):
         payload["ide"] = "copilot"
     else:

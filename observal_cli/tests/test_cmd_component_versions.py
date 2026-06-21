@@ -53,7 +53,7 @@ def test_version_publish_posts_to_api() -> None:
 
 
 def test_version_publish_with_all_flags() -> None:
-    """publish passes changelog, supported_ides, and extra when provided."""
+    """publish passes changelog, supported_harnesses, and extra when provided."""
     listing_id = "skill-uuid-5678"
     version_result = {"version": "2.0.0", "status": "pending"}
 

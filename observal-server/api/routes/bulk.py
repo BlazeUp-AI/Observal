@@ -48,7 +48,7 @@ async def _create_single_agent(
         model_name=item.model_name,
         model_config_json=item.model_config_json,
         external_mcps=item.external_mcps,
-        supported_ides=item.supported_ides,
+        supported_harnesses=item.supported_harnesses,
         status=AgentStatus.pending,
         released_by=user.id,
     )

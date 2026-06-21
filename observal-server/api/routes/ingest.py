@@ -59,7 +59,7 @@ async def ingest_session(
     request: Request,
     current_user: User = Depends(require_role(UserRole.user)),
 ):
-    """Ingest raw JSONL transcript lines from an IDE session.
+    """Ingest raw JSONL transcript lines from an harness session.
 
     Called by the session_push hook on each UserPromptSubmit and Stop event.
     Lines are stored as-is and classified server-side.

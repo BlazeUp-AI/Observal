@@ -33,7 +33,7 @@ def agent_yaml_dir(tmp_path: Path) -> Path:
         "owner": "team-alpha",
         "model_name": "claude-sonnet-4",
         "prompt": "You are a helpful agent.",
-        "supported_ides": ["claude-code"],
+        "supported_harnesses": ["claude-code"],
         "components": [{"component_type": "mcp", "component_id": "abc-123"}],
     }
     (tmp_path / "observal-agent.yaml").write_text(yaml.dump(data))
@@ -216,7 +216,7 @@ def test_agent_versions_json_output() -> None:
 
 
 def test_agent_pull_writes_rules_and_mcp(tmp_path: Path) -> None:
-    """pull writes rules_file and mcp_config from install endpoint."""
+    """pull writes agent_profile and mcp_config from install endpoint."""
     agent_id = "agent-uuid-pull"
     agent_detail = {
         "id": agent_id,
@@ -226,7 +226,7 @@ def test_agent_pull_writes_rules_and_mcp(tmp_path: Path) -> None:
     }
     install_result = {
         "config_snippet": {
-            "rules_file": {
+            "agent_profile": {
                 "path": ".claude/rules.md",
                 "content": "# Rules\nBe helpful.",
             },
@@ -244,7 +244,7 @@ def test_agent_pull_writes_rules_and_mcp(tmp_path: Path) -> None:
     ):
         result = runner.invoke(
             app,
-            ["agent", "pull", agent_id, "--ide", "claude-code", "--dir", str(tmp_path), "--no-prompt"],
+            ["agent", "pull", agent_id, "--harness", "claude-code", "--dir", str(tmp_path), "--no-prompt"],
         )
 
     assert result.exit_code == 0, result.output
@@ -263,7 +263,7 @@ def test_agent_pull_dry_run(tmp_path: Path) -> None:
     agent_detail = {"id": agent_id, "name": "my-agent", "mcp_links": [], "component_links": []}
     install_result = {
         "config_snippet": {
-            "rules_file": {"path": ".claude/rules.md", "content": "# Rules"},
+            "agent_profile": {"path": ".claude/rules.md", "content": "# Rules"},
         }
     }
 
@@ -274,7 +274,7 @@ def test_agent_pull_dry_run(tmp_path: Path) -> None:
     ):
         result = runner.invoke(
             app,
-            ["agent", "pull", agent_id, "--ide", "claude-code", "--dir", str(tmp_path), "--dry-run", "--no-prompt"],
+            ["agent", "pull", agent_id, "--harness", "claude-code", "--dir", str(tmp_path), "--dry-run", "--no-prompt"],
         )
 
     assert result.exit_code == 0, result.output
@@ -300,7 +300,7 @@ def test_agent_pull_steering_file(tmp_path: Path) -> None:
     ):
         result = runner.invoke(
             app,
-            ["agent", "pull", agent_id, "--ide", "kiro", "--dir", str(tmp_path), "--no-prompt"],
+            ["agent", "pull", agent_id, "--harness", "kiro", "--dir", str(tmp_path), "--no-prompt"],
         )
 
     assert result.exit_code == 0, result.output
@@ -313,7 +313,7 @@ def test_agent_pull_path_traversal_rejected(tmp_path: Path) -> None:
     agent_detail = {"id": agent_id, "name": "evil-agent", "mcp_links": [], "component_links": []}
     install_result = {
         "config_snippet": {
-            "rules_file": {"path": "../../etc/evil.txt", "content": "pwned"},
+            "agent_profile": {"path": "../../etc/evil.txt", "content": "pwned"},
         }
     }
 
@@ -324,7 +324,7 @@ def test_agent_pull_path_traversal_rejected(tmp_path: Path) -> None:
     ):
         result = runner.invoke(
             app,
-            ["agent", "pull", agent_id, "--ide", "claude-code", "--dir", str(tmp_path), "--no-prompt"],
+            ["agent", "pull", agent_id, "--harness", "claude-code", "--dir", str(tmp_path), "--no-prompt"],
         )
 
     # Should fail due to path escape

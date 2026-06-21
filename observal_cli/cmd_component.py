@@ -70,7 +70,7 @@ def version_publish(
     version: str | None = typer.Option(None, "--version", "-v", help="Version to publish (e.g. 1.2.0)"),
     description: str = typer.Option(..., "--description", "-d", help="Short description of this version"),
     changelog: str | None = typer.Option(None, "--changelog", help="Changelog notes"),
-    supported_ides: list[str] | None = typer.Option(None, "--ide", help="Supported IDEs (repeat for multiple)"),
+    supported_harnesses: list[str] | None = typer.Option(None, "--harness", help="Supported harnesses (repeat for multiple)"),
     extra: str | None = typer.Option(None, "--extra", help="Extra JSON for type-specific fields"),
 ):
     """Publish a new version for a registry component.
@@ -86,7 +86,7 @@ def version_publish(
     Examples:
       observal component version publish mcp my-server -v 2.0.0 -d "Breaking change"
       observal component version publish hook guard-hook -v 1.1.0 -d "Add timeout" --changelog "Fixed race"
-      observal component version publish skill my-skill -v 1.0.0 -d "Initial" --ide claude-code --ide cursor
+      observal component version publish skill my-skill -v 1.0.0 -d "Initial" --harness claude-code --harness cursor
       observal component version publish mcp analyzer --extra '{"transport": "http"}' -d "HTTP support"
     """
     optic.trace("component_type={}", component_type)
@@ -129,8 +129,8 @@ def version_publish(
     }
     if changelog is not None:
         payload["changelog"] = changelog
-    if supported_ides:
-        payload["supported_ides"] = supported_ides
+    if supported_harnesses:
+        payload["supported_harnesses"] = supported_harnesses
     if extra_data is not None:
         payload["extra"] = extra_data
 

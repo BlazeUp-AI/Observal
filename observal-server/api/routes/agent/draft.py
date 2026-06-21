@@ -16,7 +16,7 @@ from models.user import User, UserRole
 from schemas.agent import AgentCreateRequest, AgentResponse, AgentUpdateRequest
 from services.config_generator import validate_mcp_command
 from services.editing_lock import _is_lock_expired, acquire_edit_lock, release_edit_lock
-from services.ide_feature_inference import compute_supported_ides, infer_required_features
+from services.harness_capability_inference import compute_supported_harnesses, infer_required_features
 from services.registry_telemetry import emit_registry_event
 
 from ._router import router
@@ -51,9 +51,9 @@ async def save_draft(
         prompt=req.prompt,
         model_name=req.model_name,
         model_config_json=req.model_config_json,
-        models_by_ide=req.models_by_ide,
+        models_by_harness=req.models_by_harness,
         external_mcps=[m.model_dump() for m in req.external_mcps],
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         status=AgentStatus.draft,
         released_by=current_user.id,
     )
@@ -92,7 +92,7 @@ async def save_draft(
             )
         )
         order += 1
-    # Auto-infer IDE features for draft (use request data, not ORM relationship)
+    # Auto-infer harness features for draft (use request data, not ORM relationship)
     all_crefs_draft = list(req.components) + [
         type("_Ref", (), {"component_type": "mcp", "component_id": mid})() for mid in req.mcp_server_ids
     ]
@@ -106,8 +106,8 @@ async def save_draft(
         components = all_crefs_draft
         external_mcps = version.external_mcps
 
-    version.required_ide_features = infer_required_features(_DraftProxy(), skill_listings=skill_listings_map_draft)
-    version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
+    version.required_capabilities = infer_required_features(_DraftProxy(), skill_listings=skill_listings_map_draft)
+    version.inferred_supported_harnesses = compute_supported_harnesses(version.required_capabilities)
 
     await db.flush()
     from services.agent_snapshot import build_yaml_snapshot
@@ -149,8 +149,8 @@ async def update_draft(
         "prompt",
         "model_name",
         "model_config_json",
-        "models_by_ide",
-        "supported_ides",
+        "models_by_harness",
+        "supported_harnesses",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -188,7 +188,7 @@ async def update_draft(
                 )
             )
 
-    # Re-infer IDE features only when components or external_mcps changed
+    # Re-infer harness features only when components or external_mcps changed
     if req.components is not None or req.external_mcps is not None:
         if not agent.latest_version:
             raise HTTPException(status_code=400, detail="Agent has no version to update features on")
@@ -207,10 +207,10 @@ async def update_draft(
             components = current_comps_draft
             external_mcps = version.external_mcps
 
-        version.required_ide_features = infer_required_features(
+        version.required_capabilities = infer_required_features(
             _DraftUpdateProxy(), skill_listings=skill_listings_map_draft_update
         )
-        version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
+        version.inferred_supported_harnesses = compute_supported_harnesses(version.required_capabilities)
 
     # Don't allow saving over another user's active lock
     if version.is_editing and version.editing_by != current_user.id and not _is_lock_expired(version.editing_since):
@@ -227,7 +227,7 @@ async def update_draft(
             setattr(agent, field, val)
 
     # Always rebuild the snapshot so reviewers see the latest state including
-    # per-IDE model overrides, prompt edits, and component swaps.
+    # per-harness model overrides, prompt edits, and component swaps.
     from services.agent_snapshot import build_yaml_snapshot
 
     version.yaml_snapshot = await build_yaml_snapshot(version, db)

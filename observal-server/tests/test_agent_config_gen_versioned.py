@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for versioned agent config generation (generate_all_ide_configs + lock file)."""
+"""Tests for versioned agent config generation (generate_all_harness_configs + lock file)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 from services.agent_lock_file import compute_integrity_hash, generate_lock_file
-from services.ide import generate_all_ide_configs
+from services.harness import generate_all_harness_configs
 
 # ── Lock file tests ──────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ class TestGenerateLockFile:
         assert parsed["components"] == []
 
 
-# ── generate_all_ide_configs tests ───────────────────────────────
+# ── generate_all_harness_configs tests ───────────────────────────────
 
 
 def _mock_agent(name="test-agent", description="A test agent", prompt="You are helpful"):
@@ -75,19 +75,19 @@ def _mock_agent(name="test-agent", description="A test agent", prompt="You are h
     agent.prompt = prompt
     agent.components = []
     agent.external_mcps = []
-    agent.required_ide_features = []
+    agent.required_capabilities = []
     agent.owner = "testuser"
     return agent
 
 
-def _mock_version(agent, version="1.0.0", supported_ides=None):
+def _mock_version(agent, version="1.0.0", supported_harnesses=None):
     v = MagicMock()
     v.id = uuid.uuid4()
     v.agent_id = agent.id
     v.version = version
     v.description = agent.description
     v.prompt = agent.prompt
-    v.supported_ides = supported_ides or ["claude-code", "cursor"]
+    v.supported_harnesses = supported_harnesses or ["claude-code", "cursor"]
     v.components = []
     v.external_mcps = []
     return v
@@ -95,13 +95,13 @@ def _mock_version(agent, version="1.0.0", supported_ides=None):
 
 class TestGenerateAllIdeConfigs:
     @pytest.mark.asyncio
-    async def test_generates_for_target_ides(self):
+    async def test_generates_for_target_harnesses(self):
         agent = _mock_agent()
-        version = _mock_version(agent, supported_ides=["claude-code", "cursor"])
-        result = await generate_all_ide_configs(
+        version = _mock_version(agent, supported_harnesses=["claude-code", "cursor"])
+        result = await generate_all_harness_configs(
             agent_version=version,
             agent=agent,
-            target_ides=["claude-code", "cursor"],
+            target_harnesses=["claude-code", "cursor"],
         )
         assert "claude-code" in result
         assert "cursor" in result
@@ -112,34 +112,34 @@ class TestGenerateAllIdeConfigs:
     async def test_skips_unknown_ides(self):
         agent = _mock_agent()
         version = _mock_version(agent)
-        result = await generate_all_ide_configs(
+        result = await generate_all_harness_configs(
             agent_version=version,
             agent=agent,
-            target_ides=["nonexistent-ide"],
+            target_harnesses=["nonexistent-ide"],
         )
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_claude_code_generates_rules_file(self):
+    async def test_claude_code_generates_agent_profile(self):
         agent = _mock_agent()
         version = _mock_version(agent)
-        result = await generate_all_ide_configs(
+        result = await generate_all_harness_configs(
             agent_version=version,
             agent=agent,
-            target_ides=["claude-code"],
+            target_harnesses=["claude-code"],
         )
         files = result["claude-code"]["files"]
         # Should have a rules/agent file path
         assert any(".claude" in path for path in files)
 
     @pytest.mark.asyncio
-    async def test_cursor_generates_rules_file(self):
+    async def test_cursor_generates_agent_profile(self):
         agent = _mock_agent()
         version = _mock_version(agent)
-        result = await generate_all_ide_configs(
+        result = await generate_all_harness_configs(
             agent_version=version,
             agent=agent,
-            target_ides=["cursor"],
+            target_harnesses=["cursor"],
         )
         files = result["cursor"]["files"]
         assert any(".cursor" in path or ".rules" in path for path in files)
@@ -148,29 +148,29 @@ class TestGenerateAllIdeConfigs:
     async def test_deterministic_output(self):
         agent = _mock_agent()
         version = _mock_version(agent)
-        r1 = await generate_all_ide_configs(agent_version=version, agent=agent, target_ides=["cursor"])
-        r2 = await generate_all_ide_configs(agent_version=version, agent=agent, target_ides=["cursor"])
+        r1 = await generate_all_harness_configs(agent_version=version, agent=agent, target_harnesses=["cursor"])
+        r2 = await generate_all_harness_configs(agent_version=version, agent=agent, target_harnesses=["cursor"])
         assert r1 == r2
 
     @pytest.mark.asyncio
-    async def test_uses_version_supported_ides_when_no_target(self):
+    async def test_uses_version_supported_harnesses_when_no_target(self):
         agent = _mock_agent()
-        version = _mock_version(agent, supported_ides=["cursor"])
-        result = await generate_all_ide_configs(
+        version = _mock_version(agent, supported_harnesses=["cursor"])
+        result = await generate_all_harness_configs(
             agent_version=version,
             agent=agent,
-            target_ides=None,
+            target_harnesses=None,
         )
         assert "cursor" in result
 
     @pytest.mark.asyncio
-    async def test_kiro_generates_agent_file(self):
+    async def test_kiro_generates_agent_profile(self):
         agent = _mock_agent()
-        version = _mock_version(agent, supported_ides=["kiro"])
-        result = await generate_all_ide_configs(
+        version = _mock_version(agent, supported_harnesses=["kiro"])
+        result = await generate_all_harness_configs(
             agent_version=version,
             agent=agent,
-            target_ides=["kiro"],
+            target_harnesses=["kiro"],
         )
         files = result["kiro"]["files"]
         assert any(".kiro" in path for path in files)
@@ -211,7 +211,7 @@ class TestBuildRulesContentPromptInjection:
         return listing
 
     def test_prompt_template_injected_when_listings_provided(self):
-        from services.ide.helpers import _build_rules_content
+        from services.harness.helpers import _build_rules_content
 
         agent, comp_id = self._make_agent_with_prompt_component()
         listing = self._make_prompt_listing(comp_id, name="Test", template="Do something useful.")
@@ -225,7 +225,7 @@ class TestBuildRulesContentPromptInjection:
         assert "- **Test**" not in result
 
     def test_prompt_bullet_fallback_without_listings(self):
-        from services.ide.helpers import _build_rules_content
+        from services.harness.helpers import _build_rules_content
 
         agent, comp_id = self._make_agent_with_prompt_component()
         names = {str(comp_id): "Test"}
@@ -236,7 +236,7 @@ class TestBuildRulesContentPromptInjection:
         assert "Do something useful." not in result
 
     def test_prompt_bullet_fallback_when_listing_has_empty_template(self):
-        from services.ide.helpers import _build_rules_content
+        from services.harness.helpers import _build_rules_content
 
         agent, comp_id = self._make_agent_with_prompt_component()
         listing = self._make_prompt_listing(comp_id, name="Test", template="")
@@ -247,7 +247,7 @@ class TestBuildRulesContentPromptInjection:
         assert "- **Test**" in result
 
     def test_non_prompt_components_still_use_bullets(self):
-        from services.ide.helpers import _build_rules_content
+        from services.harness.helpers import _build_rules_content
 
         mcp_id = uuid.uuid4()
         agent = MagicMock()
@@ -270,11 +270,11 @@ class TestBuildRulesContentPromptInjection:
 
     def test_generate_agent_config_accepts_prompt_listings(self):
         """Ensure generate_agent_config passes prompt_listings through to rules content."""
-        from services.ide import generate_agent_config
+        from services.harness import generate_agent_config
 
         agent, comp_id = self._make_agent_with_prompt_component()
         agent.prompt = ""
-        agent.required_ide_features = []
+        agent.required_capabilities = []
         agent.model_name = ""
         listing = self._make_prompt_listing(comp_id, name="Test", template="My prompt template content.")
         names = {str(comp_id): "Test"}
@@ -286,5 +286,5 @@ class TestBuildRulesContentPromptInjection:
             component_names=names,
         )
 
-        rules_content = result["rules_file"]["content"]
+        rules_content = result["agent_profile"]["content"]
         assert "My prompt template content." in rules_content

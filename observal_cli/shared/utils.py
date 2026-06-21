@@ -58,8 +58,8 @@ def load_jsonc(path: Path) -> dict:
 # MCP server extraction
 # ---------------------------------------------------------------------------
 
-# IDE-specific top-level keys for MCP server maps.
-_MCP_KEY_BY_IDE: dict[str, str] = {
+# harness-specific top-level keys for MCP server maps.
+_MCP_KEY_BY_harness: dict[str, str] = {
     "copilot": "servers",
     "opencode": "mcp",
 }
@@ -138,13 +138,13 @@ def resolve_antigravity_config_dir(home: Path | None = None) -> Path | None:
 
 
 def extract_mcp_servers(config: dict, ide: str = "") -> dict:
-    """Extract the MCP server map from an IDE config dict.
+    """Extract the MCP server map from an harness config dict.
 
-    Resolves IDE-specific key paths:
+    Resolves harness-specific key paths:
     - ``servers``    - VS Code, Copilot
     - ``mcp``        - OpenCode (flat server map under ``mcp`` key)
     - ``mcp.servers``- Codex (nested under ``mcp`` → ``servers``)
-    - ``mcpServers`` - all other IDEs (default)
+    - ``mcpServers`` - all other harnesses (default)
 
     Falls back to scanning for server-shaped top-level values when the
     expected key is absent.
@@ -160,8 +160,8 @@ def extract_mcp_servers(config: dict, ide: str = "") -> dict:
         if isinstance(mcp_block, dict) and "servers" in mcp_block:
             return mcp_block["servers"]
 
-    # IDE-specific top-level key
-    ide_key = _MCP_KEY_BY_IDE.get(ide)
+    # harness-specific top-level key
+    ide_key = _MCP_KEY_BY_harness.get(ide)
     if ide_key and ide_key in config:
         return config[ide_key]
 

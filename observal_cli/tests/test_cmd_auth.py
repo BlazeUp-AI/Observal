@@ -85,7 +85,7 @@ def _fake_post_login(url: str, *_args, **_kwargs) -> MagicMock:
 
 
 def _patch_post_login_hooks(stack: ExitStack) -> MagicMock:
-    """Patch the IDE-configuration helpers and onboarding step.
+    """Patch the harness-configuration helpers and onboarding step.
 
     ``observal auth login`` invokes a series of best-effort, side-effecting
     helpers after a successful login (write Claude Code settings, configure

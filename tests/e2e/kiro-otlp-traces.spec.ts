@@ -24,7 +24,7 @@ test.describe("Kiro OTLP Trace Ingestion", () => {
     expect(result.partialSuccess.rejectedSpans).toBeUndefined();
   });
 
-  test("detects Kiro as the IDE from resource attributes", async () => {
+  test("detects Kiro as the harness from resource attributes", async () => {
     const traceId = crypto.randomUUID().replace(/-/g, "");
     const spanId = traceId.slice(0, 16);
 

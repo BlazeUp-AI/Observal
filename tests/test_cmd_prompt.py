@@ -179,7 +179,7 @@ class TestPromptRender:
 class TestPromptInstall:
     def test_install_prompt_removed(self):
         """Prompt install command is intentionally removed."""
-        result = runner.invoke(cli_app, ["registry", "prompt", "install", "p123", "--ide", "vscode"])
+        result = runner.invoke(cli_app, ["registry", "prompt", "install", "p123", "--harness", "vscode"])
 
         assert result.exit_code == 2
         assert "No such command 'install'" in result.output
@@ -240,7 +240,7 @@ class TestPromptEdgeCases:
 
     def test_install_command_missing(self):
         """Prompt install should fail fast because the command does not exist."""
-        result = runner.invoke(cli_app, ["registry", "prompt", "install", "p123", "--ide", "vscode"])
+        result = runner.invoke(cli_app, ["registry", "prompt", "install", "p123", "--harness", "vscode"])
 
         assert result.exit_code == 2
         assert "No such command 'install'" in result.output

@@ -57,7 +57,7 @@ def _listing_mock(model_cls, status=ListingStatus.pending, **extra):
     m.status = status
     m.rejection_reason = None
     m.submitted_by = uuid.uuid4()
-    m.supported_ides = ["cursor"]
+    m.supported_harnesses = ["cursor"]
     m.slash_command = None
     m.skill_md_content = None
     m.created_at = datetime.now(UTC)
@@ -219,7 +219,7 @@ class TestSchemas:
             template="hi",
             variables=[],
             tags=[],
-            supported_ides=[],
+            supported_harnesses=[],
             status=ListingStatus.approved,
             rejection_reason=None,
             submitted_by=uuid.uuid4(),

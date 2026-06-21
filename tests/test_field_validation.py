@@ -22,7 +22,7 @@ class TestMcpValidation:
             owner="testowner",
             category="developer-tools",
             git_url="https://github.com/example/mcp-server",
-            supported_ides=["cursor", "claude-code"],
+            supported_harnesses=["cursor", "claude-code"],
         )
         assert r.category == "developer-tools"
 
@@ -37,10 +37,10 @@ class TestMcpValidation:
                 owner="testowner",
                 category="invalid-category",
                 git_url="https://github.com/example/mcp-server",
-                supported_ides=["cursor"],
+                supported_harnesses=["cursor"],
             )
 
-    def test_valid_ides_accepted(self):
+    def test_valid_harnesses_accepted(self):
         from schemas.mcp import McpSubmitRequest
 
         r = McpSubmitRequest(
@@ -52,10 +52,10 @@ class TestMcpValidation:
             git_url="https://github.com/example/mcp-server",
         )
 
-    def test_invalid_ide_rejected(self):
+    def test_invalid_harness_rejected(self):
         from schemas.mcp import McpSubmitRequest
 
-        with pytest.raises(ValueError, match="Invalid IDE"):
+        with pytest.raises(ValueError, match="Invalid harness"):
             McpSubmitRequest(
                 name="test-mcp",
                 version="1.0.0",
@@ -63,7 +63,7 @@ class TestMcpValidation:
                 owner="testowner",
                 category="general",
                 git_url="https://github.com/example/mcp-server",
-                supported_ides=["notepad"],
+                supported_harnesses=["notepad"],
             )
 
     def test_underscore_ide_normalized_to_hyphen(self):
@@ -76,9 +76,9 @@ class TestMcpValidation:
             owner="testowner",
             category="general",
             git_url="https://github.com/example/mcp-server",
-            supported_ides=["claude_code"],
+            supported_harnesses=["claude_code"],
         )
-        assert r.supported_ides == ["claude-code"]
+        assert r.supported_harnesses == ["claude-code"]
 
 
 # ═══════════════════════════════════════════════════════════

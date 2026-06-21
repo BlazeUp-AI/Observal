@@ -5,7 +5,7 @@
 
 """observal-shim: transparent stdio wrapper for MCP servers.
 
-Sits on the stdio pipe between IDE and MCP, passes all JSON-RPC messages
+Sits on the stdio pipe between harness and MCP, passes all JSON-RPC messages
 through untouched, and async fire-and-forgets copies to the Observal server.
 """
 
@@ -122,7 +122,7 @@ class ShimState:
         self.trace_id = os.environ.get("OBSERVAL_TRACE_ID") or str(uuid.uuid4())
         self.parent_trace_id = os.environ.get("OBSERVAL_TRACE_ID")  # if set, we're a child
         self.session_id = os.environ.get("OBSERVAL_SESSION_ID", "")
-        self.ide = os.environ.get("OBSERVAL_IDE", "")
+        self.ide = os.environ.get("OBSERVAL_harness", "")
         self.environment = os.environ.get("OBSERVAL_ENVIRONMENT", "default")
         self.trace_start = datetime.now(UTC)
 
@@ -283,7 +283,7 @@ async def _relay_ide_to_mcp(
     mcp_stdin: asyncio.StreamWriter,
     state: ShimState,
 ):
-    """Relay messages from IDE to MCP, tracking requests."""
+    """Relay messages from harness to MCP, tracking requests."""
     while True:
         msg = await ide_queue.get()
         if msg is None:
@@ -302,7 +302,7 @@ async def _relay_mcp_to_ide(
     ide_stdout: asyncio.StreamWriter | None,
     state: ShimState,
 ):
-    """Relay messages from MCP to IDE, pairing responses to create spans."""
+    """Relay messages from MCP to harness, pairing responses to create spans."""
     while True:
         msg = await mcp_queue.get()
         if msg is None:
@@ -373,7 +373,7 @@ def _emit_error_notification(message: str) -> None:
 
 
 async def _emit_error_notification_async(message: str, ide_stdout) -> None:
-    """Write a JSON-RPC error notification to the IDE stream (async version for post-relay errors)."""
+    """Write a JSON-RPC error notification to the harness stream (async version for post-relay errors)."""
     notification = (
         json.dumps(
             {
@@ -451,7 +451,7 @@ async def run_shim(mcp_id: str, command: list[str]):
         _emit_error_notification(f"MCP server failed to start: {error_msg}")
         return proc.returncode
 
-    # Set up IDE stdin reader.
+    # Set up harness stdin reader.
     # On Windows, connect_read_pipe / connect_write_pipe don't work with
     # regular file handles (stdin/stdout). Use a background thread instead.
     ide_reader = asyncio.StreamReader()
@@ -463,7 +463,7 @@ async def run_shim(mcp_id: str, command: list[str]):
         protocol = asyncio.StreamReaderProtocol(ide_reader)
         await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
 
-    # Set up IDE stdout writer.
+    # Set up harness stdout writer.
     if sys.platform == "win32":
         # On Windows, write directly to stdout buffer instead of using
         # connect_write_pipe which fails on the Proactor event loop.

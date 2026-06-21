@@ -555,7 +555,7 @@ class TestAgentConfigDockerMcp:
         return listing
 
     def test_claude_code_passes_docker_image(self):
-        from services.ide import generate_agent_config
+        from services.harness import generate_agent_config
 
         listing = self._make_listing()
         comp_id = uuid.uuid4()
@@ -576,7 +576,7 @@ class TestAgentConfigDockerMcp:
         assert "ghcr.io/github/github-mcp-server" in args_str
 
     def test_claude_code_passes_env_vars(self):
-        from services.ide import generate_agent_config
+        from services.harness import generate_agent_config
 
         listing = self._make_listing()
         comp_id = uuid.uuid4()
@@ -631,7 +631,7 @@ class TestMcpSubmitAutoReplace:
             version_mock.mcp_validated = False
             version_mock.framework = None
             version_mock.rejection_reason = None
-            version_mock.supported_ides = []
+            version_mock.supported_harnesses = []
             version_mock.environment_variables = []
             version_mock.setup_instructions = None
             version_mock.changelog = None
@@ -729,7 +729,7 @@ class TestMcpSubmitAutoReplace:
             version_mock.mcp_validated = False
             version_mock.framework = None
             version_mock.rejection_reason = None
-            version_mock.supported_ides = []
+            version_mock.supported_harnesses = []
             version_mock.environment_variables = []
             version_mock.setup_instructions = None
             version_mock.changelog = None

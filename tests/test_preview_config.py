@@ -3,8 +3,8 @@
 
 """Tests for the preview-config endpoint.
 
-Verifies that POST /api/v1/agents/preview-config returns IDE config files
-for all target IDEs without persisting anything to the database.
+Verifies that POST /api/v1/agents/preview-config returns harness config files
+for all target harnesses without persisting anything to the database.
 """
 
 from __future__ import annotations
@@ -52,9 +52,9 @@ def _app_with(user=None, db=None):
 
 @pytest.mark.asyncio
 class TestPreviewConfigNoComponents:
-    """Preview with no components should return configs for all IDEs."""
+    """Preview with no components should return configs for all harnesses."""
 
-    async def test_returns_configs_for_all_ides(self):
+    async def test_returns_configs_for_all_harnesses(self):
         app, db, _user = _app_with()
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -80,7 +80,7 @@ class TestPreviewConfigNoComponents:
         assert "opencode" in configs
         assert "copilot-cli" in configs
 
-    async def test_claude_code_has_agent_file(self):
+    async def test_claude_code_has_agent_profile(self):
         app, db, _user = _app_with()
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

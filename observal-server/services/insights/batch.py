@@ -80,7 +80,7 @@ async def _load_agent_config(db, agent_id) -> dict | None:
     config: dict = {
         "version": version.version,
         "model": version.model_name,
-        "supported_ides": version.supported_ides or [],
+        "supported_harnesses": version.supported_harnesses or [],
     }
 
     if version.prompt:

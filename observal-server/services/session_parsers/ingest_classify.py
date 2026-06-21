@@ -2,23 +2,23 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Per-IDE JSONL line classifiers for the ingest pipeline.
+"""Per-harness JSONL line classifiers for the ingest pipeline.
 
-Each IDE has its own JSONL format.  This module provides:
+Each harness has its own JSONL format.  This module provides:
 
   classify(ide, parsed)        -> event_type str | None (None = skip line)
   extract_preview(ide, parsed, event_type) -> str
   extract_tool_info(ide, parsed) -> (tool_name, tool_id)
 
-Dispatch is **strict**: passing an unknown IDE raises ``KeyError`` so new
-IDEs cannot silently fall through to a wrong classifier.  When adding
-support for a new IDE:
+Dispatch is **strict**: passing an unknown harness raises ``KeyError`` so new
+harnesses cannot silently fall through to a wrong classifier.  When adding
+support for a new harness:
 
-  1. Add its entry to ``schemas/ide_registry.py`` with a ``"session_parser"``
+  1. Add its entry to ``schemas/harness_registry.py`` with a ``"session_parser"``
      key referencing one of the parser IDs registered in ``_CLASSIFIERS`` below.
-  2. If the IDE has a novel JSONL format, implement ``_classify_<name>``,
+  2. If the harness has a novel JSONL format, implement ``_classify_<name>``,
      ``_preview_<name>``, and ``_tool_info_<name>`` and register them.
-  3. If the IDE uses an existing format (e.g. Claude Code), point its
+  3. If the harness uses an existing format (e.g. Claude Code), point its
      ``"session_parser"`` at the existing parser ID.
 """
 
@@ -735,7 +735,7 @@ def _tool_info_antigravity(parsed: dict) -> tuple[str | None, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# Registry  -- add new parsers here, update ide_registry.py session_parser key
+# Registry  -- add new parsers here, update harness_registry.py session_parser key
 # ---------------------------------------------------------------------------
 
 _ClassifyFn = Callable[[dict], "str | None"]
@@ -757,43 +757,43 @@ _CLASSIFIERS: dict[str, _Classifier] = {
 
 
 def get_classifier(ide: str) -> tuple:
-    """Return (classify_fn, preview_fn, tool_info_fn) for the given IDE.
+    """Return (classify_fn, preview_fn, tool_info_fn) for the given harness.
 
-    Looks up the ``session_parser`` key in ``ide_registry.IDE_REGISTRY`` and
+    Looks up the ``session_parser`` key in ``harness_registry.HARNESS_REGISTRY`` and
     dispatches to the matching entry in ``_CLASSIFIERS``.
 
-    Raises ``KeyError`` if the IDE is not registered or has no session_parser,
-    so new IDEs cannot silently fall through to a wrong classifier.
-    Raises ``ValueError`` if the IDE has session_parser=None (no parser configured).
+    Raises ``KeyError`` if the harness is not registered or has no session_parser,
+    so new harnesses cannot silently fall through to a wrong classifier.
+    Raises ``ValueError`` if the harness has session_parser=None (no parser configured).
     """
-    from schemas.ide_registry import IDE_REGISTRY
+    from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = IDE_REGISTRY[ide]["session_parser"]  # KeyError = unknown IDE
+    parser_id = HARNESS_REGISTRY[ide]["session_parser"]  # KeyError = unknown harness
     if parser_id is None:
-        raise ValueError(f"No session parser configured for IDE: {ide}")
+        raise ValueError(f"No session parser configured for harness: {ide}")
     return _CLASSIFIERS[parser_id]  # KeyError = unimplemented parser
 
 
 def classify(ide: str, parsed: dict) -> str | None:
-    """Classify a single parsed JSONL line for the given IDE."""
+    """Classify a single parsed JSONL line for the given harness."""
     classify_fn, _, _ = get_classifier(ide)
     return classify_fn(parsed)
 
 
 def extract_preview(ide: str, parsed: dict, event_type: str) -> str:
-    """Extract a short preview string for the given IDE."""
+    """Extract a short preview string for the given harness."""
     _, preview_fn, _ = get_classifier(ide)
     return preview_fn(parsed, event_type)
 
 
 def extract_tool_info(ide: str, parsed: dict) -> tuple[str | None, str | None]:
-    """Extract (tool_name, tool_id) for the given IDE."""
+    """Extract (tool_name, tool_id) for the given harness."""
     _, _, tool_info_fn = get_classifier(ide)
     return tool_info_fn(parsed)
 
 
 # ---------------------------------------------------------------------------
-# Timestamp extraction -- IDE-specific
+# Timestamp extraction -- harness-specific
 # ---------------------------------------------------------------------------
 
 
@@ -898,29 +898,29 @@ def extract_timestamp(ide: str, parsed: dict) -> str | None:
 
     Returns None when the line has no timestamp -- callers should use a
     sentinel or inherit from a previous line rather than silently defaulting.
-    Raises KeyError for unknown IDEs.
-    Raises ValueError if the IDE has session_parser=None (no parser configured).
+    Raises KeyError for unknown harnesses.
+    Raises ValueError if the harness has session_parser=None (no parser configured).
     """
-    from schemas.ide_registry import IDE_REGISTRY
+    from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = IDE_REGISTRY[ide]["session_parser"]  # KeyError = unknown IDE
+    parser_id = HARNESS_REGISTRY[ide]["session_parser"]  # KeyError = unknown harness
     if parser_id is None:
-        raise ValueError(f"No session parser configured for IDE: {ide}")
+        raise ValueError(f"No session parser configured for harness: {ide}")
     extractor = _TS_EXTRACTORS[parser_id]  # KeyError = unimplemented
     return extractor(parsed)  # type: ignore[call-arg,operator]
 
 
 # ---------------------------------------------------------------------------
-# Per-IDE extra rows (written after the main ingest loop)
+# Per-harness extra rows (written after the main ingest loop)
 # ---------------------------------------------------------------------------
-# Each per-IDE module owns its own extra_ingest_rows() function.
-# Register new IDEs here by importing and adding to _EXTRA_ROWS_HANDLERS.
+# Each per-harness module owns its own extra_ingest_rows() function.
+# Register new harnesses here by importing and adding to _EXTRA_ROWS_HANDLERS.
 
 from services.session_parsers.kiro import extra_ingest_rows as _kiro_extra_rows  # noqa: E402
 
 
 def _no_extra_rows(*_args, **_kwargs) -> list[dict]:
-    """Default: no extra rows for this IDE."""
+    """Default: no extra rows for this harness."""
     return []
 
 
@@ -949,11 +949,11 @@ def get_extra_rows(
 ) -> list[dict]:
     """Return any extra ClickHouse rows to insert after the main ingest loop.
 
-    Dispatches to per-IDE handlers via session_parser ID.
-    Unknown IDEs fall back to _no_extra_rows (fail-open).
+    Dispatches to per-harness handlers via session_parser ID.
+    Unknown harnesses fall back to _no_extra_rows (fail-open).
     """
-    from schemas.ide_registry import IDE_REGISTRY
+    from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = IDE_REGISTRY.get(ide, {}).get("session_parser", "claude-code")
+    parser_id = HARNESS_REGISTRY.get(ide, {}).get("session_parser", "claude-code")
     handler = _EXTRA_ROWS_HANDLERS.get(parser_id, _no_extra_rows)
     return handler(session_id, project_id, user_id, agent_id, agent_version, ide, total_credits)

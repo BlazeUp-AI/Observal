@@ -70,7 +70,7 @@ def _listing_mock(status=ListingStatus.approved, submitted_by=None):
     m.rejection_reason = None
     m.submitted_by = submitted_by or uuid.uuid4()
     m.owner_org_id = None
-    m.supported_ides = []
+    m.supported_harnesses = []
     m.created_at = datetime(2025, 1, 1, tzinfo=UTC)
     m.updated_at = datetime(2025, 1, 1, tzinfo=UTC)
     m.category = "general"

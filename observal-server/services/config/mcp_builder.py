@@ -4,7 +4,7 @@
 """Consolidated MCP config builder.
 
 Provides a single source of truth for building MCP server configurations,
-used by both the agent_builder (manifest-based) and the IDE config generator
+used by both the agent_builder (manifest-based) and the harness config generator
 (registry-based with live DB listings).
 """
 
@@ -46,11 +46,11 @@ def build_mcp_configs(
     """Build MCP server configs from registry components + external MCPs.
 
     This is the registry-based path used by the install route when
-    generating IDE configs from live DB listings.
+    generating harness configs from live DB listings.
 
     Args:
         agent: The Agent model with components and external_mcps.
-        ide: Target IDE name.
+        ide: Target harness name.
         mcp_listings: optional {component_id: McpListing} map.
         env_values: optional {mcp_listing_id_str: {VAR: value}} map.
 
@@ -58,6 +58,6 @@ def build_mcp_configs(
     """
     # Delegate to the existing implementation in helpers to avoid duplication
     # during the transition. This will be inlined once helpers is cleaned up.
-    from services.ide.helpers import _build_mcp_configs
+    from services.harness.helpers import _build_mcp_configs
 
     return _build_mcp_configs(agent, ide, observal_url, mcp_listings, env_values)

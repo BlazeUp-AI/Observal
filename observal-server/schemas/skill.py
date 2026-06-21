@@ -29,10 +29,10 @@ class SkillSubmitRequest(BaseModel):
     target_agents: list[str] = []
     task_type: str
     slash_command: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
 
     _validate_task_type = field_validator("task_type")(make_option_validator("task_type", VALID_SKILL_TASK_TYPES))
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
     @field_validator("slash_command")
     @classmethod
@@ -55,9 +55,9 @@ class SkillDraftRequest(BaseModel):
     target_agents: list[str] = []
     task_type: str = "general"
     slash_command: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
 
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
     @field_validator("slash_command")
     @classmethod
@@ -80,7 +80,7 @@ class SkillUpdateRequest(BaseModel):
     target_agents: list[str] | None = None
     task_type: str | None = None
     slash_command: str | None = None
-    supported_ides: list[str] | None = None
+    supported_harnesses: list[str] | None = None
 
     @field_validator("slash_command")
     @classmethod
@@ -96,7 +96,7 @@ class SkillListingResponse(BaseModel):
     owner: str
     task_type: str
     target_agents: list[str]
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     skill_path: str
     git_url: str | None = None
     git_ref: str | None = None

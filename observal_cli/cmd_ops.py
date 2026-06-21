@@ -1384,7 +1384,7 @@ def _graphql_query(query: str, variables: dict | None = None) -> dict:
 
 @ops_app.command(name="traces")
 def _traces(
-    platform: str | None = typer.Option(None, "--platform", "-p", help="Filter by IDE platform"),
+    platform: str | None = typer.Option(None, "--platform", "-p", help="Filter by harness platform"),
     days: int | None = typer.Option(None, "--days", "-d", help="Limit to last N days"),
     limit: int = typer.Option(20, "--limit", "-n"),
     turn: bool = typer.Option(False, "--turn", help="Unfold sessions to show turns (prompts)"),
@@ -1491,7 +1491,7 @@ def _render_sessions_detail(sessions: list[dict], full: bool = False):
         try:
             detail = client.get(f"/api/v1/sessions/{session_id}")
         except Exception:
-            # Detail endpoint failed (e.g. no session parser for this IDE)
+            # Detail endpoint failed (e.g. no session parser for this harness)
             # Show summary info we already have
             session_node.add(f"[dim]prompts: {prompt_count}, tools: {tool_count}[/dim]")
             session_node.add(f"[dim]tokens: {_format_tokens(tokens_in, tokens_out)}[/dim]")

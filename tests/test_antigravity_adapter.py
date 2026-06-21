@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for the Antigravity CLI IDE adapter."""
+"""Tests for the Antigravity CLI harness adapter."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from observal_cli.ide import HookSpec, ScanResult, ensure_loaded, get_adapter
-from schemas.ide_registry import IDE_REGISTRY
+from observal_cli.harness import HookSpec, ScanResult, ensure_loaded, get_adapter
+from schemas.harness_registry import HARNESS_REGISTRY
 
 
 @pytest.fixture(autouse=True)
@@ -22,31 +22,31 @@ def _load_adapters():
 
 
 def test_antigravity_in_registry():
-    assert "antigravity" in IDE_REGISTRY
+    assert "antigravity" in HARNESS_REGISTRY
 
 
 def test_antigravity_registry_required_keys():
-    spec = IDE_REGISTRY["antigravity"]
+    spec = HARNESS_REGISTRY["antigravity"]
     required = {
         "display_name",
-        "features",
+        "capabilities",
         "scopes",
         "default_scope",
-        "rules_file",
-        "mcp_config_path",
+        "agent_profile",
+        "mcp_config",
         "mcp_servers_key",
-        "hook_config_path",
+        "hooks",
         "hook_events_map",
     }
     assert required <= set(spec.keys())
 
 
 def test_antigravity_registry_mcp_servers_key():
-    assert IDE_REGISTRY["antigravity"]["mcp_servers_key"] == "mcpServers"
+    assert HARNESS_REGISTRY["antigravity"]["mcp_servers_key"] == "mcpServers"
 
 
 def test_antigravity_registry_hook_events_map():
-    events = IDE_REGISTRY["antigravity"]["hook_events_map"]
+    events = HARNESS_REGISTRY["antigravity"]["hook_events_map"]
     assert "PreToolUse" in events
     assert "Stop" in events
     assert "SessionStart" in events
@@ -57,7 +57,7 @@ def test_antigravity_registry_hook_events_map():
 
 def test_antigravity_adapter_registered():
     adapter = get_adapter("antigravity")
-    assert adapter.ide_name == "antigravity"
+    assert adapter.harness_name == "antigravity"
 
 
 def test_antigravity_adapter_has_required_methods():

@@ -47,7 +47,7 @@ skill_payload = {
     "slash_command": "review",
     "target_agents": ["claude-code", "cursor", "kiro"],
     "activation_keywords": ["review", "check code", "audit"],
-    "supported_ides": ["claude-code", "cursor", "kiro"],
+    "supported_harnesses": ["claude-code", "cursor", "kiro"],
 }
 r = requests.post(
     f"{BASE}/api/v1/skills/submit",
@@ -106,10 +106,10 @@ r = requests.post(
 )
 if r.status_code == 200:
     config = r.json()["config_snippet"]
-    print(f"   OK — install response has skill_file: {'skill_file' in config}")
-    if "skill_file" in config:
-        print(f"   Path: {config['skill_file']['path']}")
-        print(f"   Content preview: {config['skill_file']['content'][:100]}...")
+    print(f"   OK — install response has skill_artifact: {'skill_artifact' in config}")
+    if "skill_artifact" in config:
+        print(f"   Path: {config['skill_artifact']['path']}")
+        print(f"   Content preview: {config['skill_artifact']['content'][:100]}...")
 else:
     print(f"   FAILED: {r.status_code} {r.text}")
 
@@ -124,7 +124,7 @@ agent_payload = {
     "prompt": "You are a helpful coding assistant with code review capabilities.",
     "owner": "demo-admin",
     "model_name": "claude-sonnet-4",
-    "supported_ides": ["claude-code", "cursor", "kiro"],
+    "supported_harnesses": ["claude-code", "cursor", "kiro"],
     "components": [{"component_type": "skill", "component_id": skill_id}],
     "external_mcps": [],
 }
@@ -173,10 +173,10 @@ r = requests.post(
 )
 if r.status_code == 200:
     result = r.json()
-    has_skills = "skill_files" in result
-    print(f"   OK — response has skill_files: {has_skills}")
+    has_skills = "skill_artifacts" in result
+    print(f"   OK — response has skill_artifacts: {has_skills}")
     if has_skills:
-        for sf in result["skill_files"]:
+        for sf in result["skill_artifacts"]:
             print(f"   → {sf['path']}")
     else:
         print(f"   Keys in response: {list(result.keys())}")
@@ -190,6 +190,6 @@ print("\nTest from frontend:")
 print("  1. Go to http://localhost:3000")
 print("  2. Login: admin@demo.example / admin-changeme")
 print("  3. Find 'test-skill-agent' → Install → pick IDE")
-print("  4. Response should include skill_files with SKILL.md")
+print("  4. Response should include skill_artifacts with SKILL.md")
 print("\nTest from CLI:")
-print(f"  observal agent install {agent_id} --ide claude-code")
+print(f"  observal agent install {agent_id} --harness claude-code")

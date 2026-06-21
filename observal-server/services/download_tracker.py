@@ -26,7 +26,7 @@ async def record_agent_download(
     agent_id: uuid.UUID,
     user_id: uuid.UUID | None,
     source: str,
-    ide: str | None,
+    harness: str | None,
     request: Request,
     db: AsyncSession,
 ) -> bool:
@@ -39,7 +39,7 @@ async def record_agent_download(
         user_id=user_id,
         fingerprint=fingerprint,
         source=source,
-        ide=ide,
+        harness=harness,
     )
     # Use a savepoint so that IntegrityError rollback doesn't expire
     # all objects in the outer session (which causes MissingGreenlet

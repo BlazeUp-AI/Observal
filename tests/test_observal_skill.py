@@ -7,7 +7,7 @@ These tests exercise ``observal_cli/skills/observal/SKILL.md`` without invoking
 an LLM. They guarantee:
 
 - The file exists at the path the installer expects.
-- Frontmatter contains the fields IDE skill loaders rely on.
+- Frontmatter contains the fields harness skill loaders rely on.
 - Every fenced ``observal …`` shell command in the skill resolves to a real
   Typer command path.
 - Every long flag mentioned for a documented command is a real flag on that
@@ -90,7 +90,7 @@ def _split_frontmatter(text: str) -> tuple[dict, str]:
     remaining = "".join(lines[start:])
     match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n(.*)", remaining, re.DOTALL)
     if not match:
-        raise AssertionError("SKILL.md is missing YAML frontmatter delimited by '---'. IDE skill loaders need it.")
+        raise AssertionError("SKILL.md is missing YAML frontmatter delimited by '---'. harness skill loaders need it.")
     fm = yaml.safe_load(match.group(1)) or {}
     body = match.group(2)
     return fm, body
@@ -275,12 +275,12 @@ def _all_command_paths() -> set[tuple[str, ...]]:
 
 
 class TestSkillFile:
-    def test_skill_file_exists_at_installer_path(self):
+    def test_skill_exists_at_installer_path(self):
         """``_install_observal_skill`` reads from this exact path."""
         assert SKILL_PATH.exists(), f"{SKILL_PATH} is missing"
         assert SKILL_PATH.is_file()
 
-    def test_all_skill_files_exist(self):
+    def test_all_skills_exist(self):
         """All 6 intent-based skills must exist."""
         for path in ALL_SKILL_PATHS:
             assert path.exists(), f"{path} is missing"
@@ -289,7 +289,7 @@ class TestSkillFile:
         """The auto-generated command reference must exist."""
         assert REFERENCE_PATH.exists(), f"{REFERENCE_PATH} is missing"
 
-    def test_skill_file_under_size_budget(self):
+    def test_skill_under_size_budget(self):
         total = sum(len(p.read_text(encoding="utf-8").splitlines()) for p in ALL_SKILL_PATHS)
         assert total <= MAX_SKILL_LINES, (
             f"All skills combined have {total} lines (budget: {MAX_SKILL_LINES}). Tighten procedures or split further."
@@ -315,7 +315,7 @@ class TestFrontmatter:
 
     def test_name_matches_skill_directory(self):
         assert self.frontmatter["name"] == EXPECTED_NAME, (
-            f"frontmatter name should be {EXPECTED_NAME!r} so IDE loaders find it"
+            f"frontmatter name should be {EXPECTED_NAME!r} so harness loaders find it"
         )
 
     def test_command_field_present_when_set(self):

@@ -281,23 +281,23 @@ def hook_show(
 @hook_app.command(name="install")
 def hook_install(
     hook_id: str = typer.Argument(..., help="Hook ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
+    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     platform: str = typer.Option("", "--platform", "-p", help="Platform (win32, darwin, linux)"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (no file writes)"),
     directory: str | None = typer.Option(None, "--dir", "-d", help="Project directory for file writes"),
 ):
-    """Install a hook for a specific IDE.
+    """Install a hook for a specific harness.
 
-    Writes script files and merges hook config into the IDE's settings.
+    Writes script files and merges hook config into the harness's settings.
     Use --raw to just output JSON without writing anything. The hook
-    config is merged into the IDE's hooks file (existing hooks are preserved).
+    config is merged into the harness's hooks file (existing hooks are preserved).
 
     \b
     Examples:
-      observal registry hook install my-hook --ide claude-code
-      observal registry hook install @guard --ide kiro --dir ./project
-      observal registry hook install my-hook --ide cursor --raw
-      observal registry hook install my-hook --ide claude-code --platform darwin
+      observal registry hook install my-hook --harness claude-code
+      observal registry hook install @guard --harness kiro --dir ./project
+      observal registry hook install my-hook --harness cursor --raw
+      observal registry hook install my-hook --harness claude-code --platform darwin
     """
     resolved = config.resolve_alias(hook_id)
     with spinner(f"Generating {ide} config..."):
@@ -330,7 +330,7 @@ def hook_install(
                 os.chmod(file_path, 0o755)
             rprint(f"  [green]✓[/green] Wrote {file_entry['path']}")
 
-    # Write/merge config into the IDE's hooks config file
+    # Write/merge config into the harness's hooks config file
     if config_path and config_snippet:
         cfg_file = Path(config_path).expanduser() if config_path.startswith("~/") else project_dir / config_path
         cfg_file.parent.mkdir(parents=True, exist_ok=True)

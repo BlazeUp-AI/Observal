@@ -23,7 +23,7 @@ outdated_app = typer.Typer(
 def register_outdated(app: typer.Typer):
     @app.command("outdated")
     def outdated(
-        ide: str | None = typer.Option(None, "--ide", "-i", help="Filter by IDE"),
+        ide: str | None = typer.Option(None, "--harness", "-i", help="Filter by harness"),
         output: str = typer.Option("table", "--output", "-o", help="Output format: table or json"),
     ):
         """Show installed components that have newer versions available.
@@ -33,7 +33,7 @@ def register_outdated(app: typer.Typer):
 
         Examples:
           observal outdated
-          observal outdated --ide claude-code
+          observal outdated --harness claude-code
           observal outdated --output json
         """
         from observal_cli.lockfile import get_all_entries
@@ -79,7 +79,7 @@ def register_outdated(app: typer.Typer):
                         {
                             "name": name,
                             "type": entry_type if entry_type == "agent" else component_type,
-                            "ide": entry.get("ide", ""),
+                            "harness": entry.get("harness", ""),
                             "current": current_version,
                             "latest": "?",
                             "outdated": False,
@@ -93,7 +93,7 @@ def register_outdated(app: typer.Typer):
                     {
                         "name": name,
                         "type": entry_type if entry_type == "agent" else component_type,
-                        "ide": entry.get("ide", ""),
+                        "harness": entry.get("harness", ""),
                         "current": current_version,
                         "latest": latest or current_version,
                         "outdated": is_outdated,
@@ -115,7 +115,7 @@ def register_outdated(app: typer.Typer):
             table = Table(title="Outdated", show_header=True, header_style="bold")
             table.add_column("Name", style="cyan")
             table.add_column("Type", style="dim")
-            table.add_column("IDE", style="dim")
+            table.add_column("harness", style="dim")
             table.add_column("Pinned", style="yellow")
             table.add_column("Latest", style="green")
 
@@ -123,14 +123,14 @@ def register_outdated(app: typer.Typer):
                 table.add_row(
                     item["name"],
                     item["type"],
-                    item["ide"],
+                    item["harness"],
                     item["current"],
                     item["latest"],
                 )
 
             console.print(table)
             rprint(f"\n[yellow]{len(outdated_items)} item(s) have newer versions available.[/yellow]")
-            rprint("[dim]Run `observal agent pull <name> --ide <ide>` to upgrade.[/dim]")
+            rprint("[dim]Run `observal agent pull <name> --harness <harness>` to upgrade.[/dim]")
         else:
             rprint("[green]✓ All installed items are up to date.[/green]")
 

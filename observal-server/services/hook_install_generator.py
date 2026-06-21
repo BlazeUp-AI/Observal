@@ -1,18 +1,18 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Generic hook install config generator for all supported IDEs.
+"""Generic hook install config generator for all supported harnesses.
 
 This is SEPARATE from hook_config_generator.py which handles Observal's
 own telemetry hooks (session_push). This module generates install config
-for user-submitted registry hooks across all 8 IDEs.
+for user-submitted registry hooks across all 8 harnesses.
 """
 
 from __future__ import annotations
 
 from loguru import logger as optic
 
-from schemas.ide_registry import IDE_REGISTRY
+from schemas.harness_registry import HARNESS_REGISTRY
 
 
 def generate_hook_install_config(
@@ -23,7 +23,7 @@ def generate_hook_install_config(
     """Generate a complete install response for a registry hook.
 
     Returns a dict compatible with HookInstallResponse:
-      - config_snippet: IDE-specific hook config
+      - config_snippet: harness-specific hook config
       - config_path: where the config lives
       - files: script files to write
       - requirements: install prerequisites
@@ -31,7 +31,7 @@ def generate_hook_install_config(
       - notes: human-readable notes
     """
     optic.debug("generating hook install config: hook={}, ide={}", hook_listing.name, ide)
-    ide_info = IDE_REGISTRY.get(ide)
+    ide_info = HARNESS_REGISTRY.get(ide)
     if not ide_info:
         return {
             "config_snippet": {},
@@ -39,15 +39,15 @@ def generate_hook_install_config(
             "files": [],
             "requirements": [],
             "source_fetch": None,
-            "notes": [f"IDE '{ide}' is not recognized. Supported: {', '.join(IDE_REGISTRY.keys())}"],
+            "notes": [f"harness '{ide}' is not recognized. Supported: {', '.join(HARNESS_REGISTRY.keys())}"],
         }
 
     hook_type = ide_info.get("hook_type")
     events_map = ide_info.get("hook_events_map", {})
-    hook_config_path = ide_info.get("hook_config_path", {})
+    hooks = ide_info.get("hooks", {})
     hook_scripts_dir = ide_info.get("hook_scripts_dir", "")
 
-    # Map canonical event to IDE-specific event
+    # Map canonical event to harness-specific event
     event = str(getattr(hook_listing, "event", "") or "")
     ide_event = events_map.get(event)
 
@@ -87,7 +87,7 @@ def generate_hook_install_config(
     actual_command = command
 
     if script_content and script_filename:
-        # Tier 2: single-file script - write to IDE's hooks dir
+        # Tier 2: single-file script - write to harness's hooks dir
         script_path = f"{hook_scripts_dir}/{script_filename}"
         actual_command = script_path
         files.append(
@@ -110,13 +110,13 @@ def generate_hook_install_config(
         }
         actual_command = f"{hook_scripts_dir}/{hook_listing.name}/{command}"
 
-    # Generate config snippet based on IDE format
+    # Generate config snippet based on harness format
     config_snippet = _build_config_snippet(ide, ide_info, ide_event, handler_type, actual_command, timeout)
 
     # Determine config path
     config_path_val = ""
-    if hook_config_path:
-        config_path_val = hook_config_path.get("project", "") or hook_config_path.get("user", "") or ""
+    if hooks:
+        config_path_val = hooks.get("project", "") or hooks.get("user", "") or ""
         if "{name}" in config_path_val:
             config_path_val = config_path_val.replace("{name}", hook_listing.name)
 
@@ -143,7 +143,7 @@ def _build_config_snippet(
     command: str,
     timeout: int | None,
 ) -> dict:
-    """Build the IDE-specific config snippet."""
+    """Build the harness-specific config snippet."""
 
     optic.trace("ide={}, ide_info={}", ide, ide_info)
     if ide == "claude-code":
@@ -180,7 +180,7 @@ def _build_config_snippet(
 
 
 def _generate_plugin_instructions(hook_listing, ide_info: dict, ide_event: str) -> dict:
-    """Generate manual setup instructions for plugin-based IDEs (OpenCode)."""
+    """Generate manual setup instructions for plugin-based harnesses (OpenCode)."""
     optic.trace("hook_listing={}, ide_info={}", hook_listing, ide_info)
     handler_config = getattr(hook_listing, "handler_config", {}) or {}
     command = handler_config.get("command", "")

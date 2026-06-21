@@ -160,7 +160,7 @@ async def submit_skill(
         target_agents=req.target_agents,
         task_type=req.task_type,
         slash_command=slash_command,
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         status=ListingStatus.pending,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -343,7 +343,7 @@ async def save_skill_draft(
         target_agents=req.target_agents,
         task_type=req.task_type,
         slash_command=slash_command,
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         status=ListingStatus.draft,
         released_by=current_user.id,
         released_at=datetime.now(UTC),
@@ -402,7 +402,7 @@ async def update_skill_draft(
         "script_filename",
         "target_agents",
         "task_type",
-        "supported_ides",
+        "supported_harnesses",
     ):
         val = getattr(req, field)
         if val is not None:

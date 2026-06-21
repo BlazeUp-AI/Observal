@@ -16,5 +16,5 @@ Normalized SessionEvent schema (dict):
     tool_id: str         Tool use ID for pairing requests with results
     model: str           Model name (for assistant messages)
     tokens: dict         {"input": int, "output": int} token counts
-    metadata: dict       IDE-specific extra fields
+    metadata: dict       harness-specific extra fields
 """

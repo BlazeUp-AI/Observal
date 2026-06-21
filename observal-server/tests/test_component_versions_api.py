@@ -36,7 +36,7 @@ def _make_version(listing_id, ver=SEMVER_VALID, status=ListingStatus.pending, re
     v.status = status
     v.rejection_reason = rejection_reason
     v.download_count = 0
-    v.supported_ides = []
+    v.supported_harnesses = []
     v.released_by = uuid.uuid4()
     v.released_at = datetime.now(UTC)
     v.created_at = datetime.now(UTC)

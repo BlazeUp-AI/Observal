@@ -49,8 +49,8 @@ class AgentCreateRequest(BaseModel):
     prompt: str = ""
     model_name: str
     model_config_json: dict = {}
-    models_by_ide: dict[str, str] = {}
-    supported_ides: list[str] = []
+    models_by_harness: dict[str, str] = {}
+    supported_harnesses: list[str] = []
     mcp_server_ids: list[uuid.UUID] = []  # kept for backwards compat
     components: list[ComponentRef] = []  # new: all component types
     external_mcps: list[ExternalMcp] = []
@@ -84,8 +84,8 @@ class AgentUpdateRequest(BaseModel):
     prompt: str | None = None
     model_name: str | None = None
     model_config_json: dict | None = None
-    models_by_ide: dict[str, str] | None = None
-    supported_ides: list[str] | None = None
+    models_by_harness: dict[str, str] | None = None
+    supported_harnesses: list[str] | None = None
     mcp_server_ids: list[uuid.UUID] | None = None  # kept for backwards compat
     components: list[ComponentRef] | None = None  # new: all component types
     external_mcps: list[ExternalMcp] | None = None
@@ -141,11 +141,11 @@ class AgentResponse(BaseModel):
     prompt: str
     model_name: str
     model_config_json: dict
-    models_by_ide: dict[str, str] = {}
+    models_by_harness: dict[str, str] = {}
     external_mcps: list = []
-    supported_ides: list[str]
-    required_ide_features: list[str] = []
-    inferred_supported_ides: list[str] = []
+    supported_harnesses: list[str]
+    required_capabilities: list[str] = []
+    inferred_supported_harnesses: list[str] = []
     status: AgentStatus
     rejection_reason: str | None = None
     created_by: uuid.UUID
@@ -170,9 +170,9 @@ class AgentSummary(BaseModel):
     description: str
     owner: str
     model_name: str
-    supported_ides: list[str]
-    required_ide_features: list[str] = []
-    inferred_supported_ides: list[str] = []
+    supported_harnesses: list[str]
+    required_capabilities: list[str] = []
+    inferred_supported_harnesses: list[str] = []
     status: AgentStatus
     rejection_reason: str | None = None
     download_count: int = 0
@@ -206,9 +206,9 @@ class ValidationResult(BaseModel):
 
 
 class AgentInstallRequest(BaseModel):
-    ide: str
+    harness: str
     env_values: dict[str, dict[str, str]] = {}  # {mcp_listing_id: {VAR: value}}
-    # IDE-specific install options (e.g. scope, model, tools, color for Claude Code)
+    # harness-specific install options (e.g. scope, model, tools, color for Claude Code)
     options: dict = {}
     platform: str = ""  # e.g. "win32", "darwin", "linux" - empty = Unix default
     version: str | None = None  # Specific version to install (None = latest)
@@ -216,7 +216,7 @@ class AgentInstallRequest(BaseModel):
 
 class AgentInstallResponse(BaseModel):
     agent_id: uuid.UUID
-    ide: str
+    harness: str
     config_snippet: dict
     warnings: list[str] = []
 
@@ -227,9 +227,9 @@ class AgentVersionCreateRequest(BaseModel):
     prompt: str = ""
     model_name: str
     model_config_json: dict = {}
-    models_by_ide: dict[str, str] = {}
+    models_by_harness: dict[str, str] = {}
     external_mcps: list[ExternalMcp] = []
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     components: list[ComponentRef] = []
     yaml_snapshot: str | None = None
     is_prerelease: bool = False

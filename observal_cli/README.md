@@ -4,7 +4,7 @@
 
 # Observal CLI
 
-Command-line interface for the Observal platform. Authenticate with a server, manage registry components, configure IDEs, and collect telemetry.
+Command-line interface for the Observal platform. Authenticate with a server, manage registry components, configure harnesses, and collect telemetry.
 
 ## Install
 
@@ -27,10 +27,10 @@ This installs four entry points:
 
 ```bash
 observal auth login                  # connect to your Observal server
-observal scan                        # discover what's installed across your IDEs (read-only)
-observal doctor patch --all --all-ides  # instrument everything (hooks + shims)
-observal agent pull my-agent --ide cursor  # fetch agent config for Cursor
-observal doctor                      # check IDE compatibility
+observal scan                        # discover what's installed across your harnesses (read-only)
+observal doctor patch --all --all-harnesses  # instrument everything (hooks + shims)
+observal agent pull my-agent --harness cursor  # fetch agent config for Cursor
+observal doctor                      # check harness compatibility
 ```
 
 ## Commands
@@ -54,7 +54,7 @@ observal agent build             # validate the definition
 observal agent publish           # push to the server
 observal agent list              # list active agents
 observal agent show <id>         # show agent details
-observal agent install <id> --ide <ide>  # get IDE config snippet
+observal agent install <id> --harness <harness>  # get harness config snippet
 ```
 
 ### Component Registry
@@ -65,7 +65,7 @@ Each component type (mcp, skill, hook, prompt, sandbox) shares the same subcomma
 observal registry <type> submit      # submit for review
 observal registry <type> list        # list approved items
 observal registry <type> show <id>   # show details
-observal registry <type> install <id> --ide <ide>  # get IDE config
+observal registry <type> install <id> --harness <harness>  # get harness config
 observal registry <type> delete <id> # delete
 ```
 
@@ -86,26 +86,26 @@ observal ops metrics <id>          # metrics for an MCP or agent
 ### Utilities
 
 ```
-observal agent pull <agent> --ide <ide>             # write agent config to IDE files
-observal scan [--ide <ide>]                          # discover what's installed (read-only)
-observal doctor patch --all --all-ides               # instrument everything (hooks + shims)
-observal doctor patch --hook --ide <ide>             # install hooks for a specific IDE
-observal doctor patch --shim --ide <ide>             # wrap MCP servers for a specific IDE
-observal use <profile>                               # swap IDE config from a profile
-observal doctor                                      # diagnose IDE/Observal issues
+observal agent pull <agent> --harness <harness>             # write agent config to harness files
+observal scan [--harness <harness>]                          # discover what's installed (read-only)
+observal doctor patch --all --all-harnesses               # instrument everything (hooks + shims)
+observal doctor patch --hook --harness <harness>             # install hooks for a specific harness
+observal doctor patch --shim --harness <harness>             # wrap MCP servers for a specific harness
+observal use <profile>                               # swap harness config from a profile
+observal doctor                                      # diagnose harness/Observal issues
 observal config show                                 # show current config
 observal uninstall                                   # tear down Docker, remove config
 ```
 
-## Supported IDEs
+## Supported harnesses
 
-| IDE / Tool                  | Support Level                |
+| harness / Tool                  | Support Level                |
 | --------------------------- | ---------------------------- |
 | Claude Code                 | Fully supported              |
 | Kiro CLI                    | Supported (next most tested) |
 | Cursor, VS Code, Gemini CLI | Untested                     |
 
-The `--ide` flag controls which config format is generated. Each IDE has its own config paths and JSON structure.
+The `--harness` flag controls which config format is generated. Each harness has its own config paths and JSON structure.
 
 ## Config Files
 
@@ -123,7 +123,7 @@ All CLI state lives in `~/.observal/`:
 
 When `observal doctor patch --shim` wraps an MCP server, tool calls flow through `observal-shim` which records usage events. If the server is unreachable, events are retried automatically on the next hook fire.
 
-Hook scripts in `observal_cli/hooks/` capture IDE-level events (prompts, tool use, subagent spawning) and forward them to the server.
+Hook scripts in `observal_cli/hooks/` capture harness-level events (prompts, tool use, subagent spawning) and forward them to the server.
 
 ## Directory Layout
 
@@ -132,7 +132,7 @@ observal_cli/
 ├── main.py                  # Root app, command registration
 ├── config.py                # Config file I/O
 ├── client.py                # HTTP client with auth and token refresh
-├── constants.py             # Valid IDEs, categories, component types
+├── constants.py             # Valid harnesses, categories, component types
 ├── render.py                # Rich output formatting
 ├── analyzer.py              # Repo analysis for MCP submission
 ├── settings_reconciler.py   # Non-destructive Claude Code settings merge

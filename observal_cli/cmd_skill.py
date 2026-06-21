@@ -404,7 +404,7 @@ def _sparse_clone_skill_dir(git_url: str, skill_path: str, git_ref: str, dest: P
 @skill_app.command(name="install")
 def skill_install(
     skill_id: str = typer.Argument(..., help="Skill ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
+    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     scope: str = typer.Option("user", "--scope", "-s", help="Install scope: user (global, default) or project"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
     no_write: bool = typer.Option(False, "--no-write", help="Print config without writing files"),
@@ -415,19 +415,19 @@ def skill_install(
     """Install a skill by fetching the full skill directory from git.
 
     Clones the skill directory (sparse checkout) from the configured git_url
-    and writes it to the appropriate IDE skill path. Falls back to cached
+    and writes it to the appropriate harness skill path. Falls back to cached
     SKILL.md content if git clone fails.
 
     Scopes:
       --scope user (default): writes to ~/.<ide>/skills/<name>/ (global).
       --scope project: writes to .agents/skills/<name>/ in cwd, then
-        symlinks into each IDE config dir found in the project.
+        symlinks into each harness config dir found in the project.
 
     Examples:
-        observal registry skill install my-skill --ide claude-code
-        observal registry skill install @sk --ide kiro --scope project
-        observal registry skill install 2 --ide cursor --raw > config.json
-        observal registry skill install my-skill --ide opencode --no-write
+        observal registry skill install my-skill --harness claude-code
+        observal registry skill install @sk --harness kiro --scope project
+        observal registry skill install 2 --harness cursor --raw > config.json
+        observal registry skill install my-skill --harness opencode --no-write
     """
     resolved = config.resolve_alias(skill_id)
     with spinner(f"Generating {ide} config..."):
@@ -499,7 +499,7 @@ _AGENT_SKILL_DIRS: list[tuple[str, str]] = [
     ("opencode", ".opencode"),
 ]
 
-# User-scope skill directories per IDE (global install locations)
+# User-scope skill directories per harness (global install locations)
 _USER_SKILL_DIRS: dict[str, str] = {
     "claude-code": "~/.claude/skills",
     "kiro": "~/.kiro/skills",
@@ -625,7 +625,7 @@ def install_skill_from_git(
 
 
 def _symlink_for_ides(cwd: Path, canonical: Path, skill_name: str) -> None:
-    """Create .<agent>/skills/<name>/ symlinks for every IDE config dir that exists."""
+    """Create .<agent>/skills/<name>/ symlinks for every harness config dir that exists."""
     for _ide, agent_dir in _AGENT_SKILL_DIRS:
         agent_root = cwd / agent_dir
         if not agent_root.exists():

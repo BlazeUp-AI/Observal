@@ -6,7 +6,7 @@
   "prompt": "You are a helpful file management assistant.",
   "model_name": "claude-sonnet-4",
   "model_config_json": {},
-  "supported_ides": [
+  "supported_harnesses": [
     "kiro"
   ],
   "mcp_server_ids": [],

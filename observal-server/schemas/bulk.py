@@ -18,7 +18,7 @@ class BulkAgentItem(BaseModel):
     prompt: str = ""
     model_name: str = "claude-sonnet-4"
     model_config_json: dict = {}
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     components: list[dict] = []  # [{component_type, component_id}]
     external_mcps: list[dict] = []
 

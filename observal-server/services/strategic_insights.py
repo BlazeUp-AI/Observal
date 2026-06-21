@@ -56,7 +56,7 @@ Produce a JSON object with this EXACT structure:
     }}
   ],
   "platform_insight": {{
-    "title": "<headline comparing IDE/platform performance>",
+    "title": "<headline comparing harness/platform performance>",
     "detail": "<2-3 sentences comparing platforms with specific metrics like task time, success rate, sessions>"
   }},
   "model_insight": {{
@@ -76,7 +76,7 @@ Produce a JSON object with this EXACT structure:
 Rules:
 - quick_wins: 2-4 items, each MUST have a dollar savings estimate. Only include if the data supports it.
 - adoption_gaps: 1-3 items, only departments/teams below 50% adoption. If all are high, return empty array.
-- platform_insight: compare IDEs/platforms by task completion time and success rate. If only one platform exists, focus on its performance.
+- platform_insight: compare harnesses/platforms by task completion time and success rate. If only one platform exists, focus on its performance.
 - model_insight: compare model costs and recommend the best default. If only one model, say so.
 - automation_opportunity: estimate what % of sessions are routine (low tokens, few events) and could run unattended.
 - usage_pattern: describe the power user distribution and what the middle tier is missing.
@@ -141,7 +141,7 @@ def _build_data_block(metrics: dict) -> str:
         sections.append(json.dumps(metrics["department_gaps"], indent=2))
 
     if metrics.get("platform_comparison"):
-        sections.append("\n## Platform/IDE Performance")
+        sections.append("\n## Platform/harness Performance")
         sections.append(json.dumps(metrics["platform_comparison"], indent=2))
 
     if metrics.get("quick_win_candidates"):

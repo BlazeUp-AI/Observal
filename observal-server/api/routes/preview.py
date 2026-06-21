@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Preview endpoint - generates full IDE config without persisting an agent."""
+"""Preview endpoint - generates full harness config without persisting an agent."""
 
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ from models.hook import HookListing
 from models.mcp import McpListing
 from models.prompt import PromptListing
 from models.skill import SkillListing
-from schemas.ide_registry import IDE_REGISTRY
-from services.ide import generate_agent_config
+from schemas.harness_registry import HARNESS_REGISTRY
+from services.harness import generate_agent_config
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
 
-_VALID_IDES = set(IDE_REGISTRY.keys())
+_VALID_HARNESSES = set(HARNESS_REGISTRY.keys())
 _MAX_COMPONENTS = 20
 _MAX_NAME_LEN = 100
 _MAX_PROMPT_LEN = 50_000
@@ -50,7 +50,7 @@ class PreviewConfigRequest(BaseModel):
     prompt: str = Field(max_length=_MAX_PROMPT_LEN, default="")
     model_name: str = Field(max_length=100, default="")
     components: list[PreviewComponentRef] = Field(default_factory=list, max_length=_MAX_COMPONENTS)
-    target_ides: list[str] = Field(default_factory=list, max_length=9)
+    target_harnesses: list[str] = Field(default_factory=list, max_length=9)
 
 
 class PreviewConfigResponse(BaseModel):
@@ -80,7 +80,7 @@ class _TransientAgent:
     model_name: str
     components: list[_TransientComponent] = field(default_factory=list)
     external_mcps: list[dict] = field(default_factory=list)
-    required_ide_features: list[str] = field(default_factory=list)
+    required_capabilities: list[str] = field(default_factory=list)
 
 
 # ── Endpoint ──────────────────────────────────────────────────
@@ -93,9 +93,9 @@ async def preview_config(
     current_user: User = Depends(get_current_user),
 ):
     optic.debug("preview config")
-    target_ides = [ide for ide in req.target_ides if ide in _VALID_IDES]
-    if not target_ides:
-        target_ides = list(IDE_REGISTRY)
+    target_harnesses = [ide for ide in req.target_harnesses if ide in _VALID_HARNESSES]
+    if not target_harnesses:
+        target_harnesses = list(HARNESS_REGISTRY)
 
     components = [
         _TransientComponent(
@@ -173,13 +173,13 @@ async def preview_config(
     for row in prompt_map.values():
         name_map[str(row.id)] = row.name
 
-    # Generate configs for all target IDEs
+    # Generate configs for all target harnesses
     import json as _json
 
     configs: dict[str, dict[str, str]] = {}
     placeholder_url = "https://observal.example"
 
-    for ide in target_ides:
+    for ide in target_harnesses:
         try:
             config = generate_agent_config(
                 agent=agent,
@@ -195,11 +195,11 @@ async def preview_config(
             continue
 
         files: dict[str, str] = {}
-        if "rules_file" in config:
-            rf = config["rules_file"]
+        if "agent_profile" in config:
+            rf = config["agent_profile"]
             files[rf["path"]] = rf["content"]
-        if "agent_file" in config:
-            af = config["agent_file"]
+        if "agent_profile" in config:
+            af = config["agent_profile"]
             content = af["content"]
             files[af["path"]] = _json.dumps(content, indent=2) if isinstance(content, dict) else content
         if "mcp_config" in config:
@@ -212,8 +212,8 @@ async def preview_config(
             if isinstance(hc, dict) and "path" in hc:
                 content = hc["content"]
                 files[hc["path"]] = _json.dumps(content, indent=2) if isinstance(content, dict) else content
-        if "skill_files" in config:
-            for sf in config["skill_files"]:
+        if "skills" in config:
+            for sf in config["skills"]:
                 files[sf["path"]] = sf["content"]
 
         if files:

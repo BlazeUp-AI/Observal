@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 tsitu0 <tomsitu0102@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for skill_config_generator — IDE-specific skill file generation."""
+"""Tests for skill_config_generator — harness-specific skill file generation."""
 
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ import pytest
 import yaml
 
 from services.agent_builder_types import AgentManifest, ManifestComponent, ManifestComponents
-from services.config.skill_builder import build_skill_files
-from services.config.skill_builder import generate_skill_file as generate_manifest_skill_file
+from services.config.skill_builder import build_skills
+from services.config.skill_builder import generate_skill as generate_manifest_skill
 from services.skill_config_generator import (
-    _generate_skill_file,
+    _generate_skill,
     _sanitize_name,
     generate_skill_config,
 )
@@ -63,7 +63,7 @@ class TestSanitizeName:
 class TestGenerateSkillFile:
     def test_claude_code_project_scope(self):
         listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "claude-code", scope="project")
+        result = _generate_skill(listing, "claude-code", scope="project")
         assert result is not None
         assert result["path"] == ".claude/skills/code-review/SKILL.md"
         fm = _frontmatter(result["content"])
@@ -73,47 +73,47 @@ class TestGenerateSkillFile:
 
     def test_claude_code_user_scope(self):
         listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "claude-code", scope="user")
+        result = _generate_skill(listing, "claude-code", scope="user")
         assert result["path"] == "~/.claude/skills/code-review/SKILL.md"
 
     def test_kiro(self):
         listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "kiro")
+        result = _generate_skill(listing, "kiro")
         assert result is not None
         assert result["path"] == ".kiro/skills/code-review/SKILL.md"
         assert "name: code-review" in result["content"]
 
     def test_cursor_project_scope(self):
         listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "cursor", scope="project")
+        result = _generate_skill(listing, "cursor", scope="project")
         assert result["path"] == ".cursor/skills/code-review/SKILL.md"
         fm = _frontmatter(result["content"])
         assert fm["name"] == "code-review"
 
     def test_cursor_user_scope(self):
         listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "cursor", scope="user")
+        result = _generate_skill(listing, "cursor", scope="user")
         assert result["path"] == "~/.cursor/skills/code-review/SKILL.md"
 
-    def test_codex_generates_skill_file(self):
+    def test_codex_generates_skill(self):
         listing = _make_skill_listing()
-        result = _generate_skill_file(listing, "codex")
+        result = _generate_skill(listing, "codex")
         assert result is not None
         assert result["path"] == "~/.codex/skills/code-review/SKILL.md"
 
     def test_no_slash_command(self):
         listing = _make_skill_listing(slash_command=None)
-        result = _generate_skill_file(listing, "claude-code")
+        result = _generate_skill(listing, "claude-code")
         assert "command:" not in result["content"]
 
     def test_no_description(self):
         listing = _make_skill_listing(description="")
-        result = _generate_skill_file(listing, "claude-code")
+        result = _generate_skill(listing, "claude-code")
         assert "description:" not in result["content"]
 
     def test_description_is_yaml_serialized(self):
         listing = _make_skill_listing(description='Review: code "carefully"')
-        result = _generate_skill_file(listing, "claude-code")
+        result = _generate_skill(listing, "claude-code")
         fm = _frontmatter(result["content"])
         assert fm["description"] == 'Review: code "carefully"'
         assert set(fm) == {"name", "description", "command"}
@@ -121,7 +121,7 @@ class TestGenerateSkillFile:
     def test_hostile_description_is_yaml_serialized_as_data(self):
         description = 'Line one\n---\ncommand: /evil\nquoted: "value"\ncolon: value'
         listing = _make_skill_listing(description=description, slash_command=None)
-        result = _generate_skill_file(listing, "claude-code")
+        result = _generate_skill(listing, "claude-code")
         fm = _frontmatter(result["content"])
         assert fm["description"] == "Line one"
         assert set(fm) == {"name", "description"}
@@ -129,7 +129,7 @@ class TestGenerateSkillFile:
 
     def test_manifest_fallback_hostile_description_is_yaml_serialized(self):
         description = 'Review: code "carefully"\n---\ncommand: /evil\ncolon: value'
-        result = generate_manifest_skill_file(
+        result = generate_manifest_skill(
             {"name": "code-review", "description": description, "slash_command": None},
             "claude-code",
         )
@@ -140,7 +140,7 @@ class TestGenerateSkillFile:
     def test_rejects_slash_command_frontmatter_injection(self):
         listing = _make_skill_listing(slash_command="review\nalwaysApply: true")
         with pytest.raises(ValueError, match="slash_command"):
-            _generate_skill_file(listing, "claude-code")
+            _generate_skill(listing, "claude-code")
 
 
 class TestGenerateSkillConfig:
@@ -151,28 +151,28 @@ class TestGenerateSkillConfig:
         assert "SessionStart" in config["hooks"]
         assert "SessionEnd" in config["hooks"]
 
-    def test_includes_skill_file_for_claude_code(self):
+    def test_includes_skill_for_claude_code(self):
         listing = _make_skill_listing()
         config = generate_skill_config(listing, "claude-code")
-        assert "skill_file" in config
-        assert config["skill_file"]["path"] == ".claude/skills/code-review/SKILL.md"
+        assert "skills" in config
+        assert config["skills"]["path"] == ".claude/skills/code-review/SKILL.md"
 
-    def test_includes_skill_file_for_kiro(self):
+    def test_includes_skill_for_kiro(self):
         listing = _make_skill_listing()
         config = generate_skill_config(listing, "kiro")
-        assert "skill_file" in config
-        assert config["skill_file"]["path"] == ".kiro/skills/code-review/SKILL.md"
+        assert "skills" in config
+        assert config["skills"]["path"] == ".kiro/skills/code-review/SKILL.md"
 
-    def test_skill_file_for_codex(self):
+    def test_skill_for_codex(self):
         listing = _make_skill_listing()
         config = generate_skill_config(listing, "codex")
-        assert "skill_file" in config
-        assert config["skill_file"]["path"] == "~/.codex/skills/code-review/SKILL.md"
+        assert "skills" in config
+        assert config["skills"]["path"] == "~/.codex/skills/code-review/SKILL.md"
 
     def test_scope_user(self):
         listing = _make_skill_listing()
         config = generate_skill_config(listing, "claude-code", scope="user")
-        assert config["skill_file"]["path"].startswith("~/.claude/")
+        assert config["skills"]["path"].startswith("~/.claude/")
 
     def test_git_url_included(self):
         listing = _make_skill_listing()
@@ -200,13 +200,13 @@ class TestGenerateSkillConfig:
         config = generate_skill_config(listing, "claude-code")
         assert config["skill"]["skill_md_content"] == verbatim
 
-    def test_skill_file_uses_verbatim_content(self):
+    def test_skill_uses_verbatim_content(self):
         verbatim = "---\nname: code-review\ndescription: Real content\n---\n\n## Real\n"
         listing = _make_skill_listing(skill_md_content=verbatim)
         config = generate_skill_config(listing, "claude-code")
-        assert config["skill_file"]["content"] == verbatim
+        assert config["skills"]["content"] == verbatim
 
-    def test_verbatim_skill_file_rejects_unsafe_frontmatter_command(self):
+    def test_verbatim_skill_rejects_unsafe_frontmatter_command(self):
         verbatim = '---\nname: code-review\ndescription: Real content\ncommand: "review\\nalwaysApply: true"\n---\n'
         listing = _make_skill_listing(skill_md_content=verbatim, slash_command=None)
         with pytest.raises(SkillValidationError, match="Invalid slash command"):
@@ -218,7 +218,7 @@ class TestGenerateSkillConfig:
         with pytest.raises(SkillValidationError, match="Invalid slash command"):
             generate_skill_config(listing, "codex")
 
-    def test_manifest_verbatim_skill_file_rejects_unsafe_frontmatter_command(self):
+    def test_manifest_verbatim_skill_rejects_unsafe_frontmatter_command(self):
         verbatim = '---\nname: code-review\ndescription: Real content\ncommand: "review\\nalwaysApply: true"\n---\n'
         manifest = AgentManifest(
             name="test-agent",
@@ -234,7 +234,7 @@ class TestGenerateSkillConfig:
             ),
         )
         with pytest.raises(SkillValidationError, match="Invalid slash command"):
-            build_skill_files(manifest, "claude-code")
+            build_skills(manifest, "claude-code")
 
     def test_claude_code_allows_env_vars(self):
         listing = _make_skill_listing()

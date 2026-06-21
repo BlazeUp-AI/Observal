@@ -200,7 +200,7 @@ class TestAntigravitySessionPush:
         assert isinstance(result, dict)
 
 
-# ── Server IDE adapter ────────────────────────────────────────────────────────
+# ── Server harness adapter ────────────────────────────────────────────────────────
 
 
 class TestAntigravityServerAdapter:
@@ -208,8 +208,8 @@ class TestAntigravityServerAdapter:
         import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent / "observal-server"))
-        from services.ide import ConfigContext
-        from services.ide.antigravity import AntigravityAdapter
+        from services.harness import ConfigContext
+        from services.harness.antigravity import AntigravityAdapter
 
         adapter = AntigravityAdapter()
         assert adapter.ide_name == "antigravity"
@@ -228,15 +228,15 @@ class TestAntigravityServerAdapter:
         assert result["scope"] == "project"
         assert "mcp_config" in result
         assert result["mcp_config"]["content"]["mcpServers"]["my-mcp"]["command"] == "node"
-        assert result["agent_file"]["content"]["system_prompt"] == "# Test rules"
-        assert len(result["skill_files"]) == 1
+        assert result["agent_profile"]["content"]["system_prompt"] == "# Test rules"
+        assert len(result["skills"]) == 1
 
     def test_format_config_user_scope(self):
         import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent / "observal-server"))
-        from services.ide import ConfigContext
-        from services.ide.antigravity import AntigravityAdapter
+        from services.harness import ConfigContext
+        from services.harness.antigravity import AntigravityAdapter
 
         adapter = AntigravityAdapter()
         ctx = ConfigContext(
@@ -248,14 +248,14 @@ class TestAntigravityServerAdapter:
         )
         result = adapter.format_config(ctx)
         assert result["scope"] == "user"
-        assert result["agent_file"]["path"] == "~/.gemini/antigravity-cli/agents/test-agent/agent.json"
+        assert result["agent_profile"]["path"] == "~/.gemini/antigravity-cli/agents/test-agent/agent.json"
 
     def test_format_config_with_model(self):
         import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent / "observal-server"))
-        from services.ide import ConfigContext
-        from services.ide.antigravity import AntigravityAdapter
+        from services.harness import ConfigContext
+        from services.harness.antigravity import AntigravityAdapter
 
         adapter = AntigravityAdapter()
         ctx = ConfigContext(
@@ -273,8 +273,8 @@ class TestAntigravityServerAdapter:
         import sys
 
         sys.path.insert(0, str(Path(__file__).parent.parent / "observal-server"))
-        from services.ide import ConfigContext
-        from services.ide.antigravity import AntigravityAdapter
+        from services.harness import ConfigContext
+        from services.harness.antigravity import AntigravityAdapter
 
         adapter = AntigravityAdapter()
         ctx = ConfigContext(

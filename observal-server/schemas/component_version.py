@@ -14,7 +14,7 @@ class VersionPublishRequest(BaseModel):
     version: str
     description: str
     changelog: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     extra: dict | None = None
 
 

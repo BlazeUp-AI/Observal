@@ -492,9 +492,9 @@ async def _create_agent_version_with_additions(
         prompt=new_prompt,
         model_name=latest_version.model_name,
         model_config_json=latest_version.model_config_json,
-        models_by_ide=latest_version.models_by_ide,
+        models_by_harness=latest_version.models_by_harness,
         external_mcps=latest_version.external_mcps,
-        supported_ides=latest_version.supported_ides,
+        supported_harnesses=latest_version.supported_harnesses,
         is_prerelease=False,
         status=AgentStatus.pending,
         released_by=submitter_id,
@@ -802,7 +802,7 @@ async def _create_skill_listing(
             delivery_mode="registry_direct",
             target_agents=[agent.name],
             task_type="general",
-            supported_ides=["claude-code", "kiro", "pi"],
+            supported_harnesses=["claude-code", "kiro", "pi"],
         )
     except (SkillValidationError, ValidationError) as e:
         optic.warning("self_learn_skill_validation_failed", name=name, errors=str(e))
@@ -835,7 +835,7 @@ async def _create_skill_listing(
         delivery_mode=validated.delivery_mode,
         target_agents=validated.target_agents,
         task_type=validated.task_type,
-        supported_ides=validated.supported_ides,
+        supported_harnesses=validated.supported_harnesses,
         status=ListingStatus.pending,
         released_by=submitter_id,
         released_at=datetime.now(UTC),
@@ -925,7 +925,7 @@ async def _create_hook_listing(
             scope="agent",
             script_content=script_content,
             script_filename=script_filename,
-            supported_ides=["claude-code", "kiro", "pi"],
+            supported_harnesses=["claude-code", "kiro", "pi"],
         )
     except ValidationError as e:
         optic.warning("self_learn_hook_validation_failed", name=name, errors=str(e))
@@ -962,7 +962,7 @@ async def _create_hook_listing(
         scope=validated.scope,
         script_content=validated.script_content,
         script_filename=validated.script_filename,
-        supported_ides=validated.supported_ides,
+        supported_harnesses=validated.supported_harnesses,
         status=ListingStatus.pending,
         released_by=submitter_id,
         released_at=datetime.now(UTC),
@@ -1105,7 +1105,7 @@ async def _create_prompt_listing(
             template=copyable_prompt,
             variables=[],
             tags=["self-learn", agent.name],
-            supported_ides=[],
+            supported_harnesses=[],
         )
     except ValidationError as e:
         optic.warning("self_learn_prompt_validation_failed", name=name, errors=str(e))

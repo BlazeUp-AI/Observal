@@ -105,14 +105,14 @@ class HookListing(Base):
         return self.latest_version.download_count if self.latest_version else 0
 
     @property
-    def supported_ides(self) -> list:
-        return self.latest_version.supported_ides if self.latest_version else []
+    def supported_harnesses(self) -> list:
+        return self.latest_version.supported_harnesses if self.latest_version else []
 
-    @supported_ides.setter
-    def supported_ides(self, value: list) -> None:
+    @supported_harnesses.setter
+    def supported_harnesses(self, value: list) -> None:
         if not self.latest_version:
-            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set supported_ides")
-        self.latest_version.supported_ides = value
+            raise RuntimeError(f"{type(self).__name__} has no latest_version; cannot set supported_harnesses")
+        self.latest_version.supported_harnesses = value
 
     @property
     def event(self) -> str:
@@ -288,7 +288,7 @@ class HookVersion(Base):
     reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    supported_ides: Mapped[list] = mapped_column(JSON, default=list)
+    supported_harnesses: Mapped[list] = mapped_column(JSON, default=list)
     event: Mapped[str] = mapped_column(String(50), nullable=False)
     execution_mode: Mapped[str] = mapped_column(String(10), default="async")
     priority: Mapped[int] = mapped_column(Integer, default=100)

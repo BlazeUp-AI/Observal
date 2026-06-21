@@ -6,7 +6,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Agent builder type models - shared by agent_builder, config builders, and IDE helpers."""
+"""Agent builder type models - shared by agent_builder, config builders, and harness helpers."""
 
 from typing import Literal
 
@@ -86,7 +86,7 @@ class AgentManifest(BaseModel):
     prompt: str = ""
     description: str = ""
     model_name: str = ""
-    models_by_ide: dict[str, str] = Field(default_factory=dict)
+    models_by_harness: dict[str, str] = Field(default_factory=dict)
     components: ManifestComponents = Field(default_factory=ManifestComponents)
     errors: list[ManifestError] = Field(default_factory=list)
 
@@ -103,8 +103,8 @@ class AgentManifest(BaseModel):
             result["description"] = self.description
         if self.model_name:
             result["model_name"] = self.model_name
-        if self.models_by_ide:
-            result["models_by_ide"] = dict(self.models_by_ide)
+        if self.models_by_harness:
+            result["models_by_harness"] = dict(self.models_by_harness)
         if self.errors:
             result["errors"] = [e.model_dump() for e in self.errors]
         return result
@@ -122,11 +122,11 @@ class CompositionSummary(BaseModel):
     errors: list[ManifestError] = Field(default_factory=list)
 
 
-# ── IDE Agent File Models ───────────────────────────────────────────
+# ── harness Agent File Models ───────────────────────────────────────────
 
 
 class AgentFile(BaseModel):
-    """A single file to write for IDE agent installation."""
+    """A single file to write for harness agent installation."""
 
     path: str
     content: str | dict
@@ -136,21 +136,21 @@ class AgentFile(BaseModel):
 class HookInstallEntry(BaseModel):
     """A hook to install as part of agent pull."""
 
-    path: str  # IDE-relative path for the script file
+    path: str  # harness-relative path for the script file
     content: str  # Script content
     executable: bool = False
 
 
 class HookConfigEntry(BaseModel):
-    """Hook config snippet to merge into the IDE's hooks config."""
+    """Hook config snippet to merge into the harness's hooks config."""
 
     config_path: str  # Where to write/merge config (e.g., .cursor/hooks.json)
-    config_snippet: dict  # The IDE-specific hook config
+    config_snippet: dict  # The harness-specific hook config
     merge: bool = True  # Whether to merge into existing file
 
 
-class IdeAgentConfig(BaseModel):
-    """Complete IDE-specific agent configuration output."""
+class HarnessAgentConfig(BaseModel):
+    """Complete harness-specific agent configuration output."""
 
     ide: str
     files: list[AgentFile] = Field(default_factory=list)

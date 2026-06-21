@@ -4,8 +4,8 @@
 
 """Consolidated skill file builder.
 
-Provides a single source of truth for generating IDE-specific skill files,
-used by both the agent_builder (manifest-based) and the IDE config generator
+Provides a single source of truth for generating harness-specific skill files,
+used by both the agent_builder (manifest-based) and the harness config generator
 (registry-based with live DB listings).
 """
 
@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from schemas.ide_registry import IDE_REGISTRY
+from schemas.harness_registry import HARNESS_REGISTRY
 from schemas.skill_commands import normalize_slash_command
 from services.shared.utils import sanitize_name as _sanitize_name
 from services.skill_validator import validate_skill_md_content_frontmatter
@@ -29,17 +29,17 @@ def _yaml_frontmatter(data: dict[str, str | bool]) -> str:
     return f"---\n{body}\n---\n\n"
 
 
-def generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict | None:
-    """Generate an IDE-specific skill file entry.
+def generate_skill(skill: dict, ide: str, scope: str = "project") -> dict | None:
+    """Generate an harness-specific skill file entry.
 
     Returns a dict with 'path' and 'content' keys, or None for
-    monolithic IDEs (Gemini, Codex, Copilot) that inline skills into rules.
+    monolithic harnesses (Gemini, Codex, Copilot) that inline skills into rules.
 
     This is the canonical implementation used by both code paths.
     """
     ide_key = ide.replace("_", "-")
-    spec = IDE_REGISTRY.get(ide_key, {})
-    skill_paths = spec.get("skill_file")
+    spec = HARNESS_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skills")
     if not skill_paths:
         return None
 
@@ -63,8 +63,8 @@ def generate_skill_file(skill: dict, ide: str, scope: str = "project") -> dict |
     return {"path": path, "content": content}
 
 
-def build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
-    """Generate IDE-specific skill files from manifest skills.
+def build_skills(manifest: AgentManifest, ide: str) -> list[AgentFile]:
+    """Generate harness-specific skill files from manifest skills.
 
     Fast path: if skill_md_content is cached (stored verbatim from the repo),
     use it as-is as the SKILL.md body. Fallback: synthesize a minimal stub
@@ -75,8 +75,8 @@ def build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
     from services.agent_builder_types import AgentFile
 
     ide_key = ide.replace("_", "-")
-    spec = IDE_REGISTRY.get(ide_key, {})
-    skill_paths = spec.get("skill_file")
+    spec = HARNESS_REGISTRY.get(ide_key, {})
+    skill_paths = spec.get("skills")
     if not skill_paths:
         return []
 

@@ -612,7 +612,7 @@ async def extract_all_session_metas(
 
     This is the main entry point: fetches raw lines from ClickHouse,
     then runs extract_session_meta on each session.
-    Also enriches each meta with credits and IDE info from session_stats_agg.
+    Also enriches each meta with credits and harness info from session_stats_agg.
     """
     transcripts = await fetch_all_session_transcripts(
         agent_id,
@@ -634,7 +634,7 @@ async def extract_all_session_metas(
     metas = []
     for session_id, lines in transcripts.items():
         meta = extract_session_meta(session_id, lines)
-        # Enrich with credits, IDE, layer hash, and report version scope from session_stats_agg
+        # Enrich with credits, harness, layer hash, and report version scope from session_stats_agg
         stats = session_stats.get(session_id, {})
         meta["credits"] = stats.get("credits", 0.0)
         meta["ide"] = stats.get("ide", "")

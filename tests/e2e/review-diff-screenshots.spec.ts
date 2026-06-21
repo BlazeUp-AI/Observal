@@ -106,7 +106,7 @@ test.describe("Review Diff Dialog Screenshots", () => {
         description: "Added XSS detection and improved output format with CVSS scoring",
         model_name: "claude-sonnet-4-20250514",
         prompt: "## Security Review Agent\n\nYou are a security-focused code reviewer. Your job is to analyze code changes for vulnerabilities and compliance issues.\n\n## Focus Areas\n- SQL injection (A03)\n- Cross-site scripting / XSS (A07)\n- Broken authentication (A07)\n- Sensitive data exposure (A02)\n- Server-side request forgery (A10)\n\n## Output Format\nProvide findings as a structured report with:\n- Severity (critical/high/medium/low)\n- CVSS score\n- Remediation steps\n- Code references",
-        supported_ides: ["claude_code", "copilot_cli", "kiro"],
+        supported_harnesses: ["claude_code", "copilot_cli", "kiro"],
         components: [],
       }),
     });

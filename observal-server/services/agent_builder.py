@@ -8,7 +8,7 @@
 
 """Agent builder - composes resolved components into portable agent manifests.
 
-Generates IDE-specific agent files from a ResolvedAgent:
+Generates harness-specific agent files from a ResolvedAgent:
 - Claude Code: .claude/agents/<name>.md (markdown) + MCP JSON config
 - Cursor: .cursor/agents/<name>.md (subagent markdown) + .cursor/mcp.json
 - Gemini CLI: GEMINI.md (markdown) + MCP JSON config
@@ -23,36 +23,36 @@ import json
 
 from loguru import logger as optic
 
-from schemas.ide_registry import get_valid_ides
+from schemas.harness_registry import get_valid_harnesses
 from services.agent_builder_types import (
     AgentFile,
     AgentManifest,
     CompositionSummary,
     HookConfigEntry,
     HookInstallEntry,
-    IdeAgentConfig,
+    HarnessAgentConfig,
     ManifestComponent,
     ManifestComponents,
     ManifestError,
 )
 from services.agent_resolver import ResolvedAgent, ResolvedComponent
-from services.ide.helpers import _KIRO_EVENT_MAP, _wrap_kiro_prompt
+from services.harness.helpers import _KIRO_EVENT_MAP, _wrap_kiro_prompt
 from services.model_resolver import resolve_saved_value
 from services.shared.utils import sanitize_name as _sanitize_name
 
 
 def _saved_model_for(manifest: "AgentManifest", ide: str) -> str | None:
-    """Compute the IDE-formatted saved model from a manifest.
+    """Compute the harness-formatted saved model from a manifest.
 
     Manifest builders are synchronous and do not consult the live catalog.
-    They trust the saved per-IDE override (or `model_name` for Claude Code's
+    They trust the saved per-harness override (or `model_name` for Claude Code's
     backward-compat path) and apply only ID translation. Catalog validation
-    happens in the install path via ``resolve_model_for_ide``.
+    happens in the install path via ``resolve_model_for_harness``.
     """
     return resolve_saved_value(
         ide,
         model_name=manifest.model_name or "",
-        models_by_ide=manifest.models_by_ide or {},
+        models_by_harness=manifest.models_by_harness or {},
     )
 
 
@@ -132,7 +132,7 @@ def build_agent_manifest(resolved: ResolvedAgent) -> dict:
         prompt=resolved.agent_prompt,
         description=resolved.agent_description,
         model_name=resolved.model_name,
-        models_by_ide=resolved.models_by_ide,
+        models_by_harness=resolved.models_by_harness,
         components=ManifestComponents(**grouped),
         errors=[
             ManifestError(
@@ -185,7 +185,7 @@ def build_composition_summary(resolved: ResolvedAgent) -> dict:
     return summary.model_dump(exclude_none=True)
 
 
-# ── IDE Agent File Generation ──────────────────────────────────────
+# ── harness Agent File Generation ──────────────────────────────────────
 
 
 def _build_mcp_entries(manifest: AgentManifest) -> dict:
@@ -195,11 +195,11 @@ def _build_mcp_entries(manifest: AgentManifest) -> dict:
     return build_mcp_entries(manifest)
 
 
-def _build_skill_files(manifest: AgentManifest, ide: str) -> list[AgentFile]:
-    """Generate IDE-specific skill files from manifest skills."""
-    from services.config.skill_builder import build_skill_files
+def _build_skills(manifest: AgentManifest, ide: str) -> list[AgentFile]:
+    """Generate harness-specific skill files from manifest skills."""
+    from services.config.skill_builder import build_skills
 
-    return build_skill_files(manifest, ide)
+    return build_skills(manifest, ide)
 
 
 def _build_rules_markdown(manifest: AgentManifest) -> str:
@@ -245,25 +245,25 @@ def _materialize_hook_components(
 ) -> tuple[list[HookInstallEntry], list[HookConfigEntry]]:
     """Generate hook files + configs for all hook components in an agent manifest.
 
-    Uses the IDE registry to map events and determine script paths.
-    Returns (hook_files, hook_configs) to be included in IdeAgentConfig.
+    Uses the harness registry to map events and determine script paths.
+    Returns (hook_files, hook_configs) to be included in HarnessAgentConfig.
     """
-    from schemas.ide_registry import IDE_REGISTRY
+    from schemas.harness_registry import HARNESS_REGISTRY
 
     if not manifest.components.hooks:
         return [], []
 
-    ide_info = IDE_REGISTRY.get(ide, {})
+    ide_info = HARNESS_REGISTRY.get(ide, {})
     events_map = ide_info.get("hook_events_map", {})
     hook_scripts_dir = ide_info.get("hook_scripts_dir", "")
-    hook_config_path_dict = ide_info.get("hook_config_path", {})
+    hooks_dict = ide_info.get("hooks", {})
     hook_type = ide_info.get("hook_type")
 
-    # Can't generate for plugin-based IDEs
+    # Can't generate for plugin-based harnesses
     if hook_type == "plugin":
         return [], []
 
-    config_path = hook_config_path_dict.get("project") or hook_config_path_dict.get("user") or ""
+    config_path = hooks_dict.get("project") or hooks_dict.get("user") or ""
 
     hook_files: list[HookInstallEntry] = []
     all_hook_entries: dict[str, list] = {}  # ide_event -> list of hook entries
@@ -299,7 +299,7 @@ def _materialize_hook_components(
             )
             actual_command = script_path
 
-        # Build IDE-specific hook entry
+        # Build harness-specific hook entry
         if ide == "claude-code":
             hook_entry: dict = {"type": handler_type, "command": actual_command}
             if timeout:
@@ -325,7 +325,7 @@ def _materialize_hook_components(
     return hook_files, hook_configs
 
 
-def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
+def _generate_claude_code(manifest: AgentManifest) -> HarnessAgentConfig:
     """Generate Claude Code agent config (.claude/agents/<name>.md + MCP commands)."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
@@ -353,11 +353,11 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
     frontmatter_lines.append("---")
     agent_content = "\n".join(frontmatter_lines) + "\n\n" + rules_content
 
-    skill_files = _build_skill_files(manifest, "claude-code")
+    skills = _build_skills(manifest, "claude-code")
 
     env: dict[str, str] = {}
 
-    return IdeAgentConfig(
+    return HarnessAgentConfig(
         ide="claude-code",
         files=[
             AgentFile(
@@ -365,7 +365,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
                 content=agent_content,
                 format="markdown",
             ),
-            *skill_files,
+            *skills,
         ],
         mcp_servers=mcp_entries,
         env=env,
@@ -373,7 +373,7 @@ def _generate_claude_code(manifest: AgentManifest) -> IdeAgentConfig:
     )
 
 
-def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
+def _generate_cursor(manifest: AgentManifest) -> HarnessAgentConfig:
     """Generate Cursor subagent config (.cursor/agents/<name>.md + .cursor/mcp.json)."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
@@ -382,9 +382,9 @@ def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
     model = manifest.model_name or "inherit"
     agent_content = f"---\nname: {safe_name}\ndescription: {desc_line!r}\nmodel: {model}\n---\n\n{rules_content}"
 
-    skill_files = _build_skill_files(manifest, "cursor")
+    skills = _build_skills(manifest, "cursor")
 
-    return IdeAgentConfig(
+    return HarnessAgentConfig(
         ide="cursor",
         files=[
             AgentFile(
@@ -397,7 +397,7 @@ def _generate_cursor(manifest: AgentManifest) -> IdeAgentConfig:
                 content={"mcpServers": mcp_entries},
                 format="json",
             ),
-            *skill_files,
+            *skills,
         ],
         mcp_servers=mcp_entries,
     )
@@ -445,7 +445,7 @@ def _materialize_kiro_hook_components(hooks_dict: dict, manifest: AgentManifest)
             hooks_dict.setdefault(kiro_event, []).append(entry)
 
 
-def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
+def _generate_kiro(manifest: AgentManifest) -> HarnessAgentConfig:
     """Generate Kiro agent config (~/.kiro/agents/<name>.json)."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
@@ -469,16 +469,16 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
         "hooks": _build_kiro_hooks(safe_name, observal_url, platform),
         "toolsSettings": {},
         "includeMcpJson": True,
-        # null = Kiro auto model selection (per IDE_REGISTRY auto_sentinel).
+        # null = Kiro auto model selection.
         "model": _saved_model_for(manifest, "kiro"),
     }
 
     # Materialize hook components from the agent manifest into the hooks dict
     _materialize_kiro_hook_components(kiro_agent["hooks"], manifest)
 
-    skill_files = _build_skill_files(manifest, "kiro")
+    skills = _build_skills(manifest, "kiro")
 
-    return IdeAgentConfig(
+    return HarnessAgentConfig(
         ide="kiro",
         files=[
             AgentFile(
@@ -486,13 +486,13 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
                 content=kiro_agent,
                 format="json",
             ),
-            *skill_files,
+            *skills,
         ],
         mcp_servers=mcp_entries,
     )
 
 
-def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
+def _generate_codex(manifest: AgentManifest) -> HarnessAgentConfig:
     """Generate Codex custom agent config."""
     safe_name = _sanitize_name(manifest.name)
     rules_content = _build_rules_markdown(manifest)
@@ -514,16 +514,16 @@ def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
         ),
     ]
 
-    skill_files = _build_skill_files(manifest, "codex")
-    files.extend(skill_files)
+    skills = _build_skills(manifest, "codex")
+    files.extend(skills)
 
-    return IdeAgentConfig(
+    return HarnessAgentConfig(
         ide="codex",
         files=files,
     )
 
 
-def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
+def _generate_copilot(manifest: AgentManifest) -> HarnessAgentConfig:
     """Generate GitHub Copilot custom agent config."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
@@ -541,8 +541,8 @@ def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
         ),
     ]
 
-    skill_files = _build_skill_files(manifest, "copilot")
-    files.extend(skill_files)
+    skills = _build_skills(manifest, "copilot")
+    files.extend(skills)
 
     if mcp_entries:
         copilot_mcp_entries = {}
@@ -558,14 +558,14 @@ def _generate_copilot(manifest: AgentManifest) -> IdeAgentConfig:
             ),
         )
 
-    return IdeAgentConfig(
+    return HarnessAgentConfig(
         ide="copilot",
         files=files,
         mcp_servers=mcp_entries,
     )
 
 
-def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
+def _generate_opencode(manifest: AgentManifest) -> HarnessAgentConfig:
     """Generate OpenCode agent config (.opencode/agents/<name>.md + opencode.json with flat command arrays)."""
     safe_name = _sanitize_name(manifest.name)
     mcp_entries = _build_mcp_entries(manifest)
@@ -602,14 +602,14 @@ def _generate_opencode(manifest: AgentManifest) -> IdeAgentConfig:
             ),
         )
 
-    return IdeAgentConfig(
+    return HarnessAgentConfig(
         ide="opencode",
-        files=[*files, *_build_skill_files(manifest, "opencode")],
+        files=[*files, *_build_skills(manifest, "opencode")],
         mcp_servers=mcp_entries,
     )
 
 
-_IDE_GENERATORS = {
+_HARNESS_GENERATORS = {
     "claude-code": _generate_claude_code,
     "claude_code": _generate_claude_code,
     "cursor": _generate_cursor,
@@ -619,31 +619,31 @@ _IDE_GENERATORS = {
     "opencode": _generate_opencode,
 }
 
-SUPPORTED_IDES = [ide for ide in get_valid_ides() if ide in _IDE_GENERATORS or ide.replace("-", "_") in _IDE_GENERATORS]
+SUPPORTED_HARNESSES = [ide for ide in get_valid_harnesses() if ide in _HARNESS_GENERATORS or ide.replace("-", "_") in _HARNESS_GENERATORS]
 
 
-def generate_ide_agent_files(
+def generate_harness_agent_profiles(
     manifest: AgentManifest,
     ide: str,
     observal_url: str = "",
     platform: str = "",
-) -> IdeAgentConfig:
-    """Generate IDE-specific agent files from a portable agent manifest.
+) -> HarnessAgentConfig:
+    """Generate harness-specific agent files from a portable agent manifest.
 
     This is the universal entry point - takes a Pydantic AgentManifest
-    and produces the correct file layout for any supported IDE.
+    and produces the correct file layout for any supported harness.
     """
     optic.trace("generating {} config for agent {}", ide, manifest.name)
-    generator = _IDE_GENERATORS.get(ide)
+    generator = _HARNESS_GENERATORS.get(ide)
     if generator is None:
-        raise ValueError(f"Unsupported IDE: {ide!r}. Supported: {', '.join(SUPPORTED_IDES)}")
+        raise ValueError(f"Unsupported harness: {ide!r}. Supported: {', '.join(SUPPORTED_HARNESSES)}")
     if observal_url:
         manifest._observal_url = observal_url  # type: ignore[attr-defined]
     if platform:
         manifest._platform = platform  # type: ignore[attr-defined]
     config = generator(manifest)
 
-    # Materialize hook components for all IDEs (except Kiro which does it inline)
+    # Materialize hook components for all harnesses (except Kiro which does it inline)
     if ide != "kiro" and manifest.components.hooks:
         hook_files, hook_configs = _materialize_hook_components(manifest, ide)
         config.hook_files = hook_files

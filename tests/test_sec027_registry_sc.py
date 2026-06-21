@@ -62,7 +62,7 @@ def _agent_mock(status=AgentStatus.pending, created_by=None, **extra):
     m.model_name = extra.get("model_name", "claude-sonnet-4")
     m.model_config_json = {}
     m.external_mcps = []
-    m.supported_ides = []
+    m.supported_harnesses = []
     m.status = status
     m.rejection_reason = None
     m.download_count = 0
@@ -77,8 +77,8 @@ def _agent_mock(status=AgentStatus.pending, created_by=None, **extra):
     m.latest_version = MagicMock()
     m.latest_version.external_mcps = []
     m.latest_version.prompt = m.prompt
-    m.latest_version.required_ide_features = []
-    m.latest_version.inferred_supported_ides = []
+    m.latest_version.required_capabilities = []
+    m.latest_version.inferred_supported_harnesses = []
     col_keys = [
         "id",
         "name",
@@ -90,7 +90,7 @@ def _agent_mock(status=AgentStatus.pending, created_by=None, **extra):
         "model_name",
         "model_config_json",
         "external_mcps",
-        "supported_ides",
+        "supported_harnesses",
         "owner_org_id",
         "status",
         "rejection_reason",

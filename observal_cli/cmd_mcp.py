@@ -22,7 +22,7 @@ from rich.table import Table
 
 from observal_cli import client, config
 from observal_cli.analyzer import analyze_local
-from observal_cli.constants import VALID_IDES, VALID_MCP_CATEGORIES
+from observal_cli.constants import VALID_HARNESSES, VALID_MCP_CATEGORIES
 from observal_cli.prompts import fuzzy_select, select_one, text_input
 from observal_cli.render import (
     console,
@@ -320,7 +320,7 @@ def _parse_direct_config(cfg: dict) -> dict:
     """Normalize a JSON config dict into submit-ready fields.
 
     Accepts:
-    - IDE config: wrapped (mcpServers) or bare {command, args} / {url, type}
+    - harness config: wrapped (mcpServers) or bare {command, args} / {url, type}
     - server.json manifest: {packages: [...]} / {remotes: [...]}
 
     Handles two transport shapes:
@@ -546,14 +546,14 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             _owner = config.load().get("username", "")
             _category = category or "general"
 
-        supported_ides = list(VALID_IDES)
+        supported_harnesses = list(VALID_HARNESSES)
         submit_payload: dict = {
             "name": _name,
             "version": "0.1.0",
             "category": _category,
             "description": _desc,
             "owner": _owner,
-            "supported_ides": supported_ides,
+            "supported_harnesses": supported_harnesses,
             "environment_variables": parsed.get("environment_variables", []),
         }
         if parsed.get("command"):
@@ -665,8 +665,8 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
     rprint("[bold]------------------------[/bold]\n")
 
     # ── Auto-accept detected fields, only prompt for missing/required ──
-    # MCP servers are IDE-agnostic - config generation handles all IDEs.
-    supported_ides = list(VALID_IDES)
+    # MCP servers are harness-agnostic - config generation handles all harnesses.
+    supported_harnesses = list(VALID_HARNESSES)
 
     # Build parsed dict from analysis for config preview
     parsed: dict = {}
@@ -850,7 +850,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         "category": _category,
         "description": _desc,
         "owner": _owner,
-        "supported_ides": supported_ides,
+        "supported_harnesses": supported_harnesses,
         "environment_variables": env_vars,
         "setup_instructions": _setup,
         "changelog": _changelog,
@@ -935,7 +935,7 @@ def _list_impl(category, search, limit, sort, output, interactive=False):
     table.add_column("Version", style="green")
     table.add_column("Category")
     table.add_column("Owner", style="dim")
-    table.add_column("IDEs")
+    table.add_column("harnesses")
     table.add_column("ID", style="dim", max_width=12)
     for i, item in enumerate(data, 1):
         table.add_row(
@@ -944,7 +944,7 @@ def _list_impl(category, search, limit, sort, output, interactive=False):
             item.get("version", ""),
             item.get("category", ""),
             item.get("owner", ""),
-            ide_tags(item.get("supported_ides", [])),
+            ide_tags(item.get("supported_harnesses", [])),
             str(item["id"])[:8] + "…",
         )
     console.print(table)
@@ -968,7 +968,7 @@ def _show_impl(mcp_id, output):
                 ("Category", item.get("category", "N/A")),
                 ("Owner", item.get("owner", "N/A")),
                 ("Description", item.get("description", "")),
-                ("IDEs", ide_tags(item.get("supported_ides", []))),
+                ("harnesses", ide_tags(item.get("supported_harnesses", []))),
                 ("Git", f"[link={item.get('git_url', '')}]{item.get('git_url', 'N/A')}[/link]"),
                 ("Setup", item.get("setup_instructions") or "[dim]none[/dim]"),
                 ("Changelog", item.get("changelog") or "[dim]none[/dim]"),
@@ -1142,7 +1142,7 @@ def _install_impl(
     config_path = ide_config_paths.get(ide, "")
     if config_path and not config_path.startswith("("):
         rprint(f"\n[dim]Add to:[/dim] [bold]{config_path}[/bold]")
-        rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --ide {ide} --raw > {config_path}")
+        rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --harness {ide} --raw > {config_path}")
 
     for warning in result.get("warnings") or []:
         rprint(f"\n[yellow]Warning:[/yellow] {warning}")
@@ -1153,7 +1153,7 @@ def _install_impl(
         rprint(f"\n[yellow]Warning: {len(missing)} env var(s) still need values:[/yellow]")
         for m in missing:
             rprint(f"  [yellow]![/yellow] {m}")
-        rprint("[dim]Set these in your IDE config or shell environment before running the server.[/dim]")
+        rprint("[dim]Set these in your harness config or shell environment before running the server.[/dim]")
 
 
 def _delete_impl(mcp_id, yes):
@@ -1185,7 +1185,7 @@ def submit(
     """Submit an MCP server to the registry.
 
     By default, opens an interactive JSON paste prompt where you provide
-    the same config format used in your IDE (e.g. mcpServers block). Use
+    the same config format used in your harness (e.g. mcpServers block). Use
     --git to analyze a git repository instead, which auto-detects tools,
     env vars, and startup commands.
 
@@ -1331,7 +1331,7 @@ def show(
 ):
     """Show full details of an MCP server.
 
-    Displays metadata, validation results, supported IDEs, env vars,
+    Displays metadata, validation results, supported harnesses, env vars,
     and timestamps for a given server. Accepts a UUID, server name,
     row number from the last list command, or an @alias.
 
@@ -1355,7 +1355,7 @@ def show(
 @mcp_app.command()
 def install(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--ide", "-i", help="Target IDE"),
+    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
     version: str | None = typer.Option(
         None, "--version", "-V", help="Install a specific version (e.g. '2.1.0'). Defaults to latest."
@@ -1367,7 +1367,7 @@ def install(
 ):
     """Generate an install config snippet for an MCP server.
 
-    Produces IDE-specific configuration that you paste into your editor's
+    Produces harness-specific configuration that you paste into your editor's
     MCP settings file. Prompts for required environment variables and
     headers interactively (unless --raw or --no-prompt is used).
 
@@ -1380,22 +1380,22 @@ def install(
 
     Examples:
         # Generate config for Claude Code
-        observal registry mcp install my-server --ide claude-code
+        observal registry mcp install my-server --harness claude-code
 
         # Non-interactive with env vars
-        observal registry mcp install my-server --ide kiro --no-prompt --env API_KEY=sk-123
+        observal registry mcp install my-server --harness kiro --no-prompt --env API_KEY=sk-123
 
         # Multiple env vars
-        observal registry mcp install my-server --ide cursor --env API_KEY=sk-123 --env SECRET=abc
+        observal registry mcp install my-server --harness cursor --env API_KEY=sk-123 --env SECRET=abc
 
         # From env file
-        observal registry mcp install my-server --ide claude-code --env-file .env --no-prompt
+        observal registry mcp install my-server --harness claude-code --env-file .env --no-prompt
 
         # Generate for Cursor and pipe to config file
-        observal registry mcp install my-server --ide cursor --raw > .cursor/mcp.json
+        observal registry mcp install my-server --harness cursor --raw > .cursor/mcp.json
 
         # With headers for SSE servers
-        observal registry mcp install my-server --ide kiro --header Authorization='Bearer token'
+        observal registry mcp install my-server --harness kiro --header Authorization='Bearer token'
     """
     optic.trace("mcp_id={}, ide={}", mcp_id, ide)
     env_overrides = {}

@@ -664,9 +664,9 @@ class Orchestrator:
             save({"server_url": target_url, "access_token": "embedded", "api_key": "embedded"})
 
     def _install_hooks(self) -> None:
-        """Install IDE telemetry hooks (Claude Code, Kiro, etc.) if not already present.
+        """Install harness telemetry hooks (Claude Code, Kiro, etc.) if not already present.
 
-        Runs the equivalent of `observal doctor patch --hook --all-ides` non-interactively.
+        Runs the equivalent of `observal doctor patch --hook --all-harnesses` non-interactively.
         This ensures traces flow to the embedded server without manual setup.
         """
         # Claude Code hooks
@@ -674,7 +674,7 @@ class Orchestrator:
         if claude_dir.is_dir():
             try:
                 from observal_cli import settings_reconciler
-                from observal_cli.ide_specs.claude_code_hooks_spec import get_desired_hooks
+                from observal_cli.harness_specs.claude_code_hooks_spec import get_desired_hooks
 
                 desired_hooks = get_desired_hooks()
                 changes = settings_reconciler.reconcile(desired_hooks, {}, dry_run=False)
@@ -725,7 +725,7 @@ class Orchestrator:
             # Auto-configure CLI to point at this server
             self._configure_cli()
 
-            # Install IDE hooks for telemetry (non-interactive)
+            # Install harness hooks for telemetry (non-interactive)
             self._install_hooks()
 
             console.print()

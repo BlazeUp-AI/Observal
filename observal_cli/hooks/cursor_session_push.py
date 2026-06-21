@@ -48,7 +48,7 @@ def _debug_log(msg: str, home: Path | None = None) -> None:
 
 
 def main(home: Path | None = None) -> None:
-    """Main entry point.  Never raises -- hooks must not break the IDE."""
+    """Main entry point.  Never raises -- hooks must not break the harness."""
     try:
         _run(home=home)
     except Exception:

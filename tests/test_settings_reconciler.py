@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 import pytest
 
-from observal_cli.ide_specs.claude_code_hooks_spec import (
+from observal_cli.harness_specs.claude_code_hooks_spec import (
     HOOKS_SPEC_VERSION,
     get_desired_env,
     get_desired_hooks,

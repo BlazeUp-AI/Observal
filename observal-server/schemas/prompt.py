@@ -21,10 +21,10 @@ class PromptSubmitRequest(BaseModel):
     variables: list[dict] = []
     model_hints: dict | None = None
     tags: list[str] = []
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
 
     _validate_category = field_validator("category")(make_option_validator("category", VALID_PROMPT_CATEGORIES))
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class PromptDraftRequest(BaseModel):
@@ -37,9 +37,9 @@ class PromptDraftRequest(BaseModel):
     variables: list[dict] = []
     model_hints: dict | None = None
     tags: list[str] = []
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
 
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class PromptUpdateRequest(BaseModel):
@@ -52,7 +52,7 @@ class PromptUpdateRequest(BaseModel):
     variables: list[dict] | None = None
     model_hints: dict | None = None
     tags: list[str] | None = None
-    supported_ides: list[str] | None = None
+    supported_harnesses: list[str] | None = None
 
 
 class PromptListingResponse(BaseModel):
@@ -65,7 +65,7 @@ class PromptListingResponse(BaseModel):
     template: str
     variables: list[dict]
     tags: list[str]
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     status: ListingStatus
     rejection_reason: str | None = None
     submitted_by: uuid.UUID

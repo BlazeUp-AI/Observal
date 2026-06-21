@@ -35,11 +35,11 @@ from observal_cli.sessions.kiro import (
 
 
 def main(home: Path | None = None) -> None:
-    """Main entry point.  Never raises -- hooks must not break the IDE."""
+    """Main entry point.  Never raises -- hooks must not break the harness."""
     try:
         _run(home=home)
     except Exception as e:
-        optic.error("kiro_session_push crashed (swallowed to protect IDE): {}", e)
+        optic.error("kiro_session_push crashed (swallowed to protect harness): {}", e)
 
 
 def _read_credits_with_retry(session_id: str, home: Path | None = None, retries: int = 5) -> float | None:

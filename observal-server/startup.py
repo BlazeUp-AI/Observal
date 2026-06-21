@@ -27,7 +27,7 @@ async def ensure_columns(conn) -> None:
     stmts = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)",
         "ALTER TABLE mcp_listings ADD COLUMN IF NOT EXISTS environment_variables JSONB",
-        "ALTER TABLE agent_versions ADD COLUMN IF NOT EXISTS models_by_ide JSONB NOT NULL DEFAULT '{}'::jsonb",
+        "ALTER TABLE agent_versions ADD COLUMN IF NOT EXISTS models_by_harness JSONB NOT NULL DEFAULT '{}'::jsonb",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
     ]
     for stmt in stmts:

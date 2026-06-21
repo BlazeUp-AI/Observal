@@ -4,7 +4,7 @@
 """Lock file management for Observal CLI.
 
 Manages ~/.observal/lockfile.json, the canonical record of all agents,
-MCPs, skills, hooks, and sandboxes installed via Observal, organized by IDE.
+MCPs, skills, hooks, and sandboxes installed via Observal, organized by harness.
 
 The lock file is:
 - Written on `observal pull`, `observal mcp install`, `observal skill install`
@@ -86,20 +86,20 @@ def _empty_lockfile() -> dict:
     return {
         "lock_version": LOCK_VERSION,
         "updated_at": datetime.now(UTC).isoformat(),
-        "ides": {},
+        "harnesses": {},
     }
 
 
 def _ensure_ide(data: dict, ide: str) -> dict:
-    """Ensure the IDE section exists in the lock file data."""
-    ides = data.setdefault("ides", {})
-    if ide not in ides:
-        ides[ide] = {"agents": [], "standalone": []}
+    """Ensure the harness section exists in the lock file data."""
+    harnesses = data.setdefault("harnesses", {})
+    if ide not in harnesses:
+        harnesses[ide] = {"agents": [], "standalone": []}
     else:
         # Ensure both keys exist
-        ides[ide].setdefault("agents", [])
-        ides[ide].setdefault("standalone", [])
-    return ides[ide]
+        harnesses[ide].setdefault("agents", [])
+        harnesses[ide].setdefault("standalone", [])
+    return harnesses[ide]
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +124,8 @@ def upsert_agent(
     """
     optic.debug("upsert_agent: ide={}, name={}, version={}", ide, name, version)
     data = read_lockfile()
-    ide_section = _ensure_ide(data, ide)
-    agents = ide_section["agents"]
+    harness_section = _ensure_ide(data, ide)
+    agents = harness_section["agents"]
 
     entry = {
         "name": name,
@@ -152,8 +152,8 @@ def upsert_agent(
 def remove_agent(ide: str, agent_id: str, directory: str | None = None) -> bool:
     """Remove an agent entry. Returns True if found and removed."""
     data = read_lockfile()
-    ide_section = _ensure_ide(data, ide)
-    agents = ide_section["agents"]
+    harness_section = _ensure_ide(data, ide)
+    agents = harness_section["agents"]
 
     for i, agent in enumerate(agents):
         if agent.get("id") == agent_id:
@@ -198,8 +198,8 @@ def upsert_standalone(
     """Add or update a standalone component (MCP, skill, hook, etc.) in the lock file."""
     optic.debug("upsert_standalone: ide={}, type={}, name={}", ide, component_type, name)
     data = read_lockfile()
-    ide_section = _ensure_ide(data, ide)
-    standalone = ide_section["standalone"]
+    harness_section = _ensure_ide(data, ide)
+    standalone = harness_section["standalone"]
 
     entry: dict[str, Any] = {
         "type": component_type,
@@ -227,8 +227,8 @@ def upsert_standalone(
 def remove_standalone(ide: str, component_type: str, component_id: str, directory: str | None = None) -> bool:
     """Remove a standalone component entry. Returns True if found and removed."""
     data = read_lockfile()
-    ide_section = _ensure_ide(data, ide)
-    standalone = ide_section["standalone"]
+    harness_section = _ensure_ide(data, ide)
+    standalone = harness_section["standalone"]
 
     for i, item in enumerate(standalone):
         if item.get("type") == component_type and item.get("id") == component_id:
@@ -265,34 +265,34 @@ def _find_standalone_idx(
 
 
 def get_agent_for_directory(ide: str, directory: str) -> dict | None:
-    """Find the agent installed for a given IDE + project directory.
+    """Find the agent installed for a given harness + project directory.
 
     Used by session push to attribute sessions to agents.
     """
     data = read_lockfile()
-    ide_section = data.get("ides", {}).get(ide, {})
-    for agent in ide_section.get("agents", []):
+    harness_section = data.get("harnesses", {}).get(ide, {})
+    for agent in harness_section.get("agents", []):
         if agent.get("directory") == directory:
             return agent
     return None
 
 
 def get_all_entries(ide: str | None = None) -> list[dict]:
-    """Get all lock file entries, optionally filtered by IDE.
+    """Get all lock file entries, optionally filtered by harness.
 
-    Returns a flat list of entries with 'ide' and 'entry_type' fields added.
+    Returns a flat list of entries with 'harness' and 'entry_type' fields added.
     Used by `observal outdated`.
     """
     data = read_lockfile()
     entries: list[dict] = []
 
-    for ide_name, ide_section in data.get("ides", {}).items():
-        if ide and ide_name != ide:
+    for harness_name, harness_section in data.get("harnesses", {}).items():
+        if ide and harness_name != ide:
             continue
-        for agent in ide_section.get("agents", []):
-            entries.append({**agent, "ide": ide_name, "entry_type": "agent"})
-        for item in ide_section.get("standalone", []):
-            entries.append({**item, "ide": ide_name, "entry_type": "standalone"})
+        for agent in harness_section.get("agents", []):
+            entries.append({**agent, "harness": harness_name, "entry_type": "agent"})
+        for item in harness_section.get("standalone", []):
+            entries.append({**item, "harness": harness_name, "entry_type": "standalone"})
 
     return entries
 
@@ -404,12 +404,12 @@ def migrate_agent_markers() -> int:
             continue
         seen.add(key)
 
-        # We don't know which IDE was used, default to claude-code
+        # We don't know which harness was used, default to claude-code
         # (the marker was primarily written by claude-code hooks)
         ide = "claude-code"
-        ide_section = _ensure_ide(data, ide)
+        harness_section = _ensure_ide(data, ide)
 
-        ide_section["agents"].append(
+        harness_section["agents"].append(
             {
                 "name": agent_id,  # Old markers stored ID as name too
                 "id": agent_id,

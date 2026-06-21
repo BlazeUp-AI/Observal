@@ -31,7 +31,7 @@ from schemas.agent import (
     ValidationIssue,
     ValidationResult,
 )
-from services.ide import generate_agent_config
+from services.harness import generate_agent_config
 from services.registry_telemetry import emit_registry_event
 
 from ._router import router
@@ -167,7 +167,7 @@ async def install_agent(
     name_map = await _resolve_component_names(agent.components, db)
 
     from api.routes.config import derive_endpoints
-    from services.model_resolver import resolve_model_for_ide
+    from services.model_resolver import resolve_model_for_harness
 
     endpoints = await derive_endpoints(request)
 
@@ -175,10 +175,10 @@ async def install_agent(
     raw_override = install_options.get("model") or None
     if isinstance(raw_override, str) and raw_override.strip().lower() == "inherit":
         raw_override = None
-    resolved_model, model_warnings = await resolve_model_for_ide(
-        req.ide,
+    resolved_model, model_warnings = await resolve_model_for_harness(
+        req.harness,
         model_name=getattr(agent, "model_name", "") or "",
-        models_by_ide=getattr(agent, "models_by_ide", {}) or {},
+        models_by_harness=getattr(agent, "models_by_harness", {}) or {},
         override=raw_override,
     )
     install_options["_resolved_model"] = resolved_model
@@ -186,7 +186,7 @@ async def install_agent(
 
     snippet = generate_agent_config(
         agent,
-        req.ide,
+        req.harness,
         observal_url=endpoints["api"],
         mcp_listings=mcp_listings_map,
         component_names=name_map,
@@ -209,7 +209,7 @@ async def install_agent(
         agent_id=resolved_agent_id,
         user_id=current_user.id,
         source="api",
-        ide=req.ide,
+        harness=req.harness,
         request=request,
         db=db,
     )
@@ -222,11 +222,11 @@ async def install_agent(
         user_role=current_user.role.value,
         agent_id=str(resolved_agent_id),
         resource_name=agent.name,
-        metadata={"ide": req.ide},
+        metadata={"harness": req.harness},
     )
 
     warnings = archived_warnings + snippet.pop("_warnings", [])
-    return AgentInstallResponse(agent_id=resolved_agent_id, ide=req.ide, config_snippet=snippet, warnings=warnings)
+    return AgentInstallResponse(agent_id=resolved_agent_id, harness=req.harness, config_snippet=snippet, warnings=warnings)
 
 
 @router.get("/{agent_id}/downloads")

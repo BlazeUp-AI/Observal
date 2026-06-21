@@ -56,7 +56,7 @@ class McpSubmitRequest(BaseModel):
     headers: list[McpHeader] | None = None
     auto_approve: list[str] | None = None
     transport: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None = None
     changelog: str | None = None
@@ -72,7 +72,7 @@ class McpSubmitRequest(BaseModel):
             raise ValueError(f"Invalid framework '{v}'. Valid options: {', '.join(VALID_MCP_FRAMEWORKS)}")
         return v
 
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
     @model_validator(mode="after")
     def _require_source(self):
@@ -96,13 +96,13 @@ class McpDraftRequest(BaseModel):
     headers: list[McpHeader] | None = None
     auto_approve: list[str] | None = None
     transport: str | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None = None
     changelog: str | None = None
     client_analysis: ClientAnalysis | None = None
 
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class McpUpdateRequest(BaseModel):
@@ -120,7 +120,7 @@ class McpUpdateRequest(BaseModel):
     headers: list[McpHeader] | None = None
     auto_approve: list[str] | None = None
     transport: str | None = None
-    supported_ides: list[str] | None = None
+    supported_harnesses: list[str] | None = None
     environment_variables: list[McpEnvVar] | None = None
     setup_instructions: str | None = None
     changelog: str | None = None
@@ -148,7 +148,7 @@ class McpListingResponse(BaseModel):
     description: str
     category: str
     owner: str
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     environment_variables: list[McpEnvVar] = []
     setup_instructions: str | None
     changelog: str | None
@@ -187,7 +187,7 @@ class McpListingSummary(BaseModel):
     description: str
     category: str
     owner: str
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     status: ListingStatus
     rejection_reason: str | None = None
 

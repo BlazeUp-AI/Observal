@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Shared IO primitives for all IDE session push scripts.
+"""Shared IO primitives for all harness session push scripts.
 
-These functions are IDE-agnostic and handle config loading, offset
+These functions are harness-agnostic and handle config loading, offset
 tracking, line reading, HTTP posting, and error logging.  Every
 hook push script and cmd_reconcile imports from here instead of
 duplicating the logic.
@@ -325,7 +325,7 @@ def build_payload(
     """Construct the JSON body for the ingest endpoint.
 
     Defaults ide to ``claude-code``; callers override with ``payload["ide"] = ...``
-    for other IDEs.
+    for other harnesses.
     """
     agent_id, agent_version = _resolve_agent(cwd, lines, session_jsonl)
     layer_hash = _get_cached_layer_hash(session_id, cwd)
@@ -348,7 +348,7 @@ def build_payload(
     return payload
 
 
-# Per-session layer_hash cache: avoids re-scanning IDE dirs on every chunk
+# Per-session layer_hash cache: avoids re-scanning harness dirs on every chunk
 _layer_hash_cache: dict[str, str | None] = {}
 
 
@@ -367,7 +367,7 @@ def _evict_layer_hash_cache(session_id: str) -> None:
 def _compute_layer_hash_safe(cwd: str, ide: str) -> str | None:
     """Compute layer_hash without ever blocking the session push.
 
-    Computes across ALL detected IDEs (not just the session's IDE).
+    Computes across ALL detected harnesses (not just the session's harness).
     Returns None on any failure.
     """
     try:
@@ -452,7 +452,7 @@ def _resolve_agent(cwd: str, lines: list[str], session_jsonl: Path | None) -> tu
     Name resolution (first match wins):
       1. OBSERVAL_AGENT_NAME env var (Kiro per-agent hook commands)
       2. agent-setting line in JSONL (Claude Code embeds active agent)
-      3. Lock file lookup by cwd + IDE
+      3. Lock file lookup by cwd + harness
 
     Version resolution always comes from the lockfile. Steps 1 and 2 only
     provide the agent name; the lockfile is the authoritative source for
@@ -497,14 +497,14 @@ def _resolve_agent(cwd: str, lines: list[str], session_jsonl: Path | None) -> tu
 def _lookup_lockfile_agent(cwd: str) -> dict | None:
     """Find the agent entry in the lockfile for the given directory.
 
-    Checks all IDEs since the calling hook may not know which IDE wrote
+    Checks all harnesses since the calling hook may not know which harness wrote
     the lockfile entry.
     """
     try:
-        from observal_cli.ide_registry import get_valid_ides
+        from observal_cli.harness_registry import get_valid_harnesses
         from observal_cli.lockfile import get_agent_for_directory
 
-        for ide in get_valid_ides():
+        for ide in get_valid_harnesses():
             agent = get_agent_for_directory(ide, cwd)
             if agent:
                 return agent

@@ -31,7 +31,7 @@ class HookSubmitRequest(BaseModel):
     handler_config: dict = {}
     scope: str = "agent"
     tool_filter: list[str] | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     # Script delivery
     script_content: str | None = None
     script_filename: str | None = None
@@ -50,7 +50,7 @@ class HookSubmitRequest(BaseModel):
         make_option_validator("execution_mode", VALID_HOOK_EXECUTION_MODES)
     )
     _validate_scope = field_validator("scope")(make_option_validator("scope", VALID_HOOK_SCOPES))
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class HookDraftRequest(BaseModel):
@@ -65,7 +65,7 @@ class HookDraftRequest(BaseModel):
     handler_config: dict = {}
     scope: str = "agent"
     tool_filter: list[str] | None = None
-    supported_ides: list[str] = []
+    supported_harnesses: list[str] = []
     script_content: str | None = None
     script_filename: str | None = None
     source_url: str | None = None
@@ -73,7 +73,7 @@ class HookDraftRequest(BaseModel):
     source_path: str | None = None
     requirements: list[str] | None = None
 
-    _validate_ides = field_validator("supported_ides")(make_ide_list_validator())
+    _validate_ides = field_validator("supported_harnesses")(make_ide_list_validator())
 
 
 class HookUpdateRequest(BaseModel):
@@ -88,7 +88,7 @@ class HookUpdateRequest(BaseModel):
     handler_config: dict | None = None
     scope: str | None = None
     tool_filter: list[str] | None = None
-    supported_ides: list[str] | None = None
+    supported_harnesses: list[str] | None = None
     script_content: str | None = None
     script_filename: str | None = None
     source_url: str | None = None
@@ -109,7 +109,7 @@ class HookListingResponse(BaseModel):
     handler_type: str
     handler_config: dict
     scope: str
-    supported_ides: list[str]
+    supported_harnesses: list[str]
     script_content: str | None = None
     script_filename: str | None = None
     status: ListingStatus

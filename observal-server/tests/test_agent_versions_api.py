@@ -59,11 +59,11 @@ def _make_version(agent_id: uuid.UUID, ver: str = SEMVER_VALID, status: AgentSta
     v.model_name = "claude-3-5-sonnet"
     v.model_config_json = {}
     v.external_mcps = []
-    v.supported_ides = ["claude-code"]
-    v.required_ide_features = ["rules"]
-    v.inferred_supported_ides = ["claude-code"]
+    v.supported_harnesses = ["claude-code"]
+    v.required_capabilities = ["rules"]
+    v.inferred_supported_harnesses = ["claude-code"]
     v.yaml_snapshot = None
-    v.ide_configs = None
+    v.harness_configs = None
     v.status = status
     v.is_prerelease = False
     v.rejection_reason = None
@@ -299,7 +299,7 @@ async def test_create_version_happy_path():
         model_name="claude-3-5-sonnet",
         model_config_json={},
         external_mcps=[],
-        supported_ides=["claude-code"],
+        supported_harnesses=["claude-code"],
         components=[],
     )
 
@@ -318,7 +318,7 @@ async def test_create_version_happy_path():
         patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=agent)),
         patch("api.routes.agent_versions.validate_component_ids", new=AsyncMock(return_value=[])),
         patch("api.routes.agent_versions.infer_required_features", return_value=["rules"]),
-        patch("api.routes.agent_versions.compute_supported_ides", return_value=["claude-code"]),
+        patch("api.routes.agent_versions.compute_supported_harnesses", return_value=["claude-code"]),
         patch("api.routes.agent_versions.generate_agent_config", return_value={"mcpServers": {}}),
         patch("api.routes.agent_versions.audit", new=AsyncMock()),
         patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
@@ -473,7 +473,7 @@ async def test_create_version_co_author_allowed():
         patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=agent)),
         patch("api.routes.agent_versions.validate_component_ids", new=AsyncMock(return_value=[])),
         patch("api.routes.agent_versions.infer_required_features", return_value=[]),
-        patch("api.routes.agent_versions.compute_supported_ides", return_value=[]),
+        patch("api.routes.agent_versions.compute_supported_harnesses", return_value=[]),
         patch("api.routes.agent_versions.generate_agent_config", return_value={}),
         patch("api.routes.agent_versions.audit", new=AsyncMock()),
         patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
@@ -522,7 +522,7 @@ async def test_create_version_warns_multiple_pending():
         patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=agent)),
         patch("api.routes.agent_versions.validate_component_ids", new=AsyncMock(return_value=[])),
         patch("api.routes.agent_versions.infer_required_features", return_value=[]),
-        patch("api.routes.agent_versions.compute_supported_ides", return_value=[]),
+        patch("api.routes.agent_versions.compute_supported_harnesses", return_value=[]),
         patch("api.routes.agent_versions.generate_agent_config", return_value={}),
         patch("api.routes.agent_versions.audit", new=AsyncMock()),
         patch("services.agent_snapshot.build_yaml_snapshot", new=AsyncMock(return_value="snapshot")),
@@ -681,18 +681,18 @@ async def test_review_version_not_found_404():
 
 
 # ---------------------------------------------------------------------------
-# 5. IDE config endpoint
+# 5. harness config endpoint
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_get_ide_config_from_cache():
-    """get_agent_ide_config returns ide_configs[ide] when pre-generated."""
+    """get_agent_ide_config returns harness_configs[ide] when pre-generated."""
     from api.routes.agent_versions import _get_agent_ide_config
 
     agent = _make_agent()
     ver = _make_version(agent.id)
-    ver.ide_configs = {"claude-code": {"mcpServers": {}}}
+    ver.harness_configs = {"claude-code": {"mcpServers": {}}}
     db = _db_returning_one(ver)
 
     with patch("api.routes.agent_versions._load_agent", new=AsyncMock(return_value=agent)):
@@ -709,14 +709,14 @@ async def test_get_ide_config_from_cache():
 
 @pytest.mark.asyncio
 async def test_get_ide_config_404_when_not_cached():
-    """get_agent_ide_config raises 404 when IDE config is not pre-generated."""
+    """get_agent_ide_config raises 404 when harness config is not pre-generated."""
     from fastapi import HTTPException
 
     from api.routes.agent_versions import _get_agent_ide_config
 
     agent = _make_agent()
     ver = _make_version(agent.id)
-    ver.ide_configs = {}  # no cached config for requested IDE
+    ver.harness_configs = {}  # no cached config for requested harness
     db = _db_returning_one(ver)
 
     with (
@@ -793,7 +793,7 @@ async def test_diff_versions_structural_when_no_snapshot():
     ver1.prompt = "Old prompt"
     ver1.model_name = "claude-3-haiku"
     ver1.model_config_json = {}
-    ver1.supported_ides = ["claude-code"]
+    ver1.supported_harnesses = ["claude-code"]
     ver1.external_mcps = []
     ver1.components = []
 
@@ -803,7 +803,7 @@ async def test_diff_versions_structural_when_no_snapshot():
     ver2.prompt = "New prompt"
     ver2.model_name = "claude-3-5-sonnet"
     ver2.model_config_json = {}
-    ver2.supported_ides = ["claude-code"]
+    ver2.supported_harnesses = ["claude-code"]
     ver2.external_mcps = []
     ver2.components = []
 

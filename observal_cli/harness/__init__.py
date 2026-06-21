@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""CLI-side harness adapter protocol, registry, and orchestrator.
+
+Each harness has a self-contained adapter module implementing the HarnessAdapter
+protocol. Adapters auto-register via module-level register_adapter() calls
+when their module is imported (triggered by load_all).
+"""
+
+from __future__ import annotations
+
+from observal_cli.harness.protocol import (
+    METHOD_FEATURE_MAP,
+    DiscoveredAgent,
+    DiscoveredHook,
+    DiscoveredMcp,
+    DiscoveredSkill,
+    HookSpec,
+    HarnessAdapter,
+    NotSupportedError,
+    ScanResult,
+)
+from observal_cli.harness_registry import HARNESS_REGISTRY
+
+__all__ = [
+    "METHOD_FEATURE_MAP",
+    "DiscoveredAgent",
+    "DiscoveredHook",
+    "DiscoveredMcp",
+    "DiscoveredSkill",
+    "HookSpec",
+    "HarnessAdapter",
+    "NotSupportedError",
+    "ScanResult",
+    "ensure_loaded",
+    "get_adapter",
+    "get_all_adapters",
+    "register_adapter",
+]
+
+
+# ── Adapter Registry ──────────────────────────────────────────────
+
+_ADAPTER_REGISTRY: dict[str, HarnessAdapter] = {}
+
+def register_adapter(adapter: HarnessAdapter) -> None:
+    """Register an harness adapter instance.
+
+    Raises RuntimeError if the adapter is missing required protocol methods.
+    """
+    required = (
+        "harness_name",
+        "scan_home",
+        "is_installed",
+        "scan_project",
+        "get_hook_spec",
+        "generate_hook_config",
+        "detect_hooks",
+        "shim_status",
+        "get_observal_managed_files",
+    )
+    for method in required:
+        if not hasattr(adapter, method) or not callable(getattr(adapter, method, None)):
+            if method == "harness_name":
+                continue  # property, not callable
+            raise RuntimeError(f"Adapter {type(adapter).__name__} missing required method: {method}")
+    _ADAPTER_REGISTRY[adapter.harness_name] = adapter
+
+
+def get_adapter(harness: str) -> HarnessAdapter:
+    """Look up an adapter by harness name."""
+    adapter = _ADAPTER_REGISTRY.get(harness)
+    if adapter is None:
+        registered = sorted(_ADAPTER_REGISTRY.keys())
+        raise KeyError(f"No adapter registered for harness '{harness}'. Available: {', '.join(registered)}")
+    return adapter
+
+
+def get_all_adapters() -> dict[str, HarnessAdapter]:
+    """Return all registered adapters."""
+    return dict(_ADAPTER_REGISTRY)
+
+
+def ensure_loaded() -> None:
+    """Ensure all adapter modules have been imported and registered."""
+    if len(_ADAPTER_REGISTRY) < len(HARNESS_REGISTRY):
+        import observal_cli.harness.load_all  # noqa: F401

@@ -22,7 +22,7 @@ from pathlib import Path
 from loguru import logger as optic
 
 from observal_cli import config
-from observal_cli.ide_specs.claude_code_hooks_spec import (
+from observal_cli.harness_specs.claude_code_hooks_spec import (
     HOOKS_SPEC_VERSION,
     MANAGED_ENV_KEYS,
 )

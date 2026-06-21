@@ -6,7 +6,7 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Skill installer - installs bundled Observal skills to detected IDEs."""
+"""Skill installer - installs bundled Observal skills to detected harnesses."""
 
 from pathlib import Path
 
@@ -14,15 +14,15 @@ from rich import print as rprint
 
 
 def install_observal_skill():
-    """Install the bundled Observal skills to all detected IDE skill directories.
+    """Install the bundled Observal skills to all detected harness skill directories.
 
-    This makes the 'observal' family of skills available to LLMs in every IDE
+    This makes the 'observal' family of skills available to LLMs in every harness
     that supports skills, enabling commands like `/observal create an agent` or
     `kiro-cli chat --agent observal`.
     """
     import json as _json
 
-    from observal_cli.ide_registry import IDE_REGISTRY
+    from observal_cli.harness_registry import HARNESS_REGISTRY
 
     skills_base = Path(__file__).parent / "skills"
     skill_dirs = [
@@ -41,15 +41,15 @@ def install_observal_skill():
 
     installed: list[str] = []
 
-    for _ide, spec in IDE_REGISTRY.items():
-        skill_file_spec = spec.get("skill_file") or {}
+    for _ide, spec in HARNESS_REGISTRY.items():
+        skill_spec = spec.get("skills") or {}
 
         # Install to user scope (global)
-        user_path = skill_file_spec.get("user")
+        user_path = skill_spec.get("user")
         if not user_path:
             continue
 
-        # Only install if the IDE directory exists (IDE is installed)
+        # Only install if the harness directory exists (harness is installed)
         ide_config_dir = Path.home() / spec.get("config_dir", "")
         if not ide_config_dir.exists():
             continue
@@ -80,14 +80,14 @@ def install_observal_skill():
             settings_data = _json.loads(kiro_settings.read_text())
             active_agent = settings_data.get("chat.defaultAgent", "")
             if active_agent:
-                agent_file = Path.home() / ".kiro" / "agents" / f"{active_agent}.json"
-                if agent_file.exists():
-                    agent_data = _json.loads(agent_file.read_text())
+                agent_profile = Path.home() / ".kiro" / "agents" / f"{active_agent}.json"
+                if agent_profile.exists():
+                    agent_data = _json.loads(agent_profile.read_text())
                     resources = agent_data.get("resources", [])
                     if _kiro_skill_resource not in resources:
                         resources.append(_kiro_skill_resource)
                         agent_data["resources"] = resources
-                        agent_file.write_text(_json.dumps(agent_data, indent=2) + "\n")
+                        agent_profile.write_text(_json.dumps(agent_data, indent=2) + "\n")
         except (OSError, _json.JSONDecodeError):
             pass
 

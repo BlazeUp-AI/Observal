@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from observal_cli.ide.kiro import KiroAdapter
+from observal_cli.harness.kiro import KiroAdapter
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -18,7 +18,7 @@ from api.deps import get_db
 from api.ratelimit import limiter
 from config import HAS_LICENSE, settings
 from models.enterprise_config import EnterpriseConfig
-from schemas.ide_registry import IDE_REGISTRY
+from schemas.harness_registry import HARNESS_REGISTRY
 from schemas.sso_health import all_pass
 from services.oidc_health import run_oidc_checks
 from services.saml_health import run_saml_health_probe
@@ -209,38 +209,38 @@ async def sso_health(request: Request, db=Depends(get_db)):
     )
 
 
-@router.get("/ides")
-async def get_ides():
-    """Return the canonical IDE list from IDE_REGISTRY, filtered by allowlist."""
+@router.get("/harnesses")
+async def get_harnesses():
+    """Return the canonical harness list from HARNESS_REGISTRY, filtered by allowlist."""
     from services.dynamic_settings import get
 
-    optic.debug("config.get_ides called")
+    optic.debug("config.get_harnesses called")
 
-    allowlist_raw = await get("misc.ide_allowlist")
+    allowlist_raw = await get("misc.harness_allowlist")
     requested_allowlist = [s.strip() for s in allowlist_raw.split(",") if s.strip()] if allowlist_raw else []
-    valid_allowlist = [name for name in requested_allowlist if name in IDE_REGISTRY]
+    valid_allowlist = [name for name in requested_allowlist if name in HARNESS_REGISTRY]
     allowlist = set(valid_allowlist) if valid_allowlist else None
 
-    default_ide_raw = await get("misc.default_ide")
+    default_harness_raw = await get("misc.default_harness")
 
-    ides = []
-    for name, spec in IDE_REGISTRY.items():
+    harnesses = []
+    for name, spec in HARNESS_REGISTRY.items():
         if allowlist and name not in allowlist:
             continue
-        ides.append(
+        harnesses.append(
             {
                 "name": name,
                 "display_name": spec["display_name"],
-                "features": sorted(spec["features"]),
-                "accepts_model_choice": spec.get("accepts_model_choice", False),
+                "capabilities": sorted(spec["capabilities"]),
+                "supported_models": spec.get("supported_models", []),
             }
         )
     from fastapi.responses import JSONResponse
 
-    available_names = {ide["name"] for ide in ides}
-    default_ide = default_ide_raw if default_ide_raw in available_names else None
+    available_names = {harness["name"] for harness in harnesses}
+    default_harness = default_harness_raw if default_harness_raw in available_names else None
 
     return JSONResponse(
-        content={"ides": ides, "default_ide": default_ide},
+        content={"harnesses": harnesses, "default_harness": default_harness},
         headers={"Cache-Control": "no-store"},
     )

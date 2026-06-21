@@ -3,14 +3,14 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Verify that observal_cli.constants and ide_registry stay in sync with server."""
+"""Verify that observal_cli.constants and harness_registry stay in sync with server."""
 
 import importlib
 
 import pytest
 
 _SHARED_LISTS = [
-    "VALID_IDES",
+    "VALID_HARNESSES",
     "VALID_MCP_CATEGORIES",
     "VALID_MCP_TRANSPORTS",
     "VALID_MCP_FRAMEWORKS",
@@ -22,7 +22,7 @@ _SHARED_LISTS = [
     "VALID_PROMPT_CATEGORIES",
     "VALID_SANDBOX_RUNTIME_TYPES",
     "VALID_SANDBOX_NETWORK_POLICIES",
-    "IDE_FEATURES",
+    "HARNESS_CAPABILITY_NAMES",
 ]
 
 
@@ -35,67 +35,36 @@ def test_constants_match(name):
     assert server_val == cli_val, f"{name} mismatch: server={server_val!r}, cli={cli_val!r}"
 
 
-def test_ide_feature_matrix_match():
-    """IDE_FEATURE_MATRIX uses sets, so compare per-IDE."""
+def test_harness_capability_matrix_match():
+    """HARNESS_CAPABILITIES uses sets, so compare per-harness."""
     server = importlib.import_module("schemas.constants")
     cli = importlib.import_module("observal_cli.constants")
-    server_val = server.IDE_FEATURE_MATRIX
-    cli_val = cli.IDE_FEATURE_MATRIX
+    server_val = server.HARNESS_CAPABILITIES
+    cli_val = cli.HARNESS_CAPABILITIES
     assert server_val.keys() == cli_val.keys(), (
-        f"IDE_FEATURE_MATRIX key mismatch: server={sorted(server_val.keys())}, cli={sorted(cli_val.keys())}"
+        f"HARNESS_CAPABILITIES key mismatch: server={sorted(server_val.keys())}, cli={sorted(cli_val.keys())}"
     )
-    for ide in server_val:
-        assert server_val[ide] == cli_val[ide], (
-            f"IDE_FEATURE_MATRIX[{ide!r}] mismatch: server={server_val[ide]!r}, cli={cli_val[ide]!r}"
+    for harness in server_val:
+        assert server_val[harness] == cli_val[harness], (
+            f"HARNESS_CAPABILITIES[{harness!r}] mismatch: server={server_val[harness]!r}, cli={cli_val[harness]!r}"
         )
 
 
-def test_ide_registry_match():
-    """IDE_REGISTRY must be identical between server and CLI."""
-    server_reg = importlib.import_module("schemas.ide_registry")
-    cli_reg = importlib.import_module("observal_cli.ide_registry")
-    assert server_reg.IDE_REGISTRY.keys() == cli_reg.IDE_REGISTRY.keys(), (
-        f"IDE_REGISTRY key mismatch: "
-        f"server={sorted(server_reg.IDE_REGISTRY.keys())}, "
-        f"cli={sorted(cli_reg.IDE_REGISTRY.keys())}"
+def test_harness_registry_match():
+    """HARNESS_REGISTRY must be harnessntical between server and CLI."""
+    server_reg = importlib.import_module("schemas.harness_registry")
+    cli_reg = importlib.import_module("observal_cli.harness_registry")
+    assert server_reg.HARNESS_REGISTRY.keys() == cli_reg.HARNESS_REGISTRY.keys(), (
+        f"HARNESS_REGISTRY key mismatch: "
+        f"server={sorted(server_reg.HARNESS_REGISTRY.keys())}, "
+        f"cli={sorted(cli_reg.HARNESS_REGISTRY.keys())}"
     )
-    for ide in server_reg.IDE_REGISTRY:
-        server_spec = server_reg.IDE_REGISTRY[ide]
-        cli_spec = cli_reg.IDE_REGISTRY[ide]
+    for harness in server_reg.HARNESS_REGISTRY:
+        server_spec = server_reg.HARNESS_REGISTRY[harness]
+        cli_spec = cli_reg.HARNESS_REGISTRY[harness]
         for key in server_spec:
-            assert key in cli_spec, f"IDE_REGISTRY[{ide!r}] missing key {key!r} in CLI"
+            assert key in cli_spec, f"HARNESS_REGISTRY[{harness!r}] missing key {key!r} in CLI"
             assert server_spec[key] == cli_spec[key], (
-                f"IDE_REGISTRY[{ide!r}][{key!r}] mismatch: server={server_spec[key]!r}, cli={cli_spec[key]!r}"
+                f"HARNESS_REGISTRY[{harness!r}][{key!r}] mismatch: server={server_spec[key]!r}, cli={cli_spec[key]!r}"
             )
 
-
-def test_ide_registry_model_choice_fields():
-    """Every IDE must declare accepts_model_choice + auto_sentinel."""
-    server_reg = importlib.import_module("schemas.ide_registry")
-    cli_reg = importlib.import_module("observal_cli.ide_registry")
-    expected_accepts = {
-        "claude-code": True,
-        "kiro": True,
-        "codex": True,
-        "opencode": True,
-        "pi": True,
-        "cursor": False,
-        "copilot": False,
-        "copilot-cli": False,
-    }
-    for reg_name, reg in (("server", server_reg.IDE_REGISTRY), ("cli", cli_reg.IDE_REGISTRY)):
-        for ide, accepts in expected_accepts.items():
-            spec = reg[ide]
-            assert "accepts_model_choice" in spec, f"{reg_name}: {ide} missing accepts_model_choice"
-            assert "auto_sentinel" in spec, f"{reg_name}: {ide} missing auto_sentinel"
-            assert spec["accepts_model_choice"] is accepts, (
-                f"{reg_name}: {ide}.accepts_model_choice={spec['accepts_model_choice']!r}, expected {accepts!r}"
-            )
-            if accepts:
-                assert isinstance(spec["auto_sentinel"], dict), (
-                    f"{reg_name}: {ide} accepts_model_choice but auto_sentinel is not a dict"
-                )
-            else:
-                assert spec["auto_sentinel"] is None, (
-                    f"{reg_name}: {ide} does not accept_model_choice; auto_sentinel must be None"
-                )

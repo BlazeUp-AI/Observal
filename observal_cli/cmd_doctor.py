@@ -8,7 +8,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""observal doctor: diagnose and patch IDE settings for Observal session telemetry.
+"""observal doctor: diagnose and patch harness settings for Observal session telemetry.
 
 Supports Claude Code and Kiro.  Injects 2 hooks (UserPromptSubmit + Stop) that
 push session JSONL incrementally to the server.
@@ -26,8 +26,8 @@ from loguru import logger as optic
 from rich import print as rprint
 
 from observal_cli import config
-from observal_cli.ide_registry import get_home_mcp_configs, get_mcp_servers_key, get_valid_ides
-from observal_cli.ide_specs.claude_code_hooks_spec import (
+from observal_cli.harness_registry import get_home_mcp_configs, get_mcp_servers_key, get_valid_harnesses
+from observal_cli.harness_specs.claude_code_hooks_spec import (
     MANAGED_ENV_KEYS,
     get_desired_hooks,
 )
@@ -44,7 +44,7 @@ from observal_cli.shared.utils import (
     load_jsonc as _load_jsonc,
 )
 
-doctor_app = typer.Typer(help="Diagnose and patch IDE settings for Observal telemetry")
+doctor_app = typer.Typer(help="Diagnose and patch harness settings for Observal telemetry")
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -65,7 +65,7 @@ def _load_json(path: Path) -> dict | None:
 def doctor(
     ctx: typer.Context, yes: bool = typer.Option(False, "--yes", "-y", help="Auto-fix all issues without prompting")
 ):
-    """Diagnose IDE settings and offer to configure telemetry + AI skill."""
+    """Diagnose harness settings and offer to configure telemetry + AI skill."""
     if ctx.invoked_subcommand is not None:
         return
 
@@ -144,14 +144,14 @@ def doctor(
     if fixable and not yes and sys.stdin.isatty():
         rprint("")
         should_fix = typer.confirm(
-            "Fix all issues? (configures telemetry + installs AI skill for all detected IDEs)", default=True
+            "Fix all issues? (configures telemetry + installs AI skill for all detected harnesses)", default=True
         )
     if fixable and should_fix:
         import subprocess
 
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         subprocess.run(
-            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--all-ides"],
+            [sys.executable, "-m", "observal_cli.main", "doctor", "patch", "--all", "--all-harnesses"],
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -163,14 +163,14 @@ def doctor(
 
         install_observal_skill()
     elif fixable and not should_fix:
-        rprint("[dim]  Run [bold]observal doctor patch --all --all-ides[/bold] anytime to fix.[/dim]")
+        rprint("[dim]  Run [bold]observal doctor patch --all --all-harnesses[/bold] anytime to fix.[/dim]")
 
     raise typer.Exit(1 if issues else 0)
 
 
 def _check_observal_skill_missing() -> list[str]:
-    """Return list of IDE display names where the observal skill is not installed."""
-    from observal_cli.ide_registry import IDE_REGISTRY
+    """Return list of harness display names where the observal skill is not installed."""
+    from observal_cli.harness_registry import HARNESS_REGISTRY
 
     skill_source = Path(__file__).parent / "skills" / "observal" / "SKILL.md"
     if not skill_source.exists():
@@ -179,9 +179,9 @@ def _check_observal_skill_missing() -> list[str]:
     _extra_user_paths: dict[str, str] = {"kiro": "~/.kiro/skills/{name}/SKILL.md"}
     missing: list[str] = []
 
-    for ide, spec in IDE_REGISTRY.items():
-        skill_file_spec = spec.get("skill_file") or {}
-        user_path = skill_file_spec.get("user") or _extra_user_paths.get(ide)
+    for ide, spec in HARNESS_REGISTRY.items():
+        skill_spec = spec.get("skills") or {}
+        user_path = skill_spec.get("user") or _extra_user_paths.get(ide)
         if not user_path:
             continue
 
@@ -256,7 +256,7 @@ def _check_claude_code(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Claude Code session push hooks not installed. "
-            "Run `observal doctor patch --all --ide claude-code` to inject them."
+            "Run `observal doctor patch --all --harness claude-code` to inject them."
         )
 
     # Check for stale legacy hooks
@@ -274,7 +274,7 @@ def _check_claude_code(issues: list, warnings: list):
     if has_legacy:
         warnings.append(
             "Legacy Observal hooks detected (old hook scripts). "
-            "Run `observal doctor cleanup --ide claude-code` to remove them."
+            "Run `observal doctor cleanup --harness claude-code` to remove them."
         )
 
 
@@ -285,13 +285,13 @@ def _check_kiro(issues: list, warnings: list):
         rprint("  [dim]No ~/.kiro/agents/ found[/dim]")
         return
 
-    agent_files = list(agents_dir.glob("*.json"))
-    if not agent_files:
+    agent_profiles = list(agents_dir.glob("*.json"))
+    if not agent_profiles:
         rprint("  [dim]No Kiro agent configs found[/dim]")
         return
 
     has_session_push = False
-    for af in agent_files:
+    for af in agent_profiles:
         try:
             agent_data = json.loads(af.read_text())
         except Exception:
@@ -308,7 +308,7 @@ def _check_kiro(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Kiro session push hooks not installed in any agent config. "
-            "Run `observal doctor patch --all --ide kiro` to inject them."
+            "Run `observal doctor patch --all --harness kiro` to inject them."
         )
 
 
@@ -349,7 +349,7 @@ def _check_cursor(issues: list, warnings: list):
 
     if not hooks_path.exists():
         warnings.append(
-            "Cursor session push hooks not installed. Run `observal doctor patch --all --ide cursor` to inject them."
+            "Cursor session push hooks not installed. Run `observal doctor patch --all --harness cursor` to inject them."
         )
         return
 
@@ -369,7 +369,7 @@ def _check_cursor(issues: list, warnings: list):
 
     if not has_session_push:
         warnings.append(
-            "Cursor session push hooks not installed. Run `observal doctor patch --all --ide cursor` to inject them."
+            "Cursor session push hooks not installed. Run `observal doctor patch --all --harness cursor` to inject them."
         )
 
 
@@ -401,7 +401,7 @@ def _check_codex(issues: list, warnings: list):
 
     if not has_session_push:
         warnings.append(
-            "Codex session push hooks not installed. Run `observal doctor patch --all --ide codex` to inject them."
+            "Codex session push hooks not installed. Run `observal doctor patch --all --harness codex` to inject them."
         )
 
     # Check codex_hooks flag
@@ -445,7 +445,7 @@ def _check_copilot(issues: list, warnings: list):
     if not has_hooks:
         warnings.append(
             "Copilot (VS Code) session push hooks not installed. "
-            "Run `observal doctor patch --all --ide copilot` to inject them."
+            "Run `observal doctor patch --all --harness copilot` to inject them."
         )
 
 
@@ -461,7 +461,7 @@ def _check_copilot_cli(issues: list, warnings: list):
     if not hooks_path.exists():
         warnings.append(
             "Copilot CLI session push hooks not installed. "
-            "Run `observal doctor patch --all --ide copilot-cli` to inject them."
+            "Run `observal doctor patch --all --harness copilot-cli` to inject them."
         )
         return
 
@@ -482,7 +482,7 @@ def _check_copilot_cli(issues: list, warnings: list):
     if not has_session_push:
         warnings.append(
             "Copilot CLI session push hooks not installed. "
-            "Run `observal doctor patch --all --ide copilot-cli` to inject them."
+            "Run `observal doctor patch --all --harness copilot-cli` to inject them."
         )
 
 
@@ -497,7 +497,7 @@ def _check_opencode(issues: list, warnings: list):
     plugin_path = opencode_dir / "plugins" / "observal-plugin.ts"
     if not plugin_path.exists():
         warnings.append(
-            "OpenCode observal plugin not installed. Run `observal doctor patch --all --ide opencode` to inject it."
+            "OpenCode observal plugin not installed. Run `observal doctor patch --all --harness opencode` to inject it."
         )
 
 
@@ -515,7 +515,7 @@ def _check_antigravity(issues: list, warnings: list):
     if not hooks_path.exists():
         warnings.append(
             "Antigravity session push hooks not installed. "
-            "Run `observal doctor patch --all --ide antigravity` to inject them."
+            "Run `observal doctor patch --all --harness antigravity` to inject them."
         )
         return
 
@@ -528,7 +528,7 @@ def _check_antigravity(issues: list, warnings: list):
     if not isinstance(group, dict):
         warnings.append(
             "Antigravity session push hooks not installed. "
-            "Run `observal doctor patch --all --ide antigravity` to inject them."
+            "Run `observal doctor patch --all --harness antigravity` to inject them."
         )
         return
 
@@ -544,7 +544,7 @@ def _check_antigravity(issues: list, warnings: list):
     if not has_hook:
         warnings.append(
             "Antigravity session push hooks not installed. "
-            "Run `observal doctor patch --all --ide antigravity` to inject them."
+            "Run `observal doctor patch --all --harness antigravity` to inject them."
         )
 
 
@@ -555,15 +555,15 @@ def _check_antigravity(issues: list, warnings: list):
 def doctor_cleanup(
     ide: str = typer.Option(
         None,
-        "--ide",
+        "--harness",
         "-i",
-        help="Target IDE only (claude-code, kiro, cursor, codex, copilot, copilot-cli, opencode). Default: all.",
+        help="Target harness only (claude-code, kiro, cursor, codex, copilot, copilot-cli, opencode). Default: all.",
     ),
     exclude: list[str] = typer.Option(
         [],
         "--exclude",
         "-x",
-        help="Exclude specific IDE(s) from cleanup (repeatable).",
+        help="Exclude specific harness(s) from cleanup (repeatable).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would be removed without doing it"),
 ):
@@ -571,19 +571,19 @@ def doctor_cleanup(
 
     Strips Observal-managed hooks and env vars from Claude Code and
     Kiro settings. Leaves non-Observal hooks untouched. Useful when you
-    want to fully uninstall Observal instrumentation from an IDE without
-    removing the IDE config files themselves.
+    want to fully uninstall Observal instrumentation from an harness without
+    removing the harness config files themselves.
 
     \b
     Examples:
-      observal doctor cleanup                          # Clean all supported IDEs
-      observal doctor cleanup --ide claude-code        # Claude Code only
-      observal doctor cleanup --ide kiro               # Kiro only
-      observal doctor cleanup --ide claude-code --dry-run  # Preview without changes
+      observal doctor cleanup                          # Clean all supported harnesses
+      observal doctor cleanup --harness claude-code        # Claude Code only
+      observal doctor cleanup --harness kiro               # Kiro only
+      observal doctor cleanup --harness claude-code --dry-run  # Preview without changes
     """
     optic.trace("ide={}, exclude={}, dry_run={}", ide, exclude, dry_run)
-    all_ides = ["claude-code", "kiro", "cursor", "codex", "copilot", "copilot-cli", "opencode"]
-    targets = [ide] if ide else all_ides
+    all_harnesses = ["claude-code", "kiro", "cursor", "codex", "copilot", "copilot-cli", "opencode"]
+    targets = [ide] if ide else all_harnesses
     targets = [t for t in targets if t not in exclude]
     any_changes = False
 
@@ -619,10 +619,10 @@ def doctor_cleanup(
             any_changes = any_changes or changed
 
         else:
-            rprint(f"[yellow]Unknown IDE: {target}[/yellow]")
+            rprint(f"[yellow]Unknown harness: {target}[/yellow]")
 
     if any_changes and not dry_run:
-        rprint("\n[green]✓ Cleanup complete.[/green] Restart your IDE sessions to take effect.")
+        rprint("\n[green]✓ Cleanup complete.[/green] Restart your harness sessions to take effect.")
     elif not any_changes:
         rprint("\n[dim]Nothing to clean up - no Observal artifacts found.[/dim]")
 
@@ -699,9 +699,9 @@ def _cleanup_kiro(dry_run: bool) -> bool:
         return False
 
     changed = False
-    for agent_file in sorted(agents_dir.glob("*.json")):
+    for agent_profile in sorted(agents_dir.glob("*.json")):
         try:
-            agent_data = json.loads(agent_file.read_text())
+            agent_data = json.loads(agent_profile.read_text())
         except (json.JSONDecodeError, OSError):
             continue
 
@@ -725,9 +725,9 @@ def _cleanup_kiro(dry_run: bool) -> bool:
         if agent_changed:
             changed = True
             verb = "Would clean" if dry_run else "Cleaned"
-            rprint(f"  {verb} {agent_file.name}")
+            rprint(f"  {verb} {agent_profile.name}")
             if not dry_run:
-                agent_file.write_text(json.dumps(agent_data, indent=2) + "\n")
+                agent_profile.write_text(json.dumps(agent_data, indent=2) + "\n")
 
     if not changed:
         rprint("  [dim]No Observal artifacts found in Kiro agents[/dim]")
@@ -927,7 +927,7 @@ def _backup_config(config_path: Path) -> Path:
 
 
 def _parse_mcp_servers(config_data: dict, ide: str) -> dict[str, dict]:
-    """Extract MCP servers dict from IDE config using registry-defined key."""
+    """Extract MCP servers dict from harness config using registry-defined key."""
     optic.trace("config_data={}, ide={}", config_data, ide)
     key = get_mcp_servers_key(ide)
     if key == "mcp.servers":
@@ -970,7 +970,7 @@ def _shim_config_file(config_path: Path, ide: str, dry_run: bool) -> int:
 
 
 _SHIM_TARGETS: dict[str, Path] = {ide: Path(path).expanduser() for ide, path in get_home_mcp_configs().items() if path}
-_VALID_IDES = get_valid_ides()
+_VALID_HARNESSES = get_valid_harnesses()
 
 
 # ── Patch command ────────────────────────────────────────────
@@ -981,22 +981,22 @@ def doctor_patch(
     hook: bool = typer.Option(False, "--hook", help="Install session push hooks (Claude Code + Kiro)"),
     shim: bool = typer.Option(False, "--shim", help="Wrap MCP servers with observal-shim"),
     all_: bool = typer.Option(False, "--all", help="Hooks + shims"),
-    all_ides: bool = typer.Option(False, "--all-ides", help="Target every detected IDE"),
-    ide: list[str] = typer.Option([], "--ide", "-i", help="Target specific IDE (repeatable)"),
+    all_harnesses: bool = typer.Option(False, "--all-harnesses", help="Target every detected harness"),
+    ide: list[str] = typer.Option([], "--harness", "-i", help="Target specific harness (repeatable)"),
     dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without writing"),
 ):
-    """Instrument IDEs with Observal telemetry hooks and shims.
+    """Instrument harnesses with Observal telemetry hooks and shims.
 
-    Requires at least one of --hook/--shim/--all AND one of --all-ides/--ide.
+    Requires at least one of --hook/--shim/--all AND one of --all-harnesses/--harness.
     Session JSONL hooks (--hook) are only supported for Claude Code and Kiro.
-    MCP shim wrapping (--shim) works for all IDEs.
+    MCP shim wrapping (--shim) works for all harnesses.
 
     \b
     Examples:
-      observal doctor patch --all --all-ides           # Everything, everywhere
-      observal doctor patch --hook --ide claude-code   # Claude Code hooks only
-      observal doctor patch --shim --ide cursor        # Cursor shims only
-      observal doctor patch --all --all-ides --dry-run # Preview changes
+      observal doctor patch --all --all-harnesses           # Everything, everywhere
+      observal doctor patch --hook --harness claude-code   # Claude Code hooks only
+      observal doctor patch --shim --harness cursor        # Cursor shims only
+      observal doctor patch --all --all-harnesses --dry-run # Preview changes
     """
     optic.trace("hook={}, shim={}", hook, shim)
     do_hooks = hook or all_
@@ -1006,8 +1006,8 @@ def doctor_patch(
         rprint("[red]Specify at least one of --hook, --shim, or --all[/red]")
         raise typer.Exit(1)
 
-    if not all_ides and not ide:
-        rprint("[red]Specify --all-ides or --ide <name>[/red]")
+    if not all_harnesses and not ide:
+        rprint("[red]Specify --all-harnesses or --harness <name>[/red]")
         raise typer.Exit(1)
 
     cfg = config.load()
@@ -1016,10 +1016,10 @@ def doctor_patch(
         rprint("[red]Not configured. Run [bold]observal auth login[/bold] first.[/red]")
         raise typer.Exit(1)
 
-    targets = list(ide) if ide else _VALID_IDES if all_ides else []
+    targets = list(ide) if ide else _VALID_HARNESSES if all_harnesses else []
     for t in targets:
-        if t not in _VALID_IDES:
-            rprint(f"[red]Unknown IDE: {t}. Valid: {', '.join(_VALID_IDES)}[/red]")
+        if t not in _VALID_HARNESSES:
+            rprint(f"[red]Unknown harness: {t}. Valid: {', '.join(_VALID_HARNESSES)}[/red]")
             raise typer.Exit(1)
 
     any_changes = False
@@ -1057,7 +1057,7 @@ def doctor_patch(
                 changed = _patch_antigravity(dry_run)
                 any_changes = any_changes or changed
 
-        # ── Shims (all IDEs with home MCP config) ──
+        # ── Shims (all harnesses with home MCP config) ──
         if do_shims:
             shim_path = _SHIM_TARGETS.get(target)
             if shim_path and shim_path.exists():
@@ -1072,7 +1072,7 @@ def doctor_patch(
     if dry_run:
         rprint("\n[yellow]Dry run - no changes made.[/yellow]")
     elif any_changes:
-        rprint("\n[green]✓ Patch complete.[/green] Restart your IDE sessions to pick up changes.")
+        rprint("\n[green]✓ Patch complete.[/green] Restart your harness sessions to pick up changes.")
         from observal_cli.audit import emit_cli_audit
 
         emit_cli_audit(
@@ -1113,7 +1113,7 @@ def _patch_claude_code(dry_run: bool) -> bool:
 def _patch_kiro(dry_run: bool) -> bool:
     """Install session push hooks into Kiro agent configs."""
     optic.trace("dry_run={}", dry_run)
-    from observal_cli.ide_specs.kiro_hooks_spec import build_kiro_hooks
+    from observal_cli.harness_specs.kiro_hooks_spec import build_kiro_hooks
 
     rprint("[cyan]Kiro - session push hooks[/cyan]")
 
@@ -1122,15 +1122,15 @@ def _patch_kiro(dry_run: bool) -> bool:
         rprint("  [dim]No ~/.kiro/agents/ directory - skipping[/dim]")
         return False
 
-    agent_files = list(agents_dir.glob("*.json"))
-    if not agent_files:
+    agent_profiles = list(agents_dir.glob("*.json"))
+    if not agent_profiles:
         rprint("  [dim]No agent configs found[/dim]")
         return False
 
     desired_hooks = build_kiro_hooks()
     changed = False
 
-    for af in agent_files:
+    for af in agent_profiles:
         agent_name = af.stem
         try:
             data = json.loads(af.read_text())
@@ -1234,7 +1234,7 @@ def _patch_cursor(dry_run: bool) -> bool:
 
 def _patch_antigravity(dry_run: bool) -> bool:
     """Install session push hooks into ~/.gemini/config/hooks.json."""
-    from observal_cli.ide_specs.antigravity_hooks_spec import (
+    from observal_cli.harness_specs.antigravity_hooks_spec import (
         _OBSERVAL_HOOK_NAME,
         build_antigravity_hooks,
     )
@@ -1320,7 +1320,7 @@ def _patch_pi(dry_run: bool) -> bool:
 def _patch_codex(dry_run: bool) -> bool:
     """Install session push hooks into ~/.codex/hooks.json and enable codex_hooks flag."""
     optic.debug("_patch_codex: dry_run={}", dry_run)
-    from observal_cli.ide_specs.codex_hooks_spec import build_codex_hooks
+    from observal_cli.harness_specs.codex_hooks_spec import build_codex_hooks
 
     rprint("[cyan]Codex - session push hooks[/cyan]")
 
@@ -1421,7 +1421,7 @@ def _patch_copilot(dry_run: bool) -> bool:
     2. Installs run_hook.ps1 wrapper script
     """
     optic.debug("_patch_copilot: dry_run={}", dry_run)
-    from observal_cli.ide_specs.copilot_hooks_spec import build_copilot_hooks, build_copilot_run_hook_ps1
+    from observal_cli.harness_specs.copilot_hooks_spec import build_copilot_hooks, build_copilot_run_hook_ps1
 
     rprint("[cyan]Copilot (VS Code) - session push hooks[/cyan]")
 
@@ -1532,7 +1532,7 @@ def _patch_copilot(dry_run: bool) -> bool:
 def _patch_copilot_cli(dry_run: bool) -> bool:
     """Install session push hooks into ~/.copilot/hooks/observal.json."""
     optic.debug("_patch_copilot_cli: dry_run={}", dry_run)
-    from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+    from observal_cli.harness_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
 
     rprint("[cyan]Copilot CLI - session push hooks[/cyan]")
 
@@ -1590,7 +1590,7 @@ def _patch_copilot_cli(dry_run: bool) -> bool:
 def _patch_opencode(dry_run: bool) -> bool:
     """Install observal telemetry plugin into ~/.config/opencode/plugins/."""
     optic.debug("_patch_opencode: dry_run={}", dry_run)
-    from observal_cli.ide_specs.opencode_hooks_spec import get_plugin_source
+    from observal_cli.harness_specs.opencode_hooks_spec import get_plugin_source
 
     rprint("[cyan]OpenCode - telemetry plugin[/cyan]")
 

@@ -110,7 +110,7 @@ def generate_config(
     mcp_id = str(listing.id)
     server_env = _build_server_env(listing, env_values)
 
-    # SSE / streamable-http transport: point IDE at the remote URL
+    # SSE / streamable-http transport: point harness at the remote URL
     if listing.url and (listing.transport or "").lower() in ("sse", "streamable-http", ""):
         transport_type = (listing.transport or "sse").lower()
         config: dict = {"type": transport_type, "url": listing.url}
@@ -152,7 +152,7 @@ def generate_config(
             }
         return {"mcpServers": {name: config}}
 
-    # HTTP proxy transport (existing): point IDE at the proxy URL
+    # HTTP proxy transport (existing): point harness at the proxy URL
     if proxy_port is not None:
         proxy_url = f"http://localhost:{proxy_port}"
         if ide == "claude-code":

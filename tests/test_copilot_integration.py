@@ -29,29 +29,29 @@ from hypothesis import strategies as st
 
 
 class TestRegistryAndFrontend:
-    """Registry entries for Copilot IDE support."""
+    """Registry entries for Copilot harness support."""
 
     def test_copilot_feature_matrix(self):
         """Copilot features == {"mcp_servers", "hooks", "skills"}."""
-        from observal_cli.constants import IDE_FEATURE_MATRIX
+        from observal_cli.constants import HARNESS_CAPABILITIES
 
-        assert IDE_FEATURE_MATRIX["copilot"] == {"mcp_servers", "hooks", "skills"}
+        assert HARNESS_CAPABILITIES["copilot"] == {"mcp_servers", "hooks", "skills"}
 
     def test_copilot_session_parser(self):
         """Copilot session_parser is 'copilot-cli' (shares parser with Copilot CLI)."""
-        from observal_cli.ide_registry import IDE_REGISTRY
+        from observal_cli.harness_registry import HARNESS_REGISTRY
 
-        assert IDE_REGISTRY["copilot"]["session_parser"] == "copilot-cli"
+        assert HARNESS_REGISTRY["copilot"]["session_parser"] == "copilot-cli"
 
     def test_copilot_cli_session_parser(self):
         """Copilot CLI session_parser is 'copilot-cli'."""
-        from observal_cli.ide_registry import IDE_REGISTRY
+        from observal_cli.harness_registry import HARNESS_REGISTRY
 
-        assert IDE_REGISTRY["copilot-cli"]["session_parser"] == "copilot-cli"
+        assert HARNESS_REGISTRY["copilot-cli"]["session_parser"] == "copilot-cli"
 
     def test_copilot_cli_hook_events_map(self):
         """Copilot CLI hook_events_map contains all 5 events with correct mappings."""
-        from observal_cli.ide_registry import IDE_REGISTRY
+        from observal_cli.harness_registry import HARNESS_REGISTRY
 
         expected = {
             "SessionStart": "sessionStart",
@@ -60,11 +60,11 @@ class TestRegistryAndFrontend:
             "PostToolUse": "postToolUse",
             "Stop": "sessionEnd",
         }
-        assert IDE_REGISTRY["copilot-cli"]["hook_events_map"] == expected
+        assert HARNESS_REGISTRY["copilot-cli"]["hook_events_map"] == expected
 
     def test_copilot_hook_events_map(self):
         """Copilot hook_events_map contains PascalCase events."""
-        from observal_cli.ide_registry import IDE_REGISTRY
+        from observal_cli.harness_registry import HARNESS_REGISTRY
 
         expected = {
             "SessionStart": "SessionStart",
@@ -73,10 +73,10 @@ class TestRegistryAndFrontend:
             "PostToolUse": "PostToolUse",
             "Stop": "Stop",
         }
-        assert IDE_REGISTRY["copilot"]["hook_events_map"] == expected
+        assert HARNESS_REGISTRY["copilot"]["hook_events_map"] == expected
 
     def test_parse_raw_events_handles_unknown_ide_gracefully(self):
-        """parse_raw_events raises KeyError for unknown IDEs (strict dispatch)."""
+        """parse_raw_events raises KeyError for unknown harnesses (strict dispatch)."""
         from services.session_parsers import parse_raw_events
 
         rows = [{"ide": "unknown-ide-xyz", "raw_line": "", "timestamp": "2025-01-01 00:00:00.000"}]
@@ -84,10 +84,10 @@ class TestRegistryAndFrontend:
             parse_raw_events(rows)
 
     def test_get_classifier_raises_for_none_parser(self):
-        """get_classifier raises ValueError for IDE with session_parser=None."""
+        """get_classifier raises ValueError for harness with session_parser=None."""
         from services.session_parsers.ingest_classify import get_classifier
 
-        # Test that an unknown IDE raises KeyError (not silently falls through)
+        # Test that an unknown harness raises KeyError (not silently falls through)
         with pytest.raises(KeyError):
             get_classifier("unknown-ide-xyz")
 
@@ -102,7 +102,7 @@ class TestCopilotAdapterDetectHooks:
 
     def test_returns_installed_when_hooks_present(self, tmp_path, monkeypatch):
         """Returns 'installed' when .github/hooks has observal hook file."""
-        from observal_cli.ide.copilot import CopilotAdapter
+        from observal_cli.harness.copilot import CopilotAdapter
 
         hooks_dir = tmp_path / ".github" / "hooks"
         hooks_dir.mkdir(parents=True)
@@ -117,7 +117,7 @@ class TestCopilotAdapterDetectHooks:
 
     def test_returns_missing_when_no_hooks(self, tmp_path, monkeypatch):
         """Returns 'missing' when no hook files exist."""
-        from observal_cli.ide.copilot import CopilotAdapter
+        from observal_cli.harness.copilot import CopilotAdapter
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         adapter = CopilotAdapter()
@@ -128,7 +128,7 @@ class TestCopilotAdapterScan:
     """CopilotAdapter scan_home and scan_project."""
 
     def test_scan_home_finds_mcps(self, tmp_path):
-        from observal_cli.ide.copilot import CopilotAdapter
+        from observal_cli.harness.copilot import CopilotAdapter
 
         vscode_dir = tmp_path / ".vscode"
         vscode_dir.mkdir()
@@ -142,14 +142,14 @@ class TestCopilotAdapterScan:
         assert result.mcps[0].name == "test-srv"
 
     def test_scan_home_empty_when_no_vscode(self, tmp_path):
-        from observal_cli.ide.copilot import CopilotAdapter
+        from observal_cli.harness.copilot import CopilotAdapter
 
         adapter = CopilotAdapter()
         result = adapter.scan_home(home=tmp_path)
         assert result.mcps == []
 
     def test_scan_project_finds_mcps(self, tmp_path):
-        from observal_cli.ide.copilot import CopilotAdapter
+        from observal_cli.harness.copilot import CopilotAdapter
 
         vscode_dir = tmp_path / ".vscode"
         vscode_dir.mkdir()
@@ -167,7 +167,7 @@ class TestCopilotCliAdapterSkills:
     """CopilotCliAdapter._scan_skills_dir() finds skills."""
 
     def test_finds_skills_at_project_path(self, tmp_path):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         skills_dir = tmp_path / ".agents" / "skills" / "my-skill"
         skills_dir.mkdir(parents=True)
@@ -178,7 +178,7 @@ class TestCopilotCliAdapterSkills:
         assert result.skills[0].name == "my-skill"
 
     def test_finds_skills_at_user_path(self, tmp_path):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         copilot_dir = tmp_path / ".copilot"
         copilot_dir.mkdir()
@@ -195,7 +195,7 @@ class TestCopilotCliAdapterAgents:
     """CopilotCliAdapter._scan_agents_dir() finds .github/agents/*.agent.md."""
 
     def test_finds_agent_md_files(self, tmp_path):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         agents_dir = tmp_path / ".github" / "agents"
         agents_dir.mkdir(parents=True)
@@ -213,7 +213,7 @@ class TestCopilotCliAdapterDetectHooks:
     """CopilotCliAdapter.detect_hooks() finds observal markers."""
 
     def test_finds_hooks_in_user_path(self, tmp_path, monkeypatch):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         hooks_dir = tmp_path / ".copilot" / "hooks"
         hooks_dir.mkdir(parents=True)
@@ -235,7 +235,7 @@ class TestCopilotCliAdapterDetectHooks:
         assert adapter.detect_hooks(tmp_path) == "installed"
 
     def test_finds_hooks_in_project_path(self, tmp_path, monkeypatch):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         # No user-level hooks
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
@@ -259,7 +259,7 @@ class TestCopilotCliAdapterDetectHooks:
         assert adapter.detect_hooks(tmp_path) == "installed"
 
     def test_returns_missing_when_no_hooks(self, tmp_path, monkeypatch):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         adapter = CopilotCliAdapter()
@@ -270,21 +270,21 @@ class TestCopilotCliAdapterHookSpec:
     """CopilotCliAdapter.get_hook_spec() returns correct event names and format."""
 
     def test_hook_spec_events(self):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         adapter = CopilotCliAdapter()
         spec = adapter.get_hook_spec()
         assert set(spec.events) == {"sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse", "postToolUse"}
 
     def test_hook_spec_format(self):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         adapter = CopilotCliAdapter()
         spec = adapter.get_hook_spec()
         assert spec.format == "command"
 
     def test_hook_spec_markers(self):
-        from observal_cli.ide.copilot_cli import CopilotCliAdapter
+        from observal_cli.harness.copilot_cli import CopilotCliAdapter
 
         adapter = CopilotCliAdapter()
         spec = adapter.get_hook_spec()
@@ -300,20 +300,20 @@ class TestBuildCopilotCliHooks:
     """build_copilot_cli_hooks() returns correct structure."""
 
     def test_returns_version_1(self):
-        from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+        from observal_cli.harness_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
 
         result = build_copilot_cli_hooks()
         assert result["version"] == 1
 
     def test_contains_all_5_events(self):
-        from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+        from observal_cli.harness_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
 
         result = build_copilot_cli_hooks()
         expected_events = {"sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse", "postToolUse"}
         assert set(result["hooks"].keys()) == expected_events
 
     def test_each_event_has_bash_key(self):
-        from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+        from observal_cli.harness_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
 
         result = build_copilot_cli_hooks()
         for event, entries in result["hooks"].items():
@@ -321,7 +321,7 @@ class TestBuildCopilotCliHooks:
             assert "bash" in entries[0], f"Event {event} missing 'bash' key"
 
     def test_each_event_has_timeout(self):
-        from observal_cli.ide_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
+        from observal_cli.harness_specs.copilot_cli_hooks_spec import build_copilot_cli_hooks
 
         result = build_copilot_cli_hooks()
         for event, entries in result["hooks"].items():
@@ -893,7 +893,7 @@ class TestServerAdapterFormatConfig:
     """Server adapter format_config(): correct output structure."""
 
     def _make_ctx(self, **overrides):
-        from services.ide import ConfigContext
+        from services.harness import ConfigContext
 
         defaults = {
             "safe_name": "test-agent",
@@ -914,7 +914,7 @@ class TestServerAdapterFormatConfig:
         return ctx
 
     def test_correct_hook_file_format(self):
-        from services.ide.copilot_cli import CopilotCliAdapter
+        from services.harness.copilot_cli import CopilotCliAdapter
 
         ctx = self._make_ctx()
         adapter = CopilotCliAdapter()
@@ -929,17 +929,17 @@ class TestServerAdapterFormatConfig:
         expected_events = {"sessionStart", "sessionEnd", "userPromptSubmitted", "preToolUse", "postToolUse"}
         assert set(content["hooks"].keys()) == expected_events
 
-    def test_correct_agent_file_path(self):
-        from services.ide.copilot_cli import CopilotCliAdapter
+    def test_correct_agent_profile_path(self):
+        from services.harness.copilot_cli import CopilotCliAdapter
 
         ctx = self._make_ctx(safe_name="my-agent")
         adapter = CopilotCliAdapter()
         result = adapter.format_config(ctx)
 
-        assert result["rules_file"]["path"] == ".github/agents/my-agent.agent.md"
+        assert result["agent_profile"]["path"] == ".github/agents/my-agent.agent.md"
 
     def test_correct_mcp_config_structure(self):
-        from services.ide.copilot_cli import CopilotCliAdapter
+        from services.harness.copilot_cli import CopilotCliAdapter
 
         ctx = self._make_ctx()
         adapter = CopilotCliAdapter()
@@ -949,17 +949,17 @@ class TestServerAdapterFormatConfig:
         assert mcp_config["path"] == ".mcp.json"
         assert "mcpServers" in mcp_config["content"]
 
-    def test_correct_skill_file_paths(self):
-        from services.ide.copilot_cli import CopilotCliAdapter
+    def test_correct_skill_paths(self):
+        from services.harness.copilot_cli import CopilotCliAdapter
 
         skill = {"name": "my-skill", "content": "# Skill", "git_url": "https://example.com/skill.git"}
         ctx = self._make_ctx(skill_configs=[skill])
         adapter = CopilotCliAdapter()
         result = adapter.format_config(ctx)
 
-        if "skill_files" in result:
+        if "skills" in result:
             # Skill files should be generated
-            assert len(result["skill_files"]) >= 1
+            assert len(result["skills"]) >= 1
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1115,7 +1115,7 @@ class TestPropertyConfigGenerationFormat:
         """
         assume(len(agent_info["name"].strip()) > 0)
 
-        from services.ide.copilot_cli import CopilotCliAdapter
+        from services.harness.copilot_cli import CopilotCliAdapter
 
         ctx = MagicMock()
         ctx.safe_name = agent_info["name"].strip().replace(" ", "-")
@@ -1132,10 +1132,10 @@ class TestPropertyConfigGenerationFormat:
         result = adapter.format_config(ctx)
 
         # Verify structure
-        assert "rules_file" in result
-        assert "path" in result["rules_file"]
-        assert "content" in result["rules_file"]
-        assert result["rules_file"]["path"].endswith(".agent.md")
+        assert "agent_profile" in result
+        assert "path" in result["agent_profile"]
+        assert "content" in result["agent_profile"]
+        assert result["agent_profile"]["path"].endswith(".agent.md")
 
         assert "mcp_config" in result
         assert result["mcp_config"]["path"] == ".mcp.json"

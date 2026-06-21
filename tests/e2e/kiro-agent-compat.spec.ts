@@ -63,7 +63,7 @@ test.describe("Kiro Agent Cross-Compatibility", () => {
 
     try {
       run(
-        `observal pull ${agentId} --ide kiro --dir /tmp/kiro-compat-pull 2>&1`,
+        `observal pull ${agentId} --harness kiro --dir /tmp/kiro-compat-pull 2>&1`,
       );
     } catch (e: unknown) {
       // Pull might fail if agent has no components — that's OK for this test
@@ -101,7 +101,7 @@ test.describe("Kiro Agent Cross-Compatibility", () => {
 
     try {
       run(
-        `observal pull ${agentId} --ide claude-code --dir /tmp/cc-compat-pull 2>&1`,
+        `observal pull ${agentId} --harness claude-code --dir /tmp/cc-compat-pull 2>&1`,
       );
     } catch (e: unknown) {
       const err = e as { stdout?: string; message?: string };

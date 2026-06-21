@@ -35,7 +35,7 @@ from schemas.agent import (
     AgentUpdateRequest,
 )
 from services.config_generator import validate_mcp_command
-from services.ide_feature_inference import compute_supported_ides, infer_required_features
+from services.harness_capability_inference import compute_supported_harnesses, infer_required_features
 from services.registry_telemetry import emit_registry_event
 
 from ._router import router
@@ -120,9 +120,9 @@ async def create_agent(
         prompt=req.prompt,
         model_name=req.model_name,
         model_config_json=req.model_config_json,
-        models_by_ide=req.models_by_ide,
+        models_by_harness=req.models_by_harness,
         external_mcps=[m.model_dump() for m in req.external_mcps],
-        supported_ides=req.supported_ides,
+        supported_harnesses=req.supported_harnesses,
         status=AgentStatus.pending,
         released_by=current_user.id,
     )
@@ -161,7 +161,7 @@ async def create_agent(
         )
         order += 1
 
-    # Auto-infer IDE feature requirements from the request data
+    # Auto-infer harness feature requirements from the request data
     # (avoid accessing agent.components which would trigger a lazy load)
     all_crefs = list(req.components) + [
         type("_Ref", (), {"component_type": "mcp", "component_id": mid})() for mid in req.mcp_server_ids
@@ -177,8 +177,8 @@ async def create_agent(
         components = all_crefs
         external_mcps = version.external_mcps
 
-    version.required_ide_features = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map)
-    version.inferred_supported_ides = compute_supported_ides(version.required_ide_features)
+    version.required_capabilities = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map)
+    version.inferred_supported_harnesses = compute_supported_harnesses(version.required_capabilities)
 
     # Flush pending AgentComponent + goal rows so the snapshot builder picks
     # them up via its own SELECTs (the relationship cache is empty).
@@ -288,7 +288,7 @@ async def list_agents(
             description=a.description,
             owner=a.owner,
             model_name=a.model_name,
-            supported_ides=a.supported_ides,
+            supported_harnesses=a.supported_harnesses,
             status=a.status,
             rejection_reason=a.rejection_reason,
             download_count=a.download_count,
@@ -337,7 +337,7 @@ async def my_agents(
             description=a.description,
             owner=a.owner,
             model_name=a.model_name,
-            supported_ides=a.supported_ides,
+            supported_harnesses=a.supported_harnesses,
             status=a.status,
             rejection_reason=a.rejection_reason,
             download_count=a.download_count,
@@ -399,7 +399,7 @@ async def archived_agents(
             description=a.description,
             owner=a.owner,
             model_name=a.model_name,
-            supported_ides=a.supported_ides,
+            supported_harnesses=a.supported_harnesses,
             status=a.status,
             rejection_reason=a.rejection_reason,
             download_count=a.download_count,
@@ -460,7 +460,7 @@ async def deleted_agents(
             description=a.description,
             owner=a.owner,
             model_name=a.model_name,
-            supported_ides=a.supported_ides,
+            supported_harnesses=a.supported_harnesses,
             status=a.status,
             rejection_reason=a.rejection_reason,
             download_count=a.download_count,
@@ -591,8 +591,8 @@ async def update_agent(
         "prompt",
         "model_name",
         "model_config_json",
-        "models_by_ide",
-        "supported_ides",
+        "models_by_harness",
+        "supported_harnesses",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -682,7 +682,7 @@ async def update_agent(
                 )
             )
 
-    # Re-infer IDE features only when components or external_mcps changed
+    # Re-infer harness features only when components or external_mcps changed
     if req.components is not None or req.mcp_server_ids is not None or req.external_mcps is not None:
         if not agent.latest_version:
             raise HTTPException(status_code=400, detail="Agent has no version to update features on")
@@ -701,8 +701,8 @@ async def update_agent(
             components = current_comps
             external_mcps = agent.external_mcps
 
-        agent.required_ide_features = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map_update)
-        agent.inferred_supported_ides = compute_supported_ides(agent.required_ide_features)
+        agent.required_capabilities = infer_required_features(_AgentProxy(), skill_listings=skill_listings_map_update)
+        agent.inferred_supported_harnesses = compute_supported_harnesses(agent.required_capabilities)
 
     await db.commit()
     agent = await _load_agent(db, str(agent.id))

@@ -114,17 +114,17 @@ def _agent_to_response(
         "prompt",
         "model_name",
         "model_config_json",
-        "models_by_ide",
+        "models_by_harness",
         "external_mcps",
-        "supported_ides",
-        "required_ide_features",
-        "inferred_supported_ides",
+        "supported_harnesses",
+        "required_capabilities",
+        "inferred_supported_harnesses",
         "status",
         "rejection_reason",
     ):
         agent_dict[field] = getattr(agent, field)
-    if not isinstance(agent_dict.get("models_by_ide"), dict):
-        agent_dict["models_by_ide"] = {}
+    if not isinstance(agent_dict.get("models_by_harness"), dict):
+        agent_dict["models_by_harness"] = {}
     agent_dict["mcp_links"] = mcp_links
     agent_dict["component_links"] = component_links
     agent_dict["created_by_email"] = created_by_email

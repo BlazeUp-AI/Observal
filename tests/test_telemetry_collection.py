@@ -159,7 +159,7 @@ class _MockListing:
 
 class TestSandboxMcpEntryBuilder:
     def test_basic(self):
-        from services.ide.helpers import _build_sandbox_mcp_entry
+        from services.harness.helpers import _build_sandbox_mcp_entry
 
         listing = _MockListing(id="s-123", name="sandbox-a", image="python:3.12", entrypoint=None, resource_limits={})
         config = _build_sandbox_mcp_entry({"s-123": listing}, "cursor")
@@ -168,7 +168,7 @@ class TestSandboxMcpEntryBuilder:
         assert "observal_cli.sandbox_mcp" in " ".join(config["observal-sandbox"]["args"])
 
     def test_empty(self):
-        from services.ide.helpers import _build_sandbox_mcp_entry
+        from services.harness.helpers import _build_sandbox_mcp_entry
 
         config = _build_sandbox_mcp_entry({}, "kiro")
         assert config == {}

@@ -4,10 +4,10 @@
 
 """Session JSONL ingest service.
 
-Receives raw JSONL transcript lines from IDE sessions, classifies each
+Receives raw JSONL transcript lines from harness sessions, classifies each
 line into an event type, and batch-inserts into the ``session_events`` table.
 
-Classification dispatches strictly by IDE via
+Classification dispatches strictly by harness via
 ``services.session_parsers.ingest_classify.get_classifier`` -- there is no
 default fallback.  Passing an unknown ``ide`` value raises ``KeyError``.
 """
@@ -25,7 +25,7 @@ from services.secrets_redactor import redact_secrets
 from services.session_parsers.ingest_classify import extract_timestamp, get_classifier, get_extra_rows
 
 # ---------------------------------------------------------------------------
-# Per-IDE token usage extraction (dispatch pattern)
+# Per-harness token usage extraction (dispatch pattern)
 # ---------------------------------------------------------------------------
 
 
@@ -135,7 +135,7 @@ _USAGE_EXTRACTORS: dict[str, _UsageFn] = {
 
 
 # ---------------------------------------------------------------------------
-# Per-IDE UUID extraction (dispatch pattern)
+# Per-harness UUID extraction (dispatch pattern)
 # ---------------------------------------------------------------------------
 
 
@@ -172,7 +172,7 @@ _UUID_EXTRACTORS: dict[str, _UuidFn] = {
 def _extract_usage_tokens(parsed: dict, ide: str = "claude-code") -> dict:
     """Extract input/output/cache token counts and model from a parsed JSONL line.
 
-    Dispatches to per-IDE extractor. Falls back to Claude Code format.
+    Dispatches to per-harness extractor. Falls back to Claude Code format.
     """
     extractor = _USAGE_EXTRACTORS.get(ide, _usage_claude_code)
     return extractor(parsed)
@@ -181,7 +181,7 @@ def _extract_usage_tokens(parsed: dict, ide: str = "claude-code") -> dict:
 def _extract_uuid(parsed: dict, ide: str = "claude-code") -> tuple[str | None, str | None]:
     """Extract (uuid, parent_uuid) from a parsed JSONL line.
 
-    Dispatches to per-IDE extractor. Falls back to Claude Code format.
+    Dispatches to per-harness extractor. Falls back to Claude Code format.
     """
     extractor = _UUID_EXTRACTORS.get(ide, _uuid_default)
     return extractor(parsed)
@@ -288,7 +288,7 @@ async def ingest_session_lines(
 ) -> IngestResult:
     """Parse, classify, and batch-insert JSONL transcript lines.
 
-    Each string in *lines* is one raw JSONL line from an IDE session.
+    Each string in *lines* is one raw JSONL line from an harness session.
     Lines that fail to parse are counted as errors and skipped.
     ``continuation`` lines (empty API signals) are counted as skipped.
 
@@ -298,7 +298,7 @@ async def ingest_session_lines(
         user_id:         User who owns the session.
         agent_id:        Optional agent identifier.
         agent_version:   Optional agent version string.
-        ide:             IDE name (e.g. ``"claude-code"``, ``"kiro"``).
+        ide:             harness name (e.g. ``"claude-code"``, ``"kiro"``).
         lines:           Raw JSONL strings to ingest.
         start_offset:    Line offset of the first item in *lines* within the
                          full session transcript.
@@ -318,7 +318,7 @@ async def ingest_session_lines(
     errors = 0
 
     if not lines:
-        # No JSONL lines -- still store any IDE-specific extra rows (e.g. Kiro credits).
+        # No JSONL lines -- still store any harness-specific extra rows (e.g. Kiro credits).
         extra = get_extra_rows(ide, session_id, project_id, user_id, agent_id, agent_version, total_credits)
         if extra:
             await insert_session_events(extra)
@@ -423,7 +423,7 @@ async def ingest_session_lines(
                 "raw_line": redacted_line,
                 "credits": 0.0,
                 "parent_session_id": parent_session_id,
-                # Token counts from the JSONL line (IDE-specific field names).
+                # Token counts from the JSONL line (harness-specific field names).
                 **_extract_usage_tokens(parsed, ide),
             }
         )
@@ -437,7 +437,7 @@ async def ingest_session_lines(
             session_id,
         )
 
-    # Store any IDE-specific extra rows (e.g. Kiro credits summary row).
+    # Store any harness-specific extra rows (e.g. Kiro credits summary row).
     extra = get_extra_rows(ide, session_id, project_id, user_id, agent_id, agent_version, total_credits)
     if extra:
         await insert_session_events(extra)

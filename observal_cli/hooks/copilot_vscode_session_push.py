@@ -35,7 +35,7 @@ _EVENT_TYPE_MAP = {
 
 
 def main() -> None:
-    """Entry point. Never raises -- hooks must not block the IDE."""
+    """Entry point. Never raises -- hooks must not block the harness."""
     try:
         _run()
     except Exception:
