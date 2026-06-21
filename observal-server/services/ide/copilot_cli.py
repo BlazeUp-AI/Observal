@@ -80,14 +80,13 @@ class CopilotCliAdapter:
         copilot_cli_spec = IDE_REGISTRY["copilot-cli"]
 
         # Build .agent.md with YAML frontmatter
-        agent_desc = getattr(ctx.agent, "description", "") or ""
+        agent_desc = getattr(ctx.agent, "description", "") or safe_name
         frontmatter_lines = [
             "---",
             f"name: {safe_name}",
+            f'description: "{agent_desc}"',
+            "tools: ['*']",
         ]
-        if agent_desc:
-            frontmatter_lines.append(f'description: "{agent_desc}"')
-        frontmatter_lines.append("tools: ['*']")
         # Add mcp-servers to frontmatter if present
         if copilot_cli_configs:
             frontmatter_lines.append("mcp-servers:")
