@@ -128,9 +128,9 @@ def _kiro_snippet() -> dict:
 def _codex_snippet() -> dict:
     return {
         "config_snippet": {
-            "rules_file": {
-                "path": "AGENTS.md",
-                "content": "# Codex Agent\n\nRules for Codex.\n",
+            "agent_file": {
+                "path": ".codex/agents/my-agent.toml",
+                "content": 'name = "my-agent"\ndeveloper_instructions = "Rules for Codex."\n',
             }
         }
     }
@@ -351,21 +351,21 @@ class TestPullKiro:
 
 
 # ═══════════════════════════════════════════════════════════════
-# 5. Codex format (rules_file only)
+# 5. Codex format
 # ═══════════════════════════════════════════════════════════════
 
 
 class TestPullCodex:
-    def test_writes_agents_md(self, tmp_path: Path):
+    def test_writes_custom_agent(self, tmp_path: Path):
         with _patch_config(), _patch_get_agent(), _patch_post(_codex_snippet()):
             result = runner.invoke(
                 cli_app, ["agent", "pull", "abc123", "--ide", "codex", "--dir", str(tmp_path), "--no-prompt"]
             )
 
         assert result.exit_code == 0, result.output
-        rules = tmp_path / "AGENTS.md"
-        assert rules.exists()
-        assert "Codex Agent" in rules.read_text()
+        agent = tmp_path / ".codex" / "agents" / "my-agent.toml"
+        assert agent.exists()
+        assert "Rules for Codex" in agent.read_text()
 
 
 # ═══════════════════════════════════════════════════════════════

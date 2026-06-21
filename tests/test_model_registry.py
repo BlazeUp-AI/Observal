@@ -535,7 +535,7 @@ class TestBuilderModelEmission:
 
         manifest = _empty_manifest(models_by_ide={"codex": "gpt-5"})
         cfg = _generate_codex(manifest)
-        toml = next(f for f in cfg.files if f.path == "~/.codex/config.toml").content
+        toml = next(f for f in cfg.files if f.path == "~/.codex/agents/test-agent.toml").content
         assert isinstance(toml, str)
         assert 'model = "gpt-5"' in toml
 

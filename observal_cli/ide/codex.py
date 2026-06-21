@@ -44,7 +44,7 @@ class CodexAdapter(BaseAdapter):
     """Adapter for Codex CLI (OpenAI)."""
 
     home_markers = (".codex",)
-    managed_agent_files = ("user:AGENTS.md", "project:AGENTS.md")
+    managed_agent_files = ("user:agents/{name}.toml", "project:.codex/agents/{name}.toml")
     managed_mcp_files = ("user:config.toml",)
 
     @property

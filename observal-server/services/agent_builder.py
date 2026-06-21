@@ -13,11 +13,13 @@ Generates IDE-specific agent files from a ResolvedAgent:
 - Cursor: .cursor/agents/<name>.md (subagent markdown) + .cursor/mcp.json
 - Gemini CLI: GEMINI.md (markdown) + MCP JSON config
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
-- Codex: AGENTS.md (markdown)
+- Codex: ~/.codex/agents/<name>.toml (custom agent)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)
 - OpenCode: .opencode/agents/<name>.md (markdown) + opencode.json (MCP config)
 
 """
+
+import json
 
 from loguru import logger as optic
 
@@ -491,31 +493,29 @@ def _generate_kiro(manifest: AgentManifest) -> IdeAgentConfig:
 
 
 def _generate_codex(manifest: AgentManifest) -> IdeAgentConfig:
-    """Generate Codex agent config (AGENTS.md + ~/.codex/config.toml)."""
+    """Generate Codex custom agent config."""
+    safe_name = _sanitize_name(manifest.name)
     rules_content = _build_rules_markdown(manifest)
+    desc_line = (manifest.description or safe_name).replace("\n", " ").strip()[:200]
+    saved_model = _saved_model_for(manifest, "codex")
+    agent_lines = [
+        f"name = {json.dumps(safe_name)}",
+        f"description = {json.dumps(desc_line or safe_name)}",
+        f"developer_instructions = {json.dumps(rules_content)}",
+    ]
+    if saved_model:
+        agent_lines.append(f"model = {json.dumps(saved_model)}")
 
     files = [
         AgentFile(
-            path="AGENTS.md",
-            content=rules_content,
-            format="markdown",
+            path=f"~/.codex/agents/{safe_name}.toml",
+            content="\n".join(agent_lines) + "\n",
+            format="toml",
         ),
     ]
 
     skill_files = _build_skill_files(manifest, "codex")
     files.extend(skill_files)
-
-    saved_model = _saved_model_for(manifest, "codex")
-    if saved_model:
-        toml_lines: list[str] = [f'model = "{saved_model}"', ""]
-        toml_snippet = "\n".join(toml_lines) + "\n"
-        files.append(
-            AgentFile(
-                path="~/.codex/config.toml",
-                content=toml_snippet,
-                format="toml",
-            ),
-        )
 
     return IdeAgentConfig(
         ide="codex",

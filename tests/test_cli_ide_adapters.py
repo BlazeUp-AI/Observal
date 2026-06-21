@@ -122,7 +122,7 @@ class TestManagedLayerFiles:
             ),
             (
                 "codex",
-                {"user:AGENTS.md", "project:AGENTS.md", "user:config.toml"},
+                {"user:agents/agent-one.toml", "project:.codex/agents/agent-one.toml", "user:config.toml"},
             ),
             (
                 "copilot",
@@ -168,8 +168,8 @@ class TestManagedLayerFiles:
 
         lockfile = self._lockfile_for("codex")
         assert _get_observal_managed_files(lockfile, "codex", None) == {
-            "user:AGENTS.md",
-            "project:AGENTS.md",
+            "user:agents/agent-one.toml",
+            "project:.codex/agents/agent-one.toml",
             "user:config.toml",
         }
 

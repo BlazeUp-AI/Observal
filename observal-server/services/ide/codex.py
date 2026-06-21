@@ -5,12 +5,29 @@
 
 from __future__ import annotations
 
+import json
+
 from loguru import logger as optic
 
 from schemas.ide_registry import IDE_REGISTRY
 from services.ide import ConfigContext, register_adapter
 
 _CODEX_SESSION_PUSH_CMD = "python3 -m observal_cli.hooks.codex_session_push"
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(value)
+
+
+def _codex_agent_toml(name: str, description: str, instructions: str, model: str | None) -> str:
+    lines = [
+        f"name = {_toml_string(name)}",
+        f"description = {_toml_string(description or name)}",
+        f"developer_instructions = {_toml_string(instructions)}",
+    ]
+    if model:
+        lines.append(f"model = {_toml_string(model)}")
+    return "\n".join(lines) + "\n"
 
 
 def _codex_hooks_config(agent_name: str = "") -> dict:
@@ -43,11 +60,17 @@ class CodexAdapter:
         codex_scope = codex_spec["default_scope"]
         codex_content: dict = {"mcp.servers": mcp_configs}
         codex_model = options.get("_resolved_model")
-        if codex_model:
-            codex_content["model"] = codex_model
 
         result: dict = {
-            "rules_file": {"path": codex_spec["rules_file"][codex_scope], "content": rules_content},
+            "agent_file": {
+                "path": f"~/.codex/agents/{ctx.safe_name}.toml",
+                "content": _codex_agent_toml(
+                    ctx.safe_name,
+                    (ctx.agent.description or ctx.safe_name).replace("\n", " ").strip()[:200],
+                    rules_content,
+                    codex_model,
+                ),
+            },
             "mcp_config": {"path": codex_spec["mcp_config_path"][codex_scope], "content": codex_content},
             "hooks_config": {
                 "path": "~/.codex/hooks.json",

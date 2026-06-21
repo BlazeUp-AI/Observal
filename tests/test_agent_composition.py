@@ -1228,15 +1228,15 @@ class TestGenerateIdeAgentFiles:
 
     # ── Codex ──────────────────────────────────────────────────
 
-    def test_codex_generates_agents_md(self):
+    def test_codex_generates_custom_agent(self):
         from services.agent_builder import generate_ide_agent_files
 
         manifest = self._make_manifest()
         config = generate_ide_agent_files(manifest, "codex")
         assert config.ide == "codex"
         assert len(config.files) >= 1
-        md_file = next(f for f in config.files if f.format == "markdown")
-        assert md_file.path == "AGENTS.md"
+        agent_file = next(f for f in config.files if f.path == "~/.codex/agents/test-agent.toml")
+        assert agent_file.format == "toml"
 
     # ── GitHub Copilot ─────────────────────────────────────────
 

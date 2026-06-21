@@ -136,10 +136,11 @@ class TestConstants:
 
 
 class TestGenerateCodexConfig:
-    def test_rules_path_is_agents_md(self):
+    def test_agent_path_is_codex_agent_toml(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["rules_file"]["path"] == "AGENTS.md"
+        assert cfg["agent_file"]["path"] == "~/.codex/agents/test-agent.toml"
+        assert "rules_file" not in cfg
 
     def test_mcp_config_path(self):
         agent = _make_agent()
@@ -173,10 +174,10 @@ class TestGenerateCodexConfig:
         cfg = generate_agent_config(agent, "codex")
         assert cfg["scope"] == "user"
 
-    def test_rules_content_not_empty(self):
+    def test_agent_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert len(cfg["rules_file"]["content"]) > 0
+        assert len(cfg["agent_file"]["content"]) > 0
 
     def test_empty_mcp_configs_still_produces_valid_structure(self):
         agent = _make_agent()
@@ -185,10 +186,10 @@ class TestGenerateCodexConfig:
         assert "mcp.servers" in cfg["mcp_config"]["content"]
         assert cfg["mcp_config"]["content"]["mcp.servers"] == {}
 
-    def test_rules_content_uses_agent_prompt(self):
+    def test_agent_content_uses_agent_prompt(self):
         agent = _make_agent(prompt="Always use Python.")
         cfg = generate_agent_config(agent, "codex")
-        assert "Always use Python." in cfg["rules_file"]["content"]
+        assert "Always use Python." in cfg["agent_file"]["content"]
 
 
 class TestGenerateCopilotConfig:
@@ -610,12 +611,12 @@ def _patch_get_agent(detail=None):
 
 
 class TestPullCodex:
-    def test_writes_agents_md_and_mcp_toml(self, tmp_path):
+    def test_writes_custom_agent_and_mcp_toml(self, tmp_path):
         snippet = {
             "config_snippet": {
-                "rules_file": {
-                    "path": "AGENTS.md",
-                    "content": "# Codex Rules\n\nBe precise.\n",
+                "agent_file": {
+                    "path": ".codex/agents/test-agent.toml",
+                    "content": 'name = "test-agent"\ndeveloper_instructions = "Be precise."\n',
                 },
                 "mcp_config": {
                     "path": "~/.codex/config.toml",
@@ -636,21 +637,21 @@ class TestPullCodex:
                 cli_app, ["agent", "pull", "abc123", "--ide", "codex", "--dir", str(tmp_path), "--no-prompt"]
             )
         assert result.exit_code == 0, result.output
-        rules = tmp_path / "AGENTS.md"
-        assert rules.exists()
-        assert "Codex Rules" in rules.read_text()
+        agent = tmp_path / ".codex" / "agents" / "test-agent.toml"
+        assert agent.exists()
+        assert "Be precise" in agent.read_text()
         config = tmp_path / ".codex" / "config.toml"
         assert config.exists()
         content = config.read_text()
         assert "mcp.servers" in content
         assert "observal-shim" in content
 
-    def test_writes_only_rules_when_no_mcp(self, tmp_path):
+    def test_writes_only_agent_when_no_mcp(self, tmp_path):
         snippet = {
             "config_snippet": {
-                "rules_file": {
-                    "path": "AGENTS.md",
-                    "content": "# Simple Agent\n",
+                "agent_file": {
+                    "path": ".codex/agents/simple-agent.toml",
+                    "content": 'name = "simple-agent"\ndeveloper_instructions = "Simple Agent"\n',
                 },
             }
         }
@@ -659,7 +660,7 @@ class TestPullCodex:
                 cli_app, ["agent", "pull", "abc123", "--ide", "codex", "--dir", str(tmp_path), "--no-prompt"]
             )
         assert result.exit_code == 0, result.output
-        assert (tmp_path / "AGENTS.md").exists()
+        assert (tmp_path / ".codex" / "agents" / "simple-agent.toml").exists()
 
 
 class TestPullCopilot:
@@ -780,14 +781,15 @@ class TestPullDryRunAllIdes:
     @pytest.mark.parametrize("ide", ["codex", "copilot", "opencode"])
     def test_dry_run_does_not_write_files(self, tmp_path, ide):
         path_map = {
-            "codex": "AGENTS.md",
+            "codex": ".codex/agents/test-agent.toml",
             "copilot": ".github/copilot-instructions.md",
             "opencode": ".opencode/agents/test-agent.md",
         }
         rules_path = path_map[ide]
+        file_key = "agent_file" if ide == "codex" else "rules_file"
         snippet = {
             "config_snippet": {
-                "rules_file": {
+                file_key: {
                     "path": rules_path,
                     "content": "# Test\n",
                 },

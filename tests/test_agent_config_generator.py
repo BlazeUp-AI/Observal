@@ -443,10 +443,11 @@ class TestGenerateKiro:
 
 
 class TestGenerateCodex:
-    def test_rules_path(self):
+    def test_agent_path(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert cfg["rules_file"]["path"] == "AGENTS.md"
+        assert cfg["agent_file"]["path"] == "~/.codex/agents/test-agent.toml"
+        assert "rules_file" not in cfg
 
     def test_mcp_config_present(self):
         agent = _make_agent()
@@ -463,7 +464,7 @@ class TestGenerateCodex:
     def test_content_not_empty(self):
         agent = _make_agent()
         cfg = generate_agent_config(agent, "codex")
-        assert len(cfg["rules_file"]["content"]) > 0
+        assert len(cfg["agent_file"]["content"]) > 0
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -704,18 +705,17 @@ class TestBuilderKiro:
 
 
 class TestBuilderCodex:
-    def test_rules_path(self):
+    def test_agent_path(self):
         manifest = _make_manifest()
         result = generate_ide_agent_files(manifest, "codex")
         paths = [f.path for f in result.files]
-        assert "AGENTS.md" in paths
+        assert "~/.codex/agents/test-agent.toml" in paths
 
-    def test_codex_only_agents_md_without_otlp_url(self):
+    def test_codex_only_agent_without_otlp_url(self):
         manifest = _make_manifest()
         result = generate_ide_agent_files(manifest, "codex")
         paths = [f.path for f in result.files]
-        # Without explicit OTLP URL, only AGENTS.md is generated
-        assert "AGENTS.md" in paths
+        assert "~/.codex/agents/test-agent.toml" in paths
         assert len(paths) == 1
 
 
