@@ -22,6 +22,7 @@ from observal_cli.shared.utils import (
     extract_mcp_servers,
     first_content_line,
     parse_frontmatter_field,
+    resolve_antigravity_config_dir,
 )
 
 if TYPE_CHECKING:
@@ -31,7 +32,8 @@ if TYPE_CHECKING:
 class AntigravityAdapter(BaseAdapter):
     """Adapter for Antigravity CLI."""
 
-    home_markers = (".gemini/antigravity-cli",)
+    home_markers = (".gemini/antigravity-cli", ".gemini/config")
+    managed_agent_files = ("user:agents/{name}/agent.json", "project:.agents/agents/{name}/agent.json")
 
     @property
     def ide_name(self) -> str:
@@ -48,12 +50,16 @@ class AntigravityAdapter(BaseAdapter):
     def scan_home(self, home: Path | None = None) -> ScanResult:
         """Discover MCPs, skills, hooks, agents from ~/.gemini/antigravity-cli/."""
         ag_dir = self._resolve_ag_dir(home)
-        if ag_dir is None:
+        config_dir = resolve_antigravity_config_dir(home)
+        if ag_dir is None and config_dir is None:
             return ScanResult()
-
-        mcps = self._scan_mcps(ag_dir / "mcp_config.json", "antigravity:global")
-        skills = self._scan_skills(ag_dir / "skills")
-        hooks = self._scan_hooks(ag_dir / "settings.json")
+        if ag_dir is None:
+            ag_dir = config_dir
+        if config_dir is None:
+            config_dir = ag_dir
+        mcps = self._scan_mcps(config_dir / "mcp_config.json", "antigravity:global")
+        skills = self._scan_skills(config_dir / "skills")
+        hooks = self._scan_hooks(config_dir / "hooks.json")
         agents = self._scan_agents(ag_dir / "agents")
         return ScanResult(mcps=mcps, skills=skills, hooks=hooks, agents=agents)
 
@@ -159,22 +165,29 @@ class AntigravityAdapter(BaseAdapter):
             return []
         try:
             data = json.loads(settings_file.read_text())
-            hooks_data = data.get("hooks", {})
             hooks: list[DiscoveredHook] = []
-            for event, entries in hooks_data.items():
-                if isinstance(entries, list):
-                    for h in entries:
-                        if isinstance(h, dict):
-                            hooks.append(
-                                DiscoveredHook(
-                                    name=h.get("command", event)[:40],
-                                    event=event,
-                                    handler_type="command",
-                                    handler_config=h,
-                                    description=f"Hook: {event}",
-                                    source="antigravity:hooks",
+            for hook_name, hook_def in data.items():
+                if not isinstance(hook_def, dict):
+                    continue
+                for event, entries in hook_def.items():
+                    if event == "enabled" or not isinstance(entries, list):
+                        continue
+                    for entry in entries:
+                        if not isinstance(entry, dict):
+                            continue
+                        handlers = entry.get("hooks") if isinstance(entry.get("hooks"), list) else [entry]
+                        for handler in handlers:
+                            if isinstance(handler, dict):
+                                hooks.append(
+                                    DiscoveredHook(
+                                        name=hook_name,
+                                        event=event,
+                                        handler_type="command",
+                                        handler_config=handler,
+                                        description=f"Hook: {event}",
+                                        source="antigravity:hooks",
+                                    )
                                 )
-                            )
             return hooks
         except (json.JSONDecodeError, OSError):
             return []
@@ -183,23 +196,27 @@ class AntigravityAdapter(BaseAdapter):
         if not agents_dir.is_dir():
             return []
         agents = []
-        for agent_file in sorted(agents_dir.glob("*.md")):
-            name = agent_file.stem
+        for agent_file in sorted(agents_dir.glob("*/agent.json")):
+            name = agent_file.parent.name
             content = ""
             desc = ""
             model = ""
+            prompt = ""
             try:
                 content = agent_file.read_text()
-                desc = parse_frontmatter_field(content, "description") or ""
-                model = parse_frontmatter_field(content, "model") or ""
-            except OSError:
+                data = json.loads(content)
+                name = data.get("name") or name
+                desc = data.get("description") or ""
+                model = data.get("model") or ""
+                prompt = data.get("system_prompt") or ""
+            except (json.JSONDecodeError, OSError):
                 pass
             agents.append(
                 DiscoveredAgent(
                     name=name,
                     description=desc or f"Agent: {name}",
                     model_name=model,
-                    prompt=content[:500],
+                    prompt=(prompt or content)[:500],
                     source_file=str(agent_file),
                 )
             )

@@ -76,7 +76,7 @@ def test_scan_home_empty_dir(tmp_path):
 
 
 def test_scan_home_reads_global_mcps(tmp_path):
-    ag_dir = tmp_path / ".gemini" / "antigravity-cli"
+    ag_dir = tmp_path / ".gemini" / "config"
     ag_dir.mkdir(parents=True)
     mcp_data = {
         "mcpServers": {
@@ -93,7 +93,7 @@ def test_scan_home_reads_global_mcps(tmp_path):
 
 
 def test_scan_home_remote_mcp_uses_server_url(tmp_path):
-    ag_dir = tmp_path / ".gemini" / "antigravity-cli"
+    ag_dir = tmp_path / ".gemini" / "config"
     ag_dir.mkdir(parents=True)
     mcp_data = {"mcpServers": {"remote": {"serverUrl": "https://api.example.com/mcp/"}}}
     (ag_dir / "mcp_config.json").write_text(json.dumps(mcp_data))
@@ -103,19 +103,19 @@ def test_scan_home_remote_mcp_uses_server_url(tmp_path):
     assert remote.url == "https://api.example.com/mcp/"
 
 
-def test_scan_home_reads_hooks_from_settings(tmp_path):
-    ag_dir = tmp_path / ".gemini" / "antigravity-cli"
+def test_scan_home_reads_hooks_from_config(tmp_path):
+    ag_dir = tmp_path / ".gemini" / "config"
     ag_dir.mkdir(parents=True)
-    settings = {"hooks": {"pre_turn": [{"command": "observal-push"}]}}
-    (ag_dir / "settings.json").write_text(json.dumps(settings))
+    hooks = {"my-hook": {"PreInvocation": [{"command": "observal-push"}]}}
+    (ag_dir / "hooks.json").write_text(json.dumps(hooks))
 
     result = get_adapter("antigravity").scan_home(home=tmp_path)
     assert len(result.hooks) == 1
-    assert result.hooks[0].event == "pre_turn"
+    assert result.hooks[0].event == "PreInvocation"
 
 
 def test_scan_home_reads_skills(tmp_path):
-    skills_dir = tmp_path / ".gemini" / "antigravity-cli" / "skills" / "my-skill"
+    skills_dir = tmp_path / ".gemini" / "config" / "skills" / "my-skill"
     skills_dir.mkdir(parents=True)
     (skills_dir / "SKILL.md").write_text("---\ndescription: A test skill\n---\nContent here.")
 
@@ -199,3 +199,14 @@ def test_detect_hooks_missing_when_no_observal_marker(tmp_path):
 
 def test_shim_status_no_mcps():
     assert get_adapter("antigravity").shim_status([]) == "none"
+
+
+def test_scan_home_reads_agent_json(tmp_path):
+    agents_dir = tmp_path / ".gemini" / "antigravity-cli" / "agents" / "reviewer"
+    agents_dir.mkdir(parents=True)
+    (agents_dir / "agent.json").write_text(
+        json.dumps({"name": "reviewer", "description": "Reviews code", "system_prompt": "Review carefully"})
+    )
+
+    result = get_adapter("antigravity").scan_home(home=tmp_path)
+    assert any(a.name == "reviewer" and a.description == "Reviews code" for a in result.agents)

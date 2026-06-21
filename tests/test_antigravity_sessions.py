@@ -228,7 +228,7 @@ class TestAntigravityServerAdapter:
         assert result["scope"] == "project"
         assert "mcp_config" in result
         assert result["mcp_config"]["content"]["mcpServers"]["my-mcp"]["command"] == "node"
-        assert result["rules_file"]["content"] == "# Test rules"
+        assert result["agent_file"]["content"]["system_prompt"] == "# Test rules"
         assert len(result["skill_files"]) == 1
 
     def test_format_config_user_scope(self):
@@ -248,6 +248,7 @@ class TestAntigravityServerAdapter:
         )
         result = adapter.format_config(ctx)
         assert result["scope"] == "user"
+        assert result["agent_file"]["path"] == "~/.gemini/antigravity-cli/agents/test-agent/agent.json"
 
     def test_format_config_with_model(self):
         import sys
@@ -266,7 +267,7 @@ class TestAntigravityServerAdapter:
             options={"_resolved_model": "gemini-2.5-pro"},
         )
         result = adapter.format_config(ctx)
-        assert result["mcp_config"]["content"]["model"] == "gemini-2.5-pro"
+        assert "mcp_config" not in result
 
     def test_format_config_warnings(self):
         import sys

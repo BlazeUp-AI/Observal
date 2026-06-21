@@ -23,29 +23,33 @@ class AntigravityAdapter:
         spec = IDE_REGISTRY["antigravity"]
         options = ctx.options
         scope = options.get("scope", spec["default_scope"])
+        desc = (getattr(ctx.agent, "description", "") or ctx.safe_name).replace("\n", " ").strip()[:200]
 
-        # MCP config
-        mcp_path = spec["mcp_config_path"].get(scope, spec["mcp_config_path"]["project"])
-        mcp_content = {spec["mcp_servers_key"]: ctx.mcp_configs}
+        result: dict = {
+            "agent_file": {
+                "path": f"~/.gemini/antigravity-cli/agents/{ctx.safe_name}/agent.json",
+                "content": {
+                    "name": ctx.safe_name,
+                    "description": desc,
+                    "system_prompt": ctx.rules_content,
+                    "enable_mcp_tools": True,
+                    "enable_write_tools": True,
+                    "enable_subagent_tools": True,
+                },
+            },
+            "scope": scope,
+        }
 
-        # Rules file
-        rules_path = spec["rules_file"].get(scope, spec["rules_file"]["project"])
-        rules_path = rules_path.replace("{name}", ctx.safe_name)
+        if ctx.mcp_configs:
+            mcp_path = spec["mcp_config_path"].get(scope, spec["mcp_config_path"]["user"])
+            result["mcp_config"] = {"path": mcp_path, "content": {spec["mcp_servers_key"]: ctx.mcp_configs}}
 
-        # Skill files
         skill_files = []
-        skill_path_template = spec["skill_file"].get(scope, spec["skill_file"]["project"])
+        skill_path_template = spec["skill_file"].get(scope, spec["skill_file"]["user"])
         for skill in ctx.skill_configs:
             skill_name = skill.get("name", "unnamed")
             skill_path = skill_path_template.replace("{name}", skill_name)
             skill_files.append({"path": skill_path, "content": skill.get("content", "")})
-
-        result: dict = {
-            "rules_file": {"path": rules_path, "content": ctx.rules_content},
-            "mcp_config": {"path": mcp_path, "content": mcp_content},
-            "scope": scope,
-        }
-
         if skill_files:
             result["skill_files"] = skill_files
 

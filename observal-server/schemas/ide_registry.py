@@ -296,8 +296,8 @@ IDE_REGISTRY: dict[str, dict] = {
         "features": {"hooks", "mcp_servers", "skills"},
         "session_parser": "antigravity",
         "scopes": ["project", "user"],
-        "default_scope": "project",
-        "scope_labels": ("project (.agents/)", "user (~/.gemini/antigravity-cli/)"),
+        "default_scope": "user",
+        "scope_labels": ("project (.agents/)", "user (~/.gemini/config/)"),
         "rules_file": {
             "project": "AGENTS.md",
             "user": "~/.gemini/GEMINI.md",
