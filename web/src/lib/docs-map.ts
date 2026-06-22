@@ -20,6 +20,9 @@ export interface DocRef {
  * When a setting card is clicked in help mode, we load the referenced doc + anchor.
  */
 export const SETTING_DOCS: Record<string, DocRef> = {
+	// Authentication
+	"auth.self_registration_enabled": { file: "self-hosting/authentication.md", anchor: "self-registration", label: "Self Registration" },
+
 	// Insights
 	"insights.api_key": { file: "insights-config.md", anchor: "api-key", label: "API Key" },
 	"insights.api_base": { file: "insights-config.md", anchor: "api-base-url", label: "API Base URL" },
@@ -100,6 +103,7 @@ export const SETTING_DOCS: Record<string, DocRef> = {
  * Map from section title to its doc reference (for section-level help).
  */
 export const SECTION_DOCS: Record<string, DocRef> = {
+	"Authentication": { file: "self-hosting/authentication.md", label: "Authentication Settings" },
 	"Agent Insights": { file: "insights-config.md", label: "AI Insights Configuration" },
 	"Deployment": { file: "self-hosting/deployment-settings.md", label: "Deployment Settings" },
 	"Security": { file: "self-hosting/trusted-proxies.md", label: "Trusted Proxies & Network Security" },

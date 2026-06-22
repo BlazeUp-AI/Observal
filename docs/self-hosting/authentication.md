@@ -7,14 +7,40 @@ How Observal authenticates users and signs tokens, and how to wire up SSO.
 
 ## Authentication modes
 
-`DEPLOYMENT_MODE` controls what auth methods are allowed:
+Observal supports password auth, API keys, OAuth / OIDC, and SAML. The public login page shows only the methods enabled for the deployment.
 
-| Mode | Self-registration | Bootstrap admin | Email + password | API key | OAuth / OIDC |
-| --- | --- | --- | --- | --- | --- |
-| `local` (default) | Yes | Yes | Yes | Yes | Yes (if configured) |
-| `enterprise` | No | No | No | No | Yes (required) |
+| Method | How it is enabled | Notes |
+| --- | --- | --- |
+| Email + password | Default password auth | Used by bootstrap admins and locally managed users |
+| Self registration | `auth.self_registration_enabled=true` | Creates standard `user` accounts only |
+| OAuth / OIDC | `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_SERVER_METADATA_URL` | Uses IdP discovery metadata |
+| SAML | SAML dynamic settings | Enterprise SAML setup |
+| API keys | User generated after login | Inherits the user's role |
 
-Flip to `enterprise` once you're ready to require SSO for all access.
+Use `deployment.sso_only=true` when password login should be hidden and only SSO should be available.
+
+## Self registration {#self-registration}
+
+Controls whether visitors can create their own Observal account from the login page.
+
+| Value | Effect |
+|-------|--------|
+| `true` | Shows a **Register** button on the login page and allows public account creation |
+| `false` (default) | Hides registration and blocks `POST /api/v1/auth/register` |
+
+You can set this in the web UI at **Admin → Settings → Authentication → Self Registration Enabled**. If you prefer the CLI, set the same dynamic setting directly:
+
+```bash
+observal admin set auth.self_registration_enabled true
+```
+
+New accounts are created with the built-in `user` role. They cannot review submissions, manage users, or change server settings unless an admin promotes them later.
+
+Disable it again with:
+
+```bash
+observal admin set auth.self_registration_enabled false
+```
 
 ## The bootstrap flow
 
@@ -120,7 +146,7 @@ Auth endpoints are rate-limited to slow brute-force attempts:
 | Setting | Default | Scope |
 | --- | --- | --- |
 | `RATE_LIMIT_AUTH` | `10/minute` | General auth endpoints |
-| `RATE_LIMIT_AUTH_STRICT` | `5/minute` | Login and password reset |
+| `RATE_LIMIT_AUTH_STRICT` | `5/minute` | Login, registration, and password reset |
 
 Tighten for public-facing deployments.
 
