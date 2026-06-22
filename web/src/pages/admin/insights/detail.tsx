@@ -1662,7 +1662,7 @@ function ReportContent({ report }: { report: InsightReport }) {
 			<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
 				<MetricCard label="Sessions" value={totalSessions} icon={Zap} subtext={daysActive > 0 ? `${daysActive} active days` : uniqueUsers > 1 ? `${uniqueUsers} users` : undefined} />
 				<MetricCard label="Messages" value={fmt(totalMessages)} icon={Database} subtext={totalSessions > 0 ? `${(totalMessages / totalSessions).toFixed(1)} per session` : undefined} />
-				<MetricCard label="Active Time" value={fmtHours(activeHours)} icon={Timer} subtext={daysActive > 0 ? `${(activeHours / daysActive).toFixed(1)}h/day` : undefined} />
+				<MetricCard label="Active Time" value={fmtHours(activeHours)} icon={Timer} />
 				{sessionsWithTokens > 0 && <MetricCard label="Tokens In" value={fmt(inputTokens)} icon={Database} />}
 				{sessionsWithTokens > 0 && <MetricCard label="Tokens Out" value={fmt(outputTokens)} icon={Database} />}
 				{cacheReadTokens > 0 && <MetricCard label="Cache Read" value={fmt(cacheReadTokens)} icon={Database} />}

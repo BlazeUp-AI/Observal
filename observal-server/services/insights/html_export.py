@@ -273,7 +273,7 @@ def render_report_html(report: dict) -> str:
         (
             "Active Time",
             f"{active_hours:.1f}h" if active_hours >= 1 else f"{active_hours * 60:.0f}m",
-            f"{active_hours / max(days_active, 1):.1f}h/day" if days_active else "",
+            "",
         ),
         (
             "Total Cost",
