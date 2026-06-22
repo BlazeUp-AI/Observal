@@ -10,7 +10,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.9.0] - 2026-06-22
+## [1.9.1] - 2026-06-22
 
 ### Added
 
@@ -895,6 +895,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- select pnpm binary by arch (**docker**) ([9b3345b](https://github.com/BlazeUp-AI/Observal/commit/9b3345b2ea2c5f6f975a7a327a354f107fd4e085))
 - propagate MCP auth headers during agent pull (**pull**) ([7de9cb0](https://github.com/BlazeUp-AI/Observal/commit/7de9cb0e6d93f80f925f75fcce0e4492f0357cdc))
 - finish install terminology (**harness**) ([1aa0c0f](https://github.com/BlazeUp-AI/Observal/commit/1aa0c0faa4ec1aff36ef392bf4643f61b505e4f5))
 - restore json agent profiles (**kiro**) ([345b148](https://github.com/BlazeUp-AI/Observal/commit/345b148cde939a04dbec84bfb0f94dc1a112731d))
