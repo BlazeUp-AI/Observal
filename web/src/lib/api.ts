@@ -160,11 +160,13 @@ export function getUserAvatar(): string | null {
 	return localStorage.getItem(STORAGE_KEY_USER_AVATAR);
 }
 
-let _refreshPromise: Promise<boolean> | null = null;
+let _refreshPromise: Promise<RefreshResult> | null = null;
 
-async function _tryRefreshToken(): Promise<boolean> {
+type RefreshResult = "ok" | "rejected" | "network_error";
+
+async function _tryRefreshToken(): Promise<RefreshResult> {
 	const refreshToken = getRefreshToken();
-	if (!refreshToken) return false;
+	if (!refreshToken) return "rejected";
 
 	try {
 		const res = await fetch(`${API}/auth/token/refresh`, {
@@ -173,13 +175,13 @@ async function _tryRefreshToken(): Promise<boolean> {
 			body: JSON.stringify({ refresh_token: refreshToken }),
 		});
 
-		if (!res.ok) return false;
+		if (!res.ok) return "rejected";
 
 		const data = await res.json();
 		setTokens(data.access_token, data.refresh_token);
-		return true;
+		return "ok";
 	} catch {
-		return false;
+		return "network_error";
 	}
 }
 
@@ -188,6 +190,11 @@ async function _tryRefreshToken(): Promise<boolean> {
  * Returns true if the access token was restored successfully.
  */
 export async function refreshAccessToken(): Promise<boolean> {
+	const result = await _tryRefreshToken();
+	return result === "ok";
+}
+
+export async function refreshAccessTokenWithReason(): Promise<RefreshResult> {
 	return _tryRefreshToken();
 }
 
@@ -225,9 +232,9 @@ async function request<T = unknown>(
 					_refreshPromise = null;
 				});
 			}
-			const refreshed = await _refreshPromise;
+			const refreshResult = await _refreshPromise;
 
-			if (refreshed) {
+			if (refreshResult === "ok") {
 				// Retry the original request with new token
 				const newToken = getAccessToken();
 				if (newToken) headers["Authorization"] = `Bearer ${newToken}`;
@@ -241,15 +248,17 @@ async function request<T = unknown>(
 					if (retryRes.status === 204) return undefined as T;
 					return retryRes.json() as Promise<T>;
 				}
-				// Retry failed but refresh succeeded, so the individual call
-				// fails gracefully without killing the session
 				const retryText = await retryRes.text().catch(() => "Request failed");
 				const retryErr = new Error(retryText);
 				(retryErr as Error & { status: number }).status = retryRes.status;
 				throw retryErr;
 			}
 
-			// Refresh itself failed: session is truly expired
+			if (refreshResult === "network_error") {
+				throw new Error("Network unavailable");
+			}
+
+			// Real rejection: session is truly expired
 			clearSession();
 			if (typeof window !== "undefined") {
 				window.location.href = "/login?reason=session_expired";
@@ -290,7 +299,9 @@ async function request<T = unknown>(
 							: JSON.stringify(parsed.error);
 				}
 			} catch {
-				// not JSON, use raw text
+				if (detail.length > 200 || detail.includes("Traceback") || detail.includes("Error:")) {
+					detail = `Request failed (${response.status})`;
+				}
 			}
 		}
 		const err = new Error(detail);
@@ -917,10 +928,19 @@ export const insights = {
 			selection ?? {},
 		),
 	exportHtml: async (agentId: string, reportId: string): Promise<void> => {
-		const token = getAccessToken();
-		const res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
+		let token = getAccessToken();
+		let res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
 			headers: token ? { Authorization: `Bearer ${token}` } : {},
 		});
+		if (res.status === 401) {
+			const refreshed = await _tryRefreshToken();
+			if (refreshed) {
+				token = getAccessToken();
+				res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
+					headers: token ? { Authorization: `Bearer ${token}` } : {},
+				});
+			}
+		}
 		if (!res.ok) throw new Error("Export failed");
 		const blob = await res.blob();
 		const url = URL.createObjectURL(blob);

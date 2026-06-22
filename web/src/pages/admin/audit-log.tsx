@@ -3,6 +3,7 @@
 
 
 import { useState, useMemo, useCallback, useRef } from "react";
+import { toast } from "sonner";
 import { useSearch, useLocation } from "@tanstack/react-router";
 import {
   ScrollText,
@@ -230,7 +231,7 @@ export default function AuditLogPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      // export failed
+      toast.error("Failed to export audit log. Please try again.");
     }
   }, [searchQuery]);
 

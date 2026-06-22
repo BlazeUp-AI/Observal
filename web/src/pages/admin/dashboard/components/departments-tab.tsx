@@ -10,8 +10,16 @@ import { DashboardRangeContext } from "../context";
 
 export function DepartmentsTab() {
   const range = useContext(DashboardRangeContext);
-  const { data: depts, isLoading: deptsLoading } = useExecDepartments(range);
+  const { data: depts, isLoading: deptsLoading, isError: deptsError } = useExecDepartments(range);
   const { data: tokens, isLoading: tokensLoading } = useExecDeptTokens(range);
+
+  if (deptsError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load department data. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   if (deptsLoading) {
     return (

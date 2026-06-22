@@ -279,13 +279,13 @@ export default function SettingsPage() {
 		admin
 			.getTracePrivacy()
 			.then((res) => setTracePrivacy(res.trace_privacy))
-			.catch(() => {})
+			.catch(() => { toast.error("Failed to load trace privacy setting"); })
 			.finally(() => setTracePrivacyLoading(false));
 		if (hasMinRole(getUserRole(), "super_admin")) {
 			admin
 				.getRegisteredAgentsOnly()
 				.then((res) => setRegisteredAgentsOnly(res.registered_agents_only))
-				.catch(() => {})
+				.catch(() => { toast.error("Failed to load registered-agents-only setting"); })
 				.finally(() => setRegisteredAgentsOnlyLoading(false));
 		}
 		admin
@@ -298,7 +298,7 @@ export default function SettingsPage() {
 				setMaxTraceCount(res.max_trace_count?.toString() || "");
 				setRetentionGlobal(res.global_retention_days);
 			})
-			.catch(() => {})
+			.catch(() => { toast.error("Failed to load retention settings"); })
 			.finally(() => setRetentionLoading(false));
 	}, []);
 

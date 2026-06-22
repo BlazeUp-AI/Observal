@@ -9,6 +9,7 @@ import { useExecCostSummary, useExecROIProjections } from "@/hooks/use-api";
 import { exec } from "@/lib/api";
 import { StatCard } from "./stat-card";
 import { Loader2, TrendingUp } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardRangeContext } from "../context";
 
 const DEFAULT_CATEGORIES = [
@@ -41,7 +42,7 @@ function BaselinesConfigForm({ onSaved }: { onSaved: () => void }) {
       });
       onSaved();
     } catch {
-      // error handled by React Query elsewhere
+      toast.error("Failed to save baselines. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -207,8 +208,16 @@ function ROIProjections() {
 
 export function CostTab() {
   const range = useContext(DashboardRangeContext);
-  const { data: cost, isLoading, refetch } = useExecCostSummary(range);
+  const { data: cost, isLoading, isError, refetch } = useExecCostSummary(range);
   const [showEditBaselines, setShowEditBaselines] = useState(false);
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load cost data. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

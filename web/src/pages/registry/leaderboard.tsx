@@ -56,13 +56,21 @@ export default function LeaderboardPage() {
     return () => clearTimeout(timer);
   }, [userFilterInput]);
 
-  const { data: leaderboard, isLoading: agentsLoading } = useLeaderboard(
+  const { data: leaderboard, isLoading: agentsLoading, isError: agentsError } = useLeaderboard(
     window,
     50,
     userFilter || undefined,
   );
-  const { data: componentLeaderboard, isLoading: componentsLoading } =
+  const { data: componentLeaderboard, isLoading: componentsLoading, isError: componentsError } =
     useComponentLeaderboard(window, 50);
+
+  if (agentsError && componentsError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load leaderboard data. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   const rankedComponents = useMemo(
     () =>
