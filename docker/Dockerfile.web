@@ -5,10 +5,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 FROM node:24-alpine AS base
+ARG TARGETARCH
 ARG PNPM_VERSION=10.34.4
-ARG PNPM_SHA256=15092b4d71f1192f67501116dd87dd20be8c4238434371959820255a374219c1
+ARG PNPM_SHA256_AMD64=15092b4d71f1192f67501116dd87dd20be8c4238434371959820255a374219c1
+ARG PNPM_SHA256_ARM64=9513a31bc1e166f5f6e6dbaadca91fa05b44e919ea53685c754ab0acd5501514
 RUN apk add --no-cache wget && \
-    wget -q "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linuxstatic-x64" -O /usr/local/bin/pnpm && \
+    case "$TARGETARCH" in \
+        amd64) PNPM_ARCH=x64; PNPM_SHA256="$PNPM_SHA256_AMD64" ;; \
+        arm64) PNPM_ARCH=arm64; PNPM_SHA256="$PNPM_SHA256_ARM64" ;; \
+        *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    wget -q "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linuxstatic-${PNPM_ARCH}" -O /usr/local/bin/pnpm && \
     echo "${PNPM_SHA256}  /usr/local/bin/pnpm" | sha256sum -c - && \
     chmod +x /usr/local/bin/pnpm
 
