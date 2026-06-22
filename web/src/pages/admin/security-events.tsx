@@ -12,9 +12,7 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -158,30 +156,22 @@ export default function SecurityEventsPage() {
       <div className="p-6 w-full mx-auto space-y-4">
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center">
-          <Select value={eventType} onValueChange={(v) => { setEventType(v); setPage(0); }}>
-            <SelectTrigger className="h-9 w-[220px] text-xs">
-              <SelectValue placeholder="Event type" />
-            </SelectTrigger>
-            <SelectContent>
-              {EVENT_TYPES.map((t) => (
-                <SelectItem key={t} value={t} className="text-xs">
-                  {t === "all" ? "All event types" : t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={severity} onValueChange={(v) => { setSeverity(v); setPage(0); }}>
-            <SelectTrigger className="h-9 w-[140px] text-xs">
-              <SelectValue placeholder="Severity" />
-            </SelectTrigger>
-            <SelectContent>
-              {SEVERITIES.map((s) => (
-                <SelectItem key={s} value={s} className="text-xs">
-                  {s === "all" ? "All severities" : s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PickerSelect
+            value={eventType}
+            onValueChange={(v) => { setEventType(v); setPage(0); }}
+            placeholder="Event type"
+            className="w-[220px]"
+            inputClassName="h-9 text-xs"
+            options={EVENT_TYPES.map((t) => ({ value: t, label: t === "all" ? "All event types" : t }))}
+          />
+          <PickerSelect
+            value={severity}
+            onValueChange={(v) => { setSeverity(v); setPage(0); }}
+            placeholder="Severity"
+            className="w-[140px]"
+            inputClassName="h-9 text-xs"
+            options={SEVERITIES.map((s) => ({ value: s, label: s === "all" ? "All severities" : s }))}
+          />
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input

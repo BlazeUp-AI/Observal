@@ -5,13 +5,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { cn } from "@/lib/utils";
 
 export interface Span {
@@ -310,34 +304,24 @@ export function SpanTree({ spans, selectedId, onSelect }: SpanTreeProps) {
       {hasFilterableData && (
         <div className="flex items-center gap-2 px-2 pb-2">
           {agentNames.length > 0 && (
-            <Select value={agentFilter} onValueChange={setAgentFilter}>
-              <SelectTrigger className="h-7 w-[160px] text-xs">
-                <SelectValue placeholder="Agent" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">All agents</SelectItem>
-                {agentNames.map((name) => (
-                  <SelectItem key={name} value={name} className="text-xs">
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PickerSelect
+              value={agentFilter}
+              onValueChange={setAgentFilter}
+              placeholder="Agent"
+              className="w-[160px]"
+              inputClassName="h-7 text-xs"
+              options={[{ value: "all", label: "All agents" }, ...agentNames.map((name) => ({ value: name, label: name }))]}
+            />
           )}
           {modelNames.length > 0 && (
-            <Select value={modelFilter} onValueChange={setModelFilter}>
-              <SelectTrigger className="h-7 w-[160px] text-xs">
-                <SelectValue placeholder="Model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">All models</SelectItem>
-                {modelNames.map((name) => (
-                  <SelectItem key={name} value={name} className="text-xs">
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PickerSelect
+              value={modelFilter}
+              onValueChange={setModelFilter}
+              placeholder="Model"
+              className="w-[160px]"
+              inputClassName="h-7 text-xs"
+              options={[{ value: "all", label: "All models" }, ...modelNames.map((name) => ({ value: name, label: name }))]}
+            />
           )}
           {filtersActive && (
             <Button

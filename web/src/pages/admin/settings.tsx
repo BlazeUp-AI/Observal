@@ -48,13 +48,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -152,17 +146,15 @@ function HarnessAllowlistEditor({
 				)}
 			</div>
 			<div className="flex items-center gap-2">
-				<Select value="" onValueChange={addHarness}>
-					<SelectTrigger className="h-8 text-sm flex-1">
-						<SelectValue placeholder={selected.length === 0 ? "Restrict to specific harnesses" : "Add harness"} />
-					</SelectTrigger>
-					<SelectContent>
-						{available.map((harness) => (
-							<SelectItem key={harness.name} value={harness.name}>{harness.display_name}</SelectItem>
-						))}
-						{available.length === 0 && <SelectItem value="__none__" disabled>All listed harnesses selected</SelectItem>}
-					</SelectContent>
-				</Select>
+				<PickerSelect
+					value=""
+					onValueChange={addHarness}
+					placeholder={selected.length === 0 ? "Restrict to specific harnesses" : "Add harness"}
+					className="flex-1"
+					inputClassName="h-8 text-sm"
+					emptyLabel="All listed harnesses selected"
+					options={available.map((harness) => ({ value: harness.name, label: harness.display_name }))}
+				/>
 				{selected.length > 0 && (
 					<Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => onChange("")}>Allow all</Button>
 				)}
@@ -598,17 +590,17 @@ export default function SettingsPage() {
 		}
 		if (key === "misc.default_harness") {
 			return (
-				<Select value={editingValue || "__none__"} onValueChange={(value) => setEditingValue(value === "__none__" ? "" : value)}>
-					<SelectTrigger className="h-8 text-sm flex-1">
-						<SelectValue placeholder="Choose default harness" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="__none__">Use first allowed harness</SelectItem>
-						{harnesses.map((harness) => (
-							<SelectItem key={harness.name} value={harness.name}>{harness.display_name}</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<PickerSelect
+					value={editingValue || "__none__"}
+					onValueChange={(value) => setEditingValue(value === "__none__" ? "" : value)}
+					placeholder="Choose default harness"
+					className="flex-1"
+					inputClassName="h-8 text-sm"
+					options={[
+						{ value: "__none__", label: "Use first allowed harness" },
+						...harnesses.map((harness) => ({ value: harness.name, label: harness.display_name })),
+					]}
+				/>
 			);
 		}
 		return (

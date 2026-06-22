@@ -5,13 +5,7 @@
 import { useMemo } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import type { AgentVersionSummary } from "@/lib/types";
 
 interface VersionDropdownProps {
@@ -53,23 +47,17 @@ export function VersionDropdown({ versions, currentVersion, onSelect }: VersionD
 
   return (
     <div className="flex items-center gap-2">
-      <Select value={currentVersion} onValueChange={onSelect}>
-        <SelectTrigger className="h-7 w-[140px] text-xs">
-          <SelectValue placeholder="Version" />
-        </SelectTrigger>
-        <SelectContent>
-          {approvedVersions.map((v) => (
-            <SelectItem key={v.id} value={v.version}>
-              <span className="flex items-center gap-2">
-                <span>v{v.version}</span>
-                {v.version === latestApproved && (
-                  <Badge variant="outline" className="text-[9px] px-1 py-0">latest</Badge>
-                )}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <PickerSelect
+        value={currentVersion}
+        onValueChange={onSelect}
+        placeholder="Version"
+        className="w-[140px]"
+        inputClassName="h-7 text-xs"
+        options={approvedVersions.map((v) => ({
+          value: v.version,
+          label: v.version === latestApproved ? `v${v.version} latest` : `v${v.version}`,
+        }))}
+      />
       {isOlderVersion && (
         <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
           <AlertTriangle className="h-3 w-3" />

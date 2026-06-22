@@ -9,13 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { cn } from "@/lib/utils";
 
@@ -63,31 +57,32 @@ function ModelCombobox({ value, models, placeholder, onChange }: ModelComboboxPr
           </button>
         </div>
       </PopoverAnchor>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1">
-        <div className="max-h-60 overflow-y-auto">
-          {filteredModels.length ? (
-            filteredModels.map((model) => (
-              <button
-                key={model}
-                type="button"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  onChange(model);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground",
-                  value === model && "bg-accent text-accent-foreground",
-                )}
-              >
-                <Check className={cn("h-3.5 w-3.5", value === model ? "opacity-100" : "opacity-0")} />
-                <span className="truncate">{model}</span>
-              </button>
-            ))
-          ) : (
-            <div className="px-2 py-3 text-xs text-muted-foreground">No registry suggestion. Custom value is allowed.</div>
-          )}
-        </div>
+      <PopoverContent
+        align="start"
+        className="max-h-[min(24rem,var(--radix-popover-content-available-height))] w-[var(--radix-popover-trigger-width)] overflow-y-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {filteredModels.length ? (
+          filteredModels.map((model) => (
+            <button
+              key={model}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(model);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground",
+                value === model && "bg-accent text-accent-foreground",
+              )}
+            >
+              <Check className={cn("h-3.5 w-3.5", value === model ? "opacity-100" : "opacity-0")} />
+              <span className="truncate">{model}</span>
+            </button>
+          ))
+        ) : (
+          <div className="px-2 py-3 text-xs text-muted-foreground">No registry suggestion. Custom value is allowed.</div>
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -180,18 +175,12 @@ export function ModelPicker({
           </div>
 
           <div className="grid gap-2 md:grid-cols-[minmax(160px,220px)_minmax(0,1fr)_auto]">
-            <Select value={selectedHarness} onValueChange={setSelectedHarness}>
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="Select harness" />
-              </SelectTrigger>
-              <SelectContent>
-                {allHarnesses.map((harness) => (
-                  <SelectItem key={harness.name} value={harness.name}>
-                    {harness.display_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <PickerSelect
+              value={selectedHarness}
+              onValueChange={setSelectedHarness}
+              placeholder="Select harness"
+              options={allHarnesses.map((harness) => ({ value: harness.name, label: harness.display_name }))}
+            />
 
             <ModelCombobox
               value={selectedModel}

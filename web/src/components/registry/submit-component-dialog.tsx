@@ -16,13 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check, Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -615,18 +609,11 @@ export function SubmitComponentDialog({
 						<>
 							<div className="space-y-1.5">
 								<Label>Category</Label>
-								<Select value={category} onValueChange={setCategory}>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{MCP_CATEGORIES.map((c) => (
-											<SelectItem key={c} value={c}>
-												{c}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<PickerSelect
+									value={category}
+									onValueChange={setCategory}
+									options={MCP_CATEGORIES.map((c) => ({ value: c, label: c }))}
+								/>
 							</div>
 
 							{/* ── JSON paste mode (default) ─────────────── */}
@@ -692,22 +679,14 @@ export function SubmitComponentDialog({
 
 									<div className="space-y-1.5">
 										<Label>Transport</Label>
-										<Select
+										<PickerSelect
 											value={transport || "auto"}
 											onValueChange={(v) => setTransport(v === "auto" ? "" : v)}
-										>
-											<SelectTrigger>
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="auto">Auto-detect</SelectItem>
-												{MCP_TRANSPORTS.map((t) => (
-													<SelectItem key={t} value={t}>
-														{t}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
+											options={[
+												{ value: "auto", label: "Auto-detect" },
+												...MCP_TRANSPORTS.map((t) => ({ value: t, label: t })),
+											]}
+										/>
 									</div>
 
 									<div className="space-y-1.5">
@@ -761,24 +740,14 @@ export function SubmitComponentDialog({
 									<div className="grid grid-cols-2 gap-3">
 										<div className="space-y-1.5">
 											<Label>Framework</Label>
-											<Select
+											<PickerSelect
 												value={framework || "none"}
-												onValueChange={(v) =>
-													setFramework(v === "none" ? "" : v)
-												}
-											>
-												<SelectTrigger>
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="none">None</SelectItem>
-													{MCP_FRAMEWORKS.map((f) => (
-														<SelectItem key={f} value={f}>
-															{f}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
+												onValueChange={(v) => setFramework(v === "none" ? "" : v)}
+												options={[
+													{ value: "none", label: "None" },
+													...MCP_FRAMEWORKS.map((f) => ({ value: f, label: f })),
+												]}
+											/>
 										</div>
 										<div className="space-y-1.5">
 											<Label htmlFor="mcp-docker">Docker Image</Label>
@@ -857,18 +826,11 @@ export function SubmitComponentDialog({
 						<>
 							<div className="space-y-1.5">
 								<Label>Task Type</Label>
-								<Select value={taskType} onValueChange={setTaskType}>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{SKILL_TASK_TYPES.map((t) => (
-											<SelectItem key={t} value={t}>
-												{t}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<PickerSelect
+									value={taskType}
+									onValueChange={setTaskType}
+									options={SKILL_TASK_TYPES.map((t) => ({ value: t, label: t }))}
+								/>
 							</div>
 
 							<Tabs value={skillMode} onValueChange={(v) => setSkillMode(v as "git" | "paste")} className="w-full">
@@ -996,68 +958,37 @@ export function SubmitComponentDialog({
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
 									<Label>Event</Label>
-									<Select value={event} onValueChange={setEvent}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_EVENTS.map((e) => (
-												<SelectItem key={e} value={e}>
-													{e}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={event}
+										onValueChange={setEvent}
+										options={HOOK_EVENTS.map((e) => ({ value: e, label: e }))}
+									/>
 								</div>
 								<div className="space-y-1.5">
 									<Label>Handler Type</Label>
-									<Select value={handlerType} onValueChange={setHandlerType}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_HANDLER_TYPES.map((h) => (
-												<SelectItem key={h} value={h}>
-													{h}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={handlerType}
+										onValueChange={setHandlerType}
+										options={HOOK_HANDLER_TYPES.map((h) => ({ value: h, label: h }))}
+									/>
 								</div>
 							</div>
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
 									<Label>Execution Mode</Label>
-									<Select
+									<PickerSelect
 										value={executionMode}
 										onValueChange={setExecutionMode}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_EXECUTION_MODES.map((m) => (
-												<SelectItem key={m} value={m}>
-													{m}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+										options={HOOK_EXECUTION_MODES.map((m) => ({ value: m, label: m }))}
+									/>
 								</div>
 								<div className="space-y-1.5">
 									<Label>Scope</Label>
-									<Select value={hookScope} onValueChange={setHookScope}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_SCOPES.map((s) => (
-												<SelectItem key={s} value={s}>
-													{s}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={hookScope}
+										onValueChange={setHookScope}
+										options={HOOK_SCOPES.map((s) => ({ value: s, label: s }))}
+									/>
 								</div>
 							</div>
 							<div className="space-y-1.5">
@@ -1112,21 +1043,11 @@ export function SubmitComponentDialog({
 						<>
 							<div className="space-y-1.5">
 								<Label>Category</Label>
-								<Select
+								<PickerSelect
 									value={promptCategory}
 									onValueChange={setPromptCategory}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{PROMPT_CATEGORIES.map((c) => (
-											<SelectItem key={c} value={c}>
-												{c}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+									options={PROMPT_CATEGORIES.map((c) => ({ value: c, label: c }))}
+								/>
 							</div>
 							<div className="space-y-1.5">
 								<Label htmlFor="prompt-template">Template *</Label>
@@ -1150,36 +1071,19 @@ export function SubmitComponentDialog({
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
 									<Label>Runtime Type</Label>
-									<Select value={runtimeType} onValueChange={setRuntimeType}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{SANDBOX_RUNTIME_TYPES.map((r) => (
-												<SelectItem key={r} value={r}>
-													{r}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={runtimeType}
+										onValueChange={setRuntimeType}
+										options={SANDBOX_RUNTIME_TYPES.map((r) => ({ value: r, label: r }))}
+									/>
 								</div>
 								<div className="space-y-1.5">
 									<Label>Network Policy</Label>
-									<Select
+									<PickerSelect
 										value={networkPolicy}
 										onValueChange={setNetworkPolicy}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{SANDBOX_NETWORK_POLICIES.map((p) => (
-												<SelectItem key={p} value={p}>
-													{p}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+										options={SANDBOX_NETWORK_POLICIES.map((p) => ({ value: p, label: p }))}
+									/>
 								</div>
 							</div>
 							<div className="grid grid-cols-2 gap-3">

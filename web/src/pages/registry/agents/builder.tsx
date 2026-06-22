@@ -25,15 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { Separator } from "@/components/ui/separator";
 import {
   Tabs,
@@ -60,6 +52,18 @@ import { ComponentPicker } from "@/components/registry/component-picker";
 import { VersionBumpDialog } from "@/components/registry/version-bump-dialog";
 
 const AGENT_NAME_REGEX = /^[a-z0-9][a-z0-9_-]*$/;
+const CATEGORIES = [
+  "Code Review",
+  "Testing",
+  "Documentation",
+  "DevOps",
+  "Security",
+  "Data",
+  "Incident Response",
+  "Deployment",
+  "Cost Optimization",
+  "Other",
+];
 
 function slugifyName(raw: string): string {
   return raw
@@ -642,32 +646,15 @@ function AgentBuilderInner() {
                   <Label htmlFor="agent-category" className="text-sm font-medium">
                     Category
                   </Label>
-                  <Select
+                  <PickerSelect
                     value={category || "__none__"}
                     onValueChange={(v) => setCategory(v === "__none__" ? "" : v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="__none__">Select category...</SelectItem>
-                      </SelectGroup>
-                      <SelectGroup>
-                        <SelectLabel>Categories</SelectLabel>
-                        <SelectItem value="Code Review">Code Review</SelectItem>
-                        <SelectItem value="Testing">Testing</SelectItem>
-                        <SelectItem value="Documentation">Documentation</SelectItem>
-                        <SelectItem value="DevOps">DevOps</SelectItem>
-                        <SelectItem value="Security">Security</SelectItem>
-                        <SelectItem value="Data">Data</SelectItem>
-                        <SelectItem value="Incident Response">Incident Response</SelectItem>
-                        <SelectItem value="Deployment">Deployment</SelectItem>
-                        <SelectItem value="Cost Optimization">Cost Optimization</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                    placeholder="Select category..."
+                    options={[
+                      { value: "__none__", label: "Select category..." },
+                      ...CATEGORIES.map((item) => ({ value: item, label: item })),
+                    ]}
+                  />
                 </div>
               </div>
               <div className="max-w-3xl">
