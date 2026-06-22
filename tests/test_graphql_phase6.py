@@ -64,7 +64,7 @@ class TestRowToTrace:
                 "agent_id": "a1",
                 "user_id": "u1",
                 "session_id": "s1",
-                "ide": "cursor",
+                "harness": "cursor",
                 "name": "test",
                 "start_time": "2026-01-01",
                 "end_time": "2026-01-02",

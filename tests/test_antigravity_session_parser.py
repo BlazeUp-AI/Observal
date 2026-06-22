@@ -295,7 +295,12 @@ class TestParseRows:
 
     def test_user_prompt_event(self):
         rows = [
-            {"raw_line": USER_PROMPT, "ingested_at": "2026-06-01 14:30:00.000", "timestamp": "", "ide": "antigravity"}
+            {
+                "raw_line": USER_PROMPT,
+                "ingested_at": "2026-06-01 14:30:00.000",
+                "timestamp": "",
+                "harness": "antigravity",
+            }
         ]
         events = parse_rows(rows)
         assert len(events) == 1
@@ -308,7 +313,7 @@ class TestParseRows:
                 "raw_line": ASSISTANT_TEXT,
                 "ingested_at": "2026-06-01 14:30:05.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             }
         ]
         events = parse_rows(rows)
@@ -322,7 +327,7 @@ class TestParseRows:
                 "raw_line": ASSISTANT_WITH_TOOLS,
                 "ingested_at": "2026-06-01 14:30:10.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             }
         ]
         events = parse_rows(rows)
@@ -338,9 +343,14 @@ class TestParseRows:
                 "raw_line": ASSISTANT_WITH_TOOLS,
                 "ingested_at": "2026-06-01 14:30:10.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
-            {"raw_line": TOOL_RESULT, "ingested_at": "2026-06-01 14:30:12.000", "timestamp": "", "ide": "antigravity"},
+            {
+                "raw_line": TOOL_RESULT,
+                "ingested_at": "2026-06-01 14:30:12.000",
+                "timestamp": "",
+                "harness": "antigravity",
+            },
         ]
         events = parse_rows(rows)
         # 2 tool call events from ASSISTANT_WITH_TOOLS, tool result attaches to one
@@ -355,13 +365,13 @@ class TestParseRows:
                 "raw_line": SYSTEM_HISTORY,
                 "ingested_at": "2026-06-01 14:30:00.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
             {
                 "raw_line": SYSTEM_PROMPT,
                 "ingested_at": "2026-06-01 14:30:00.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
         ]
         events = parse_rows(rows)
@@ -373,13 +383,13 @@ class TestParseRows:
                 "raw_line": ASSISTANT_WITH_TOOLS,
                 "ingested_at": "2026-06-01 14:30:10.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
             {
                 "raw_line": TOOL_RESULT_ERROR,
                 "ingested_at": "2026-06-01 14:30:15.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
         ]
         events = parse_rows(rows)
@@ -392,21 +402,26 @@ class TestParseRows:
                 "raw_line": "not valid json",
                 "ingested_at": "2026-06-01 14:30:00.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             }
         ]
         events = parse_rows(rows)
         assert len(events) == 1
 
     def test_empty_raw_line_produces_basic_event(self):
-        rows = [{"raw_line": "", "ingested_at": "2026-06-01 14:30:00.000", "timestamp": "", "ide": "antigravity"}]
+        rows = [{"raw_line": "", "ingested_at": "2026-06-01 14:30:00.000", "timestamp": "", "harness": "antigravity"}]
         events = parse_rows(rows)
         assert len(events) == 1
 
     def test_standalone_tool_result_without_parent(self):
         """Tool result without a preceding tool call should emit standalone event."""
         rows = [
-            {"raw_line": TOOL_RESULT, "ingested_at": "2026-06-01 14:30:12.000", "timestamp": "", "ide": "antigravity"}
+            {
+                "raw_line": TOOL_RESULT,
+                "ingested_at": "2026-06-01 14:30:12.000",
+                "timestamp": "",
+                "harness": "antigravity",
+            }
         ]
         events = parse_rows(rows)
         assert len(events) == 1
@@ -416,19 +431,29 @@ class TestParseRows:
     def test_full_conversation_flow(self):
         """End-to-end: user prompt -> tool call -> tool result -> assistant text."""
         rows = [
-            {"raw_line": USER_PROMPT, "ingested_at": "2026-06-01 14:30:00.000", "timestamp": "", "ide": "antigravity"},
+            {
+                "raw_line": USER_PROMPT,
+                "ingested_at": "2026-06-01 14:30:00.000",
+                "timestamp": "",
+                "harness": "antigravity",
+            },
             {
                 "raw_line": ASSISTANT_WITH_TOOLS,
                 "ingested_at": "2026-06-01 14:30:10.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
-            {"raw_line": TOOL_RESULT, "ingested_at": "2026-06-01 14:30:12.000", "timestamp": "", "ide": "antigravity"},
+            {
+                "raw_line": TOOL_RESULT,
+                "ingested_at": "2026-06-01 14:30:12.000",
+                "timestamp": "",
+                "harness": "antigravity",
+            },
             {
                 "raw_line": ASSISTANT_TEXT,
                 "ingested_at": "2026-06-01 14:30:20.000",
                 "timestamp": "",
-                "ide": "antigravity",
+                "harness": "antigravity",
             },
         ]
         events = parse_rows(rows)

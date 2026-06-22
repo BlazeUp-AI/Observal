@@ -29,7 +29,7 @@ async def insert_traces(traces: list[dict]):
             "agent_id": t.get("agent_id"),
             "user_id": t["user_id"],
             "session_id": t.get("session_id"),
-            "ide": t.get("ide", ""),
+            "harness": t.get("harness", ""),
             "environment": t.get("environment", "default"),
             "start_time": _client._normalize_ts(t["start_time"]),
             "end_time": _client._normalize_ts(t.get("end_time")),
@@ -52,7 +52,7 @@ async def insert_traces(traces: list[dict]):
         lines.append(_dumps(row))
     sql = (
         "INSERT INTO traces (trace_id, parent_trace_id, project_id, mcp_id, agent_id, "
-        "user_id, session_id, ide, environment, start_time, end_time, trace_type, name, "
+        "user_id, session_id, harness, environment, start_time, end_time, trace_type, name, "
         "metadata, tags, input, output, event_ts, is_deleted, "
         "tool_id, sandbox_id, graphrag_id, hook_id, skill_id, prompt_id, "
         "agent_version) FORMAT JSONEachRow"
@@ -104,7 +104,7 @@ async def insert_spans(spans: list[dict]):
             "retry_count": s.get("retry_count"),
             "tools_available": s.get("tools_available"),
             "tool_schema_valid": s.get("tool_schema_valid"),
-            "ide": s.get("ide", ""),
+            "harness": s.get("harness", ""),
             "environment": s.get("environment", "default"),
             "metadata": s.get("metadata", {}),
             "event_ts": event_ts,
@@ -135,7 +135,7 @@ async def insert_spans(spans: list[dict]):
         "agent_id, user_id, type, name, method, input, output, error, start_time, "
         "end_time, latency_ms, status, level, token_count_input, token_count_output, "
         "token_count_total, cost, cpu_ms, memory_mb, hop_count, entities_retrieved, "
-        "relationships_used, retry_count, tools_available, tool_schema_valid, ide, "
+        "relationships_used, retry_count, tools_available, tool_schema_valid, harness, "
         "environment, metadata, event_ts, is_deleted, "
         "container_id, exit_code, network_bytes_in, network_bytes_out, "
         "disk_read_bytes, disk_write_bytes, oom_killed, query_interface, "
@@ -315,7 +315,7 @@ async def insert_session_events(rows: list[dict]):
         lines.append(_dumps(row))
     sql = (
         "INSERT INTO session_events (session_id, project_id, user_id, agent_id, "
-        "agent_version, layer_hash, ide, line_offset, line_hash, event_type, timestamp, uuid, parent_uuid, "
+        "agent_version, layer_hash, harness, line_offset, line_hash, event_type, timestamp, uuid, parent_uuid, "
         "tool_name, tool_id, content_preview, content_length, raw_line, credits, parent_session_id, "
         "input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, model, raw_line_truncated) FORMAT JSONEachRow"
     )
@@ -331,7 +331,7 @@ async def insert_layer_snapshot(row: dict):
     """Insert a single layer snapshot row into ClickHouse."""
     optic.trace("inserting layer snapshot: hash={}", row.get("hash", "?"))
     sql = (
-        "INSERT INTO layer_snapshots (hash, project_id, user_id, ide, content, "
+        "INSERT INTO layer_snapshots (hash, project_id, user_id, harness, content, "
         "file_count, total_size, lockfile_hash) FORMAT JSONEachRow"
     )
     try:

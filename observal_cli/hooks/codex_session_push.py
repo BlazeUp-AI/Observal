@@ -110,7 +110,7 @@ def _run(home: Path | None = None) -> None:
         new_offset=new_offset,
         cwd="",
         session_jsonl=jsonl_path,
-        ide="codex",
+        harness="codex",
         config=config,
     )
 

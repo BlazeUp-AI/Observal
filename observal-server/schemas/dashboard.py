@@ -95,16 +95,16 @@ class TokenStats(BaseModel):
 # --- harness usage ---
 
 
-class IdeBreakdown(BaseModel):
-    ide: str
+class HarnessBreakdown(BaseModel):
+    harness: str
     traces: int
     avg_latency_ms: float
     error_count: int
     error_rate: float
 
 
-class IdeUsage(BaseModel):
-    ides: list[IdeBreakdown]
+class HarnessUsage(BaseModel):
+    harnesses: list[HarnessBreakdown]
 
 
 # --- Sandbox metrics ---
@@ -186,6 +186,6 @@ class UnannotatedTrace(BaseModel):
     trace_id: str
     name: str | None
     session_id: str | None
-    ide: str | None
+    harness: str | None
     trace_type: str | None
     start_time: str

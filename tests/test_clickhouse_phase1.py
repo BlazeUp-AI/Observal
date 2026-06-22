@@ -62,7 +62,7 @@ class TestInitSQL:
             "agent_id",
             "user_id",
             "session_id",
-            "ide",
+            "harness",
             "environment",
             "start_time",
             "end_time",

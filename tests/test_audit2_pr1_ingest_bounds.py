@@ -329,7 +329,7 @@ def test_session_ingest_rejects_oversized_short_string_fields():
         SessionIngestRequest(session_id=long_value, lines=[])
 
     with pytest.raises(ValidationError):
-        SessionIngestRequest(session_id="s", ide=long_value, lines=[])
+        SessionIngestRequest(session_id="s", harness=long_value, lines=[])
 
     with pytest.raises(ValidationError):
         SessionIngestRequest(session_id="s", agent_id=long_value, lines=[])

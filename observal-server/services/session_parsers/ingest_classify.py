@@ -6,9 +6,9 @@
 
 Each harness has its own JSONL format.  This module provides:
 
-  classify(ide, parsed)        -> event_type str | None (None = skip line)
-  extract_preview(ide, parsed, event_type) -> str
-  extract_tool_info(ide, parsed) -> (tool_name, tool_id)
+  classify(harness, parsed)        -> event_type str | None (None = skip line)
+  extract_preview(harness, parsed, event_type) -> str
+  extract_tool_info(harness, parsed) -> (tool_name, tool_id)
 
 Dispatch is **strict**: passing an unknown harness raises ``KeyError`` so new
 harnesses cannot silently fall through to a wrong classifier.  When adding
@@ -756,7 +756,7 @@ _CLASSIFIERS: dict[str, _Classifier] = {
 }
 
 
-def get_classifier(ide: str) -> tuple:
+def get_classifier(harness: str) -> tuple:
     """Return (classify_fn, preview_fn, tool_info_fn) for the given harness.
 
     Looks up the ``session_parser`` key in ``harness_registry.HARNESS_REGISTRY`` and
@@ -768,27 +768,27 @@ def get_classifier(ide: str) -> tuple:
     """
     from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = HARNESS_REGISTRY[ide]["session_parser"]  # KeyError = unknown harness
+    parser_id = HARNESS_REGISTRY[harness]["session_parser"]  # KeyError = unknown harness
     if parser_id is None:
-        raise ValueError(f"No session parser configured for harness: {ide}")
+        raise ValueError(f"No session parser configured for harness: {harness}")
     return _CLASSIFIERS[parser_id]  # KeyError = unimplemented parser
 
 
-def classify(ide: str, parsed: dict) -> str | None:
+def classify(harness: str, parsed: dict) -> str | None:
     """Classify a single parsed JSONL line for the given harness."""
-    classify_fn, _, _ = get_classifier(ide)
+    classify_fn, _, _ = get_classifier(harness)
     return classify_fn(parsed)
 
 
-def extract_preview(ide: str, parsed: dict, event_type: str) -> str:
+def extract_preview(harness: str, parsed: dict, event_type: str) -> str:
     """Extract a short preview string for the given harness."""
-    _, preview_fn, _ = get_classifier(ide)
+    _, preview_fn, _ = get_classifier(harness)
     return preview_fn(parsed, event_type)
 
 
-def extract_tool_info(ide: str, parsed: dict) -> tuple[str | None, str | None]:
+def extract_tool_info(harness: str, parsed: dict) -> tuple[str | None, str | None]:
     """Extract (tool_name, tool_id) for the given harness."""
-    _, _, tool_info_fn = get_classifier(ide)
+    _, _, tool_info_fn = get_classifier(harness)
     return tool_info_fn(parsed)
 
 
@@ -893,7 +893,7 @@ _TS_EXTRACTORS: dict[str, object] = {
 }
 
 
-def extract_timestamp(ide: str, parsed: dict) -> str | None:
+def extract_timestamp(harness: str, parsed: dict) -> str | None:
     """Return a ClickHouse-formatted timestamp string for a JSONL line, or None.
 
     Returns None when the line has no timestamp -- callers should use a
@@ -903,9 +903,9 @@ def extract_timestamp(ide: str, parsed: dict) -> str | None:
     """
     from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = HARNESS_REGISTRY[ide]["session_parser"]  # KeyError = unknown harness
+    parser_id = HARNESS_REGISTRY[harness]["session_parser"]  # KeyError = unknown harness
     if parser_id is None:
-        raise ValueError(f"No session parser configured for harness: {ide}")
+        raise ValueError(f"No session parser configured for harness: {harness}")
     extractor = _TS_EXTRACTORS[parser_id]  # KeyError = unimplemented
     return extractor(parsed)  # type: ignore[call-arg,operator]
 
@@ -939,7 +939,7 @@ _EXTRA_ROWS_HANDLERS: dict[str, _ExtraRowsFn] = {
 
 
 def get_extra_rows(
-    ide: str,
+    harness: str,
     session_id: str,
     project_id: str,
     user_id: str,
@@ -954,6 +954,6 @@ def get_extra_rows(
     """
     from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = HARNESS_REGISTRY.get(ide, {}).get("session_parser", "claude-code")
+    parser_id = HARNESS_REGISTRY.get(harness, {}).get("session_parser", "claude-code")
     handler = _EXTRA_ROWS_HANDLERS.get(parser_id, _no_extra_rows)
-    return handler(session_id, project_id, user_id, agent_id, agent_version, ide, total_credits)
+    return handler(session_id, project_id, user_id, agent_id, agent_version, harness, total_credits)

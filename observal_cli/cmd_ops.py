@@ -320,7 +320,7 @@ def telemetry_test():
                         "tool_name": "test_tool",
                         "status": "success",
                         "latency_ms": 42,
-                        "ide": "test",
+                        "harness": "test",
                     }
                 ],
             },

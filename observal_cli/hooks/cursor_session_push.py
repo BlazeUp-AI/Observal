@@ -128,7 +128,7 @@ def _run(home: Path | None = None) -> None:
         parent_session_id=parent_session_id,
         session_jsonl=jsonl_path,
     )
-    payload["ide"] = "cursor"
+    payload["harness"] = "cursor"
 
     write_cursor(session_id, new_offset, line_count + len(lines), finalized=False, home=home)
     _spawn_post(payload, config, session_id, offset, new_offset, home=home)

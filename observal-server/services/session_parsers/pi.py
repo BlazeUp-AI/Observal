@@ -24,7 +24,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "pi")
+        harness = row.get("harness", "pi")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -40,7 +40,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         ts = pick_timestamp(parsed.get("timestamp"), row_ts, ingested_at)
 
         if line_type == "message":
-            _handle_message(parsed, ts, ide, events, tool_call_index)
+            _handle_message(parsed, ts, harness, events, tool_call_index)
         elif line_type == "model_change":
             events.append(
                 {
@@ -51,7 +51,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                         "provider": parsed.get("provider", ""),
                         "model": parsed.get("modelId", ""),
                     },
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
         elif line_type == "thinking_level_change":
@@ -61,7 +61,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "hook_sessionstart",
                     "body": f"Thinking level: {parsed.get('thinkingLevel', '')}",
                     "attributes": {"thinking_level": parsed.get("thinkingLevel", "")},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
         elif line_type in ("compaction", "branch_summary"):
@@ -71,7 +71,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "hook_assistant_response",
                     "body": parsed.get("summary", "")[:100],
                     "attributes": {"tool_response": parsed.get("summary", "")},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
         elif line_type == "custom_message":
@@ -86,7 +86,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "hook_assistant_response",
                     "body": str(content)[:100],
                     "attributes": {"tool_response": str(content)},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -96,7 +96,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
 def _handle_message(
     parsed: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_call_index: dict[str, int],
 ) -> None:
@@ -104,16 +104,16 @@ def _handle_message(
     role = msg.get("role", "")
 
     if role == "user":
-        _handle_user(msg, ts, ide, events)
+        _handle_user(msg, ts, harness, events)
     elif role == "assistant":
-        _handle_assistant(msg, ts, ide, events, tool_call_index)
+        _handle_assistant(msg, ts, harness, events, tool_call_index)
     elif role == "toolResult":
-        _handle_tool_result(msg, ts, ide, events, tool_call_index)
+        _handle_tool_result(msg, ts, harness, events, tool_call_index)
     elif role == "bashExecution":
-        _handle_bash(msg, ts, ide, events)
+        _handle_bash(msg, ts, harness, events)
 
 
-def _handle_user(msg: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_user(msg: dict, ts: str, harness: str, events: list[dict]) -> None:
     content = msg.get("content", [])
     if isinstance(content, str):
         text = content
@@ -129,7 +129,7 @@ def _handle_user(msg: dict, ts: str, ide: str, events: list[dict]) -> None:
                 "event_name": "hook_userpromptsubmit",
                 "body": text[:100],
                 "attributes": {"tool_input": text},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
@@ -137,7 +137,7 @@ def _handle_user(msg: dict, ts: str, ide: str, events: list[dict]) -> None:
 def _handle_assistant(
     msg: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_call_index: dict[str, int],
 ) -> None:
@@ -180,7 +180,7 @@ def _handle_assistant(
                     "event_name": "hook_assistant_thinking",
                     "body": thinking_text[:100],
                     "attributes": {"tool_response": thinking_text},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -196,7 +196,7 @@ def _handle_assistant(
                     "event_name": "hook_assistant_response",
                     "body": response_text[:100],
                     "attributes": attrs,
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -215,7 +215,7 @@ def _handle_assistant(
                         "tool_input": json.dumps(tool_input),
                         "tool_use_id": tool_call_id,
                     },
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
             if tool_call_id:
@@ -229,7 +229,7 @@ def _handle_assistant(
                 "event_name": "hook_token_usage",
                 "body": "",
                 "attributes": token_attrs,
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
@@ -237,7 +237,7 @@ def _handle_assistant(
 def _handle_tool_result(
     msg: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_call_index: dict[str, int],
 ) -> None:
@@ -272,12 +272,12 @@ def _handle_tool_result(
                     "tool_use_id": tool_call_id,
                     **({"is_error": "true"} if is_error else {}),
                 },
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
 
-def _handle_bash(msg: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_bash(msg: dict, ts: str, harness: str, events: list[dict]) -> None:
     command = msg.get("command", "")
     output = msg.get("output", "")
     exit_code = msg.get("exitCode")
@@ -293,6 +293,6 @@ def _handle_bash(msg: dict, ts: str, ide: str, events: list[dict]) -> None:
                 "tool_response": output,
                 **({"exit_code": str(exit_code)} if exit_code is not None else {}),
             },
-            "service_name": ide,
+            "service_name": harness,
         }
     )

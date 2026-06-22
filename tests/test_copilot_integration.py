@@ -79,7 +79,7 @@ class TestRegistryAndFrontend:
         """parse_raw_events raises KeyError for unknown harnesses (strict dispatch)."""
         from services.session_parsers import parse_raw_events
 
-        rows = [{"ide": "unknown-ide-xyz", "raw_line": "", "timestamp": "2025-01-01 00:00:00.000"}]
+        rows = [{"harness": "unknown-harness-xyz", "raw_line": "", "timestamp": "2025-01-01 00:00:00.000"}]
         with pytest.raises(KeyError):
             parse_raw_events(rows)
 
@@ -89,7 +89,7 @@ class TestRegistryAndFrontend:
 
         # Test that an unknown harness raises KeyError (not silently falls through)
         with pytest.raises(KeyError):
-            get_classifier("unknown-ide-xyz")
+            get_classifier("unknown-harness-xyz")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -615,7 +615,7 @@ class TestServerParseRows:
             "raw_line": json.dumps(envelope),
             "timestamp": "2025-01-01 12:00:00.000",
             "ingested_at": "2025-01-01 12:00:01.000",
-            "ide": "copilot-cli",
+            "harness": "copilot-cli",
         }
 
     def test_tool_call_maps_to_hook_pretooluse(self):
@@ -689,7 +689,7 @@ class TestServerParserFallbacks:
     def test_missing_raw_line_uses_basic_event(self):
         from services.session_parsers.copilot_cli import parse_rows
 
-        rows = [{"raw_line": "", "timestamp": "2025-01-01 12:00:00.000", "ingested_at": "", "ide": "copilot-cli"}]
+        rows = [{"raw_line": "", "timestamp": "2025-01-01 12:00:00.000", "ingested_at": "", "harness": "copilot-cli"}]
         events = parse_rows(rows)
         assert len(events) == 1
         # basic_event fallback
@@ -702,7 +702,7 @@ class TestServerParserFallbacks:
                 "raw_line": "not valid json {{{",
                 "timestamp": "2025-01-01 12:00:00.000",
                 "ingested_at": "",
-                "ide": "copilot-cli",
+                "harness": "copilot-cli",
             }
         ]
         events = parse_rows(rows)
@@ -1058,7 +1058,7 @@ class TestPropertyServerParserNormalization:
                 "raw_line": json.dumps(envelope),
                 "timestamp": "2025-01-15 10:30:00.000",
                 "ingested_at": "2025-01-15 10:30:01.000",
-                "ide": "copilot-cli",
+                "harness": "copilot-cli",
             }
         ]
 

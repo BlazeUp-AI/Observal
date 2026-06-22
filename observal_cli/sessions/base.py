@@ -274,7 +274,7 @@ def post_lines_chunked(
             parent_session_id=parent_session_id,
             session_jsonl=session_jsonl,
         )
-        payload["ide"] = harness
+        payload["harness"] = harness
         # Only mark final on the last chunk if the hook_event warrants it
         if not is_last:
             payload.pop("final", None)
@@ -324,14 +324,14 @@ def build_payload(
 ) -> dict:
     """Construct the JSON body for the ingest endpoint.
 
-    Defaults harness telemetry to ``claude-code``; callers override ``payload["ide"]``
+    Defaults harness telemetry to ``claude-code``; callers override ``payload["harness"]``
     for other harnesses.
     """
     agent_id, agent_version = _resolve_agent(cwd, lines, session_jsonl)
     layer_hash = _get_cached_layer_hash(session_id, cwd)
     payload: dict = {
         "session_id": session_id,
-        "ide": "claude-code",
+        "harness": "claude-code",
         "agent_id": agent_id,
         "agent_version": agent_version,
         "layer_hash": layer_hash,
@@ -385,15 +385,15 @@ def _is_layer_canonical() -> bool | None:
     None if unable to determine.
     """
     try:
-        from observal_cli.layer import _compute_drift, _detect_active_ides, build_layer_manifest
+        from observal_cli.layer import _compute_drift, _detect_active_harnesses, build_layer_manifest
         from observal_cli.lockfile import read_lockfile
 
         lockfile_data = read_lockfile()
-        ides_section: dict = {}
-        for scan_ide in _detect_active_ides():
-            ides_section[scan_ide] = build_layer_manifest(scan_ide, include_content=False)
+        harnesses_section: dict = {}
+        for scan_harness in _detect_active_harnesses():
+            harnesses_section[scan_harness] = build_layer_manifest(scan_harness, include_content=False)
 
-        drift = _compute_drift(lockfile_data, ides_section)
+        drift = _compute_drift(lockfile_data, harnesses_section)
         return drift["is_canonical"]
     except Exception:
         return None

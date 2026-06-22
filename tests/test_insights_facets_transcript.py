@@ -37,7 +37,7 @@ def _meta(session_id: str, duration: int, tool_count: int) -> dict:
         "user_response_times": [],
         "message_hours": [],
         "start_time": "2026-01-01T00:00:00Z",
-        "ide": "pi",
+        "harness": "pi",
         "user_message_count": 2,
     }
 

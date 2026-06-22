@@ -84,7 +84,7 @@ def main() -> None:
             new_offset=new_offset,
             cwd=payload.get("cwd", ""),
             parent_session_id=payload.get("parent_session_id"),
-            ide=payload.get("ide", "cursor"),
+            harness=payload.get("harness", "cursor"),
             config=config,
         )
     except Exception as e:

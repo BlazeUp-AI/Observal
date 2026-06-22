@@ -62,5 +62,5 @@ def basic_event(row: dict) -> dict:
             "content_length": str(row.get("content_length", 0)),
             **({"credits": str(row["credits"])} if row.get("credits") else {}),
         },
-        "service_name": row.get("ide", ""),
+        "service_name": row.get("harness", ""),
     }

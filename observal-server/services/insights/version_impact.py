@@ -222,12 +222,12 @@ def diff_snapshots(snap_a: dict, snap_b: dict) -> dict:
     files_a: dict[str, str] = {}
     files_b: dict[str, str] = {}
 
-    # Flatten both snapshots to {ide/path: hash}
-    for ide_name, files in (snap_a.get("ides") or {}).items():
+    # Flatten both snapshots to {harness/path: hash}
+    for ide_name, files in (snap_a.get("harnesses") or {}).items():
         for f in files:
             files_a[f"{ide_name}/{f['path']}"] = f.get("hash", "")
 
-    for ide_name, files in (snap_b.get("ides") or {}).items():
+    for ide_name, files in (snap_b.get("harnesses") or {}).items():
         for f in files:
             files_b[f"{ide_name}/{f['path']}"] = f.get("hash", "")
 
@@ -251,7 +251,7 @@ def extract_content_summary(snapshot: dict, max_chars: int = 1500) -> str:
     lines: list[str] = []
     char_count = 0
 
-    for ide_name, files in (snapshot.get("ides") or {}).items():
+    for ide_name, files in (snapshot.get("harnesses") or {}).items():
         for f in files:
             path = f.get("path", "")
             content = f.get("content", "")

@@ -57,11 +57,11 @@ def parse_raw_events(rows: list[dict]) -> list[dict]:
     """
     if not rows:
         return []
-    ide = rows[0].get("ide", "")
+    harness = rows[0].get("harness", "")
 
     from schemas.harness_registry import HARNESS_REGISTRY
 
-    parser_id = HARNESS_REGISTRY[ide]["session_parser"]  # KeyError = unknown harness
+    parser_id = HARNESS_REGISTRY[harness]["session_parser"]  # KeyError = unknown harness
     if parser_id is None:
         return []
     parser = _PARSERS[parser_id]  # KeyError = unimplemented parser

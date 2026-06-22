@@ -34,7 +34,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "copilot-cli")
+        harness = row.get("harness", "copilot-cli")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -78,19 +78,19 @@ def parse_rows(rows: list[dict]) -> list[dict]:
             continue
 
         if event_type == "user.message":
-            _handle_user_message(data, ts, ide, events)
+            _handle_user_message(data, ts, harness, events)
         elif event_type == "assistant.message":
-            _handle_assistant_message(data, ts, ide, events)
+            _handle_assistant_message(data, ts, harness, events)
         elif event_type == "tool.call":
-            _handle_tool_call(data, ts, ide, events, tool_call_index, event_id)
+            _handle_tool_call(data, ts, harness, events, tool_call_index, event_id)
         elif event_type in ("tool.result", "tool.execution_complete"):
-            _handle_tool_result(data, ts, ide, events, tool_call_index, parent_id)
+            _handle_tool_result(data, ts, harness, events, tool_call_index, parent_id)
         elif event_type == "agent.thinking":
-            _handle_thinking(data, ts, ide, events)
+            _handle_thinking(data, ts, harness, events)
         elif event_type == "session.start":
-            _handle_session_start(data, ts, ide, events)
+            _handle_session_start(data, ts, harness, events)
         elif event_type == "session.end":
-            _handle_session_end(data, ts, ide, events)
+            _handle_session_end(data, ts, harness, events)
         else:
             events.append(
                 {
@@ -98,7 +98,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": f"copilot_cli_{event_type.replace('.', '_')}",
                     "body": event_type,
                     "attributes": {},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -110,7 +110,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def _handle_user_message(data: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_user_message(data: dict, ts: str, harness: str, events: list[dict]) -> None:
     content = data.get("content", "")
     if isinstance(content, dict):
         content = content.get("text", "")
@@ -122,12 +122,12 @@ def _handle_user_message(data: dict, ts: str, ide: str, events: list[dict]) -> N
             "event_name": "hook_userpromptsubmit",
             "body": content[:100],
             "attributes": {"tool_input": content},
-            "service_name": ide,
+            "service_name": harness,
         }
     )
 
 
-def _handle_assistant_message(data: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_assistant_message(data: dict, ts: str, harness: str, events: list[dict]) -> None:
     content = data.get("content", "")
     if isinstance(content, dict):
         content = content.get("text", "")
@@ -151,13 +151,13 @@ def _handle_assistant_message(data: dict, ts: str, ide: str, events: list[dict])
             "event_name": "hook_assistant_response",
             "body": content[:100],
             "attributes": attrs,
-            "service_name": ide,
+            "service_name": harness,
         }
     )
 
 
 def _handle_tool_call(
-    data: dict, ts: str, ide: str, events: list[dict], tool_call_index: dict[str, int], event_id: str
+    data: dict, ts: str, harness: str, events: list[dict], tool_call_index: dict[str, int], event_id: str
 ) -> None:
     tool_name = data.get("name", data.get("toolName", ""))
     tool_input = data.get("input", data.get("args", {}))
@@ -175,7 +175,7 @@ def _handle_tool_call(
                 "tool_input": tool_input_str,
                 "tool_use_id": event_id,
             },
-            "service_name": ide,
+            "service_name": harness,
         }
     )
     if event_id:
@@ -183,7 +183,7 @@ def _handle_tool_call(
 
 
 def _handle_tool_result(
-    data: dict, ts: str, ide: str, events: list[dict], tool_call_index: dict[str, int], parent_id: str
+    data: dict, ts: str, harness: str, events: list[dict], tool_call_index: dict[str, int], parent_id: str
 ) -> None:
     result = data.get("output", data.get("result", ""))
     if isinstance(result, dict):
@@ -209,12 +209,12 @@ def _handle_tool_result(
                     "tool_response": result_text,
                     "tool_use_id": parent_id,
                 },
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
 
-def _handle_thinking(data: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_thinking(data: dict, ts: str, harness: str, events: list[dict]) -> None:
     content = data.get("content", data.get("thinking", ""))
     if not isinstance(content, str):
         content = str(content)
@@ -224,12 +224,12 @@ def _handle_thinking(data: dict, ts: str, ide: str, events: list[dict]) -> None:
             "event_name": "hook_assistant_thinking",
             "body": content[:100],
             "attributes": {"tool_response": content},
-            "service_name": ide,
+            "service_name": harness,
         }
     )
 
 
-def _handle_session_start(data: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_session_start(data: dict, ts: str, harness: str, events: list[dict]) -> None:
     context = data.get("context", {})
     cwd = context.get("cwd", "") if isinstance(context, dict) else ""
     session_id = data.get("sessionId", "")
@@ -240,12 +240,12 @@ def _handle_session_start(data: dict, ts: str, ide: str, events: list[dict]) -> 
             "event_name": "hook_sessionstart",
             "body": body[:100],
             "attributes": {"session_id": session_id, "cwd": cwd},
-            "service_name": ide,
+            "service_name": harness,
         }
     )
 
 
-def _handle_session_end(data: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_session_end(data: dict, ts: str, harness: str, events: list[dict]) -> None:
     reason = data.get("reason", "")
     events.append(
         {
@@ -253,6 +253,6 @@ def _handle_session_end(data: dict, ts: str, ide: str, events: list[dict]) -> No
             "event_name": "hook_sessionend",
             "body": f"session end ({reason})" if reason else "session end",
             "attributes": {"reason": reason},
-            "service_name": ide,
+            "service_name": harness,
         }
     )

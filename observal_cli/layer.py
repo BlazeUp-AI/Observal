@@ -361,7 +361,7 @@ def build_layer_manifest(
     """Build the layer manifest for a given harness.
 
     Args:
-        ide: harness identifier (e.g. 'claude-code', 'cursor')
+        harness: harness identifier (e.g. 'claude-code', 'cursor')
         project_dir: Optional project directory for project-scope scanning
         include_content: If True, include full file content in manifest entries
 
@@ -431,7 +431,7 @@ def _get_observal_managed_files(lockfile_data: dict, harness: str, project_dir: 
 # ---------------------------------------------------------------------------
 
 
-def _detect_active_ides() -> list[str]:
+def _detect_active_harnesses() -> list[str]:
     """Detect installed harnesses by asking CLI adapters for their home markers."""
     from pathlib import Path
 
@@ -460,14 +460,14 @@ def compute_layer_hash(harness: str | None = None, project_dir: str | None = Non
     The hash is based on the sorted (harness:path, file_hash) pairs.
     Returns a 16-char hex string.
     """
-    ides_to_scan = [harness] if harness else _detect_active_ides()
+    harnesses_to_scan = [harness] if harness else _detect_active_harnesses()
 
     all_entries: list[tuple[str, str]] = []
-    for scan_ide in ides_to_scan:
-        manifest = build_layer_manifest(scan_ide, project_dir, include_content=False)
+    for scan_harness in harnesses_to_scan:
+        manifest = build_layer_manifest(scan_harness, project_dir, include_content=False)
         for entry in manifest:
             # Prefix with harness name for uniqueness across harnesses
-            all_entries.append((f"{scan_ide}/{entry['path']}", entry["hash"]))
+            all_entries.append((f"{scan_harness}/{entry['path']}", entry["hash"]))
 
     if not all_entries:
         return "0" * 16
@@ -563,22 +563,22 @@ def diff_local(harness: str | None = None, project_dir: str | None = None) -> di
         return None
 
     # Build current state across all first-class harnesses
-    ides_to_scan = [harness] if harness else _detect_active_ides()
+    harnesses_to_scan = [harness] if harness else _detect_active_harnesses()
 
     current_files: dict[str, dict] = {}
-    for scan_ide in ides_to_scan:
-        manifest = build_layer_manifest(scan_ide, project_dir, include_content=False)
+    for scan_harness in harnesses_to_scan:
+        manifest = build_layer_manifest(scan_harness, project_dir, include_content=False)
         for entry in manifest:
-            key = f"{scan_ide}/{entry['path']}"
+            key = f"{scan_harness}/{entry['path']}"
             current_files[key] = entry
 
     # Flatten local snapshot (structured by harness)
     local_files: dict[str, dict] = {}
-    local_ides = local.get("ides", {})
-    if isinstance(local_ides, dict):
-        for ide_name, files in local_ides.items():
+    local_harnesses = local.get("harnesses", {})
+    if isinstance(local_harnesses, dict):
+        for harness_name, files in local_harnesses.items():
             for f in files:
-                key = f"{ide_name}/{f['path']}"
+                key = f"{harness_name}/{f['path']}"
                 local_files[key] = f
     # Backward compat: old flat "files" list
     elif "files" in local:
@@ -614,16 +614,16 @@ def build_upload_payload(harness: str | None = None, project_dir: str | None = N
     Scans all detected first-class harnesses. Structured by harness.
     Includes file contents for server-side diffing and insight analysis.
     """
-    ides_to_scan = [harness] if harness else _detect_active_ides()
+    harnesses_to_scan = [harness] if harness else _detect_active_harnesses()
 
     all_hash_entries: list[tuple[str, str]] = []
-    ides_section: dict[str, list[dict[str, Any]]] = {}
+    harnesses_section: dict[str, list[dict[str, Any]]] = {}
 
-    for scan_ide in ides_to_scan:
-        manifest = build_layer_manifest(scan_ide, project_dir, include_content=True)
-        ides_section[scan_ide] = manifest
+    for scan_harness in harnesses_to_scan:
+        manifest = build_layer_manifest(scan_harness, project_dir, include_content=True)
+        harnesses_section[scan_harness] = manifest
         for entry in manifest:
-            all_hash_entries.append((f"{scan_ide}/{entry['path']}", entry["hash"]))
+            all_hash_entries.append((f"{scan_harness}/{entry['path']}", entry["hash"]))
 
     all_hash_entries.sort()
     layer_hash = hashlib.sha256(json.dumps(all_hash_entries, sort_keys=True).encode()).hexdigest()[:16]
@@ -635,11 +635,11 @@ def build_upload_payload(harness: str | None = None, project_dir: str | None = N
     pinned_versions = _extract_pinned_versions(lockfile_data)
 
     # Determine canonical vs dirty state
-    drift_info = _compute_drift(lockfile_data, ides_section)
+    drift_info = _compute_drift(lockfile_data, harnesses_section)
 
     return {
         "hash": layer_hash,
-        "ides": ides_section,
+        "harnesses": harnesses_section,
         "lockfile_hash": compute_lockfile_hash(),
         "pinned_versions": pinned_versions,
         "drift": drift_info,
@@ -651,21 +651,21 @@ def _extract_pinned_versions(lockfile_data: dict) -> dict:
 
     Returns:
     {
-        "agents": [{"name": "x", "version": "1.2.0", "ide": "claude-code", "components": [...]}],
-        "standalone": [{"type": "mcp", "name": "y", "version": "2.0.0", "ide": "cursor"}]
+        "agents": [{"name": "x", "version": "1.2.0", "harness": "claude-code", "components": [...]}],
+        "standalone": [{"type": "mcp", "name": "y", "version": "2.0.0", "harness": "cursor"}]
     }
     """
     agents: list[dict] = []
     standalone: list[dict] = []
 
-    for ide_name, ide_section in lockfile_data.get("ides", {}).items():
+    for harness_name, ide_section in lockfile_data.get("harnesses", {}).items():
         for agent in ide_section.get("agents", []):
             agents.append(
                 {
                     "name": agent.get("name", ""),
                     "id": agent.get("id", ""),
                     "version": agent.get("version"),
-                    "ide": ide_name,
+                    "harness": harness_name,
                     "components": [
                         {"type": c.get("type"), "name": c.get("name"), "version": c.get("version")}
                         for c in agent.get("components", [])
@@ -679,28 +679,28 @@ def _extract_pinned_versions(lockfile_data: dict) -> dict:
                     "name": item.get("name", ""),
                     "id": item.get("id", ""),
                     "version": item.get("version"),
-                    "ide": ide_name,
+                    "harness": harness_name,
                 }
             )
 
     return {"agents": agents, "standalone": standalone}
 
 
-def _compute_drift(lockfile_data: dict, ides_section: dict[str, list[dict]]) -> dict:
+def _compute_drift(lockfile_data: dict, harnesses_section: dict[str, list[dict]]) -> dict:
     """Compare lockfile integrity hashes against actual file hashes to detect drift.
 
     Returns:
     {
         "is_canonical": True/False,
-        "drifted_files": [{"ide": "...", "path": "...", "expected": "...", "actual": "..."}]
+        "drifted_files": [{"harness": "...", "path": "...", "expected": "...", "actual": "..."}]
     }
     """
     drifted: list[dict] = []
 
-    for ide_name, ide_section in lockfile_data.get("ides", {}).items():
+    for harness_name, ide_section in lockfile_data.get("harnesses", {}).items():
         # Build lookup of actual file hashes for this harness
         actual_hashes: dict[str, str] = {}
-        for f in ides_section.get(ide_name, []):
+        for f in harnesses_section.get(harness_name, []):
             actual_hashes[f["path"]] = f["hash"]
 
         # Check agent component integrity
@@ -714,13 +714,13 @@ def _compute_drift(lockfile_data: dict, ides_section: dict[str, list[dict]]) -> 
                 # Others: matched by name in the rules file
                 comp_name = comp.get("name", "")
                 comp_type = comp.get("type", "")
-                expected_paths = _integrity_check_paths(ide_name, comp_type, comp_name)
+                expected_paths = _integrity_check_paths(harness_name, comp_type, comp_name)
                 for path in expected_paths:
                     actual = actual_hashes.get(path)
                     if actual and actual != integrity:
                         drifted.append(
                             {
-                                "ide": ide_name,
+                                "harness": harness_name,
                                 "path": path,
                                 "component": comp_name,
                                 "expected": integrity,

@@ -117,7 +117,7 @@ class TestMainEntrypoint:
 
         mock_spawn.assert_called_once()
         payload = mock_spawn.call_args[0][0]
-        assert payload["ide"] == "cursor"
+        assert payload["harness"] == "cursor"
         assert payload["session_id"] == "sess-1"
         assert len(payload["lines"]) == 1
 
@@ -153,5 +153,5 @@ class TestMainEntrypoint:
 
         mock_spawn.assert_called_once()
         payload = mock_spawn.call_args[0][0]
-        assert payload["ide"] == "cursor"
+        assert payload["harness"] == "cursor"
         assert payload["session_id"] == "sess-2"

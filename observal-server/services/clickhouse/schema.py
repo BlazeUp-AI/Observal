@@ -24,7 +24,7 @@ INIT_SQL = [
         agent_id        Nullable(String),
         user_id         String,
         session_id      Nullable(String),
-        ide             LowCardinality(String),
+        harness             LowCardinality(String),
         environment     LowCardinality(String) DEFAULT 'default',
         start_time      DateTime64(3),
         end_time        Nullable(DateTime64(3)),
@@ -80,7 +80,7 @@ INIT_SQL = [
         retry_count             Nullable(UInt8),
         tools_available         Nullable(UInt16),
         tool_schema_valid       Nullable(UInt8),
-        ide                     LowCardinality(String) DEFAULT '',
+        harness                     LowCardinality(String) DEFAULT '',
         environment             LowCardinality(String) DEFAULT 'default',
         metadata                Map(LowCardinality(String), String),
         created_at              DateTime64(3) DEFAULT now(),
@@ -248,7 +248,7 @@ INIT_SQL = [
         agent_id        Nullable(String),
         agent_version   Nullable(String),
         layer_hash      Nullable(String),
-        ide             LowCardinality(String),
+        harness             LowCardinality(String),
         line_offset     UInt32,
         line_hash       String DEFAULT '' CODEC(ZSTD(1)),
         event_type      LowCardinality(String),
@@ -332,7 +332,7 @@ INIT_SQL = [
         agent_version       LowCardinality(String) DEFAULT '',
         user_id             String                 DEFAULT '',
         parent_session_id   String                 DEFAULT '',
-        ide                 LowCardinality(String) DEFAULT '',
+        harness                 LowCardinality(String) DEFAULT '',
         first_event_time    SimpleAggregateFunction(min,     DateTime64(3, 'UTC')),
         last_event_time     SimpleAggregateFunction(max,     DateTime64(3, 'UTC')),
         event_count         SimpleAggregateFunction(sum,     Int64),
@@ -358,7 +358,7 @@ INIT_SQL = [
         coalesce(anyIf(agent_id, agent_id IS NOT NULL AND agent_id != ''), '') AS agent_id,
         coalesce(anyIf(user_id, user_id != ''), '')                             AS user_id,
         coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
-        coalesce(anyIf(ide, ide != ''), '')                                     AS ide,
+        coalesce(anyIf(harness, harness != ''), '')                                     AS harness,
         min(timestamp)                        AS first_event_time,
         max(timestamp)                        AS last_event_time,
         count()                               AS event_count,
@@ -403,7 +403,7 @@ INIT_SQL = [
         SELECT
             session_id, line_offset, timestamp, event_type, content_preview,
             tool_name, tool_id, uuid, parent_uuid, content_length,
-            ide, credits, ingested_at, raw_line_truncated,
+            harness, credits, ingested_at, raw_line_truncated,
             input_tokens, output_tokens, model
         ORDER BY (session_id, line_offset)
     )""",
@@ -424,7 +424,7 @@ INIT_SQL = [
         coalesce(anyIf(agent_version, agent_version IS NOT NULL AND agent_version != ''), '') AS agent_version,
         coalesce(anyIf(user_id, user_id != ''), '')                             AS user_id,
         coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
-        coalesce(anyIf(ide, ide != ''), '')                                     AS ide,
+        coalesce(anyIf(harness, harness != ''), '')                                     AS harness,
         minIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS first_event_time,
         maxIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS last_event_time,
         count()                               AS event_count,
@@ -457,7 +457,7 @@ INIT_SQL = [
         coalesce(anyIf(agent_version, agent_version IS NOT NULL AND agent_version != ''), '') AS agent_version,
         coalesce(anyIf(user_id, user_id != ''), '')                             AS user_id,
         coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
-        coalesce(anyIf(ide, ide != ''), '')                                     AS ide,
+        coalesce(anyIf(harness, harness != ''), '')                                     AS harness,
         coalesce(anyIf(layer_hash, layer_hash IS NOT NULL AND layer_hash != ''), '') AS layer_hash,
         minIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS first_event_time,
         maxIf(timestamp, timestamp > '1971-01-01 00:00:00' AND timestamp < '2099-01-01 00:00:00') AS last_event_time,
@@ -479,7 +479,7 @@ INIT_SQL = [
         hash            String,
         project_id      String,
         user_id         String,
-        ide             LowCardinality(String),
+        harness             LowCardinality(String),
         content         String CODEC(ZSTD(3)),
         uploaded_at     DateTime64(3, 'UTC') DEFAULT now(),
         file_count      UInt16,
@@ -588,6 +588,91 @@ async def _materialize_if_needed():
             optic.warning("could not check index {} status: {}", idx_name, e)
 
 
+async def _clickhouse_columns(table: str) -> set[str]:
+    """Return current ClickHouse column names for a table."""
+    import json
+
+    resp = await _client._query(
+        "SELECT name FROM system.columns "
+        "WHERE database = currentDatabase() AND table = {table:String} "
+        "FORMAT JSONEachRow",
+        {"param_table": table},
+    )
+    if not resp or resp.status_code >= 400 or not resp.text.strip():
+        return set()
+    return {json.loads(line)["name"] for line in resp.text.strip().splitlines() if line.strip()}
+
+
+async def _wait_for_mutations(table: str) -> None:
+    """Wait for ClickHouse ALTER UPDATE mutations to finish before dropping old columns."""
+    import asyncio
+    import json
+
+    for _ in range(120):
+        resp = await _client._query(
+            "SELECT count() AS cnt FROM system.mutations "
+            "WHERE database = currentDatabase() AND table = {table:String} AND is_done = 0 "
+            "FORMAT JSONEachRow",
+            {"param_table": table},
+        )
+        if resp and resp.status_code < 400 and resp.text.strip():
+            rows = [json.loads(line) for line in resp.text.strip().splitlines() if line.strip()]
+            if rows and int(rows[0].get("cnt", 0)) == 0:
+                return
+        await asyncio.sleep(1)
+    raise RuntimeError(f"ClickHouse mutation timeout for {table}")
+
+
+async def _count_rows(table: str) -> int:
+    """Return a best-effort row count for migration verification."""
+    import json
+
+    resp = await _client._query(f"SELECT count() AS cnt FROM {table} FORMAT JSONEachRow")
+    if not resp or resp.status_code >= 400 or not resp.text.strip():
+        return 0
+    return int(json.loads(resp.text.strip().splitlines()[0]).get("cnt", 0))
+
+
+async def _migrate_ide_to_harness() -> None:
+    """Hard-rename telemetry storage from ide to harness without losing rows."""
+    optic.info("migrating ClickHouse telemetry columns: ide -> harness")
+    await _client._query("DROP VIEW IF EXISTS session_stats_mv")
+    if await _clickhouse_columns("session_events"):
+        await _client._query("ALTER TABLE session_events DROP PROJECTION IF EXISTS proj_session_view")
+
+    for table in ("traces", "spans", "session_events", "session_stats_agg", "layer_snapshots"):
+        columns = await _clickhouse_columns(table)
+        if not columns or "ide" not in columns:
+            continue
+        before_count = await _count_rows(table)
+        if "harness" not in columns:
+            await _client._query(f"ALTER TABLE {table} RENAME COLUMN ide TO harness")
+        else:
+            await _client._query(f"ALTER TABLE {table} UPDATE harness = ide WHERE harness = '' AND ide != ''")
+            await _wait_for_mutations(table)
+            verify = await _client._query(
+                f"SELECT count() AS cnt FROM {table} WHERE harness = '' AND ide != '' FORMAT JSONEachRow"
+            )
+            import json
+
+            remaining = int(json.loads(verify.text.strip().splitlines()[0]).get("cnt", 0)) if verify.text.strip() else 0
+            if remaining:
+                raise RuntimeError(f"{table}: {remaining} rows still need harness backfill")
+            await _client._query(f"ALTER TABLE {table} DROP COLUMN ide")
+        after_count = await _count_rows(table)
+        if after_count < before_count:
+            raise RuntimeError(f"{table}: row count decreased during harness migration")
+        optic.info("migrated {}.ide to {}.harness", table, table)
+
+    columns = await _clickhouse_columns("layer_snapshots")
+    if "content" in columns:
+        await _client._query(
+            "ALTER TABLE layer_snapshots UPDATE content = replaceAll(content, '\"ides\"', '\"harnesses\"') "
+            "WHERE position(content, '\"ides\"') > 0"
+        )
+        await _wait_for_mutations("layer_snapshots")
+
+
 async def _migrate_session_stats_partition():
     """One-time migration: add PARTITION BY to session_stats_agg if missing.
 
@@ -625,7 +710,7 @@ async def _migrate_session_stats_partition():
             agent_version       LowCardinality(String) DEFAULT '',
             user_id             String                 DEFAULT '',
             parent_session_id   String                 DEFAULT '',
-            ide                 LowCardinality(String) DEFAULT '',
+            harness                 LowCardinality(String) DEFAULT '',
             layer_hash          String                 DEFAULT '',
             first_event_time    SimpleAggregateFunction(min,     DateTime64(3, 'UTC')),
             last_event_time     SimpleAggregateFunction(max,     DateTime64(3, 'UTC')),
@@ -653,7 +738,7 @@ async def _migrate_session_stats_partition():
             coalesce(anyIf(agent_version, agent_version IS NOT NULL AND agent_version != ''), '') AS agent_version,
             coalesce(anyIf(user_id, user_id != ''), '') AS user_id,
             coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
-            coalesce(anyIf(ide, ide != ''), '') AS ide,
+            coalesce(anyIf(harness, harness != ''), '') AS harness,
             coalesce(anyIf(layer_hash, layer_hash IS NOT NULL AND layer_hash != ''), '') AS layer_hash,
             minIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS first_event_time,
             maxIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS last_event_time,
@@ -676,7 +761,7 @@ async def _migrate_session_stats_partition():
             coalesce(anyIf(agent_version, agent_version IS NOT NULL AND agent_version != ''), '') AS agent_version,
             coalesce(anyIf(user_id, user_id != ''), '') AS user_id,
             coalesce(anyIf(parent_session_id, parent_session_id IS NOT NULL AND parent_session_id != ''), '') AS parent_session_id,
-            coalesce(anyIf(ide, ide != ''), '') AS ide,
+            coalesce(anyIf(harness, harness != ''), '') AS harness,
             coalesce(anyIf(layer_hash, layer_hash IS NOT NULL AND layer_hash != ''), '') AS layer_hash,
             minIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS first_event_time,
             maxIf(timestamp, timestamp > '1971-01-01' AND timestamp < '2099-01-01') AS last_event_time,
@@ -718,6 +803,8 @@ async def init_clickhouse():
 
     if not await clickhouse_health():
         raise RuntimeError(f"ClickHouse unreachable at {_client.CLICKHOUSE_HTTP}")
+
+    await _migrate_ide_to_harness()
 
     for stmt in INIT_SQL:
         try:

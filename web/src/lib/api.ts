@@ -22,7 +22,7 @@ import type {
 	TokenStats,
 	FeedbackItem,
 	FeedbackSummary,
-	IdeUsageData,
+	HarnessUsageData,
 	AdminUser,
 	AdminSetting,
 	AdminSettingSection,
@@ -542,7 +542,7 @@ export const dashboard = {
 		get<TrendPoint[]>(`/overview/trends${range ? `?range=${range}` : ""}`),
 	tokenStats: (range?: string) =>
 		get<TokenStats>(`/dashboard/tokens${range ? `?range=${range}` : ""}`),
-	ideUsage: () => get<IdeUsageData>("/dashboard/ide-usage"),
+	harnessUsage: () => get<HarnessUsageData>("/dashboard/harness-usage"),
 	sessions: (params?: {
 		status?: string;
 		platform?: string;

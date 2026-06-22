@@ -130,9 +130,9 @@ def _run(home: Path | None = None) -> None:
     )
     # Detect harness: if hook_event_name or hookEventName is in stdin, this is VS Code Copilot
     if event.get("hookEventName") or event.get("hook_event_name"):
-        payload["ide"] = "copilot"
+        payload["harness"] = "copilot"
     else:
-        payload["ide"] = "copilot-cli"
+        payload["harness"] = "copilot-cli"
 
     # Include the stdin hook payload as metadata
     if timestamp:

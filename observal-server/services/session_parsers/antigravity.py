@@ -56,7 +56,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "antigravity")
+        harness = row.get("harness", "antigravity")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -91,7 +91,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                         "event_name": "hook_userpromptsubmit",
                         "body": text[:120],
                         "attributes": {"tool_input": text},
-                        "service_name": ide,
+                        "service_name": harness,
                     }
                 )
 
@@ -110,7 +110,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                             "tool_name": tool_name,
                             "tool_input": json.dumps(args) if isinstance(args, dict) else str(args),
                         },
-                        "service_name": ide,
+                        "service_name": harness,
                     }
                 )
                 tool_step_index[step_index] = idx
@@ -123,7 +123,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "hook_assistant_response",
                     "body": content[:120],
                     "attributes": {"tool_response": content},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -147,7 +147,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                             "tool_name": line_type,
                             "tool_response": content[:500],
                         },
-                        "service_name": ide,
+                        "service_name": harness,
                     }
                 )
 

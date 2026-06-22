@@ -41,8 +41,8 @@ export function useTrends(range?: string) {
 export function useTokenStats(range?: string) {
   return useQuery({ queryKey: ['dashboard', 'tokens', range], queryFn: () => dashboard.tokenStats(range) });
 }
-export function useIdeUsage() {
-  return useQuery({ queryKey: ['dashboard', 'ide-usage'], queryFn: dashboard.ideUsage });
+export function useHarnessUsage() {
+  return useQuery({ queryKey: ['dashboard', 'harness-usage'], queryFn: dashboard.harnessUsage });
 }
 // ── Exec Dashboard ─────────────────────────────────────────────────
 

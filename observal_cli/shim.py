@@ -122,7 +122,7 @@ class ShimState:
         self.trace_id = os.environ.get("OBSERVAL_TRACE_ID") or str(uuid.uuid4())
         self.parent_trace_id = os.environ.get("OBSERVAL_TRACE_ID")  # if set, we're a child
         self.session_id = os.environ.get("OBSERVAL_SESSION_ID", "")
-        self.ide = os.environ.get("OBSERVAL_HARNESS", "")
+        self.harness = os.environ.get("OBSERVAL_HARNESS", "")
         self.environment = os.environ.get("OBSERVAL_ENVIRONMENT", "default")
         self.trace_start = datetime.now(UTC)
 
@@ -186,7 +186,7 @@ class ShimState:
             "end_time": now,
             "latency_ms": latency_ms,
             "status": status,
-            "ide": self.ide,
+            "harness": self.harness,
             "metadata": {},
             "tool_schema_valid": tool_schema_valid,
             "tools_available": tools_available,
@@ -220,7 +220,7 @@ class ShimState:
                     "mcp_id": self.mcp_id,
                     "agent_id": self.agent_id,
                     "session_id": self.session_id,
-                    "ide": self.ide,
+                    "harness": self.harness,
                     "name": f"shim:{self.mcp_id}",
                     "start_time": self.trace_start.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
                     "tags": [],

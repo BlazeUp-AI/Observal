@@ -35,8 +35,8 @@ from schemas.dashboard import (
     DateAvg,
     GraphRagQuery,
     GraphRagStats,
-    IdeBreakdown,
-    IdeUsage,
+    HarnessBreakdown,
+    HarnessUsage,
     LatencyCell,
     LeaderboardItem,
     OverviewStats,
@@ -660,14 +660,14 @@ async def token_stats(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/dashboard/ide-usage", response_model=IdeUsage)
+@router.get("/dashboard/harness-usage", response_model=HarnessUsage)
 @cache(expire=ds.get_sync_int("data.cache_ttl_dashboard", 60), namespace="dashboard")
 async def ide_usage(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     rows = await _ch_json_scoped(
-        "SELECT t.ide AS ide, "
+        "SELECT t.harness AS harness, "
         "count(DISTINCT t.trace_id) AS traces, "
         "round(avg(s.latency_ms), 1) AS avg_latency_ms, "
         "countIf(s.status = 'error') AS error_count, "
@@ -675,12 +675,12 @@ async def ide_usage(
         "FROM traces AS t FINAL "
         "INNER JOIN spans AS s FINAL ON t.trace_id = s.trace_id AND s.project_id = 'default' AND s.is_deleted = 0 "
         "WHERE t.project_id = 'default' AND t.is_deleted = 0 "
-        "GROUP BY t.ide ORDER BY traces DESC",
+        "GROUP BY t.harness ORDER BY traces DESC",
         current_user,
     )
-    ides = [
-        IdeBreakdown(
-            ide=r["ide"],
+    harnesses = [
+        HarnessBreakdown(
+            harness=r["harness"],
             traces=int(r["traces"]),
             avg_latency_ms=float(r.get("avg_latency_ms") or 0),
             error_count=int(r["error_count"]),
@@ -688,7 +688,7 @@ async def ide_usage(
         )
         for r in rows
     ]
-    return IdeUsage(ides=ides)
+    return HarnessUsage(harnesses=harnesses)
 
 
 # ---------------------------------------------------------------------------
@@ -882,7 +882,7 @@ async def unannotated_traces(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     rows = await _ch_json_scoped(
-        "SELECT trace_id, name, session_id, ide, trace_type, start_time "
+        "SELECT trace_id, name, session_id, harness, trace_type, start_time "
         "FROM traces FINAL "
         "WHERE project_id = 'default' AND is_deleted = 0 "
         "AND trace_id NOT IN ("
@@ -897,7 +897,7 @@ async def unannotated_traces(
             trace_id=r["trace_id"],
             name=r.get("name") or None,
             session_id=r.get("session_id") or None,
-            ide=r.get("ide") or None,
+            harness=r.get("harness") or None,
             trace_type=r.get("trace_type") or None,
             start_time=str(r.get("start_time", "")),
         )

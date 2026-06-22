@@ -490,7 +490,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  trace_id,\n  agent_id,\n  session_id,\n  name,\n  trace_type,\n  ide,\n  environment,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
+          "rawSql": "SELECT\n  trace_id,\n  agent_id,\n  session_id,\n  name,\n  trace_type,\n  harness,\n  environment,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND agent_id IS NOT NULL AND agent_id != ''\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
           "refId": "A",
           "format": 2
         }

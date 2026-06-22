@@ -166,9 +166,9 @@ async def list_sessions(
     for row in rows:
         uid = row.get("user_id", "")
         row["user_name"] = uid_to_name.get(uid, current_user.name)
-        ide = row.pop("ide", "") or ""
-        row["platform"] = _platform_names.get(ide, ide.replace("-", " ").title() if ide else "Claude Code")
-        row["service_name"] = ide
+        harness = row.pop("harness", "") or ""
+        row["platform"] = _platform_names.get(harness, harness.replace("-", " ").title() if harness else "Claude Code")
+        row["service_name"] = harness
         row["is_active"] = bool(int(row.get("is_active", 0)))
         agent_id = row.get("agent_id") or None
         row["agent_id"] = agent_id if agent_id else None
@@ -205,7 +205,7 @@ async def _list_sessions_query(
     if days is not None and days > 0:
         where_parts.append(f"last_event_time > now() - INTERVAL {int(days)} DAY")
     if platform:
-        where_parts.append("ide = {platform:String}")
+        where_parts.append("harness = {platform:String}")
         params["param_platform"] = platform
 
     where_clause = "WHERE " + " AND ".join(where_parts) + " "
@@ -226,7 +226,7 @@ async def _list_sessions_query(
         "cache_write_tokens  AS total_cache_write_tokens, "
         "total_credits, "
         "model, "
-        "ide, "
+        "harness, "
         "agent_id, "
         "user_id "
         "FROM session_stats_agg FINAL " + where_clause + "ORDER BY last_event_time DESC "
@@ -321,7 +321,7 @@ async def get_session(
             params,
         )
         if not ownership:
-            return {"session_id": session_id, "ide": "", "events": []}
+            return {"session_id": session_id, "harness": "", "events": []}
 
     # Build offset filter for incremental fetches
     _offset_filter = ""
@@ -335,7 +335,7 @@ async def get_session(
     _main_sql = (
         "SELECT "
         "line_offset, timestamp, event_type, content_preview, tool_name, tool_id, "
-        "uuid, parent_uuid, content_length, ide, raw_line, raw_line_truncated, "
+        "uuid, parent_uuid, content_length, harness, raw_line, raw_line_truncated, "
         "credits, ingested_at "
         "FROM session_events FINAL "
         "WHERE session_id = {sid:String} " + _offset_filter + "ORDER BY line_offset ASC "
@@ -348,7 +348,7 @@ async def get_session(
         _sub_params["param_offset"] = str(after_offset)
     _sub_sql = (
         "SELECT session_id, timestamp, event_type, content_preview, "
-        "tool_name, tool_id, uuid, parent_uuid, content_length, ide, "
+        "tool_name, tool_id, uuid, parent_uuid, content_length, harness, "
         "raw_line, raw_line_truncated, credits, ingested_at, line_offset "
         "FROM session_events FINAL "
         "WHERE parent_session_id = {sid:String} " + _sub_offset_filter + "ORDER BY session_id, line_offset ASC "
@@ -365,7 +365,7 @@ async def get_session(
             return {"session_id": session_id, "events": [], "max_offset": after_offset}
         return {"session_id": session_id, "service_name": "", "events": [], "traces": []}
 
-    ide = rows[0].get("ide", "claude-code")
+    harness = rows[0].get("harness", "claude-code")
 
     # Track max line_offset for incremental fetch cursor
     max_offset = max(int(r.get("line_offset", 0)) for r in rows) if rows else (after_offset or 0)
@@ -399,7 +399,7 @@ async def get_session(
             )
     return {
         "session_id": session_id,
-        "service_name": ide,
+        "service_name": harness,
         "events": events,
         "traces": [],
         "subagent_sessions": subagent_sessions,

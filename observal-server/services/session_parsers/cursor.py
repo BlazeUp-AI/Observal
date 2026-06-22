@@ -38,7 +38,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "")
+        harness = row.get("harness", "")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -55,9 +55,9 @@ def parse_rows(rows: list[dict]) -> list[dict]:
 
         if role == "user":
             _clean_user_content(line)
-            _handle_user(line, ts, ide, events, tool_use_index)
+            _handle_user(line, ts, harness, events, tool_use_index)
         elif role == "assistant":
-            _handle_assistant(line, ts, ide, events, tool_use_index)
+            _handle_assistant(line, ts, harness, events, tool_use_index)
         else:
             events.append(basic_event(row))
 

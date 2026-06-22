@@ -38,7 +38,7 @@ class TraceIngest(BaseModel):
     mcp_id: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
     agent_id: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
     session_id: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
-    ide: str = Field("", max_length=MAX_SHORT_STRING_LENGTH)
+    harness: str = Field("", max_length=MAX_SHORT_STRING_LENGTH)
     name: str = Field("", max_length=MAX_SHORT_STRING_LENGTH)
     start_time: str = Field(..., max_length=MAX_SHORT_STRING_LENGTH)
     end_time: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
@@ -81,7 +81,7 @@ class SpanIngest(BaseModel):
     end_time: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
     latency_ms: int | None = None
     status: str = Field("success", max_length=MAX_SHORT_STRING_LENGTH)
-    ide: str = Field("", max_length=MAX_SHORT_STRING_LENGTH)
+    harness: str = Field("", max_length=MAX_SHORT_STRING_LENGTH)
     metadata: dict[str, str] = Field(default_factory=dict, max_length=MAX_METADATA_ENTRIES)
     token_count_input: int | None = None
     token_count_output: int | None = None

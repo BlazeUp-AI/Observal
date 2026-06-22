@@ -130,7 +130,7 @@ def push_subagent_sessions(
             cwd=cwd,
             parent_session_id=parent_session_id,
         )
-        payload["ide"] = "cursor"
+        payload["harness"] = "cursor"
 
         success = post_to_server(
             server_url=config["server_url"],

@@ -199,15 +199,15 @@ class TestActiveIdeDetection:
         (tmp_path / Path(marker)).mkdir(parents=True)
         assert adapter.is_installed(tmp_path) is True
 
-    def test_layer_detect_active_ides_delegates_to_adapters(self, tmp_path, monkeypatch):
-        from observal_cli.layer import _detect_active_ides
+    def test_layer_detect_active_harnesses_delegates_to_adapters(self, tmp_path, monkeypatch):
+        from observal_cli.layer import _detect_active_harnesses
 
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         (tmp_path / ".cursor").mkdir()
         (tmp_path / ".codex").mkdir()
         (tmp_path / ".pi" / "agent").mkdir(parents=True)
 
-        assert _detect_active_ides() == ["cursor", "codex", "pi"]
+        assert _detect_active_harnesses() == ["cursor", "codex", "pi"]
 
 
 class TestAdapterProtocol:

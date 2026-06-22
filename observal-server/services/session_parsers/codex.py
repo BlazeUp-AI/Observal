@@ -25,7 +25,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "codex")
+        harness = row.get("harness", "codex")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -45,9 +45,9 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         line_type = parsed.get("type", "")
 
         if line_type == "event_msg":
-            _handle_event_msg(parsed, ts, ide, events)
+            _handle_event_msg(parsed, ts, harness, events)
         elif line_type == "response_item":
-            _handle_response_item(parsed, ts, ide, events)
+            _handle_response_item(parsed, ts, harness, events)
         elif line_type in ("session_meta", "turn_context"):
             events.append(
                 {
@@ -55,7 +55,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "system",
                     "body": line_type,
                     "attributes": {},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
         else:
@@ -65,14 +65,14 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "system",
                     "body": line_type or "unknown",
                     "attributes": {},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
     return events
 
 
-def _handle_event_msg(parsed: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_event_msg(parsed: dict, ts: str, harness: str, events: list[dict]) -> None:
     payload = parsed.get("payload", {})
     if not isinstance(payload, dict):
         return
@@ -86,7 +86,7 @@ def _handle_event_msg(parsed: dict, ts: str, ide: str, events: list[dict]) -> No
                 "event_name": "hook_userpromptsubmit",
                 "body": str(message)[:200],
                 "attributes": {"tool_input": str(message)},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
     elif payload_type == "agent_message":
@@ -97,7 +97,7 @@ def _handle_event_msg(parsed: dict, ts: str, ide: str, events: list[dict]) -> No
                 "event_name": "hook_assistant_response",
                 "body": str(message)[:200],
                 "attributes": {"tool_response": str(message)},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
     elif payload_type == "token_count":
@@ -120,7 +120,7 @@ def _handle_event_msg(parsed: dict, ts: str, ide: str, events: list[dict]) -> No
                     "cache_read_tokens": str(usage.get("cached_input_tokens", 0)),
                     "model": model,
                 },
-                "service_name": ide,
+                "service_name": harness,
             }
         )
     elif payload_type in ("task_started", "task_complete"):
@@ -130,7 +130,7 @@ def _handle_event_msg(parsed: dict, ts: str, ide: str, events: list[dict]) -> No
                 "event_name": "system",
                 "body": payload_type,
                 "attributes": {},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
     else:
@@ -140,12 +140,12 @@ def _handle_event_msg(parsed: dict, ts: str, ide: str, events: list[dict]) -> No
                 "event_name": "system",
                 "body": payload_type,
                 "attributes": {},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
 
-def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_response_item(parsed: dict, ts: str, harness: str, events: list[dict]) -> None:
     payload = parsed.get("payload", {})
     if not isinstance(payload, dict):
         return
@@ -165,7 +165,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                     "tool_input": payload.get("arguments", ""),
                     "tool_use_id": payload.get("call_id", ""),
                 },
-                "service_name": ide,
+                "service_name": harness,
             }
         )
         return
@@ -182,7 +182,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                     "tool_use_id": payload.get("call_id", ""),
                     "success": "true",
                 },
-                "service_name": ide,
+                "service_name": harness,
             }
         )
         return
@@ -195,7 +195,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                 "event_name": "system",
                 "body": "context",
                 "attributes": {},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
     elif role == "assistant":
@@ -221,7 +221,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                                 "tool_name": block.get("name", ""),
                                 "tool_response": str(block.get("output", ""))[:500],
                             },
-                            "service_name": ide,
+                            "service_name": harness,
                         }
                     )
 
@@ -236,7 +236,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                         "tool_input": json.dumps(tc.get("arguments", {})),
                         "tool_use_id": tc.get("call_id", ""),
                     },
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -248,7 +248,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                     "event_name": "hook_assistant_response",
                     "body": body,
                     "attributes": {"tool_response": " ".join(text_parts)},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
     elif role == "developer":
@@ -258,7 +258,7 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                 "event_name": "system",
                 "body": "developer instructions",
                 "attributes": {},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
     else:
@@ -268,6 +268,6 @@ def _handle_response_item(parsed: dict, ts: str, ide: str, events: list[dict]) -
                 "event_name": "system",
                 "body": role or "response_item",
                 "attributes": {},
-                "service_name": ide,
+                "service_name": harness,
             }
         )

@@ -32,7 +32,7 @@ _MAX_TOTAL_SIZE = 5 * 1024 * 1024  # 5MB
 
 class LayerSnapshotRequest(BaseModel):
     hash: str = Field(..., min_length=8, max_length=64)
-    ides: dict[str, list[LayerFile]] = Field(default_factory=dict)  # {ide_name: [files]}
+    harnesses: dict[str, list[LayerFile]] = Field(default_factory=dict)  # {harness_name: [files]}
     lockfile_hash: str = Field("", max_length=64)
     pinned_versions: dict = Field(default_factory=dict)
     drift: dict = Field(default_factory=dict)
@@ -46,7 +46,7 @@ class LayerSnapshotResponse(BaseModel):
 
 class LayerSnapshotDetail(BaseModel):
     hash: str
-    ide: str
+    harness: str
     files: list[dict]
     lockfile_hash: str
     uploaded_at: str
@@ -89,13 +89,13 @@ async def upload_layer_snapshot(
     user_id = str(current_user.id)
 
     # Enforce server-side caps (match CLI limits)
-    total_files = sum(len(v) for v in req.ides.values())
+    total_files = sum(len(v) for v in req.harnesses.values())
     if total_files > _MAX_FILES_PER_SNAPSHOT:
         raise HTTPException(
             status_code=422,
             detail=f"Snapshot exceeds {_MAX_FILES_PER_SNAPSHOT} file limit ({total_files} files)",
         )
-    total_content_size = sum(len(f.content) for files in req.ides.values() for f in files)
+    total_content_size = sum(len(f.content) for files in req.harnesses.values() for f in files)
     if total_content_size > _MAX_TOTAL_SIZE:
         raise HTTPException(
             status_code=422,
@@ -130,7 +130,7 @@ async def upload_layer_snapshot(
             return LayerSnapshotResponse(
                 stored=False,
                 hash=req.hash,
-                file_count=sum(len(v) for v in req.ides.values()),
+                file_count=sum(len(v) for v in req.harnesses.values()),
             )
     except Exception as e:
         optic.warning("failed to check existing snapshot: {}", e)
@@ -139,10 +139,10 @@ async def upload_layer_snapshot(
     # Redact secrets from file contents before storage
     from services.secrets_redactor import redact_secrets
 
-    redacted_ides: dict[str, list[dict]] = {}
+    redacted_harnesses: dict[str, list[dict]] = {}
     total_file_count = 0
     total_size = 0
-    for ide_name, files in req.ides.items():
+    for harness_name, files in req.harnesses.items():
         redacted_files = []
         for f in files:
             fd = f.model_dump()
@@ -151,14 +151,14 @@ async def upload_layer_snapshot(
             redacted_files.append(fd)
             total_size += f.size
             total_file_count += 1
-        redacted_ides[ide_name] = redacted_files
+        redacted_harnesses[harness_name] = redacted_files
 
     # Serialize the full manifest (with redacted content). Preserve version pins
     # and drift metadata so version-aware insights can distinguish canonical vs
     # dirty installs and compare component/version cohorts.
     content_json = json.dumps(
         {
-            "ides": redacted_ides,
+            "harnesses": redacted_harnesses,
             "lockfile_hash": req.lockfile_hash,
             "pinned_versions": req.pinned_versions or {},
             "drift": req.drift or {},
@@ -169,7 +169,7 @@ async def upload_layer_snapshot(
         "hash": req.hash,
         "project_id": project_id,
         "user_id": user_id,
-        "ide": ",".join(req.ides.keys()),
+        "harness": ",".join(req.harnesses.keys()),
         "content": content_json,
         "file_count": total_file_count,
         "total_size": total_size,
@@ -188,7 +188,7 @@ async def upload_layer_snapshot(
     return LayerSnapshotResponse(
         stored=True,
         hash=req.hash,
-        file_count=sum(len(v) for v in req.ides.values()),
+        file_count=sum(len(v) for v in req.harnesses.values()),
     )
 
 
@@ -206,7 +206,7 @@ async def get_layer_snapshot(
     from services.clickhouse.client import _query as ch_query
 
     sql = """
-        SELECT hash, ide, content, uploaded_at, file_count, total_size, lockfile_hash
+        SELECT hash, harness, content, uploaded_at, file_count, total_size, lockfile_hash
         FROM layer_snapshots FINAL
         WHERE project_id = {project_id:String}
           AND hash = {hash:String}
@@ -231,17 +231,17 @@ async def get_layer_snapshot(
     row = rows[0]
     content = json.loads(row["content"])
 
-    # Flatten ides structure into a flat file list for the response
+    # Flatten harnesses structure into a flat file list for the response
     flat_files = []
-    ide_names = []
-    for ide_name, files in (content.get("ides") or {}).items():
-        ide_names.append(ide_name)
+    harness_names = []
+    for harness_name, files in (content.get("harnesses") or {}).items():
+        harness_names.append(harness_name)
         for f in files:
             flat_files.append(f)
 
     return LayerSnapshotDetail(
         hash=row["hash"],
-        ide=",".join(ide_names) if ide_names else row.get("ide", ""),
+        harness=",".join(harness_names) if harness_names else row.get("harness", ""),
         files=flat_files,
         lockfile_hash=content.get("lockfile_hash", row.get("lockfile_hash", "")),
         uploaded_at=row.get("uploaded_at", ""),
@@ -294,12 +294,12 @@ async def diff_layer_snapshots(
     if hash_b not in snapshots:
         raise HTTPException(status_code=404, detail=f"Snapshot {hash_b} not found")
 
-    # Flatten {ides: {name: [files]}} to {"ide/path": file_dict}
+    # Flatten {harnesses: {name: [files]}} to {"harness/path": file_dict}
     def _flatten_snapshot(snap: dict) -> dict[str, dict]:
         flat = {}
-        for ide_name, files in (snap.get("ides") or {}).items():
+        for harness_name, files in (snap.get("harnesses") or {}).items():
             for f in files:
-                flat[f"{ide_name}/{f['path']}"] = f
+                flat[f"{harness_name}/{f['path']}"] = f
         return flat
 
     files_a = _flatten_snapshot(snapshots[hash_a])
@@ -356,7 +356,7 @@ async def pin_baseline(
     # Store/update baseline pin (use a dedicated table or settings)
     # For now, store in layer_snapshots with a special marker
     sql = """
-        INSERT INTO layer_snapshots (hash, project_id, user_id, ide, content, file_count, total_size, lockfile_hash)
+        INSERT INTO layer_snapshots (hash, project_id, user_id, harness, content, file_count, total_size, lockfile_hash)
         VALUES (
             {hash:String},
             {project_id:String},

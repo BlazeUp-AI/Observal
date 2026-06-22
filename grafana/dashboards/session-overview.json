@@ -288,7 +288,7 @@
     },
     {
       "id": 5,
-      "title": "Traces by IDE",
+      "title": "Traces by Harness",
       "type": "barchart",
       "gridPos": {
         "h": 8,
@@ -326,7 +326,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  ide,\n  count() AS count\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND ide != ''\nGROUP BY ide\nORDER BY count DESC\nLIMIT 10",
+          "rawSql": "SELECT\n  harness,\n  count() AS count\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\n  AND harness != ''\nGROUP BY harness\nORDER BY count DESC\nLIMIT 10",
           "refId": "A",
           "format": 1
         }
@@ -366,7 +366,7 @@
             "uid": "observal-clickhouse"
           },
           "queryType": "sql",
-          "rawSql": "SELECT\n  trace_id,\n  project_id,\n  session_id,\n  trace_type,\n  name,\n  ide,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
+          "rawSql": "SELECT\n  trace_id,\n  project_id,\n  session_id,\n  trace_type,\n  name,\n  harness,\n  start_time,\n  end_time\nFROM traces FINAL\nWHERE is_deleted = 0\n  AND $__timeFilter(start_time)\n  AND ('${project_id}' = '1' OR project_id IN (${project_id:singlequote}))\n  AND ('${environment}' = '1' OR environment IN (${environment:singlequote}))\nORDER BY start_time DESC\nLIMIT 50",
           "refId": "A",
           "format": 2
         }

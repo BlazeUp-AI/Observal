@@ -43,7 +43,7 @@ def reconcile(
         observal reconcile --since 24
         observal reconcile --dry-run
     """
-    optic.debug("reconcile: ide={}, since_hours={}", harness, since_hours)
+    optic.debug("reconcile: harness={}, since_hours={}", harness, since_hours)
 
     cfg = load_config()
     if cfg is None:
@@ -129,7 +129,7 @@ def _reconcile_antigravity(cfg: dict, since_hours: int, dry_run: bool) -> int:
             new_offset=new_offset,
             cwd="",
         )
-        payload["ide"] = "antigravity"
+        payload["harness"] = "antigravity"
 
         success = post_to_server(
             server_url=cfg["server_url"],

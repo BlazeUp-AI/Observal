@@ -120,7 +120,7 @@ def _run(home: Path | None = None) -> None:
                     new_offset=offset,
                     cwd=cwd,
                 )
-                payload_credits["ide"] = "kiro"
+                payload_credits["harness"] = "kiro"
                 payload_credits["total_credits"] = credits
                 post_to_server(
                     server_url=config["server_url"],
@@ -151,7 +151,7 @@ def _run(home: Path | None = None) -> None:
         line_count_before=line_count,
         new_offset=new_offset,
         cwd=cwd,
-        ide="kiro",
+        harness="kiro",
         config=config,
         extra_fields=extra or None,
     )

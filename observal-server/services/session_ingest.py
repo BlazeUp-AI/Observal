@@ -9,7 +9,7 @@ line into an event type, and batch-inserts into the ``session_events`` table.
 
 Classification dispatches strictly by harness via
 ``services.session_parsers.ingest_classify.get_classifier`` -- there is no
-default fallback.  Passing an unknown ``ide`` value raises ``KeyError``.
+default fallback.  Passing an unknown ``harness`` value raises ``KeyError``.
 """
 
 import uuid as _uuid
@@ -169,21 +169,21 @@ _UUID_EXTRACTORS: dict[str, _UuidFn] = {
 }
 
 
-def _extract_usage_tokens(parsed: dict, ide: str = "claude-code") -> dict:
+def _extract_usage_tokens(parsed: dict, harness: str = "claude-code") -> dict:
     """Extract input/output/cache token counts and model from a parsed JSONL line.
 
     Dispatches to per-harness extractor. Falls back to Claude Code format.
     """
-    extractor = _USAGE_EXTRACTORS.get(ide, _usage_claude_code)
+    extractor = _USAGE_EXTRACTORS.get(harness, _usage_claude_code)
     return extractor(parsed)
 
 
-def _extract_uuid(parsed: dict, ide: str = "claude-code") -> tuple[str | None, str | None]:
+def _extract_uuid(parsed: dict, harness: str = "claude-code") -> tuple[str | None, str | None]:
     """Extract (uuid, parent_uuid) from a parsed JSONL line.
 
     Dispatches to per-harness extractor. Falls back to Claude Code format.
     """
-    extractor = _UUID_EXTRACTORS.get(ide, _uuid_default)
+    extractor = _UUID_EXTRACTORS.get(harness, _uuid_default)
     return extractor(parsed)
 
 
@@ -280,7 +280,7 @@ async def ingest_session_lines(
     agent_id: str | None,
     agent_version: str | None,
     layer_hash: str | None = None,
-    ide: str = "claude-code",
+    harness: str = "claude-code",
     lines: list[str] | None = None,
     start_offset: int = 0,
     total_credits: float | None = None,
@@ -298,7 +298,7 @@ async def ingest_session_lines(
         user_id:         User who owns the session.
         agent_id:        Optional agent identifier.
         agent_version:   Optional agent version string.
-        ide:             harness name (e.g. ``"claude-code"``, ``"kiro"``).
+        harness:             harness name (e.g. ``"claude-code"``, ``"kiro"``).
         lines:           Raw JSONL strings to ingest.
         start_offset:    Line offset of the first item in *lines* within the
                          full session transcript.
@@ -319,7 +319,7 @@ async def ingest_session_lines(
 
     if not lines:
         # No JSONL lines -- still store any harness-specific extra rows (e.g. Kiro credits).
-        extra = get_extra_rows(ide, session_id, project_id, user_id, agent_id, agent_version, total_credits)
+        extra = get_extra_rows(harness, session_id, project_id, user_id, agent_id, agent_version, total_credits)
         if extra:
             await insert_session_events(extra)
         optic.debug("no lines to ingest for session {}", session_id)
@@ -355,7 +355,7 @@ async def ingest_session_lines(
         )
 
     rows: list[dict] = []
-    classify_fn, preview_fn, tool_info_fn = get_classifier(ide)
+    classify_fn, preview_fn, tool_info_fn = get_classifier(harness)
     last_real_ts: str | None = None  # carry forward when a line has no timestamp
 
     for i, raw_line in enumerate(lines):
@@ -387,9 +387,9 @@ async def ingest_session_lines(
         redacted_line = redact_secrets(raw_line)
         preview = redact_secrets(preview_fn(parsed, event_type))
         tool_name, tool_id = tool_info_fn(parsed)
-        uuid, parent_uuid = _extract_uuid(parsed, ide)
+        uuid, parent_uuid = _extract_uuid(parsed, harness)
 
-        ts = extract_timestamp(ide, parsed)
+        ts = extract_timestamp(harness, parsed)
         if ts is not None:
             last_real_ts = ts
         if ts is not None:
@@ -409,7 +409,7 @@ async def ingest_session_lines(
                 "agent_id": agent_id,
                 "agent_version": agent_version,
                 "layer_hash": layer_hash,
-                "ide": ide,
+                "harness": harness,
                 "line_offset": line_offset,
                 "line_hash": line_hash,
                 "event_type": event_type,
@@ -424,7 +424,7 @@ async def ingest_session_lines(
                 "credits": 0.0,
                 "parent_session_id": parent_session_id,
                 # Token counts from the JSONL line (harness-specific field names).
-                **_extract_usage_tokens(parsed, ide),
+                **_extract_usage_tokens(parsed, harness),
             }
         )
         ingested += 1
@@ -438,7 +438,7 @@ async def ingest_session_lines(
         )
 
     # Store any harness-specific extra rows (e.g. Kiro credits summary row).
-    extra = get_extra_rows(ide, session_id, project_id, user_id, agent_id, agent_version, total_credits)
+    extra = get_extra_rows(harness, session_id, project_id, user_id, agent_id, agent_version, total_credits)
     if extra:
         await insert_session_events(extra)
 

@@ -51,14 +51,14 @@ export interface TokenUsageRow {
 
 // ── harness Usage ───────────────────────────────────────────────────────
 
-export interface IdeRow {
-	ide: string;
+export interface HarnessRow {
+	harness: string;
 	traces: number;
 	avg_latency_ms: number;
 	error_count: number;
 	error_rate: number;
 }
 
-export interface IdeUsageData {
-	ides: IdeRow[];
+export interface HarnessUsageData {
+	harnesses: HarnessRow[];
 }

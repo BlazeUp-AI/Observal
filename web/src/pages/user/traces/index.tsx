@@ -71,7 +71,7 @@ function parseSearchQuery(query: string): { text: string; filters: Record<string
 			}
 			const keyMap: Record<string, string> = {
 				platform: "platform",
-				ide: "platform",
+				harness: "platform",
 				user: "user",
 				agent: "agent",
 				model: "model",

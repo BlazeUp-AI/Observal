@@ -35,7 +35,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "")
+        harness = row.get("harness", "")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -55,10 +55,10 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         ts = pick_timestamp(line.get("timestamp"), row_ts, ingested_at)
 
         if msg_type == "user":
-            _handle_user(line, ts, ide, events, tool_use_index)
+            _handle_user(line, ts, harness, events, tool_use_index)
 
         elif msg_type == "assistant":
-            _handle_assistant(line, ts, ide, events, tool_use_index)
+            _handle_assistant(line, ts, harness, events, tool_use_index)
 
         elif msg_type == "system":
             system_text = line.get("content", "")
@@ -68,7 +68,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                     "event_name": "hook_sessionstart",
                     "body": system_text[:100],
                     "attributes": {},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -84,7 +84,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                         "attachment_type": attachment.get("type", ""),
                         "attachment_name": attach_name,
                     },
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -102,7 +102,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
 def _handle_user(
     line: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_use_index: dict[str, int],
 ) -> None:
@@ -115,7 +115,7 @@ def _handle_user(
                 "event_name": "hook_userpromptsubmit",
                 "body": content[:100],
                 "attributes": {"tool_input": content},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
         return
@@ -134,7 +134,7 @@ def _handle_user(
                 "event_name": "hook_userpromptsubmit",
                 "body": full_text[:100],
                 "attributes": {"tool_input": full_text},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
@@ -158,7 +158,7 @@ def _handle_user(
 def _handle_assistant(
     line: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_use_index: dict[str, int],
 ) -> None:
@@ -197,7 +197,7 @@ def _handle_assistant(
                     "event_name": "hook_assistant_thinking",
                     "body": thinking_text[:100],
                     "attributes": {"tool_response": thinking_text},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -213,7 +213,7 @@ def _handle_assistant(
                     "event_name": "hook_assistant_response",
                     "body": response_text[:100],
                     "attributes": attrs,
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -232,7 +232,7 @@ def _handle_assistant(
                         "tool_input": json.dumps(tool_input),
                         "tool_use_id": tool_use_id,
                     },
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
             if tool_use_id:
@@ -247,6 +247,6 @@ def _handle_assistant(
                 "event_name": "hook_token_usage",
                 "body": "",
                 "attributes": token_attrs,
-                "service_name": ide,
+                "service_name": harness,
             }
         )

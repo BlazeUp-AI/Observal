@@ -359,7 +359,7 @@ async def query_existing_for_dedup(
 
 _TRACE_LIST_COLUMNS = (
     "trace_id, parent_trace_id, project_id, mcp_id, agent_id, user_id, "
-    "session_id, ide, environment, start_time, end_time, trace_type, name, "
+    "session_id, harness, environment, start_time, end_time, trace_type, name, "
     "tags, event_ts, agent_version"
 )
 
@@ -367,7 +367,7 @@ _SPAN_LIST_COLUMNS = (
     "span_id, trace_id, parent_span_id, project_id, mcp_id, agent_id, "
     "user_id, type, name, method, start_time, end_time, latency_ms, status, "
     "level, token_count_input, token_count_output, token_count_total, cost, "
-    "ide, environment, agent_version"
+    "harness, environment, agent_version"
 )
 
 

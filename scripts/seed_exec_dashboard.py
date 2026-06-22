@@ -62,7 +62,7 @@ AGENTS = [
 ]
 
 
-# user -> (traces/week, agents used, ide, model, cost_range, latency_range)
+# user -> (traces/week, agents used, harness, model, cost_range, latency_range)
 USER_ACTIVITY = {
     "eng1@acme.corp": (
         40,
@@ -219,7 +219,7 @@ async def seed_postgres(pg_url: str, org_id: str | None, clean: bool) -> dict:
             agent_map[agent_name] = agent_id
 
             await conn.execute(
-                "INSERT INTO agent_versions (id, agent_id, version, description, prompt, model_name, model_config_json, models_by_harness, external_mcps, supported_harnesses, required_harness_capabilitys, inferred_supported_harnesses, status, is_prerelease, download_count, released_by, released_at, created_at, is_editing) "
+                "INSERT INTO agent_versions (id, agent_id, version, description, prompt, model_name, model_config_json, models_by_harness, external_mcps, supported_harnesses, required_capabilities, inferred_supported_harnesses, status, is_prerelease, download_count, released_by, released_at, created_at, is_editing) "
                 "VALUES ($1, $2, '1.0.0', $3, '', '', '{}', '{}', '[]', '[]', '[]', '[]', $4, false, 0, $5, NOW(), NOW(), false) ON CONFLICT DO NOTHING",
                 version_id,
                 agent_id,
@@ -324,7 +324,7 @@ async def seed_clickhouse(ch_url: str, user_map: dict, agent_map: dict, clean: b
         session_event_rows = []
 
         for email, activity in USER_ACTIVITY.items():
-            traces_per_week, agent_names, ide, model, cost_range, latency_range = activity
+            traces_per_week, agent_names, harness, model, cost_range, latency_range = activity
             uid = str(user_map.get(email, ""))
             if not uid:
                 continue
@@ -350,7 +350,7 @@ async def seed_clickhouse(ch_url: str, user_map: dict, agent_map: dict, clean: b
                                 "project_id": PROJECT_ID,
                                 "agent_id": agent_id,
                                 "user_id": uid,
-                                "ide": ide,
+                                "harness": harness,
                                 "start_time": start_time.strftime("%Y-%m-%dT%H:%M:%S"),
                                 "trace_type": "agent",
                                 "name": agent_name,
@@ -395,7 +395,7 @@ async def seed_clickhouse(ch_url: str, user_map: dict, agent_map: dict, clean: b
                                     "token_count_input": input_tokens,
                                     "token_count_output": output_tokens,
                                     "token_count_total": input_tokens + output_tokens,
-                                    "ide": ide,
+                                    "harness": harness,
                                     "is_deleted": 0,
                                     "event_ts": (start_time + timedelta(seconds=s_idx)).strftime("%Y-%m-%dT%H:%M:%S"),
                                 }
@@ -410,7 +410,7 @@ async def seed_clickhouse(ch_url: str, user_map: dict, agent_map: dict, clean: b
                                 "session_id": session_id,
                                 "project_id": PROJECT_ID,
                                 "user_id": uid,
-                                "ide": ide,
+                                "harness": harness,
                                 "model": model,
                                 "agent_id": agent_id,
                                 "event_type": "session_end",

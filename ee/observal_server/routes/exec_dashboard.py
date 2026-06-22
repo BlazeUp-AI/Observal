@@ -443,15 +443,17 @@ class PlatformCoverageItem(BaseModel):
 async def get_platform_coverage(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    """IDE/platform coverage — distinct users and sessions per platform."""
+    """Harness/platform coverage — distinct users and sessions per platform."""
     rows = await _ch_json_scoped(
-        "SELECT ide, count(DISTINCT user_id) AS users, count() AS sessions "
+        "SELECT harness, count(DISTINCT user_id) AS users, count() AS sessions "
         "FROM traces FINAL WHERE project_id = 'default' AND is_deleted = 0 "
-        "AND ide != '' "
-        "GROUP BY ide ORDER BY sessions DESC",
+        "AND harness != '' "
+        "GROUP BY harness ORDER BY sessions DESC",
         current_user,
     )
-    return [PlatformCoverageItem(platform=r["ide"], users=int(r["users"]), sessions=int(r["sessions"])) for r in rows]
+    return [
+        PlatformCoverageItem(platform=r["harness"], users=int(r["users"]), sessions=int(r["sessions"])) for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -474,9 +476,9 @@ class PlatformScore(BaseModel):
 async def get_platforms(
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    """Per-IDE platform comparison with composite scores."""
+    """Per-Harness platform comparison with composite scores."""
     rows = await _ch_json_scoped(
-        "SELECT t.ide AS ide, "
+        "SELECT t.harness AS harness, "
         "count(DISTINCT t.trace_id) AS sessions, "
         "count(DISTINCT t.user_id) AS users, "
         "round(avg(s.cost), 4) AS avg_cost, "
@@ -486,8 +488,8 @@ async def get_platforms(
         "FROM traces AS t FINAL "
         "INNER JOIN spans AS s FINAL ON t.trace_id = s.trace_id "
         "AND s.project_id = 'default' AND s.is_deleted = 0 "
-        "WHERE t.project_id = 'default' AND t.is_deleted = 0 AND t.ide != '' "
-        "GROUP BY t.ide ORDER BY sessions DESC",
+        "WHERE t.project_id = 'default' AND t.is_deleted = 0 AND t.harness != '' "
+        "GROUP BY t.harness ORDER BY sessions DESC",
         current_user,
     )
 
@@ -508,7 +510,7 @@ async def get_platforms(
 
         results.append(
             PlatformScore(
-                platform=r["ide"],
+                platform=r["harness"],
                 composite_score=0,
                 sessions=sessions,
                 avg_cost=avg_cost,
@@ -1438,21 +1440,21 @@ async def get_strategic_insights(
 
     # 4. Platform comparison (task completion speed)
     platform_rows = await _ch_json_scoped(
-        "SELECT ide, "
+        "SELECT harness, "
         "round(avg(dateDiff('millisecond', first_event_time, last_event_time))) AS avg_time_ms, "
         "count() AS sessions, "
         "countIf(event_count > 2) AS completed "
         "FROM session_stats_agg "
-        "WHERE project_id = 'default' AND ide != '' "
+        "WHERE project_id = 'default' AND harness != '' "
         "AND first_event_time != last_event_time "
-        "GROUP BY ide "
+        "GROUP BY harness "
         "HAVING sessions >= 5 "
         "ORDER BY sessions DESC",
         current_user,
     )
     platform_comparison = [
         PlatformComparison(
-            platform=r["ide"],
+            platform=r["harness"],
             avg_task_time_ms=float(r.get("avg_time_ms") or 0),
             sessions=int(r["sessions"]),
             success_rate=round(int(r["completed"]) / int(r["sessions"]) * 100, 1) if int(r["sessions"]) > 0 else 0,
@@ -1937,13 +1939,13 @@ async def get_ai_insights(
 
     # 3. Platform comparison
     platform_rows = await _ch_json_scoped(
-        "SELECT ide, count() AS sessions, "
+        "SELECT harness, count() AS sessions, "
         "count(DISTINCT user_id) AS users, "
         "round(avg(dateDiff('millisecond', first_event_time, last_event_time)) / 1000) AS avg_task_seconds "
         "FROM session_stats_agg "
-        "WHERE project_id = 'default' AND ide != '' "
+        "WHERE project_id = 'default' AND harness != '' "
         "AND first_event_time != last_event_time "
-        "GROUP BY ide HAVING sessions >= 3 "
+        "GROUP BY harness HAVING sessions >= 3 "
         "ORDER BY sessions DESC",
         current_user,
     )
@@ -2031,7 +2033,7 @@ async def get_ai_insights(
         ],
         "platform_comparison": [
             {
-                "platform": r["ide"],
+                "platform": r["harness"],
                 "sessions": int(r["sessions"]),
                 "users": int(r["users"]),
                 "avg_task_seconds": float(r.get("avg_task_seconds") or 0),

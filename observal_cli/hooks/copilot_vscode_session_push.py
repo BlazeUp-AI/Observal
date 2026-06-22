@@ -133,7 +133,7 @@ def _run() -> None:
 
     payload = {
         "session_id": session_id,
-        "ide": "copilot",
+        "harness": "copilot",
         "hook_event": hook_event,
         "lines": [synthetic],
         "start_offset": current_offset,

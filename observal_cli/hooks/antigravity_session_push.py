@@ -131,7 +131,7 @@ def _run(home: Path | None = None) -> dict:
         new_offset=new_offset,
         cwd=cwd,
     )
-    payload["ide"] = "antigravity"
+    payload["harness"] = "antigravity"
 
     success = post_to_server(
         server_url=config["server_url"],

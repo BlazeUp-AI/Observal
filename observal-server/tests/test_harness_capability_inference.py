@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 snoopuppy582 <mnb0968@naver.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Tests for harness feature inference helpers."""
+"""Tests for harness capability inference helpers."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 
 from schemas.harness_registry import HARNESS_REGISTRY
-from services.harness_feature_inference import compute_supported_harnesses, infer_required_features
+from services.harness_capability_inference import compute_supported_harnesses, infer_required_features
 
 
 def _agent(*components, external_mcps=None):
@@ -55,12 +55,15 @@ def test_infer_required_features_ignores_unknown_skill_listings():
 
 
 @pytest.mark.parametrize("harness", list(HARNESS_REGISTRY))
-def test_compute_supported_harnesses_includes_each_ide_for_its_features(harness):
+def test_compute_supported_harnesses_includes_each_harness_for_its_features(harness):
     required_features = sorted(HARNESS_REGISTRY[harness]["capabilities"])
     assert harness in compute_supported_harnesses(required_features)
 
 
 def test_compute_supported_harnesses_requires_every_feature():
-    supported_harnesses = compute_supported_harnesses(["mcp_servers", "hooks", "skills"])
-    assert "claude-code" in supported_harnesses
-    assert "codex" not in supported_harnesses
+    required_features = ["mcp_servers", "hooks", "skills"]
+    supported_harnesses = compute_supported_harnesses(required_features)
+    expected = {
+        harness for harness, spec in HARNESS_REGISTRY.items() if set(required_features).issubset(spec["capabilities"])
+    }
+    assert set(supported_harnesses) == expected

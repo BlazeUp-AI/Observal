@@ -45,7 +45,7 @@ def parse_rows(rows: list[dict]) -> list[dict]:
         raw_line = row.get("raw_line", "")
         ingested_at = row.get("ingested_at", "")
         row_ts = row.get("timestamp", "")
-        ide = row.get("ide", "kiro")
+        harness = row.get("harness", "kiro")
 
         if not raw_line:
             events.append(basic_event(row))
@@ -80,15 +80,15 @@ def parse_rows(rows: list[dict]) -> list[dict]:
                         "event_name": "kiro_credits",
                         "body": f"{float(row_credits):.4f} credits",
                         "attributes": {"credits": str(row_credits), "model": "Kiro Auto"},
-                        "service_name": ide,
+                        "service_name": harness,
                     }
                 )
         elif kind == "Prompt":
-            _handle_prompt(data, ts, ide, events)
+            _handle_prompt(data, ts, harness, events)
         elif kind == "AssistantMessage":
-            _handle_assistant_message(data, ts, ide, events, tool_use_index)
+            _handle_assistant_message(data, ts, harness, events, tool_use_index)
         elif kind == "ToolResults":
-            _handle_tool_results(data, ts, ide, events, tool_use_index)
+            _handle_tool_results(data, ts, harness, events, tool_use_index)
         else:
             events.append(basic_event(row))
 
@@ -111,7 +111,7 @@ def _epoch_to_clickhouse(epoch_s: int | float) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _handle_prompt(data: dict, ts: str, ide: str, events: list[dict]) -> None:
+def _handle_prompt(data: dict, ts: str, harness: str, events: list[dict]) -> None:
     content = data.get("content", [])
     text_parts = [
         item.get("data", "")
@@ -126,7 +126,7 @@ def _handle_prompt(data: dict, ts: str, ide: str, events: list[dict]) -> None:
                 "event_name": "hook_userpromptsubmit",
                 "body": full_text[:100],
                 "attributes": {"tool_input": full_text},
-                "service_name": ide,
+                "service_name": harness,
             }
         )
 
@@ -134,7 +134,7 @@ def _handle_prompt(data: dict, ts: str, ide: str, events: list[dict]) -> None:
 def _handle_assistant_message(
     data: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_use_index: dict[str, int],
 ) -> None:
@@ -156,7 +156,7 @@ def _handle_assistant_message(
                     "event_name": "hook_assistant_response",
                     "body": text[:100],
                     "attributes": {"tool_response": text},
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
 
@@ -179,7 +179,7 @@ def _handle_assistant_message(
                         "tool_input": json.dumps(clean_input),
                         "tool_use_id": tool_use_id,
                     },
-                    "service_name": ide,
+                    "service_name": harness,
                 }
             )
             if tool_use_id:
@@ -189,7 +189,7 @@ def _handle_assistant_message(
 def _handle_tool_results(
     data: dict,
     ts: str,
-    ide: str,
+    harness: str,
     events: list[dict],
     tool_use_index: dict[str, int],
 ) -> None:
@@ -250,7 +250,7 @@ def extra_ingest_rows(
     user_id: str,
     agent_id: str | None,
     agent_version: str | None,
-    ide: str,
+    harness: str,
     total_credits: float | None,
 ) -> list[dict]:
     """Return Kiro-specific extra rows to write after the main ingest loop.
@@ -269,7 +269,7 @@ def extra_ingest_rows(
             "user_id": user_id,
             "agent_id": agent_id,
             "agent_version": agent_version,
-            "ide": ide,
+            "harness": harness,
             "line_offset": 0xFFFFFFFF,
             "line_hash": "",
             "layer_hash": None,

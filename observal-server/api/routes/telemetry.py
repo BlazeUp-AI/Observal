@@ -161,7 +161,7 @@ async def ingest(
                         "agent_id": t.agent_id,
                         "user_id": user_id,
                         "session_id": t.session_id,
-                        "ide": t.ide,
+                        "harness": t.harness,
                         "environment": environment,
                         "start_time": t.start_time,
                         "end_time": t.end_time,
@@ -209,7 +209,7 @@ async def ingest(
                         "end_time": s.end_time,
                         "latency_ms": s.latency_ms,
                         "status": s.status,
-                        "ide": s.ide,
+                        "harness": s.harness,
                         "environment": environment,
                         "metadata": s.metadata,
                         "token_count_input": s.token_count_input,
@@ -259,7 +259,7 @@ async def ingest(
                     "session_id": t.session_id or "",
                     "mcp_id": t.mcp_id or "",
                     "agent_id": t.agent_id or "",
-                    "ide": t.ide or "",
+                    "harness": t.harness or "",
                 }
 
             otel_rows = []
@@ -302,15 +302,15 @@ async def ingest(
                     attrs["mcp_status"] = s.status
                 if meta.get("agent_id"):
                     attrs["agent_id"] = meta["agent_id"]
-                if meta.get("ide"):
-                    attrs["terminal.type"] = meta["ide"]
+                if meta.get("harness"):
+                    attrs["terminal.type"] = meta["harness"]
 
                 otel_rows.append(
                     {
                         "Timestamp": s.start_time or now,
                         "Body": body_text,
                         "LogAttributes": attrs,
-                        "ServiceName": meta.get("ide") or "claude-code",
+                        "ServiceName": meta.get("harness") or "claude-code",
                         "SeverityText": "ERROR" if s.status == "error" else "INFO",
                         "SeverityNumber": 17 if s.status == "error" else 9,
                         "TraceId": s.trace_id or "",

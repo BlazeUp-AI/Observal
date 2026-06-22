@@ -20,7 +20,7 @@ MAX_SESSION_LINES = 1000
 
 class SessionIngestRequest(BaseModel):
     session_id: str = Field(..., max_length=MAX_SHORT_STRING_LENGTH)
-    ide: str = Field("claude-code", max_length=MAX_SHORT_STRING_LENGTH)
+    harness: str = Field("claude-code", max_length=MAX_SHORT_STRING_LENGTH)
     agent_id: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
     agent_version: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
     layer_hash: str | None = Field(None, max_length=MAX_SHORT_STRING_LENGTH)
@@ -71,9 +71,9 @@ async def ingest_session(
     project_id = get_project_id(current_user)
 
     optic.debug(
-        "ingest request: session={}, ide={}, lines={}, offset={}, final={}",
+        "ingest request: session={}, harness={}, lines={}, offset={}, final={}",
         req.session_id,
-        req.ide,
+        req.harness,
         len(req.lines),
         req.start_offset,
         req.final,
@@ -86,7 +86,7 @@ async def ingest_session(
         agent_id=req.agent_id,
         agent_version=req.agent_version,
         layer_hash=req.layer_hash,
-        ide=req.ide,
+        harness=req.harness,
         lines=req.lines,
         start_offset=req.start_offset,
         total_credits=req.total_credits,

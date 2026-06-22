@@ -429,20 +429,20 @@ async def fetch_session_stats(
     agent_name: str = "",
     agent_version: str | None = None,
 ) -> dict[str, dict]:
-    """Fetch per-session stats (credits, ide) from session_stats_agg.
+    """Fetch per-session stats (credits, harness) from session_stats_agg.
 
-    Returns {session_id: {"credits": float, "ide": str}} for enriching metas.
+    Returns {session_id: {"credits": float, "harness": str}} for enriching metas.
     """
     query = get_query()
 
     sql = """
-        SELECT session_id, total_credits, ide, layer_hash
+        SELECT session_id, total_credits, harness, layer_hash
         FROM session_stats_agg FINAL
         WHERE (agent_id = {agent_id:String} OR agent_id = {agent_name:String})
           AND last_event_time >= {t_start:String}
           AND last_event_time <= {t_end:String}
           AND __AGENT_VERSION_FILTER__
-        GROUP BY session_id, total_credits, ide, layer_hash
+        GROUP BY session_id, total_credits, harness, layer_hash
         FORMAT JSON
     """.replace("__AGENT_VERSION_FILTER__", agent_version_filter())
     params = {
@@ -460,7 +460,7 @@ async def fetch_session_stats(
         return {
             row["session_id"]: {
                 "credits": float(row.get("total_credits") or 0),
-                "ide": row.get("ide", ""),
+                "harness": row.get("harness", ""),
                 "layer_hash": row.get("layer_hash", ""),
             }
             for row in rows
@@ -472,7 +472,7 @@ async def fetch_session_stats(
         SELECT
             session_id,
             max(credits) AS total_credits,
-            anyIf(ide, ide != '') AS ide,
+            anyIf(harness, harness != '') AS harness,
             anyIf(layer_hash, layer_hash IS NOT NULL AND layer_hash != '') AS layer_hash
         FROM session_events FINAL
         WHERE (agent_id = {agent_id:String} OR agent_id = {agent_name:String})
@@ -489,7 +489,7 @@ async def fetch_session_stats(
         return {
             row["session_id"]: {
                 "credits": float(row.get("total_credits") or 0),
-                "ide": row.get("ide", ""),
+                "harness": row.get("harness", ""),
                 "layer_hash": row.get("layer_hash", ""),
             }
             for row in rows
@@ -622,7 +622,7 @@ async def extract_all_session_metas(
         agent_version=agent_version,
     )
 
-    # Fetch per-session stats (credits, ide, layer hash) for enrichment
+    # Fetch per-session stats (credits, harness, layer hash) for enrichment
     session_stats = await fetch_session_stats(
         agent_id,
         period_start,
@@ -637,7 +637,7 @@ async def extract_all_session_metas(
         # Enrich with credits, harness, layer hash, and report version scope from session_stats_agg
         stats = session_stats.get(session_id, {})
         meta["credits"] = stats.get("credits", 0.0)
-        meta["ide"] = stats.get("ide", "")
+        meta["harness"] = stats.get("harness", "")
         meta["layer_hash"] = stats.get("layer_hash", "")
         meta["agent_version"] = agent_version or ""
         metas.append(meta)
@@ -681,7 +681,7 @@ def aggregate_metas(metas: list[dict]) -> dict:
         "user_response_times": [],
         "message_hours": [],
         "days_active": set(),
-        "ides": set(),
+        "harnesses": set(),
         "sessions_with_tokens": 0,
         "sessions_with_credits": 0,
         "model_usage": {},  # {model: {input_tokens, output_tokens, cost, messages, sessions}}
@@ -700,8 +700,8 @@ def aggregate_metas(metas: list[dict]) -> dict:
             agg["sessions_with_tokens"] += 1
         if meta.get("credits", 0) > 0:
             agg["sessions_with_credits"] += 1
-        if meta.get("ide"):
-            agg["ides"].add(meta["ide"])
+        if meta.get("harness"):
+            agg["harnesses"].add(meta["harness"])
         agg["total_lines_added"] += meta["lines_added"]
         agg["total_lines_removed"] += meta["lines_removed"]
         agg["total_files_modified"] += meta["files_modified"]
@@ -760,7 +760,7 @@ def aggregate_metas(metas: list[dict]) -> dict:
 
     # Finalize
     agg["days_active"] = len(agg["days_active"])
-    agg["ides"] = sorted(agg["ides"])
+    agg["harnesses"] = sorted(agg["harnesses"])
 
     # Sort tool counts by frequency
     agg["top_tools"] = sorted(agg["tool_counts"].items(), key=lambda x: -x[1])[:15]

@@ -198,7 +198,7 @@ class Trace:
     agent_id: str | None
     user_id: str
     session_id: str | None
-    ide: str | None
+    harness: str | None
     name: str | None
     start_time: str
     end_time: str | None
@@ -285,7 +285,7 @@ def _row_to_trace(r: dict) -> Trace:
         agent_id=r.get("agent_id"),
         user_id=r.get("user_id", ""),
         session_id=r.get("session_id"),
-        ide=r.get("ide"),
+        harness=r.get("harness"),
         name=r.get("name"),
         start_time=r.get("start_time", ""),
         end_time=r.get("end_time"),
