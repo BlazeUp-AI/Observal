@@ -7,6 +7,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/lib/theme";
 import { makeQueryClient } from "@/lib/query-client";
 import { DynamicTitle } from "@/components/dynamic-title";
+import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { VersionMismatchBanner } from "@/components/shared/version-mismatch-banner";
 import "@/app.css";
 
@@ -32,13 +33,15 @@ function RootComponent() {
   const [queryClient] = useState(makeQueryClient);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="system" themes={THEMES}>
-        <Outlet />
-        <VersionMismatchBanner />
-      </ThemeProvider>
-      <DynamicTitle />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="system" themes={THEMES}>
+          <Outlet />
+          <VersionMismatchBanner />
+        </ThemeProvider>
+        <DynamicTitle />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

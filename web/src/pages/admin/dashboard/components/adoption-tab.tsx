@@ -11,10 +11,18 @@ import { DashboardRangeContext } from "../context";
 
 export function AdoptionTab() {
   const range = useContext(DashboardRangeContext);
-  const { data: adoption, isLoading: adoptionLoading } = useExecAdoption();
-  const { data: agents, isLoading: agentsLoading } = useExecAgentCounts();
+  const { data: adoption, isLoading: adoptionLoading, isError: adoptionError } = useExecAdoption();
+  const { data: agents, isLoading: agentsLoading, isError: agentsError } = useExecAgentCounts();
   const { data: usage } = useExecUsageByCategory(range);
   const { data: platforms } = useExecPlatformCoverage();
+
+  if (adoptionError || agentsError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load adoption data. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   if (adoptionLoading || agentsLoading) {
     return (

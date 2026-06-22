@@ -30,8 +30,16 @@ function deriveRadarData(p: ExecPlatformScore, best: { latency: number; cost: nu
 }
 
 export function InvestmentsTab() {
-  const { data: platforms, isLoading } = useExecPlatforms();
+  const { data: platforms, isLoading, isError } = useExecPlatforms();
   const [selected, setSelected] = useState(0);
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load platform data. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

@@ -75,7 +75,15 @@ function DeveloperBreakdown() {
 }
 
 export function InsightsTab() {
-  const { data: insights, isLoading } = useExecAIInsights();
+  const { data: insights, isLoading, isError } = useExecAIInsights();
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load insights. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
