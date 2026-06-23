@@ -92,7 +92,7 @@ observal auth whoami
 
 ## 4. Discover and instrument your harness
 
-If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, first see what's there:
+If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Copilot, first see what's there:
 
 ```bash
 observal scan

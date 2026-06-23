@@ -85,13 +85,6 @@ Use anywhere that accepts `<id-or-name>` by prefixing with `@`.
 | `.vscode/mcp.json` | MCP servers (wrapped via `observal-shim`) |
 | `AGENTS.md` | Rules loaded into context |
 
-### Gemini CLI
-
-| Path | Purpose |
-| --- | --- |
-| `.gemini/settings.json` | MCP servers + config |
-| `AGENTS.md` / `GEMINI.md` | Rules |
-
 ### Codex CLI
 
 | Path | Purpose |

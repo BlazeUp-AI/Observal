@@ -138,7 +138,6 @@ cat ~/.kiro/settings/mcp.json       # Kiro global
 cat ~/.claude/settings.json         # Claude Code
 cat .cursor/mcp.json                # Cursor
 cat .vscode/mcp.json                # VS Code
-cat .gemini/settings.json           # Gemini CLI
 ```
 
 If none exist, configure at least one MCP server in your harness first, then re-run `doctor patch`.

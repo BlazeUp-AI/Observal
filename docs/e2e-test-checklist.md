@@ -127,7 +127,6 @@
   - [ ] Kiro
   - [ ] Claude Code
   - [ ] Codex
-  - [ ] Gemini CLI
   - [ ] Copilot
   - [ ] Open Code
 

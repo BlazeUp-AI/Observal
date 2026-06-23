@@ -11,7 +11,6 @@
 Generates harness-specific agent files from a ResolvedAgent:
 - Claude Code: .claude/agents/<name>.md (markdown) + MCP JSON config
 - Cursor: .cursor/agents/<name>.md (subagent markdown) + .cursor/mcp.json
-- Gemini CLI: GEMINI.md (markdown) + MCP JSON config
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
 - Codex: ~/.codex/agents/<name>.toml (custom agent)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)

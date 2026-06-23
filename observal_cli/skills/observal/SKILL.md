@@ -35,9 +35,9 @@ observal agent pull AGENT_NAME --harness kiro --no-prompt --dir .
 ```
 
 **Flags:**
-- `--harness` (required): `claude-code`, `kiro`, `cursor`, `gemini-cli`, `vscode`, `codex`, `copilot`, `copilot-cli`, `opencode`, `antigravity`, `pi`
+- `--harness` (required): `claude-code`, `kiro`, `cursor`, `vscode`, `codex`, `copilot`, `copilot-cli`, `opencode`, `antigravity`, `pi`
 - `--version <semver>`: install a specific version (e.g. `1.2.0`). Omit for latest.
-- `--scope user|project`: install scope (Claude Code, Kiro, Gemini only)
+- `--scope user|project`: install scope for harnesses that support user or project installs
 - `--model <name>` or `--model <harness>=<name>`: override saved model (repeatable)
 - `--tools t1,t2`: Claude Code tool whitelist
 - `--env KEY=VALUE`: MCP environment variable value (repeatable)

@@ -62,7 +62,6 @@ Use **only** when a command exits with `Connection failed` or `Not configured`.
 | Claude Code | `~/.claude/agents/<name>.md` | `.claude/agents/<name>.md` |
 | Kiro | `~/.kiro/agents/<name>.json` | `.kiro/agents/<name>.json` |
 | Cursor | `~/.cursor/rules/<name>.mdc` | `.cursor/rules/<name>.mdc` |
-| Gemini CLI | `~/.gemini/agents/<name>.md` | `.gemini/agents/<name>.md` |
 | VS Code | `~/.config/Code/User/agents/<name>.md` | `.vscode/agents/<name>.md` |
 | Codex CLI | `~/.codex/agents/<name>.md` | `.codex/agents/<name>.md` |
 | Copilot CLI | `~/.config/github-copilot/agents/<name>.md` | `.github/copilot/agents/<name>.md` |
@@ -74,7 +73,7 @@ Use **only** when a command exits with `Connection failed` or `Not configured`.
 {"name":"<name>","description":"<desc>","prompt":"<prompt>","model":"claude-sonnet-4-20250514","mcpServers":{},"tools":["*"],"resources":["skill://~/.kiro/skills/*/SKILL.md"]}
 ```
 
-**Claude Code, Gemini CLI, VS Code, Codex CLI, Copilot CLI, OpenCode** (markdown):
+**Claude Code, VS Code, Codex CLI, Copilot CLI, OpenCode** (markdown):
 
 ```markdown
 ---

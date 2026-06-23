@@ -21,7 +21,7 @@ Spans stream into ClickHouse in near real-time. You query them from the web UI o
 
 ## Discover and instrument an existing setup
 
-If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, first see what's there:
+If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Copilot, first see what's there:
 
 ```bash
 observal scan
@@ -35,7 +35,7 @@ observal doctor patch --all --all-harnesses
 
 This:
 
-1. Finds every MCP config file on your machine (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `.gemini/settings.json`).
+1. Finds every MCP config file on your machine (`~/.claude/settings.json`, `.kiro/settings/mcp.json`, `.cursor/mcp.json`, `.vscode/mcp.json`, `~/.copilot/mcp-config.json`).
 2. Rewrites each config so every server runs through `observal-shim`.
 3. Installs telemetry hooks for session lifecycle events.
 4. Saves a timestamped `.bak` next to every file it modified.
@@ -45,7 +45,7 @@ Scope to specific harnesses:
 ```bash
 observal doctor patch --all --harness claude-code
 observal doctor patch --all --harness kiro
-observal doctor patch --all --harness gemini-cli
+observal doctor patch --all --harness copilot-cli
 ```
 
 ## Observability at zero cost to your agents

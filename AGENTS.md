@@ -26,7 +26,7 @@ Agents are the primary entity. Each agent bundles 5 component types: MCP servers
 - Pi
 
 **Functional** (config gen and scanning work, but no session parser or hook spec):
-- Gemini CLI, Codex CLI, Copilot, Copilot CLI, OpenCode
+- Codex CLI, Copilot, Copilot CLI, OpenCode
 
 See `docs/adding-a-harness.md` for the complete guide to adding or promoting a harness.
 

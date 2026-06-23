@@ -6,7 +6,7 @@
 
 """Comprehensive end-to-end tests for issue #434: first-class harness support.
 
-Covers Codex CLI, Gemini CLI, GitHub Copilot (VS Code), and OpenCode across:
+Covers Codex CLI, GitHub Copilot (VS Code), and OpenCode across:
 
 1. Server-side config generation (agent_config_generator)
 2. CLI pull command (cmd_pull._dict_to_toml, _write_file, full pull flow)

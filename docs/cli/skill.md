@@ -136,7 +136,6 @@ Two scopes are supported:
 observal skill install my-skill --harness claude-code
 observal skill install @sk --harness kiro --scope project
 observal skill install 2 --harness cursor --raw > config.json
-observal skill install my-skill --harness gemini-cli --no-write
 ```
 
 | Option | Description |

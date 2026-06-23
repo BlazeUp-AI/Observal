@@ -1205,8 +1205,6 @@ class TestGenerateIdeAgentFiles:
 
     # ── VS Code ────────────────────────────────────────────────
 
-    # ── Gemini CLI ─────────────────────────────────────────────
-
     # ── Kiro ───────────────────────────────────────────────────
 
     def test_kiro_generates_agent_json(self):

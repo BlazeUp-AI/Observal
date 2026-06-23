@@ -103,7 +103,7 @@ observal uninstall                                   # tear down Docker, remove 
 | --------------------------- | ---------------------------- |
 | Claude Code                 | Fully supported              |
 | Kiro CLI                    | Supported (next most tested) |
-| Cursor, VS Code, Gemini CLI | Untested                     |
+| Cursor, VS Code             | Untested                     |
 
 The `--harness` flag controls which config format is generated. Each harness has its own config paths and JSON structure.
 
