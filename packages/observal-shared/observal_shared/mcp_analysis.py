@@ -8,7 +8,7 @@ from __future__ import annotations
 import ast
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
 PYTHON_MCP_PATTERN = re.compile(
@@ -201,20 +201,62 @@ def detect_env_vars(tmp_dir: str) -> list[dict]:
     return [{"name": key, "description": value, "required": True} for key, value in sorted(found.items())]
 
 
-def detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
+def _safe_image_name(value: str) -> str:
+    name = re.sub(r"[^a-z0-9_.-]+", "-", value.lower()).strip(".-")
+    return name or "mcp-server"
+
+
+def _repo_image_name(git_url: str, fallback: str | None = None) -> str:
+    try:
+        path = urlparse(git_url).path.strip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        if path:
+            return _safe_image_name(path.replace("/", "-"))
+    except Exception:
+        pass
+    return _safe_image_name(fallback or "mcp-server")
+
+
+def _docker_build_command(tag: str, context: str = ".", dockerfile: str | None = None) -> str:
+    context = context or "."
+    parts = ["docker", "build", "-t", tag]
+    if dockerfile:
+        dockerfile_path = str(PurePosixPath(context) / dockerfile) if not dockerfile.startswith("/") else dockerfile
+        parts.extend(["-f", dockerfile_path])
+    parts.append(context)
+    return " ".join(parts)
+
+
+def detect_container_image(root: Path, git_url: str, name: str | None = None) -> tuple[str | None, bool, list[str]]:
+    """Detect a runnable OCI image and any local setup commands.
+
+    ``suggested`` is true when the image tag is inferred and may need building.
+    """
+    repo_name = _repo_image_name(git_url, name)
     for compose_name in ("docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"):
         compose_file = root / compose_name
-        if compose_file.exists():
-            try:
-                import yaml
+        if not compose_file.exists():
+            continue
+        try:
+            import yaml
 
-                data = yaml.safe_load(compose_file.read_text(errors="ignore"))
-                for service in (data.get("services") or {}).values():
-                    image = service.get("image")
-                    if image and isinstance(image, str):
-                        return (image, False)
-            except Exception:
-                pass
+            data = yaml.safe_load(compose_file.read_text(errors="ignore")) or {}
+            services = data.get("services") or {}
+            for service in services.values():
+                image = service.get("image") if isinstance(service, dict) else None
+                if image and isinstance(image, str):
+                    return (image, False, [])
+            for service_name, service in services.items():
+                if not isinstance(service, dict) or not service.get("build"):
+                    continue
+                build = service["build"]
+                context = build if isinstance(build, str) else build.get("context", ".")
+                dockerfile = None if isinstance(build, str) else build.get("dockerfile")
+                tag = service.get("image") or f"{repo_name}-{_safe_image_name(str(service_name))}:latest"
+                return (tag, True, [_docker_build_command(tag, str(context or "."), dockerfile)])
+        except Exception:
+            pass
     for readme_name in ("README.md", "README.rst", "README.txt", "README"):
         readme = root / readme_name
         if not readme.exists():
@@ -222,10 +264,14 @@ def detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
         try:
             match = _DOCKER_IMAGE_PATTERN.search(readme.read_text(errors="ignore"))
             if match:
-                return (match.group(1), False)
+                return (match.group(1), False, [])
         except Exception:
             pass
         break
+    for dockerfile in ("Dockerfile", "Containerfile"):
+        if (root / dockerfile).exists():
+            tag = f"{repo_name}:latest"
+            return (tag, True, [_docker_build_command(tag, ".", dockerfile)])
     safe_name = re.compile(r"^[a-zA-Z0-9._-]+$")
     try:
         parts = urlparse(git_url)
@@ -235,10 +281,15 @@ def detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
                 path = path[:-4]
             owner_repo = path.split("/")
             if len(owner_repo) >= 2 and safe_name.match(owner_repo[0]) and safe_name.match(owner_repo[1]):
-                return (f"ghcr.io/{owner_repo[0]}/{owner_repo[1]}", True)
+                return (f"ghcr.io/{owner_repo[0]}/{owner_repo[1]}", True, [])
     except Exception:
         pass
-    return (None, False)
+    return (None, False, [])
+
+
+def detect_docker_image(root: Path, git_url: str) -> tuple[str | None, bool]:
+    image, suggested, _setup = detect_container_image(root, git_url)
+    return (image, suggested)
 
 
 def infer_command_args(

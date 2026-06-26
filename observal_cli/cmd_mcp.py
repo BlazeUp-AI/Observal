@@ -626,6 +626,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
     detected_args = prefill.get("args")
     detected_docker_image = prefill.get("docker_image")
     detected_docker_suggested = prefill.get("docker_image_suggested", False)
+    detected_setup = prefill.get("setup_instructions", "")
 
     rprint("\n[bold]--- Analysis Results ---[/bold]")
 
@@ -651,6 +652,8 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             for ev in detected_env_vars:
                 ev_name = ev.get("name", ev) if isinstance(ev, dict) else ev
                 rprint(f"    [cyan]*[/cyan] {ev_name}")
+        if detected_setup:
+            rprint(f"  Setup:        [dim]{detected_setup.splitlines()[0]}[/dim]")
         if not detected_name and not tools:
             rprint("  [dim]No MCP metadata detected. You will need to fill in all fields manually.[/dim]")
 
@@ -723,7 +726,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         _category = category or "general"
         if not _framework:
             _framework = "python"
-        _setup = ""
+        _setup = detected_setup
         _changelog = "Initial release"
         # Detect $VAR patterns in args and merge into env vars
         dollar_vars = _extract_dollar_vars(_args or [], {})
@@ -819,7 +822,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
 
-        _setup = text_input("Setup instructions (optional, press Enter to skip)", default="")
+        _setup = text_input("Setup instructions (optional, press Enter to skip)", default=detected_setup)
         _changelog = text_input("Changelog", default="Initial release")
 
         # Detect $VAR patterns in final args and merge into detected env vars
@@ -873,6 +876,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             "command": prefill.get("command"),
             "args": prefill.get("args"),
             "docker_image": prefill.get("docker_image"),
+            "setup_instructions": prefill.get("setup_instructions"),
         }
 
     endpoint = "/api/v1/mcps/draft" if draft else "/api/v1/mcps/submit"

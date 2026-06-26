@@ -17,6 +17,7 @@ from git import Repo
 from loguru import logger as optic
 from observal_shared.mcp_analysis import (
     analyze_python_entry,
+    detect_container_image,
     detect_docker_image,
     detect_env_vars,
     detect_non_python_mcp,
@@ -37,6 +38,7 @@ _is_filtered_env_var = is_filtered_env_var
 _is_test_file = is_test_file
 _detect_env_vars = detect_env_vars
 _detect_docker_image = detect_docker_image
+_detect_container_image = detect_container_image
 _infer_command_args = infer_command_args
 _detect_non_python_mcp = detect_non_python_mcp
 _extract_repo_name = extract_repo_name
@@ -101,6 +103,14 @@ async def _async_clone(clone_url: str, dest: str, depth: int = 1) -> None:
     )
 
 
+def _apply_container_detection(listing: McpListing, tmp_dir: str) -> None:
+    image, _suggested, setup_commands = detect_container_image(Path(tmp_dir), listing.git_url or "", listing.name)
+    if image and not listing.docker_image:
+        listing.docker_image = image
+    if setup_commands and not listing.setup_instructions:
+        listing.setup_instructions = "\n".join(setup_commands)
+
+
 async def run_validation(listing: McpListing, db: AsyncSession):
     optic.trace("running MCP validation for listing {}", listing.id)
     await db.execute(delete(McpValidationResult).where(McpValidationResult.listing_id == listing.id))
@@ -158,9 +168,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
     if entry_point:
         listing.mcp_validated = True
         listing.framework = "python-mcp"
-        docker_image, _ = detect_docker_image(Path(tmp_dir), listing.git_url or "")
-        if docker_image and not listing.docker_image:
-            listing.docker_image = docker_image
+        _apply_container_detection(listing, tmp_dir)
         cmd, cmd_args = infer_command_args(listing.framework, listing.docker_image, listing.name)
         if cmd and not listing.command:
             listing.command = cmd
@@ -184,9 +192,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
     if non_python_framework:
         listing.mcp_validated = True
         listing.framework = non_python_framework
-        docker_image, _ = detect_docker_image(Path(tmp_dir), listing.git_url or "")
-        if docker_image and not listing.docker_image:
-            listing.docker_image = docker_image
+        _apply_container_detection(listing, tmp_dir)
         cmd, cmd_args = infer_command_args(listing.framework, listing.docker_image, listing.name)
         if cmd and not listing.command:
             listing.command = cmd
@@ -207,9 +213,7 @@ async def _clone_and_inspect(listing: McpListing, db: AsyncSession, tmp_dir: str
 
     # No known framework detected - still mark as validated but note unknown framework
     listing.mcp_validated = True
-    docker_image, _ = detect_docker_image(Path(tmp_dir), listing.git_url or "")
-    if docker_image and not listing.docker_image:
-        listing.docker_image = docker_image
+    _apply_container_detection(listing, tmp_dir)
     cmd, cmd_args = infer_command_args(listing.framework, listing.docker_image, listing.name)
     if cmd and not listing.command:
         listing.command = cmd
@@ -377,7 +381,7 @@ async def analyze_repo(git_url: str) -> dict:
             # Try non-Python detection; return repo name as fallback
             non_python = detect_non_python_mcp(tmp_dir)
             name = extract_repo_name(git_url, tmp_dir)
-            docker_image, docker_suggested = detect_docker_image(Path(tmp_dir), git_url)
+            docker_image, docker_suggested, setup_commands = detect_container_image(Path(tmp_dir), git_url, name)
             cmd, cmd_args = infer_command_args(non_python, docker_image, name)
             base: dict = {
                 "name": name,
@@ -391,6 +395,8 @@ async def analyze_repo(git_url: str) -> dict:
             if docker_image:
                 base["docker_image"] = docker_image
                 base["docker_image_suggested"] = docker_suggested
+            if setup_commands:
+                base["setup_instructions"] = "\n".join(setup_commands)
             if cmd:
                 base["command"] = cmd
                 base["args"] = cmd_args
@@ -399,7 +405,7 @@ async def analyze_repo(git_url: str) -> dict:
         tree = ast.parse(entry_point.read_text(errors="ignore"))
         server_name, server_desc, tools, issues = analyze_python_entry(tree, git_url, tmp_dir)
         relative_entry = str(entry_point.relative_to(tmp_dir))
-        docker_image, docker_suggested = detect_docker_image(Path(tmp_dir), git_url)
+        docker_image, docker_suggested, setup_commands = detect_container_image(Path(tmp_dir), git_url, server_name)
         cmd, cmd_args = infer_command_args("python", docker_image, server_name, relative_entry)
         result: dict = {
             "name": server_name,
@@ -412,6 +418,8 @@ async def analyze_repo(git_url: str) -> dict:
         if docker_image:
             result["docker_image"] = docker_image
             result["docker_image_suggested"] = docker_suggested
+        if setup_commands:
+            result["setup_instructions"] = "\n".join(setup_commands)
         if cmd:
             result["command"] = cmd
             result["args"] = cmd_args

@@ -14,6 +14,7 @@ from pathlib import Path
 from loguru import logger as optic
 from observal_shared.mcp_analysis import (
     analyze_python_entry,
+    detect_container_image,
     detect_docker_image,
     detect_env_vars,
     detect_non_python_mcp,
@@ -28,6 +29,7 @@ _is_filtered_env_var = is_filtered_env_var
 _is_test_file = is_test_file
 _detect_env_vars = detect_env_vars
 _detect_docker_image = detect_docker_image
+_detect_container_image = detect_container_image
 _infer_command_args = infer_command_args
 _detect_non_python_mcp = detect_non_python_mcp
 _extract_repo_name = extract_repo_name
@@ -64,7 +66,7 @@ def _clone_repo(git_url: str, dest: str) -> str | None:
 def _non_python_result(git_url: str, tmp_dir: str, env_vars: list[dict]) -> dict:
     non_python = detect_non_python_mcp(tmp_dir)
     name = extract_repo_name(git_url, tmp_dir)
-    docker_image, docker_suggested = detect_docker_image(Path(tmp_dir), git_url)
+    docker_image, docker_suggested, setup_commands = detect_container_image(Path(tmp_dir), git_url, name)
     cmd, cmd_args = infer_command_args(non_python, docker_image, name)
     result: dict = {
         "name": name,
@@ -78,6 +80,8 @@ def _non_python_result(git_url: str, tmp_dir: str, env_vars: list[dict]) -> dict
     if docker_image:
         result["docker_image"] = docker_image
         result["docker_image_suggested"] = docker_suggested
+    if setup_commands:
+        result["setup_instructions"] = "\n".join(setup_commands)
     if cmd:
         result["command"] = cmd
         result["args"] = cmd_args
@@ -103,7 +107,7 @@ def analyze_local(git_url: str) -> dict:
         tree = ast.parse(entry_point.read_text(errors="ignore"))
         server_name, server_desc, tools, issues = analyze_python_entry(tree, git_url, tmp_dir)
         relative_entry = str(entry_point.relative_to(tmp_dir))
-        docker_image, docker_suggested = detect_docker_image(Path(tmp_dir), git_url)
+        docker_image, docker_suggested, setup_commands = detect_container_image(Path(tmp_dir), git_url, server_name)
         cmd, cmd_args = infer_command_args("python", docker_image, server_name, relative_entry)
 
         result: dict = {
@@ -118,6 +122,8 @@ def analyze_local(git_url: str) -> dict:
         if docker_image:
             result["docker_image"] = docker_image
             result["docker_image_suggested"] = docker_suggested
+        if setup_commands:
+            result["setup_instructions"] = "\n".join(setup_commands)
         if cmd:
             result["command"] = cmd
             result["args"] = cmd_args
