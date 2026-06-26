@@ -12,6 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+	CodeEditor,
+	codeLanguageFromFilename,
+	codeLanguageLabel,
+} from "@/components/ui/code-editor";
 import { parseMcpConfigJson, applyParsedConfig } from "@/lib/mcp-parser";
 import {
 	Dialog,
@@ -80,6 +86,9 @@ interface SkillFieldState {
 	git_url: string;
 	git_ref: string;
 	slash_command: string;
+	skill_md_content: string;
+	script_content: string;
+	script_filename: string;
 }
 
 interface PromptFieldState {
@@ -327,14 +336,16 @@ function McpEditForm({
 				</div>
 
 				<div className="space-y-2">
-					<Textarea
+					<CodeEditor
 						id="mcp-json"
 						value={jsonInput}
-						onChange={(e) => handleJsonInput(e.target.value)}
-						placeholder={`Paste your updated config, e.g.:\n{\n  "mcpServers": {\n    "${item.name}": {\n      "command": "npx",\n      "args": ["-y", "@example/server@latest"]\n    }\n  }\n}`}
-						rows={8}
-						className="resize-y font-[family-name:var(--font-mono)] text-xs"
+						onChange={handleJsonInput}
+						language="json"
+						placeholder="Paste your updated MCP JSON config here."
 					/>
+					<p className="text-xs text-muted-foreground">
+						Paste directly or type JSON. Brackets and quotes auto-close.
+					</p>
 					{jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
 					{jsonParsed && (
 						<p className="text-xs text-green-600 flex items-center gap-1.5">
@@ -626,6 +637,10 @@ function SkillFields({
 	state: SkillFieldState;
 	onChange: (patch: Partial<SkillFieldState>) => void;
 }) {
+	const scriptLanguage = codeLanguageFromFilename(state.script_filename);
+	const scriptLanguageName = codeLanguageLabel(scriptLanguage);
+	const defaultTab = state.git_url ? "git" : "paste";
+
 	return (
 		<div className="space-y-4">
 			<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -642,42 +657,6 @@ function SkillFields({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="skill-skill-path" className="text-sm font-medium">
-						Skill Path
-					</Label>
-					<Input
-						id="skill-skill-path"
-						placeholder="skills/my-skill"
-						value={state.skill_path}
-						onChange={(e) => onChange({ skill_path: e.target.value })}
-					/>
-				</div>
-
-				<div className="space-y-2">
-					<Label htmlFor="skill-git-url" className="text-sm font-medium">
-						Git URL
-					</Label>
-					<Input
-						id="skill-git-url"
-						placeholder="https://github.com/org/skills"
-						value={state.git_url}
-						onChange={(e) => onChange({ git_url: e.target.value })}
-					/>
-				</div>
-
-				<div className="space-y-2">
-					<Label htmlFor="skill-git-ref" className="text-sm font-medium">
-						Git Ref
-					</Label>
-					<Input
-						id="skill-git-ref"
-						placeholder="main"
-						value={state.git_ref}
-						onChange={(e) => onChange({ git_ref: e.target.value })}
-					/>
-				</div>
-
-				<div className="space-y-2">
 					<Label htmlFor="skill-slash-command" className="text-sm font-medium">
 						Slash Command
 					</Label>
@@ -689,6 +668,98 @@ function SkillFields({
 					/>
 				</div>
 			</div>
+
+			<Tabs defaultValue={defaultTab} className="w-full">
+				<TabsList>
+					<TabsTrigger value="git">Git source</TabsTrigger>
+					<TabsTrigger value="paste">Pasted files</TabsTrigger>
+				</TabsList>
+
+				<TabsContent value="git" className="space-y-4 pt-4">
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+						<div className="space-y-2">
+							<Label htmlFor="skill-skill-path" className="text-sm font-medium">
+								Skill Path
+							</Label>
+							<Input
+								id="skill-skill-path"
+								placeholder="skills/my-skill"
+								value={state.skill_path}
+								onChange={(e) => onChange({ skill_path: e.target.value })}
+							/>
+						</div>
+
+						<div className="space-y-2">
+							<Label htmlFor="skill-git-ref" className="text-sm font-medium">
+								Git Ref
+							</Label>
+							<Input
+								id="skill-git-ref"
+								placeholder="main"
+								value={state.git_ref}
+								onChange={(e) => onChange({ git_ref: e.target.value })}
+							/>
+						</div>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="skill-git-url" className="text-sm font-medium">
+							Git URL
+						</Label>
+						<Input
+							id="skill-git-url"
+							placeholder="https://github.com/org/skills"
+							value={state.git_url}
+							onChange={(e) => onChange({ git_url: e.target.value })}
+						/>
+					</div>
+				</TabsContent>
+
+				<TabsContent value="paste" className="space-y-4 pt-4">
+					<div className="space-y-2">
+						<Label htmlFor="skill-md-content" className="text-sm font-medium">
+							SKILL.md
+						</Label>
+						<Textarea
+							id="skill-md-content"
+							placeholder="---\nname: my-skill\ndescription: What this skill does\n---\n\n## Instructions"
+							value={state.skill_md_content}
+							onChange={(e) => onChange({ skill_md_content: e.target.value })}
+							rows={10}
+							className="resize-y font-[family-name:var(--font-mono)] text-xs leading-relaxed"
+						/>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="skill-script-filename" className="text-sm font-medium">
+							Script Filename
+						</Label>
+						<Input
+							id="skill-script-filename"
+							placeholder="run.sh"
+							value={state.script_filename}
+							onChange={(e) => onChange({ script_filename: e.target.value })}
+							className="font-[family-name:var(--font-mono)]"
+						/>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="skill-script-content" className="text-sm font-medium">
+							Script ({scriptLanguageName})
+						</Label>
+						<CodeEditor
+							id="skill-script-content"
+							value={state.script_content}
+							onChange={(script_content) => onChange({ script_content })}
+							language={scriptLanguage}
+							placeholder="Paste or type the skill script here."
+						/>
+						<p className="text-xs text-muted-foreground">
+							Detected from filename. Use .sh for Bash, .py for Python, or .mjs/.js for JavaScript.
+						</p>
+					</div>
+				</TabsContent>
+			</Tabs>
 		</div>
 	);
 }
@@ -844,6 +915,9 @@ function EditFormInner({
 		git_url: (item.git_url as string) ?? "",
 		git_ref: (item.git_ref as string) ?? "",
 		slash_command: (item.slash_command as string) ?? "",
+		skill_md_content: (item.skill_md_content as string) ?? "",
+		script_content: (item.script_content as string) ?? "",
+		script_filename: (item.script_filename as string) ?? "",
 	};
 	const initialPrompt: PromptFieldState = {
 		category: (item.category as string) ?? "",
@@ -928,6 +1002,12 @@ function EditFormInner({
 			if (skillState.git_ref) extra.git_ref = skillState.git_ref;
 			if (skillState.slash_command)
 				extra.slash_command = skillState.slash_command;
+			if (skillState.skill_md_content)
+				extra.skill_md_content = skillState.skill_md_content;
+			if (skillState.script_content)
+				extra.script_content = skillState.script_content;
+			if (skillState.script_filename)
+				extra.script_filename = skillState.script_filename;
 		} else if (singularType === "prompt") {
 			if (promptState.category) extra.category = promptState.category;
 			if (promptState.template) extra.template = promptState.template;
