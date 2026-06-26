@@ -10,10 +10,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.9.2] - 2026-06-23
+## [1.9.3] - 2026-06-26
 
 ### Added
 
+- add trigram user search (**search**) ([03d4710](https://github.com/BlazeUp-AI/Observal/commit/03d4710329cbaa894161cc82e0d15255ea33a576))
+- add explicit SAML CLI login (**auth**) ([9dbfc9c](https://github.com/BlazeUp-AI/Observal/commit/9dbfc9c1e3b8f78e0eabc77883d92c931378f6a0))
+- move SSO settings into dynamic config (**sso**) ([5e380e9](https://github.com/BlazeUp-AI/Observal/commit/5e380e9f3bf19d7945d7815dc90547565d86afe5))
+- add flag-only init (**agent**) ([386c5e2](https://github.com/BlazeUp-AI/Observal/commit/386c5e24ec6102a061ce4d3e37f4b2849d5dfd0d))
+- add flag-only submits (**registry**) ([4291a25](https://github.com/BlazeUp-AI/Observal/commit/4291a25173e32980499543977796c864bd195320))
+- infer local container setup (**mcp**) ([9c1f6cc](https://github.com/BlazeUp-AI/Observal/commit/9c1f6ccc7d5a1432d654853d1c022682bef8ea0b))
+- rank registry queries (**search**) ([4ffbde5](https://github.com/BlazeUp-AI/Observal/commit/4ffbde50bca7e43024af63848af17d7a73256b58))
+- add keyword helper (**search**) ([aa39e20](https://github.com/BlazeUp-AI/Observal/commit/aa39e208bb3b968a659d7942a0590463cea592de))
+- use code editor in component edit forms (**web**) ([f0cfd9f](https://github.com/BlazeUp-AI/Observal/commit/f0cfd9fe0b53b5c5c515198f548bee5319c6586c))
+- add skill script code editor (**web**) ([2a3005b](https://github.com/BlazeUp-AI/Observal/commit/2a3005bfd55523fa57fa26c0d09503f11c20062d))
+- make MCP config textarea editor-like (**web**) ([090e221](https://github.com/BlazeUp-AI/Observal/commit/090e2210f581278fbe04c58f297d7bd89dc14c26))
 - use LiteLLM models (**insights**) ([204b88a](https://github.com/BlazeUp-AI/Observal/commit/204b88abc735d83677716a004011669b3f9970d4))
 - add self registration (**auth**) ([c1d07a0](https://github.com/BlazeUp-AI/Observal/commit/c1d07a00a297712639706a53869d8ada4d069787))
 - show harness model overrides (**web**) ([d38492d](https://github.com/BlazeUp-AI/Observal/commit/d38492db29b7b95446ccfba94fbcf42a06f1eb61))
@@ -641,6 +652,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- format install warning (**mcp**) ([c88f450](https://github.com/BlazeUp-AI/Observal/commit/c88f45019b953a28c774147bc7caf23ec2cc20cc))
+- route telemetry features through sessions ([fbc7a38](https://github.com/BlazeUp-AI/Observal/commit/fbc7a3820ce483cbb301243c5c024e5835865a6b))
+- remove structured telemetry storage ([25c46a1](https://github.com/BlazeUp-AI/Observal/commit/25c46a1216896e7e409d93b206ac57db6de8b8e0))
 - unify dropdown pickers (**web**) ([1b9b7d9](https://github.com/BlazeUp-AI/Observal/commit/1b9b7d959b90e9b4de947ddceb953d29b09b06ab))
 - rename ide fields to harness (**telemetry**) ([4412a67](https://github.com/BlazeUp-AI/Observal/commit/4412a67b8f323c19e3904f2387c421cc7f154577))
 - trim unused registry and UI code ([f0b7adf](https://github.com/BlazeUp-AI/Observal/commit/f0b7adfea44330dfe723a79983af81f34c235178))
@@ -774,6 +788,9 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- recommend uv tool installs (**cli**) ([baa0635](https://github.com/BlazeUp-AI/Observal/commit/baa063530576b43258698b248ee6e8e08afe2db2))
+- add search setup guidance (**skills**) ([38c55b9](https://github.com/BlazeUp-AI/Observal/commit/38c55b9b7f71489655a373a90c58a8e518ace147))
+- document harness attribution (**integrations**) ([636942b](https://github.com/BlazeUp-AI/Observal/commit/636942b54e94d09158d8d2699f2682443251efae))
 - remove gemini cli references (**harnesses**) ([b985688](https://github.com/BlazeUp-AI/Observal/commit/b985688077fa54c9851d6039a09922154adbcd6c))
 - add authentication help (**auth**) ([1950d68](https://github.com/BlazeUp-AI/Observal/commit/1950d68e1aa73392924fc156d03f26e34c22bd56))
 - update harness guidance (**harness**) ([fe408e7](https://github.com/BlazeUp-AI/Observal/commit/fe408e75a4b68994da7981989873d6908c5be5e1))
@@ -898,6 +915,20 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- bump vulnerable joserfc (**deps**) ([fb12ee7](https://github.com/BlazeUp-AI/Observal/commit/fb12ee71c1663fb163e0a9b5ebc80f1fe8a71ca6))
+- bypass login page for direct SSO (**auth**) ([0d45615](https://github.com/BlazeUp-AI/Observal/commit/0d45615e44cb9ea029b4a67ec5f8e4907cd97a21))
+- refetch config for direct SSO login (**auth**) ([a7cb7f2](https://github.com/BlazeUp-AI/Observal/commit/a7cb7f2b786fb42dfdf1c0a5151b1de9494e6db4))
+- open direct SSO device login (**auth**) ([1897e1e](https://github.com/BlazeUp-AI/Observal/commit/1897e1e95339b3ef3eeb925cf4b5b5df19dc670d))
+- improve CLI SSO login flow (**auth**) ([327b1b4](https://github.com/BlazeUp-AI/Observal/commit/327b1b46c1cfc70f0631535bf6775e7b3f152e44))
+- show locked super admin roles (**users**) ([94d0ebd](https://github.com/BlazeUp-AI/Observal/commit/94d0ebd7e400db77ff893a46841c50a07ffe9cd4))
+- warn manual installs about setup (**mcp**) ([98ddb82](https://github.com/BlazeUp-AI/Observal/commit/98ddb82d5e287609ff33eacd3cfd1fa4eefcd273))
+- require json paste for git submit (**mcp**) ([f55c567](https://github.com/BlazeUp-AI/Observal/commit/f55c567a1ce474bb6faab55b9a6bff7e16f420e4))
+- address lint reuse and legacy tests (**ci**) ([6b32891](https://github.com/BlazeUp-AI/Observal/commit/6b32891e7b26931078ef1d59b9fa741f246a41c7))
+- cast skill targets safely (**search**) ([e993986](https://github.com/BlazeUp-AI/Observal/commit/e993986eee5dae23e70fa3995e470b2699ace246))
+- add insights selection toggle (**web**) ([ce9e1b3](https://github.com/BlazeUp-AI/Observal/commit/ce9e1b35147a2654623bc41d8fd741ef2189c826))
+- cache management insights (**exec**) ([68bceb9](https://github.com/BlazeUp-AI/Observal/commit/68bceb926cfaad797bcb48dd5d998b0825e38687))
+- remove ops overview command (**cli**) ([2618ff7](https://github.com/BlazeUp-AI/Observal/commit/2618ff77b693bdc92565ec5ab9eb7bb155cefdf7))
+- hide deleted agents from leaderboards ([8f80350](https://github.com/BlazeUp-AI/Observal/commit/8f80350bfd11f2e0650b3341669e577425816f4c))
 - attribute sessions by agent id (**opencode**) ([38c5ddc](https://github.com/BlazeUp-AI/Observal/commit/38c5ddc986eb6931effc89d560e133e8c0a30340))
 - attribute sessions by agent id (**kiro**) ([be5c85a](https://github.com/BlazeUp-AI/Observal/commit/be5c85acb74c75f4ba58a59be0f9ab665274de37))
 - improve frontend error handling (**web**) ([8b8e8b1](https://github.com/BlazeUp-AI/Observal/commit/8b8e8b180969b4c394878dd9a3f84038aab28544))
@@ -1754,6 +1785,9 @@ All notable changes to this project will be documented in this file.
 
 ### Testing
 
+- update SSO settings expectations (**auth**) ([60a3ba5](https://github.com/BlazeUp-AI/Observal/commit/60a3ba5b8097c61ed9026dbb284f5c158839722e))
+- cover natural keywords (**search**) ([a33f3e0](https://github.com/BlazeUp-AI/Observal/commit/a33f3e06296e5e821d420501430748cf056514f8))
+- update telemetry cleanup coverage ([d06b3d1](https://github.com/BlazeUp-AI/Observal/commit/d06b3d173809e885f5fa4f9492eaf418028b4bd2))
 - accept embedded kiro mcp config (**harness**) ([33e1c4c](https://github.com/BlazeUp-AI/Observal/commit/33e1c4ce23233851915ab6ef6ee6c1c8f74e15fb))
 - remove deprecated login flow (**e2e**) ([257d882](https://github.com/BlazeUp-AI/Observal/commit/257d88209effa6715ec0b73b9c2c0acee0c9a30f))
 - align prompt and sandbox install expectations with command removals (**cli**) ([32dec8b](https://github.com/BlazeUp-AI/Observal/commit/32dec8ba9bc01d6f6575c30c24fddbe2812fa55a))
