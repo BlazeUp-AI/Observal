@@ -440,8 +440,10 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
 	const [copied, setCopied] = React.useState(false);
 	return (
 		<button
+			type="button"
 			className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-border hover:bg-muted/50 text-muted-foreground transition-colors ${className || ""}`}
-			onClick={() => {
+			onClick={(event) => {
+				event.stopPropagation();
 				navigator.clipboard.writeText(text).then(() => {
 					setCopied(true);
 					setTimeout(() => setCopied(false), 2000);
@@ -647,6 +649,22 @@ function SuggestionsSection({ data, report }: { data: unknown; report?: InsightR
 	};
 
 	const totalSelected = selectedConfigs.size + selectedFeatures.size + selectedPatterns.size;
+	const totalSelectable = (configAdditions?.length ?? 0) + (featuresToTry?.length ?? 0) + (usagePatterns?.length ?? 0);
+	const allSelected = totalSelectable > 0 && totalSelected === totalSelectable;
+
+	const selectAll = () => {
+		setSelectedConfigs(new Set(configAdditions?.map((_, i) => i) ?? []));
+		setSelectedFeatures(new Set(featuresToTry?.map((_, i) => i) ?? []));
+		setSelectedPatterns(new Set(usagePatterns?.map((_, i) => i) ?? []));
+		setShowConfirm(false);
+	};
+
+	const unselectAll = () => {
+		setSelectedConfigs(new Set());
+		setSelectedFeatures(new Set());
+		setSelectedPatterns(new Set());
+		setShowConfirm(false);
+	};
 
 	const handleApply = () => {
 		if (!report) return;
@@ -680,18 +698,29 @@ function SuggestionsSection({ data, report }: { data: unknown; report?: InsightR
 						Suggestions
 					</h3>
 				</div>
-			{report && !report.applied_at && (
+				{report && !report.applied_at && hasV4 && (
 					<div className="relative">
 						{!showConfirm ? (
-							<Button
-								variant="outline"
-								size="sm"
-								className="gap-1.5 text-xs"
-								disabled={applySuggestions.isPending || totalSelected === 0}
-								onClick={() => setShowConfirm(true)}
-							>
-								<Brain className="h-3.5 w-3.5" /> Apply Selected ({totalSelected})
-							</Button>
+							<div className="flex items-center gap-2">
+								<Button
+									variant="ghost"
+									size="sm"
+									className="h-8 text-xs"
+									disabled={applySuggestions.isPending || totalSelectable === 0}
+									onClick={allSelected ? unselectAll : selectAll}
+								>
+									{allSelected ? "Unselect all" : "Select all"}
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									className="gap-1.5 text-xs"
+									disabled={applySuggestions.isPending || totalSelected === 0}
+									onClick={() => setShowConfirm(true)}
+								>
+									<Brain className="h-3.5 w-3.5" /> Apply Selected ({totalSelected})
+								</Button>
+							</div>
 						) : (
 							<div className="flex items-center gap-2">
 								<span className="text-xs text-muted-foreground">Submit {totalSelected} items to review?</span>
@@ -733,10 +762,14 @@ function SuggestionsSection({ data, report }: { data: unknown; report?: InsightR
 						<p className="text-xs text-muted-foreground mb-3">Add these to your agent&apos;s system prompt or AGENTS.md.</p>
 						<div className="space-y-2">
 							{configAdditions.map((c, i) => (
-								<div key={i} className={`rounded-md border p-3 transition-colors ${selectedConfigs.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}>
+								<div
+									key={i}
+									className={`rounded-md border p-3 transition-colors ${!report?.applied_at ? "cursor-pointer" : ""} ${selectedConfigs.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}
+									onClick={!report?.applied_at ? () => toggleConfig(i) : undefined}
+								>
 									<div className="flex items-start gap-3">
 										{!report?.applied_at && (
-											<input type="checkbox" checked={selectedConfigs.has(i)} onChange={() => toggleConfig(i)} className="mt-1 h-4 w-4 rounded border-border" />
+											<input type="checkbox" checked={selectedConfigs.has(i)} onClick={(event) => event.stopPropagation()} onChange={() => toggleConfig(i)} className="mt-1 h-4 w-4 rounded border-border" />
 										)}
 										<div className="flex-1">
 											<span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground mr-2">{c.where}</span>
@@ -759,10 +792,14 @@ function SuggestionsSection({ data, report }: { data: unknown; report?: InsightR
 						<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Features to Try</h4>
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 							{featuresToTry.map((f, i) => (
-								<div key={i} className={`rounded-md border p-3 transition-colors ${selectedFeatures.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}>
+								<div
+									key={i}
+									className={`rounded-md border p-3 transition-colors ${!report?.applied_at ? "cursor-pointer" : ""} ${selectedFeatures.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}
+									onClick={!report?.applied_at ? () => toggleFeature(i) : undefined}
+								>
 									<div className="flex items-start gap-2">
 										{!report?.applied_at && (
-											<input type="checkbox" checked={selectedFeatures.has(i)} onChange={() => toggleFeature(i)} className="mt-1 h-4 w-4 rounded border-border" />
+											<input type="checkbox" checked={selectedFeatures.has(i)} onClick={(event) => event.stopPropagation()} onChange={() => toggleFeature(i)} className="mt-1 h-4 w-4 rounded border-border" />
 										)}
 										<div className="flex-1">
 											<span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{f.action_type ?? f.feature}</span>
@@ -792,10 +829,14 @@ function SuggestionsSection({ data, report }: { data: unknown; report?: InsightR
 						<h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Usage Patterns</h4>
 						<div className="space-y-3">
 							{usagePatterns.map((p, i) => (
-								<div key={i} className={`rounded-md border p-3 transition-colors ${selectedPatterns.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}>
+								<div
+									key={i}
+									className={`rounded-md border p-3 transition-colors ${!report?.applied_at ? "cursor-pointer" : ""} ${selectedPatterns.has(i) ? "border-primary/40 bg-primary/5" : "border-border bg-muted/10 opacity-60"}`}
+									onClick={!report?.applied_at ? () => togglePattern(i) : undefined}
+								>
 									<div className="flex items-start gap-2">
 										{!report?.applied_at && (
-											<input type="checkbox" checked={selectedPatterns.has(i)} onChange={() => togglePattern(i)} className="mt-1 h-4 w-4 rounded border-border" />
+											<input type="checkbox" checked={selectedPatterns.has(i)} onClick={(event) => event.stopPropagation()} onChange={() => togglePattern(i)} className="mt-1 h-4 w-4 rounded border-border" />
 										)}
 										<div className="flex-1">
 											<div className="font-medium text-sm">{p.title}</div>
