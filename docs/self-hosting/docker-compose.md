@@ -103,7 +103,6 @@ The CLI detects that no users exist and interactively creates the first admin. T
 observal auth whoami
 observal auth status
 
-observal ops overview              # summary dashboard
 observal registry mcp list         # empty list - you haven't added anything yet
 ```
 

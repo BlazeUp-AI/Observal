@@ -102,7 +102,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal ops telemetry test`: Send a test telemetry event.
   - `observal ops feedback`: Show feedback for an MCP server or agent.
   - `observal ops metrics`: Show metrics for an MCP server or agent.
-  - `observal ops overview`: Show enterprise overview stats.
   - `observal ops rate`: Rate an MCP server, agent, or component.
   - `observal ops rate-delete`: Delete your review for an item.
   - `observal ops rate-update`: Update your existing review for an item.

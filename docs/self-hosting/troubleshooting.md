@@ -116,13 +116,10 @@ Run through, in order:
 # 1. Are traces arriving at all?
 observal ops telemetry status
 
-# 2. Is the telemetry buffer flushing?
-observal ops sync
-
-# 3. Is the shim wired in?
+# 2. Is the shim wired in?
 observal doctor --harness <harness>
 
-# 4. Is the API reachable from where the shim runs?
+# 3. Is the API reachable from where the shim runs?
 curl http://localhost/health
 ```
 

@@ -9,26 +9,14 @@ Operational and observability commands: dashboards, traces, spans, metrics, feed
 
 | Command | Description |
 | --- | --- |
-| [`ops overview`](#observal-ops-overview) | Dashboard summary stats |
 | [`ops metrics`](#observal-ops-metrics) | Metrics for one MCP or agent |
 | [`ops top`](#observal-ops-top) | Top items by usage |
 | [`ops traces`](#observal-ops-traces) | List recent traces |
 | [`ops spans`](#observal-ops-spans) | Spans for one trace |
 | [`ops rate`](#observal-ops-rate) | Rate an MCP or agent (1–5 stars) |
 | [`ops feedback`](#observal-ops-feedback) | View feedback for an MCP or agent |
-| [`ops sync`](#observal-ops-sync) | Flush locally buffered telemetry |
 | [`ops telemetry status`](#observal-ops-telemetry-status) | Telemetry pipeline status |
 | [`ops telemetry test`](#observal-ops-telemetry-test) | Send a test telemetry event |
-
----
-
-## `observal ops overview`
-
-Summary stats across your server: total traces, active agents, error rate, top MCPs.
-
-```bash
-observal ops overview
-```
 
 ---
 
@@ -114,18 +102,6 @@ View aggregate feedback (average stars, comments).
 ```bash
 observal ops feedback <id-or-name> [--type mcp|agent]
 ```
-
----
-
-## `observal ops sync`
-
-Flush the local telemetry buffer. When the Observal server is unreachable, hook events accumulate in `~/.observal/telemetry_buffer.db`. This command sends them in batches.
-
-```bash
-observal ops sync
-```
-
-Auto-flush also happens on the next successful CLI invocation, so you rarely need to run this manually.
 
 ---
 

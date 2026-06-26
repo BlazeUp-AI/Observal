@@ -108,7 +108,6 @@ Because every engineer's shim streams into the same server, `observal ops` becom
 ```bash
 observal ops top --type agent           # most-used agents across the team
 observal ops top --type mcp             # hottest MCP servers
-observal ops overview                   # summary stats
 ```
 
 Filters in the web UI let you slice by user, agent, harness, and time range.

@@ -96,11 +96,7 @@ observal auth status
 observal ops telemetry status
 ```
 
-Flush manually:
-
-```bash
-observal ops sync
-```
+Flush happens automatically the next time the server is reachable.
 
 ## Deployment mode
 

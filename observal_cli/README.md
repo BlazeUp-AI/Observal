@@ -79,7 +79,6 @@ observal ops review approve <id>   # approve
 observal ops review reject <id> --reason "..."  # reject
 observal ops telemetry status      # check telemetry flow
 observal ops telemetry test        # send a test event
-observal ops overview              # system-wide stats
 observal ops metrics <id>          # metrics for an MCP or agent
 ```
 

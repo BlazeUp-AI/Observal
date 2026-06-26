@@ -21,7 +21,6 @@ owner: observal
 ## Procedure: Observe
 
 ```bash
-observal ops overview --output json
 observal ops metrics ITEM_NAME --type agent --output json
 observal ops metrics ITEM_NAME --type mcp --watch
 observal ops top --type agent --output json
