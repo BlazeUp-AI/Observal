@@ -27,7 +27,7 @@ from api.deps import (
 )
 from api.routes._component_archive import archive_listing, archived_install_warning, unarchive_listing
 from api.routes.component_versions import create_version_router
-from api.sanitize import escape_like
+from api.search import keyword_search
 from database import async_session
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult, McpVersion
 from models.user import User, UserRole
@@ -204,12 +204,27 @@ async def list_mcps(
     )
     if category:
         stmt = stmt.where(McpListing.category == category)
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        stmt = stmt.where(McpListing.name.ilike(f"%{safe}%") | McpVersion.description.ilike(f"%{safe}%"))
+        search_filter, search_rank = keyword_search(
+            search,
+            [
+                McpListing.name,
+                McpListing.category,
+                McpVersion.description,
+                McpVersion.framework,
+                McpVersion.setup_instructions,
+            ],
+            name_field=McpListing.name,
+        )
+        if search_filter is not None:
+            stmt = stmt.where(search_filter)
     stmt = apply_visibility_filter(stmt, McpListing, current_user)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    result = await db.execute(stmt.order_by(McpListing.created_at.desc()).limit(limit).offset(offset))
+    order_by = [McpListing.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).limit(limit).offset(offset))
     listings = [McpListingSummary.model_validate(r) for r in result.scalars().all()]
     response.headers["X-Total-Count"] = str(total or 0)
     return listings

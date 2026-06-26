@@ -27,7 +27,7 @@ from api.deps import (
 )
 from api.routes._component_archive import archive_listing, unarchive_listing
 from api.routes.component_versions import create_version_router
-from api.sanitize import escape_like
+from api.search import keyword_search
 from models.mcp import ListingStatus
 from models.prompt import PromptDownload, PromptListing, PromptVersion
 from models.user import User, UserRole
@@ -107,12 +107,21 @@ async def list_prompts(
     )
     if category:
         stmt = stmt.where(PromptVersion.category == category)
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        stmt = stmt.where(PromptListing.name.ilike(f"%{safe}%") | PromptVersion.description.ilike(f"%{safe}%"))
+        search_filter, search_rank = keyword_search(
+            search,
+            [PromptListing.name, PromptVersion.description, PromptVersion.category, PromptVersion.template],
+            name_field=PromptListing.name,
+        )
+        if search_filter is not None:
+            stmt = stmt.where(search_filter)
     stmt = apply_visibility_filter(stmt, PromptListing, current_user)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    result = await db.execute(stmt.order_by(PromptListing.created_at.desc()).limit(limit).offset(offset))
+    order_by = [PromptListing.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).limit(limit).offset(offset))
     listings = [PromptListingSummary.model_validate(r) for r in result.scalars().all()]
     response.headers["X-Total-Count"] = str(total or 0)
     return listings

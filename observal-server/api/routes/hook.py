@@ -27,7 +27,7 @@ from api.deps import (
 )
 from api.routes._component_archive import archive_listing, archived_install_warning, unarchive_listing
 from api.routes.component_versions import create_version_router
-from api.sanitize import escape_like
+from api.search import keyword_search
 from models.hook import HookDownload, HookListing, HookVersion
 from models.mcp import ListingStatus
 from models.user import User, UserRole
@@ -119,12 +119,21 @@ async def list_hooks(
         stmt = stmt.where(HookVersion.event == event)
     if scope:
         stmt = stmt.where(HookVersion.scope == scope)
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookVersion.description.ilike(f"%{safe}%"))
+        search_filter, search_rank = keyword_search(
+            search,
+            [HookListing.name, HookVersion.description, HookVersion.event, HookVersion.scope, HookVersion.handler_type],
+            name_field=HookListing.name,
+        )
+        if search_filter is not None:
+            stmt = stmt.where(search_filter)
     stmt = apply_visibility_filter(stmt, HookListing, current_user)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    result = await db.execute(stmt.order_by(HookListing.created_at.desc()).limit(limit).offset(offset))
+    order_by = [HookListing.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).limit(limit).offset(offset))
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
     response.headers["X-Total-Count"] = str(total or 0)
     return listings

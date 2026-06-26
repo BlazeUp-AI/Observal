@@ -18,7 +18,7 @@ from api.deps import (
     get_effective_agent_permission,
     require_role,
 )
-from api.sanitize import escape_like
+from api.search import keyword_search
 from models.agent import (
     Agent,
     AgentStatus,
@@ -231,9 +231,13 @@ async def list_agents(
 
     base_filter = (AgentVersion.status == AgentStatus.approved) & (Agent.deleted_at.is_(None))
     search_filter = None
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        search_filter = Agent.name.ilike(f"%{safe}%") | AgentVersion.description.ilike(f"%{safe}%")
+        search_filter, search_rank = keyword_search(
+            search,
+            [Agent.name, AgentVersion.description, AgentVersion.model_name],
+            name_field=Agent.name,
+        )
 
     # Org-scoping: when the caller belongs to an org, show agents owned by that org
     # or agents with no org set (legacy/bulk-created agents)
@@ -257,7 +261,10 @@ async def list_agents(
         stmt = stmt.where(search_filter)
     if org_filter is not None:
         stmt = stmt.where(org_filter)
-    result = await db.execute(stmt.order_by(Agent.created_at.desc()).offset(offset).limit(limit))
+    order_by = [Agent.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).offset(offset).limit(limit))
     agents = result.scalars().all()
 
     # Batch-fetch average ratings
