@@ -163,11 +163,16 @@ async def device_authorize(request: Request, req: DeviceAuthRequest = None, db: 
     if req and req.sso:
         next_path = f"/device?code={quote(user_code)}&sso=1"
         next_param = quote(next_path, safe="")
+        provider = (req.provider or "").lower()
+        saml_configured = await _saml_configured(db)
         from api.routes.auth import is_oidc_configured
 
-        if is_oidc_configured():
+        oidc_configured = is_oidc_configured()
+        if provider == "saml" and saml_configured:
+            login_url = f"{frontend_url}/api/v1/sso/saml/login?next={next_param}"
+        elif oidc_configured:
             login_url = f"{frontend_url}/api/v1/auth/oauth/login?next={next_param}"
-        elif await _saml_configured(db):
+        elif saml_configured:
             login_url = f"{frontend_url}/api/v1/sso/saml/login?next={next_param}"
         else:
             login_url = f"{frontend_url}/login?sso=1&next={next_param}"
