@@ -371,7 +371,7 @@ class TestCheckVersionCompatibility:
         monkeypatch.setattr(httpx, "get", mock_get)
         with pytest.raises(Exit):
             version_check.check_version_compatibility("http://localhost:8000")
-        assert "python -m pip install observal-cli==1.2.0" in capsys.readouterr().out
+        assert "pipx install --force 'observal-cli==1.2.0'" in capsys.readouterr().out
 
     def test_uses_short_ttl_cache(self, monkeypatch):
         """Cache younger than 60s is trusted, skipping network."""
