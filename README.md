@@ -30,7 +30,7 @@
   <a href="https://pypi.org/project/observal-cli/"><img src="https://img.shields.io/pypi/v/observal-cli?style=flat-square&logo=pypi&logoColor=white&label=pypi" alt="PyPI version"></a>
   <a href="https://codecov.io/gh/Observal/Observal"><img src="https://img.shields.io/codecov/c/github/Observal/Observal?style=flat-square&logo=codecov" alt="Coverage"></a>
   <a href="https://github.com/Observal/Observal/graphs/contributors"><img src="https://img.shields.io/github/contributors/Observal/Observal?style=flat-square&logo=github" alt="Contributors"></a>
-  <a href="https://discord.observal.io"><img src="https://img.shields.io/badge/discord-chat-5865f2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.com/invite/SFPjnTWddk"><img src="https://dcbadge.limes.pink/api/server/SFPjnTWddk?style=flat-square" alt="Discord members"></a>
   <a href="https://github.com/orgs/Observal/packages?repo_name=Observal"><img src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Haz3-jolt/b28aba6d0efebb0b430d43c8068feb91/raw/ghcr-pulls.json&style=flat-square" alt="GHCR pulls"></a>
 </p>
 
