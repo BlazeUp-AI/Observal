@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
+# SPDX-FileCopyrightText: 2026 Riya Rani <rr1182764@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Delayed tail flush - captures lines written after the Stop hook fires.
@@ -117,7 +118,7 @@ def main() -> None:
         if not session_id:
             return
         tail_flush(session_id)
-    except Exception:
+    except BaseException:
         pass
 
 
