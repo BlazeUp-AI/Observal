@@ -66,7 +66,7 @@ def _validate_git_url(url: str) -> str | None:
     if not parsed.hostname:
         return "URL has no hostname"
     if not ALLOW_INTERNAL_URLS and _ssrf_is_private(url):
-        return "Internal/private URLs not allowed (set ALLOW_INTERNAL_URLS=true for self-hosted deployments)"
+        return "Internal/private URLs not allowed (set ALLOW_INTERNAL_GIT_URLS=true for self-hosted deployments)"
     return None
 
 
