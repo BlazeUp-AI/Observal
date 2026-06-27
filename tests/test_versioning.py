@@ -18,6 +18,9 @@ class TestParseSemver:
         assert parse_semver("1.0") is None
         assert parse_semver("v1.0.0") is None
         assert parse_semver("1.0.0-beta") is None
+        assert parse_semver("01.0.0") is None
+        assert parse_semver("1.02.0") is None
+        assert parse_semver("1.0.03") is None
         assert parse_semver("abc") is None
         assert parse_semver("") is None
 
@@ -33,6 +36,7 @@ class TestValidateSemver:
     def test_invalid(self):
         assert validate_semver("1.0") is False
         assert validate_semver("nope") is False
+        assert validate_semver("01.0.0") is False
 
 
 class TestBumpVersion:
