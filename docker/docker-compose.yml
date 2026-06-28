@@ -58,6 +58,7 @@ services:
       - ../.env
     environment:
       - JWT_KEY_DIR=/data/keys
+      - MIGRATION_ARTIFACT_ROOT=/data/migration_artifacts
       - SKIP_DDL_ON_STARTUP=true
       - DEMO_SUPER_ADMIN_EMAIL=${DEMO_SUPER_ADMIN_EMAIL:-super@demo.example}
       - DEMO_SUPER_ADMIN_PASSWORD=${DEMO_SUPER_ADMIN_PASSWORD:-super-changeme}
@@ -190,6 +191,10 @@ services:
       ]
     env_file:
       - ../.env
+    environment:
+      - MIGRATION_ARTIFACT_ROOT=/data/migration_artifacts
+    volumes:
+      - apidata:/data
     depends_on:
       observal-init:
         condition: service_completed_successfully

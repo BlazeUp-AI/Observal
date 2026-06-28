@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""soft delete agents
+"""Add soft deletion for agents.
 
 Revision ID: 1caa45d85720
 Revises: 010_global_unique_names

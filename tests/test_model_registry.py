@@ -13,7 +13,6 @@ import pytest
 
 def test_every_harness_has_model_catalog():
     from observal_shared.harness_models import supported_model_ids
-
     from schemas.harness_registry import HARNESS_REGISTRY
 
     for harness, spec in HARNESS_REGISTRY.items():

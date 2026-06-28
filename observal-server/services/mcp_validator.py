@@ -15,6 +15,10 @@ from urllib.parse import urlparse
 
 from git import Repo
 from loguru import logger as optic
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.mcp import McpListing, McpValidationResult
 from observal_shared.mcp_analysis import (
     analyze_python_entry,
     detect_container_image,
@@ -27,10 +31,6 @@ from observal_shared.mcp_analysis import (
     is_filtered_env_var,
     is_test_file,
 )
-from sqlalchemy import delete
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from models.mcp import McpListing, McpValidationResult
 from services.secrets_redactor import REDACTED, redact_secrets
 from services.ssrf_guard import is_private_url as _ssrf_is_private
 

@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from loguru import logger as optic
+
 from observal_shared.mcp_analysis import (
     analyze_python_entry,
     detect_container_image,

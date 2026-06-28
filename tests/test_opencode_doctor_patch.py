@@ -3,9 +3,8 @@
 
 """OpenCode doctor patch tests."""
 
-from observal_shared.opencode_plugin_source import OPENCODE_PLUGIN_SOURCE
-
 from observal_cli.cmd_doctor import _check_opencode, _patch_opencode
+from observal_shared.opencode_plugin_source import OPENCODE_PLUGIN_SOURCE
 
 
 def test_opencode_patch_updates_only_when_hash_differs(tmp_path, monkeypatch):

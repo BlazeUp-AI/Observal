@@ -65,7 +65,7 @@ docker/clickhouse/users.d/default-user.xml
 # Local / ephemeral
 .playwright-mcp/
 e2e-screenshots/
-migration/
+/migration/
 *.pem
 test-scan.json
 

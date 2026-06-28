@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
-"""add user trigram search indexes
+"""Add user trigram search indexes.
 
 Revision ID: c680c63ced65
 Revises: 1a79544a6936

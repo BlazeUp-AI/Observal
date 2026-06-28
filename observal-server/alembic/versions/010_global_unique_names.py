@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""global unique names
+"""Add global unique names.
 
 Revision ID: 010_global_unique_names
 Revises: 009_insights_version_progress

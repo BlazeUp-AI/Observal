@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Hari Srinivasan <harisrini21@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
-"""rename ide fields to harness
+"""Rename IDE fields to harness.
 
 Revision ID: 1a79544a6936
 Revises: 1caa45d85720
