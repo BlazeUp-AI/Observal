@@ -10,10 +10,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.9.4] - 2026-06-27
+## [1.9.5] - 2026-06-28
 
 ### Added
 
+- add Google sign-in as first-class provider (**auth**) ([daadaa0](https://github.com/Observal/Observal/commit/daadaa0b5f3371f142adc0510c48dc25a36eb662))
+- add Kubernetes deployment chart (**helm**) ([5749b21](https://github.com/Observal/Observal/commit/5749b211f1081dcad5bb45141dff5d30d701cecb))
 - add trigram user search (**search**) ([03d4710](https://github.com/Observal/Observal/commit/03d4710329cbaa894161cc82e0d15255ea33a576))
 - add explicit SAML CLI login (**auth**) ([9dbfc9c](https://github.com/Observal/Observal/commit/9dbfc9c1e3b8f78e0eabc77883d92c931378f6a0))
 - move SSO settings into dynamic config (**sso**) ([5e380e9](https://github.com/Observal/Observal/commit/5e380e9f3bf19d7945d7815dc90547565d86afe5))
@@ -915,6 +917,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- correct frontend_url default and ssoOnly button logic (**auth**) ([b1a69ba](https://github.com/Observal/Observal/commit/b1a69ba19b85adae4794c622ea6d41336129eb53))
 - bump vulnerable joserfc (**deps**) ([fb12ee7](https://github.com/Observal/Observal/commit/fb12ee71c1663fb163e0a9b5ebc80f1fe8a71ca6))
 - bypass login page for direct SSO (**auth**) ([0d45615](https://github.com/Observal/Observal/commit/0d45615e44cb9ea029b4a67ec5f8e4907cd97a21))
 - refetch config for direct SSO login (**auth**) ([a7cb7f2](https://github.com/Observal/Observal/commit/a7cb7f2b786fb42dfdf1c0a5151b1de9494e6db4))
