@@ -25,6 +25,7 @@ from services.clickhouse.insert import (
     insert_audit_log,
     insert_session_events,
 )
+from services.clickhouse.migrations import run_clickhouse_migrations
 from services.clickhouse.query import (
     query_existing_for_dedup,
     query_recent_events,
@@ -32,7 +33,6 @@ from services.clickhouse.query import (
 )
 from services.clickhouse.schema import (
     DEFAULT_QUERY_SETTINGS,
-    INIT_SQL,
     RESOURCE_SETTINGS_MAP,
     _materialize_if_needed,
     apply_resource_settings,
@@ -45,7 +45,6 @@ __all__ = [
     "CLICKHOUSE_PASSWORD",
     "CLICKHOUSE_USER",
     "DEFAULT_QUERY_SETTINGS",
-    "INIT_SQL",
     "RESOURCE_SETTINGS_MAP",
     "_get_client",
     "_insert_webhook_deliveries",
@@ -63,4 +62,5 @@ __all__ = [
     "query_existing_for_dedup",
     "query_recent_events",
     "query_session_event_count",
+    "run_clickhouse_migrations",
 ]

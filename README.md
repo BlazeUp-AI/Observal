@@ -85,6 +85,15 @@ curl -fsSL https://raw.githubusercontent.com/Observal/Observal/main/install-serv
 
 This downloads a Docker Compose package, runs guided setup (domain, secrets, ports), pulls container images from GHCR, and starts the full stack (API, web UI, PostgreSQL, ClickHouse, Redis, worker, load balancer, Prometheus, Grafana).
 
+Deployment docs are linked directly from this README:
+
+- [Setup guide](SETUP.md): fastest path from zero to a working stack
+- [Self-hosting overview](docs/self-hosting/README.md): deployment models and operator docs
+- [Production deployment](docs/self-hosting/production-deploy.md): hardened production topology
+- [Databases](docs/self-hosting/databases.md): Postgres, ClickHouse, migrations, retention
+- [Upgrades](docs/self-hosting/upgrades.md): safe upgrade and rollback flow
+- [Backup and restore](docs/self-hosting/backup-and-restore.md): backup plan before upgrades
+
 **From source** (for contributors):
 
 ```bash
@@ -240,7 +249,20 @@ make rebuild
 
 ## Documentation
 
-Full docs at **[docs.observal.io](https://docs.observal.io/)**
+Full docs at **[docs.observal.io](https://docs.observal.io/)**.
+
+Start here for deployment and operations:
+
+| Need | Link |
+|------|------|
+| Fast local or source setup | [SETUP.md](SETUP.md) |
+| Self-hosting overview | [docs/self-hosting/README.md](docs/self-hosting/README.md) |
+| Production deployment | [docs/self-hosting/production-deploy.md](docs/self-hosting/production-deploy.md) |
+| Single-node deployment | [docs/self-hosting/single-node-deploy.md](docs/self-hosting/single-node-deploy.md) |
+| Docker Compose setup | [docs/self-hosting/docker-compose.md](docs/self-hosting/docker-compose.md) |
+| Databases and migrations | [docs/self-hosting/databases.md](docs/self-hosting/databases.md) |
+| Upgrades | [docs/self-hosting/upgrades.md](docs/self-hosting/upgrades.md) |
+| Backup and restore | [docs/self-hosting/backup-and-restore.md](docs/self-hosting/backup-and-restore.md) |
 
 ---
 
@@ -248,7 +270,7 @@ Full docs at **[docs.observal.io](https://docs.observal.io/)**
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 16, React 19, Tailwind CSS 4, shadcn/ui |
+| Frontend | Vite 6, React 19, TanStack Router, Tailwind CSS 4, shadcn/ui |
 | Backend | Python 3.11+, FastAPI, Strawberry GraphQL |
 | Databases | PostgreSQL 16 (registry), ClickHouse (telemetry) |
 | Queue | Redis + arq |

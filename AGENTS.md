@@ -99,6 +99,7 @@ A stub harness has:
 - **Typer for CLI.** `B008` suppressed because Typer requires function calls in argument defaults.
 - **Skill files track CLI changes.** When any CLI command is added, removed, renamed, or has its flags changed, update the corresponding skill files in `observal_cli/skills/`. These are the agent's source of truth for command syntax.
 - **Dynamic settings** for runtime config: `from services.dynamic_settings import get, get_int, get_bool`. Non-boot settings live in the DB, not env vars.
+- **ClickHouse migrations** live in `observal-server/clickhouse/migrations/*.sql` and run through `services.clickhouse.migrations`. Keep Alembic for Postgres only. Never add ClickHouse DDL to startup code. The init container runs ClickHouse migrations after Alembic and before API startup.
 - **SSRF guard** for all outbound network: `from services.ssrf_guard import check_url`. Used in webhooks, git clone, MCP analysis.
 - **Feature gating via license**: `from ee.license import is_feature_licensed`. Never import other `ee/` modules from core.
 - **Conventional Commits**: `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`. Scope in parens. No fixup commits (amend instead).
@@ -162,7 +163,7 @@ Sub-packages: `agent/` (crud, install, draft), `admin/` (enterprise_settings, us
 ## Database architecture
 
 - **PostgreSQL**: relational data (users, agents, components, feedback, settings). SQLAlchemy async.
-- **ClickHouse**: time-series telemetry (traces, spans, scores, audit events). HTTP interface, ReplacingMergeTree, bloom filter indexes. Split into `services/clickhouse/` (client, schema, insert, query).
+- **ClickHouse**: time-series telemetry (traces, spans, scores, audit events). HTTP interface, ReplacingMergeTree, bloom filter indexes. Schema changes use versioned SQL migrations in `observal-server/clickhouse/migrations/`. Runtime helpers stay in `services/clickhouse/`.
 - **Redis**: pub/sub for GraphQL subscriptions, arq job queue, dynamic settings cache, auth token revocation.
 
 ## Telemetry pipeline
