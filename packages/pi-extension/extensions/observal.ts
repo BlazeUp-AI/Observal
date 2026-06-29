@@ -216,7 +216,8 @@ export default function (pi: ExtensionAPI) {
       const res = await postJsonWithTimeout(state.config, `/api/v1/agents/${encodeURIComponent(agentId)}/install`, payload);
       
       if (!res || !res.config_snippet) {
-        ctx.ui.notify(`Failed to install agent '${agentId}'`, "error");
+        const errorMsg = res?.detail ? (typeof res.detail === "string" ? res.detail : JSON.stringify(res.detail)) : "Unknown error";
+        ctx.ui.notify(`Failed to install agent '${agentId}': ${errorMsg}`, "error");
         ctx.ui.setStatus("observal", "● observal");
         return;
       }
