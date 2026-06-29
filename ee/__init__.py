@@ -23,16 +23,19 @@ logger = logging.getLogger("observal.ee")
 def register_enterprise_middleware(app: FastAPI, settings: Settings) -> list[str]:
     """Register enterprise middleware (must be called before app startup).
 
-    Returns a list of config issues (empty = healthy).
+    Returns a list of config issues at boot (for logging only).
+    The middleware re-evaluates dynamically on each request.
     """
     from ee.observal_server.middleware.enterprise_guard import EnterpriseGuardMiddleware
     from ee.observal_server.services.config_validator import validate_enterprise_config
 
     issues = validate_enterprise_config(settings)
 
+    # Always add the middleware — it evaluates issues dynamically per request
+    app.add_middleware(EnterpriseGuardMiddleware, settings=settings)
+
     if issues:
-        app.add_middleware(EnterpriseGuardMiddleware, issues=issues)
-        logger.warning("Enterprise mode has config issues: %s", issues)
+        logger.warning("Enterprise mode has config issues at boot: %s", issues)
     else:
         logger.info("Enterprise mode initialized successfully")
 
