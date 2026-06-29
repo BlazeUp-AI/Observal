@@ -91,13 +91,120 @@ export default function (pi: ExtensionAPI) {
   // ─── /obs-sync command ─────────────────────────────────────────────────
 
   pi.registerCommand("agent", {
-    description: "Swap the active Observal agent",
+    description: "Manage and swap active Observal agents",
     handler: async (args, ctx) => {
       const agentId = args.trim();
+      const PI_HOME = path.join(os.homedir(), ".pi", "agent");
+      const AGENTS_DIR = path.join(PI_HOME, "agents");
+
+      function backupDefault() {
+        if (!fs.existsSync(AGENTS_DIR)) fs.mkdirSync(AGENTS_DIR, { recursive: true });
+        const defaultDir = path.join(AGENTS_DIR, "default");
+        if (fs.existsSync(defaultDir)) return; // already backed up
+        
+        fs.mkdirSync(defaultDir, { recursive: true });
+        
+        const filesToCopy = [
+          { name: "AGENTS.md", isDir: false },
+          { name: "SYSTEM.md", isDir: false },
+          { name: "mcp.json", isDir: false },
+          { name: "skills", isDir: true },
+          { name: "sandboxes", isDir: true }
+        ];
+        
+        for (const f of filesToCopy) {
+          const src = path.join(PI_HOME, f.name);
+          const dest = path.join(defaultDir, f.name);
+          if (fs.existsSync(src)) {
+            fs.cpSync(src, dest, { recursive: true });
+          }
+        }
+      }
+
+      function applyProfile(name: string) {
+        const profileDir = path.join(AGENTS_DIR, name);
+        if (!fs.existsSync(profileDir)) throw new Error(`Profile ${name} not found`);
+
+        const activeItems = ["AGENTS.md", "SYSTEM.md", "mcp.json", "skills", "sandboxes"];
+        for (const f of activeItems) {
+          const target = path.join(PI_HOME, f);
+          if (fs.existsSync(target)) {
+            fs.rmSync(target, { recursive: true, force: true });
+          }
+        }
+
+        for (const f of activeItems) {
+          const src = path.join(profileDir, f);
+          const dest = path.join(PI_HOME, f);
+          if (fs.existsSync(src)) {
+            fs.cpSync(src, dest, { recursive: true });
+          }
+        }
+      }
+
+      function writeFileRewritten(p: string, content: any, agentName: string) {
+        if (!p) return;
+        const piHomeStr = "~/.pi/agent";
+        let finalPath = p;
+        if (p.startsWith(piHomeStr)) {
+          finalPath = p.replace(piHomeStr, `${piHomeStr}/agents/${agentName}`);
+        }
+        
+        const resolved = finalPath.startsWith("~/") ? path.join(os.homedir(), finalPath.slice(2)) : path.resolve(ctx.cwd, finalPath);
+        fs.mkdirSync(path.dirname(resolved), { recursive: true });
+        if (typeof content === "object") {
+          fs.writeFileSync(resolved, JSON.stringify(content, null, 2));
+        } else {
+          fs.writeFileSync(resolved, content);
+        }
+      }
+
       if (!agentId) {
-        ctx.ui.notify("Usage: /agent <name>", "warning");
+        // TUI Mode
+        if (!fs.existsSync(AGENTS_DIR)) {
+          fs.mkdirSync(AGENTS_DIR, { recursive: true });
+        }
+        backupDefault();
+
+        const profiles = fs.readdirSync(AGENTS_DIR).filter(d => fs.statSync(path.join(AGENTS_DIR, d)).isDirectory());
+        if (profiles.length === 0) {
+          ctx.ui.notify("No agents installed yet. Use /agent <id> to install one.", "info");
+          return;
+        }
+
+        const choice = await ctx.ui.select("Select agent to swap to:", profiles);
+        if (!choice) return;
+
+        try {
+          applyProfile(choice);
+          
+          if (state?.config) {
+            state.config.agent_id = choice === "default" ? undefined : choice;
+            try {
+              const configRaw = fs.readFileSync(CONFIG_PATH, "utf-8");
+              const configJson = JSON.parse(configRaw);
+              if (choice === "default") {
+                delete configJson.active_agent;
+              } else {
+                configJson.active_agent = { id: choice, version: "latest" };
+              }
+              fs.writeFileSync(CONFIG_PATH, JSON.stringify(configJson, null, 2));
+            } catch (err) {
+              // ignore
+            }
+          }
+
+          const ok = await ctx.ui.confirm("Agent Swapped", `Swapped to ${choice}. Reload session now?`);
+          if (ok) {
+            await ctx.reload();
+          }
+        } catch (e: any) {
+          ctx.ui.notify(`Error swapping agent: ${e.message}`, "error");
+        }
         return;
       }
+
+      // Download Mode
       if (!state?.config) {
         ctx.ui.notify("Observal not configured. Run 'observal auth login' first.", "warning");
         return;
@@ -116,34 +223,38 @@ export default function (pi: ExtensionAPI) {
 
       const snippet = res.config_snippet;
 
-      function writeFile(p: string, content: any) {
-        if (!p) return;
-        const resolved = p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : path.resolve(ctx.cwd, p);
-        fs.mkdirSync(path.dirname(resolved), { recursive: true });
-        if (typeof content === "object") {
-          fs.writeFileSync(resolved, JSON.stringify(content, null, 2));
-        } else {
-          fs.writeFileSync(resolved, content);
-        }
-      }
-
       try {
+        backupDefault(); // Ensure default is backed up before we install new ones
+
         if (snippet.rules_file) {
-          writeFile(snippet.rules_file.path, snippet.rules_file.content);
+          writeFileRewritten(snippet.rules_file.path, snippet.rules_file.content, agentId);
         } else if (snippet.agent_profile) {
-          writeFile(snippet.agent_profile.path, snippet.agent_profile.content);
+          writeFileRewritten(snippet.agent_profile.path, snippet.agent_profile.content, agentId);
         }
         
         if (snippet.mcp_config) {
-          writeFile(snippet.mcp_config.path, snippet.mcp_config.content);
+          writeFileRewritten(snippet.mcp_config.path, snippet.mcp_config.content, agentId);
         }
         if (snippet.skill_components) {
           for (const skill of snippet.skill_components) {
-            if (skill.path && skill.content) {
-              writeFile(skill.path, skill.content);
+            const skillPath = `~/.pi/agent/skills/${skill.name}/SKILL.md`;
+            const content = skill.skill_md_content || skill.content;
+            if (content) {
+              writeFileRewritten(skillPath, content, agentId);
             }
           }
         }
+        if (snippet.sandbox_components) {
+          for (const sb of snippet.sandbox_components) {
+            const sbPath = `~/.pi/agent/sandboxes/${sb.name}/sandbox.yaml`;
+            const content = sb.sandbox_yaml_content || sb.content;
+            if (content) {
+              writeFileRewritten(sbPath, content, agentId);
+            }
+          }
+        }
+
+        applyProfile(agentId);
 
         // Update config.json to reflect new active agent for telemetry
         state.config.agent_id = res.agent_id || agentId;
