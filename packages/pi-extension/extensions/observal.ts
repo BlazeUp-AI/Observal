@@ -130,7 +130,10 @@ export default function (pi: ExtensionAPI) {
       try {
         if (snippet.rules_file) {
           writeFile(snippet.rules_file.path, snippet.rules_file.content);
+        } else if (snippet.agent_profile) {
+          writeFile(snippet.agent_profile.path, snippet.agent_profile.content);
         }
+        
         if (snippet.mcp_config) {
           writeFile(snippet.mcp_config.path, snippet.mcp_config.content);
         }
