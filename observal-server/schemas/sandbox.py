@@ -111,4 +111,5 @@ class SandboxListingSummary(BaseModel):
     supported_ides: list[str]
     status: ListingStatus
     rejection_reason: str | None = None
+    updated_at: datetime | None = None
     model_config = {"from_attributes": True}
