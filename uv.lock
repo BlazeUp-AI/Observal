@@ -484,7 +484,7 @@ wheels = [
 
 [[package]]
 name = "observal-cli"
-version = "1.9.6"
+version = "1.9.7"
 source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },

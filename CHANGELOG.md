@@ -10,7 +10,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.9.6] - 2026-06-30
+## [1.9.7] - 2026-06-30
 
 ### Added
 
@@ -924,6 +924,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- remove legacy env vars from standalone deployment configs ([adcd277](https://github.com/Observal/Observal/commit/adcd277660535a4d710d936a28d2079f4720d8af))
+- add listen_host override for standalone clickhouse container ([f826edf](https://github.com/Observal/Observal/commit/f826edff17a1940ddd71960d7aed82f1708de789))
+- add missing nginx tmpfs mounts for read-only rootfs (**docker**) ([e080f00](https://github.com/Observal/Observal/commit/e080f0068373908cf763e3cf90c2bc71d28a1a8b))
 - add updated_at to listing summary schemas (**registry**) ([fbf174a](https://github.com/Observal/Observal/commit/fbf174af9863a26016711789f8ee97dbd1c1e5a7))
 - add versioned migrations (**clickhouse**) ([b2c3176](https://github.com/Observal/Observal/commit/b2c317634bf243f9fe80c35e4e6d3ff2668ab3ba))
 - skip Claude Code metadata events (**session-parser**) ([3648756](https://github.com/Observal/Observal/commit/36487565ccc80dc4d9419c52124f4c091b518296))
@@ -1615,6 +1618,7 @@ All notable changes to this project will be documented in this file.
 
 ### Other
 
+- remove legacy env var startup guard ([3d5a853](https://github.com/Observal/Observal/commit/3d5a85333875f42b8495cb7aebfea21539b4c5ee))
 - update docker images (minor/patch) (**deps**) ([c9db9af](https://github.com/Observal/Observal/commit/c9db9af878fec262ed32f24448aca006a64f8f69))
 - update org namespace references ([896e97a](https://github.com/Observal/Observal/commit/896e97a494988806474638f11aab8e4951f7b3af))
 - sync observal command reference (**skill**) ([0a98a82](https://github.com/Observal/Observal/commit/0a98a82a5cd844ddbb6003e931bf2b073f7eb508))
