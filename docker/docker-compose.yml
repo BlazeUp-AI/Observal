@@ -228,6 +228,7 @@ services:
     read_only: true
     tmpfs:
       - /var/cache/nginx
+      - /var/log/nginx
       - /var/run
       - /tmp
     security_opt:
