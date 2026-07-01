@@ -275,10 +275,10 @@ function buildCleanYaml(
 	if (detail.description) obj.description = detail.description;
 	if (detail.prompt) obj.prompt = detail.prompt;
 	if (detail.model_name) obj.model_name = detail.model_name;
-	const byIde = detail.models_by_harness as Record<string, unknown> | undefined;
-	if (byIde && Object.keys(byIde).length) obj.models_by_harness = byIde;
-	const ides = detail.supported_harnesses as string[] | undefined;
-	if (ides?.length) obj.supported_harnesses = ides;
+	const byHarness = detail.models_by_harness as Record<string, unknown> | undefined;
+	if (byHarness && Object.keys(byHarness).length) obj.models_by_harness = byHarness;
+	const harnesses = detail.supported_harnesses as string[] | undefined;
+	if (harnesses?.length) obj.supported_harnesses = harnesses;
 	if (comps.length) {
 		obj.components = comps.map((c) => {
 			const cached = componentDataMap?.get(String(c.component_id ?? "")) as
@@ -786,9 +786,9 @@ function DiffDialogBody({
 											<dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
 												Per-harness overrides
 											</dt>
-											{modelsByHarnessEntries.map(([ide, value]) => (
-												<div key={ide} className="flex items-baseline gap-2">
-													<dd className="font-medium">{ide}</dd>
+											{modelsByHarnessEntries.map(([harness, value]) => (
+												<div key={harness} className="flex items-baseline gap-2">
+													<dd className="font-medium">{harness}</dd>
 													<dd className="font-[family-name:var(--font-mono)] text-muted-foreground">
 														{value}
 													</dd>

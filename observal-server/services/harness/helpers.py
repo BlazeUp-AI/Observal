@@ -218,12 +218,12 @@ _FEATURE_LABELS: dict[str, str] = {
 
 
 def _check_harness_compatibility(agent: Agent, harness: str) -> list[str]:
-    """Return warning strings when *ide* lacks features the agent requires."""
+    """Return warning strings when *harness* lacks features the agent requires."""
     required = getattr(agent, "required_capabilities", None) or []
-    ide_caps = HARNESS_CAPABILITIES.get(harness, set())
+    harness_caps = HARNESS_CAPABILITIES.get(harness, set())
     warnings: list[str] = []
     for feature in required:
-        if feature not in ide_caps:
+        if feature not in harness_caps:
             label = _FEATURE_LABELS.get(feature, feature)
             warnings.append(
                 f"This agent requires '{label}' but {harness} does not support it. Some functionality may not work."
@@ -330,7 +330,7 @@ def _build_mcp_configs(
     header_values = header_values or {}
 
     optic.debug(
-        "building MCP configs for agent '{}' (ide={}, {} components)",
+        "building MCP configs for agent '{}' (harness={}, {} components)",
         agent.name,
         harness,
         sum(1 for c in agent.components if c.component_type == "mcp"),

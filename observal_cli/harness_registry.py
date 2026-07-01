@@ -406,32 +406,34 @@ def get_valid_harnesses() -> list[str]:
 
 def get_harness_capability_matrix() -> dict[str, set[str]]:
     """Return {harness: capability_set} mapping for all registered harnesses."""
-    return {ide: spec["capabilities"] for ide, spec in HARNESS_REGISTRY.items()}
+    return {harness: spec["capabilities"] for harness, spec in HARNESS_REGISTRY.items()}
 
 
 def get_harness_display_names() -> dict[str, str]:
     """Return {harness: display_name} mapping for all registered harnesses."""
-    return {ide: spec["display_name"] for ide, spec in HARNESS_REGISTRY.items()}
+    return {harness: spec["display_name"] for harness, spec in HARNESS_REGISTRY.items()}
 
 
 def get_scope_aware_harnesses() -> dict[str, tuple[str, str]]:
     """Return harnesses that support project/user scope selection, with labels."""
-    return {ide: spec["scope_labels"] for ide, spec in HARNESS_REGISTRY.items() if spec.get("scope_labels")}
+    return {harness: spec["scope_labels"] for harness, spec in HARNESS_REGISTRY.items() if spec.get("scope_labels")}
 
 
 def get_home_mcp_configs() -> dict[str, str]:
     """Return {harness: home_mcp_config} for harnesses with home-level MCP config."""
-    return {ide: spec["home_mcp_config"] for ide, spec in HARNESS_REGISTRY.items() if spec.get("home_mcp_config")}
+    return {
+        harness: spec["home_mcp_config"] for harness, spec in HARNESS_REGISTRY.items() if spec.get("home_mcp_config")
+    }
 
 
-def get_mcp_servers_key(ide: str) -> str:
+def get_mcp_servers_key(harness: str) -> str:
     """Return the JSON key used for MCP servers in this harness's config."""
-    return HARNESS_REGISTRY.get(ide, {}).get("mcp_servers_key", "mcpServers")
+    return HARNESS_REGISTRY.get(harness, {}).get("mcp_servers_key", "mcpServers")
 
 
-def get_default_scope(ide: str) -> str:
+def get_default_scope(harness: str) -> str:
     """Return the default install scope for an harness."""
-    return HARNESS_REGISTRY.get(ide, {}).get("default_scope", "project")
+    return HARNESS_REGISTRY.get(harness, {}).get("default_scope", "project")
 
 
 def get_model_choice_harnesses() -> list[str]:
@@ -444,11 +446,11 @@ def has_model_selection(harness: str) -> bool:
     return bool(HARNESS_REGISTRY.get(harness, {}).get("supported_models"))
 
 
-def get_session_parser_id(ide: str) -> str:
+def get_session_parser_id(harness: str) -> str:
     """Return the session parser ID for an harness.
 
-    Raises KeyError for unknown harnesses -- callers must handle unrecognised harnesses
+    Raises KeyError for unknown harnesses. Callers must handle unrecognised harnesses
     explicitly rather than silently falling back to a default parser.
     """
-    entry = HARNESS_REGISTRY[ide]  # raises KeyError for unknown harness
+    entry = HARNESS_REGISTRY[harness]  # raises KeyError for unknown harness
     return entry["session_parser"]  # raises KeyError if entry has no parser

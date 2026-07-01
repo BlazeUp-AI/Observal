@@ -413,6 +413,7 @@ async def _run_pipeline(
             "top_languages": agg.get("top_languages", [])[:10],
             "tool_error_categories": agg.get("tool_error_categories", {}),
             "projects": agg.get("projects", {}),
+            "harnesses": agg.get("harnesses", agg.get("ides", [])),
             "ides": agg.get("ides", []),
             "sessions_with_tokens": agg.get("sessions_with_tokens", 0),
             "sessions_with_credits": agg.get("sessions_with_credits", 0),

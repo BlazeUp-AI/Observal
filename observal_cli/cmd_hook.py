@@ -395,7 +395,7 @@ def hook_show(
 @hook_app.command(name="install")
 def hook_install(
     hook_id: str = typer.Argument(..., help="Hook ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
+    harness: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     platform: str = typer.Option("", "--platform", "-p", help="Platform (win32, darwin, linux)"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (no file writes)"),
     directory: str | None = typer.Option(None, "--dir", "-d", help="Project directory for file writes"),
@@ -414,8 +414,8 @@ def hook_install(
       observal registry hook install my-hook --harness claude-code --platform darwin
     """
     resolved = config.resolve_alias(hook_id)
-    with spinner(f"Generating {ide} config..."):
-        result = client.post(f"/api/v1/hooks/{resolved}/install", {"harness": ide, "platform": platform})
+    with spinner(f"Generating {harness} config..."):
+        result = client.post(f"/api/v1/hooks/{resolved}/install", {"harness": harness, "platform": platform})
 
     config_snippet = result.get("config_snippet", {})
     files = result.get("files", [])
@@ -480,7 +480,7 @@ def hook_install(
     for note in notes:
         rprint(f"[dim]i {note}[/dim]")
 
-    rprint(f"\n[green]✓ Hook installed for {ide}![/green]")
+    rprint(f"\n[green]✓ Hook installed for {harness}![/green]")
 
 
 @hook_app.command(name="edit")

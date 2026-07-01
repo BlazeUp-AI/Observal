@@ -29,7 +29,7 @@ def _yaml_frontmatter(data: dict[str, str | bool]) -> str:
     return f"---\n{body}\n---\n\n"
 
 
-def generate_skill(skill: dict, ide: str, scope: str = "project") -> dict | None:
+def generate_skill(skill: dict, harness: str, scope: str = "project") -> dict | None:
     """Generate an harness-specific skill file entry.
 
     Returns a dict with 'path' and 'content' keys, or None for
@@ -37,8 +37,8 @@ def generate_skill(skill: dict, ide: str, scope: str = "project") -> dict | None
 
     This is the canonical implementation used by both code paths.
     """
-    ide_key = ide.replace("_", "-")
-    spec = HARNESS_REGISTRY.get(ide_key, {})
+    harness_key = harness.replace("_", "-")
+    spec = HARNESS_REGISTRY.get(harness_key, {})
     skill_paths = spec.get("skills")
     if not skill_paths:
         return None
@@ -53,7 +53,7 @@ def generate_skill(skill: dict, ide: str, scope: str = "project") -> dict | None
         frontmatter = {"name": name}
         if desc:
             frontmatter["description"] = desc
-        if slash_cmd and ide_key == "claude-code":
+        if slash_cmd and harness_key == "claude-code":
             frontmatter["command"] = f"/{normalize_slash_command(slash_cmd)}"
         content = _yaml_frontmatter(frontmatter) + f"{desc}\n"
     else:
@@ -63,7 +63,7 @@ def generate_skill(skill: dict, ide: str, scope: str = "project") -> dict | None
     return {"path": path, "content": content}
 
 
-def build_skills(manifest: AgentManifest, ide: str) -> list[AgentFile]:
+def build_skills(manifest: AgentManifest, harness: str) -> list[AgentFile]:
     """Generate harness-specific skill files from manifest skills.
 
     Fast path: if skill_md_content is cached (stored verbatim from the repo),
@@ -74,8 +74,8 @@ def build_skills(manifest: AgentManifest, ide: str) -> list[AgentFile]:
     """
     from services.agent_builder_types import AgentFile
 
-    ide_key = ide.replace("_", "-")
-    spec = HARNESS_REGISTRY.get(ide_key, {})
+    harness_key = harness.replace("_", "-")
+    spec = HARNESS_REGISTRY.get(harness_key, {})
     skill_paths = spec.get("skills")
     if not skill_paths:
         return []
@@ -99,7 +99,7 @@ def build_skills(manifest: AgentManifest, ide: str) -> list[AgentFile]:
             frontmatter = {"name": name}
             if desc:
                 frontmatter["description"] = desc
-            if skill.slash_command and ide_key == "claude-code":
+            if skill.slash_command and harness_key == "claude-code":
                 frontmatter["command"] = f"/{normalize_slash_command(skill.slash_command)}"
             content = _yaml_frontmatter(frontmatter) + f"{desc}\n"
         else:

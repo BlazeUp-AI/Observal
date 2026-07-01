@@ -155,7 +155,7 @@ export function SubmitComponentDialog({
 	const d = editItem as Record<string, unknown> | null;
 	const helpCtx = useHelp();
 	const { data: whoami } = useWhoami();
-	const { data: ideList } = useHarnesses();
+	const { data: harnessList } = useHarnesses();
 	const defaultOwner =
 		(d?.owner as string) ||
 		whoami?.username ||
@@ -169,7 +169,7 @@ export function SubmitComponentDialog({
 		(d?.description as string) ?? "",
 	);
 	const owner = defaultOwner;
-	const [supportedIdes, setSupportedIdes] = useState<string[]>(
+	const [supportedHarnesses, setSupportedHarnesses] = useState<string[]>(
 		Array.isArray(d?.supported_harnesses) ? (d.supported_harnesses as string[]) : [],
 	);
 
@@ -392,7 +392,7 @@ export function SubmitComponentDialog({
 		setName("");
 		setVersion("0.1.0");
 		setDescription("");
-		setSupportedIdes([]);
+		setSupportedHarnesses([]);
 		setMcpMode("json");
 		setJsonInput("");
 		setJsonError(null);
@@ -445,7 +445,7 @@ export function SubmitComponentDialog({
 			description,
 			owner,
 		};
-		if (supportedIdes.length > 0) base.supported_harnesses = supportedIdes;
+		if (supportedHarnesses.length > 0) base.supported_harnesses = supportedHarnesses;
 
 		switch (type) {
 			case "mcps": {
@@ -601,9 +601,9 @@ export function SubmitComponentDialog({
 		setEnvVars((prev) => prev.filter((_, i) => i !== index));
 	}
 
-	function toggleIde(ide: string) {
-		setSupportedIdes((prev) =>
-			prev.includes(ide) ? prev.filter((i) => i !== ide) : [...prev, ide],
+	function toggleHarness(harness: string) {
+		setSupportedHarnesses((prev) =>
+			prev.includes(harness) ? prev.filter((item) => item !== harness) : [...prev, harness],
 		);
 	}
 
@@ -1268,18 +1268,18 @@ export function SubmitComponentDialog({
 					<div className="space-y-1.5">
 						<Label>Supported harnesses</Label>
 						<div className="flex flex-wrap gap-1.5">
-							{(ideList ?? []).map((ide) => (
+							{(harnessList ?? []).map((harness) => (
 								<button
-									key={ide.name}
+									key={harness.name}
 									type="button"
-									onClick={() => toggleIde(ide.name)}
+									onClick={() => toggleHarness(harness.name)}
 									className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-										supportedIdes.includes(ide.name)
+										supportedHarnesses.includes(harness.name)
 											? "bg-primary text-primary-foreground"
 											: "bg-muted/50 text-muted-foreground hover:bg-muted"
 									}`}
 								>
-									{ide.display_name}
+									{harness.display_name}
 								</button>
 							))}
 						</div>

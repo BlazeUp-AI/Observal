@@ -94,10 +94,10 @@ export function PreviewPanel({
 	pendingComponentBodies,
 	validationResult,
 }: PreviewPanelProps) {
-	const { data: ideList } = useHarnesses();
-	const [ide, setIde] = useState("claude-code");
+	const { data: harnessList } = useHarnesses();
+	const [harness, setHarness] = useState("claude-code");
 	const [modalOpen, setModalOpen] = useState(false);
-	const [modalIde, setModalIde] = useState("claude-code");
+	const [modalHarness, setModalHarness] = useState("claude-code");
 	const [fullConfigs, setFullConfigs] = useState<Record<
 		string,
 		Record<string, string>
@@ -107,10 +107,10 @@ export function PreviewPanel({
 	const modalScrollRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		if (!ideList || ideList.length === 0) return;
-		if (!ideList.some((opt) => opt.name === ide)) setIde(ideList[0].name);
-		if (!ideList.some((opt) => opt.name === modalIde)) setModalIde(ideList[0].name);
-	}, [ideList, ide, modalIde]);
+		if (!harnessList || harnessList.length === 0) return;
+		if (!harnessList.some((opt) => opt.name === harness)) setHarness(harnessList[0].name);
+		if (!harnessList.some((opt) => opt.name === modalHarness)) setModalHarness(harnessList[0].name);
+	}, [harnessList, harness, modalHarness]);
 
 	const body = buildMarkdownBody(
 		description,
@@ -119,8 +119,8 @@ export function PreviewPanel({
 		pendingComponentBodies,
 	);
 
-	const files: PreviewFile[] = fullConfigs?.[ide]
-		? Object.entries(fullConfigs[ide]).map(([path, content]) => ({ path, content }))
+	const files: PreviewFile[] = fullConfigs?.[harness]
+		? Object.entries(fullConfigs[harness]).map(([path, content]) => ({ path, content }))
 		: [];
 
 	const fetchFullConfig = useCallback(async () => {
@@ -174,14 +174,14 @@ export function PreviewPanel({
 	}, [fetchFullConfig]);
 
 	const handleOpenFullPreview = useCallback(() => {
-		setModalIde(ide);
+		setModalHarness(harness);
 		setModalOpen(true);
-	}, [ide]);
+	}, [harness]);
 
 	// Files for the modal view
 	const modalFiles: PreviewFile[] =
-		fullConfigs && fullConfigs[modalIde]
-			? Object.entries(fullConfigs[modalIde]).map(([path, content]) => ({
+		fullConfigs && fullConfigs[modalHarness]
+			? Object.entries(fullConfigs[modalHarness]).map(([path, content]) => ({
 					path,
 					content,
 				}))
@@ -230,13 +230,13 @@ export function PreviewPanel({
 
 			{/* harness selector */}
 			<div className="flex flex-wrap gap-1">
-				{(ideList ?? []).map((opt) => (
+				{(harnessList ?? []).map((opt) => (
 					<button
 						key={opt.name}
 						type="button"
-						onClick={() => setIde(opt.name)}
+						onClick={() => setHarness(opt.name)}
 						className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-							ide === opt.name
+							harness === opt.name
 								? "bg-primary text-primary-foreground"
 								: "bg-muted/50 text-muted-foreground hover:bg-muted"
 						}`}
@@ -303,16 +303,16 @@ export function PreviewPanel({
 
 					{/* harness tabs inside modal */}
 					<div className="flex flex-wrap gap-1 px-6 pt-3">
-						{(ideList ?? []).map((opt) => (
+						{(harnessList ?? []).map((opt) => (
 							<button
 								key={opt.name}
 								type="button"
 								onClick={() => {
-									setModalIde(opt.name);
+									setModalHarness(opt.name);
 									modalScrollRef.current?.scrollTo({ top: 0 });
 								}}
 								className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-									modalIde === opt.name
+									modalHarness === opt.name
 										? "bg-primary text-primary-foreground"
 										: "bg-muted/50 text-muted-foreground hover:bg-muted"
 								}`}

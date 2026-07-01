@@ -101,7 +101,7 @@ else:
 print("6. Testing install endpoint...")
 r = requests.post(
     f"{BASE}/api/v1/skills/{skill_id}/install",
-    json={"ide": "claude-code", "scope": "project"},
+    json={"harness": "claude-code", "scope": "project"},
     headers={"Authorization": f"Bearer {user_token}"},
 )
 if r.status_code == 200:
@@ -168,7 +168,7 @@ else:
 print("9. Testing agent install (claude-code)...")
 r = requests.post(
     f"{BASE}/api/v1/agents/{agent_id}/install",
-    json={"ide": "claude-code"},
+    json={"harness": "claude-code"},
     headers={"Authorization": f"Bearer {admin_token}"},
 )
 if r.status_code == 200:
@@ -189,7 +189,7 @@ print(f"Agent ID: {agent_id}")
 print("\nTest from frontend:")
 print("  1. Go to http://localhost:3000")
 print("  2. Login: admin@demo.example / admin-changeme")
-print("  3. Find 'test-skill-agent' → Install → pick IDE")
+print("  3. Find 'test-skill-agent' → Install → pick harness")
 print("  4. Response should include skill_artifacts with SKILL.md")
 print("\nTest from CLI:")
 print(f"  observal agent install {agent_id} --harness claude-code")

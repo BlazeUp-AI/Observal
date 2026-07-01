@@ -394,7 +394,7 @@ def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str
     Two grammars are accepted:
 
     * ``--model <value>`` - applies to the harness selected for this pull.
-    * ``--model <ide>=<value>`` - explicit per-harness override (advanced; lets
+    * ``--model <harness>=<value>`` - explicit per-harness override (advanced; lets
       a single command target a specific harness without ambiguity).
 
     Returns ``(default_value, per_harness_overrides)``.
@@ -766,7 +766,7 @@ def register_pull(app: typer.Typer):
                     git_url=git_url,
                     skill_path=sc.get("skill_path", "/"),
                     git_ref=sc.get("git_ref", "main"),
-                    ide=harness,
+                    harness=harness,
                     scope=scope_str,
                     skill_md_content=sc.get("skill_md_content"),
                     cwd=target_dir,
@@ -784,7 +784,7 @@ def register_pull(app: typer.Typer):
                     skill_md_content=sc.get("skill_md_content"),
                     script_content=sc.get("script_content"),
                     script_filename=sc.get("script_filename"),
-                    ide=harness,
+                    harness=harness,
                     scope=scope_str,
                     cwd=target_dir,
                     dest=skill_dest,
