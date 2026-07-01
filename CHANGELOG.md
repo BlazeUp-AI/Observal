@@ -10,10 +10,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.9.7] - 2026-06-30
+## [1.9.8] - 2026-07-01
 
 ### Added
 
+- agent swapping and local profile isolation for pi ([e261ba7](https://github.com/Observal/Observal/commit/e261ba72edd2db0007f55f8b692004205dee143d))
+- use ~/.pi/agent/agents isolated profiles with TUI to swap ([242be6b](https://github.com/Observal/Observal/commit/242be6bfafe5330626f93157716141239068c6a7))
+- add /agent command to swap active agent in pi ([0fd4c64](https://github.com/Observal/Observal/commit/0fd4c646be0db9d726efc461217afe95cb20f1e6))
+- instant login method selection without Enter key (**cli**) ([94aca4d](https://github.com/Observal/Observal/commit/94aca4da1cb46d3ac79b505e7848d1808b68a428))
 - update brand assets (**web**) ([f724abc](https://github.com/Observal/Observal/commit/f724abcc6f7d60b1b617f2e396498098833052f0))
 - add runtime examples and docs (**sandbox**) ([66ff22d](https://github.com/Observal/Observal/commit/66ff22d7866a1126dcd1169e98b73044de87ae51))
 - add admin migration UI (**web**) ([9433f6e](https://github.com/Observal/Observal/commit/9433f6e87c1fb95838003661596034f0b808dd11))
@@ -660,6 +664,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- replace stale ide naming (**harness**) ([fbd3adb](https://github.com/Observal/Observal/commit/fbd3adba410bcfa23b5b8494036405e5ea607bfe))
 - align agent RBAC tests (**test**) ([058392b](https://github.com/Observal/Observal/commit/058392bc1562652993ec20749f47868e3e15a019))
 - format install warning (**mcp**) ([c88f450](https://github.com/Observal/Observal/commit/c88f45019b953a28c774147bc7caf23ec2cc20cc))
 - route telemetry features through sessions ([fbc7a38](https://github.com/Observal/Observal/commit/fbc7a3820ce483cbb301243c5c024e5835865a6b))
@@ -924,6 +929,12 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- show installer upgrade commands (**cli**) ([b3fdc03](https://github.com/Observal/Observal/commit/b3fdc039a20666a8f74cbc1a5f467863f2002343))
+- include isolated profiles in layer snapshots (**pi**) ([26d06d3](https://github.com/Observal/Observal/commit/26d06d30ff80606befef733c273f1450334ac953))
+- show api error detail when agent install fails ([2274d9f](https://github.com/Observal/Observal/commit/2274d9f4ffa1c8f28624b64d649f8318d50be933))
+- support legacy agent_profile in pi install snippet ([3110705](https://github.com/Observal/Observal/commit/311070594bf79714c02b6d76fd809604afa144d3))
+- strip quotes from env and header values (**cli**) ([bacfe90](https://github.com/Observal/Observal/commit/bacfe90d7b48fd37decd6abd4eed7e8a6cad4426))
+- danger zone title click expands section instead of opening docs (**web**) ([039af05](https://github.com/Observal/Observal/commit/039af052812980ba9d2e713a0621452b19c9c155))
 - remove legacy env vars from standalone deployment configs ([adcd277](https://github.com/Observal/Observal/commit/adcd277660535a4d710d936a28d2079f4720d8af))
 - add listen_host override for standalone clickhouse container ([f826edf](https://github.com/Observal/Observal/commit/f826edff17a1940ddd71960d7aed82f1708de789))
 - add missing nginx tmpfs mounts for read-only rootfs (**docker**) ([e080f00](https://github.com/Observal/Observal/commit/e080f0068373908cf763e3cf90c2bc71d28a1a8b))
