@@ -474,7 +474,7 @@ def _sparse_clone_skill_dir(git_url: str, skill_path: str, git_ref: str, dest: P
 @skill_app.command(name="install")
 def skill_install(
     skill_id: str = typer.Argument(..., help="Skill ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
+    harness: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     scope: str = typer.Option("user", "--scope", "-s", help="Install scope: user (global, default) or project"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only"),
     no_write: bool = typer.Option(False, "--no-write", help="Print config without writing files"),
@@ -489,7 +489,7 @@ def skill_install(
     SKILL.md content if git clone fails.
 
     Scopes:
-      --scope user (default): writes to ~/.<ide>/skills/<name>/ (global).
+      --scope user (default): writes to the harness's global skills directory.
       --scope project: writes to .agents/skills/<name>/ in cwd, then
         symlinks into each harness config dir found in the project.
 
@@ -500,8 +500,8 @@ def skill_install(
         observal registry skill install my-skill --harness opencode --no-write
     """
     resolved = config.resolve_alias(skill_id)
-    with spinner(f"Generating {ide} config..."):
-        install_body = {"harness": ide, "scope": scope}
+    with spinner(f"Generating {harness} config..."):
+        install_body = {"harness": harness, "scope": scope}
         if version:
             install_body["version"] = version
         result = client.post(f"/api/v1/skills/{resolved}/install", install_body)
@@ -521,7 +521,7 @@ def skill_install(
                 skill_md_content=skill_info.get("skill_md_content"),
                 script_content=skill_info.get("script_content"),
                 script_filename=skill_info.get("script_filename"),
-                ide=ide,
+                harness=harness,
                 scope=scope,
             )
         else:
@@ -530,7 +530,7 @@ def skill_install(
                 git_url=skill_info.get("git_url"),
                 skill_path=skill_info.get("skill_path", "/"),
                 git_ref=skill_info.get("git_ref", "main"),
-                ide=ide,
+                harness=harness,
                 scope=scope,
                 skill_md_content=skill_info.get("skill_md_content"),
             )
@@ -543,7 +543,7 @@ def skill_install(
             from observal_cli.lockfile import upsert_standalone
 
             upsert_standalone(
-                ide,
+                harness,
                 component_type="skill",
                 name=skill_info.get("name", resolved),
                 component_id=str(skill_info.get("id", resolved)),
@@ -557,12 +557,12 @@ def skill_install(
     for warning in result.get("warnings") or []:
         rprint(f"\n[yellow]Warning:[/yellow] {warning}")
 
-    rprint(f"\n[bold]Config for {ide}:[/bold]\n")
+    rprint(f"\n[bold]Config for {harness}:[/bold]\n")
     console.print_json(_json.dumps(snippet, indent=2))
 
 
-# Agent config dirs to check for symlinking (canonical name → dir name)
-_AGENT_SKILL_DIRS: list[tuple[str, str]] = [
+# Harness config dirs to check for symlinking (canonical name → dir name)
+_HARNESS_SKILL_DIRS: list[tuple[str, str]] = [
     ("claude-code", ".claude"),
     ("cursor", ".cursor"),
     ("kiro", ".kiro"),
@@ -580,10 +580,10 @@ _USER_SKILL_DIRS: dict[str, str] = {
 }
 
 
-def _user_skill_dest(ide: str, skill_name: str) -> Path:
+def _user_skill_dest(harness: str, skill_name: str) -> Path:
     """Resolve the user-scope (global) install path for a skill."""
-    ide_key = ide.replace("_", "-")
-    base = _USER_SKILL_DIRS.get(ide_key, "~/.agents/skills")
+    harness_key = harness.replace("_", "-")
+    base = _USER_SKILL_DIRS.get(harness_key, "~/.agents/skills")
     expanded = Path(base.replace("~", str(Path.home())))
     return expanded / skill_name
 
@@ -594,8 +594,9 @@ def install_skill_registry_direct(
     skill_md_content: str | None,
     script_content: str | None = None,
     script_filename: str | None = None,
-    ide: str = "claude-code",
+    harness: str = "claude-code",
     scope: str = "user",
+    ide: str | None = None,
     cwd: Path | None = None,
     dest: Path | None = None,
 ) -> Path | None:
@@ -606,10 +607,11 @@ def install_skill_registry_direct(
     """
     skill_name = _sanitize_name(name)
     custom_dest = dest is not None
+    target_harness = ide or harness
 
     if dest is None:
         if scope == "user":
-            dest = _user_skill_dest(ide, skill_name)
+            dest = _user_skill_dest(target_harness, skill_name)
         else:
             base = (cwd or Path.cwd()) / ".agents" / "skills"
             dest = base / skill_name
@@ -641,7 +643,7 @@ def install_skill_registry_direct(
             rprint(f"[green]\u2713 Wrote script:[/green] {script_path}")
 
     if scope == "project" and not custom_dest:
-        _symlink_for_ides(cwd or Path.cwd(), dest, skill_name)
+        _symlink_for_harnesses(cwd or Path.cwd(), dest, skill_name)
 
     return dest
 
@@ -652,8 +654,9 @@ def install_skill_from_git(
     git_url: str | None,
     skill_path: str = "/",
     git_ref: str = "main",
-    ide: str = "claude-code",
+    harness: str = "claude-code",
     scope: str = "user",
+    ide: str | None = None,
     skill_md_content: str | None = None,
     cwd: Path | None = None,
     dest: Path | None = None,
@@ -666,10 +669,11 @@ def install_skill_from_git(
     """
     skill_name = _sanitize_name(name)
     custom_dest = dest is not None
+    target_harness = ide or harness
 
     if dest is None:
         if scope == "user":
-            dest = _user_skill_dest(ide, skill_name)
+            dest = _user_skill_dest(target_harness, skill_name)
         else:
             base = (cwd or Path.cwd()) / ".agents" / "skills"
             dest = base / skill_name
@@ -685,7 +689,7 @@ def install_skill_from_git(
         if wrote_full_dir:
             rprint(f"[green]\u2713 Skill directory written:[/green] {dest}")
             if scope == "project" and not custom_dest:
-                _symlink_for_ides(cwd or Path.cwd(), dest, skill_name)
+                _symlink_for_harnesses(cwd or Path.cwd(), dest, skill_name)
             return dest
         rprint("[yellow]\u26a0 git clone failed.[/yellow] Falling back to SKILL.md cache.")
 
@@ -700,9 +704,9 @@ def install_skill_from_git(
     return None
 
 
-def _symlink_for_ides(cwd: Path, canonical: Path, skill_name: str) -> None:
+def _symlink_for_harnesses(cwd: Path, canonical: Path, skill_name: str) -> None:
     """Create .<agent>/skills/<name>/ symlinks for every harness config dir that exists."""
-    for _ide, agent_dir in _AGENT_SKILL_DIRS:
+    for _harness, agent_dir in _HARNESS_SKILL_DIRS:
         agent_root = cwd / agent_dir
         if not agent_root.exists():
             continue

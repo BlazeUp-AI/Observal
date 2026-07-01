@@ -175,6 +175,17 @@ class TestManagedLayerFiles:
             "user:config.toml",
         }
 
+    def test_managed_files_accept_current_harnesses_lockfile_key(self):
+        adapter = get_adapter("pi")
+        legacy = self._lockfile_for("pi")
+        lockfile = {"harnesses": legacy["ides"]}
+
+        assert adapter.get_observal_managed_files(lockfile) == {
+            "user:AGENTS.md",
+            "user:skills/skill-one/SKILL.md",
+            "user:skills/standalone-skill/SKILL.md",
+        }
+
 
 class TestActiveIdeDetection:
     """Test adapter-owned active harness detection."""

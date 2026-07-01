@@ -605,7 +605,7 @@ def doctor_cleanup(
       observal doctor cleanup --harness kiro               # Kiro only
       observal doctor cleanup --harness claude-code --dry-run  # Preview without changes
     """
-    optic.trace("ide={}, exclude={}, dry_run={}", harness, exclude, dry_run)
+    optic.trace("harness={}, exclude={}, dry_run={}", harness, exclude, dry_run)
     all_harnesses = ["claude-code", "kiro", "cursor", "codex", "copilot", "copilot-cli", "opencode"]
     targets = [harness] if harness else all_harnesses
     targets = [t for t in targets if t not in exclude]
@@ -952,7 +952,7 @@ def _backup_config(config_path: Path) -> Path:
 
 def _parse_mcp_servers(config_data: dict, harness: str) -> dict[str, dict]:
     """Extract MCP servers dict from harness config using registry-defined key."""
-    optic.trace("config_data={}, ide={}", config_data, harness)
+    optic.trace("config_data={}, harness={}", config_data, harness)
     key = get_mcp_servers_key(harness)
     if key == "mcp.servers":
         return config_data.get("mcp", {}).get("servers", {})
@@ -970,7 +970,7 @@ def _shim_config_file(config_path: Path, harness: str, dry_run: bool) -> int:
 
     Returns count of newly shimmed entries.
     """
-    optic.trace("config_path={}, ide={}", config_path, harness)
+    optic.trace("config_path={}, harness={}", config_path, harness)
     if not config_path.exists():
         return 0
     try:
@@ -1103,8 +1103,8 @@ def doctor_patch(
 
         emit_cli_audit(
             "doctor.patch",
-            resource_type="ide",
-            detail=f"ides={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
+            resource_type="harness",
+            detail=f"harnesses={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
             sensitivity="high",
         )
     else:

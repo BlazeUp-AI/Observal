@@ -111,9 +111,11 @@ class BaseAdapter:
     def get_observal_managed_files(self, lockfile_data: dict, project_dir: str | None = None) -> set[str]:
         """Return layer snapshot display paths managed by Observal for this harness."""
         managed: set[str] = set()
-        ide_section = lockfile_data.get("ides", {}).get(self.harness_name, {})
+        harness_section = lockfile_data.get("harnesses", {}).get(self.harness_name)
+        if harness_section is None:
+            harness_section = lockfile_data.get("ides", {}).get(self.harness_name, {})
 
-        for agent in ide_section.get("agents", []):
+        for agent in harness_section.get("agents", []):
             agent_name = agent.get("name", "")
             if agent_name:
                 managed.update(self._format_managed_paths(self.managed_agent_profiles, agent_name))
@@ -121,7 +123,7 @@ class BaseAdapter:
             for component in agent.get("components", []):
                 managed.update(self._managed_component_files(component.get("type", ""), component.get("name", "")))
 
-        for item in ide_section.get("standalone", []):
+        for item in harness_section.get("standalone", []):
             managed.update(self._managed_component_files(item.get("type", ""), item.get("name", "")))
 
         return managed

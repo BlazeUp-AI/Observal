@@ -1016,7 +1016,7 @@ def _show_impl(mcp_id, output):
 
 def _install_impl(
     mcp_id,
-    ide,
+    harness,
     raw,
     version=None,
     *,
@@ -1025,7 +1025,7 @@ def _install_impl(
     env_file: str | None = None,
     no_prompt: bool = False,
 ):
-    optic.trace("mcp_id={}, ide={}, version={}", mcp_id, ide, version)
+    optic.trace("mcp_id={}, harness={}, version={}", mcp_id, harness, version)
     import json as _json
 
     resolved = config.resolve_alias(mcp_id)
@@ -1127,8 +1127,8 @@ def _install_impl(
             else:
                 header_values[h["name"]] = f"<{h['name']}>"
 
-    with spinner(f"Generating {ide} config..."):
-        install_body = {"harness": ide, "env_values": env_values, "header_values": header_values}
+    with spinner(f"Generating {harness} config..."):
+        install_body = {"harness": harness, "env_values": env_values, "header_values": header_values}
         if version:
             install_body["version"] = version
         result = client.post(
@@ -1146,7 +1146,7 @@ def _install_impl(
         from observal_cli.lockfile import upsert_standalone
 
         upsert_standalone(
-            ide,
+            harness,
             component_type="mcp",
             name=listing.get("name", resolved),
             component_id=str(listing.get("id", resolved)),
@@ -1164,12 +1164,12 @@ def _install_impl(
         "codex": "~/.codex/config.toml",
     }
 
-    rprint(f"\n[bold]Config for {ide}:[/bold]\n")
+    rprint(f"\n[bold]Config for {harness}:[/bold]\n")
     console.print_json(_json.dumps(snippet, indent=2))
-    config_path = harness_config_paths.get(ide, "")
+    config_path = harness_config_paths.get(harness, "")
     if config_path and not config_path.startswith("("):
         rprint(f"\n[dim]Add to:[/dim] [bold]{config_path}[/bold]")
-        rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --harness {ide} --raw > {config_path}")
+        rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --harness {harness} --raw > {config_path}")
 
     warnings = result.get("warnings") or []
     for warning in warnings:
@@ -1410,7 +1410,7 @@ def show(
 @mcp_app.command()
 def install(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
+    harness: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
     version: str | None = typer.Option(
         None, "--version", "-V", help="Install a specific version (e.g. '2.1.0'). Defaults to latest."
@@ -1452,7 +1452,7 @@ def install(
         # With headers for SSE servers
         observal registry mcp install my-server --harness kiro --header Authorization='Bearer token'
     """
-    optic.trace("mcp_id={}, ide={}", mcp_id, ide)
+    optic.trace("mcp_id={}, harness={}", mcp_id, harness)
     env_overrides = {}
     for item in env or []:
         k, _, v = item.partition("=")
@@ -1465,7 +1465,7 @@ def install(
             header_overrides[k.strip()] = v
     _install_impl(
         mcp_id,
-        ide,
+        harness,
         raw,
         version=version,
         env_overrides=env_overrides or None,

@@ -56,9 +56,9 @@ def _generate_skill(skill_source, harness: str, scope: str = "project") -> dict 
         name_attr = getattr(skill_source.listing, "name", "skill")
     if not name_attr:
         name_attr = "skill"
-    optic.debug("generating skill config for {} (ide={}, scope={})", name_attr, harness, scope)
-    ide_key = harness.replace("_", "-")
-    spec = HARNESS_REGISTRY.get(ide_key, {})
+    optic.debug("generating skill config for {} (harness={}, scope={})", name_attr, harness, scope)
+    harness_key = harness.replace("_", "-")
+    spec = HARNESS_REGISTRY.get(harness_key, {})
     skill_paths = spec.get("skills")
     if not skill_paths:
         return None
@@ -81,7 +81,7 @@ def _generate_skill(skill_source, harness: str, scope: str = "project") -> dict 
         frontmatter = {"name": name}
         if short_desc:
             frontmatter["description"] = short_desc
-        if slash_cmd and ide_key == "claude-code":
+        if slash_cmd and harness_key == "claude-code":
             frontmatter["command"] = f"/{normalize_slash_command(slash_cmd)}"
         content = _yaml_frontmatter(frontmatter) + f"{desc}\n"
     else:
@@ -125,6 +125,7 @@ def generate_skill_config(
             "SessionEnd": [{"matcher": "*", "hooks": [hook_entry]}],
         },
         "skill": {"name": skill_name, "id": skill_id},
+        "harness": harness,
         "ide": harness,
         "listing_id": skill_id,
     }

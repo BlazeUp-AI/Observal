@@ -164,13 +164,13 @@ All tests mock external services. No Docker or live databases needed to run test
 
 ---
 
-## 7. Instrument your IDEs
+## 7. Instrument your harnesses
 
-Already have MCP servers configured in Claude Code, Kiro, Cursor, or another IDE? Bring them into Observal without changing how they work:
+Already have MCP servers configured in Claude Code, Kiro, Cursor, or another harness? Bring them into Observal without changing how they work:
 
 ```bash
 observal scan                              # read-only: see what's installed
-observal doctor patch --all --all-ides    # wrap MCPs with observal-shim, install hooks
+observal doctor patch --all --all-harnesses    # wrap MCPs with observal-shim, install hooks
 observal doctor                           # verify everything wired correctly
 ```
 

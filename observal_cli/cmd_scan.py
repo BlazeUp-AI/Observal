@@ -90,7 +90,7 @@ def register_scan(app: typer.Typer):
             observal scan --harness kiro
         """
         ensure_loaded()
-        optic.trace("ide={}", harness)
+        optic.trace("harness={}", harness)
 
         # Validate harness filter
         if harness:
