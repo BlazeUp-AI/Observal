@@ -343,15 +343,15 @@ export default function RegistryHome() {
   const [search, setSearch] = useState("");
   const router = useRouter();
   const { data: whoami } = useWhoami();
-  const { data: sessionsToday, isLoading: sessionsLoading } = useSessions2({
+  const { data: sessionsToday, isLoading: sessionsLoading, isError: sessionsError } = useSessions2({
     days: 1,
     limit: 200,
     mine: true,
     refetchInterval: 30_000,
   });
-  const { data: myAgents, isLoading: myAgentsLoading } = useMyAgents();
-  const { data: leaderboard, isLoading: leaderboardLoading } = useLeaderboard("7d", 50);
-  const { data: topAgents, isLoading: topLoading } = useTopAgents(6);
+  const { data: myAgents, isLoading: myAgentsLoading, isError: myAgentsError } = useMyAgents();
+  const { data: leaderboard, isLoading: leaderboardLoading, isError: leaderboardError } = useLeaderboard("7d", 50);
+  const { data: topAgents, isLoading: topLoading, isError: topError } = useTopAgents(6);
   const {
     data: agents,
     isLoading: agentsLoading,
@@ -454,8 +454,10 @@ export default function RegistryHome() {
     }
   }
 
-  const displayName = whoami?.name || whoami?.username || whoami?.email || "there";
-  const primarySummary = sessionsLoading
+  const displayName = whoami?.name || whoami?.username || whoami?.email || "Hey there";
+  const primarySummary = sessionsError
+    ? "Unable to load today's activity"
+    : sessionsLoading
     ? "Loading today's activity"
     : todayStats.sessions > 0 && todayStats.hasTokenData
       ? `${todayStats.sessions} session${todayStats.sessions === 1 ? "" : "s"} today using ${formatTokens(todayStats.totalTokens)} tokens.`

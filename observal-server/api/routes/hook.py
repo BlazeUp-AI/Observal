@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import services.dynamic_settings as ds
 from api.deps import (
-    ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
     commit_or_name_conflict,
@@ -27,7 +26,7 @@ from api.deps import (
 )
 from api.routes._component_archive import archive_listing, archived_install_warning, unarchive_listing
 from api.routes.component_versions import create_version_router
-from api.sanitize import escape_like
+from api.search import keyword_search
 from models.hook import HookDownload, HookListing, HookVersion
 from models.mcp import ListingStatus
 from models.user import User, UserRole
@@ -119,12 +118,21 @@ async def list_hooks(
         stmt = stmt.where(HookVersion.event == event)
     if scope:
         stmt = stmt.where(HookVersion.scope == scope)
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        stmt = stmt.where(HookListing.name.ilike(f"%{safe}%") | HookVersion.description.ilike(f"%{safe}%"))
+        search_filter, search_rank = keyword_search(
+            search,
+            [HookListing.name, HookVersion.description, HookVersion.event, HookVersion.scope, HookVersion.handler_type],
+            name_field=HookListing.name,
+        )
+        if search_filter is not None:
+            stmt = stmt.where(search_filter)
     stmt = apply_visibility_filter(stmt, HookListing, current_user)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    result = await db.execute(stmt.order_by(HookListing.created_at.desc()).limit(limit).offset(offset))
+    order_by = [HookListing.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).limit(limit).offset(offset))
     listings = [HookListingSummary.model_validate(r) for r in result.scalars().all()]
     response.headers["X-Total-Count"] = str(total or 0)
     return listings
@@ -407,38 +415,6 @@ async def unarchive_hook(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     return await unarchive_listing(HookListing, listing_id, db, current_user, "hook")
-
-
-@router.delete("/{listing_id}")
-async def delete_hook(
-    listing_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    optic.debug("hook delete: listing_id={}", listing_id)
-    listing = await resolve_listing(HookListing, listing_id, db)
-    if not listing:
-        raise HTTPException(status_code=404, detail="Listing not found")
-    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
-    if get_effective_component_permission(listing, current_user) != "owner":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    if listing.status == ListingStatus.approved and not is_admin:
-        raise HTTPException(status_code=400, detail="Cannot delete an approved listing. Contact an admin.")
-
-    for r in (await db.execute(select(HookDownload).where(HookDownload.listing_id == listing.id))).scalars().all():
-        await db.delete(r)
-
-    # Break the circular FK (listing → latest_version → listing) before delete
-    listing.latest_version_id = None
-    listing.latest_version = None
-    await db.flush()
-    # Delete versions explicitly to avoid SQLAlchemy circular dependency detection
-    for ver in list(listing.versions):
-        await db.delete(ver)
-    await db.flush()
-    await db.delete(listing)
-    await commit_or_name_conflict(db, "hook")
-    return {"deleted": str(listing_id)}
 
 
 # --- Version sub-routes ---

@@ -14,7 +14,7 @@ The flow:
 import json
 import secrets
 import time
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -23,9 +23,11 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import services.dynamic_settings as ds
 from api.deps import get_current_user, get_db
 from api.ratelimit import limiter
 from api.routes.auth import _issue_tokens
+from config import HAS_LICENSE
 from models.user import User
 from schemas.auth import (
     DeviceAuthRequest,
@@ -112,9 +114,25 @@ def _resolve_frontend_url(request: Request) -> str:
     return "http://localhost"
 
 
+async def _saml_configured(db: AsyncSession) -> bool:
+    if not HAS_LICENSE:
+        return False
+    if ds.get_sync("saml.idp_entity_id") and ds.get_sync("saml.idp_sso_url"):
+        return True
+    try:
+        from sqlalchemy import select
+
+        from models.saml_config import SamlConfig
+
+        result = await db.execute(select(SamlConfig.id).where(SamlConfig.active.is_(True)).limit(1))
+        return result.scalar_one_or_none() is not None
+    except Exception:
+        return False
+
+
 @router.post("/authorize", response_model=DeviceAuthResponse)
 @limiter.limit("5/minute")
-async def device_authorize(request: Request, req: DeviceAuthRequest = None):
+async def device_authorize(request: Request, req: DeviceAuthRequest = None, db: AsyncSession = Depends(get_db)):
     """Create a device authorization request. Returns device_code + user_code."""
     optic.debug("initiating device auth flow")
     device_code = secrets.token_urlsafe(48)
@@ -142,6 +160,31 @@ async def device_authorize(request: Request, req: DeviceAuthRequest = None):
     frontend_url = _resolve_frontend_url(request)
 
     optic.info("device_authorize: code issued, user_code={}", user_code)
+    if req and req.sso:
+        next_path = f"/device?code={quote(user_code)}&sso=1"
+        next_param = quote(next_path, safe="")
+        provider = (req.provider or "").lower()
+        saml_configured = await _saml_configured(db)
+        from api.routes.auth import is_oidc_configured
+
+        oidc_configured = is_oidc_configured()
+        if provider == "saml" and saml_configured:
+            login_url = f"{frontend_url}/api/v1/sso/saml/login?next={next_param}"
+        elif oidc_configured:
+            login_url = f"{frontend_url}/api/v1/auth/oauth/login?next={next_param}"
+        elif saml_configured:
+            login_url = f"{frontend_url}/api/v1/sso/saml/login?next={next_param}"
+        else:
+            login_url = f"{frontend_url}/login?sso=1&next={next_param}"
+        return DeviceAuthResponse(
+            device_code=device_code,
+            user_code=user_code,
+            verification_uri=login_url,
+            verification_uri_complete=login_url,
+            expires_in=_DEVICE_AUTH_TTL,
+            interval=5,
+        )
+
     return DeviceAuthResponse(
         device_code=device_code,
         user_code=user_code,

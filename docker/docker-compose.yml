@@ -14,7 +14,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    image: ghcr.io/blazeup-ai/observal-api:latest
+    image: ghcr.io/observal/observal-api:latest
     command: ["/app/entrypoint.sh"]
     env_file:
       - ../.env
@@ -40,7 +40,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    image: ghcr.io/blazeup-ai/observal-api:latest
+    image: ghcr.io/observal/observal-api:latest
     command:
       [
         "/app/.venv/bin/python",
@@ -58,6 +58,7 @@ services:
       - ../.env
     environment:
       - JWT_KEY_DIR=/data/keys
+      - MIGRATION_ARTIFACT_ROOT=/data/migration_artifacts
       - SKIP_DDL_ON_STARTUP=true
       - DEMO_SUPER_ADMIN_EMAIL=${DEMO_SUPER_ADMIN_EMAIL:-super@demo.example}
       - DEMO_SUPER_ADMIN_PASSWORD=${DEMO_SUPER_ADMIN_PASSWORD:-super-changeme}
@@ -130,7 +131,7 @@ services:
       - observal-net
 
   observal-clickhouse:
-    image: clickhouse/clickhouse-server:26.5
+    image: clickhouse/clickhouse-server:26.6
     ports:
       - "127.0.0.1:${CLICKHOUSE_HOST_PORT:-8123}:8123"
     env_file:
@@ -181,7 +182,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    image: ghcr.io/blazeup-ai/observal-api:latest
+    image: ghcr.io/observal/observal-api:latest
     command:
       [
         "/app/.venv/bin/python",
@@ -190,6 +191,10 @@ services:
       ]
     env_file:
       - ../.env
+    environment:
+      - MIGRATION_ARTIFACT_ROOT=/data/migration_artifacts
+    volumes:
+      - apidata:/data
     depends_on:
       observal-init:
         condition: service_completed_successfully
@@ -213,7 +218,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
-    image: ghcr.io/blazeup-ai/observal-web:latest
+    image: ghcr.io/observal/observal-web:latest
     ports:
       - "${WEB_HOST_PORT:-3000}:3000"
     depends_on:
@@ -223,6 +228,7 @@ services:
     read_only: true
     tmpfs:
       - /var/cache/nginx
+      - /var/log/nginx
       - /var/run
       - /tmp
     security_opt:

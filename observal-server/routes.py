@@ -29,14 +29,13 @@ from api.routes.logs_stream import router as logs_stream_router
 from api.routes.mcp import router as mcp_router
 from api.routes.preview import router as preview_router
 from api.routes.prompt import router as prompt_router
-from api.routes.reconcile import router as reconcile_router
-from api.routes.registry_models import router as registry_models_router
 from api.routes.review import router as review_router
 from api.routes.sandbox import router as sandbox_router
 from api.routes.sessions import router as sessions_router
 from api.routes.skill import router as skill_router
 from api.routes.support import router as support_router
 from api.routes.telemetry import router as telemetry_router
+from api.routes.users import router as users_router
 from config import HAS_LICENSE, settings
 
 REST_ROUTERS = (
@@ -55,7 +54,6 @@ REST_ROUTERS = (
     dashboard_router,
     feedback_router,
     insights_router,
-    reconcile_router,
     ingest_router,
     admin_router,
     alert_router,
@@ -64,11 +62,11 @@ REST_ROUTERS = (
     bulk_router,
     co_authors_router,
     config_router,
-    registry_models_router,
     support_router,
     layer_snapshot_router,
     logs_stream_router,
     audit_router,
+    users_router,
 )
 
 

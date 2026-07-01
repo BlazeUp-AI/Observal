@@ -11,7 +11,6 @@
 Generates harness-specific agent files from a ResolvedAgent:
 - Claude Code: .claude/agents/<name>.md (markdown) + MCP JSON config
 - Cursor: .cursor/agents/<name>.md (subagent markdown) + .cursor/mcp.json
-- Gemini CLI: GEMINI.md (markdown) + MCP JSON config
 - Kiro: ~/.kiro/agents/<name>.json (JSON)
 - Codex: ~/.codex/agents/<name>.toml (custom agent)
 - GitHub Copilot: .github/copilot-instructions.md (markdown)
@@ -102,6 +101,12 @@ def _resolved_to_manifest_component(comp: ResolvedComponent) -> ManifestComponen
         kwargs["runtime_type"] = comp.extra.get("runtime_type", "")
         if comp.extra.get("resource_limits"):
             kwargs["resource_limits"] = comp.extra["resource_limits"]
+        if comp.extra.get("network_policy"):
+            kwargs["network_policy"] = comp.extra["network_policy"]
+        if comp.extra.get("entrypoint"):
+            kwargs["entrypoint"] = comp.extra["entrypoint"]
+        if comp.extra.get("runtime_config"):
+            kwargs["runtime_config"] = comp.extra["runtime_config"]
 
     return ManifestComponent(**kwargs)
 

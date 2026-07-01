@@ -30,7 +30,7 @@ def generate_hook_install_config(
       - source_fetch: git fetch info for multi-file hooks
       - notes: human-readable notes
     """
-    optic.debug("generating hook install config: hook={}, ide={}", hook_listing.name, harness)
+    optic.debug("generating hook install config: hook={}, harness={}", hook_listing.name, harness)
     ide_info = HARNESS_REGISTRY.get(harness)
     if not ide_info:
         return {
@@ -145,7 +145,7 @@ def _build_config_snippet(
 ) -> dict:
     """Build the harness-specific config snippet."""
 
-    optic.trace("ide={}, ide_info={}", harness, ide_info)
+    optic.trace("harness={}, harness_info={}", harness, ide_info)
     if harness == "claude-code":
         hook_entry: dict = {"type": handler_type, "command": command}
         if timeout:

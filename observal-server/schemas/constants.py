@@ -31,8 +31,7 @@ VALID_HARNESSES: list[str] = get_valid_harnesses()
 # ── harness feature capabilities ──────────────────────────────────
 # HARNESS_CAPABILITY_NAMES defines the vocabulary of possible features (used by
 # Pydantic validators).  HARNESS_CAPABILITIES is derived from the
-# registry.  Both are mirrored in observal_cli/constants.py and
-# web/src/lib/ide-features.ts.
+# registry. The same vocabulary is mirrored in observal_cli/constants.py.
 
 HARNESS_CAPABILITY_NAMES: list[str] = [
     "skills",

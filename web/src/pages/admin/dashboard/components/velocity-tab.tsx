@@ -32,8 +32,16 @@ function Sparkline({ data }: { data: number[] }) {
 }
 
 export function VelocityTab() {
-  const { data: velocity, isLoading: velLoading } = useExecVelocity();
+  const { data: velocity, isLoading: velLoading, isError: velError } = useExecVelocity();
   const { data: topAgents, isLoading: agentsLoading } = useExecTopAgents(10);
+
+  if (velError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load velocity data. Check your connection and try again.</p>
+      </div>
+    );
+  }
 
   if (velLoading) {
     return (

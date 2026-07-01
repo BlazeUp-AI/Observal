@@ -12,8 +12,9 @@
 from arq.cron import cron
 from loguru import logger as optic
 
-from jobs.catalog import batch_generate_insights, generate_insight_report, refresh_model_catalog
+from jobs.catalog import batch_generate_insights, generate_insight_report
 from jobs.maintenance import maintain_clickhouse, sync_component_sources
+from jobs.migration import purge_migration_artifacts, run_migration_job
 from logging_config import setup_logging
 from services.alert_evaluator import evaluate_alerts
 from services.optic import setup_optic
@@ -48,18 +49,18 @@ class WorkerSettings:
         maintain_clickhouse,
         generate_insight_report,
         batch_generate_insights,
-        refresh_model_catalog,
         run_retention_purge,
+        run_migration_job,
     ]
     cron_jobs = [
         cron(sync_component_sources, hour={0, 6, 12, 18}),  # Every 6 hours
         cron(evaluate_alerts, second={0}, timeout=55),  # Every minute
         cron(maintain_clickhouse, hour={0, 4, 8, 12, 16, 20}, timeout=120),  # Every 4 hours
         cron(batch_generate_insights, weekday={0}, hour={6}, minute={0}, timeout=300),  # Weekly Monday 6AM
-        cron(refresh_model_catalog, hour={0, 6, 12, 18}, minute={5}, timeout=30),  # Every 6 hours (offset)
         cron(
             run_retention_purge, hour={1, 7, 13, 19}, minute={30}, timeout=3600, unique=True
         ),  # Every 6 hours (retention)
+        cron(purge_migration_artifacts, hour={2, 8, 14, 20}, timeout=300, unique=True),  # Every 6 hours (artifacts)
     ]
     on_startup = startup
     on_shutdown = shutdown

@@ -29,7 +29,7 @@
 - [ ] `make rebuild-clean`
 - [ ] Install the CLI from source:
   ```bash
-  git clone https://github.com/BlazeUp-AI/Observal.git
+  git clone https://github.com/Observal/Observal.git
   cd Observal
   uv tool install --editable .
   ```
@@ -127,7 +127,6 @@
   - [ ] Kiro
   - [ ] Claude Code
   - [ ] Codex
-  - [ ] Gemini CLI
   - [ ] Copilot
   - [ ] Open Code
 

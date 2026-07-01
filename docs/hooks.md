@@ -83,9 +83,6 @@ observal registry hook install <name> --harness cursor
 # Install for Kiro
 observal registry hook install <name> --harness kiro
 
-# Install for Gemini CLI
-observal registry hook install <name> --harness gemini-cli
-
 # Install into a specific directory
 observal registry hook install <name> --harness claude-code --dir /path/to/project
 
@@ -101,12 +98,6 @@ observal registry hook edit <name-or-id> --description "updated"
 observal registry hook edit <name-or-id> --from-file updates.json
 ```
 
-### Delete a hook
-
-```bash
-observal registry hook delete <name-or-id>
-observal registry hook delete <name-or-id> --yes  # skip confirmation
-```
 
 ## Examples
 
@@ -209,13 +200,13 @@ observal agent pull safe-coder --harness claude-code
 
 The registry maps canonical event names to each harness's format:
 
-| Observal Event | Claude Code | Cursor | Kiro | Gemini CLI | Codex CLI |
-|----------------|-------------|--------|------|-----------|-----------|
-| `PreToolUse` | `PreToolUse` | `preToolUse` | `preToolUse` | `BeforeTool` | `pre_tool_use` |
-| `PostToolUse` | `PostToolUse` | `postToolUse` | `postToolUse` | `AfterTool` | `post_tool_use` |
-| `Stop` | `Stop` | `sessionEnd` | `stop` | `SessionEnd` | `session_stop` |
-| `SessionStart` | `SessionStart` | `sessionStart` | `agentSpawn` | `SessionStart` | - |
-| `UserPromptSubmit` | `UserPromptSubmit` | `beforeSubmitPrompt` | `userPromptSubmit` | `BeforeAgent` | `user_prompt_submit` |
+| Observal Event | Claude Code | Cursor | Kiro | Codex CLI |
+|----------------|-------------|--------|------|-----------|
+| `PreToolUse` | `PreToolUse` | `preToolUse` | `preToolUse` | `pre_tool_use` |
+| `PostToolUse` | `PostToolUse` | `postToolUse` | `postToolUse` | `post_tool_use` |
+| `Stop` | `Stop` | `sessionEnd` | `stop` | `session_stop` |
+| `SessionStart` | `SessionStart` | `sessionStart` | `agentSpawn` | - |
+| `UserPromptSubmit` | `UserPromptSubmit` | `beforeSubmitPrompt` | `userPromptSubmit` | `user_prompt_submit` |
 
 Install generates the correct format automatically:
 
@@ -224,7 +215,6 @@ Install generates the correct format automatically:
 observal registry hook install my-hook --harness claude-code  # → .claude/settings.json
 observal registry hook install my-hook --harness cursor       # → .cursor/hooks.json
 observal registry hook install my-hook --harness kiro         # → ~/.kiro/agents/my-hook.json
-observal registry hook install my-hook --harness gemini-cli   # → .gemini/settings.json
 ```
 
 ## Timeout Enforcement

@@ -50,7 +50,7 @@ For Kiro:
 | `.kiro/steering/<name>.md` | Steering file (the agent's system instructions) |
 | `.kiro/settings/mcp.json` | MCP servers, wrapped via `observal-shim` |
 
-For Cursor / VS Code / Gemini CLI: primarily MCP config + rules files at the appropriate path.
+For Cursor, VS Code, Copilot, and OpenCode: primarily MCP config plus rules or agent files at the appropriate path.
 
 ## Environment variables
 

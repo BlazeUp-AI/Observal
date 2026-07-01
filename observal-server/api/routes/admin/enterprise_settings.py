@@ -83,14 +83,14 @@ async def diagnostics(
             issues.append("SECRET_KEY is using default value")
         sso_only = await ds.get_bool("deployment.sso_only")
         frontend_url = await ds.get("deployment.frontend_url")
-        if sso_only and not settings.OAUTH_CLIENT_ID:
-            issues.append("OAUTH_CLIENT_ID is not set (required for SSO-only mode)")
+        if sso_only and not await ds.get("oauth.client_id"):
+            issues.append("oauth.client_id is not set (required for SSO-only mode)")
         if frontend_url in ("http://localhost:3000", ""):
             issues.append("deployment.frontend_url is localhost")
         diag["checks"]["enterprise"] = {
             "status": "ok" if not issues else "misconfigured",
             "sso_only": sso_only,
-            "sso_configured": bool(settings.OAUTH_CLIENT_ID),
+            "sso_configured": bool(await ds.get("oauth.client_id")),
             "issues": issues,
         }
         if issues:
@@ -364,7 +364,7 @@ async def purge_traces_and_insights(
 
     from services.clickhouse.client import _query as ch_query
 
-    clickhouse_tables = ["traces", "spans", "scores", "session_events", "session_stats_agg"]
+    clickhouse_tables = ["session_events", "session_stats_agg"]
     for table in clickhouse_tables:
         try:
             await ch_query(
@@ -464,6 +464,7 @@ async def test_insights_connection(
     """Test LLM connectivity with a minimal prompt."""
     api_key = await ds.get("insights.api_key")
     api_base = await ds.get("insights.api_base")
+    api_version = await ds.get("insights.api_version")
     aws_region = await ds.get("insights.aws_region")
     model = req.model or await ds.get("insights.model_sections")
 
@@ -487,6 +488,8 @@ async def test_insights_connection(
         kwargs["api_key"] = api_key
     if api_base:
         kwargs["api_base"] = api_base
+    if api_version and model.startswith("azure/"):
+        kwargs["api_version"] = api_version
     if aws_region and "bedrock" in model:
         kwargs["aws_region_name"] = aws_region
 

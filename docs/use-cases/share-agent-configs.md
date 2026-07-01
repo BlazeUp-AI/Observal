@@ -60,7 +60,6 @@ Install with one command, pick the harness:
 observal agent pull <agent-id> --harness claude-code
 observal agent pull <agent-id> --harness kiro
 observal agent pull <agent-id> --harness cursor
-observal agent pull <agent-id> --harness gemini-cli
 observal agent pull <agent-id> --harness vscode
 observal agent pull <agent-id> --harness codex
 ```

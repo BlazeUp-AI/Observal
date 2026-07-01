@@ -10,7 +10,7 @@ Step-by-step bring-up of the Observal stack. End state: the core services are he
 ## 1. Clone and configure
 
 ```bash
-git clone https://github.com/BlazeUp-AI/Observal.git
+git clone https://github.com/Observal/Observal.git
 cd Observal
 cp .env.example .env
 ```
@@ -77,7 +77,7 @@ For local dev, `http://localhost` is fine. For production, put a TLS-terminating
 Log in with the CLI:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash   # if you haven't already
+curl -fsSL https://raw.githubusercontent.com/Observal/Observal/main/install.sh | bash   # if you haven't already
 observal auth login              # Email: super@demo.example, Password: super-changeme
 ```
 
@@ -103,7 +103,6 @@ The CLI detects that no users exist and interactively creates the first admin. T
 observal auth whoami
 observal auth status
 
-observal ops overview              # summary dashboard
 observal registry mcp list         # empty list - you haven't added anything yet
 ```
 

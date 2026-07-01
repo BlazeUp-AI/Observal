@@ -6,13 +6,7 @@ import { Check, Copy, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { copyToClipboard } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { useHarnesses } from "@/hooks/use-harnesses";
 
 interface ComponentInstallCommandProps {
@@ -52,18 +46,13 @@ export function ComponentInstallCommand({ componentType, componentName }: Compon
         <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">Install</span>
         <div className="ml-auto">
-          <Select value={effectiveHarness} onValueChange={setHarness}>
-            <SelectTrigger className="h-7 w-[130px] text-xs border-border">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(harnesses ?? []).map((i) => (
-                <SelectItem key={i.name} value={i.name}>
-                  {i.display_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PickerSelect
+            value={effectiveHarness}
+            onValueChange={setHarness}
+            className="w-[130px]"
+            inputClassName="h-7 border-border text-xs"
+            options={(harnesses ?? []).map((i) => ({ value: i.name, label: i.display_name }))}
+          />
         </div>
       </div>
       <div className="flex items-center gap-2 p-3">

@@ -108,7 +108,7 @@ If you're restoring from backup after a catastrophic failure:
 3. Restore `pgdata` (Postgres).
 4. Restore `chdata` (ClickHouse).
 5. Bring up the stack: `docker compose up -d`.
-6. Smoke test: `observal auth login`, `observal ops overview`.
+6. Smoke test: `observal auth login`, `observal auth status`.
 
 Skipping step 2 works but every user has to re-login.
 

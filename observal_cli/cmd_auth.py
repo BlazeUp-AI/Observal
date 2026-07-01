@@ -29,7 +29,7 @@ from rich import print as rprint
 
 from observal_cli import client, config
 from observal_cli.branding import welcome_banner
-from observal_cli.prompts import password_input, text_input
+from observal_cli.prompts import password_input, quick_choice, text_input
 from observal_cli.render import console, kv_panel, spinner, status_badge
 
 # ── Auth subgroup ───────────────────────────────────────────
@@ -105,7 +105,7 @@ def _ensure_cli_matches_server(server_url: str) -> None:
     if cli_version == server_version:
         return
 
-    install_command = f"python -m pip install observal-cli=={server_ver}"
+    install_command = f"pipx install --force 'observal-cli=={server_ver}'"
     direction = "ahead of" if cli_version > server_version else "behind"
     rprint(
         f"\n[bold red]CLI version {cli_ver_str} is {direction} server {server_ver}.[/bold red]\n"
@@ -122,6 +122,7 @@ def login(
     password: str = typer.Option(None, "--password", "-p", help="Password"),
     name: str = typer.Option(None, "--name", "-n", help="Your name (used for admin setup)"),
     sso: bool = typer.Option(False, "--sso", help="Authenticate via browser SSO"),
+    saml: bool = typer.Option(False, "--saml", help="Authenticate via browser SAML SSO"),
 ):
     """Connect to Observal.
 
@@ -137,6 +138,7 @@ def login(
         observal auth login --server http://observal.internal:80
         observal auth login -e admin@example.com -p 'MyP@ss1234!'
         observal auth login --sso
+        observal auth login --saml
     """
     welcome_banner()
 
@@ -215,29 +217,75 @@ def login(
 
     rprint("[green]Connected.[/green]\n")
 
-    # 3. Check if we should use device flow (SSO)
+    # 3. Check available login methods
     sso_mode = False
+    direct_sso = False
+    sso_provider: str | None = None
+    sso_only = False
+    sso_available = False
+    oidc_available = False
+    saml_available = False
     try:
         config_r = httpx.get(f"{server_url}/api/v1/config/public", timeout=5)
         if config_r.status_code == 200:
             pub_config = config_r.json()
             sso_only = pub_config.get("sso_only", False)
-            # Use device flow if --sso flag passed, or if sso_only mode (no password option)
-            if sso or sso_only:
+            oidc_available = bool(pub_config.get("sso_enabled"))
+            saml_available = bool(pub_config.get("saml_enabled"))
+            sso_available = bool(oidc_available or saml_available)
+            if saml and not saml_available:
+                rprint("[red]SAML SSO is not configured on this server.[/red]")
+                raise typer.Exit(1)
+            # Use device flow if --sso/--saml flag passed, or if sso_only mode (no password option)
+            if sso or saml or sso_only:
                 sso_mode = True
+                direct_sso = True
+                if saml:
+                    sso_provider = "saml"
     except Exception:
         pass
 
-    # If SSO available but not required, offer a choice (unless flags already decide)
+    # If flags did not decide, offer the smallest useful method menu.
     if not sso_mode and not (email or password):
-        rprint("  [1] Email/username + password")
-        rprint("  [2] Sign in via browser")
-        choice = text_input("Login method")
-        if choice == "2":
+        if sso_only:
+            if oidc_available and saml_available:
+                rprint("  [1] OIDC SSO")
+                rprint("  [2] SAML SSO")
+                choice = quick_choice("Login method", ["1", "2"])
+                sso_provider = "saml" if choice == "2" else "oidc"
+            else:
+                rprint(f"  [1] {'SAML SSO' if saml_available else 'SSO'}")
+                quick_choice("Login method", ["1"])
+                sso_provider = "saml" if saml_available else None
             sso_mode = True
+            direct_sso = True
+        else:
+            rprint("  [1] CLI email/username + password")
+            rprint("  [2] Web sign-in")
+            valid = ["1", "2"]
+            if oidc_available:
+                rprint("  [3] OIDC SSO")
+                valid.append("3")
+            elif saml_available:
+                rprint("  [3] SAML SSO")
+                valid.append("3")
+            if oidc_available and saml_available:
+                rprint("  [4] SAML SSO")
+                valid.append("4")
+            choice = quick_choice("Login method", valid)
+            if choice == "2":
+                sso_mode = True
+            elif choice == "3" and sso_available:
+                sso_mode = True
+                direct_sso = True
+                sso_provider = "oidc" if oidc_available else "saml"
+            elif choice == "4" and saml_available:
+                sso_mode = True
+                direct_sso = True
+                sso_provider = "saml"
 
     if sso_mode:
-        _do_device_flow_login(server_url)
+        _do_device_flow_login(server_url, direct_sso=direct_sso, provider=sso_provider)
         return
 
     # 4. Email+password provided via flags -> password login
@@ -559,8 +607,8 @@ def _do_password_login(server_url: str, email: str, password: str):
         raise typer.Exit(1)
 
 
-def _do_device_flow_login(server_url: str):
-    """Authenticate via browser-based SSO using the device authorization flow."""
+def _do_device_flow_login(server_url: str, direct_sso: bool = False, provider: str | None = None):
+    """Authenticate via browser using the device authorization flow."""
     optic.trace("server_url={}", server_url)
     import time
     import webbrowser
@@ -571,7 +619,7 @@ def _do_device_flow_login(server_url: str):
         with spinner("Requesting device authorization..."):
             r = httpx.post(
                 f"{server_url}/api/v1/auth/device/authorize",
-                json={},
+                json={"sso": direct_sso, "provider": provider},
                 timeout=10,
             )
             r.raise_for_status()
@@ -1074,10 +1122,12 @@ def _configure_opencode(server_url: str):
     """Check for OpenCode and configure telemetry via doctor patch."""
     optic.trace("server_url={}", server_url)
     try:
-        # The opencode binary is the strongest signal.
-        # ~/.config/opencode/opencode.json can be created by a previous observal
-        # doctor patch, so also accept it only if the binary is present.
-        if not shutil.which("opencode"):
+        # The opencode binary is the strongest signal. The official installer
+        # commonly places it at ~/.opencode/bin/opencode without adding it to PATH.
+        # ~/.config/opencode/opencode.json can be created by a previous Observal
+        # doctor patch, so accept config only when a binary is present.
+        opencode_bin = Path.home() / ".opencode" / "bin" / "opencode"
+        if not shutil.which("opencode") and not opencode_bin.exists():
             return
 
         if not typer.confirm(

@@ -7,7 +7,11 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { useRouter, useLocation } from "@tanstack/react-router";
-import { auth, setUserRole, getUserRole, clearSession, refreshAccessToken } from "@/lib/api";
+import { auth, setUserRole, getUserRole, clearSession, refreshAccessTokenWithReason } from "@/lib/api";
+
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError || (typeof navigator !== "undefined" && !navigator.onLine);
+}
 
 function subscribe(cb: () => void) {
   window.addEventListener("storage", cb);
@@ -44,15 +48,15 @@ export function useAuthGuard() {
 
     // New tab: no access token but refresh token exists. Try silent refresh.
     if (isRefreshing) {
-      refreshAccessToken().then((ok) => {
-        if (ok) {
-          // Token restored, trigger whoami to resolve role
+      refreshAccessTokenWithReason().then((result) => {
+        if (result === "ok") {
           window.dispatchEvent(new Event("storage"));
-        } else {
+        } else if (result === "rejected") {
           clearSession();
           window.dispatchEvent(new Event("storage"));
           router.navigate({ to: "/login", replace: true });
         }
+        // "network_error": do nothing, leave session intact
       });
       return;
     }
@@ -67,7 +71,8 @@ export function useAuthGuard() {
       auth.whoami().then((user) => {
         setUserRole(user.role);
         window.dispatchEvent(new Event("storage"));
-      }).catch(() => {
+      }).catch((err) => {
+        if (isNetworkError(err)) return;
         clearSession();
         window.dispatchEvent(new Event("storage"));
         router.navigate({ to: "/login", replace: true });
@@ -95,7 +100,8 @@ export function useOptionalAuth() {
       auth.whoami().then((user) => {
         setUserRole(user.role);
         window.dispatchEvent(new Event("storage"));
-      }).catch(() => {
+      }).catch((err) => {
+        if (isNetworkError(err)) return;
         clearSession();
         window.dispatchEvent(new Event("storage"));
       });

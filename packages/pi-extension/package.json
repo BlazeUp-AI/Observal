@@ -1,6 +1,6 @@
 {
   "name": "observal-pi",
-  "version": "1.9.1",
+  "version": "1.9.7",
   "description": "Observal session telemetry for Pi \u2014 zero-dependency extension that pushes session traces to your Observal server",
   "keywords": [
     "pi-package",
@@ -12,7 +12,7 @@
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BlazeUp-AI/Observal.git",
+    "url": "https://github.com/Observal/Observal.git",
     "directory": "packages/pi-extension"
   },
   "pi": {

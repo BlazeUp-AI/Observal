@@ -15,11 +15,62 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
-from observal_cli.constants import VALID_SANDBOX_RUNTIME_TYPES
+from observal_cli.constants import VALID_HARNESSES, VALID_SANDBOX_NETWORK_POLICIES, VALID_SANDBOX_RUNTIME_TYPES
 from observal_cli.prompts import select_one, text_input
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
 sandbox_app = typer.Typer(help="Sandbox registry commands")
+
+
+def _print_sandbox_examples() -> None:
+    examples = {
+        "python-pytest": {
+            "name": "python-pytest",
+            "version": "1.0.0",
+            "description": "Run Python tests in a reviewed Docker image",
+            "owner": "your-team",
+            "runtime_type": "docker",
+            "image": "python:3.12-slim",
+            "resource_limits": {"timeout": 60, "memory_mb": 512, "cpu_count": 1},
+            "network_policy": "none",
+            "entrypoint": "pytest",
+            "runtime_config": {},
+            "source_url": "https://github.com/docker-library/python",
+            "source_ref": "master",
+            "sandbox_path": "3.12/slim-bookworm",
+        },
+        "node-tests": {
+            "name": "node-tests",
+            "version": "1.0.0",
+            "description": "Run Node test and build commands",
+            "owner": "your-team",
+            "runtime_type": "docker",
+            "image": "node:22-alpine",
+            "resource_limits": {"timeout": 120, "memory_mb": 1024, "cpu_count": 2},
+            "network_policy": "none",
+            "entrypoint": "npm test",
+            "runtime_config": {},
+            "source_url": "https://github.com/nodejs/docker-node",
+            "source_ref": "main",
+            "sandbox_path": "22/alpine3.22",
+        },
+        "go-tests": {
+            "name": "go-tests",
+            "version": "1.0.0",
+            "description": "Run Go tests in an Alpine Go image",
+            "owner": "your-team",
+            "runtime_type": "docker",
+            "image": "golang:1.24-alpine",
+            "resource_limits": {"timeout": 180, "memory_mb": 1024, "cpu_count": 2},
+            "network_policy": "none",
+            "entrypoint": "go test ./...",
+            "runtime_config": {},
+            "source_url": "https://github.com/docker-library/golang",
+            "source_ref": "master",
+            "sandbox_path": "1.24/alpine3.21",
+        },
+    }
+    output_json(examples)
 
 
 def register_sandbox(app: typer.Typer):
@@ -29,8 +80,22 @@ def register_sandbox(app: typer.Typer):
 @sandbox_app.command(name="submit")
 def sandbox_submit(
     from_file: str | None = typer.Option(None, "--from-file", "-f", help="Create from JSON file"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Sandbox name"),
+    version: str | None = typer.Option(None, "--version", "-v", help="Version (default: 1.0.0)"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Short description"),
+    runtime_type: str | None = typer.Option(None, "--runtime-type", "-r", help="Runtime type"),
+    image: str | None = typer.Option(None, "--image", "-i", help="Container image"),
+    resource_limits: str | None = typer.Option(None, "--resource-limits", help="Resource limits JSON"),
+    runtime_config: str | None = typer.Option(None, "--runtime-config", help="Runtime-specific config JSON"),
+    network_policy: str | None = typer.Option(None, "--network-policy", help="Network policy"),
+    entrypoint: str | None = typer.Option(None, "--entrypoint", help="Default entrypoint"),
+    supported_harnesses: list[str] | None = typer.Option(None, "--harness", help="Supported harness (repeatable)"),
+    source_url: str | None = typer.Option(None, "--source-url", help="Source repository URL"),
+    source_ref: str | None = typer.Option(None, "--source-ref", help="Source branch/tag"),
+    sandbox_path: str | None = typer.Option(None, "--sandbox-path", help="Path in source repo"),
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (sandbox ID)"),
+    example: bool = typer.Option(False, "--example", help="Print example sandbox payloads and exit"),
 ):
     """Submit a new sandbox environment for review.
 
@@ -46,6 +111,9 @@ def sandbox_submit(
         observal registry sandbox submit --draft
         observal registry sandbox submit --submit abc123
     """
+    if example:
+        _print_sandbox_examples()
+        return
     rprint("[dim]Note: Only submit components you created (private) or are the point-of-contact for (external).[/dim]")
     if draft and submit_draft:
         rprint(
@@ -59,6 +127,24 @@ def sandbox_submit(
         rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
         return
 
+    flag_mode = any(
+        x is not None
+        for x in (
+            name,
+            version,
+            description,
+            runtime_type,
+            image,
+            resource_limits,
+            runtime_config,
+            network_policy,
+            entrypoint,
+            supported_harnesses,
+            source_url,
+            source_ref,
+            sandbox_path,
+        )
+    )
     if from_file:
         try:
             with open(from_file) as f:
@@ -71,6 +157,33 @@ def sandbox_submit(
             raise typer.Exit(code=1)
         if not payload.get("owner"):
             payload["owner"] = config.load().get("username", "")
+    elif flag_mode:
+        try:
+            limits = _json.loads(resource_limits or "{}")
+            runtime_cfg = _json.loads(runtime_config or "{}")
+        except _json.JSONDecodeError as e:
+            rprint(f"[red]Invalid JSON option:[/red] {e}")
+            raise typer.Exit(1)
+        payload = {
+            "name": name,
+            "version": version or "1.0.0",
+            "description": description,
+            "owner": config.load().get("username", ""),
+            "runtime_type": runtime_type,
+            "image": image,
+            "resource_limits": limits,
+            "runtime_config": runtime_cfg,
+            "network_policy": network_policy or "none",
+            "supported_harnesses": supported_harnesses or [],
+        }
+        if entrypoint:
+            payload["entrypoint"] = entrypoint
+        if source_url:
+            payload["source_url"] = source_url
+        if source_ref:
+            payload["source_ref"] = source_ref
+        if sandbox_path:
+            payload["sandbox_path"] = sandbox_path
     else:
         payload = {
             "name": text_input("Sandbox name"),
@@ -80,7 +193,24 @@ def sandbox_submit(
             "runtime_type": select_one("Runtime type", VALID_SANDBOX_RUNTIME_TYPES),
             "image": text_input("Image"),
             "resource_limits": _json.loads(text_input("Resource limits (JSON)")),
+            "runtime_config": _json.loads(text_input("Runtime config (JSON)", default="{}")),
         }
+    if flag_mode:
+        if not (
+            payload.get("name") and payload.get("description") and payload.get("runtime_type") and payload.get("image")
+        ):
+            rprint("[red]Error:[/red] --name, --description, --runtime-type, and --image are required")
+            raise typer.Exit(1)
+        if payload.get("runtime_type") not in VALID_SANDBOX_RUNTIME_TYPES:
+            rprint(f"[red]Error:[/red] Invalid runtime type: {payload.get('runtime_type')}")
+            raise typer.Exit(1)
+        if payload.get("network_policy") not in VALID_SANDBOX_NETWORK_POLICIES:
+            rprint(f"[red]Error:[/red] Invalid network policy: {payload.get('network_policy')}")
+            raise typer.Exit(1)
+        bad_harnesses = [h for h in payload.get("supported_harnesses", []) if h not in VALID_HARNESSES]
+        if bad_harnesses:
+            rprint(f"[red]Error:[/red] Invalid harness: {bad_harnesses[0]}")
+            raise typer.Exit(1)
 
     if draft:
         with spinner("Saving draft..."):
@@ -194,6 +324,10 @@ def sandbox_edit(
     version: str | None = typer.Option(None, "--version", "-v", help="New version string"),
     runtime_type: str | None = typer.Option(None, "--runtime-type", "-r", help="New runtime type"),
     image: str | None = typer.Option(None, "--image", "-i", help="New container image"),
+    resource_limits: str | None = typer.Option(None, "--resource-limits", help="Resource limits JSON"),
+    runtime_config: str | None = typer.Option(None, "--runtime-config", help="Runtime config JSON"),
+    network_policy: str | None = typer.Option(None, "--network-policy", help="New network policy"),
+    entrypoint: str | None = typer.Option(None, "--entrypoint", help="New entrypoint"),
 ):
     """Edit a draft, rejected, or pending sandbox submission.
 
@@ -229,6 +363,14 @@ def sandbox_edit(
             updates["runtime_type"] = runtime_type
         if image is not None:
             updates["image"] = image
+        if resource_limits is not None:
+            updates["resource_limits"] = _json.loads(resource_limits)
+        if runtime_config is not None:
+            updates["runtime_config"] = _json.loads(runtime_config)
+        if network_policy is not None:
+            updates["network_policy"] = network_policy
+        if entrypoint is not None:
+            updates["entrypoint"] = entrypoint
 
     if not updates:
         rprint("[yellow]No changes specified.[/yellow] Use --from-file or field options (--name, --description, etc.)")
@@ -251,29 +393,3 @@ def sandbox_edit(
             pass
         rprint(f"[red]Failed to update:[/red] {exc}")
         raise typer.Exit(code=1)
-
-
-@sandbox_app.command(name="delete")
-def sandbox_delete(
-    sandbox_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-):
-    """Delete a sandbox from the registry.
-
-    Permanently removes the sandbox. Sandboxes you own can be deleted
-    regardless of status. Requires confirmation unless --yes is passed.
-
-    Examples:
-        observal registry sandbox delete my-sandbox
-        observal registry sandbox delete abc123 --yes
-        observal registry sandbox delete @old-env -y
-    """
-    resolved = config.resolve_alias(sandbox_id)
-    if not yes:
-        with spinner():
-            item = client.get(f"/api/v1/sandboxes/{resolved}")
-        if not typer.confirm(f"Delete [bold]{item['name']}[/bold] ({resolved})?"):
-            raise typer.Abort()
-    with spinner("Deleting..."):
-        client.delete(f"/api/v1/sandboxes/{resolved}")
-    rprint(f"[green]✓ Deleted {resolved}[/green]")

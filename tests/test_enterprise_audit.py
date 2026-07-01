@@ -47,15 +47,10 @@ class TestClassification:
 
         assert classify_route("POST", "/api/v1/ingest/session") == "phi_adjacent"
 
-    def test_reconcile_is_phi_adjacent(self):
-        from services.audit.classification import classify_route
-
-        assert classify_route("POST", "/api/v1/reconcile") == "phi_adjacent"
-
     def test_telemetry_is_phi_adjacent(self):
         from services.audit.classification import classify_route
 
-        assert classify_route("POST", "/api/v1/telemetry/ingest") == "phi_adjacent"
+        assert classify_route("POST", "/api/v1/ingest/session") == "phi_adjacent"
 
     def test_admin_is_admin(self):
         from services.audit.classification import classify_route
@@ -343,10 +338,10 @@ class TestCliAudit:
 class TestSchemaExpansion:
     """ClickHouse schema includes new audit columns."""
 
-    def test_new_columns_in_init_sql(self):
-        from services.clickhouse.schema import INIT_SQL
+    def test_new_columns_in_baseline_migration(self):
+        from services.clickhouse.migrations import MIGRATIONS_DIR
 
-        sql_blob = "\n".join(INIT_SQL)
+        sql_blob = (MIGRATIONS_DIR / "001_baseline.sql").read_text()
         assert "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS org_id" in sql_blob
         assert "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS sensitivity" in sql_blob
         assert "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS outcome" in sql_blob
@@ -354,10 +349,10 @@ class TestSchemaExpansion:
         assert "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS chain_hash" in sql_blob
         assert "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS source" in sql_blob
 
-    def test_new_indexes_in_init_sql(self):
-        from services.clickhouse.schema import INIT_SQL
+    def test_new_indexes_in_baseline_migration(self):
+        from services.clickhouse.migrations import MIGRATIONS_DIR
 
-        sql_blob = "\n".join(INIT_SQL)
+        sql_blob = (MIGRATIONS_DIR / "001_baseline.sql").read_text()
         assert "idx_outcome" in sql_blob
         assert "idx_sensitivity" in sql_blob
         assert "idx_source" in sql_blob

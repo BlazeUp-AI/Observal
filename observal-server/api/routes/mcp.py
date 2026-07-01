@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import services.dynamic_settings as ds
 from api.deps import (
-    ROLE_HIERARCHY,
     apply_visibility_filter,
     check_listing_visibility,
     commit_or_name_conflict,
@@ -27,7 +26,7 @@ from api.deps import (
 )
 from api.routes._component_archive import archive_listing, archived_install_warning, unarchive_listing
 from api.routes.component_versions import create_version_router
-from api.sanitize import escape_like
+from api.search import keyword_search
 from database import async_session
 from models.mcp import ListingStatus, McpDownload, McpListing, McpValidationResult, McpVersion
 from models.user import User, UserRole
@@ -204,12 +203,27 @@ async def list_mcps(
     )
     if category:
         stmt = stmt.where(McpListing.category == category)
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        stmt = stmt.where(McpListing.name.ilike(f"%{safe}%") | McpVersion.description.ilike(f"%{safe}%"))
+        search_filter, search_rank = keyword_search(
+            search,
+            [
+                McpListing.name,
+                McpListing.category,
+                McpVersion.description,
+                McpVersion.framework,
+                McpVersion.setup_instructions,
+            ],
+            name_field=McpListing.name,
+        )
+        if search_filter is not None:
+            stmt = stmt.where(search_filter)
     stmt = apply_visibility_filter(stmt, McpListing, current_user)
     total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    result = await db.execute(stmt.order_by(McpListing.created_at.desc()).limit(limit).offset(offset))
+    order_by = [McpListing.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).limit(limit).offset(offset))
     listings = [McpListingSummary.model_validate(r) for r in result.scalars().all()]
     response.headers["X-Total-Count"] = str(total or 0)
     return listings
@@ -275,6 +289,8 @@ async def install_mcp(
     warnings = []
     if listing.status == ListingStatus.archived:
         warnings.append(archived_install_warning("MCP", listing.name))
+    if listing.setup_instructions:
+        warnings.append(f"MCP '{listing.name}' requires local setup before use:\n{listing.setup_instructions}")
 
     db.add(McpDownload(listing_id=listing.id, user_id=current_user.id, harness=req.harness))
     latest_version = getattr(listing, "latest_version", None)
@@ -492,46 +508,6 @@ async def unarchive_mcp(
     current_user: User = Depends(require_role(UserRole.user)),
 ):
     return await unarchive_listing(McpListing, listing_id, db, current_user, "listing")
-
-
-@router.delete("/{listing_id}")
-async def delete_mcp(
-    listing_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role(UserRole.user)),
-):
-    optic.debug("mcp delete: listing_id={}", listing_id)
-    from models.feedback import Feedback
-
-    listing = await resolve_listing(McpListing, listing_id, db)
-    if not listing:
-        raise HTTPException(status_code=404, detail="Listing not found")
-    is_admin = ROLE_HIERARCHY.get(current_user.role, 999) <= ROLE_HIERARCHY[UserRole.admin]
-    if get_effective_component_permission(listing, current_user) != "owner":
-        raise HTTPException(status_code=403, detail="Not authorized")
-    if listing.status == ListingStatus.approved and not is_admin:
-        raise HTTPException(status_code=400, detail="Cannot delete an approved listing. Contact an admin.")
-
-    for r in (
-        (await db.execute(select(Feedback).where(Feedback.listing_id == listing.id, Feedback.listing_type == "mcp")))
-        .scalars()
-        .all()
-    ):
-        await db.delete(r)
-    for r in (await db.execute(select(McpDownload).where(McpDownload.listing_id == listing.id))).scalars().all():
-        await db.delete(r)
-
-    # Break the circular FK (listing → latest_version → listing) before delete
-    listing.latest_version_id = None
-    listing.latest_version = None
-    await db.flush()
-    # Delete versions explicitly to avoid SQLAlchemy circular dependency detection
-    for ver in list(listing.versions):
-        await db.delete(ver)
-    await db.flush()
-    await db.delete(listing)
-    await commit_or_name_conflict(db, "listing")
-    return {"deleted": str(listing_id)}
 
 
 # --- Version sub-routes ---

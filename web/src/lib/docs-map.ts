@@ -35,8 +35,13 @@ export const SETTING_DOCS: Record<string, DocRef> = {
 	"insights.facet_max_calls": { file: "insights-config.md", anchor: "max-facet-calls", label: "Max Facet Calls" },
 	"insights.facet_concurrency": { file: "insights-config.md", anchor: "facet-concurrency", label: "Facet Concurrency" },
 
+	// SSO
+	"deployment.sso_only": { file: "self-hosting/authentication.md", anchor: "sso-only-mode", label: "SSO Only Mode" },
+	"oauth.client_id": { file: "self-hosting/authentication.md", anchor: "oauth-client-id", label: "OIDC Client ID" },
+	"oauth.client_secret": { file: "self-hosting/authentication.md", anchor: "oauth-client-secret", label: "OIDC Client Secret" },
+	"oauth.server_metadata_url": { file: "self-hosting/authentication.md", anchor: "oauth-server-metadata-url", label: "OIDC Discovery URL" },
+
 	// Deployment
-	"deployment.sso_only": { file: "self-hosting/deployment-settings.md", anchor: "sso-only-mode", label: "SSO Only Mode" },
 	"deployment.frontend_url": { file: "self-hosting/deployment-settings.md", anchor: "frontend-url", label: "Frontend URL" },
 	"deployment.public_url": { file: "self-hosting/deployment-settings.md", anchor: "public-api-url", label: "Public API URL" },
 	"deployment.otlp_http_url": { file: "self-hosting/deployment-settings.md", anchor: "otlp-endpoint-override", label: "OTLP Endpoint Override" },
@@ -104,13 +109,18 @@ export const SETTING_DOCS: Record<string, DocRef> = {
  */
 export const SECTION_DOCS: Record<string, DocRef> = {
 	"Authentication": { file: "self-hosting/authentication.md", label: "Authentication Settings" },
-	"Agent Insights": { file: "insights-config.md", label: "AI Insights Configuration" },
+	"Agent Insights": { file: "insights-config.md", label: "Agent Insights Configuration" },
 	"Deployment": { file: "self-hosting/deployment-settings.md", label: "Deployment Settings" },
 	"Security": { file: "self-hosting/trusted-proxies.md", label: "Trusted Proxies & Network Security" },
-	"SAML 2.0 SSO": { file: "self-hosting/saml-settings.md", label: "SAML 2.0 SSO Configuration" },
+	"SSO": { file: "self-hosting/authentication.md", label: "SSO Configuration" },
 	"JWT Token Expiry": { file: "self-hosting/token-expiry.md", label: "Token Expiry Settings" },
 	"Resource Tuning": { file: "self-hosting/resource-tuning.md", label: "Resource Tuning" },
 	"Data & Retention": { file: "self-hosting/data-retention.md", label: "Data & Retention Settings" },
+	"Data Retention": { file: "self-hosting/data-retention.md", anchor: "data-retention", label: "Data Retention" },
+	"Data Migration": { file: "self-hosting/data-migration.md", label: "Data Migration" },
+	"Appearance": { file: "self-hosting/miscellaneous.md", anchor: "appearance", label: "Appearance" },
+	"Trace Privacy": { file: "self-hosting/miscellaneous.md", anchor: "trace-privacy", label: "Trace Privacy" },
+	"Registered Agents Only": { file: "self-hosting/miscellaneous.md", anchor: "registered-agents-only", label: "Registered Agents Only" },
 	"Telemetry Purge": { file: "self-hosting/data-retention.md", anchor: "purge-traces-and-insights", label: "Purge Traces & Insights" },
 	"Observability": { file: "self-hosting/observability-settings.md", label: "Observability Settings" },
 	"Miscellaneous": { file: "self-hosting/miscellaneous.md", label: "Miscellaneous Settings" },
@@ -132,6 +142,7 @@ export const PAGE_DOCS: Record<string, DocRef> = {
 
 	// Admin
 	"audit-log": { file: "reference/api-endpoints.md", label: "API Reference" },
-	"sso": { file: "self-hosting/saml-settings.md", label: "SAML 2.0 SSO" },
+	"sso": { file: "self-hosting/authentication.md", label: "SSO" },
 	"diagnostics": { file: "self-hosting/troubleshooting.md", label: "Troubleshooting" },
+	"migration": { file: "self-hosting/data-migration.md", label: "Data Migration" },
 };

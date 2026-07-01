@@ -20,7 +20,7 @@ By the end of this guide you will have:
 ## 1. Install the CLI
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BlazeUp-AI/Observal/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Observal/Observal/main/install.sh | bash
 ```
 
 No Python required. For alternative install methods, see [Installation](installation.md).
@@ -31,7 +31,7 @@ No Python required. For alternative install methods, see [Installation](installa
 ## 2. Start the server
 
 ```bash
-git clone https://github.com/BlazeUp-AI/Observal.git
+git clone https://github.com/Observal/Observal.git
 cd Observal
 cp .env.example .env
 
@@ -92,7 +92,7 @@ observal auth whoami
 
 ## 4. Discover and instrument your harness
 
-If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Gemini CLI, first see what's there:
+If you already have MCP servers configured in Claude Code, Kiro, Cursor, VS Code, or Copilot, first see what's there:
 
 ```bash
 observal scan

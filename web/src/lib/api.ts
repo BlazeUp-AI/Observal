@@ -9,6 +9,7 @@
 // SPDX-FileCopyrightText: 2026 SrihariLegend <sriharilegend23@gmail.com>
 // SPDX-FileCopyrightText: 2026 Swathi Saravanan <ss4522@cornell.edu>
 // SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
+// SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type {
@@ -67,6 +68,7 @@ import type {
 	ExecInactivityAlerts,
 	ExecTimeToValueResponse,
 	ExecAIInsightsResponse,
+	UserSearchResult,
 } from "./types";
 
 const API = "/api/v1";
@@ -160,11 +162,13 @@ export function getUserAvatar(): string | null {
 	return localStorage.getItem(STORAGE_KEY_USER_AVATAR);
 }
 
-let _refreshPromise: Promise<boolean> | null = null;
+let _refreshPromise: Promise<RefreshResult> | null = null;
 
-async function _tryRefreshToken(): Promise<boolean> {
+type RefreshResult = "ok" | "rejected" | "network_error";
+
+async function _tryRefreshToken(): Promise<RefreshResult> {
 	const refreshToken = getRefreshToken();
-	if (!refreshToken) return false;
+	if (!refreshToken) return "rejected";
 
 	try {
 		const res = await fetch(`${API}/auth/token/refresh`, {
@@ -173,13 +177,13 @@ async function _tryRefreshToken(): Promise<boolean> {
 			body: JSON.stringify({ refresh_token: refreshToken }),
 		});
 
-		if (!res.ok) return false;
+		if (!res.ok) return "rejected";
 
 		const data = await res.json();
 		setTokens(data.access_token, data.refresh_token);
-		return true;
+		return "ok";
 	} catch {
-		return false;
+		return "network_error";
 	}
 }
 
@@ -188,6 +192,11 @@ async function _tryRefreshToken(): Promise<boolean> {
  * Returns true if the access token was restored successfully.
  */
 export async function refreshAccessToken(): Promise<boolean> {
+	const result = await _tryRefreshToken();
+	return result === "ok";
+}
+
+export async function refreshAccessTokenWithReason(): Promise<RefreshResult> {
 	return _tryRefreshToken();
 }
 
@@ -225,9 +234,9 @@ async function request<T = unknown>(
 					_refreshPromise = null;
 				});
 			}
-			const refreshed = await _refreshPromise;
+			const refreshResult = await _refreshPromise;
 
-			if (refreshed) {
+			if (refreshResult === "ok") {
 				// Retry the original request with new token
 				const newToken = getAccessToken();
 				if (newToken) headers["Authorization"] = `Bearer ${newToken}`;
@@ -241,15 +250,17 @@ async function request<T = unknown>(
 					if (retryRes.status === 204) return undefined as T;
 					return retryRes.json() as Promise<T>;
 				}
-				// Retry failed but refresh succeeded, so the individual call
-				// fails gracefully without killing the session
 				const retryText = await retryRes.text().catch(() => "Request failed");
 				const retryErr = new Error(retryText);
 				(retryErr as Error & { status: number }).status = retryRes.status;
 				throw retryErr;
 			}
 
-			// Refresh itself failed: session is truly expired
+			if (refreshResult === "network_error") {
+				throw new Error("Network unavailable");
+			}
+
+			// Real rejection: session is truly expired
 			clearSession();
 			if (typeof window !== "undefined") {
 				window.location.href = "/login?reason=session_expired";
@@ -290,7 +301,9 @@ async function request<T = unknown>(
 							: JSON.stringify(parsed.error);
 				}
 			} catch {
-				// not JSON, use raw text
+				if (detail.length > 200 || detail.includes("Traceback") || detail.includes("Error:")) {
+					detail = `Request failed (${response.status})`;
+				}
 			}
 		}
 		const err = new Error(detail);
@@ -511,7 +524,15 @@ export const review = {
 // ── Telemetry ───────────────────────────────────────────────────────
 export const telemetry = {
 	status: () => get<TelemetryStatus>("/telemetry/status"),
-	ingest: (body: unknown) => post<unknown>("/telemetry/ingest", body),
+};
+
+// ── Users ───────────────────────────────────────────────────────────
+export const users = {
+	search: (params: { q: string; limit?: number }) => {
+		const qs = new URLSearchParams({ q: params.q });
+		if (params.limit) qs.set("limit", String(params.limit));
+		return get<UserSearchResult[]>(`/users/search?${qs}`);
+	},
 };
 
 // ── Dashboard ───────────────────────────────────────────────────────
@@ -548,6 +569,7 @@ export const dashboard = {
 	sessions: (params?: {
 		status?: string;
 		platform?: string;
+		user?: string;
 		days?: number;
 		limit?: number;
 		offset?: number;
@@ -556,6 +578,7 @@ export const dashboard = {
 		const qs = new URLSearchParams();
 		if (params?.status) qs.set("status", params.status);
 		if (params?.platform) qs.set("platform", params.platform);
+		if (params?.user) qs.set("user", params.user);
 		if (params?.days) qs.set("days", String(params.days));
 		if (params?.limit) qs.set("limit", String(params.limit));
 		if (params?.offset) qs.set("offset", String(params.offset));
@@ -566,9 +589,6 @@ export const dashboard = {
 	sessionsSummary: () => get<SessionsSummary>("/sessions/summary"),
 	session: (id: string) =>
 		get<SessionData>(`/sessions/${encodeURIComponent(id)}`),
-	traces: () => get<SessionTrace[]>("/sessions/traces"),
-	trace: (id: string) =>
-		get<unknown>(`/sessions/traces/${encodeURIComponent(id)}`),
 	sessionsStats: () => get<SessionsStats>("/sessions/stats"),
 	sessionsErrors: () => get<SessionErrorEvent[]>("/sessions/errors"),
 };
@@ -616,6 +636,9 @@ export const admin = {
 			error?: string;
 			hint?: string;
 		}>("/admin/insights/test-connection", body ?? {}),
+	insightsModelProviders: () => get<import("./types").LiteLLMProviderList>("/admin/insights/models/providers"),
+	insightsModels: (provider: string) =>
+		get<import("./types").LiteLLMModelList>(`/admin/insights/models?provider=${encodeURIComponent(provider)}`),
 	purgeTracesAndInsights: () =>
 		post<{
 			project_id: string;
@@ -736,6 +759,64 @@ export const admin = {
 	getRetentionStats: () => get<RetentionStats>("/admin/org/retention/stats"),
 	getRetentionWarnings: () =>
 		get<RetentionWarnings>("/admin/org/retention/warnings"),
+	// ── Migration ──────────────────────────────────────────────
+	migrateExport: (scope: string) =>
+		post<{ job_id: string }>("/admin/migrate/export", { scope }),
+	migrateImport: async (formData: FormData) => {
+		const token = getAccessToken();
+		const headers: Record<string, string> = {};
+		if (token) headers["Authorization"] = `Bearer ${token}`;
+		const res = await fetch(`${API}/admin/migrate/import`, {
+			method: "POST",
+			headers,
+			body: formData,
+		});
+		if (!res.ok) {
+			const text = await res.text().catch(() => "Import failed");
+			let detail = text;
+			try {
+				const parsed = JSON.parse(text);
+				if (parsed.detail) detail = parsed.detail;
+			} catch {
+				/* raw text */
+			}
+			throw new Error(detail);
+		}
+		return res.json() as Promise<{ job_id: string }>;
+	},
+	migrateValidate: async (formData: FormData) => {
+		const token = getAccessToken();
+		const headers: Record<string, string> = {};
+		if (token) headers["Authorization"] = `Bearer ${token}`;
+		const res = await fetch(`${API}/admin/migrate/validate`, {
+			method: "POST",
+			headers,
+			body: formData,
+		});
+		if (!res.ok) {
+			const text = await res.text().catch(() => "Validate failed");
+			let detail = text;
+			try {
+				const parsed = JSON.parse(text);
+				if (parsed.detail) detail = parsed.detail;
+			} catch {
+				/* raw text */
+			}
+			throw new Error(detail);
+		}
+		return res.json() as Promise<{ job_id: string }>;
+	},
+	migrateJob: (id: string) =>
+		get<import("./types/admin").MigrationJob>(`/admin/migrate/jobs/${id}`),
+	migrateJobs: () =>
+		get<import("./types/admin").MigrationJob[]>("/admin/migrate/jobs"),
+	migrateDownloadToken: (jobId: string, name: string) =>
+		post<import("./types/admin").MigrationDownloadToken>(
+			`/admin/migrate/jobs/${jobId}/artifacts/${name}/token`,
+			{},
+		),
+	migrateCurrentOrg: () =>
+		get<import("./types/admin").CurrentOrgInfo>("/admin/migrate/current-org"),
 };
 
 // ── Retention Types ───────────────────────────────────────────────
@@ -787,6 +868,7 @@ export type RetentionWarnings = {
 export type PublicConfig = {
 	licensed: boolean;
 	sso_enabled: boolean;
+	google_sso_enabled: boolean;
 	sso_only: boolean;
 	self_registration_enabled: boolean;
 	saml_enabled: boolean;
@@ -879,13 +961,6 @@ export const config = {
 	ssoHealth: () => get<SsoHealthResult>("/config/sso-health"),
 };
 
-// ── Models ─────────────────────────────────────────────────────────
-export const models = {
-	list: () => get<import("./types").ModelCatalog>("/models"),
-	refresh: () =>
-		post<import("./types").ModelRefreshResult>("/admin/models/refresh"),
-};
-
 // ── Bulk ───────────────────────────────────────────────────────────
 export const bulk = {
 	createAgents: (body: { agents: unknown[]; dry_run?: boolean }) =>
@@ -917,10 +992,19 @@ export const insights = {
 			selection ?? {},
 		),
 	exportHtml: async (agentId: string, reportId: string): Promise<void> => {
-		const token = getAccessToken();
-		const res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
+		let token = getAccessToken();
+		let res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
 			headers: token ? { Authorization: `Bearer ${token}` } : {},
 		});
+		if (res.status === 401) {
+			const refreshed = await _tryRefreshToken();
+			if (refreshed) {
+				token = getAccessToken();
+				res = await fetch(`${API}/agents/${agentId}/insights/reports/${reportId}/export/html`, {
+					headers: token ? { Authorization: `Bearer ${token}` } : {},
+				});
+			}
+		}
 		if (!res.ok) throw new Error("Export failed");
 		const blob = await res.blob();
 		const url = URL.createObjectURL(blob);
@@ -967,6 +1051,7 @@ export const exec = {
 	inactivityAlerts: () => get<ExecInactivityAlerts>("/exec/inactivity-alerts"),
 	timeToValue: () => get<ExecTimeToValueResponse>("/exec/time-to-value"),
 	aiInsights: () => get<ExecAIInsightsResponse>("/exec/ai-insights"),
+	generateAiInsights: () => post<ExecAIInsightsResponse>("/exec/ai-insights"),
 	config: () => get<ExecConfig | null>("/exec/config"),
 	updateConfig: (data: Partial<ExecConfig>) =>
 		put<ExecConfig>("/exec/config", data),

@@ -119,10 +119,10 @@ def upsert_agent(
 ) -> None:
     """Add or update an agent entry in the lock file.
 
-    Matches on (ide, agent_id, directory) for project-scoped or
-    (ide, agent_id) for user-scoped.
+    Matches on (harness, agent_id, directory) for project-scoped or
+    (harness, agent_id) for user-scoped.
     """
-    optic.debug("upsert_agent: ide={}, name={}, version={}", harness, name, version)
+    optic.debug("upsert_agent: harness={}, name={}, version={}", harness, name, version)
     data = read_lockfile()
     harness_section = _ensure_harness(data, harness)
     agents = harness_section["agents"]
@@ -196,7 +196,7 @@ def upsert_standalone(
     integrity: str | None = None,
 ) -> None:
     """Add or update a standalone component (MCP, skill, hook, etc.) in the lock file."""
-    optic.debug("upsert_standalone: ide={}, type={}, name={}", harness, component_type, name)
+    optic.debug("upsert_standalone: harness={}, type={}, name={}", harness, component_type, name)
     data = read_lockfile()
     harness_section = _ensure_harness(data, harness)
     standalone = harness_section["standalone"]
@@ -274,6 +274,18 @@ def get_agent_for_directory(harness: str, directory: str) -> dict | None:
     for agent in harness_section.get("agents", []):
         if agent.get("directory") == directory:
             return agent
+    return None
+
+
+def get_agent_by_id(agent_id: str, harness: str | None = None) -> dict | None:
+    """Find a lockfile agent by UUID, optionally scoped to one harness."""
+    data = read_lockfile()
+    for harness_name, harness_section in data.get("harnesses", {}).items():
+        if harness and harness_name != harness:
+            continue
+        for agent in harness_section.get("agents", []):
+            if agent.get("id") == agent_id:
+                return agent
     return None
 
 

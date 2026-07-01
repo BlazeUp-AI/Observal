@@ -24,8 +24,10 @@ import {
 	Palette,
 	AlertTriangle,
 	ShieldAlert,
+	ArrowLeftRight,
 } from "lucide-react";
 import { InsightsSection } from "./settings/insights-section";
+import { MigrateDialog } from "./dashboard/components/migrate-dialog";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useHelp } from "@/components/wiki/help-context";
@@ -48,13 +50,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -64,6 +60,7 @@ import { ErrorState } from "@/components/shared/error-state";
 // but we keep the set here for UI affordances (revoke button, write-only input).
 const SENSITIVE_KEYS = new Set([
 	"insights.api_key",
+	"oauth.client_secret",
 	"saml.idp_x509_cert",
 	"saml.sp_key_encryption_password",
 ]);
@@ -85,7 +82,7 @@ const SECTION_ICONS: Record<string, React.ReactNode> = {
 	danger: <AlertTriangle className="h-3.5 w-3.5" />,
 	deployment: <Shield className="h-3.5 w-3.5" />,
 	security: <ShieldAlert className="h-3.5 w-3.5" />,
-	saml: <Shield className="h-3.5 w-3.5" />,
+	sso: <Shield className="h-3.5 w-3.5" />,
 	jwt: <Shield className="h-3.5 w-3.5" />,
 	resource: <Database className="h-3.5 w-3.5" />,
 	data: <Database className="h-3.5 w-3.5" />,
@@ -152,17 +149,15 @@ function HarnessAllowlistEditor({
 				)}
 			</div>
 			<div className="flex items-center gap-2">
-				<Select value="" onValueChange={addHarness}>
-					<SelectTrigger className="h-8 text-sm flex-1">
-						<SelectValue placeholder={selected.length === 0 ? "Restrict to specific harnesses" : "Add harness"} />
-					</SelectTrigger>
-					<SelectContent>
-						{available.map((harness) => (
-							<SelectItem key={harness.name} value={harness.name}>{harness.display_name}</SelectItem>
-						))}
-						{available.length === 0 && <SelectItem value="__none__" disabled>All listed harnesses selected</SelectItem>}
-					</SelectContent>
-				</Select>
+				<PickerSelect
+					value=""
+					onValueChange={addHarness}
+					placeholder={selected.length === 0 ? "Restrict to specific harnesses" : "Add harness"}
+					className="flex-1"
+					inputClassName="h-8 text-sm"
+					emptyLabel="All listed harnesses selected"
+					options={available.map((harness) => ({ value: harness.name, label: harness.display_name }))}
+				/>
 				{selected.length > 0 && (
 					<Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => onChange("")}>Allow all</Button>
 				)}
@@ -249,6 +244,7 @@ export default function SettingsPage() {
 		undefined,
 	);
 	const [brandingSaving, setBrandingSaving] = useState(false);
+	const [migrateOpen, setMigrateOpen] = useState(false);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const wordmarkInputRef = useRef<HTMLInputElement>(null);
 
@@ -270,6 +266,10 @@ export default function SettingsPage() {
 		helpActive && SETTING_DOCS[key]
 			? "ring-2 ring-primary/60 cursor-help transition-shadow"
 			: "";
+	const sectionHelpHeadingClass = (sectionTitle: string) =>
+		helpActive && SECTION_DOCS[sectionTitle]
+			? "cursor-help ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-sm"
+			: "";
 	const wordmarkPreview =
 		wordmarkOverride !== undefined ? wordmarkOverride : brandingWordmark;
 	const appNameDraft =
@@ -279,13 +279,13 @@ export default function SettingsPage() {
 		admin
 			.getTracePrivacy()
 			.then((res) => setTracePrivacy(res.trace_privacy))
-			.catch(() => {})
+			.catch(() => { toast.error("Failed to load trace privacy setting"); })
 			.finally(() => setTracePrivacyLoading(false));
 		if (hasMinRole(getUserRole(), "super_admin")) {
 			admin
 				.getRegisteredAgentsOnly()
 				.then((res) => setRegisteredAgentsOnly(res.registered_agents_only))
-				.catch(() => {})
+				.catch(() => { toast.error("Failed to load registered-agents-only setting"); })
 				.finally(() => setRegisteredAgentsOnlyLoading(false));
 		}
 		admin
@@ -298,7 +298,7 @@ export default function SettingsPage() {
 				setMaxTraceCount(res.max_trace_count?.toString() || "");
 				setRetentionGlobal(res.global_retention_days);
 			})
-			.catch(() => {})
+			.catch(() => { toast.error("Failed to load retention settings"); })
 			.finally(() => setRetentionLoading(false));
 	}, []);
 
@@ -515,9 +515,9 @@ export default function SettingsPage() {
 			setWordmarkOverride(undefined);
 			setAppNameOverride(undefined);
 			queryClient.invalidateQueries({ queryKey: ["config", "public"] });
-			toast.success("Branding updated");
+			toast.success("Appearance updated");
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : "Failed to save branding");
+			toast.error(e instanceof Error ? e.message : "Failed to save appearance");
 		} finally {
 			setBrandingSaving(false);
 		}
@@ -541,9 +541,9 @@ export default function SettingsPage() {
 			setWordmarkOverride(undefined);
 			setAppNameOverride(undefined);
 			queryClient.invalidateQueries({ queryKey: ["config", "public"] });
-			toast.success("Branding reset to defaults");
+			toast.success("Appearance reset to defaults");
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : "Failed to reset branding");
+			toast.error(e instanceof Error ? e.message : "Failed to reset appearance");
 		} finally {
 			setBrandingSaving(false);
 		}
@@ -563,7 +563,7 @@ export default function SettingsPage() {
 				}))
 	).filter((e) => !e.key.startsWith("branding."));
 
-	const settingSections = settingsSchema;
+	const settingSections = settingsSchema.filter((section) => section.id !== "sso");
 	const settingByKey = useMemo(() => {
 		const map = new Map<string, AdminSettingDef>();
 		for (const section of settingSections) {
@@ -598,17 +598,17 @@ export default function SettingsPage() {
 		}
 		if (key === "misc.default_harness") {
 			return (
-				<Select value={editingValue || "__none__"} onValueChange={(value) => setEditingValue(value === "__none__" ? "" : value)}>
-					<SelectTrigger className="h-8 text-sm flex-1">
-						<SelectValue placeholder="Choose default harness" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="__none__">Use first allowed harness</SelectItem>
-						{harnesses.map((harness) => (
-							<SelectItem key={harness.name} value={harness.name}>{harness.display_name}</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+				<PickerSelect
+					value={editingValue || "__none__"}
+					onValueChange={(value) => setEditingValue(value === "__none__" ? "" : value)}
+					placeholder="Choose default harness"
+					className="flex-1"
+					inputClassName="h-8 text-sm"
+					options={[
+						{ value: "__none__", label: "Use first allowed harness" },
+						...harnesses.map((harness) => ({ value: harness.name, label: harness.display_name })),
+					]}
+				/>
 			);
 		}
 		return (
@@ -742,11 +742,14 @@ export default function SettingsPage() {
 					)}
 				</section>
 
-				{/* Branding */}
+				{/* Appearance */}
 				<section className="animate-in">
-					<h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+					<h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5 ${sectionHelpHeadingClass("Appearance")}`} onClick={(event) => { if ((event.ctrlKey || event.metaKey) && openHelp(undefined, "Appearance")) event.preventDefault(); }}>
 						<Palette className="h-3.5 w-3.5" />
-						Branding
+						Appearance
+						<button type="button" className="text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openHelp(undefined, "Appearance"); }} aria-label="Open Appearance documentation">
+							<HelpCircle className="h-3.5 w-3.5" />
+						</button>
 					</h3>
 					<div className="rounded-md border border-border bg-card px-4 py-3 space-y-3">
 						<p className="text-xs text-muted-foreground">
@@ -963,9 +966,12 @@ export default function SettingsPage() {
 
 				{/* Trace Privacy */}
 				<section className="animate-in">
-					<h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+					<h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5 ${sectionHelpHeadingClass("Trace Privacy")}`} onClick={(event) => { if ((event.ctrlKey || event.metaKey) && openHelp(undefined, "Trace Privacy")) event.preventDefault(); }}>
 						<Eye className="h-3.5 w-3.5" />
 						Trace Privacy
+						<button type="button" className="text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openHelp(undefined, "Trace Privacy"); }} aria-label="Open Trace Privacy documentation">
+							<HelpCircle className="h-3.5 w-3.5" />
+						</button>
 					</h3>
 					<div className="rounded-md border border-border bg-card px-4 py-3">
 						<div className="flex items-center justify-between">
@@ -989,9 +995,12 @@ export default function SettingsPage() {
 				{/* Registered Agents Only, super_admin only */}
 				{hasMinRole(getUserRole(), "super_admin") && (
 					<section className="animate-in">
-						<h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+						<h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5 ${sectionHelpHeadingClass("Registered Agents Only")}`} onClick={(event) => { if ((event.ctrlKey || event.metaKey) && openHelp(undefined, "Registered Agents Only")) event.preventDefault(); }}>
 							<Shield className="h-3.5 w-3.5" />
 							Registered Agents Only
+							<button type="button" className="text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openHelp(undefined, "Registered Agents Only"); }} aria-label="Open Registered Agents Only documentation">
+								<HelpCircle className="h-3.5 w-3.5" />
+							</button>
 						</h3>
 						<div className="rounded-md border border-border bg-card px-4 py-3">
 							<div className="flex items-center justify-between">
@@ -1000,9 +1009,8 @@ export default function SettingsPage() {
 										Only trace registered agents
 									</p>
 									<p className="text-xs text-muted-foreground mt-0.5">
-										When enabled, only registered agents are traced.
-										Unregistered agent telemetry is stored as metadata-only (no
-										content payloads).
+										Unstable. When enabled, only registered agents are traced.
+										Unregistered agent activity may be missing from traces.
 									</p>
 								</div>
 								<Switch
@@ -1017,12 +1025,51 @@ export default function SettingsPage() {
 					</section>
 				)}
 
+				{/* Data Migration, super_admin only */}
+				{hasMinRole(getUserRole(), "super_admin") && (
+					<section className="animate-in">
+						<h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5 ${sectionHelpHeadingClass("Data Migration")}`} onClick={(event) => { if ((event.ctrlKey || event.metaKey) && openHelp(undefined, "Data Migration")) event.preventDefault(); }}>
+							<ArrowLeftRight className="h-3.5 w-3.5" />
+							Data Migration
+							<button type="button" className="text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openHelp(undefined, "Data Migration"); }} aria-label="Open Data Migration documentation">
+								<HelpCircle className="h-3.5 w-3.5" />
+							</button>
+						</h3>
+						<div className="rounded-md border border-border bg-card px-4 py-3">
+							<div className="flex items-center justify-between gap-4">
+								<div className="flex-1">
+									<p className="text-sm font-medium">
+										Export, import, and validate instance data
+									</p>
+									<p className="text-xs text-muted-foreground mt-0.5">
+										Move registry data and telemetry between Observal instances. Start with the guide if this is your first run.
+									</p>
+								</div>
+								<div className="flex items-center gap-2">
+									<Button type="button" variant="outline" size="sm" onClick={() => openHelpCtx({ pageKey: "migration" })}>
+										<HelpCircle className="h-3.5 w-3.5" />
+										Guide
+									</Button>
+									<Button type="button" size="sm" onClick={() => setMigrateOpen(true)}>
+										<ArrowLeftRight className="h-3.5 w-3.5" />
+										Migrate
+									</Button>
+								</div>
+							</div>
+						</div>
+						<MigrateDialog open={migrateOpen} onOpenChange={setMigrateOpen} />
+					</section>
+				)}
+
 				{/* Data Retention, super_admin only */}
 				{hasMinRole(getUserRole(), "super_admin") && (
 					<section className="animate-in">
-						<h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+						<h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5 ${sectionHelpHeadingClass("Data Retention")}`} onClick={(event) => { if ((event.ctrlKey || event.metaKey) && openHelp(undefined, "Data Retention")) event.preventDefault(); }}>
 							<Database className="h-3.5 w-3.5" />
 							Data Retention
+							<button type="button" className="text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openHelp(undefined, "Data Retention"); }} aria-label="Open Data Retention documentation">
+								<HelpCircle className="h-3.5 w-3.5" />
+							</button>
 						</h3>
 						<div className="rounded-md border border-border bg-card p-4 space-y-4">
 							<div className="flex items-center justify-between">
@@ -1208,10 +1255,8 @@ export default function SettingsPage() {
 						{/* Help mode hint banner */}
 						{!helpBannerDismissed && (
 							<div className="flex items-center gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-2.5">
-								<kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-mono font-medium text-muted-foreground">
-									{navigator.platform?.includes("Mac") ? "\u2318" : "Ctrl"}
-								</kbd>
-								<span className="text-sm text-foreground/80">Hold and click any setting for detailed documentation</span>
+								<HelpCircle className="h-3.5 w-3.5 shrink-0 text-primary" />
+								<span className="text-sm text-foreground/80">Use guide icons for docs. Hold {navigator.platform?.includes("Mac") ? "Command" : "Ctrl"} and click highlighted settings for field-level help.</span>
 								<button
 									type="button"
 									className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
@@ -1249,11 +1294,20 @@ export default function SettingsPage() {
 								return (
 								<section key={section.title} className="mb-6">
 									<h3
-										className={`text-sm font-semibold uppercase tracking-wider text-foreground/80 mb-1 flex items-center gap-1.5 ${SECTION_DOCS[section.title] ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
-										onClick={() => openHelp(undefined, section.title)}
+										className={`text-sm font-semibold uppercase tracking-wider text-foreground/80 mb-1 flex items-center gap-1.5 ${helpActive && SECTION_DOCS[section.title] ? "cursor-help ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-sm" : ""}`}
+										onClick={(event) => {
+											if ((event.ctrlKey || event.metaKey) && openHelp(undefined, section.title)) {
+												event.preventDefault();
+											}
+										}}
 									>
 										{sectionIcon(section)}
 										{section.title}
+										{SECTION_DOCS[section.title] && (
+											<button type="button" className="ml-1 text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openHelp(undefined, section.title); }} aria-label={`Open ${section.title} documentation`}>
+												<HelpCircle className="h-3.5 w-3.5" />
+											</button>
+										)}
 									</h3>
 									{section.description && (
 										<p className="text-xs text-foreground/60 mb-3">{section.description}</p>
@@ -1335,7 +1389,12 @@ export default function SettingsPage() {
 												<details key={section.title} className="group rounded-md border-l-4 border-amber-500/60 border-2 border-border/70 bg-card">
 													<summary className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none hover:bg-muted/30 transition-colors">
 														{sectionIcon(section)}
-														<span className={`text-sm font-semibold text-foreground/80 flex-1 ${SECTION_DOCS[section.title] ? "hover:text-primary transition-colors" : ""}`} onClick={(e) => { if (SECTION_DOCS[section.title]) { e.preventDefault(); e.stopPropagation(); openHelp(undefined, section.title); } }}>{section.title}</span>
+														<span className="text-sm font-semibold text-foreground/80 flex-1">{section.title}</span>
+														{SECTION_DOCS[section.title] && (
+															<button type="button" className="text-muted-foreground hover:text-primary" onClick={(e) => { e.preventDefault(); e.stopPropagation(); openHelp(undefined, section.title); }} aria-label={`Open ${section.title} documentation`}>
+																<HelpCircle className="h-3.5 w-3.5" />
+															</button>
+														)}
 														<span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">CAUTION</span>
 													</summary>
 													<div className="px-4 pb-4 pt-1">

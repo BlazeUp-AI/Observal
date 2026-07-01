@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Lokesh Selvam <lokeshselvam7025@gmail.com>
+# SPDX-FileCopyrightText: 2026 Apoorv Garg <apoorvgarg.work@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
 variable "project_id" {
@@ -57,13 +58,13 @@ variable "dns_managed_zone_name" {
 variable "image_repo_api" {
   description = "Container image repository for api + worker + init."
   type        = string
-  default     = "ghcr.io/blazeup-ai/observal-api"
+  default     = "ghcr.io/observal/observal-api"
 }
 
 variable "image_repo_web" {
   description = "Container image repository for the web frontend."
   type        = string
-  default     = "ghcr.io/blazeup-ai/observal-web"
+  default     = "ghcr.io/observal/observal-web"
 }
 
 variable "image_tag" {
@@ -257,6 +258,26 @@ variable "edition" {
     condition     = contains(["auto", "community", "enterprise"], var.edition)
     error_message = "edition must be 'auto', 'community', or 'enterprise'."
   }
+}
+
+variable "google_oauth_client_id" {
+  description = "Google OAuth 2.0 client ID from the GCP console. Leave empty to disable Google sign-in."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "google_oauth_client_secret" {
+  description = "Google OAuth 2.0 client secret. Required if google_oauth_client_id is set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "google_oauth_allowed_domains" {
+  description = "Comma-separated email-domain allowlist for Google sign-in (e.g. 'acme.com,acme.io'). Leave empty to allow any Google account."
+  type        = string
+  default     = ""
 }
 
 # ── Backups ───────────────────────────────────────────────────────────────

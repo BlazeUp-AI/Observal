@@ -86,6 +86,18 @@ DOCKER_COMPOSE_ONLY = {
 }
 
 
+def parse_dynamic_env_imports() -> set[str]:
+    """Parse env vars imported once by services.dynamic_settings."""
+    path = ROOT / "observal-server" / "services" / "dynamic_settings.py"
+    if not path.exists():
+        return set()
+    content = path.read_text()
+    match = re.search(r"SSO_ENV_IMPORTS\s*:\s*dict\[str, str\]\s*=\s*\{(.*?)\n\}", content, re.DOTALL)
+    if not match:
+        return set()
+    return set(re.findall(r'"([A-Z][A-Z_0-9]+)"\s*:', match.group(1)))
+
+
 def parse_settings_fields() -> dict[str, bool]:
     """Parse observal-server/config.py Settings class for field names + defaults.
 
@@ -212,7 +224,7 @@ RAW_SECRETS = {
 def check_injected_vars() -> list[str]:
     """Every injected env var should map to something the app reads."""
     fields = parse_settings_fields()
-    field_names = set(fields.keys()) | KNOWN_NON_CONFIG_VARS
+    field_names = set(fields.keys()) | KNOWN_NON_CONFIG_VARS | parse_dynamic_env_imports()
     errors = []
 
     for module_name, module_path in MODULES.items():
@@ -255,6 +267,7 @@ def check_env_example_coverage() -> list[str]:
         all_provisioned.update(parse_terraform_provisioned(module_path))
 
     fields = parse_settings_fields()
+    dynamic_env_imports = parse_dynamic_env_imports()
 
     for key in sorted(env_keys):
         if key in DOCKER_COMPOSE_ONLY:
@@ -264,6 +277,8 @@ def check_env_example_coverage() -> list[str]:
         if fields.get(key, False):
             continue
         if key in KNOWN_NON_CONFIG_VARS:
+            continue
+        if key in dynamic_env_imports:
             continue
         errors.append(f"  .env.example has {key} but no Terraform module provisions it")
 

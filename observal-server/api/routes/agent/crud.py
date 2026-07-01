@@ -18,7 +18,7 @@ from api.deps import (
     get_effective_agent_permission,
     require_role,
 )
-from api.sanitize import escape_like
+from api.search import keyword_search
 from models.agent import (
     Agent,
     AgentStatus,
@@ -34,6 +34,7 @@ from schemas.agent import (
     AgentSummary,
     AgentUpdateRequest,
 )
+from services.cache import invalidate_namespace
 from services.config_generator import validate_mcp_command
 from services.harness_capability_inference import compute_supported_harnesses, infer_required_features
 from services.registry_telemetry import emit_registry_event
@@ -146,6 +147,10 @@ async def create_agent(
         )
         order += 1
 
+    from services.agent_resolver import resolve_component_versions
+
+    component_versions = await resolve_component_versions(req.components, db)
+
     # New: components list with all types
     for cref in req.components:
         db.add(
@@ -154,7 +159,7 @@ async def create_agent(
                 component_type=cref.component_type,
                 component_id=cref.component_id,
                 component_name="",
-                resolved_version="latest",
+                resolved_version=component_versions.get((cref.component_type, cref.component_id), "latest"),
                 order_index=order,
                 config_override=cref.config_override,
             )
@@ -230,9 +235,13 @@ async def list_agents(
 
     base_filter = (AgentVersion.status == AgentStatus.approved) & (Agent.deleted_at.is_(None))
     search_filter = None
+    search_rank = None
     if search:
-        safe = escape_like(search)
-        search_filter = Agent.name.ilike(f"%{safe}%") | AgentVersion.description.ilike(f"%{safe}%")
+        search_filter, search_rank = keyword_search(
+            search,
+            [Agent.name, AgentVersion.description, AgentVersion.model_name],
+            name_field=Agent.name,
+        )
 
     # Org-scoping: when the caller belongs to an org, show agents owned by that org
     # or agents with no org set (legacy/bulk-created agents)
@@ -256,7 +265,10 @@ async def list_agents(
         stmt = stmt.where(search_filter)
     if org_filter is not None:
         stmt = stmt.where(org_filter)
-    result = await db.execute(stmt.order_by(Agent.created_at.desc()).offset(offset).limit(limit))
+    order_by = [Agent.created_at.desc()]
+    if search_rank is not None:
+        order_by.insert(0, search_rank.desc())
+    result = await db.execute(stmt.order_by(*order_by).offset(offset).limit(limit))
     agents = result.scalars().all()
 
     # Batch-fetch average ratings
@@ -628,6 +640,10 @@ async def update_agent(
                     for e in errors
                 ],
             )
+        from services.agent_resolver import resolve_component_versions
+
+        component_versions = await resolve_component_versions(req.components, db)
+
         # Remove ALL old components on the latest version
         version_id = agent.latest_version.id
         old_comps = (
@@ -644,7 +660,7 @@ async def update_agent(
                     component_type=cref.component_type,
                     component_id=cref.component_id,
                     component_name="",
-                    resolved_version="latest",
+                    resolved_version=component_versions.get((cref.component_type, cref.component_id), "latest"),
                     order_index=i,
                     config_override=cref.config_override,
                 )
@@ -744,6 +760,7 @@ async def delete_agent(
 
     agent.deleted_at = datetime.now(UTC)
     await db.commit()
+    await invalidate_namespace("dashboard")
 
     emit_registry_event(
         action="agent.delete",
@@ -792,6 +809,7 @@ async def restore_deleted_agent(
     agent.name = restore_name
     agent.deleted_at = None
     await db.commit()
+    await invalidate_namespace("dashboard")
 
     emit_registry_event(
         action="agent.restore",

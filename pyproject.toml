@@ -10,7 +10,7 @@
 
 [project]
 name = "observal-cli"
-version = "1.9.1"
+version = "1.9.7"
 description = "Observal MCP Server Registry & Agent Registry CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -48,10 +48,10 @@ classifiers = [
 migrate = ["pyarrow>=15.0.0"]
 
 [project.urls]
-Homepage = "https://github.com/BlazeUp-AI/Observal"
-Repository = "https://github.com/BlazeUp-AI/Observal"
-Changelog = "https://github.com/BlazeUp-AI/Observal/blob/main/CHANGELOG.md"
-Issues = "https://github.com/BlazeUp-AI/Observal/issues"
+Homepage = "https://github.com/Observal/Observal"
+Repository = "https://github.com/Observal/Observal"
+Changelog = "https://github.com/Observal/Observal/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Observal/Observal/issues"
 
 [project.scripts]
 observal = "observal_cli.main:app"
@@ -101,7 +101,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["observal_cli", "models", "schemas", "services", "api", "ee"]
+known-first-party = ["observal_cli", "observal_shared", "models", "schemas", "services", "api", "ee"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "ee".msg = "Core must not import from ee/. Only main.py may cross this boundary."

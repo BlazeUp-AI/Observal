@@ -50,19 +50,20 @@ All services run on a private `observal-net` bridge network. Named volumes (`pgd
 
 Choose the deployment model that fits your team:
 
-| | [Single-node](single-node-deploy.md) | [Production](production-deploy.md) |
-|---|---|---|
-| **How** | Docker Compose on one VM | Terraform on AWS or GCP |
-| **Best for** | ≤50 users, internal tools, POCs | Enterprise, SLA-bound, 50+ users |
-| **Cost** | $20–150/mo | ~$180–255/mo |
-| **HA** | No | Yes (Multi-AZ databases, autoscaling) |
-| **Time to deploy** | 10 minutes | 20–30 minutes |
+| | [Single-node](single-node-deploy.md) | [Kubernetes](kubernetes-helm.md) | [Production](production-deploy.md) |
+|---|---|---|---|
+| **How** | Docker Compose on one VM | Official Helm chart | Terraform on AWS or GCP |
+| **Best for** | ≤50 users, internal tools, POCs | Cloud-native teams, existing K8s infra | Enterprise, SLA-bound, 50+ users |
+| **Cost** | $20 to $150/mo | Variable | ~$180 to $255/mo |
+| **HA** | No | Pod resilience & horizontal scaling | Yes (Multi-AZ databases, autoscaling) |
+| **Time to deploy** | 10 minutes | 10 to 15 minutes | 20 to 30 minutes |
 
 **Start here:**
 
 | If you want to... | Read |
 | --- | --- |
 | Deploy on a single VM (simplest) | [Single-node deployment](single-node-deploy.md) |
+| Deploy on Kubernetes with Helm | [Kubernetes deployment with Helm](kubernetes-helm.md) |
 | Deploy a production HA stack | [Production deployment](production-deploy.md) |
 | Deploy on AWS specifically | [AWS deployment with Terraform](aws-terraform.md) |
 | Deploy on GCP specifically | [GCP deployment with Terraform](gcp-terraform.md) |
@@ -89,7 +90,7 @@ Before putting Observal in front of real users:
 1. **Generate a real `SECRET_KEY`**: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
 2. **Set strong Postgres and ClickHouse passwords**: not the `.env.example` defaults.
 3. **Scope `CORS_ALLOWED_ORIGINS`** to your real frontend host.
-4. **Configure SSO** (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_SERVER_METADATA_URL`) or set `DEPLOYMENT_MODE=enterprise` if you want SSO-only.
+4. **Configure SSO** in **Admin → SSO**, including `deployment.sso_only` if you want SSO-only login.
 5. **Tune rate limits** (`RATE_LIMIT_AUTH`, `RATE_LIMIT_AUTH_STRICT`).
 6. **Set `DATA_RETENTION_DAYS`** to match your retention policy (default 90 days).
 7. **Back up the JWT key volume** (`apidata`): losing it invalidates every session.

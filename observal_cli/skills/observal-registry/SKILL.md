@@ -14,7 +14,7 @@ owner: observal
 
 1. **EXECUTE commands**: run them in your shell. Set timeout to 60 seconds.
 2. **Pass `--output json`** on list/show commands.
-3. **Pass `--yes`** on destructive commands (`archive`, `unarchive`, `delete`, `submit --git`).
+3. **Pass `--yes`** on destructive lifecycle commands (`archive`, `unarchive`) and MCP JSON submit when defaults are acceptable.
 4. **When in doubt about a flag, run `<command> --help` first.**
 5. **`--from-file` does NOT exist on `mcp submit`**: that flag is on `mcp edit`.
 
@@ -22,8 +22,11 @@ owner: observal
 
 ## Procedure: Browse Registry
 
+Use natural-language keywords with `--search`; do not require exact whole-query matches.
+
 ```bash
 observal registry mcp list --category developer-tools --output json
+observal registry skill list --search 'frontend design' --output json
 observal registry skill list --task-type code-review --output json
 observal registry hook list --event UserPromptSubmit --output json
 observal registry prompt list --category coding --output json
@@ -47,13 +50,17 @@ After `list`, use row numbers (1, 2, 3...) in subsequent commands. Add `--intera
 
 ## Procedure: Submit Component
 
-### MCP (from git, recommended)
+### MCP
+
+Paste the MCP JSON config. Optionally include `--git` so Observal clones the repo and detects local OCI setup for Dockerfile, Containerfile, or compose `build:`.
 
 ```bash
+observal registry mcp submit --example
+observal registry mcp submit --name my-mcp --category developer-tools --yes
 observal registry mcp submit --git https://github.com/org/mcp-server --name my-mcp --category developer-tools --yes
 ```
 
-Without `--git`, opens interactive JSON paste (accepts harness config block, named config, bare config, or HTTP transport JSON). Press Enter on empty line to submit.
+The command still expects pasted JSON. If a local image must be built, follow the returned setup instructions, for example `docker build -t name:latest .`. Manual installs also print these setup instructions before the MCP can be used.
 
 ### Skill
 
@@ -61,14 +68,14 @@ There are two delivery modes for skills:
 
 **Git-based** (server validates SKILL.md from repo, recommended for open-source):
 ```bash
-observal registry skill submit --skill-md ./SKILL.md --git-url https://github.com/org/repo --git-ref main
+observal registry skill submit --example
+observal registry skill submit --skill-md ./SKILL.md --git-url https://github.com/org/repo --git-ref main --name my-skill --description 'What it does' --task-type general
 ```
 
 **Registry direct** (inline SKILL.md + optional script, no git repo needed):
 ```bash
-observal registry skill submit --skill-md ./SKILL.md --delivery-mode registry_direct
-observal registry skill submit --skill-md ./SKILL.md --script ./run.sh --delivery-mode registry_direct
-observal registry skill submit --skill-md ./SKILL.md --script ./scripts/lint.sh --script ./scripts/test.sh --delivery-mode registry_direct
+observal registry skill submit --skill-md ./SKILL.md --delivery-mode registry_direct --name my-skill --description 'What it does' --task-type general --harness claude-code
+observal registry skill submit --skill-md ./SKILL.md --script ./run.sh --delivery-mode registry_direct --name my-skill --description 'What it does' --task-type general
 ```
 
 On install, registry_direct skills write `<skill-name>/SKILL.md` and `<skill-name>/scripts/<filename>` into the harness skills directory.
@@ -80,16 +87,12 @@ On install, registry_direct skills write `<skill-name>/SKILL.md` and `<skill-nam
 ### Hook
 
 ```bash
-observal registry hook submit --from-file hook.json
-observal registry hook submit   # interactive
-```
-
-**With a script (inline or file):**
-```bash
+observal registry hook submit --example
+observal registry hook submit --name guard --description 'Guard prompts' --event UserPromptSubmit --handler-command './guard.sh' --execution-mode sync --timeout 10 --scope agent --harness claude-code
 observal registry hook submit --from-file hook.json --script ./pre-commit.sh
 ```
 
-Optional: `--script 'code'`, `--source-url URL --source-ref main`, `--requires dep1 --requires dep2`. Timeout caps: blocking 30s, sync 10s, async 60s.
+Optional: `--source-url URL --source-ref main`, `--requires dep1 --requires dep2`. Timeout caps: blocking 30s, sync 10s, async 60s.
 
 **Hook events:** `Start`, `Stop`, `UserPromptSubmit`, `SubagentComplete`, `ToolResult`, `Error`
 **Execution modes:** `blocking` (waits for completion), `sync` (waits, shorter timeout), `async` (fire and forget)
@@ -98,16 +101,20 @@ Optional: `--script 'code'`, `--source-url URL --source-ref main`, `--requires d
 ### Prompt
 
 ```bash
+observal registry prompt submit --name frontend-brief --description 'Frontend design brief' --category general --template 'Design {{component}} accessibly'
 observal registry prompt submit --from-file prompt.json
 ```
 
 ### Sandbox
 
 ```bash
+observal registry sandbox submit --example
+observal registry sandbox submit --name node-runner --description 'Node sandbox' --runtime-type docker --image node:22-alpine --resource-limits '{"memory_mb":512}' --runtime-config '{}' --network-policy none --entrypoint node --harness claude-code
+observal registry sandbox submit --name lxc-runner --description 'LXC sandbox' --runtime-type lxc --image images:ubuntu/22.04 --runtime-config '{"profile":"default"}' --network-policy none --entrypoint 'sh' --harness kiro
 observal registry sandbox submit --from-file sandbox.json
 ```
 
-All types support `--draft` (save without review) and `--submit NAME` (submit existing draft).
+All types support `--example` to print ready-to-edit example payloads, `--draft` to save without review, and `--submit NAME` to submit an existing draft.
 
 ---
 
@@ -154,7 +161,8 @@ observal registry version publish mcp NAME --version 1.2.0 --description 'What c
 observal registry version publish skill NAME --version 0.3.0 --description 'New tasks'
 observal registry version publish hook NAME --version 1.0.1 --description 'Bug fix'
 observal registry version publish prompt NAME --version 2.0.0 --description 'Rewrite'
-observal registry version publish sandbox NAME --version 1.1.0 --description 'New image'
+observal registry version publish sandbox NAME --version 1.1.0 --description 'New image' --extra '{"runtime_type":"docker","image":"python:3.12-slim","resource_limits":{"timeout":60}}'
+observal registry version publish sandbox NAME --version 1.2.0 --description 'LXC profile' --extra '{"runtime_type":"lxc","image":"images:ubuntu/22.04","runtime_config":{"profile":"default"}}'
 
 observal registry version list mcp NAME --output json
 ```
@@ -199,7 +207,7 @@ observal registry hook co-authors remove <id-or-name> <user-uuid>
 
 | Error | Fix |
 |-------|-----|
-| `--from-file` not on `mcp submit` | Use `--git`, `--draft`, or interactive paste |
+| `--from-file` not on `mcp submit` | Paste JSON, optionally with `--git`, or use `--draft` |
 | `412 Edit lock held` | Wait a few minutes, retry |
 | Hook `timeout` | Caps: blocking 30s, sync 10s, async 60s |
 

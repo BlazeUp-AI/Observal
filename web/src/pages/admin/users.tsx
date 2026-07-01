@@ -22,9 +22,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { PageHeader } from "@/components/layouts/page-header";
 import { TableSkeleton } from "@/components/shared/skeleton-layouts";
 import { ErrorState } from "@/components/shared/error-state";
@@ -43,26 +41,24 @@ function useAssignableRoles(): Role[] {
 function RoleSelect({ userId, currentRole }: { userId: string; currentRole: string }) {
   const mutation = useUpdateUserRole();
   const assignable = useAssignableRoles();
+  const currentRoleOption = {
+    value: currentRole,
+    label: ROLE_LABELS[currentRole as Role] ?? currentRole,
+  };
+  const canEdit = assignable.includes(currentRole as Role);
+  const options = canEdit
+    ? assignable.map((r) => ({ value: r, label: ROLE_LABELS[r] }))
+    : [currentRoleOption];
 
   return (
-    <Select
+    <PickerSelect
       value={currentRole}
       onValueChange={(value) => mutation.mutate({ id: userId, role: value })}
-      disabled={mutation.isPending}
-    >
-      <SelectTrigger className="h-7 w-[140px] text-xs">
-        <SelectValue>
-          {ROLE_LABELS[currentRole as Role] ?? currentRole}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {assignable.map((r) => (
-          <SelectItem key={r} value={r} className="text-xs">
-            {ROLE_LABELS[r]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      disabled={!canEdit || mutation.isPending}
+      className="w-[140px]"
+      inputClassName="h-7 text-xs"
+      options={options}
+    />
   );
 }
 
@@ -356,18 +352,12 @@ export default function UsersPage() {
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium text-muted-foreground">Role</label>
-                <Select value={role} onValueChange={setRole}>
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue>
-                      {ROLE_LABELS[role as Role] ?? role}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {assignableRoles.map((r) => (
-                      <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PickerSelect
+                  value={role}
+                  onValueChange={setRole}
+                  inputClassName="h-8 text-sm"
+                  options={assignableRoles.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+                />
               </div>
               <DialogFooter>
                 <Button variant="ghost" size="sm" onClick={closeDialog}>Cancel</Button>

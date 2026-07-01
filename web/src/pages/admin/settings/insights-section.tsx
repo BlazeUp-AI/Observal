@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import {
 	Activity,
 	Check,
+	HelpCircle,
 	ChevronsUpDown,
 	Eye,
 	EyeOff,
@@ -29,13 +30,15 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { useHelp } from "@/components/wiki/help-context";
 import { admin } from "@/lib/api";
+import { useInsightsModelProviders, useInsightsModels } from "@/hooks/use-api";
 import { ModelCombobox } from "./model-combobox";
 import {
 	type ProviderId,
 	type InsightsStatus,
+	type ModelSuggestion,
 	PROVIDERS,
-	PROVIDER_MODELS,
 	RECOMMENDED_MODELS,
 	detectProvider,
 	detectProviderFromKey,
@@ -58,6 +61,7 @@ interface TestResult {
 }
 
 export function InsightsSection({ entries, onSave, onRevoke, refetch }: InsightsSectionProps) {
+	const helpCtx = useHelp();
 	const getEntryValue = useCallback(
 		(key: string) => {
 			const entry = entries.find((e) => e.key === key);
@@ -82,6 +86,7 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 	const [apiKeyValue, setApiKeyValue] = useState("");
 	const [showApiKey, setShowApiKey] = useState(false);
 	const [apiBase, setApiBase] = useState("");
+	const [apiVersion, setApiVersion] = useState("");
 	const [modelSections, setModelSections] = useState("");
 	const [modelSynthesis, setModelSynthesis] = useState("");
 	const [modelFacets, setModelFacets] = useState("");
@@ -93,6 +98,8 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 	const [saving, setSaving] = useState<Record<string, boolean>>({});
 	const [testingConnection, setTestingConnection] = useState(false);
 	const [testResult, setTestResult] = useState<TestResult | null>(null);
+	const providerCatalog = useInsightsModelProviders();
+	const modelCatalog = useInsightsModels(provider);
 
 	// Initialize from entries
 	useEffect(() => {
@@ -100,6 +107,7 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 		const synthesis = getEntryValue("insights.model_synthesis");
 		const facets = getEntryValue("insights.model_facets");
 		const base = getEntryValue("insights.api_base");
+		const version = getEntryValue("insights.api_version");
 		const batch = getEntryValue("insights.batch_enabled");
 		const period = getEntryValue("insights.batch_period_days");
 		const sessions = getEntryValue("insights.min_sessions");
@@ -110,6 +118,7 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 		setModelSynthesis(synthesis);
 		setModelFacets(facets);
 		setApiBase(base);
+		setApiVersion(version);
 		setBatchEnabled(batch !== "false");
 		setBatchPeriod(period || "14");
 		setMinSessions(sessions || "5");
@@ -130,14 +139,26 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 
 	// Derived values
 	const status: InsightsStatus = useMemo(() => getInsightsStatus(entries), [entries]);
-	const selectedProvider = useMemo(
-		() => PROVIDERS.find((p) => p.id === provider),
-		[provider],
+	const providerMetadata = useMemo(() => new Map(PROVIDERS.map((p) => [p.id, p])), []);
+	const providerOptions = useMemo(
+		() => providerCatalog.data?.providers ?? [],
+		[providerCatalog.data?.providers],
 	);
+	const selectedProvider = useMemo(
+		() => providerOptions.find((p) => p.id === provider),
+		[providerOptions, provider],
+	);
+	const selectedProviderMetadata = provider ? providerMetadata.get(provider) : undefined;
 	const showBaseUrl = provider !== "";
-	const suggestions = useMemo(
-		() => (provider ? PROVIDER_MODELS[provider] || [] : []),
-		[provider],
+	const showApiVersion = provider === "azure";
+	const suggestions: ModelSuggestion[] = useMemo(
+		() =>
+			(modelCatalog.data?.models ?? []).map((model) => ({
+				id: model.litellm_model,
+				label: model.model_id,
+				tier: "catalog",
+			})),
+		[modelCatalog.data?.models],
 	);
 	const showRecommended = useMemo(
 		() =>
@@ -275,9 +296,12 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 		<section className="mb-6 mt-2">
 			{/* Header */}
 			<div className="flex items-center justify-between mb-1">
-				<h3 className="text-sm font-semibold uppercase tracking-wider text-foreground/80 flex items-center gap-1.5">
+				<h3 className={cn("text-sm font-semibold uppercase tracking-wider text-foreground/80 flex items-center gap-1.5", helpCtx.helpActive && "cursor-help ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-sm")} onClick={(event) => { if ((event.ctrlKey || event.metaKey) && helpCtx.openHelp({ sectionTitle: "Agent Insights" })) event.preventDefault(); }}>
 					<Activity className="h-3.5 w-3.5" />
 					Agent Insights
+					<button type="button" className="text-muted-foreground hover:text-primary" onClick={(event) => { event.preventDefault(); event.stopPropagation(); helpCtx.openHelp({ sectionTitle: "Agent Insights" }); }} aria-label="Open Agent Insights documentation">
+						<HelpCircle className="h-3.5 w-3.5" />
+					</button>
 				</h3>
 				<div className="flex items-center gap-1.5">
 					<div className={cn("h-2 w-2 rounded-full", statusConfig[status].color)} />
@@ -306,7 +330,7 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 									!provider && "text-muted-foreground",
 								)}
 							>
-								{selectedProvider?.label || "Select provider..."}
+								{selectedProvider?.label || provider || "Select provider..."}
 								<ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
 							</Button>
 						</PopoverTrigger>
@@ -316,10 +340,10 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 								<CommandList>
 									<CommandEmpty>No provider found.</CommandEmpty>
 									<CommandGroup>
-										{PROVIDERS.map((p) => (
+										{providerOptions.map((p) => (
 											<CommandItem
 												key={p.id}
-												value={p.label}
+												value={`${p.label} ${p.id}`}
 												onSelect={() => handleProviderChange(p.id)}
 											>
 												<Check
@@ -328,7 +352,8 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 														provider === p.id ? "opacity-100" : "opacity-0",
 													)}
 												/>
-												{p.label}
+												<span>{p.label}</span>
+												<span className="ml-auto text-xs text-muted-foreground">{p.model_count}</span>
 											</CommandItem>
 										))}
 									</CommandGroup>
@@ -336,6 +361,9 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 							</Command>
 						</PopoverContent>
 					</Popover>
+					{providerCatalog.isError && (
+						<p className="mt-1.5 text-xs text-destructive">Failed to load LiteLLM providers.</p>
+					)}
 				</div>
 
 				{/* API Key */}
@@ -442,6 +470,9 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 					<p className="text-xs text-muted-foreground">
 						Only Sections Model is required. Others fall back to it if left empty.
 					</p>
+					{modelCatalog.isError && (
+						<p className="text-xs text-destructive">Failed to load LiteLLM models for {provider}.</p>
+					)}
 				</div>
 
 				{/* Model selectors - aligned grid */}
@@ -488,29 +519,50 @@ export function InsightsSection({ entries, onSave, onRevoke, refetch }: Insights
 
 				{/* Base URL - above advanced */}
 				{showBaseUrl && (
-					<div className="space-y-1.5">
-						<label className="text-xs font-medium text-muted-foreground">
-							Base URL
-							{selectedProvider?.requiresBaseUrl ? (
-								<span className="font-normal text-foreground ml-1">(required for {selectedProvider.label})</span>
-							) : (
-								<span className="font-normal ml-1">(optional)</span>
-							)}
-						</label>
-						<Input
-							value={apiBase}
-							onChange={(e) => setApiBase(e.target.value)}
-							placeholder={selectedProvider?.baseUrlHint || "https://..."}
-							className="h-8 text-xs font-mono max-w-md"
-							onBlur={() => {
-								if (apiBase !== getEntryValue("insights.api_base")) {
-									handleSave("insights.api_base", apiBase);
-								}
-							}}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") handleSave("insights.api_base", apiBase);
-							}}
-						/>
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+						<div className="space-y-1.5">
+							<label className="text-xs font-medium text-muted-foreground">
+								Base URL
+								{selectedProviderMetadata?.requiresBaseUrl ? (
+									<span className="font-normal text-foreground ml-1">(required for {selectedProvider?.label || provider})</span>
+								) : (
+									<span className="font-normal ml-1">(optional)</span>
+								)}
+							</label>
+							<Input
+								value={apiBase}
+								onChange={(e) => setApiBase(e.target.value)}
+								placeholder={selectedProviderMetadata?.baseUrlHint || "https://..."}
+								className="h-8 text-xs font-mono"
+								onBlur={() => {
+									if (apiBase !== getEntryValue("insights.api_base")) {
+										handleSave("insights.api_base", apiBase);
+									}
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleSave("insights.api_base", apiBase);
+								}}
+							/>
+						</div>
+						{showApiVersion && (
+							<div className="space-y-1.5">
+								<label className="text-xs font-medium text-muted-foreground">API Version</label>
+								<Input
+									value={apiVersion}
+									onChange={(e) => setApiVersion(e.target.value)}
+									placeholder="2024-08-01-preview"
+									className="h-8 text-xs font-mono"
+									onBlur={() => {
+										if (apiVersion !== getEntryValue("insights.api_version")) {
+											handleSave("insights.api_version", apiVersion);
+										}
+									}}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") handleSave("insights.api_version", apiVersion);
+									}}
+								/>
+							</div>
+						)}
 					</div>
 				)}
 

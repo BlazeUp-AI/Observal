@@ -66,7 +66,6 @@ observal registry <type> submit      # submit for review
 observal registry <type> list        # list approved items
 observal registry <type> show <id>   # show details
 observal registry <type> install <id> --harness <harness>  # get harness config
-observal registry <type> delete <id> # delete
 ```
 
 Hooks have an extra `sync` subcommand. Prompts have an extra `render` subcommand for variable substitution.
@@ -79,7 +78,6 @@ observal ops review approve <id>   # approve
 observal ops review reject <id> --reason "..."  # reject
 observal ops telemetry status      # check telemetry flow
 observal ops telemetry test        # send a test event
-observal ops overview              # system-wide stats
 observal ops metrics <id>          # metrics for an MCP or agent
 ```
 
@@ -103,7 +101,7 @@ observal uninstall                                   # tear down Docker, remove 
 | --------------------------- | ---------------------------- |
 | Claude Code                 | Fully supported              |
 | Kiro CLI                    | Supported (next most tested) |
-| Cursor, VS Code, Gemini CLI | Untested                     |
+| Cursor, VS Code             | Untested                     |
 
 The `--harness` flag controls which config format is generated. Each harness has its own config paths and JSON structure.
 

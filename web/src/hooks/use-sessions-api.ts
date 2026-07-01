@@ -25,16 +25,18 @@ import type { SessionData } from "@/lib/types";
 export function useSessions2(options?: {
   refetchInterval?: number | false;
   platform?: string;
+  user?: string;
   days?: number;
   limit?: number;
   offset?: number;
   mine?: boolean;
 }) {
   return useQuery({
-    queryKey: ['sessions', 'list', options?.platform, options?.days, options?.limit, options?.offset, options?.mine],
+    queryKey: ['sessions', 'list', options?.platform, options?.user, options?.days, options?.limit, options?.offset, options?.mine],
     queryFn: () =>
       dashboard.sessions({
         platform: options?.platform,
+        user: options?.user,
         days: options?.days,
         limit: options?.limit,
         offset: options?.offset,
@@ -63,12 +65,6 @@ export function useSessionDetail(id: string | undefined) {
     refetchOnMount: "always",
     staleTime: 1_000,
   });
-}
-export function useSessionTraces() {
-  return useQuery({ queryKey: ['sessions', 'traces'], queryFn: dashboard.traces });
-}
-export function useSessionTrace(id: string | undefined) {
-  return useQuery({ queryKey: ['sessions', 'trace', id], queryFn: () => dashboard.trace(id!), enabled: !!id });
 }
 export function useSessionsStats() {
   return useQuery({ queryKey: ['sessions', 'stats'], queryFn: dashboard.sessionsStats });

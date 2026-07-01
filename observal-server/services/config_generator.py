@@ -105,7 +105,7 @@ def generate_config(
     env_values: dict[str, str] | None = None,
     header_values: dict[str, str] | None = None,
 ) -> dict:
-    optic.debug("generating MCP config for ide={}", harness)
+    optic.debug("generating MCP config for harness={}", harness)
     name = _sanitize_name(listing.name)
     mcp_id = str(listing.id)
     server_env = _build_server_env(listing, env_values)

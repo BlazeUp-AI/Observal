@@ -38,7 +38,7 @@ def build_mcp_entries(manifest: AgentManifest) -> dict:
 
 def build_mcp_configs(
     agent: Agent,
-    ide: str,
+    harness: str,
     observal_url: str,
     mcp_listings: dict | None = None,
     env_values: dict | None = None,
@@ -50,7 +50,7 @@ def build_mcp_configs(
 
     Args:
         agent: The Agent model with components and external_mcps.
-        ide: Target harness name.
+        harness: Target harness name.
         mcp_listings: optional {component_id: McpListing} map.
         env_values: optional {mcp_listing_id_str: {VAR: value}} map.
 
@@ -60,4 +60,4 @@ def build_mcp_configs(
     # during the transition. This will be inlined once helpers is cleaned up.
     from services.harness.helpers import _build_mcp_configs
 
-    return _build_mcp_configs(agent, ide, observal_url, mcp_listings, env_values)
+    return _build_mcp_configs(agent, harness, observal_url, mcp_listings, env_values)

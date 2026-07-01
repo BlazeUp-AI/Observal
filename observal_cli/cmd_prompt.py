@@ -32,6 +32,11 @@ def prompt_submit(
     from_file: str | None = typer.Option(
         None, "--from-file", "-f", help="Create from JSON file or read template from file"
     ),
+    name: str | None = typer.Option(None, "--name", "-n", help="Prompt name"),
+    version: str | None = typer.Option(None, "--version", "-v", help="Version (default: 1.0.0)"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Short description"),
+    category: str | None = typer.Option(None, "--category", "-c", help="Prompt category"),
+    template: str | None = typer.Option(None, "--template", "-t", help="Template body"),
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (prompt ID)"),
 ):
@@ -62,6 +67,7 @@ def prompt_submit(
         rprint(f"[green]✓ Draft submitted for review![/green] ID: [bold]{result['id']}[/bold]")
         return
 
+    flag_mode = any(x is not None for x in (name, version, description, category, template))
     if from_file:
         with open(from_file) as f:
             content = f.read()
@@ -70,14 +76,33 @@ def prompt_submit(
             if not payload.get("owner"):
                 payload["owner"] = config.load().get("username", "")
         except _json.JSONDecodeError:
-            payload = {
-                "name": text_input("Prompt name"),
-                "version": text_input("Version", default="1.0.0"),
-                "description": text_input("Description"),
-                "owner": config.load().get("username", ""),
-                "category": select_one("Category", VALID_PROMPT_CATEGORIES),
-                "template": content,
-            }
+            if flag_mode:
+                payload = {
+                    "name": name,
+                    "version": version or "1.0.0",
+                    "description": description,
+                    "owner": config.load().get("username", ""),
+                    "category": category or "general",
+                    "template": template or content,
+                }
+            else:
+                payload = {
+                    "name": text_input("Prompt name"),
+                    "version": text_input("Version", default="1.0.0"),
+                    "description": text_input("Description"),
+                    "owner": config.load().get("username", ""),
+                    "category": select_one("Category", VALID_PROMPT_CATEGORIES),
+                    "template": content,
+                }
+    elif flag_mode:
+        payload = {
+            "name": name,
+            "version": version or "1.0.0",
+            "description": description,
+            "owner": config.load().get("username", ""),
+            "category": category or "general",
+            "template": template,
+        }
     else:
         payload = {
             "name": text_input("Prompt name"),
@@ -87,6 +112,13 @@ def prompt_submit(
             "category": select_one("Category", VALID_PROMPT_CATEGORIES),
             "template": text_input("Template"),
         }
+    if flag_mode:
+        if not (payload.get("name") and payload.get("description") and payload.get("template")):
+            rprint("[red]Error:[/red] --name, --description, and --template or --from-file are required")
+            raise typer.Exit(1)
+        if payload.get("category") not in VALID_PROMPT_CATEGORIES:
+            rprint(f"[red]Error:[/red] Invalid category: {payload.get('category')}")
+            raise typer.Exit(1)
 
     if draft:
         with spinner("Saving draft..."):
@@ -256,7 +288,7 @@ def prompt_render(
     variables = {}
     for v in var:
         k, _, val = v.partition("=")
-        variables[k] = val
+        variables[k] = val.strip("\"'")
     with spinner("Rendering prompt..."):
         result = client.post(f"/api/v1/prompts/{resolved}/render", {"variables": variables})
     rprint(result.get("rendered", result))
@@ -329,29 +361,3 @@ def prompt_edit(
             pass
         rprint(f"[red]Failed to update:[/red] {exc}")
         raise typer.Exit(code=1)
-
-
-@prompt_app.command(name="delete")
-def prompt_delete(
-    prompt_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-):
-    """Delete a prompt from the registry.
-
-    Permanently removes the prompt. Prompts you own can be deleted regardless
-    of status. Requires confirmation unless --yes is passed.
-
-    Examples:
-        observal registry prompt delete my-prompt
-        observal registry prompt delete abc123 --yes
-        observal registry prompt delete @old-template -y
-    """
-    resolved = config.resolve_alias(prompt_id)
-    if not yes:
-        with spinner():
-            item = client.get(f"/api/v1/prompts/{resolved}")
-        if not typer.confirm(f"Delete [bold]{item['name']}[/bold] ({resolved})?"):
-            raise typer.Abort()
-    with spinner("Deleting..."):
-        client.delete(f"/api/v1/prompts/{resolved}")
-    rprint(f"[green]✓ Deleted {resolved}[/green]")

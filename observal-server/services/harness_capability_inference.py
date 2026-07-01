@@ -48,4 +48,4 @@ def compute_supported_harnesses(required_features: list[str]) -> list[str]:
     """Return sorted harness names that support all *required_features*."""
     optic.trace("required_features={}", required_features)
     required = set(required_features)
-    return sorted(ide for ide, capabilities in HARNESS_CAPABILITIES.items() if required.issubset(capabilities))
+    return sorted(harness for harness, capabilities in HARNESS_CAPABILITIES.items() if required.issubset(capabilities))

@@ -17,20 +17,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
+	CodeEditor,
+	codeLanguageFromFilename,
+	codeLanguageLabel,
+} from "@/components/ui/code-editor";
+import { PickerSelect } from "@/components/ui/picker-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, Info, Loader2, Plus, X } from "lucide-react";
+import { Check, HelpCircle, Info, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import type { RegistryType } from "@/lib/api";
 import { useWhoami } from "@/hooks/use-api";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { parseMcpConfigJson, applyParsedConfig } from "@/lib/mcp-parser";
 import type { EnvVar } from "@/lib/mcp-parser";
+import { useHelp } from "@/components/wiki/help-context";
 
 const MCP_CATEGORIES = [
 	"browser-automation",
@@ -57,6 +57,28 @@ const MCP_CATEGORIES = [
 const MCP_FRAMEWORKS = ["python", "docker", "typescript", "go"];
 
 const MCP_TRANSPORTS = ["stdio", "sse", "streamable-http"];
+
+function mcpExampleConfig(isEditMode: boolean, name: string) {
+	return isEditMode
+		? `{
+  "mcpServers": {
+    "${name || "my-server"}": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server@latest"],
+      "env": { "API_KEY": "$API_KEY" }
+    }
+  }
+}`
+		: `{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server"],
+      "env": { "API_KEY": "$API_KEY" }
+    }
+  }
+}`;
+}
 
 const SKILL_TASK_TYPES = [
 	"code-review",
@@ -98,6 +120,15 @@ const PROMPT_CATEGORIES = [
 const SANDBOX_RUNTIME_TYPES = ["docker", "lxc", "firecracker", "wasm"];
 const SANDBOX_NETWORK_POLICIES = ["none", "host", "bridge", "restricted"];
 
+const COMPONENT_HELP_DOCS = {
+	mcps: { file: "registry-mcp-helper.md", label: "MCP helper" },
+	skills: { file: "registry-skill-helper.md", label: "Skill helper" },
+	hooks: { file: "registry-hook-helper.md", label: "Hook helper" },
+	sandboxes: { file: "registry-sandbox-helper.md", label: "Sandbox helper" },
+	prompts: { file: "cli/prompt.md", label: "Prompt helper" },
+	agents: { file: "getting-started/core-concepts.md", label: "Agent helper" },
+} as const;
+
 interface SubmitComponentDialogProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
@@ -122,8 +153,9 @@ export function SubmitComponentDialog({
 	editItem,
 }: SubmitComponentDialogProps) {
 	const d = editItem as Record<string, unknown> | null;
+	const helpCtx = useHelp();
 	const { data: whoami } = useWhoami();
-	const { data: ideList } = useHarnesses();
+	const { data: harnessList } = useHarnesses();
 	const defaultOwner =
 		(d?.owner as string) ||
 		whoami?.username ||
@@ -137,7 +169,7 @@ export function SubmitComponentDialog({
 		(d?.description as string) ?? "",
 	);
 	const owner = defaultOwner;
-	const [supportedIdes, setSupportedIdes] = useState<string[]>(
+	const [supportedHarnesses, setSupportedHarnesses] = useState<string[]>(
 		Array.isArray(d?.supported_harnesses) ? (d.supported_harnesses as string[]) : [],
 	);
 
@@ -238,14 +270,14 @@ export function SubmitComponentDialog({
 					} else if (skillFiles.length > 1) {
 						setSkillPathAuto(false);
 						setSkillPathHint(
-							`${skillFiles.length} SKILL.md files found — pick a path`,
+							`${skillFiles.length} SKILL.md files found, pick a path`,
 						);
 					} else {
 						setSkillPathAuto(false);
 						setSkillPathHint("No SKILL.md found in repo");
 					}
 				} catch {
-					/* network error — user can enter path manually */
+					/* network error, user can enter path manually */
 				}
 				setSkillDiscovering(false);
 			}, 600);
@@ -289,6 +321,15 @@ export function SubmitComponentDialog({
 		(d?.network_policy as string) ?? "none",
 	);
 	const [entrypoint, setEntrypoint] = useState((d?.entrypoint as string) ?? "");
+	const [sandboxResourceLimits, setSandboxResourceLimits] = useState(
+		d?.resource_limits && typeof d.resource_limits === "object" ? JSON.stringify(d.resource_limits, null, 2) : "{}",
+	);
+	const [sandboxRuntimeConfig, setSandboxRuntimeConfig] = useState(
+		d?.runtime_config && typeof d.runtime_config === "object" ? JSON.stringify(d.runtime_config, null, 2) : "{}",
+	);
+	const [sandboxSourceUrl, setSandboxSourceUrl] = useState((d?.source_url as string) ?? "");
+	const [sandboxSourceRef, setSandboxSourceRef] = useState((d?.source_ref as string) ?? "");
+	const [sandboxPath, setSandboxPath] = useState((d?.sandbox_path as string) ?? "");
 
 	function bumpPatchVersion(ver: string): string {
 		const parts = ver.split(".");
@@ -351,7 +392,7 @@ export function SubmitComponentDialog({
 		setName("");
 		setVersion("0.1.0");
 		setDescription("");
-		setSupportedIdes([]);
+		setSupportedHarnesses([]);
 		setMcpMode("json");
 		setJsonInput("");
 		setJsonError(null);
@@ -387,6 +428,11 @@ export function SubmitComponentDialog({
 		setImage("");
 		setNetworkPolicy("none");
 		setEntrypoint("");
+		setSandboxResourceLimits("{}");
+		setSandboxRuntimeConfig("{}");
+		setSandboxSourceUrl("");
+		setSandboxSourceRef("");
+		setSandboxPath("");
 	}
 
 	const isEditMode = !!editItem;
@@ -399,7 +445,7 @@ export function SubmitComponentDialog({
 			description,
 			owner,
 		};
-		if (supportedIdes.length > 0) base.supported_harnesses = supportedIdes;
+		if (supportedHarnesses.length > 0) base.supported_harnesses = supportedHarnesses;
 
 		switch (type) {
 			case "mcps": {
@@ -458,14 +504,25 @@ export function SubmitComponentDialog({
 			}
 			case "prompts":
 				return { ...base, category: promptCategory, template };
-			case "sandboxes":
-				return {
+			case "sandboxes": {
+				const body: Record<string, unknown> = {
 					...base,
 					runtime_type: runtimeType,
 					image,
 					network_policy: networkPolicy,
 					entrypoint: entrypoint || undefined,
 				};
+				try {
+					body.resource_limits = JSON.parse(sandboxResourceLimits || "{}");
+					body.runtime_config = JSON.parse(sandboxRuntimeConfig || "{}");
+				} catch {
+					/* validation below reports JSON errors */
+				}
+				if (sandboxSourceUrl) body.source_url = sandboxSourceUrl;
+				if (sandboxSourceRef) body.source_ref = sandboxSourceRef;
+				if (sandboxPath) body.sandbox_path = sandboxPath;
+				return body;
+			}
 			default:
 				return base;
 		}
@@ -475,19 +532,18 @@ export function SubmitComponentDialog({
 		if (!name) return "Name is required";
 		if (!description) return "Description is required";
 
-		if (type === "mcps" && !gitUrl && !command && !mcpUrl) {
+		if (type === "mcps") {
 			if (mcpMode === "json" && !jsonParsed && !isEditMode) {
 				return "Paste a valid server config JSON";
 			}
 			if (mcpMode === "json" && !jsonParsed && isEditMode) {
-				// Edit mode: existing fields from editItem are still valid
 				const d = editItem as Record<string, unknown> | null;
-				if (!d?.command && !d?.url && !d?.git_url) {
+				if (!d?.command && !d?.url) {
 					return "Paste a new server config JSON to update";
 				}
 			}
-			if (mcpMode === "manual") {
-				return "At least one of Git URL, Command, or Server URL is required";
+			if (mcpMode === "manual" && !command && !mcpUrl) {
+				return "Command or Server URL is required";
 			}
 		}
 		if (type === "prompts" && !template) {
@@ -495,6 +551,14 @@ export function SubmitComponentDialog({
 		}
 		if (type === "sandboxes" && !image) {
 			return "Image is required";
+		}
+		if (type === "sandboxes") {
+			try {
+				JSON.parse(sandboxResourceLimits || "{}");
+				JSON.parse(sandboxRuntimeConfig || "{}");
+			} catch {
+				return "Sandbox resource limits and runtime config must be valid JSON";
+			}
 		}
 		return null;
 	}
@@ -537,9 +601,9 @@ export function SubmitComponentDialog({
 		setEnvVars((prev) => prev.filter((_, i) => i !== index));
 	}
 
-	function toggleIde(ide: string) {
-		setSupportedIdes((prev) =>
-			prev.includes(ide) ? prev.filter((i) => i !== ide) : [...prev, ide],
+	function toggleHarness(harness: string) {
+		setSupportedHarnesses((prev) =>
+			prev.includes(harness) ? prev.filter((item) => item !== harness) : [...prev, harness],
 		);
 	}
 
@@ -552,16 +616,46 @@ export function SubmitComponentDialog({
 				: type.charAt(0).toUpperCase() + type.slice(1, -1);
 
 	const submitError = validateForSubmit();
+	const jsonExample = mcpExampleConfig(isEditMode, name);
+	const skillScriptLanguage = codeLanguageFromFilename(skillScriptFilename);
+	const skillScriptLanguageName = codeLanguageLabel(skillScriptLanguage);
+	const helpDoc = COMPONENT_HELP_DOCS[type as keyof typeof COMPONENT_HELP_DOCS];
 
 	return (
 		<Dialog
+			modal={false}
 			open={open}
 			onOpenChange={(v) => {
 				if (!v) reset();
 				onOpenChange(v);
 			}}
 		>
-			<DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+			<DialogContent
+				className="max-w-lg max-h-[85vh] overflow-y-auto"
+				onPointerDownOutside={(event) => {
+					const target = event.target;
+					if (target instanceof Node && document.querySelector('[data-help-panel="true"]')?.contains(target)) {
+						event.preventDefault();
+					}
+				}}
+			>
+				{helpDoc && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="absolute right-10 top-4 h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+						onClick={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							helpCtx.openHelp({ docRef: helpDoc });
+						}}
+						aria-label={`Open ${helpDoc.label}`}
+						title={`Open ${helpDoc.label}`}
+					>
+						<HelpCircle className="h-4 w-4" />
+					</Button>
+				)}
 				<DialogHeader>
 					<DialogTitle>
 						{isEditMode ? `Edit ${typeLabel}` : `Submit ${typeLabel}`}
@@ -615,41 +709,60 @@ export function SubmitComponentDialog({
 						<>
 							<div className="space-y-1.5">
 								<Label>Category</Label>
-								<Select value={category} onValueChange={setCategory}>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{MCP_CATEGORIES.map((c) => (
-											<SelectItem key={c} value={c}>
-												{c}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<PickerSelect
+									value={category}
+									onValueChange={setCategory}
+									options={MCP_CATEGORIES.map((c) => ({ value: c, label: c }))}
+								/>
 							</div>
 
 							{/* ── JSON paste mode (default) ─────────────── */}
 							{mcpMode === "json" && (
 								<>
 									<div className="space-y-1.5">
-										<Label htmlFor="mcp-json">
-											{isEditMode
-												? "Paste Updated Config (JSON)"
-												: "Server Config (JSON)"}
+										<Label htmlFor="mcp-git-url-json">
+											Git URL for local OCI setup (optional)
 										</Label>
-										<Textarea
+										<Input
+											id="mcp-git-url-json"
+											value={gitUrl}
+											onChange={(e) => setGitUrl(e.target.value)}
+											placeholder="https://github.com/user/mcp-server"
+										/>
+										<p className="text-xs text-muted-foreground">
+											Observal still needs pasted MCP JSON. The git repo is only
+											used to detect Dockerfile, Containerfile, or compose build
+											setup instructions.
+										</p>
+									</div>
+
+									<div className="space-y-1.5">
+										<div className="flex items-center justify-between gap-3">
+											<Label htmlFor="mcp-json">
+												{isEditMode
+													? "Paste Updated Config (JSON)"
+													: "Server Config (JSON)"}
+											</Label>
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => handleJsonInput(jsonExample)}
+												className="h-7 text-xs"
+											>
+												{jsonInput ? "Replace example" : "Insert example"}
+											</Button>
+										</div>
+										<CodeEditor
 											id="mcp-json"
 											value={jsonInput}
-											onChange={(e) => handleJsonInput(e.target.value)}
-											placeholder={
-												isEditMode
-													? `Paste the new server config to update this MCP:\n{\n  "mcpServers": {\n    "${name || "my-server"}": {\n      "command": "npx",\n      "args": ["-y", "@example/mcp-server@latest"],\n      "env": { "API_KEY": "$API_KEY" }\n    }\n  }\n}`
-													: `Paste your MCP server config, e.g.:\n{\n  "mcpServers": {\n    "my-server": {\n      "command": "npx",\n      "args": ["-y", "@example/mcp-server"],\n      "env": { "API_KEY": "$API_KEY" }\n    }\n  }\n}`
-											}
-											rows={8}
-											className="text-xs font-mono"
+											onChange={handleJsonInput}
+											language="json"
+											placeholder="Paste MCP JSON here, or insert the example."
 										/>
+										<p className="text-xs text-muted-foreground">
+											Paste directly or type JSON. Brackets and quotes auto-close.
+										</p>
 										{jsonError && (
 											<p className="text-xs text-destructive">{jsonError}</p>
 										)}
@@ -663,7 +776,7 @@ export function SubmitComponentDialog({
 													{mcpUrl && `${mcpUrl} `}
 													{envVars.length > 0 &&
 														`(${envVars.length} env var${envVars.length > 1 ? "s" : ""})`}
-													{isEditMode && ` — version bumped to ${version}`}
+													{isEditMode && `, version bumped to ${version}`}
 												</span>
 											</div>
 										)}
@@ -674,7 +787,7 @@ export function SubmitComponentDialog({
 										onClick={() => setMcpMode("manual")}
 										className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
 									>
-										Switch to manual entry
+										Advanced: enter command or URL manually
 									</button>
 								</>
 							)}
@@ -692,22 +805,14 @@ export function SubmitComponentDialog({
 
 									<div className="space-y-1.5">
 										<Label>Transport</Label>
-										<Select
+										<PickerSelect
 											value={transport || "auto"}
 											onValueChange={(v) => setTransport(v === "auto" ? "" : v)}
-										>
-											<SelectTrigger>
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="auto">Auto-detect</SelectItem>
-												{MCP_TRANSPORTS.map((t) => (
-													<SelectItem key={t} value={t}>
-														{t}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
+											options={[
+												{ value: "auto", label: "Auto-detect" },
+												...MCP_TRANSPORTS.map((t) => ({ value: t, label: t })),
+											]}
+										/>
 									</div>
 
 									<div className="space-y-1.5">
@@ -751,34 +856,23 @@ export function SubmitComponentDialog({
 										/>
 									</div>
 
-									{!gitUrl && !command && !mcpUrl && (
+									{!command && !mcpUrl && (
 										<p className="text-xs text-destructive">
-											At least one of Git URL, Command, or Server URL is
-											required for submission.
+											Command or Server URL is required for manual submission.
 										</p>
 									)}
 
 									<div className="grid grid-cols-2 gap-3">
 										<div className="space-y-1.5">
 											<Label>Framework</Label>
-											<Select
+											<PickerSelect
 												value={framework || "none"}
-												onValueChange={(v) =>
-													setFramework(v === "none" ? "" : v)
-												}
-											>
-												<SelectTrigger>
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="none">None</SelectItem>
-													{MCP_FRAMEWORKS.map((f) => (
-														<SelectItem key={f} value={f}>
-															{f}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
+												onValueChange={(v) => setFramework(v === "none" ? "" : v)}
+												options={[
+													{ value: "none", label: "None" },
+													...MCP_FRAMEWORKS.map((f) => ({ value: f, label: f })),
+												]}
+											/>
 										</div>
 										<div className="space-y-1.5">
 											<Label htmlFor="mcp-docker">Docker Image</Label>
@@ -857,18 +951,11 @@ export function SubmitComponentDialog({
 						<>
 							<div className="space-y-1.5">
 								<Label>Task Type</Label>
-								<Select value={taskType} onValueChange={setTaskType}>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{SKILL_TASK_TYPES.map((t) => (
-											<SelectItem key={t} value={t}>
-												{t}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<PickerSelect
+									value={taskType}
+									onValueChange={setTaskType}
+									options={SKILL_TASK_TYPES.map((t) => ({ value: t, label: t }))}
+								/>
 							</div>
 
 							<Tabs value={skillMode} onValueChange={(v) => setSkillMode(v as "git" | "paste")} className="w-full">
@@ -972,17 +1059,18 @@ export function SubmitComponentDialog({
 										</p>
 									</div>
 									<div className="space-y-1.5">
-										<Label htmlFor="skill-script-content">Script (optional)</Label>
-										<Textarea
+										<Label htmlFor="skill-script-content">
+											Script (optional, {skillScriptLanguageName})
+										</Label>
+										<CodeEditor
 											id="skill-script-content"
 											value={skillScriptContent}
-											onChange={(e) => setSkillScriptContent(e.target.value)}
-											placeholder={"#!/bin/bash\n# Script that the skill can invoke\n# Stored in the registry and delivered on install"}
-											rows={8}
-											className="font-mono text-xs"
+											onChange={setSkillScriptContent}
+											language={skillScriptLanguage}
+											placeholder="Paste or type the skill script here."
 										/>
 										<p className="text-xs text-muted-foreground">
-											Script content stored in the registry and delivered on install. Similar to hook scripts.
+											Detected from filename. Use .sh for Bash, .py for Python, or .mjs/.js for JavaScript.
 										</p>
 									</div>
 								</TabsContent>
@@ -996,68 +1084,37 @@ export function SubmitComponentDialog({
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
 									<Label>Event</Label>
-									<Select value={event} onValueChange={setEvent}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_EVENTS.map((e) => (
-												<SelectItem key={e} value={e}>
-													{e}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={event}
+										onValueChange={setEvent}
+										options={HOOK_EVENTS.map((e) => ({ value: e, label: e }))}
+									/>
 								</div>
 								<div className="space-y-1.5">
 									<Label>Handler Type</Label>
-									<Select value={handlerType} onValueChange={setHandlerType}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_HANDLER_TYPES.map((h) => (
-												<SelectItem key={h} value={h}>
-													{h}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={handlerType}
+										onValueChange={setHandlerType}
+										options={HOOK_HANDLER_TYPES.map((h) => ({ value: h, label: h }))}
+									/>
 								</div>
 							</div>
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
 									<Label>Execution Mode</Label>
-									<Select
+									<PickerSelect
 										value={executionMode}
 										onValueChange={setExecutionMode}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_EXECUTION_MODES.map((m) => (
-												<SelectItem key={m} value={m}>
-													{m}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+										options={HOOK_EXECUTION_MODES.map((m) => ({ value: m, label: m }))}
+									/>
 								</div>
 								<div className="space-y-1.5">
 									<Label>Scope</Label>
-									<Select value={hookScope} onValueChange={setHookScope}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{HOOK_SCOPES.map((s) => (
-												<SelectItem key={s} value={s}>
-													{s}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={hookScope}
+										onValueChange={setHookScope}
+										options={HOOK_SCOPES.map((s) => ({ value: s, label: s }))}
+									/>
 								</div>
 							</div>
 							<div className="space-y-1.5">
@@ -1112,21 +1169,11 @@ export function SubmitComponentDialog({
 						<>
 							<div className="space-y-1.5">
 								<Label>Category</Label>
-								<Select
+								<PickerSelect
 									value={promptCategory}
 									onValueChange={setPromptCategory}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{PROMPT_CATEGORIES.map((c) => (
-											<SelectItem key={c} value={c}>
-												{c}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+									options={PROMPT_CATEGORIES.map((c) => ({ value: c, label: c }))}
+								/>
 							</div>
 							<div className="space-y-1.5">
 								<Label htmlFor="prompt-template">Template *</Label>
@@ -1150,41 +1197,24 @@ export function SubmitComponentDialog({
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
 									<Label>Runtime Type</Label>
-									<Select value={runtimeType} onValueChange={setRuntimeType}>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{SANDBOX_RUNTIME_TYPES.map((r) => (
-												<SelectItem key={r} value={r}>
-													{r}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+									<PickerSelect
+										value={runtimeType}
+										onValueChange={setRuntimeType}
+										options={SANDBOX_RUNTIME_TYPES.map((r) => ({ value: r, label: r }))}
+									/>
 								</div>
 								<div className="space-y-1.5">
 									<Label>Network Policy</Label>
-									<Select
+									<PickerSelect
 										value={networkPolicy}
 										onValueChange={setNetworkPolicy}
-									>
-										<SelectTrigger>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{SANDBOX_NETWORK_POLICIES.map((p) => (
-												<SelectItem key={p} value={p}>
-													{p}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+										options={SANDBOX_NETWORK_POLICIES.map((p) => ({ value: p, label: p }))}
+									/>
 								</div>
 							</div>
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-1.5">
-									<Label htmlFor="sandbox-image">Image *</Label>
+									<Label htmlFor="sandbox-image">Image / Artifact Ref *</Label>
 									<Input
 										id="sandbox-image"
 										value={image}
@@ -1202,6 +1232,35 @@ export function SubmitComponentDialog({
 									/>
 								</div>
 							</div>
+							<div className="grid grid-cols-2 gap-3">
+								<div className="space-y-1.5">
+									<Label htmlFor="sandbox-limits">Resource Limits JSON</Label>
+									<CodeEditor
+										id="sandbox-limits"
+										value={sandboxResourceLimits}
+										onChange={setSandboxResourceLimits}
+										language="json"
+										minHeightClassName="min-h-28 [&_.cm-editor]:min-h-28 [&_.cm-scroller]:min-h-28"
+										placeholder='{"timeout": 60, "memory_mb": 512}'
+									/>
+								</div>
+								<div className="space-y-1.5">
+									<Label htmlFor="sandbox-runtime-config">Runtime Config JSON</Label>
+									<CodeEditor
+										id="sandbox-runtime-config"
+										value={sandboxRuntimeConfig}
+										onChange={setSandboxRuntimeConfig}
+										language="json"
+										minHeightClassName="min-h-28 [&_.cm-editor]:min-h-28 [&_.cm-scroller]:min-h-28"
+										placeholder='{"module": "runner.wasm"}'
+									/>
+								</div>
+							</div>
+							<div className="grid grid-cols-3 gap-3">
+								<Input value={sandboxSourceUrl} onChange={(e) => setSandboxSourceUrl(e.target.value)} placeholder="Source URL" />
+								<Input value={sandboxSourceRef} onChange={(e) => setSandboxSourceRef(e.target.value)} placeholder="Source ref" />
+								<Input value={sandboxPath} onChange={(e) => setSandboxPath(e.target.value)} placeholder="Sandbox path" />
+							</div>
 						</>
 					)}
 
@@ -1209,18 +1268,18 @@ export function SubmitComponentDialog({
 					<div className="space-y-1.5">
 						<Label>Supported harnesses</Label>
 						<div className="flex flex-wrap gap-1.5">
-							{(ideList ?? []).map((ide) => (
+							{(harnessList ?? []).map((harness) => (
 								<button
-									key={ide.name}
+									key={harness.name}
 									type="button"
-									onClick={() => toggleIde(ide.name)}
+									onClick={() => toggleHarness(harness.name)}
 									className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-										supportedIdes.includes(ide.name)
+										supportedHarnesses.includes(harness.name)
 											? "bg-primary text-primary-foreground"
 											: "bg-muted/50 text-muted-foreground hover:bg-muted"
 									}`}
 								>
-									{ide.display_name}
+									{harness.display_name}
 								</button>
 							))}
 						</div>

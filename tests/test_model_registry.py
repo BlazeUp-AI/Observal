@@ -13,7 +13,6 @@ import pytest
 
 def test_every_harness_has_model_catalog():
     from observal_shared.harness_models import supported_model_ids
-
     from schemas.harness_registry import HARNESS_REGISTRY
 
     for harness, spec in HARNESS_REGISTRY.items():
@@ -51,7 +50,7 @@ async def test_resolver_validates_against_harness_registry():
     from services.model_resolver import resolve_model_for_harness
 
     emitted, warnings = await resolve_model_for_harness("kiro", models_by_harness={"kiro": "claude-sonnet-4-6"})
-    assert emitted == "claude-sonnet-4-6"
+    assert emitted == "claude-sonnet-4.6"
     assert warnings == []
 
     emitted, warnings = await resolve_model_for_harness("kiro", models_by_harness={"kiro": "not-real"})

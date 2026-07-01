@@ -328,36 +328,6 @@ def telemetry_test():
     rprint(f"[green]✓ Test event sent![/green] Ingested: {result.get('ingested', 0)}")
 
 
-# ── Dashboard (on ops_app) ──────────────────────────────
-
-
-@ops_app.command(name="overview")
-def _overview(output: str = typer.Option("table", "--output", "-o")):
-    """Show enterprise overview stats.
-
-    Displays high-level platform totals: MCP servers, agents, users,
-    tool calls, and agent interactions.
-
-    Examples:
-
-        observal ops overview
-
-        observal ops overview --output json
-    """
-    with spinner("Loading overview..."):
-        data = client.get("/api/v1/overview/stats")
-    if output == "json":
-        output_json(data)
-        return
-    rprint()
-    rprint(f"  [bold cyan]MCP Servers[/bold cyan]     {data.get('total_mcps', 0)}")
-    rprint(f"  [bold magenta]Agents[/bold magenta]          {data.get('total_agents', 0)}")
-    rprint(f"  [bold]Users[/bold]           {data.get('total_users', 0)}")
-    rprint(f"  [bold green]Tool calls[/bold green]      {data.get('total_tool_calls', 0)}")
-    rprint(f"  [bold yellow]Interactions[/bold yellow]    {data.get('total_agent_interactions', 0)}")
-    rprint()
-
-
 @ops_app.command(name="metrics")
 def _metrics(
     item_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),

@@ -22,7 +22,7 @@ See [`observal server upgrade`](../cli/server.md#observal-server-upgrade) for fu
 ## Before a manual upgrade
 
 1. **Back up `pgdata`** and **`apidata`**. See [Backup and restore](backup-and-restore.md). Backing up `chdata` is nice-to-have; losing telemetry is painful but not catastrophic.
-2. **Read the [CHANGELOG](https://github.com/BlazeUp-AI/Observal/blob/main/CHANGELOG.md)** for the releases you're jumping across. Note any breaking changes.
+2. **Read the [CHANGELOG](https://github.com/Observal/Observal/blob/main/CHANGELOG.md)** for the releases you're jumping across. Note any breaking changes.
 3. **Pin the version you're upgrading to**: don't `git pull main` blindly. Check out a release tag or a known-good commit.
 
 ## Standard upgrade
@@ -43,13 +43,12 @@ docker compose -f docker/docker-compose.yml ps
 curl http://localhost/health
 ```
 
-The API applies pending Alembic migrations automatically on startup. Watch the API logs for migration output:
+The init container applies pending Postgres Alembic migrations and ClickHouse SQL migrations before the API starts. Watch the init logs for migration output:
 
 ```bash
-docker logs -f observal-api
-# INFO - Running migrations...
-# INFO - Migration 0015_* -> 0016_add_harness_capability_fields.py applied.
-# INFO - Database up to date.
+docker logs -f observal-init
+# Running database migrations...
+# Running ClickHouse migrations...
 ```
 
 ## Zero-downtime upgrade (small teams)
@@ -58,7 +57,7 @@ If you run a single instance and have a ~30-second maintenance window:
 
 1. Back up `pgdata`, `apidata`, `chdata`.
 2. Stop the API and worker: `docker compose stop observal-api observal-worker`.
-3. Apply migrations out-of-band: `observal migrate` (requires the `migrate` CLI extra).
+3. Apply migrations out of band with `alembic upgrade head` and `python -m services.clickhouse.migrations` from `observal-server`, or run the init container once.
 4. Pull/rebuild new images: `docker compose pull && docker compose build observal-api observal-worker`.
 5. Start: `docker compose up -d`.
 6. Smoke test: `observal auth status && observal ops telemetry test`.
@@ -70,7 +69,7 @@ Web UI, Postgres, ClickHouse, Redis stay up throughout. Users see a brief API ou
 For blue/green upgrades on large deployments:
 
 1. Run a second stack (`docker-compose.yml` with different project name and host ports) behind a reverse proxy.
-2. Apply migrations via `observal migrate`. Alembic migrations are forward-compatible by design (API N-1 and N should both work against the same schema when migrations are additive).
+2. Apply migrations before traffic cutover. Alembic handles Postgres and `services.clickhouse.migrations` handles ClickHouse. Additive migrations should work with API N-1 and N during the rollout.
 3. Bring up the green stack pointing at the same `pgdata` / `chdata` / `apidata` volumes.
 4. Flip the reverse proxy to green.
 5. Decommission blue.
@@ -102,7 +101,7 @@ The CLI speaks a stable contract with the server. A newer CLI works against an o
 
 ## Zero-downtime for the web UI
 
-The web UI (Next.js, static after build) restarts instantly. Users see a brief reload if they're on the page during the deploy. No special handling required.
+The web UI is a static Vite build and restarts instantly. Users see a brief reload if they are on the page during the deploy. No special handling required.
 
 ## Next
 

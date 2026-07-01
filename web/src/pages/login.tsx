@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { Link, useRouter, useSearch } from "@tanstack/react-router";
 import { Eye, EyeOff, ArrowRight, Loader2, AlertCircle, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { auth, config as configApi, setTokens, clearSession, setUserRole, getUse
 import type { SsoHealthResult, E2eStatusResult, HealthCheck } from "@/lib/api";
 import { useDeploymentConfig } from "@/hooks/use-deployment-config";
 import { Button } from "@/components/ui/button";
+import { GoogleGIcon } from "@/components/ui/google-g-icon";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ function LoginContent() {
   const searchParams = useSearch({ from: "/(auth)/login" });
   const {
     ssoEnabled,
+    googleSsoEnabled,
     ssoOnly,
     selfRegistrationEnabled,
     samlEnabled,
@@ -42,6 +44,7 @@ function LoginContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [ssoHealth, setSsoHealth] = useState<SsoHealthResult | null>(null);
   const [ssoHealthLoading, setSsoHealthLoading] = useState(false);
+  const directSsoStarted = useRef(false);
   const [ssoErrorDiag, setSsoErrorDiag] = useState<E2eStatusResult | null>(null);
   const [ssoErrorDiagExpanded, setSsoErrorDiagExpanded] = useState(true);
 
@@ -237,6 +240,44 @@ function LoginContent() {
       : "/api/v1/auth/oauth/login";
     window.location.href = url;
   }
+
+  function handleGoogleLogin() {
+    setSsoLoading(true);
+    const nextParam = searchParams.next;
+    const url = nextParam && nextParam.startsWith("/")
+      ? `/api/v1/auth/oauth/google/login?next=${encodeURIComponent(nextParam)}`
+      : "/api/v1/auth/oauth/google/login";
+    window.location.href = url;
+  }
+
+  function handleSamlLogin() {
+    setSsoLoading(true);
+    const nextParam = searchParams.next;
+    const samlUrl = nextParam && nextParam.startsWith("/")
+      ? `/api/v1/sso/saml/login?next=${encodeURIComponent(nextParam)}`
+      : "/api/v1/sso/saml/login";
+    window.location.href = samlUrl;
+  }
+
+  useEffect(() => {
+    if (searchParams.sso !== "1" || directSsoStarted.current) return;
+    directSsoStarted.current = true;
+    configApi.public()
+      .then((publicConfig) => {
+        if (publicConfig.sso_enabled) {
+          handleSsoLogin();
+        } else if (publicConfig.saml_enabled) {
+          handleSamlLogin();
+        } else {
+          directSsoStarted.current = false;
+          setError("SSO is not configured on this server.");
+        }
+      })
+      .catch(() => {
+        directSsoStarted.current = false;
+        setError("Could not load SSO configuration.");
+      });
+  }, [searchParams.sso]);
 
   if (mustChangePassword) {
     return (
@@ -461,7 +502,7 @@ function LoginContent() {
                   </Button>
                 )}
 
-                {!ssoOnly && (ssoEnabled || samlEnabled) && (
+                {!ssoOnly && (ssoEnabled || googleSsoEnabled || samlEnabled) && (
                   <div className="relative py-2">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -472,7 +513,24 @@ function LoginContent() {
                   </div>
                 )}
 
-                {(ssoOnly || ssoEnabled) && (
+                {googleSsoEnabled && (
+                  <Button
+                    type="button"
+                    variant={ssoOnly ? "default" : "outline"}
+                    className="w-full"
+                    onClick={handleGoogleLogin}
+                    disabled={loading || ssoLoading}
+                  >
+                    {ssoLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <GoogleGIcon className="mr-2 h-4 w-4" />
+                    )}
+                    Sign in with Google
+                  </Button>
+                )}
+
+                {ssoEnabled && (
                   <div className="flex items-center">
                     <Button
                       type="button"
@@ -519,13 +577,7 @@ function LoginContent() {
                       type="button"
                       variant={ssoOnly ? "default" : "outline"}
                       className="relative flex-1 pr-10"
-                      onClick={() => {
-                        const nextParam = searchParams.next;
-                        const samlUrl = nextParam && nextParam.startsWith("/")
-                          ? `/api/v1/sso/saml/login?next=${encodeURIComponent(nextParam)}`
-                          : "/api/v1/sso/saml/login";
-                        window.location.href = samlUrl;
-                      }}
+                      onClick={handleSamlLogin}
                       disabled={loading || ssoLoading}
                     >
                       Sign in with SAML SSO

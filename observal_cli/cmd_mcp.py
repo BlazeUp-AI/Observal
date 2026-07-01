@@ -509,6 +509,14 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
 
         # Extract dollar-sign input variables before preview
         dollar_vars = parsed.pop("_dollar_vars_detected", None)
+        git_analysis: dict = {}
+        if git_url:
+            with spinner("Checking git repo for local OCI setup..."):
+                git_analysis = analyze_local(git_url)
+            if git_analysis.get("setup_instructions"):
+                rprint("[green]✓[/green] Found local OCI setup instructions from git repo.")
+            elif git_analysis.get("error"):
+                rprint(f"[yellow]Git analysis skipped:[/yellow] {git_analysis['error']}")
 
         rprint("\n[bold]Config preview:[/bold]")
         console.print_json(json.dumps(_build_config_preview(_name, parsed), indent=2))
@@ -556,6 +564,12 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             "supported_harnesses": supported_harnesses,
             "environment_variables": parsed.get("environment_variables", []),
         }
+        if git_url:
+            submit_payload["git_url"] = git_url
+        if git_analysis.get("setup_instructions"):
+            submit_payload["setup_instructions"] = git_analysis["setup_instructions"]
+        if git_analysis.get("docker_image") and not parsed.get("docker_image"):
+            submit_payload["docker_image"] = git_analysis["docker_image"]
         if parsed.get("command"):
             submit_payload["command"] = parsed["command"]
         if parsed.get("args") is not None:
@@ -572,6 +586,16 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             submit_payload["framework"] = parsed["framework"]
         if parsed.get("docker_image"):
             submit_payload["docker_image"] = parsed["docker_image"]
+        if git_analysis and not git_analysis.get("error"):
+            submit_payload["client_analysis"] = {
+                "tools": git_analysis.get("tools", []),
+                "issues": git_analysis.get("issues", []),
+                "framework": git_analysis.get("framework", ""),
+                "entry_point": git_analysis.get("entry_point", ""),
+                "command": git_analysis.get("command"),
+                "args": git_analysis.get("args"),
+                "docker_image": git_analysis.get("docker_image"),
+            }
 
         endpoint = "/api/v1/mcps/draft" if draft else "/api/v1/mcps/submit"
         label = "Saving draft..." if draft else "Submitting..."
@@ -626,6 +650,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
     detected_args = prefill.get("args")
     detected_docker_image = prefill.get("docker_image")
     detected_docker_suggested = prefill.get("docker_image_suggested", False)
+    detected_setup = prefill.get("setup_instructions", "")
 
     rprint("\n[bold]--- Analysis Results ---[/bold]")
 
@@ -651,6 +676,8 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             for ev in detected_env_vars:
                 ev_name = ev.get("name", ev) if isinstance(ev, dict) else ev
                 rprint(f"    [cyan]*[/cyan] {ev_name}")
+        if detected_setup:
+            rprint(f"  Setup:        [dim]{detected_setup.splitlines()[0]}[/dim]")
         if not detected_name and not tools:
             rprint("  [dim]No MCP metadata detected. You will need to fill in all fields manually.[/dim]")
 
@@ -723,7 +750,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
         _category = category or "general"
         if not _framework:
             _framework = "python"
-        _setup = ""
+        _setup = detected_setup
         _changelog = "Initial release"
         # Detect $VAR patterns in args and merge into env vars
         dollar_vars = _extract_dollar_vars(_args or [], {})
@@ -819,7 +846,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
 
         _category = category or select_one("Category", VALID_MCP_CATEGORIES, default="general")
 
-        _setup = text_input("Setup instructions (optional, press Enter to skip)", default="")
+        _setup = text_input("Setup instructions (optional, press Enter to skip)", default=detected_setup)
         _changelog = text_input("Changelog", default="Initial release")
 
         # Detect $VAR patterns in final args and merge into detected env vars
@@ -873,6 +900,7 @@ def _submit_impl(git_url, name, category, yes, direct_config=False, draft=False)
             "command": prefill.get("command"),
             "args": prefill.get("args"),
             "docker_image": prefill.get("docker_image"),
+            "setup_instructions": prefill.get("setup_instructions"),
         }
 
     endpoint = "/api/v1/mcps/draft" if draft else "/api/v1/mcps/submit"
@@ -988,7 +1016,7 @@ def _show_impl(mcp_id, output):
 
 def _install_impl(
     mcp_id,
-    ide,
+    harness,
     raw,
     version=None,
     *,
@@ -997,7 +1025,7 @@ def _install_impl(
     env_file: str | None = None,
     no_prompt: bool = False,
 ):
-    optic.trace("mcp_id={}, ide={}, version={}", mcp_id, ide, version)
+    optic.trace("mcp_id={}, harness={}, version={}", mcp_id, harness, version)
     import json as _json
 
     resolved = config.resolve_alias(mcp_id)
@@ -1099,8 +1127,8 @@ def _install_impl(
             else:
                 header_values[h["name"]] = f"<{h['name']}>"
 
-    with spinner(f"Generating {ide} config..."):
-        install_body = {"harness": ide, "env_values": env_values, "header_values": header_values}
+    with spinner(f"Generating {harness} config..."):
+        install_body = {"harness": harness, "env_values": env_values, "header_values": header_values}
         if version:
             install_body["version"] = version
         result = client.post(
@@ -1118,7 +1146,7 @@ def _install_impl(
         from observal_cli.lockfile import upsert_standalone
 
         upsert_standalone(
-            ide,
+            harness,
             component_type="mcp",
             name=listing.get("name", resolved),
             component_id=str(listing.get("id", resolved)),
@@ -1136,15 +1164,20 @@ def _install_impl(
         "codex": "~/.codex/config.toml",
     }
 
-    rprint(f"\n[bold]Config for {ide}:[/bold]\n")
+    rprint(f"\n[bold]Config for {harness}:[/bold]\n")
     console.print_json(_json.dumps(snippet, indent=2))
-    config_path = harness_config_paths.get(ide, "")
+    config_path = harness_config_paths.get(harness, "")
     if config_path and not config_path.startswith("("):
         rprint(f"\n[dim]Add to:[/dim] [bold]{config_path}[/bold]")
-        rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --harness {ide} --raw > {config_path}")
+        rprint(f"[dim]Or pipe:[/dim] observal install {mcp_id} --harness {harness} --raw > {config_path}")
 
-    for warning in result.get("warnings") or []:
+    warnings = result.get("warnings") or []
+    for warning in warnings:
         rprint(f"\n[yellow]Warning:[/yellow] {warning}")
+
+    setup = listing.get("setup_instructions")
+    if setup and not any(setup in warning for warning in warnings):
+        rprint(f"\n[yellow]Setup required before use:[/yellow]\n{setup}")
 
     # Warn about any empty env vars the user skipped
     missing = [k for k, v in env_values.items() if not v or v.startswith("<")]
@@ -1155,38 +1188,60 @@ def _install_impl(
         rprint("[dim]Set these in your harness config or shell environment before running the server.[/dim]")
 
 
-def _delete_impl(mcp_id, yes):
-    optic.trace("mcp_id={}, yes={}", mcp_id, yes)
-    resolved = config.resolve_alias(mcp_id)
-    if not yes:
-        with spinner():
-            item = client.get(f"/api/v1/mcps/{resolved}")
-        if not typer.confirm(f"Delete [bold]{item['name']}[/bold] ({resolved})?"):
-            raise typer.Abort()
-    with spinner("Deleting..."):
-        client.delete(f"/api/v1/mcps/{resolved}")
-    rprint(f"[green]✓ Deleted {resolved}[/green]")
-
-
 # ── Canonical commands (on mcp_app) ─────────────────────────
+
+
+def _print_mcp_examples() -> None:
+    console.print_json(
+        json.dumps(
+            {
+                "filesystem": {
+                    "mcpServers": {
+                        "filesystem": {
+                            "command": "npx",
+                            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/dev/project"],
+                        }
+                    }
+                },
+                "git": {
+                    "mcpServers": {
+                        "git": {
+                            "command": "uvx",
+                            "args": ["mcp-server-git", "--repository", "/home/dev/project"],
+                        }
+                    }
+                },
+                "postgres": {
+                    "mcpServers": {
+                        "postgres": {
+                            "command": "npx",
+                            "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
+                        }
+                    }
+                },
+            },
+            indent=2,
+        )
+    )
 
 
 @mcp_app.command()
 def submit(
-    git_url: str = typer.Option(None, "--git", "-g", help="Analyze a git repository instead of pasting config"),
+    git_url: str = typer.Option(None, "--git", "-g", help="Optional git repo for local OCI setup detection"),
     name: str = typer.Option(None, "--name", "-n", help="Skip name prompt"),
     category: str = typer.Option(None, "--category", "-c", help="Skip category prompt"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Accept defaults from repo analysis"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Accept JSON-derived defaults"),
     config: bool = typer.Option(False, "--config", hidden=True, help="(deprecated) JSON paste is now the default"),
     draft: bool = typer.Option(False, "--draft", help="Save as draft instead of submitting for review"),
     submit_draft: str | None = typer.Option(None, "--submit", help="Submit a draft for review (MCP ID)"),
+    example: bool = typer.Option(False, "--example", help="Print example MCP configs and exit"),
 ):
     """Submit an MCP server to the registry.
 
-    By default, opens an interactive JSON paste prompt where you provide
-    the same config format used in your harness (e.g. mcpServers block). Use
-    --git to analyze a git repository instead, which auto-detects tools,
-    env vars, and startup commands.
+    Opens a JSON paste prompt where you provide the same config format used
+    in your harness (e.g. mcpServers block). Optionally pass --git so Observal
+    clones the repo and detects local OCI setup instructions for Dockerfile,
+    Containerfile, or compose build MCPs.
 
     Only submit servers you created or are the point-of-contact for.
     Submissions go into a pending review queue unless saved as a draft.
@@ -1199,11 +1254,11 @@ def submit(
         # Interactive JSON paste (default)
         observal registry mcp submit
 
-        # Analyze a git repo with all defaults accepted
+        # Paste JSON and attach a git repo for local OCI setup hints
         observal registry mcp submit --git https://github.com/org/mcp-server --yes
 
         # Submit with name and category pre-filled
-        observal registry mcp submit --git https://github.com/org/server -n my-server -c ai
+        observal registry mcp submit --git https://github.com/org/server -n my-server -c developer-tools
 
         # Save as draft for later editing
         observal registry mcp submit --draft
@@ -1211,6 +1266,9 @@ def submit(
         # Submit an existing draft for review
         observal registry mcp submit --submit my-server
     """
+    if example:
+        _print_mcp_examples()
+        return
     if draft and submit_draft:
         rprint(
             "[red]Cannot use --draft and --submit together.[/red] Use --draft to save a new draft, or --submit to submit an existing draft."
@@ -1227,9 +1285,7 @@ def submit(
     if config:
         rprint("[dim]Note: --config is now the default. You can just run `observal mcp submit`.[/dim]")
     rprint("[dim]Note: Only submit components you created (private) or are the point-of-contact for (external).[/dim]")
-    # Default is JSON paste (direct_config=True), unless --git is provided
-    direct_config = not git_url
-    _submit_impl(git_url, name, category, yes, direct_config, draft=draft)
+    _submit_impl(git_url, name, category, yes, direct_config=True, draft=draft)
 
 
 @mcp_app.command(name="list")
@@ -1354,7 +1410,7 @@ def show(
 @mcp_app.command()
 def install(
     mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
+    harness: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (for piping)"),
     version: str | None = typer.Option(
         None, "--version", "-V", help="Install a specific version (e.g. '2.1.0'). Defaults to latest."
@@ -1396,20 +1452,20 @@ def install(
         # With headers for SSE servers
         observal registry mcp install my-server --harness kiro --header Authorization='Bearer token'
     """
-    optic.trace("mcp_id={}, ide={}", mcp_id, ide)
+    optic.trace("mcp_id={}, harness={}", mcp_id, harness)
     env_overrides = {}
     for item in env or []:
         k, _, v = item.partition("=")
         if k:
-            env_overrides[k.strip()] = v
+            env_overrides[k.strip()] = v.strip("\"'")
     header_overrides = {}
     for item in header or []:
         k, _, v = item.partition("=")
         if k:
-            header_overrides[k.strip()] = v
+            header_overrides[k.strip()] = v.strip("\"'")
     _install_impl(
         mcp_id,
-        ide,
+        harness,
         raw,
         version=version,
         env_overrides=env_overrides or None,
@@ -1623,31 +1679,3 @@ def edit_mcp(
             except SystemExit:
                 pass
             raise typer.Exit(code=1)
-
-
-@mcp_app.command(name="delete")
-def delete_mcp(
-    mcp_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-):
-    """Delete an MCP server from the registry.
-
-    Permanently removes the server listing and all associated data.
-    Prompts for confirmation unless --yes is passed. You can only
-    delete servers you own (or any server if you are an admin).
-
-    Examples:
-        # Delete with confirmation prompt
-        observal registry mcp delete my-server
-
-        # Delete by ID without confirmation
-        observal registry mcp delete abc123 --yes
-
-        # Delete by row number from last list
-        observal registry mcp delete 3 --yes
-
-        # Delete by alias
-        observal registry mcp delete @old-server
-    """
-    optic.trace("mcp_id={}, yes={}", mcp_id, yes)
-    _delete_impl(mcp_id, yes)

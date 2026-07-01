@@ -14,6 +14,7 @@ Supports Claude Code and Kiro.  Injects 2 hooks (UserPromptSubmit + Stop) that
 push session JSONL incrementally to the server.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -499,6 +500,29 @@ def _check_opencode(issues: list, warnings: list):
         warnings.append(
             "OpenCode observal plugin not installed. Run `observal doctor patch --all --harness opencode` to inject it."
         )
+        return
+
+    try:
+        from observal_shared.opencode_plugin_source import OPENCODE_PLUGIN_SOURCE, OPENCODE_PLUGIN_VERSION
+
+        current = plugin_path.read_text(errors="ignore")
+        desired_hash = hashlib.sha256(OPENCODE_PLUGIN_SOURCE.encode()).hexdigest()
+        current_hash = hashlib.sha256(current.encode()).hexdigest()
+        if current_hash == desired_hash:
+            return
+        if "offline stub" in current or "event: async () => {}" in current:
+            warnings.append(
+                "OpenCode observal plugin is an offline stub. "
+                "Run `observal doctor patch --all --harness opencode` to update it."
+            )
+            return
+        if f'OBSERVAL_PLUGIN_VERSION = "{OPENCODE_PLUGIN_VERSION}"' not in current or current_hash != desired_hash:
+            warnings.append(
+                "OpenCode observal plugin is stale or modified. "
+                "Run `observal doctor patch --all --harness opencode` to update it."
+            )
+    except OSError as e:
+        issues.append(f"{plugin_path}: failed to read OpenCode plugin: {e}")
 
 
 def _check_antigravity(issues: list, warnings: list):
@@ -581,7 +605,7 @@ def doctor_cleanup(
       observal doctor cleanup --harness kiro               # Kiro only
       observal doctor cleanup --harness claude-code --dry-run  # Preview without changes
     """
-    optic.trace("ide={}, exclude={}, dry_run={}", harness, exclude, dry_run)
+    optic.trace("harness={}, exclude={}, dry_run={}", harness, exclude, dry_run)
     all_harnesses = ["claude-code", "kiro", "cursor", "codex", "copilot", "copilot-cli", "opencode"]
     targets = [harness] if harness else all_harnesses
     targets = [t for t in targets if t not in exclude]
@@ -928,7 +952,7 @@ def _backup_config(config_path: Path) -> Path:
 
 def _parse_mcp_servers(config_data: dict, harness: str) -> dict[str, dict]:
     """Extract MCP servers dict from harness config using registry-defined key."""
-    optic.trace("config_data={}, ide={}", config_data, harness)
+    optic.trace("config_data={}, harness={}", config_data, harness)
     key = get_mcp_servers_key(harness)
     if key == "mcp.servers":
         return config_data.get("mcp", {}).get("servers", {})
@@ -946,7 +970,7 @@ def _shim_config_file(config_path: Path, harness: str, dry_run: bool) -> int:
 
     Returns count of newly shimmed entries.
     """
-    optic.trace("config_path={}, ide={}", config_path, harness)
+    optic.trace("config_path={}, harness={}", config_path, harness)
     if not config_path.exists():
         return 0
     try:
@@ -1079,8 +1103,8 @@ def doctor_patch(
 
         emit_cli_audit(
             "doctor.patch",
-            resource_type="ide",
-            detail=f"ides={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
+            resource_type="harness",
+            detail=f"harnesses={','.join(targets)}, hooks={do_hooks}, shims={do_shims}",
             sensitivity="high",
         )
     else:
@@ -1113,56 +1137,11 @@ def _patch_claude_code(dry_run: bool) -> bool:
 
 
 def _patch_kiro(dry_run: bool) -> bool:
-    """Install session push hooks into Kiro agent configs."""
+    """Kiro hooks are installed per pulled agent so they can carry the agent UUID."""
     optic.trace("dry_run={}", dry_run)
-    from observal_cli.harness_specs.kiro_hooks_spec import build_kiro_hooks
-
     rprint("[cyan]Kiro - session push hooks[/cyan]")
-
-    agents_dir = Path.home() / ".kiro" / "agents"
-    if not agents_dir.is_dir():
-        rprint("  [dim]No ~/.kiro/agents/ directory - skipping[/dim]")
-        return False
-
-    agent_profiles = list(agents_dir.glob("*.json"))
-    if not agent_profiles:
-        rprint("  [dim]No agent configs found[/dim]")
-        return False
-
-    desired_hooks = build_kiro_hooks()
-    changed = False
-
-    for af in agent_profiles:
-        agent_name = af.stem
-        try:
-            data = json.loads(af.read_text())
-        except (json.JSONDecodeError, OSError):
-            rprint(f"  [yellow]⚠ {agent_name}: could not parse, skipped[/yellow]")
-            continue
-
-        current_hooks = data.get("hooks", {})
-        updated = False
-
-        for event, desired_entries in desired_hooks.items():
-            existing = current_hooks.get(event, [])
-            # Remove old Observal hooks, keep non-Observal ones
-            cleaned = [h for h in existing if not _is_observal_hook_entry(h)]
-            new_list = cleaned + desired_entries
-            if new_list != existing:
-                current_hooks[event] = new_list
-                updated = True
-
-        if updated:
-            data["hooks"] = current_hooks
-            if not dry_run:
-                af.write_text(json.dumps(data, indent=2) + "\n")
-            verb = "Would update" if dry_run else "Updated"
-            rprint(f"  {verb} {agent_name}")
-            changed = True
-        else:
-            rprint(f"  [dim]{agent_name}: already up to date[/dim]")
-
-    return changed
+    rprint("  [dim]Skipped: Kiro telemetry hooks are installed by `observal agent pull` per agent.[/dim]")
+    return False
 
 
 def _patch_cursor(dry_run: bool) -> bool:
@@ -1599,19 +1578,27 @@ def _patch_opencode(dry_run: bool) -> bool:
     plugins_dir = Path.home() / ".config" / "opencode" / "plugins"
     plugin_path = plugins_dir / "observal-plugin.ts"
 
-    # Check if already installed
+    plugin_source = get_plugin_source()
+    desired_hash = hashlib.sha256(plugin_source.encode()).hexdigest()
+    existing_hash = None
     if plugin_path.exists():
-        existing = plugin_path.read_text()
-        if "observal" in existing.lower() and "offline stub" not in existing:
+        existing_hash = hashlib.sha256(plugin_path.read_bytes()).hexdigest()
+        if existing_hash == desired_hash:
             rprint("  [dim]Already installed[/dim]")
             return False
-
-    plugin_source = get_plugin_source()
 
     if not dry_run:
         plugins_dir.mkdir(parents=True, exist_ok=True)
         plugin_path.write_text(plugin_source)
 
-    verb = "Would install" if dry_run else "Installed"
+    verb = (
+        "Would update"
+        if dry_run and existing_hash
+        else "Would install"
+        if dry_run
+        else "Updated"
+        if existing_hash
+        else "Installed"
+    )
     rprint(f"  {verb} plugin at {plugin_path}")
     return True

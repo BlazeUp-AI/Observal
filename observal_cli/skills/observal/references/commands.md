@@ -102,7 +102,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal ops telemetry test`: Send a test telemetry event.
   - `observal ops feedback`: Show feedback for an MCP server or agent.
   - `observal ops metrics`: Show metrics for an MCP server or agent.
-  - `observal ops overview`: Show enterprise overview stats.
   - `observal ops rate`: Rate an MCP server, agent, or component.
   - `observal ops rate-delete`: Delete your review for an item.
   - `observal ops rate-update`: Update your existing review for an item.
@@ -122,7 +121,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry hook co-authors list`: List co-authors.
   - `observal registry hook co-authors remove`: Remove a co-author.
   - `observal registry hook archive`: Archive this component.
-  - `observal registry hook delete`: Delete a hook from the registry.
   - `observal registry hook edit`: Edit a draft, rejected, or pending hook submission.
   - `observal registry hook install`: Install a hook for a specific harness.
   - `observal registry hook list`: List approved hooks from the registry.
@@ -139,7 +137,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry mcp show`: Show full details of an MCP server.
   - `observal registry mcp install`: Generate an install config snippet for an MCP server.
   - `observal registry mcp archive`: Archive this component.
-  - `observal registry mcp delete`: Delete an MCP server from the registry.
   - `observal registry mcp edit`: Edit an MCP server submission.
   - `observal registry mcp list`: List approved MCP servers in the registry.
   - `observal registry mcp my`: List your own MCP servers across all statuses.
@@ -153,7 +150,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry prompt co-authors list`: List co-authors.
   - `observal registry prompt co-authors remove`: Remove a co-author.
   - `observal registry prompt archive`: Archive this component.
-  - `observal registry prompt delete`: Delete a prompt from the registry.
   - `observal registry prompt edit`: Edit a draft, rejected, or pending prompt submission.
   - `observal registry prompt list`: List approved prompts in the registry.
   - `observal registry prompt my`: List your own prompts across all statuses.
@@ -168,7 +164,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry sandbox co-authors list`: List co-authors.
   - `observal registry sandbox co-authors remove`: Remove a co-author.
   - `observal registry sandbox archive`: Archive this component.
-  - `observal registry sandbox delete`: Delete a sandbox from the registry.
   - `observal registry sandbox edit`: Edit a draft, rejected, or pending sandbox submission.
   - `observal registry sandbox list`: List approved sandboxes in the registry.
   - `observal registry sandbox show`: Show detailed information about a sandbox.
@@ -181,7 +176,6 @@ Every command available in the installed CLI. This block is generated from the T
   - `observal registry skill co-authors list`: List co-authors.
   - `observal registry skill co-authors remove`: Remove a co-author.
   - `observal registry skill archive`: Archive this component.
-  - `observal registry skill delete`: Delete a skill from the registry.
   - `observal registry skill edit`: Edit a draft, rejected, or pending skill submission.
   - `observal registry skill install`: Install a skill by fetching the full skill directory from git.
   - `observal registry skill list`: List approved skills in the registry.

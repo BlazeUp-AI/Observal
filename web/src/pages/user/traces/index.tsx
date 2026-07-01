@@ -50,7 +50,7 @@ import type { Session } from "@/lib/types";
 
 /** Quickstart docs URL shown in the first-time empty state CTA. */
 const DOCS_QUICKSTART_URL =
-	"https://github.com/BlazeUp-AI/Observal/blob/main/docs/getting-started/quickstart.md";
+	"https://github.com/Observal/Observal/blob/main/docs/getting-started/quickstart.md";
 
 function truncateQuery(q: string, max = 50): string {
 	return q.length > max ? `${q.slice(0, max)}…` : q;
@@ -280,7 +280,8 @@ function sessionLabel(row: Session): string {
 	const model = shortModel(row.model);
 	const count = row.prompt_count ?? 0;
 	const suffix = count === 1 ? "prompt" : "prompts";
-	const agent = row.agent_name ? `${row.agent_name} \u00b7 ` : "";
+	const version = row.agent_version ? ` v${row.agent_version}` : "";
+	const agent = row.agent_name ? `${row.agent_name}${version} \u00b7 ` : "";
 	if (model) return `${agent}${model} \u00b7 ${count} ${suffix}`;
 	return `${agent}${count} ${suffix}`;
 }
@@ -424,6 +425,13 @@ export default function TracesPage() {
 	const { pathname } = useLocation();
 	const [page, setPage] = useState(0);
 	const PAGE_SIZE = 50;
+	const [sorting, setSorting] = useState<SortingState>([
+		{ id: "first_event_time", desc: true },
+	]);
+	const [searchValue, setSearchValue] = useState(searchParam ?? "");
+	const [globalFilter, setGlobalFilter] = useState(searchParam ?? "");
+	const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const serverQuery = useMemo(() => parseSearchQuery(globalFilter), [globalFilter]);
 
 	const {
 		data: sessions,
@@ -433,18 +441,14 @@ export default function TracesPage() {
 		refetch,
 	} = useSessions2({
 		refetchInterval: 5_000,
+		platform: serverQuery.filters.platform,
+		user: serverQuery.filters.user,
+		days: serverQuery.filters.days && !isNaN(parseInt(serverQuery.filters.days, 10)) ? parseInt(serverQuery.filters.days, 10) : undefined,
 		limit: PAGE_SIZE,
 		offset: page * PAGE_SIZE,
 	});
 	const { data: summary } = useSessionsSummary();
 	useSessionSubscription();
-
-	const [sorting, setSorting] = useState<SortingState>([
-		{ id: "first_event_time", desc: true },
-	]);
-	const [searchValue, setSearchValue] = useState(searchParam ?? "");
-	const [globalFilter, setGlobalFilter] = useState(searchParam ?? "");
-	const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
 	const updateURL = useCallback(
 		(value: string) => {
@@ -463,6 +467,7 @@ export default function TracesPage() {
 	const handleSearch = useCallback(
 		(value: string) => {
 			setSearchValue(value);
+			setPage(0);
 			clearTimeout(debounceRef.current);
 			debounceRef.current = setTimeout(() => {
 				setGlobalFilter(value);

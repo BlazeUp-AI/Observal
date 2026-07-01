@@ -70,7 +70,7 @@ Operational knobs:
 
 - **Server address**: `OBSERVAL_SERVER_URL` on the CLI user's machine. The shim picks this up from `~/.observal/config.json` or the env var.
 - **API key**: the shim uses the user's stored credentials. No extra setup.
-- **Offline behavior**: if the server is unreachable, telemetry is buffered at `~/.observal/telemetry_buffer.db` and flushed later. Flush manually with `observal ops sync`. Check the buffer size with `observal auth status`.
+- **Offline behavior**: if the server is unreachable, telemetry is buffered at `~/.observal/telemetry_buffer.db` and flushed later. Check the buffer size with `observal auth status`.
 
 ## High-volume tuning
 

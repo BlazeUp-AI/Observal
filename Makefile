@@ -5,7 +5,7 @@
 # SPDX-FileCopyrightText: 2026 Vishnu Muthiah <vishnu.muthiah04@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate check-migrations new-migration reset rebuild rebuild-fast rebuild-prometheus rebuild-observability rebuild-enterprise rebuild-local reset-prometheus reset-observability up-prometheus up-observability down-prometheus down-observability logs-prometheus logs-observability release-major release-feature release-patch sync-skill
+.PHONY: lint format check test test-adversarial test-eval-completeness test-all hooks clean migrate migrate-clickhouse check-migrations new-migration reset rebuild rebuild-fast rebuild-prometheus rebuild-observability rebuild-enterprise rebuild-local reset-prometheus reset-observability up-prometheus up-observability down-prometheus down-observability logs-prometheus logs-observability release-major release-feature release-patch sync-skill
 
 # ── Linting ──────────────────────────────────────────────
 
@@ -75,8 +75,11 @@ down-prometheus:  ## Stop Docker stack with Prometheus
 down-observability:  ## Stop Docker stack with Prometheus and Grafana
 	cd docker && COMPOSE_PROFILES=grafana docker compose $(OBSERVABILITY_COMPOSE_FILES) down
 
-migrate:  ## Run database migrations
+migrate:  ## Run Postgres migrations
 	cd docker && docker compose $(COMPOSE_FILES) exec observal-api /app/.venv/bin/python -m alembic upgrade head
+
+migrate-clickhouse:  ## Run ClickHouse migrations manually
+	cd docker && docker compose $(COMPOSE_FILES) run --rm --no-deps observal-api /app/.venv/bin/python -m services.clickhouse.migrations
 
 check-migrations:  ## Validate alembic migration chain (no duplicates, no forks)
 	python3 scripts/check_migrations.py

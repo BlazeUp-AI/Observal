@@ -27,14 +27,14 @@ Everything you need to get Observal running locally for development or self-host
 ## 1. Clone and configure
 
 ```bash
-git clone https://github.com/BlazeUp-AI/Observal.git
+git clone https://github.com/Observal/Observal.git
 cd Observal
 cp .env.example .env
 ```
 
 `.env.example` ships with working defaults; you don't need to edit anything for local development. Demo accounts (`super@demo.example` / `super-changeme`, etc.) are seeded automatically on first start.
 
-> **Before a real deployment:** change `SECRET_KEY`, `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, and unset all `DEMO_*` variables. See [Configuration](docs/self-hosting/configuration.md).
+> **Before a real deployment:** change `SECRET_KEY`, `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, and unset all `DEMO_*` variables. See the [Self-hosting overview](docs/self-hosting/README.md), [Configuration](docs/self-hosting/configuration.md), [Databases](docs/self-hosting/databases.md), and [Upgrades](docs/self-hosting/upgrades.md).
 
 ---
 
@@ -50,14 +50,14 @@ Or without Make:
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-First build pulls images and compiles the Next.js frontend. Expect 3–5 minutes. Subsequent starts are under 30 seconds.
+First build pulls images and compiles the Vite frontend. Expect 3 to 5 minutes. Subsequent starts are under 30 seconds.
 
 **What comes up (10 services):**
 
 | Service               | URL                     | Purpose                                  |
 | --------------------- | ----------------------- | ---------------------------------------- |
 | `observal-lb` (nginx) | `http://localhost`      | Reverse proxy (API + Web)                |
-| `observal-web`        | `http://localhost:3000` | Web UI (Next.js, direct access)          |
+| `observal-web`        | `http://localhost:3000` | Web UI (Vite static app, direct access)  |
 | `observal-api`        | internal                | FastAPI backend                           |
 | `observal-worker`     | internal                | Background jobs (arq)                    |
 | `observal-init`       | internal                | Runs DB migrations on startup then exits |
@@ -106,7 +106,7 @@ uv tool install observal-cli
 **Via Homebrew** (macOS Apple Silicon, Linux x64/arm64):
 
 ```bash
-brew install BlazeUp-AI/observal/observal-cli
+brew install Observal/observal/observal-cli
 ```
 
 Verify: `observal --version`
@@ -164,13 +164,13 @@ All tests mock external services. No Docker or live databases needed to run test
 
 ---
 
-## 7. Instrument your IDEs
+## 7. Instrument your harnesses
 
-Already have MCP servers configured in Claude Code, Kiro, Cursor, or another IDE? Bring them into Observal without changing how they work:
+Already have MCP servers configured in Claude Code, Kiro, Cursor, or another harness? Bring them into Observal without changing how they work:
 
 ```bash
 observal scan                              # read-only: see what's installed
-observal doctor patch --all --all-ides    # wrap MCPs with observal-shim, install hooks
+observal doctor patch --all --all-harnesses    # wrap MCPs with observal-shim, install hooks
 observal doctor                           # verify everything wired correctly
 ```
 
@@ -229,11 +229,24 @@ API_HOST_PORT=8001 WEB_HOST_PORT=3001 \
 
 ## Further reading
 
-| Topic                                | Link                                                                         |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| 5-minute first trace                 | [Quickstart](docs/getting-started/quickstart.md)                             |
-| All environment variables            | [Reference → Environment variables](docs/reference/environment-variables.md) |
-| Production hardening                 | [Self-Hosting → Configuration](docs/self-hosting/configuration.md)           |
-| Configure SSO / OIDC                 | [Self-Hosting → Authentication and SSO](docs/self-hosting/authentication.md) |
-| Upgrade safely                       | [Self-Hosting → Upgrades](docs/self-hosting/upgrades.md)                     |
-| Troubleshooting                      | [Self-Hosting → Troubleshooting](docs/self-hosting/troubleshooting.md)       |
+Deployment and operations:
+
+| Topic | Link |
+| ----- | ---- |
+| Self-hosting overview | [Self-Hosting](docs/self-hosting/README.md) |
+| Single-node deployment | [Single-node deployment](docs/self-hosting/single-node-deploy.md) |
+| Docker Compose deployment | [Docker Compose setup](docs/self-hosting/docker-compose.md) |
+| Production hardening | [Configuration](docs/self-hosting/configuration.md) |
+| Databases and migrations | [Databases](docs/self-hosting/databases.md) |
+| Ports and volumes | [Ports and volumes](docs/self-hosting/ports-and-volumes.md) |
+| Upgrade safely | [Upgrades](docs/self-hosting/upgrades.md) |
+| Backup and restore | [Backup and restore](docs/self-hosting/backup-and-restore.md) |
+| Troubleshooting | [Troubleshooting](docs/self-hosting/troubleshooting.md) |
+
+Product setup:
+
+| Topic | Link |
+| ----- | ---- |
+| 5-minute first trace | [Quickstart](docs/getting-started/quickstart.md) |
+| All environment variables | [Environment variables](docs/reference/environment-variables.md) |
+| Configure SSO / OIDC | [Authentication and SSO](docs/self-hosting/authentication.md) |

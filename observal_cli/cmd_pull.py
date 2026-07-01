@@ -331,7 +331,7 @@ def _write_file(path: Path, content: str | dict, *, merge_mcp: bool = False) -> 
     return "updated" if existed else "created"
 
 
-def _rewrite_kiro_hooks(content: dict) -> dict:
+def _rewrite_kiro_hooks(content: dict, agent_id: str | None = None) -> dict:
     """Rewrite Kiro hook commands to use the current Python interpreter.
 
     The server generates commands with bare 'python3' which won't find
@@ -339,15 +339,14 @@ def _rewrite_kiro_hooks(content: dict) -> dict:
     """
     optic.trace("content={}", content)
     hooks = content.get("hooks")
-    agent_name = content.get("name")
-    if not hooks or not agent_name:
+    if not hooks:
         return content
 
     from observal_cli.harness_specs.kiro_hooks_spec import build_kiro_hooks
 
     cfg = config.get_or_exit()
     hooks_url = f"{cfg['server_url'].rstrip('/')}/api/v1/telemetry/hooks"
-    desired_hooks = build_kiro_hooks(hooks_url, agent_name)
+    desired_hooks = build_kiro_hooks(hooks_url, agent_id=agent_id or "")
 
     # Replace only Observal hooks, preserve any user-added hooks
     for event, desired_entries in desired_hooks.items():
@@ -395,7 +394,7 @@ def _parse_model_overrides(values: list[str]) -> tuple[str | None, dict[str, str
     Two grammars are accepted:
 
     * ``--model <value>`` - applies to the harness selected for this pull.
-    * ``--model <ide>=<value>`` - explicit per-harness override (advanced; lets
+    * ``--model <harness>=<value>`` - explicit per-harness override (advanced; lets
       a single command target a specific harness without ambiguity).
 
     Returns ``(default_value, per_harness_overrides)``.
@@ -588,14 +587,14 @@ def register_pull(app: typer.Typer):
         for item in env or []:
             k, _, v = item.partition("=")
             if k:
-                env_overrides[k.strip()] = v
+                env_overrides[k.strip()] = v.strip("\"'")
 
         # Parse --header flags into overrides dict
         header_overrides: dict[str, str] = {}
         for item in header or []:
             k, _, v = item.partition("=")
             if k:
-                header_overrides[k.strip()] = v
+                header_overrides[k.strip()] = v.strip("\"'")
 
         # Fetch agent details to discover MCP env vars
         with spinner("Fetching agent details..."):
@@ -689,7 +688,10 @@ def register_pull(app: typer.Typer):
             # Rewrite hook commands to use the current Python interpreter
             # so they work regardless of which directory Kiro is launched from.
             if isinstance(agent_profile.get("content"), dict):
-                agent_profile["content"] = _rewrite_kiro_hooks(agent_profile["content"])
+                agent_profile["content"] = _rewrite_kiro_hooks(
+                    agent_profile["content"],
+                    agent_id=str(agent_detail.get("id", resolved)),
+                )
             elif isinstance(agent_profile.get("content"), str):
                 agent_profile["content"] = _resolve_hook_paths(agent_profile["content"])
             # Cursor only reads .cursor/agents/ from the project directory,
@@ -749,10 +751,13 @@ def register_pull(app: typer.Typer):
         for sc in skill_components:
             sc_name = _sanitize_name(sc.get("name", "skill"))
             git_url = sc.get("git_url")
+            skill_dest = None
+            if sc.get("path"):
+                skill_dest = _resolve_path(sc["path"], target_dir, allow_home=is_user_scope).parent
 
             if dry_run:
                 mode = "would clone" if git_url else "would write"
-                written.append((f"<skill:{sc_name}>", mode))
+                written.append((str(skill_dest) if skill_dest else f"<skill:{sc_name}>", mode))
                 continue
 
             if git_url:
@@ -761,10 +766,11 @@ def register_pull(app: typer.Typer):
                     git_url=git_url,
                     skill_path=sc.get("skill_path", "/"),
                     git_ref=sc.get("git_ref", "main"),
-                    ide=harness,
+                    harness=harness,
                     scope=scope_str,
                     skill_md_content=sc.get("skill_md_content"),
                     cwd=target_dir,
+                    dest=skill_dest,
                 )
                 if result_path:
                     written.append((str(result_path), "cloned"))
@@ -778,9 +784,10 @@ def register_pull(app: typer.Typer):
                     skill_md_content=sc.get("skill_md_content"),
                     script_content=sc.get("script_content"),
                     script_filename=sc.get("script_filename"),
-                    ide=harness,
+                    harness=harness,
                     scope=scope_str,
                     cwd=target_dir,
+                    dest=skill_dest,
                 )
                 if result_path:
                     written.append((str(result_path), "installed"))

@@ -224,7 +224,7 @@ class TestAdminSamlConfigAPI:
         app.dependency_overrides[get_current_user] = override_get_current_user
 
     @pytest.mark.asyncio
-    async def test_get_saml_config_with_env_vars(self):
+    async def test_get_saml_config_with_dynamic_settings(self):
         app, mock_user = self._make_admin_app()
         mock_db = AsyncMock()
 
@@ -264,7 +264,7 @@ class TestAdminSamlConfigAPI:
         assert r.status_code == 200
         data = r.json()
         assert data["configured"] is True
-        assert data["source"] == "env"
+        assert data["source"] == "dynamic"
         assert data["idp_entity_id"] == "https://idp.example.com"
         assert data["has_idp_cert"] is True
         app.dependency_overrides.clear()

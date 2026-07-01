@@ -15,7 +15,13 @@ from rich import print as rprint
 from rich.table import Table
 
 from observal_cli import client, config
-from observal_cli.constants import VALID_HOOK_EVENTS, VALID_HOOK_EXECUTION_MODES, VALID_HOOK_HANDLER_TYPES
+from observal_cli.constants import (
+    VALID_HARNESSES,
+    VALID_HOOK_EVENTS,
+    VALID_HOOK_EXECUTION_MODES,
+    VALID_HOOK_HANDLER_TYPES,
+    VALID_HOOK_SCOPES,
+)
 from observal_cli.prompts import select_one, text_input
 from observal_cli.render import console, kv_panel, output_json, relative_time, spinner, status_badge
 
@@ -33,6 +39,38 @@ HOOK_TIMEOUT_CAPS: dict[str, int] = {
     "sync": 10,
     "async": 60,
 }
+
+
+def _print_hook_examples() -> None:
+    output_json(
+        {
+            "command_hook": {
+                "name": "block-rm",
+                "version": "1.0.0",
+                "description": "Block destructive shell commands before they run",
+                "owner": "your-team",
+                "event": "PreToolUse",
+                "handler_type": "command",
+                "handler_config": {"command": "./hooks/block-rm.sh", "timeout": 10},
+                "execution_mode": "blocking",
+                "scope": "agent",
+                "source_url": "https://github.com/acme/agent-hooks",
+                "source_ref": "main",
+                "source_path": "hooks/security",
+            },
+            "http_hook": {
+                "name": "audit-bash",
+                "version": "1.0.0",
+                "description": "Send Bash tool calls to an audit endpoint",
+                "owner": "your-team",
+                "event": "PreToolUse",
+                "handler_type": "http",
+                "handler_config": {"url": "https://hooks.example.com/pre-tool-use", "timeout": 10},
+                "execution_mode": "sync",
+                "scope": "session",
+            },
+        }
+    )
 
 
 def _validate_timeout(execution_mode: str, handler_config: dict) -> None:
@@ -59,6 +97,18 @@ def hook_submit(
     source_ref: str | None = typer.Option(None, "--source-ref", help="Branch/tag to track (default: main)"),
     source_path: str | None = typer.Option(None, "--source-path", help="Directory within repo containing hook files"),
     requires: list[str] | None = typer.Option(None, "--requires", help="Install prerequisites (repeatable)"),
+    name: str | None = typer.Option(None, "--name", "-n", help="Hook name"),
+    version: str | None = typer.Option(None, "--version", "-v", help="Version (default: 1.0.0)"),
+    description: str | None = typer.Option(None, "--description", "-d", help="Short description"),
+    event: str | None = typer.Option(None, "--event", "-e", help="Hook event"),
+    handler_type: str | None = typer.Option(None, "--handler-type", help="command or http"),
+    handler_command: str | None = typer.Option(None, "--handler-command", help="Command handler"),
+    handler_url: str | None = typer.Option(None, "--handler-url", help="HTTP handler URL"),
+    timeout: int | None = typer.Option(None, "--timeout", help="Timeout seconds"),
+    execution_mode: str | None = typer.Option(None, "--execution-mode", help="async, sync, or blocking"),
+    scope: str | None = typer.Option(None, "--scope", help="agent, session, or global"),
+    supported_harnesses: list[str] | None = typer.Option(None, "--harness", help="Supported harness (repeatable)"),
+    example: bool = typer.Option(False, "--example", help="Print example hook payloads and exit"),
 ):
     """Submit a new hook for review.
 
@@ -70,6 +120,9 @@ def hook_submit(
       observal registry hook submit --source-url https://github.com/org/hooks --source-path hooks/guard/
       observal registry hook submit --from-file hook.json
     """
+    if example:
+        _print_hook_examples()
+        return
     rprint("[dim]Note: Only submit components you created (private) or are the point-of-contact for (external).[/dim]")
     if draft and submit_draft:
         rprint(
@@ -108,45 +161,106 @@ def hook_submit(
             script_content = script_path.read_text()
             script_filename = script_path.name
 
-        # Prompt for essential fields
-        name = text_input("Hook name")
-        version = text_input("Version", default="1.0.0")
-        description = text_input("Description")
-        owner = config.load().get("username", "")
-        event = select_one("Event", VALID_HOOK_EVENTS)
-        handler_type = select_one("Handler type", VALID_HOOK_HANDLER_TYPES)
-
-        # Build handler_config
-        if script_filename and handler_type == "command":
-            # Auto-populate command from script filename
-            timeout = int(text_input("Timeout (seconds)", default="10"))
-            handler_config = {"command": script_filename, "timeout": timeout}
-            rprint(f"[dim]Command auto-set to '{script_filename}' from --script[/dim]")
-        elif handler_type == "command":
-            command = text_input("Command")
-            timeout = int(text_input("Timeout (seconds)", default="10"))
-            handler_config = {"command": command, "timeout": timeout}
+        flag_mode = any(
+            x is not None
+            for x in (
+                name,
+                version,
+                description,
+                event,
+                handler_type,
+                handler_command,
+                handler_url,
+                timeout,
+                execution_mode,
+                scope,
+                supported_harnesses,
+            )
+        )
+        if flag_mode:
+            _handler_type = handler_type or ("http" if handler_url else "command")
+            _execution_mode = execution_mode or "async"
+            _scope = scope or "agent"
+            for value, choices, label in (
+                (event, VALID_HOOK_EVENTS, "event"),
+                (_handler_type, VALID_HOOK_HANDLER_TYPES, "handler type"),
+                (_execution_mode, VALID_HOOK_EXECUTION_MODES, "execution mode"),
+                (_scope, VALID_HOOK_SCOPES, "scope"),
+            ):
+                if value and value not in choices:
+                    rprint(f"[red]Error:[/red] Invalid {label}: {value}")
+                    raise typer.Exit(1)
+            bad_harnesses = [h for h in supported_harnesses or [] if h not in VALID_HARNESSES]
+            if bad_harnesses:
+                rprint(f"[red]Error:[/red] Invalid harness: {bad_harnesses[0]}")
+                raise typer.Exit(1)
+            if not (name and description and event):
+                rprint("[red]Error:[/red] --name, --description, and --event are required without prompts")
+                raise typer.Exit(1)
+            if _handler_type == "http":
+                if not handler_url:
+                    rprint("[red]Error:[/red] --handler-url is required for http hooks")
+                    raise typer.Exit(1)
+                handler_config = {"url": handler_url, "timeout": timeout or 10}
+            else:
+                command = handler_command or script_filename
+                if not command:
+                    rprint("[red]Error:[/red] --handler-command or --script is required for command hooks")
+                    raise typer.Exit(1)
+                handler_config = {"command": command, "timeout": timeout or 10}
+            _validate_timeout(_execution_mode, handler_config)
+            payload: dict = {
+                "name": name,
+                "version": version or "1.0.0",
+                "description": description,
+                "owner": config.load().get("username", ""),
+                "event": event,
+                "handler_type": _handler_type,
+                "handler_config": handler_config,
+                "execution_mode": _execution_mode,
+                "scope": _scope,
+                "supported_harnesses": supported_harnesses or [],
+            }
         else:
-            # HTTP handler
-            url = text_input("Hook URL")
-            timeout = int(text_input("Timeout (seconds)", default="10"))
-            handler_config = {"url": url, "timeout": timeout}
+            # Prompt for essential fields
+            name = text_input("Hook name")
+            version = text_input("Version", default="1.0.0")
+            description = text_input("Description")
+            owner = config.load().get("username", "")
+            event = select_one("Event", VALID_HOOK_EVENTS)
+            handler_type = select_one("Handler type", VALID_HOOK_HANDLER_TYPES)
 
-        execution_mode = select_one("Execution mode", VALID_HOOK_EXECUTION_MODES)
+            # Build handler_config
+            if script_filename and handler_type == "command":
+                # Auto-populate command from script filename
+                timeout = int(text_input("Timeout (seconds)", default="10"))
+                handler_config = {"command": script_filename, "timeout": timeout}
+                rprint(f"[dim]Command auto-set to '{script_filename}' from --script[/dim]")
+            elif handler_type == "command":
+                command = text_input("Command")
+                timeout = int(text_input("Timeout (seconds)", default="10"))
+                handler_config = {"command": command, "timeout": timeout}
+            else:
+                # HTTP handler
+                url = text_input("Hook URL")
+                timeout = int(text_input("Timeout (seconds)", default="10"))
+                handler_config = {"url": url, "timeout": timeout}
 
-        # Validate timeout before sending
-        _validate_timeout(execution_mode, handler_config)
+            execution_mode = select_one("Execution mode", VALID_HOOK_EXECUTION_MODES)
 
-        payload: dict = {
-            "name": name,
-            "version": version,
-            "description": description,
-            "owner": owner,
-            "event": event,
-            "handler_type": handler_type,
-            "handler_config": handler_config,
-            "execution_mode": execution_mode,
-        }
+            # Validate timeout before sending
+            _validate_timeout(execution_mode, handler_config)
+
+            payload = {
+                "name": name,
+                "version": version,
+                "description": description,
+                "owner": owner,
+                "event": event,
+                "handler_type": handler_type,
+                "handler_config": handler_config,
+                "execution_mode": execution_mode,
+            }
 
         # Add optional script/source fields
         if script_content:
@@ -281,7 +395,7 @@ def hook_show(
 @hook_app.command(name="install")
 def hook_install(
     hook_id: str = typer.Argument(..., help="Hook ID, name, row number, or @alias"),
-    ide: str = typer.Option(..., "--harness", "-i", help="Target harness"),
+    harness: str = typer.Option(..., "--harness", "-i", help="Target harness"),
     platform: str = typer.Option("", "--platform", "-p", help="Platform (win32, darwin, linux)"),
     raw: bool = typer.Option(False, "--raw", help="Output raw JSON only (no file writes)"),
     directory: str | None = typer.Option(None, "--dir", "-d", help="Project directory for file writes"),
@@ -300,8 +414,8 @@ def hook_install(
       observal registry hook install my-hook --harness claude-code --platform darwin
     """
     resolved = config.resolve_alias(hook_id)
-    with spinner(f"Generating {ide} config..."):
-        result = client.post(f"/api/v1/hooks/{resolved}/install", {"harness": ide, "platform": platform})
+    with spinner(f"Generating {harness} config..."):
+        result = client.post(f"/api/v1/hooks/{resolved}/install", {"harness": harness, "platform": platform})
 
     config_snippet = result.get("config_snippet", {})
     files = result.get("files", [])
@@ -366,7 +480,7 @@ def hook_install(
     for note in notes:
         rprint(f"[dim]i {note}[/dim]")
 
-    rprint(f"\n[green]✓ Hook installed for {ide}![/green]")
+    rprint(f"\n[green]✓ Hook installed for {harness}![/green]")
 
 
 @hook_app.command(name="edit")
@@ -434,30 +548,3 @@ def hook_edit(
             pass
         rprint(f"[red]Failed to update:[/red] {exc}")
         raise typer.Exit(code=1)
-
-
-@hook_app.command(name="delete")
-def hook_delete(
-    hook_id: str = typer.Argument(..., help="ID, name, row number, or @alias"),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
-):
-    """Delete a hook from the registry.
-
-    Permanently removes the hook listing. Prompts for confirmation
-    unless --yes is passed. Only the hook owner or an admin can delete.
-
-    \b
-    Examples:
-      observal registry hook delete my-hook
-      observal registry hook delete @guard --yes
-      observal registry hook delete abc12345
-    """
-    resolved = config.resolve_alias(hook_id)
-    if not yes:
-        with spinner():
-            item = client.get(f"/api/v1/hooks/{resolved}")
-        if not typer.confirm(f"Delete [bold]{item['name']}[/bold] ({resolved})?"):
-            raise typer.Abort()
-    with spinner("Deleting..."):
-        client.delete(f"/api/v1/hooks/{resolved}")
-    rprint(f"[green]✓ Deleted {resolved}[/green]")
