@@ -587,7 +587,9 @@ def check_version_compatibility(server_url: str) -> None:
     if cli_v == srv_v:
         return
 
-    install_command = f"pipx install --force 'observal-cli=={server_ver}'"
+    from observal_cli.install_detector import upgrade_command
+
+    install_command = upgrade_command(server_ver)
     direction = "ahead of" if cli_v > srv_v else "behind"
     rprint(
         f"\n[bold red]\u2716 CLI version {cli_ver_str} is {direction} server {server_ver}.[/bold red]\n"
@@ -657,10 +659,12 @@ def auto_update_if_needed() -> bool:
         if sys.stdout.isatty():
             from rich import print as _rprint
 
+            from observal_cli.install_detector import upgrade_command
+
             _rprint(
                 f"\n[yellow]Major update available: v{current_str} \u2192 v{target_str}[/yellow]\n"
                 f"  This may include breaking changes.\n"
-                f"  Run: [bold cyan]pipx install --force 'observal-cli=={target_str}'[/bold cyan]\n"
+                f"  Run: [bold cyan]{upgrade_command(target_str)}[/bold cyan]\n"
             )
         return False
 

@@ -362,8 +362,11 @@ class TestCheckVersionCompatibility:
     def test_cli_behind_exits(self, monkeypatch, capsys):
         from click.exceptions import Exit
 
+        import observal_cli.install_detector as install_detector
+
         monkeypatch.setattr(version_check, "get_current_version", lambda: "1.0.0")
         monkeypatch.setattr(version_check, "_read_cache", lambda: None)
+        monkeypatch.setattr(install_detector, "upgrade_command", lambda version: f"upgrade to {version}")
 
         def mock_get(*args, **kwargs):
             return httpx.Response(200, json={"server_version": "1.2.0"})
@@ -371,7 +374,7 @@ class TestCheckVersionCompatibility:
         monkeypatch.setattr(httpx, "get", mock_get)
         with pytest.raises(Exit):
             version_check.check_version_compatibility("http://localhost:8000")
-        assert "pipx install --force 'observal-cli==1.2.0'" in capsys.readouterr().out
+        assert "upgrade to 1.2.0" in capsys.readouterr().out
 
     def test_uses_short_ttl_cache(self, monkeypatch):
         """Cache younger than 60s is trusted, skipping network."""
@@ -500,6 +503,16 @@ class TestExecuteSilent:
         from observal_cli.upgrade_executor import execute_silent
 
         info = InstallInfo(method=InstallMethod.PIP, path="/fake", writable=True, managed_by=None)
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: type("R", (), {"returncode": 0})())
+        assert execute_silent(info, "1.1.0", "upgrade") is True
+
+    def test_pipx_success(self, monkeypatch):
+        import subprocess
+
+        from observal_cli.install_detector import InstallInfo, InstallMethod
+        from observal_cli.upgrade_executor import execute_silent
+
+        info = InstallInfo(method=InstallMethod.PIPX, path="/fake", writable=True, managed_by="pipx")
         monkeypatch.setattr(subprocess, "run", lambda *a, **kw: type("R", (), {"returncode": 0})())
         assert execute_silent(info, "1.1.0", "upgrade") is True
 
