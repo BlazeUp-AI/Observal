@@ -209,6 +209,8 @@ if [ "$VERSION" = "latest" ]; then
     VERSION=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" |
         grep '"tag_name"' | head -1 | cut -d'"' -f4)
     [ -n "$VERSION" ] || die "Could not determine latest version"
+elif [ "${VERSION#v}" = "$VERSION" ]; then
+    VERSION="v$VERSION"
 fi
 
 info "Installing Observal CLI $VERSION ($OS/$ARCH) [$EDITION edition]"
@@ -265,11 +267,30 @@ else
     sudo chmod +x "$INSTALL_PATH"
 fi
 
+# ── Write install metadata ──────────────────────────────────
+
+CONFIG_DIR="${HOME}/.observal"
+mkdir -p "$CONFIG_DIR"
+INSTALL_METADATA="$CONFIG_DIR/install.json"
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+if ! cat >"$INSTALL_METADATA" <<EOF
+{
+  "method": "curl",
+  "manager": "curl",
+  "path": "$(json_escape "$INSTALL_PATH")",
+  "version": "$(json_escape "$VERSION")"
+}
+EOF
+then
+    warn "Could not write install metadata to $INSTALL_METADATA"
+fi
+
 # ── Write license key to config ──────────────────────────────
 
 if [ "$EDITION" = "enterprise" ] && [ -n "$LICENSE_KEY" ]; then
-    CONFIG_DIR="${HOME}/.observal"
-    mkdir -p "$CONFIG_DIR"
     CONFIG_FILE="$CONFIG_DIR/config.json"
 
     if [ -f "$CONFIG_FILE" ]; then

@@ -68,7 +68,7 @@ def test_version_middleware_rejects_cli_drift(monkeypatch):
     response = client.get("/api/v1/example", headers={"X-Observal-CLI-Version": "1.6.1"})
 
     assert response.status_code == 426
-    assert response.json()["install_command"] == "python -m pip install observal-cli==1.6.2"
+    assert response.json()["install_command"] == "observal self upgrade --version 1.6.2"
 
 
 def test_version_middleware_allows_exact_cli_match(monkeypatch):
@@ -113,7 +113,7 @@ def test_version_middleware_rejects_cli_without_version_header(monkeypatch):
     )
 
     assert response.status_code == 426
-    assert response.json()["install_command"] == "python -m pip install observal-cli==1.6.2"
+    assert response.json()["install_command"] == "observal self upgrade --version 1.6.2"
 
 
 def test_version_middleware_allows_browser_without_cli_header(monkeypatch):

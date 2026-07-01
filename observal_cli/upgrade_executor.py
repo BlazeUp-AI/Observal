@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Shaan Narendran <shaannaren06@gmail.com>
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""CLI upgrade executor - handles uv/pip/binary install paths.
+"""CLI upgrade executor - handles uv/pipx/pip/binary install paths.
 
 Extracted from cmd_ops.py for testability and readability.
 """
@@ -40,6 +40,8 @@ def execute(install_info: InstallInfo, target_version: str, direction: str, spin
     """
     if install_info.method == InstallMethod.UV_TOOL:
         _install_via_uv(target_version, direction, spinner)
+    elif install_info.method == InstallMethod.PIPX:
+        _install_via_pipx(target_version, direction, spinner)
     elif install_info.method == InstallMethod.PIP:
         _install_via_pip(target_version, direction, spinner)
     elif install_info.method == InstallMethod.BINARY:
@@ -65,10 +67,22 @@ def _install_via_uv(target_version: str, direction: str, spinner) -> None:
         raise typer.Exit(1)
 
 
+def _install_via_pipx(target_version: str, direction: str, spinner) -> None:
+    with spinner(f"{direction.capitalize()}ing to v{target_version}..."):
+        result = subprocess.run(
+            ["pipx", "install", f"observal-cli=={target_version}", "--force"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    if result.returncode != 0:
+        rprint(f"[red]{direction.capitalize()} failed:[/red] {result.stderr.strip()}")
+        raise typer.Exit(1)
+
+
 def _install_via_pip(target_version: str, direction: str, spinner) -> None:
     # Uses sys.executable to target the current Python environment. If the CLI
-    # is installed via uv (preferred), the uv path is used instead (see execute()).
-    # sys.executable is only reached for plain pip/pipx installs.
+    # is installed via uv or pipx, those paths are used instead.
     with spinner(f"{direction.capitalize()}ing to v{target_version}..."):
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", f"observal-cli=={target_version}", "--quiet"],
@@ -241,6 +255,14 @@ def execute_silent(install_info: InstallInfo, target_version: str, direction: st
         if install_info.method == InstallMethod.UV_TOOL:
             result = subprocess.run(
                 ["uv", "tool", "install", f"observal-cli=={target_version}", "--force"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            return result.returncode == 0
+        elif install_info.method == InstallMethod.PIPX:
+            result = subprocess.run(
+                ["pipx", "install", f"observal-cli=={target_version}", "--force"],
                 capture_output=True,
                 text=True,
                 timeout=30,

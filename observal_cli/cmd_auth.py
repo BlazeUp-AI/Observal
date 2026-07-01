@@ -105,7 +105,9 @@ def _ensure_cli_matches_server(server_url: str) -> None:
     if cli_version == server_version:
         return
 
-    install_command = f"pipx install --force 'observal-cli=={server_ver}'"
+    from observal_cli.install_detector import upgrade_command
+
+    install_command = upgrade_command(server_ver)
     direction = "ahead of" if cli_version > server_version else "behind"
     rprint(
         f"\n[bold red]CLI version {cli_ver_str} is {direction} server {server_ver}.[/bold red]\n"

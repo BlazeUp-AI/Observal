@@ -191,7 +191,7 @@ def _should_require_cli_version_header(request: Request) -> bool:
 
 
 def _cli_version_response(server_ver: str, cli_ver_str: str | None) -> JSONResponse:
-    install_command = f"python -m pip install observal-cli=={server_ver}"
+    install_command = f"observal self upgrade --version {server_ver}"
     shown_cli_version = cli_ver_str or "unknown"
     return JSONResponse(
         status_code=426,

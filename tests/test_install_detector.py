@@ -9,8 +9,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from observal_cli.install_detector import (
+    InstallInfo,
     InstallMethod,
     _detect_from_path,
+    _write_install_metadata,
+    upgrade_command,
 )
 
 
@@ -54,13 +57,36 @@ class TestDetectFromPath:
         assert result.method == InstallMethod.UV_TOOL
         assert result.managed_by == "uv"
 
+    def test_pipx_path_detected(self, monkeypatch, tmp_path):
+        pipx_dir = tmp_path / ".local" / "share" / "pipx" / "venvs" / "observal-cli" / "bin"
+        pipx_dir.mkdir(parents=True)
+        binary = pipx_dir / "observal"
+        binary.touch()
+
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        result = _detect_from_path(binary, str(binary).lower())
+        assert result.method == InstallMethod.PIPX
+        assert result.managed_by == "pipx"
+
+    def test_curl_metadata_detected(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        binary = tmp_path / "bin" / "observal"
+        binary.parent.mkdir()
+        binary.touch()
+        _write_install_metadata(InstallInfo(InstallMethod.BINARY, binary, True, "curl"))
+        monkeypatch.setattr("sys.frozen", True, raising=False)
+
+        result = _detect_from_path(binary, str(binary).lower())
+        assert result.method == InstallMethod.BINARY
+        assert result.managed_by == "curl"
+
     def test_fallback_pip(self, monkeypatch):
         monkeypatch.delattr("sys.frozen", raising=False)
         path = Path("/home/user/.venv/bin/observal")
-        # Not under uv dir, not homebrew, not system, not frozen
         with (
             patch("os.access", return_value=True),
             patch("observal_cli.install_detector._check_uv_tool_list", return_value=False),
+            patch("observal_cli.install_detector._check_pipx_list", return_value=False),
         ):
             result = _detect_from_path(path, str(path).lower())
         assert result.method == InstallMethod.PIP
@@ -70,9 +96,12 @@ class TestDetectFromPath:
 class TestWritableCheck:
     def test_writable_true(self):
         path = Path("/tmp/observal")
-        with patch("os.access", return_value=True):
+        with (
+            patch("os.access", return_value=True),
+            patch("observal_cli.install_detector._check_uv_tool_list", return_value=False),
+            patch("observal_cli.install_detector._check_pipx_list", return_value=False),
+        ):
             result = _detect_from_path(path, str(path).lower())
-        # Falls through to pip since not frozen, not uv, etc.
         assert result.writable is True
 
     def test_writable_false(self):
@@ -80,3 +109,16 @@ class TestWritableCheck:
         with patch("os.access", return_value=False):
             result = _detect_from_path(path, str(path).lower())
         assert result.writable is False
+
+
+class TestUpgradeCommand:
+    def test_pipx_command(self):
+        info = InstallInfo(InstallMethod.PIPX, Path("/fake/observal"), True, "pipx")
+        assert upgrade_command("1.2.0", info) == "pipx install --force observal-cli==1.2.0"
+
+    def test_curl_command_uses_installer(self):
+        info = InstallInfo(InstallMethod.BINARY, Path("/fake/observal"), True, "curl")
+        assert upgrade_command("1.2.0", info) == (
+            "curl -fsSL https://raw.githubusercontent.com/Observal/Observal/main/install.sh "
+            "| bash -s -- --version v1.2.0"
+        )

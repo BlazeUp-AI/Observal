@@ -290,6 +290,8 @@ def _show_update_banner() -> None:
         from packaging.version import Version
         from rich import print as _rprint
 
+        from observal_cli.install_detector import upgrade_command
+
         # Only show banner for major version upgrades (community mode)
         # Hard block already handles minor mismatches; auto-update handles patches
         if update.source == "github":
@@ -298,7 +300,7 @@ def _show_update_banner() -> None:
             if latest_v.major > current_v.major:
                 _rprint(
                     f"\n[yellow]Major update available: v{update.current} \u2192 v{update.latest}[/yellow]\n"
-                    f"  Run: [bold cyan]pipx install --force 'observal-cli=={update.latest}'[/bold cyan]"
+                    f"  Run: [bold cyan]{upgrade_command(update.latest)}[/bold cyan]"
                 )
     except Exception:
         pass  # Never crash the CLI for a version check

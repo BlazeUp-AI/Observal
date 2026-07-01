@@ -129,6 +129,38 @@ class TestSelfDowngrade:
         result = runner.invoke(app, ["self", "downgrade", "--version", "1.3.0"])
         assert "not older" in result.output.lower() or "upgrade" in result.output.lower()
 
+    def test_downgrade_pipx_install(self, mock_version, mock_lock, monkeypatch):
+        from observal_cli.install_detector import InstallInfo, InstallMethod
+
+        info = InstallInfo(InstallMethod.PIPX, Path("/home/user/.local/bin/observal"), True, "pipx")
+        install_called = {}
+        monkeypatch.setattr("observal_cli.install_detector.detect", lambda: info)
+        monkeypatch.setattr(
+            "observal_cli.cmd_ops._do_install",
+            lambda i, target, direction: install_called.update(i=i, target=target, direction=direction),
+        )
+
+        app = _get_app()
+        result = runner.invoke(app, ["self", "downgrade", "--version", "1.1.0", "--force"])
+        assert result.exit_code == 0
+        assert install_called == {"i": info, "target": "1.1.0", "direction": "downgrade"}
+
+    def test_downgrade_curl_install(self, mock_version, mock_lock, monkeypatch):
+        from observal_cli.install_detector import InstallInfo, InstallMethod
+
+        info = InstallInfo(InstallMethod.BINARY, Path("/usr/local/bin/observal"), True, "curl")
+        install_called = {}
+        monkeypatch.setattr("observal_cli.install_detector.detect", lambda: info)
+        monkeypatch.setattr(
+            "observal_cli.cmd_ops._do_install",
+            lambda i, target, direction: install_called.update(i=i, target=target, direction=direction),
+        )
+
+        app = _get_app()
+        result = runner.invoke(app, ["self", "downgrade", "--version", "1.1.0", "--force"])
+        assert result.exit_code == 0
+        assert install_called == {"i": info, "target": "1.1.0", "direction": "downgrade"}
+
 
 class TestSelfRollback:
     def test_rollback_no_backup(self, monkeypatch, tmp_path):
